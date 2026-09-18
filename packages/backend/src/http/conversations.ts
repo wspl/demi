@@ -14,6 +14,7 @@ import type { AgentServer } from '@demicodes/agent'
 import { ATTACHMENT_MAX_BYTES } from './attachments'
 import { type ControlService } from '../storage/control'
 import type { RunnerRegistry } from '../runner/registry'
+import type { FailureFactsReader } from '../conversation/failure-facts'
 import { resolveExecutionTarget } from '../conversation/execution-target'
 import type { ConversationStores } from '../storage/conversation-store'
 import type { ChangeStore } from '../storage/change-store'
@@ -51,6 +52,8 @@ export function conversationRoutes(options: {
   withHost: ConversationHostAccess
   /** Whether a device has a live runner socket, for the host list. */
   registry: RunnerRegistry
+  /** The failure facts sent beside the root blocks and each subagent history. */
+  readFailures: FailureFactsReader
 }): Hono<AuthEnv> {
   const { control, conversationStores, withHost, registry } = options
   const summaryDeps = { stores: conversationStores, server: options.agentServer, control, registry }
@@ -550,9 +553,15 @@ export function conversationRoutes(options: {
         404,
       )
     }
+    const blocks = conversationStores.transcriptBlocks(conversation.id)
+    const subagents = await conversationStores.subagentHistory(conversation.id)
     return c.json({
-      blocks: conversationStores.transcriptBlocks(conversation.id),
-      subagents: await conversationStores.subagentHistory(conversation.id),
+      blocks,
+      failures: await options.readFailures(blocks),
+      subagents: await Promise.all(subagents.map(async (agent) => ({
+        ...agent,
+        failures: await options.readFailures(agent.blocks),
+      }))),
     })
   })
 

@@ -1,7 +1,8 @@
 import type {
   AgentProvider,
   InferenceRequest,
-  ProviderEvent
+  ProviderEvent,
+  ProviderFailureReader
 } from '@demicodes/provider'
 import { TITLE_INSTRUCTION } from '../../conversation/title'
 
@@ -30,6 +31,8 @@ export class ScriptedModel {
   private readonly children: TurnScript[] = []
   readonly requests: InferenceRequest[] = []
   private readonly titles = new Map<string, string | (() => Promise<string>)>()
+  /** How the stub provider reads its failure records; a scenario scripts it like a turn. */
+  readFailure: ProviderFailureReader = () => ({ retryAt: null })
   readonly titleRequests: InferenceRequest[] = []
   /**
    * Requests whose script ran to its `response`; an abort cuts a script short

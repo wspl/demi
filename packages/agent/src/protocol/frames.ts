@@ -2,6 +2,7 @@ import type { z } from 'zod'
 import type {
   Block,
   ProviderErrorDiagnostics,
+  ProviderFailureFacts,
   QueuedMessage,
   SessionPhase,
   ToolResultContentBlock,
@@ -49,11 +50,14 @@ export type ClientSessionEvent =
   | {
       type: 'transcript_reset';
       blocks: Block[]
+      /** The facts of every error block in `blocks` the host read, by block id. */
+      failures: Record<string, ProviderFailureFacts>
     }
   | {
       type: 'transcript_patch';
       patches: TranscriptPatch[];
       blocks: Block[]
+      failures: Record<string, ProviderFailureFacts>
     }
   | {
       type: 'phase';
@@ -122,11 +126,15 @@ export type ClientSessionEvent =
       type: 'subagent_transcript_reset';
       subagentId: string;
       blocks: Block[]
+      /** The facts for this frame's error blocks, by block id. */
+      failures: Record<string, ProviderFailureFacts>
     }
   | {
       type: 'subagent_transcript_patch';
       subagentId: string;
       patches: TranscriptPatch[]
+      /** The facts for the error blocks this patch adds, by block id. */
+      failures: Record<string, ProviderFailureFacts>
     }
   | { type: 'opened' }
   | { type: 'closed' }

@@ -10,9 +10,9 @@ import {
   tokenUsageFromChatCompletionsUsage,
   type ChatCompletionToolCallDelta,
 } from './chat-completions'
-import { normalizeErrorCode } from './http'
+import { normalizeErrorCode, withRetryWait } from './http'
 import type { ServerSentEvent } from './sse'
-import type { ProviderEvent } from './types'
+import type { ProviderEvent, ProviderFailureReader } from './types'
 
 /** A tool call being assembled from the increments of one `index`. */
 interface CollectedToolCall {
@@ -23,8 +23,9 @@ interface CollectedToolCall {
 
 /**
  * Maps a Chat Completions SSE body to provider events. `vendorLabel` names the
- * vendor in the errors this reports (for example `Grok Build stream error`).
- * When `signal` aborts, the stream ends with an `abort` event.
+ * vendor in the errors this reports (for example `Grok Build stream error`),
+ * and `readFailure` is the provider's reader, which sets a failure's retry
+ * wait. When `signal` aborts, the stream ends with an `abort` event.
  *
  * A turn ends with one `response` event, whether the vendor closed it with the
  * `[DONE]` sentinel or just ended the body; the tool calls collected so far are
@@ -33,6 +34,7 @@ interface CollectedToolCall {
 export async function* mapChatCompletionsStream(
   frames: AsyncIterable<ServerSentEvent>,
   vendorLabel: string,
+  readFailure: ProviderFailureReader,
   signal?: AbortSignal,
 ): AsyncIterable<ProviderEvent> {
   const toolCalls = new Map<number, CollectedToolCall>()
@@ -53,11 +55,12 @@ export async function* mapChatCompletionsStream(
     if (chunk.error) {
       const message = chunk.error.message ?? `${vendorLabel} stream error`
       const rawCode = chunk.error.code ?? chunk.error.type ?? null
-      yield {
+      yield withRetryWait({
         type: 'error',
         message,
-        code: normalizeErrorCode(rawCode, message)
-      }
+        code: normalizeErrorCode(rawCode, message),
+        diagnostics: { source: 'stream', upstream: frame.data },
+      }, readFailure)
       return
     }
     // With `stream_options.include_usage` only the final chunk carries counts.

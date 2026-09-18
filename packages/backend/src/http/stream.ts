@@ -15,6 +15,7 @@ import { resolveExecutionTarget } from '../conversation/execution-target'
 import { resolveRemoteFileRefs } from '../conversation/remote-file-refs'
 import { conversationScopedTransport } from '../conversation/scoped-transport'
 import type { ConversationTitles } from '../conversation/title'
+import type { FailureFactsReader } from '../conversation/failure-facts'
 import type { ControlService } from '../storage/control'
 import type { AuthEnv, InstanceMode } from '../auth/identity'
 import type { ProviderVault } from '../vault/providers'
@@ -39,6 +40,7 @@ export function streamRoutes(options: {
   vault: ProviderVault
   mode: InstanceMode
   titles: ConversationTitles
+  readFailures: FailureFactsReader
 }): Hono<AuthEnv> {
   const { control, agentServer, upgradeWebSocket, blobsFor, vault, mode } = options
   const app = new Hono<AuthEnv>()
@@ -87,6 +89,7 @@ export function streamRoutes(options: {
                 conversation.id,
                 (host) => writeAttachmentToHost(host, conversation.id, fileName, data)
               ),
+              readFailures: options.readFailures,
               startTitle: (provider, text) => options.titles.start(
                 conversation.id,
                 provider,

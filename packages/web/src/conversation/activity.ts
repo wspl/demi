@@ -59,6 +59,7 @@ export function applyConversationEvent(
         startedAt: job.startedAt,
         endedAt: job.endedAt ?? undefined,
         blocks: [],
+        failures: {},
       })
     }
   } else if (
@@ -69,10 +70,13 @@ export function applyConversationEvent(
       (agent) => agent.id === event.subagentId,
     )
     if (child) {
-      child.blocks =
-        event.type === 'subagent_transcript_reset'
-          ? event.blocks
-          : applyTranscriptPatches(child.blocks, event.patches)
+      if (event.type === 'subagent_transcript_reset') {
+        child.blocks = event.blocks
+        child.failures = event.failures
+      } else {
+        child.blocks = applyTranscriptPatches(child.blocks, event.patches)
+        child.failures = { ...child.failures, ...event.failures }
+      }
     }
   } else if (event.type === 'shell_output') {
     const current = conversation.terminals.find(

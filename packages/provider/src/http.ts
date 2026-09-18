@@ -1,8 +1,11 @@
-// Shared building blocks for HTTP-based provider adapters: secret redaction and
-// coarse error-code classification. Provider implementations import these instead
-// of re-deriving the same status/keyword tables.
+// Shared building blocks for HTTP-based provider adapters: coarse error-code
+// classification, the HTTP failure record and its standard reading, and
+// credential masking for auth-file text. Provider implementations import these
+// instead of re-deriving the same status/keyword tables.
+import { z } from 'zod'
+import type { ProviderErrorDiagnostics, ProviderFailureFacts } from '@demicodes/core'
 import { parseJsonOrString, shortHash } from '@demicodes/utils'
-import type { ProviderAuthState, ProviderEvent } from './types'
+import type { ProviderAuthState, ProviderEvent, ProviderFailureReader } from './types'
 
 type SecretResolver = () => string | Promise<string> | null | undefined
 type HeadersResolver = () => Record<string, string>
@@ -14,14 +17,6 @@ type HeadersResolver = () => Record<string, string>
  */
 export function clampPromptCacheKey(value: string): string {
   return value.length <= 64 ? value : `session_${shortHash(value)}`
-}
-
-/** Replaces every occurrence of `secret` in `value` with a redaction marker. */
-export function redactSecretText(
-  value: string,
-  secret: string | null | undefined
-): string {
-  return secret ? value.split(secret).join('[redacted]') : value
 }
 
 /**
@@ -88,17 +83,14 @@ export function normalizeErrorCode(
 }
 
 /**
- * Builds a provider `error` event from an unknown thrown value, redacting
- * `secret`.
+ * Builds a provider `error` event from an unknown thrown value: no answer came
+ * from the vendor, so there is no failure record.
  */
-export function providerErrorFromUnknown(
-  error: unknown,
-  secret: string | null | undefined
-): ProviderEvent {
+export function providerErrorFromUnknown(error: unknown): ProviderEvent {
   const message = error instanceof Error ? error.message : String(error)
   return {
     type: 'error',
-    message: redactSecretText(message, secret),
+    message,
     code: normalizeErrorCode(null, message)
   }
 }
@@ -124,32 +116,33 @@ export async function authStatusFromKey(
 }
 
 /**
- * Parses a Retry-After header into milliseconds.
+ * The moment a Retry-After value says to retry, as epoch milliseconds, with a
+ * delay counted from `receivedAtMs`; null for a value it cannot read.
  *
- * RFC 9110 gives the header two spellings — delta-seconds (`120`) and an
- * HTTP-date (`Wed, 21 Oct 2015 07:28:00 GMT`) — and a receiver must accept
+ * RFC 9110 gives the header two spellings, delta-seconds (`120`) and an
+ * HTTP-date (`Wed, 21 Oct 2015 07:28:00 GMT`), and a receiver must accept
  * both. Which one arrived is decided by whether it parses as a number, so the
  * conversion is the parse; there is no shape to validate against a schema.
- * An unparseable header yields undefined: the caller then uses its own backoff.
  */
-export function retryAfterMsFromHeader(value: string | null): number | undefined {
+export function retryAtFromHeader(
+  value: string | null,
+  receivedAtMs: number
+): number | null {
   if (!value)
-    return undefined
+    return null
   const seconds = Number(value)
   if (Number.isFinite(seconds) && seconds >= 0)
-    return Math.floor(seconds * 1000)
+    return receivedAtMs + Math.floor(seconds * 1000)
   const dateMs = Date.parse(value)
-  if (Number.isFinite(dateMs))
-    return Math.max(0, dateMs - Date.now())
-  return undefined
+  return Number.isFinite(dateMs) ? dateMs : null
 }
 
 /**
  * Reads a header as a finite number, or null when absent/blank/non-numeric.
  *
  * Headers are text with no declared type, so the numeric ones (rate-limit
- * counters and windows) are read the same way `retryAfterMsFromHeader` reads
- * its delta-seconds: a vendor that omits one or sends a word means "no value",
+ * counters and windows) are read the same way `retryAtFromHeader` reads its
+ * delta-seconds: a vendor that omits one or sends a word means "no value",
  * not a protocol error.
  */
 export function numberHeader(headers: Headers, name: string): number | null {
@@ -160,60 +153,99 @@ export function numberHeader(headers: Headers, name: string): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-/** How much of a vendor's failure the diagnostics keep. */
-const UPSTREAM_MAX_LENGTH = 16 * 1024
+/**
+ * The failure record of an HTTP response (`docs/provider-errors-and-retries.md`
+ * § The failure record): the status, every header as the client reports it,
+ * and the body text as received.
+ */
+export const httpFailureRecordSchema = z.object({
+  status: z.number().int(),
+  headers: z.array(z.tuple([z.string(), z.string()])),
+  body: z.string(),
+})
+export type HttpFailureRecord = z.infer<typeof httpFailureRecordSchema>
+
+/** The record an HTTP failure keeps as its `upstream`. */
+export function httpFailureRecord(
+  status: number,
+  headers: Headers,
+  body: string
+): string {
+  const pairs: Array<[string, string]> = []
+  headers.forEach((value, name) => {
+    pairs.push([name, value])
+  })
+  const record: HttpFailureRecord = { status, headers: pairs, body }
+  return JSON.stringify(record)
+}
+
+/** The HTTP failure record a diagnostic holds, or null when it holds none. */
+export function readHttpFailureRecord(
+  diagnostics: ProviderErrorDiagnostics
+): HttpFailureRecord | null {
+  if (diagnostics.source !== 'http' || diagnostics.upstream === undefined)
+    return null
+  const record = httpFailureRecordSchema.safeParse(
+    parseJsonOrString(diagnostics.upstream)
+  )
+  return record.success ? record.data : null
+}
 
 /**
- * The vendor's failure as the diagnostics keep it: JSON text (or the text it
- * came as), redacted of the request's secret and bounded.
+ * The standard reading of a failure record: an HTTP failure's Retry-After
+ * header. A provider without fields of its own uses it as its `readFailure`;
+ * one with its own fields falls back to it.
  */
-export function upstreamDiagnostic(
-  failure: unknown,
-  secret?: string | null
-): string {
-  const text = typeof failure === 'string' ? failure : JSON.stringify(failure)
-  return redactSecretText(text, secret).slice(0, UPSTREAM_MAX_LENGTH)
+export function readHttpFailure(
+  diagnostics: ProviderErrorDiagnostics,
+  receivedAt: string
+): ProviderFailureFacts {
+  const retryAfter = readHttpFailureRecord(diagnostics)?.headers
+    .find(([name]) => name.toLowerCase() === 'retry-after')?.[1] ?? null
+  const retryAt = retryAtFromHeader(retryAfter, Date.parse(receivedAt))
+  return { retryAt: retryAt === null ? null : new Date(retryAt).toISOString() }
 }
 
-/** Response headers worth keeping with a failure: when to retry, what quota is left, which request it was. */
-const KEPT_HEADER = /^(retry-after|x-ratelimit-|x-request-id$|request-id$)/i
-
-function keptHeaders(headers: Headers): Record<string, string> {
-  const kept: Record<string, string> = {}
-  headers.forEach((value, name) => {
-    if (KEPT_HEADER.test(name))
-      kept[name.toLowerCase()] = value
-  })
-  return kept
+/**
+ * An error event with the wait its provider reads out of its failure record,
+ * for the retry policy. The same reader serves the display later, so the wait
+ * and what the user is told cannot disagree.
+ */
+export function withRetryWait(
+  event: ProviderEvent,
+  readFailure: ProviderFailureReader
+): ProviderEvent {
+  if (event.type !== 'error' || !event.diagnostics)
+    return event
+  const now = Date.now()
+  const { retryAt } = readFailure(event.diagnostics, new Date(now).toISOString())
+  if (retryAt === null)
+    return event
+  return { ...event, retryAfterMs: Math.max(0, Date.parse(retryAt) - now) }
 }
 
-/** Builds a redacted provider `error` event from a failed HTTP response. */
+/**
+ * Builds a provider `error` event from a failed HTTP response: the vendor's
+ * text in the message, the whole response in the failure record, and the wait
+ * the provider's reader finds in it.
+ */
 export async function httpRequestFailedEvent(
   response: Response,
-  secret: string | null | undefined,
   providerLabel: string,
+  readFailure: ProviderFailureReader,
 ): Promise<ProviderEvent> {
+  // A body that cannot be read leaves the status and headers to speak; the
+  // failure is reported either way.
   const text = await response.text().catch(() => '')
-  const message = redactSecretText(
-    `${providerLabel} API request failed with HTTP ${response.status}${text ? `: ${text}` : ''}`,
-    secret,
-  )
-  const retryAfterMs = retryAfterMsFromHeader(response.headers.get('retry-after'))
-  const event: ProviderEvent = {
+  const message = `${providerLabel} API request failed with HTTP ${response.status}${text ? `: ${text}` : ''}`
+  return withRetryWait({
     type: 'error',
     message,
     code: httpErrorCode(response.status, message),
     diagnostics: {
       source: 'http',
       httpStatus: response.status,
-      upstream: upstreamDiagnostic({
-        status: response.status,
-        headers: keptHeaders(response.headers),
-        body: parseJsonOrString(text),
-      }, secret),
+      upstream: httpFailureRecord(response.status, response.headers, text),
     },
-  }
-  if (retryAfterMs !== undefined)
-    event.retryAfterMs = retryAfterMs
-  return event
+  }, readFailure)
 }

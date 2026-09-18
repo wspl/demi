@@ -8,6 +8,8 @@ import {
 import { ActivityGate, deferred, waitFor } from '@demicodes/utils'
 import { clientFrameSchema, serverFrameSchema } from '@demicodes/agent'
 import { conversationScopedTransport } from '../conversation/scoped-transport'
+import type { FailureFactsReader } from '../conversation/failure-facts'
+import type { Block } from '@demicodes/core'
 import { LocalControlService, type ControlService } from '../storage/control'
 import { openSqliteDatabase } from '../storage/database'
 import { CONTROL_MIGRATIONS, migrate } from '../storage/migrations'
@@ -20,7 +22,8 @@ afterEach(() => {
 
 async function fixture(
   blobs?: BlobStore,
-  wrap: (control: ControlService) => ControlService = (control) => control
+  wrap: (control: ControlService) => ControlService = (control) => control,
+  readFailures?: FailureFactsReader
 ) {
   const db = openSqliteDatabase(':memory:')
   migrate(db, CONTROL_MIGRATIONS)
@@ -37,6 +40,7 @@ async function fixture(
     blobs,
     writeAttachment: async (fileName) => `/work/.demi/attachments/${fileName}`,
     providerAllowed: async (providerId) => providerId !== 'someone-elses',
+    ...(readFailures ? { readFailures } : {}),
   })
   const received: ClientFrame[] = []
   const replies: ServerFrame[] = []
@@ -327,5 +331,67 @@ test(
       scoped.close()
       pair.client.close()
     }
+  }
+)
+
+const testModel = {
+  providerId: 'test',
+  model: {
+    id: 'test',
+    name: 'Test',
+    contextWindow: 1000,
+    outputLimit: null,
+    inputLimit: null,
+    thinking: [],
+    acceptedExtensions: []
+  },
+  thinking: null
+}
+
+function errorBlock(id: string): Block {
+  return {
+    type: 'error',
+    id,
+    createdAt: '2026-09-18T14:00:00.000Z',
+    model: testModel,
+    message: 'The usage limit has been reached',
+    code: 'rate_limit',
+    diagnostics: { source: 'stream', upstream: '{"error":{"resets_at":1790062659}}' },
+  }
+}
+
+test(
+  'transcript frames carry the failure facts of the error blocks they bring; others go unchanged',
+  async () => {
+    const asked: string[][] = []
+    const f = await fixture(undefined, (control) => control, async (blocks) => {
+      asked.push(blocks.map((block) => block.id))
+      return Object.fromEntries(blocks
+        .filter((block) => block.type === 'error')
+        .map((block) => [block.id, { retryAt: '2026-09-22T07:37:39.000Z' }]))
+    })
+    const text: Block = {
+      type: 'text',
+      id: 'reply',
+      createdAt: '2026-09-18T14:00:00.000Z',
+      model: testModel,
+      text: 'hi',
+    }
+    f.scoped.send({ type: 'transcript_reset', epoch: 'e', revision: 1, blocks: [text, errorBlock('failed-1')] })
+    f.scoped.send({ type: 'transcript_patch', revision: 2, patches: [{ op: 'add', path: ['blocks', 2], value: errorBlock('failed-2') }] })
+    f.scoped.send({ type: 'transcript_patch', revision: 3, patches: [{ op: 'append_text', path: ['blocks', 0], delta: '!' }] })
+    f.scoped.send({ type: 'subagent_transcript_reset', subagentId: 'child', revision: 1, blocks: [errorBlock('child-failed')] })
+    f.scoped.send({ type: 'phase', phase: 'idle' })
+    await waitFor(() => f.replies.length === 5)
+
+    expect(f.replies[0]).toMatchObject({ type: 'transcript_reset', failures: { 'failed-1': { retryAt: '2026-09-22T07:37:39.000Z' } } })
+    expect(f.replies[1]).toMatchObject({ type: 'transcript_patch', failures: { 'failed-2': { retryAt: '2026-09-22T07:37:39.000Z' } } })
+    expect(f.replies[2]).not.toHaveProperty('failures')
+    expect(f.replies[3]).toMatchObject({ type: 'subagent_transcript_reset', failures: { 'child-failed': { retryAt: '2026-09-22T07:37:39.000Z' } } })
+    expect(f.replies[4]).toEqual({ type: 'phase', phase: 'idle' })
+    // Only the blocks a frame carries are read; a text append carries none.
+    expect(asked).toEqual([['reply', 'failed-1'], ['failed-2'], [], ['child-failed']])
+    // The blocks themselves go out unchanged.
+    expect(f.replies[0]).toMatchObject({ blocks: [text, errorBlock('failed-1')] })
   }
 )

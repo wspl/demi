@@ -15,6 +15,7 @@ import type {
   ModelSelection,
   PendingSteer,
   ProviderErrorDiagnostics,
+  ProviderFailureFacts,
   QueuedMessage,
   SessionPhase,
   ThinkingCapability,
@@ -375,6 +376,18 @@ const providerErrorDiagnosticsSchema: z.ZodType<ProviderErrorDiagnostics> = z
     upstream: z.string().optional(),
   })
 
+const providerFailureFactsSchema: z.ZodType<ProviderFailureFacts> = z.object({
+  retryAt: z.string().nullable(),
+})
+
+/**
+ * What the host read out of the failure records of the error blocks a frame
+ * carries, by block id: attached when the frame is sent, never stored
+ * (`docs/demi-next/backend.md` § Failure facts). The agent server itself
+ * sends none.
+ */
+export const failuresSchema = z.record(z.string(), providerFailureFactsSchema)
+
 const blockMeta = {
   id: z.string().min(1),
   createdAt: z.string(),
@@ -635,11 +648,13 @@ export const serverFrameSchema = z.discriminatedUnion('type', [
     type: z.literal('transcript_reset'),
     blocks: z.array(blockSchema),
     ...transcriptVersionSchema.shape,
+    failures: failuresSchema.optional(),
   }),
   z.object({
     type: z.literal('transcript_patch'),
     patches: z.array(transcriptPatchSchema),
     revision: z.number().int().nonnegative(),
+    failures: failuresSchema.optional(),
   }),
   z.object({ type: z.literal('phase'), phase: sessionPhaseSchema }),
   z.object({ type: z.literal('queue'), queue: z.array(queuedMessageSchema) }),
@@ -686,12 +701,14 @@ export const serverFrameSchema = z.discriminatedUnion('type', [
     subagentId: z.string(),
     blocks: z.array(blockSchema),
     revision: z.number().int().nonnegative(),
+    failures: failuresSchema.optional(),
   }),
   z.object({
     type: z.literal('subagent_transcript_patch'),
     subagentId: z.string(),
     patches: z.array(transcriptPatchSchema),
     revision: z.number().int().nonnegative(),
+    failures: failuresSchema.optional(),
   }),
   z.object({ type: z.literal('closed') }),
 ])

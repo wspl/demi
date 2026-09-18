@@ -5,6 +5,7 @@ import {
   httpRequestFailedEvent,
   mapChatCompletionsStream,
   providerErrorFromUnknown,
+  readHttpFailure,
   readServerSentEvents,
   type AgentProvider,
   type InferenceRequest,
@@ -111,7 +112,7 @@ export class GrokBuildProvider implements AgentProvider {
           yield { type: 'error', message: error.message, code: 'auth_missing' }
           return
         }
-        yield providerErrorFromUnknown(error, accessToken)
+        yield providerErrorFromUnknown(error)
         return
       }
 
@@ -148,8 +149,8 @@ export class GrokBuildProvider implements AgentProvider {
         if (!response.ok) {
           yield await httpRequestFailedEvent(
             response,
-            accessToken,
-            GROK_VENDOR_LABEL
+            GROK_VENDOR_LABEL,
+            readHttpFailure
           )
           return
         }
@@ -157,6 +158,7 @@ export class GrokBuildProvider implements AgentProvider {
         yield* mapChatCompletionsStream(
           readServerSentEvents(response.body, request.cancel),
           GROK_VENDOR_LABEL,
+          readHttpFailure,
           request.cancel,
         )
         return
@@ -165,7 +167,7 @@ export class GrokBuildProvider implements AgentProvider {
           yield { type: 'abort' }
           return
         }
-        yield providerErrorFromUnknown(error, accessToken)
+        yield providerErrorFromUnknown(error)
         return
       }
     }
@@ -220,6 +222,7 @@ export function createGrokBuildProvider(
   return defineProvider({
     id,
     displayName,
+    readFailure: readHttpFailure,
     auth: { status: () => authStore.status() },
     quota,
     ...(credentialsApi ? { credentials: credentialsApi } : {}),

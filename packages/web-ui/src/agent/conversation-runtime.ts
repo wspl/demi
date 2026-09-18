@@ -34,6 +34,7 @@ export type RuntimeState = Pick<
   | 'load'
   | 'pendingAction'
   | 'retrying'
+  | 'failures'
 >
 
 export interface ConversationRuntimeOptions {
@@ -346,6 +347,7 @@ export class ConversationRuntime {
       case 'transcript_reset':
       case 'transcript_patch':
         state.blocks = event.blocks
+        state.failures = event.failures
         // The rewrite that unwinds a failed attempt arrives before its
         // `retry_scheduled`; the next change is the retry's own output.
         state.retrying = false

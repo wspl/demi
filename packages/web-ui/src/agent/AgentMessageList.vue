@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ProviderFailureFacts } from '@demicodes/core'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useScroll } from '@vueuse/core'
 import type { Block, QueuedMessage, SessionPhase } from '@demicodes/core'
@@ -47,6 +48,8 @@ const props = defineProps<{
   pendingAction?: PendingAction
   /** The agent is retrying a failed provider request on its own: the tail row says Retrying. */
   retrying?: boolean
+  /** What the providers read out of the error blocks' failure records, by block id. */
+  failures?: Record<string, ProviderFailureFacts>
   loadError?: string | null
   /** A session-level failure told at the tail of the transcript, in flow. */
   failure?: SessionFailureNotice | null
@@ -244,6 +247,7 @@ defineExpose({
                 :thinking-ended-at="thinkingEndedAt(item.index)"
                 :fork="fork ? () => forkMessage(renderBlocks[item.index]!.id) : undefined"
                 :fork-state="forkStates.get(renderBlocks[item.index]!.id)"
+                :failure="failures?.[renderBlocks[item.index]!.id]"
                 :entering="isEntering(renderBlocks[item.index]!.id)"
                 :editable="renderBlocks[item.index]!.id === editableUserId && !props.readOnly && phase === 'idle' && !queue.length && !pendingSteers.length"
                 @delete-pending-steer="(id) => emit('deletePendingSteer', id)"

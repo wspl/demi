@@ -163,6 +163,7 @@ export class World {
           create: ({ providerId, label }) => defineProvider({
             id: providerId,
             displayName: label,
+            readFailure: (diagnostics, receivedAt) => model.readFailure(diagnostics, receivedAt),
             createRuntime: () => model.runtime()
           })
         },

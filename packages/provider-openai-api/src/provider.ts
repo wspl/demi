@@ -15,6 +15,7 @@ import {
   mapChatCompletionsStream,
   mapResponsesStream,
   providerErrorFromUnknown,
+  readHttpFailure,
   readServerSentEvents,
   responsesReasoningItemSchema,
   thinkingToReasoningEffort,
@@ -128,7 +129,7 @@ export class OpenAIChatCompletionsProvider implements AgentProvider {
         return
       }
     } catch (error) {
-      yield providerErrorFromUnknown(error, apiKey)
+      yield providerErrorFromUnknown(error)
       return
     }
 
@@ -146,12 +147,13 @@ export class OpenAIChatCompletionsProvider implements AgentProvider {
         }
       )
       if (!response.ok) {
-        yield await httpRequestFailedEvent(response, apiKey, 'OpenAI')
+        yield await httpRequestFailedEvent(response, 'OpenAI', readHttpFailure)
         return
       }
       yield* mapChatCompletionsStream(
         readServerSentEvents(response.body, request.cancel),
         OPENAI_VENDOR_LABEL,
+        readHttpFailure,
         request.cancel,
       )
     } catch (error) {
@@ -159,7 +161,7 @@ export class OpenAIChatCompletionsProvider implements AgentProvider {
         yield { type: 'abort' }
         return
       }
-      yield providerErrorFromUnknown(error, apiKey)
+      yield providerErrorFromUnknown(error)
     }
   }
 
@@ -202,7 +204,7 @@ export class OpenAIResponsesProvider implements AgentProvider {
         return
       }
     } catch (error) {
-      yield providerErrorFromUnknown(error, apiKey)
+      yield providerErrorFromUnknown(error)
       return
     }
 
@@ -220,12 +222,13 @@ export class OpenAIResponsesProvider implements AgentProvider {
         }
       )
       if (!response.ok) {
-        yield await httpRequestFailedEvent(response, apiKey, 'OpenAI')
+        yield await httpRequestFailedEvent(response, 'OpenAI', readHttpFailure)
         return
       }
       yield* mapResponsesStream(
         readServerSentEvents(response.body, request.cancel),
         OPENAI_VENDOR_LABEL,
+        readHttpFailure,
         request.cancel,
       )
     } catch (error) {
@@ -233,7 +236,7 @@ export class OpenAIResponsesProvider implements AgentProvider {
         yield { type: 'abort' }
         return
       }
-      yield providerErrorFromUnknown(error, apiKey)
+      yield providerErrorFromUnknown(error)
     }
   }
 
@@ -279,6 +282,7 @@ export function createOpenAIApiProvider(
   return defineProvider({
     id,
     displayName,
+    readFailure: readHttpFailure,
     auth: {
       status: () => authStatusFromKey(
         apiKey,

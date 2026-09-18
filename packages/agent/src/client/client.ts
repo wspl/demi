@@ -1,6 +1,7 @@
 import type {
   Block,
   PendingSteer,
+  ProviderFailureFacts,
   SessionPhase,
   UserContentBlock,
 } from '@demicodes/core'
@@ -63,6 +64,8 @@ export class AgentClient {
   private readonly pendingAbortWaiters: AbortWaiter[] = []
   private readonly queuedMessageIds = new Set<string>()
   private blocks: Block[] = []
+  /** The host's facts for the error blocks, by block id; kept beside the blocks, never inside them. */
+  private failures: Record<string, ProviderFailureFacts> = {}
   private pending: PendingSteer[] = []
   private revision: number | null = null
   private epoch: string | null = null
@@ -450,6 +453,7 @@ export class AgentClient {
     switch (frame.type) {
       case 'transcript_reset':
         this.blocks = [...frame.blocks]
+        this.failures = { ...frame.failures }
         this.epoch = frame.epoch
         this.revision = frame.revision
         this.awaitingResync = false
@@ -457,6 +461,7 @@ export class AgentClient {
         this.emit({
           type: 'transcript_reset',
           blocks: this.blocks,
+          failures: this.failures,
         })
         return
       case 'edit_result':
@@ -475,16 +480,20 @@ export class AgentClient {
         }
         this.revision = frame.revision
         this.blocks = applyTranscriptPatches(this.blocks, frame.patches)
+        if (frame.failures)
+          this.failures = { ...this.failures, ...frame.failures }
         this.removeMaterializedSteers()
         this.emit({
           type: 'transcript_patch',
           patches: frame.patches,
           blocks: this.blocks,
+          failures: this.failures,
         })
         return
       case 'closed':
         this.pending = []
         this.blocks = []
+        this.failures = {}
         this.revision = null
         this.epoch = null
         this.awaitingResync = false
@@ -538,6 +547,7 @@ export class AgentClient {
           type: 'subagent_transcript_reset',
           subagentId: frame.subagentId,
           blocks: frame.blocks,
+          failures: frame.failures ?? {},
         })
         return
       case 'subagent_transcript_patch':
@@ -545,6 +555,7 @@ export class AgentClient {
           type: 'subagent_transcript_patch',
           subagentId: frame.subagentId,
           patches: frame.patches,
+          failures: frame.failures ?? {},
         })
         return
       case 'rejected':

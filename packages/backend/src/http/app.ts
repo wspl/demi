@@ -49,6 +49,7 @@ import { runnerSocketRoutes } from './runner-socket'
 import { pipeRoutes } from './pipes'
 import { streamRoutes } from './stream'
 import type { ConversationTitles } from '../conversation/title'
+import { failureFactsReader } from '../conversation/failure-facts'
 import { usageRoutes } from './usage'
 import { cloudRoutes } from './cloud'
 import { workspaceRoutes } from './workspaces'
@@ -93,6 +94,8 @@ export function createApp(options: {
   mode: InstanceMode
 }): Hono {
   const app = new Hono()
+  // One reader of failure facts for both paths that send blocks (`backend.md` § Failure facts).
+  const readFailures = failureFactsReader(options.assembly)
 
   app.onError(
     (error, c) => c.json(
@@ -211,6 +214,7 @@ export function createApp(options: {
       vault: options.vault,
       mode: options.mode,
       titles: options.titles,
+      readFailures,
     }),
   )
   app.route(
@@ -225,6 +229,7 @@ export function createApp(options: {
       changes: options.changes,
       withHost: options.withHost,
       registry: options.runnerRegistry,
+      readFailures,
     }),
   )
 

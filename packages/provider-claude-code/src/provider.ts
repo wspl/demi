@@ -40,6 +40,7 @@ import { createClaudeCodeQuota } from './quota'
 import type { ClaudeSpawn } from './spawn'
 import {
   ClaudeCliTransportFactory,
+  type ClaudeStdoutLine,
   type ClaudeTransport,
   type ClaudeTransportFactory
 } from './transport'
@@ -98,13 +99,13 @@ export type ClaudeCodeProviderConfig =
 interface ActiveClaudeRun {
   observeQuota: ProviderQuotaObserver | undefined
   transport: ClaudeTransport
-  iterator: AsyncIterator<unknown>
+  iterator: AsyncIterator<ClaudeStdoutLine>
   pendingControlRequest: ClaudeControlRequest | null
   pendingSdkControlRequests: Map<string, ClaudeControlRequest>
   pendingSdkToolCalls: ToolCallEvent[]
   collectingSdkToolCalls: Map<string, ToolCallEvent>
   pendingToolUseIds: string[]
-  bufferedMessages: unknown[]
+  bufferedMessages: ClaudeStdoutLine[]
   sdkMcpEnabled: boolean
   hasStreamed: boolean
   /**
@@ -227,12 +228,14 @@ export class ClaudeCodeProvider implements AgentProvider {
           return
         }
 
-        const raw = next.value
-        this.observeQuotaFromMessage(raw, observeQuota)
-        const message = decodeClaudeStdoutMessage(raw)
+        const line = next.value
+        this.observeQuotaFromMessage(line.value, observeQuota)
+        const message = decodeClaudeStdoutMessage(line.value)
         const mapped = mapClaudeStdoutMessage(message, {
           ignoreAssistantContent: active.hasStreamed,
         })
+        // A failure found on a stdout line keeps that line, as the CLI wrote it, as its record.
+        const events = mapped.events.map((event) => withStdoutRecord(event, line.text))
         if (message?.type === 'stream_event')
           active.hasStreamed = true
         if (mapped.controlRequest) {
@@ -267,10 +270,10 @@ export class ClaudeCodeProvider implements AgentProvider {
           continue
         }
 
-        const toolUseIds = mapped.events.filter(isToolCallRequested)
+        const toolUseIds = events.filter(isToolCallRequested)
           .map((event) => event.toolUseId)
         if (active.sdkMcpEnabled) {
-          for (const event of mapped.events) {
+          for (const event of events) {
             if (event.type === 'tool_call_requested') {
               active.collectingSdkToolCalls.set(event.toolUseId, event)
               continue
@@ -293,7 +296,7 @@ export class ClaudeCodeProvider implements AgentProvider {
         }
         if (toolUseIds.length > 0)
           active.pendingToolUseIds = toolUseIds
-        for (const event of mapped.events) {
+        for (const event of events) {
           if (event.type === 'tool_call_requested')
             keepActiveForContinuation = true
           yield event
@@ -572,9 +575,9 @@ export class ClaudeCodeProvider implements AgentProvider {
           `Claude Code exited before requesting SDK MCP tool result for ${[...remaining].join(', ')}`,
         )
       }
-      this.observeQuotaFromMessage(next.value, active.observeQuota)
+      this.observeQuotaFromMessage(next.value.value, active.observeQuota)
       const mapped = mapClaudeStdoutMessage(
-        decodeClaudeStdoutMessage(next.value),
+        decodeClaudeStdoutMessage(next.value.value),
         { ignoreAssistantContent: true, ignoreAssistantToolUse: true },
       )
       if (mapped.controlRequest) {
@@ -672,14 +675,14 @@ export class ClaudeCodeProvider implements AgentProvider {
         throw new Error(
           'Claude Code exited before SDK MCP initialization completed'
         )
-      const message = decodeClaudeStdoutMessage(next.value)
+      const message = decodeClaudeStdoutMessage(next.value.value)
       if (isControlResponseFor(message, requestId))
         return
       active.bufferedMessages.push(next.value)
     }
   }
 
-  private nextMessage(active: ActiveClaudeRun): Promise<IteratorResult<unknown>> {
+  private nextMessage(active: ActiveClaudeRun): Promise<IteratorResult<ClaudeStdoutLine>> {
     const value = active.bufferedMessages.shift()
     if (value !== undefined)
       return Promise.resolve({ done: false, value })
@@ -892,4 +895,11 @@ function itemsDiverged(active: ActiveClaudeRun, items: InferenceItem[]): boolean
   if (active.firstUserSig !== null
     && firstUserSignature(items) !== active.firstUserSig) return true
   return false
+}
+
+/** An error found on a CLI stdout line, with that line as its failure record. */
+function withStdoutRecord(event: ProviderEvent, line: string): ProviderEvent {
+  if (event.type !== 'error')
+    return event
+  return { ...event, diagnostics: { source: 'stream', upstream: line } }
 }

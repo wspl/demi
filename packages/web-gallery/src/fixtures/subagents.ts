@@ -81,6 +81,7 @@ export function gallerySubagents(): SubagentRecord[] {
       name: 'Find the cookie assertion',
       phase: 'running',
       startedAt: ago(134_000),
+      failures: {},
       blocks: [
         user(
           'ag-cookie-user',
@@ -102,6 +103,7 @@ export function gallerySubagents(): SubagentRecord[] {
       name: 'Check the logout path',
       phase: 'running',
       startedAt: ago(48_000),
+      failures: {},
       blocks: [
         user(
           'ag-logout-user',
@@ -120,6 +122,7 @@ export function gallerySubagents(): SubagentRecord[] {
       name: 'Snapshot strings',
       phase: 'running',
       startedAt: ago(12_000),
+      failures: {},
       blocks: [
         user(
           'ag-snapshot-user',
@@ -134,6 +137,7 @@ export function gallerySubagents(): SubagentRecord[] {
       phase: 'completed',
       startedAt: ago(420_000),
       endedAt: ago(240_000),
+      failures: {},
       blocks: [
         user(
           'ag-comments-user',
@@ -165,6 +169,7 @@ export function gallerySubagents(): SubagentRecord[] {
       phase: 'aborted',
       startedAt: ago(180_000),
       endedAt: ago(120_000),
+      failures: {},
       blocks: [
         user(
           'ag-ci-user',

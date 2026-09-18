@@ -51,6 +51,7 @@ export {
   editResultSchema,
   transcriptVersionSchema,
   blockSchema,
+  failuresSchema,
   refSourceSchema,
   shellToolViewSchema,
 } from '@demicodes/agent/client'

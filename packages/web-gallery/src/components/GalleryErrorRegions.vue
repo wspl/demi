@@ -23,6 +23,11 @@ const usageLimitPayload = JSON.stringify({
     resets_in_seconds: 321250,
   },
   status_code: 429,
+  headers: {
+    'X-Codex-Plan-Type': 'pro',
+    'X-Codex-Primary-Used-Percent': '100',
+    'X-Codex-Primary-Window-Minutes': '10080',
+  },
 }, null, 2)
 </script>
 
@@ -30,7 +35,7 @@ const usageLimitPayload = JSON.stringify({
   <div class="space-y-8">
     <GallerySection
       title="ErrorNotice · a failure in the conversation"
-      note="One tinted bar, full width where it sits. The first line is what the source said, never Demi's reading of it: a plain sentence is the whole record; a message that wraps a vendor's JSON body leads with the sentence inside it and keeps the full text below; only a message with no sentence to lead with gets the neutral line. Then, when the vendor names it, the moment it works again; the status, Demi's own code and the request ids stay in the copied report. The provider response folds open under a chevron, without its transport headers. Copy takes the whole report. A turn's failure carries no button: Resume sits in the dock above the composer. With one line the controls sit centred; with facts they hold the first line."
+      note="One tinted bar, full width where it sits. The first line is what the source said, never Demi's reading of it: a plain sentence is the whole record; a message that wraps a vendor's JSON body leads with the sentence inside it and keeps the full text below; only a message with no sentence to lead with gets the neutral line. Then, when the vendor names it, the moment it works again; the status, Demi's own code and the request ids stay in the copied report. The provider response folds open under a chevron, whole, exactly as it arrived. Copy takes the whole report. A turn's failure carries no button: Resume sits in the dock above the composer. With one line the controls sit centred; with facts they hold the first line."
     >
       <GallerySpecimen wide variant="A plain sentence is the whole record · when it lifts leads the facts · the vendor payload behind a disclosure">
         <ErrorNotice

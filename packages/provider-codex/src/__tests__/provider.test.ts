@@ -12,6 +12,7 @@ import {
   providerRuntime,
   type InferenceRequest,
   type ProviderSelection,
+  type ReceivedResponsesEvent,
   type ResponsesEvent
 } from '@demicodes/provider'
 import { runnerShell } from '@demicodes/backend/testing'
@@ -32,6 +33,7 @@ import {
   type CodexResponsesTransport,
   type CodexTransportRequest,
 } from '../transport'
+import { readCodexFailure } from '../failure'
 
 const chatgptAuth: CodexResolvedAuth = {
   kind: 'chatgpt',
@@ -326,9 +328,39 @@ test(
           httpStatus: 500,
           providerCode: 'server_error',
           providerRequestId: 'req-http-1',
+          // The whole response as it came: every header and the body text.
+          upstream: JSON.stringify({
+            status: 500,
+            headers: [['retry-after', '2'], ['x-request-id', 'req-http-1']],
+            body: '{"error":{"code":"server_error","message":"backend failed"}}',
+          }),
         },
       },
     ])
+  }
+)
+
+test(
+  'the Codex reader finds when a usage limit lifts, in a stream frame, an envelope, or an HTTP body',
+  () => {
+    const receivedAt = '2026-09-18T14:00:00.000Z'
+    const at = new Date(1790062659 * 1000).toISOString()
+    const frame = '{"type":"error","error":{"type":"usage_limit_reached","message":"The usage limit has been reached","plan_type":"pro","resets_at":1790062659,"resets_in_seconds":321250},"status_code":429}'
+    expect(readCodexFailure({ source: 'stream', upstream: frame }, receivedAt)).toEqual({ retryAt: at })
+    const relative = '{"type":"event","event":{"type":"error","error":{"resets_in_seconds":90}}}'
+    expect(readCodexFailure({ source: 'stream', upstream: relative }, receivedAt))
+      .toEqual({ retryAt: '2026-09-18T14:01:30.000Z' })
+    const failed = '{"type":"response.failed","response":{"error":{"resets_at":1790062659}}}'
+    expect(readCodexFailure({ source: 'stream', upstream: failed }, receivedAt)).toEqual({ retryAt: at })
+    const http = JSON.stringify({ status: 429, headers: [], body: '{"error":{"resets_at":1790062659}}' })
+    expect(readCodexFailure({ source: 'http', upstream: http }, receivedAt)).toEqual({ retryAt: at })
+    // Without the limit's fields, the standard Retry-After reading applies.
+    const waited = JSON.stringify({ status: 503, headers: [['retry-after', '30']], body: 'busy' })
+    expect(readCodexFailure({ source: 'http', upstream: waited }, receivedAt))
+      .toEqual({ retryAt: '2026-09-18T14:00:30.000Z' })
+    // A field in a form the reader does not expect names no time.
+    const odd = '{"type":"error","error":{"resets_at":"soon"}}'
+    expect(readCodexFailure({ source: 'stream', upstream: odd }, receivedAt)).toEqual({ retryAt: null })
   }
 )
 
@@ -392,7 +424,7 @@ test(
       }]]),
     )
     const beforeEvents: ResponsesEvent[] = []
-    for await (const event of beforeStart.stream(makeTransportRequest())) beforeEvents.push(event)
+    for await (const received of beforeStart.stream(makeTransportRequest())) beforeEvents.push(received.event)
     expect(beforeEvents).toEqual([{
       type: 'response.output_text.delta',
       delta: 'sse'
@@ -410,7 +442,7 @@ test(
     )
     const afterEvents: ResponsesEvent[] = []
     await expect((async () => {
-      for await (const event of afterStart.stream(makeTransportRequest())) afterEvents.push(event)
+      for await (const received of afterStart.stream(makeTransportRequest())) afterEvents.push(received.event)
     })()).rejects.toThrow('after start')
     expect(afterEvents).toEqual([{
       type: 'response.output_text.delta',
@@ -434,12 +466,12 @@ test(
     })
     const events: ResponsesEvent[] = []
 
-    for await (const event of transport.stream({
+    for await (const received of transport.stream({
       ...makeTransportRequest(),
       headers,
       body: { model: 'gpt-5.4' },
     })) {
-      events.push(event)
+      events.push(received.event)
     }
 
     expect(events)
@@ -464,11 +496,11 @@ test(
     })
     const events: ResponsesEvent[] = []
 
-    for await (const event of transport.stream({
+    for await (const received of transport.stream({
       ...makeTransportRequest(),
       body: { model: 'gpt-5.4' },
     })) {
-      events.push(event)
+      events.push(received.event)
     }
 
     expect(events).toEqual([
@@ -691,14 +723,14 @@ class FakeCodexTransport implements CodexResponsesTransport {
 
   async *stream(
     request: CodexTransportRequest
-  ): AsyncIterable<ResponsesEvent> {
+  ): AsyncIterable<ReceivedResponsesEvent> {
     this.requests.push(request)
     while (this.index < this.scripts.length) {
       const script = this.scripts[this.index]
       this.index += 1
       if (script instanceof Error)
         throw script
-      for (const event of script) yield event
+      for (const event of script) yield arrived(event)
       if (script.length > 0)
         return
     }
@@ -716,12 +748,12 @@ class GateCodexTransport implements CodexResponsesTransport {
 
   async *stream(
     request: CodexTransportRequest
-  ): AsyncIterable<ResponsesEvent> {
+  ): AsyncIterable<ReceivedResponsesEvent> {
     const index = this.requests.length
     this.requests.push(request)
     this.started.get(index)?.resolve(undefined)
     await this.gates[index]?.promise
-    for (const event of this.scripts[index] ?? []) yield event
+    for (const event of this.scripts[index] ?? []) yield arrived(event)
   }
 
   waitForRequest(index: number): Promise<void> {
@@ -746,10 +778,15 @@ class YieldThenThrowTransport implements CodexResponsesTransport {
     private readonly error: Error,
   ) {}
 
-  async *stream(): AsyncIterable<ResponsesEvent> {
-    for (const event of this.events) yield event
+  async *stream(): AsyncIterable<ReceivedResponsesEvent> {
+    for (const event of this.events) yield arrived(event)
     throw this.error
   }
+}
+
+/** A scripted event as a transport hands it over, with the text it arrived as. */
+function arrived(event: ResponsesEvent): ReceivedResponsesEvent {
+  return { event, text: JSON.stringify(event) }
 }
 
 class RecordingAuthStore {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ProviderFailureFacts } from '@demicodes/core'
 import { computed, useAttrs } from 'vue'
 import { isEditableUserMessage } from '@demicodes/agent/client'
 import { chromeEntrance } from '@demicodes/web-ui/ui/chrome-enter'
@@ -27,7 +28,8 @@ const props = defineProps<{
   editable?: boolean
   fork?: () => Promise<void>
   forkState?: MessageForkState
-  /** Retry on the error record that ended the conversation. */
+  /** What the provider read out of this error block's failure record. */
+  failure?: ProviderFailureFacts
   /** The block just arrived in a live transcript: a chrome row slides in from the left as it fades in. */
   entering?: boolean
 }>()
@@ -138,7 +140,7 @@ const entersAsChrome = computed(() =>
         :message="block.message"
         :code="block.code"
         :diagnostics="block.diagnostics"
-        :created-at="block.createdAt"
+        :retry-at="failure?.retryAt ?? null"
       />
     </div>
     <div

@@ -3,17 +3,23 @@ import {
   decodeResponsesEvent,
   mapResponsesEvents,
   mapResponsesStream,
+  readHttpFailure,
   type ProviderEvent,
-  type ResponsesEvent,
+  type ProviderFailureReader,
+  type ReceivedResponsesEvent,
   type ServerSentEvent,
 } from '../index'
 
-/** The raw events a vendor sends, decoded as the transports decode them. */
-async function* decoded(raw: unknown[]): AsyncIterable<ResponsesEvent> {
+/**
+ * The events a vendor sends, as the transports hand them over: decoded, with
+ * the text each arrived as. A string is that text; an object is sent as JSON.
+ */
+async function* decoded(raw: unknown[]): AsyncIterable<ReceivedResponsesEvent> {
   for (const value of raw) {
-    const event = decodeResponsesEvent(value)
+    const text = typeof value === 'string' ? value : JSON.stringify(value)
+    const event = decodeResponsesEvent(JSON.parse(text))
     if (event)
-      yield event
+      yield { event, text }
   }
 }
 
@@ -101,7 +107,7 @@ describe('mapResponsesEvents', () => {
           },
         },
       },
-    ]), 'Codex'))
+    ]), 'Codex', readHttpFailure))
 
     expect(events).toEqual([
       { type: 'thinking_start' },
@@ -143,7 +149,7 @@ describe('mapResponsesEvents', () => {
         item: { type: 'reasoning', id: 'rs_1' }
       },
       { type: 'response.output_item.done', item },
-    ]), 'Codex'))
+    ]), 'Codex', readHttpFailure))
 
     expect(events).toEqual([
       { type: 'thinking_start' },
@@ -158,36 +164,33 @@ describe('mapResponsesEvents', () => {
       { type: 'response.output_text.delta', delta: '天空是蓝的' },
       messageDone('因为天空是蓝的'),
       messageDone('and the next message'),
-    ]), 'OpenAI'))
+    ]), 'OpenAI', readHttpFailure))
 
     expect(events.map((event) => event.type === 'text_delta' && event.text))
       .toEqual(['因为', '天空是蓝的', 'and the next message'])
   })
 
-  it('keeps a usage limit whole: the wait for the retry policy, the status, and the vendor event', async () => {
-    const limit = {
-      type: 'error',
-      error: {
-        type: 'usage_limit_reached',
-        message: 'The usage limit has been reached',
-        plan_type: 'pro',
-        resets_at: 1790062659,
-        resets_in_seconds: 321250,
-      },
-      status_code: 429,
-      headers: { 'X-Codex-Primary-Used-Percent': '100' },
+  it('keeps the frame text as the failure record and takes the wait from the provider reader', async () => {
+    // A field in a form the schema does not expect survives: the record is the text as it came.
+    const frame = '{"type":"error","error":{"type":"usage_limit_reached","message":"The usage limit has been reached","resets_at":"soon"},"status_code":"429"}'
+    const retryAt = new Date(Date.now() + 60_000).toISOString()
+    const read: string[] = []
+    const reader: ProviderFailureReader = (diagnostics) => {
+      read.push(diagnostics.upstream ?? '')
+      return { retryAt }
     }
-    const [event] = await collect(mapResponsesEvents(decoded([limit]), 'Codex'))
+    const [event] = await collect(mapResponsesEvents(decoded([frame]), 'Codex', reader))
+    expect(read).toEqual([frame])
     expect(event).toMatchObject({
       type: 'error',
       message: 'The usage limit has been reached',
       code: 'rate_limit',
-      retryAfterMs: 321_250_000,
-      diagnostics: { source: 'stream', providerCode: 'usage_limit_reached', httpStatus: 429 },
+      diagnostics: { source: 'stream', providerCode: 'usage_limit_reached', upstream: frame },
     })
     if (event?.type !== 'error')
       throw new Error('expected an error event')
-    expect(JSON.parse(event.diagnostics!.upstream!)).toEqual(limit)
+    expect(event.retryAfterMs).toBeGreaterThan(55_000)
+    expect(event.retryAfterMs).toBeLessThanOrEqual(60_000)
   })
 
   it('maps failed, incomplete, and error events, naming the vendor', async () => {
@@ -212,7 +215,7 @@ describe('mapResponsesEvents', () => {
         status: 400,
       },
       { type: 'error' },
-    ]), 'Codex'))
+    ]), 'Codex', readHttpFailure))
 
     // The vendor's event travels whole in the diagnostics; the rest is as before.
     const upstreams = events.map((event) =>
@@ -279,7 +282,7 @@ describe('mapResponsesEvents', () => {
           },
         },
       },
-    ]), 'Codex'))
+    ]), 'Codex', readHttpFailure))
 
     expect(events[0]).toMatchObject({
       code: 'overloaded',
@@ -298,6 +301,7 @@ describe('mapResponsesEvents', () => {
     const events = await collect(mapResponsesEvents(
       decoded([{ type: 'response.output_text.delta', delta: 'hi' }]),
       'OpenAI',
+      readHttpFailure,
       controller.signal,
     ))
     expect(events).toEqual([{ type: 'abort' }])
@@ -320,7 +324,7 @@ describe('mapResponsesStream', () => {
         },
       },
       '[DONE]',
-    ]), 'OpenAI'))
+    ]), 'OpenAI', readHttpFailure))
 
     expect(events).toEqual([
       { type: 'text_delta', text: 'hi' },
@@ -340,6 +344,7 @@ describe('mapResponsesStream', () => {
     const events = await collect(mapResponsesStream(
       framesOf([{ type: 'response.output_text.delta', delta: 'hi' }]),
       'OpenAI',
+      readHttpFailure,
     ))
 
     expect(events).toEqual([
@@ -362,7 +367,7 @@ describe('mapResponsesStream', () => {
         type: 'response.output_item.done',
         item: { type: 'message', content: 42 }
       },
-    ]), 'OpenAI')
+    ]), 'OpenAI', readHttpFailure)
 
     expect(collect(stream)).rejects.toThrow(/content/)
   })

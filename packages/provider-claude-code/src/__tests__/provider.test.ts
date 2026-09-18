@@ -24,6 +24,7 @@ import {
   parseClaudeCodeProviderConfig,
 } from '../provider'
 import type {
+  ClaudeStdoutLine,
   ClaudeTransport,
   ClaudeTransportFactory,
 } from '../transport'
@@ -289,7 +290,18 @@ test(
       {
         type: 'error',
         message: 'context window exceeded\ninput is too long',
-        code: 'context_length_exceeded'
+        code: 'context_length_exceeded',
+        // The result line the CLI wrote is the failure record.
+        diagnostics: {
+          source: 'stream',
+          upstream: JSON.stringify({
+            type: 'result',
+            is_error: true,
+            result: 'context window exceeded',
+            errors: ['input is too long'],
+            usage: { input_tokens: 200_000, output_tokens: 0 },
+          }),
+        },
       },
       {
         type: 'response',
@@ -1169,7 +1181,14 @@ test(
     expect(events).toEqual([{
       type: 'error',
       message: 'Invalid tool_use block from Claude Code',
-      code: null
+      code: null,
+      diagnostics: {
+        source: 'stream',
+        upstream: JSON.stringify({
+          type: 'assistant',
+          message: { content: [{ type: 'tool_use', id: 'native-tool-1', input: { script: 'pwd' } }] },
+        }),
+      },
     }])
     expect(transport.writes.some((write) => isRecord(write)
       && write.type === 'control_response')).toBe(false)
@@ -1196,7 +1215,15 @@ test(
 
     await expect(iterator.next()).resolves.toEqual({
       done: false,
-      value: { type: 'error', message: 'bad output', code: 'stream' },
+      value: {
+        type: 'error',
+        message: 'bad output',
+        code: 'stream',
+        diagnostics: {
+          source: 'stream',
+          upstream: '{"type":"error","message":"bad output","code":"stream"}',
+        },
+      },
     })
     await iterator.return?.()
 
@@ -1812,23 +1839,23 @@ class FakeClaudeTransport implements ClaudeTransport, AsyncIterator<unknown> {
     }
   }
 
-  messages(): AsyncIterable<unknown> {
+  messages(): AsyncIterable<ClaudeStdoutLine> {
     return {
       [Symbol.asyncIterator]: () => this,
     }
   }
 
-  async next(): Promise<IteratorResult<unknown>> {
+  async next(): Promise<IteratorResult<ClaudeStdoutLine>> {
     if (this.options.throwNext)
       throw this.options.throwNext
     if (this.index >= this.queue.length) {
       if (this.options.hang)
-        return new Promise<IteratorResult<unknown>>(() => {})
+        return new Promise<IteratorResult<ClaudeStdoutLine>>(() => {})
       return { done: true, value: undefined }
     }
     const value = this.queue[this.index]
     this.index += 1
-    return { done: false, value }
+    return { done: false, value: { text: JSON.stringify(value), value } }
   }
 
   protected prepend(value: unknown): void {

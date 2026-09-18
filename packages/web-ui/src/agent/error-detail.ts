@@ -1,6 +1,5 @@
 import type { ProviderErrorDiagnostics } from '@demicodes/core'
 import { z } from 'zod'
-import { retryAtFromUpstream } from '@demicodes/agent/client'
 import { t } from '@demicodes/web-ui/infra/i18n'
 
 /** A first line stays one line: past this the source's text goes in the body. */
@@ -56,15 +55,11 @@ export function errorPresentation(message: string): ErrorPresentation {
 }
 
 /**
- * The line under a failure: when the vendor says it works again, which is what
- * the reader does next. The status, the normalized code and the request ids are
- * bookkeeping for a support thread; they go in the copied report.
+ * The line under a failure: when the provider says it works again, which is
+ * what the reader does next. The status, the normalized code and the request
+ * ids are bookkeeping for a support thread; they go in the copied report.
  */
-export function errorFacts(
-  diagnostics: ProviderErrorDiagnostics | undefined,
-  createdAt?: string
-): string[] {
-  const retryAt = createdAt ? retryAtFromUpstream(diagnostics?.upstream, createdAt) : null
+export function errorFacts(retryAt: string | null): string[] {
   return retryAt === null ? [] : [`resets ${new Date(retryAt).toLocaleString()}`]
 }
 
@@ -91,26 +86,16 @@ export function errorReportText(
         lines.push(`${key}: ${value}`)
     }
     if (diagnostics.upstream)
-      lines.push('', 'upstream:', prettyUpstream(diagnostics.upstream, { headers: true }))
+      lines.push('', 'upstream:', prettyUpstream(diagnostics.upstream))
   }
   return lines.join('\n')
 }
 
-/**
- * The stored vendor failure for a reader's eyes: indented when it is JSON, and
- * without its transport headers unless the caller wants the whole record.
- */
-export function prettyUpstream(upstream: string, options: { headers: boolean }): string {
-  let payload: unknown
+/** The provider's response as it arrived, indented when it is JSON, for a reader's eyes. */
+export function prettyUpstream(upstream: string): string {
   try {
-    payload = JSON.parse(upstream)
+    return JSON.stringify(JSON.parse(upstream), null, 2)
   } catch {
     return upstream
   }
-  const record = z.record(z.string(), z.unknown()).safeParse(payload)
-  if (!options.headers && record.success) {
-    const { headers: _headers, ...rest } = record.data
-    payload = rest
-  }
-  return JSON.stringify(payload, null, 2)
 }

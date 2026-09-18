@@ -1,4 +1,4 @@
-import type { Block, QueuedMessage, SessionPhase, UserContentBlock } from '@demicodes/core'
+import type { Block, ProviderFailureFacts, QueuedMessage, SessionPhase, UserContentBlock } from '@demicodes/core'
 import type { PendingAction } from './activity-slot'
 import type { ConversationStatus } from './conversation-status'
 import type { SessionLoad } from './session-status'
@@ -58,6 +58,11 @@ export interface ConversationState {
    * output) or the turn's end. The tail row says Retrying meanwhile.
    */
   retrying: boolean
+  /**
+   * What the providers read out of the error blocks' failure records, by block
+   * id, as the backend sends them beside the transcript.
+   */
+  failures: Record<string, ProviderFailureFacts>
 }
 
 /** What `ChatSession` reads: the live conversation fields plus what the product keeps beside them. */
@@ -74,6 +79,7 @@ export interface ChatSessionState
     | 'lastError'
     | 'pendingAction'
     | 'retrying'
+    | 'failures'
   > {
   archived: boolean
   status: ConversationStatus

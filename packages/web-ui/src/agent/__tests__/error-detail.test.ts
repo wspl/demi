@@ -36,9 +36,9 @@ test('a message with no sentence to lead with gets the neutral line over its tex
   expect(errorPresentation('')).toEqual({ label: 'The turn failed', detail: null })
 })
 
-test('the facts line leaves the status, the code and the request ids to the report', () => {
-  expect(errorFacts({ source: 'http', httpStatus: 429, clientRequestId: 'req_1' })).toEqual([])
-  expect(errorFacts(undefined)).toEqual([])
+test('the facts line says when the provider says it works again, and nothing without it', () => {
+  expect(errorFacts('2026-09-22T07:37:39.000Z')).toEqual([`resets ${new Date('2026-09-22T07:37:39.000Z').toLocaleString()}`])
+  expect(errorFacts(null)).toEqual([])
 })
 
 test('the report is the upstream message followed by every diagnostic', () => {
@@ -57,22 +57,11 @@ test('the report is the upstream message followed by every diagnostic', () => {
   expect(errorReportText('boom', null, undefined)).toBe('boom')
 })
 
-test('the facts lead with when the vendor says it works again, read from the stored payload', () => {
-  const upstream = JSON.stringify({ type: 'error', error: { resets_at: 1790062659 }, status_code: 429 })
-  expect(errorFacts(
-    { source: 'stream', httpStatus: 429, clientRequestId: 'req_1', upstream },
-    '2026-09-18T14:00:00.000Z',
-  )).toEqual([`resets ${new Date(1790062659 * 1000).toLocaleString()}`])
-  // Without a named time nothing is claimed.
-  expect(errorFacts({ source: 'stream', upstream: '{"error":{}}' }, '2026-09-18T14:00:00.000Z')).toEqual([])
-})
-
-test('the reader sees the vendor payload without its transport headers; the report keeps them', () => {
+test('the provider response shows whole, indented when it is JSON', () => {
   const upstream = JSON.stringify({ type: 'error', error: { plan_type: 'pro' }, headers: { 'X-Codex-Plan-Type': 'pro' } })
-  expect(prettyUpstream(upstream, { headers: false })).toBe('{\n  "type": "error",\n  "error": {\n    "plan_type": "pro"\n  }\n}')
-  expect(prettyUpstream(upstream, { headers: true })).toContain('X-Codex-Plan-Type')
-  expect(prettyUpstream('plain text', { headers: false })).toBe('plain text')
-  expect(prettyUpstream('[1,2]', { headers: false })).toBe('[\n  1,\n  2\n]')
+  expect(prettyUpstream(upstream)).toBe('{\n  "type": "error",\n  "error": {\n    "plan_type": "pro"\n  },\n  "headers": {\n    "X-Codex-Plan-Type": "pro"\n  }\n}')
+  expect(prettyUpstream('plain text')).toBe('plain text')
+  expect(prettyUpstream('[1,2]')).toBe('[\n  1,\n  2\n]')
 })
 
 test('the copied report carries the vendor payload, indented', () => {

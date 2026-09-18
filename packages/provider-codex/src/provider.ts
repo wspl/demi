@@ -5,8 +5,9 @@ import {
   defineProvider,
   httpErrorCode,
   mapResponsesEvents,
+  httpFailureRecord,
   normalizeErrorCode,
-  retryAfterMsFromHeader,
+  withRetryWait,
   type AgentProvider,
   type InferenceRequest,
   type ModelPolicy,
@@ -27,6 +28,7 @@ import {
   openCodexCredentialPool,
   PoolAwareCodexAuthStore
 } from './credentials'
+import { readCodexFailure } from './failure'
 import { listCodexModels } from './models'
 import { createCodexQuota } from './quota'
 import { buildCodexResponsesRequestBody } from './responses'
@@ -155,7 +157,7 @@ export class CodexProvider implements AgentProvider {
             )
           },
         })
-        yield* mapResponsesEvents(stream, CODEX_VENDOR_LABEL)
+        yield* mapResponsesEvents(stream, CODEX_VENDOR_LABEL, readCodexFailure)
         return
       } catch (error) {
         if (error instanceof CodexHttpError) {
@@ -246,6 +248,7 @@ export function createCodexProvider(
   return defineProvider({
     id,
     displayName,
+    readFailure: readCodexFailure,
     auth: { status: () => authStore.status() },
     quota,
     ...(credentialsApi ? { credentials: credentialsApi } : {}),
@@ -326,9 +329,10 @@ function openAiResponsesUrl(baseUrl: string): string {
 }
 
 /**
- * A Codex failure as a provider error: auth and HTTP failures keep their code
- * and diagnostics, anything else is reported as a transport failure. Secrets
- * are redacted on every path.
+ * A Codex failure as a provider error. An auth failure is Demi's own and keeps
+ * the redaction its credential files need. An HTTP failure keeps the vendor's
+ * response as its record and its wait from `readCodexFailure`. Anything else
+ * is a transport failure with no answer from the vendor.
  */
 function codexErrorEvent(error: unknown): ProviderEvent {
   if (error instanceof CodexAuthError)
@@ -342,24 +346,23 @@ function codexErrorEvent(error: unknown): ProviderEvent {
     const providerCode = body.error?.code ?? body.error?.type
     const providerRequestId = error.headers.get('x-request-id')
       ?? body.request_id
-    const retryAfterMs = retryAfterMsFromHeader(error.headers.get('retry-after'))
-    return {
+    return withRetryWait({
       type: 'error',
-      message: redactCodexSecretText(error.message),
+      message: error.message,
       code: httpErrorCode(error.status, error.message),
-      ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
       diagnostics: {
         source: 'http',
         httpStatus: error.status,
         ...(providerCode ? { providerCode } : {}),
         ...(providerRequestId ? { providerRequestId } : {}),
+        upstream: httpFailureRecord(error.status, error.headers, error.responseText),
       },
-    }
+    }, readCodexFailure)
   }
   const message = error instanceof Error ? error.message : String(error)
   return {
     type: 'error',
-    message: redactCodexSecretText(message),
+    message,
     code: normalizeErrorCode(null, message),
     diagnostics: { source: 'transport' },
   }

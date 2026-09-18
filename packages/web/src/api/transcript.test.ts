@@ -20,11 +20,13 @@ const receipt: Extract<Block, { type: 'agent_message' }> = {
 test('a cold transcript keeps agent receipts with their source metadata', () => {
   const transcript = transcriptSchema.parse({
     blocks: [receipt],
+    failures: {},
     subagents: [
       {
         id: 'child', name: 'UI implementation', phase: 'completed',
         startedAt: '2026-09-12T12:00:00.000Z', endedAt: '2026-09-12T12:00:01.000Z',
         blocks: [receipt],
+        failures: {},
       },
     ],
   })

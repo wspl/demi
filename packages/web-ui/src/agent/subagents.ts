@@ -1,4 +1,4 @@
-import type { Block } from '@demicodes/core'
+import type { Block, ProviderFailureFacts } from '@demicodes/core'
 import type { ConversationStatus } from './conversation-status'
 
 export type SubagentPhase = 'running' | 'completed' | 'aborted' | 'error'
@@ -10,6 +10,8 @@ export interface SubagentRecord {
   startedAt: string
   endedAt?: string
   blocks: Block[]
+  /** The failure facts of this agent's error blocks, by block id. */
+  failures: Record<string, ProviderFailureFacts>
 }
 
 export function isSubagentRunning(phase: SubagentPhase): boolean {

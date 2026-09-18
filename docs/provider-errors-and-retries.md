@@ -51,8 +51,10 @@ When the scan reaches the user turn without stopping, the whole turn was discard
 
 Coverage lives in:
 
-- `packages/provider/src/__tests__/http.test.ts` for common HTTP and vendor-code classification.
+- `packages/provider/src/__tests__/http.test.ts` for common HTTP and vendor-code classification, the HTTP failure record, and its standard reading.
+- `packages/provider/src/__tests__/responses-stream.test.ts` and `chat-completions-stream.test.ts` for stream failures kept as the frame text.
+- `packages/backend/src/__tests__/scoped-transport.test.ts` and `scenarios/failure-facts.test.ts` for the facts sent beside the transcript.
 - `packages/provider-codex/src/__tests__/responses.test.ts` for Codex streaming error mapping.
-- `packages/provider-codex/src/__tests__/provider.test.ts` for Codex-to-Agent transient retry integration.
+- `packages/provider-codex/src/__tests__/provider.test.ts` for Codex-to-Agent transient retry integration and the Codex failure reader.
 - `packages/agent/src/__tests__/turn-retry.test.ts` for retry safety, exhaustion, tool continuation, and progress-preserving resume.
 - `packages/agent/src/__tests__/recovery.test.ts` for resume-point derivation and the unwind `resume` performs.

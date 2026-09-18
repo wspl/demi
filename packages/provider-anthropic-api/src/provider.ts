@@ -19,7 +19,9 @@ import {
   httpRequestFailedEvent,
   normalizeErrorCode,
   providerErrorFromUnknown,
+  readHttpFailure,
   readServerSentEvents,
+  withRetryWait,
   reportedStringSchema,
   taggedUnion,
   tokenCountSchema,
@@ -134,7 +136,7 @@ export class AnthropicApiProvider implements AgentProvider {
         return
       }
     } catch (error) {
-      yield providerErrorFromUnknown(error, apiKey)
+      yield providerErrorFromUnknown(error)
       return
     }
 
@@ -152,7 +154,7 @@ export class AnthropicApiProvider implements AgentProvider {
         }
       )
       if (!response.ok) {
-        yield await httpRequestFailedEvent(response, apiKey, 'Anthropic')
+        yield await httpRequestFailedEvent(response, 'Anthropic', readHttpFailure)
         return
       }
       yield* mapAnthropicMessageStream(
@@ -164,7 +166,7 @@ export class AnthropicApiProvider implements AgentProvider {
         yield { type: 'abort' }
         return
       }
-      yield providerErrorFromUnknown(error, apiKey)
+      yield providerErrorFromUnknown(error)
     }
   }
 
@@ -211,6 +213,7 @@ export function createAnthropicApiProvider(
   return defineProvider({
     id,
     displayName,
+    readFailure: readHttpFailure,
     auth: {
       status: () => authStatusFromKey(
         apiKey,
@@ -477,11 +480,12 @@ export async function* mapAnthropicMessageStream(
         const message = event.error?.message
           ?? event.message
           ?? 'Anthropic API stream error'
-        yield {
+        yield withRetryWait({
           type: 'error',
           message,
           code: normalizeErrorCode(event.error?.type ?? event.type, message),
-        }
+          diagnostics: { source: 'stream', upstream: frame.data },
+        }, readHttpFailure)
         return
       }
 

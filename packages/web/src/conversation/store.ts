@@ -173,6 +173,7 @@ export const useConversations = defineStore('conversations', () => {
       load: 'loading',
       pendingAction: null,
       retrying: false,
+      failures: {},
     }
   }
 
@@ -544,6 +545,7 @@ export const useConversations = defineStore('conversations', () => {
       const transcript = await readResponse(response, transcriptSchema)
       controller.signal.throwIfAborted()
       conversation.blocks = transcript.blocks
+      conversation.failures = transcript.failures
       reconcileSubmission(conversation)
       conversation.terminals = transcriptTerminals(transcript.blocks)
       conversation.subagents = transcript.subagents.map((agent) => ({

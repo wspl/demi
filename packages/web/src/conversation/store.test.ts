@@ -302,6 +302,28 @@ test('sidebar stays active until the last running child closes after its parent 
   expect(conversation.status).toBe('active')
 })
 
+test('a child keeps the failure facts of its transcript: a reset replaces them, a patch adds to them', () => {
+  const conversation = useConversations().items[0]!
+  const job = {
+    subagentId: 'child',
+    parentSessionId: conversation.id,
+    description: 'Child',
+    profile: null,
+    phase: 'running' as const,
+    startedAt: '2026-09-13T00:00:00.000Z',
+    endedAt: null,
+    metadata: null,
+  }
+  applyConversationEvent(conversation, { type: 'subagent', event: 'started', job })
+  const lifts = { retryAt: '2026-09-22T07:37:39.000Z' }
+  applyConversationEvent(conversation, { type: 'subagent_transcript_reset', subagentId: 'child', blocks: [], failures: { first: lifts } })
+  applyConversationEvent(conversation, { type: 'subagent_transcript_patch', subagentId: 'child', patches: [], failures: { second: { retryAt: null } } })
+  expect(conversation.subagents.find((agent) => agent.id === 'child')?.failures)
+    .toEqual({ first: lifts, second: { retryAt: null } })
+  applyConversationEvent(conversation, { type: 'subagent_transcript_reset', subagentId: 'child', blocks: [], failures: {} })
+  expect(conversation.subagents.find((agent) => agent.id === 'child')?.failures).toEqual({})
+})
+
 test('restored running children keep an idle parent active in the sidebar', () => {
   const conversation = useConversations().items[0]!
   conversation.phase = 'idle'
@@ -311,6 +333,7 @@ test('restored running children keep an idle parent active in the sidebar', () =
     phase: 'running',
     startedAt: '2026-09-13T00:00:00.000Z',
     blocks: [],
+    failures: {},
   }]
   updateLiveStatus(conversation)
   expect(conversation.status).toBe('active')
@@ -472,7 +495,7 @@ test('history remains readable during its own connection after navigation', asyn
     await historyRequested.promise
     expect(current).toMatchObject({ load: 'loading' })
     useProduct().activeConversationId = 'second'
-    history.resolve(Response.json({ blocks: current.blocks, subagents: [] }))
+    history.resolve(Response.json({ blocks: current.blocks, failures: {}, subagents: [] }))
     await connecting.promise
     expect(current).toMatchObject({ load: 'ready' })
     expect(current.draft).toBe('Keep the draft')
@@ -481,7 +504,7 @@ test('history remains readable during its own connection after navigation', asyn
     expect(current).toMatchObject({ load: 'failed' })
     expect(current.lastError).toBe('Connection failed')
   } finally {
-    history.resolve(Response.json({ blocks: [], subagents: [] }))
+    history.resolve(Response.json({ blocks: [], failures: {}, subagents: [] }))
     connection.resolve()
     await opening
     connect.mockRestore()
@@ -564,7 +587,7 @@ function serveHistory(gate?: ReturnType<typeof deferred<void>>) {
       }
       requested.resolve()
       await gate?.promise
-      return Response.json({ blocks: [], subagents: [] })
+      return Response.json({ blocks: [], failures: {}, subagents: [] })
     }
     return originalFetch(input, init)
   }) as typeof fetch
@@ -673,7 +696,7 @@ test('slow or failed model discovery does not hold history behind the loading pa
     const path = String(input)
     if (path.startsWith('/api/models')) return modelResponse.promise
     if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
-    if (path.endsWith('/transcript')) return Response.json({ blocks: [block], subagents: [] })
+    if (path.endsWith('/transcript')) return Response.json({ blocks: [block], failures: {}, subagents: [] })
     return originalFetch(input, init)
   }) as typeof fetch
   const models = useProduct().loadModels(true).catch(error => error)

@@ -95,6 +95,7 @@ function closeTab(agent: SubagentRecord): void {
       v-if="active"
       :conversation-id="active.id"
       :blocks="active.blocks"
+      :failures="active.failures"
       :pending-steers="[]"
       :queue="[]"
       :phase="active.phase === 'running' ? 'running' : 'idle'"

@@ -44,6 +44,7 @@ function state(): RuntimeState {
     load: 'loading',
     pendingAction: null,
     retrying: false,
+    failures: {},
   }
 }
 function clientHarness() {
@@ -301,6 +302,23 @@ test('an automatic retry lasts from its event to the retry\'s output or the turn
   expect(s.retrying).toBe(true)
   h.receive({ type: 'phase', phase: 'idle' })
   expect(s.retrying).toBe(false)
+  runtime.dispose()
+})
+
+test('failure facts arrive beside the transcript, accumulate across patches, and start over on a reset', async () => {
+  const h = clientHarness()
+  const s = state()
+  const runtime = new ConversationRuntime({ state: s, prepareModel: async () => provider, connect: async () => h.client })
+  await runtime.connect()
+  const lifts = { retryAt: '2026-09-22T07:37:39.000Z' }
+  h.receive({ type: 'transcript_reset', epoch: 'epoch', revision: 1, blocks: [], failures: { first: lifts } })
+  expect(s.failures).toEqual({ first: lifts })
+  h.receive({ type: 'transcript_patch', revision: 2, patches: [], failures: { second: { retryAt: null } } })
+  expect(s.failures).toEqual({ first: lifts, second: { retryAt: null } })
+  h.receive({ type: 'transcript_patch', revision: 3, patches: [] })
+  expect(s.failures).toEqual({ first: lifts, second: { retryAt: null } })
+  h.receive({ type: 'transcript_reset', epoch: 'epoch', revision: 4, blocks: [] })
+  expect(s.failures).toEqual({})
   runtime.dispose()
 })
 
