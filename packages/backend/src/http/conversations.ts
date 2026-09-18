@@ -698,9 +698,6 @@ function hostOperationError(c: Context<AuthEnv>, error: unknown): Response {
     return c.json({ code: 'fs_error', message: errorMessage(error) }, 403)
   if (code === 'ERUNNEROFFLINE')
     return c.json({ code: 'device_offline', message: 'The execution device is offline' }, 409)
-  // Only a listing's reply outgrows the runner's message limit.
-  if (code === 'too_large')
-    return c.json({ code: 'directory_too_large', message: errorMessage(error) }, 413)
   if (error instanceof ManagedHostError)
     return c.json({ code: error.code, message: error.message }, 503)
   if (error instanceof TextFileRefused)
@@ -719,5 +716,8 @@ function hostOperationError(c: Context<AuthEnv>, error: unknown): Response {
         return c.json({ code: 'changes_failed', message: error.message }, 500)
     }
   }
+  // Past git's own, only a directory listing outgrows the runner's message limit.
+  if (code === 'too_large')
+    return c.json({ code: 'directory_too_large', message: errorMessage(error) }, 413)
   return c.json({ code: 'host_operation_failed', message: errorMessage(error) }, 500)
 }
