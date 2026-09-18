@@ -356,12 +356,22 @@ export interface ProviderErrorDiagnostics {
   providerCode?: string
   httpStatus?: number
   /**
-   * The vendor's failure as it arrived, as JSON text, redacted and bounded: the
-   * stream's error event, or `{ status, headers, body }` of an HTTP error. It is
-   * the record; what a reader needs from it (when a limit lifts) is read out of
-   * it, never stored beside it (`docs/provider-errors-and-retries.md`).
+   * The vendor's failure exactly as it arrived: a stream's frame text, or the
+   * JSON `{ status, headers, body }` of an HTTP failure. Nothing in it is
+   * rewritten; what a reader needs is read out of it by the provider that
+   * produced it (`docs/provider-errors-and-retries.md` § The failure record).
    */
   upstream?: string
+}
+
+/**
+ * What a provider read out of one of its failure records when it was shown
+ * (`docs/provider-errors-and-retries.md` § Reading a failure). Sent beside the
+ * transcript, never stored.
+ */
+export interface ProviderFailureFacts {
+  /** The moment the vendor says the request can succeed again, as an ISO time; null when it names none. */
+  retryAt: string | null
 }
 
 // ── transcript block ────────────────────────────────────────────────

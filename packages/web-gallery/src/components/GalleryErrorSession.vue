@@ -43,6 +43,7 @@ function state(
     lastError: null,
     pendingAction: null,
     retrying: false,
+    failures: {},
     archived: false,
     status: 'idle',
     scroll: null,

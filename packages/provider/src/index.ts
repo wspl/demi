@@ -28,13 +28,18 @@ export {
   authStatusFromKey,
   clampPromptCacheKey,
   httpErrorCode,
+  httpFailureRecord,
+  httpFailureRecordSchema,
   httpRequestFailedEvent,
   normalizeErrorCode,
   numberHeader,
+  readHttpFailure,
+  readHttpFailureRecord,
   redactCredentialText,
   providerErrorFromUnknown,
-  redactSecretText,
-  retryAfterMsFromHeader,
+  retryAtFromHeader,
+  withRetryWait,
+  type HttpFailureRecord,
 } from './http'
 export {
   decodeJsonResponse,
@@ -44,7 +49,6 @@ export {
   DEFAULT_POLL_INTERVAL_SECONDS,
 } from './oauth'
 export { readServerSentEvents, type ServerSentEvent } from './sse'
-export { retryAtFromUpstream } from './upstream'
 export {
   reportedStringSchema,
   taggedUnion,
@@ -89,6 +93,7 @@ export {
   decodeResponsesFrame,
   mapResponsesEvents,
   mapResponsesStream,
+  type ReceivedResponsesEvent,
 } from './responses-stream'
 export { mapChatCompletionsStream } from './chat-completions-stream'
 export {

@@ -196,7 +196,7 @@ async function collectSse(chunks: string[]): Promise<ResponsesEvent[]> {
     },
   })
   const events: ResponsesEvent[] = []
-  for await (const event of parseSseResponseStream(body)) events.push(event)
+  for await (const received of parseSseResponseStream(body)) events.push(received.event)
   return events
 }
 

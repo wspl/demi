@@ -1,4 +1,4 @@
-import type { Block, QueuedMessage, SessionPhase } from '@demicodes/core'
+import type { Block, ProviderFailureFacts, QueuedMessage, SessionPhase } from '@demicodes/core'
 import type { FileBrowserPlatform } from '@demicodes/web-ui/files/types'
 import type {
   SidebarConversation,
@@ -55,6 +55,8 @@ export interface Conversation extends SidebarConversation {
   pendingAction: PendingAction
   /** The agent is retrying a failed provider request on its own; the tail row says Retrying. */
   retrying: boolean
+  /** The failure facts of the error blocks, by block id, as the backend sends them. */
+  failures: Record<string, ProviderFailureFacts>
 }
 
 export interface Device {

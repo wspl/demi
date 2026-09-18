@@ -5,13 +5,15 @@ import {
   type AgentServerTransport,
   type BlobStore,
   type ClientFrame,
-  type ServerFrame
+  type ServerFrame,
+  type TranscriptPatch
 } from '@demicodes/agent'
 import type { Block, ModelSelection } from '@demicodes/core'
 import { errorMessage, SerialQueue } from '@demicodes/utils'
 import type { ProviderSelection } from '@demicodes/provider'
 import type { ControlService, ConversationRecord } from '../storage/control'
 import { titleFromMessage } from './title'
+import type { FailureFactsReader } from './failure-facts'
 import { resolveUploadRefs } from './attachment-refs'
 import {
   conversationClientFrameSchema,
@@ -57,6 +59,8 @@ export interface ConversationTransportOptions {
    * title may follow (`product.md` § Conversation titles).
    */
   startTitle?: (provider: ProviderSelection, text: string) => void
+  /** Reads the failure facts sent beside the transcript frames (`backend.md` § Failure facts). */
+  readFailures?: FailureFactsReader
 }
 
 /** What the connection has established so far; a send reads the provider an open or switch set. */
@@ -79,7 +83,6 @@ export function conversationScopedTransport(
   conversation: ConversationRecord,
   options: ConversationTransportOptions,
 ): AgentServerTransport {
-  const { blobs } = options
   const cwd = options.cwd
     ?? (conversation.target.kind === 'cloud' ? conversation.target.path : undefined)
     ?? cloudSessionDirectory(conversation.id)
@@ -107,9 +110,7 @@ export function conversationScopedTransport(
       void sends.run(async () => {
         if (closing.signal.aborted)
           return
-        const outbound = blobs
-          ? await externalizeFrameMedia(frame, blobs)
-          : frame
+        const outbound = await presentFrame(frame, options)
         if (!closing.signal.aborted)
           inner.send(outbound)
       }).catch((error: unknown) => reportError(
@@ -191,6 +192,57 @@ export function conversationScopedTransport(
     },
     close,
   }
+}
+
+/**
+ * A server frame as the browser gets it: media as references, and the failure
+ * facts of the error blocks it carries beside them.
+ */
+async function presentFrame(
+  frame: ServerFrame,
+  options: ConversationTransportOptions
+): Promise<ServerFrame> {
+  const outbound = options.blobs
+    ? await externalizeFrameMedia(frame, options.blobs)
+    : frame
+  if (!options.readFailures)
+    return outbound
+  return attachFailures(outbound, options.readFailures)
+}
+
+/**
+ * A transcript frame with the facts of the error blocks it carries: a reset's
+ * blocks, or the blocks its patches add. Unchanged when they yield none.
+ */
+async function attachFailures(
+  frame: ServerFrame,
+  readFailures: FailureFactsReader
+): Promise<ServerFrame> {
+  switch (frame.type) {
+    case 'transcript_reset':
+    case 'subagent_transcript_reset': {
+      const failures = await readFailures(frame.blocks)
+      return Object.keys(failures).length > 0 ? { ...frame, failures } : frame
+    }
+    case 'transcript_patch':
+    case 'subagent_transcript_patch': {
+      const failures = await readFailures(blocksAdded(frame.patches))
+      return Object.keys(failures).length > 0 ? { ...frame, failures } : frame
+    }
+    default:
+      return frame
+  }
+}
+
+/** The whole blocks a list of patches puts into a transcript. */
+function blocksAdded(patches: TranscriptPatch[]): Block[] {
+  return patches.flatMap((patch) => {
+    if (patch.op === 'add' || patch.op === 'replace_block')
+      return [patch.value]
+    if (patch.op === 'replace')
+      return patch.value
+    return []
+  })
 }
 
 /** Media in the frames that carry transcript blocks leaves as references. */

@@ -452,8 +452,8 @@ test(
       })),
       // zeroUsage returns core's TokenUsage, so its canonical home is @demicodes/core (utils cannot depend on core).
       { name: 'zeroUsage', home: 'packages/core/', pkg: '@demicodes/core' },
-      // httpErrorCode is identical across the HTTP providers; its home is @demicodes/provider. (redactSecretText /
-      // normalizeErrorCode / providerErrorFromUnknown are NOT banned: codex ships intentionally different variants.)
+      // httpErrorCode is identical across the HTTP providers; its home is @demicodes/provider. (normalizeErrorCode /
+      // providerErrorFromUnknown are NOT banned: codex ships intentionally different variants.)
       {
         name: 'httpErrorCode',
         home: 'packages/provider/',

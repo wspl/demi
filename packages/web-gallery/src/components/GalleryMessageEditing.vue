@@ -15,7 +15,7 @@ import { demoModel } from '../fixtures/blocks'
 
 const session = reactive<ChatSessionState>({
   id: 'editing-example', title: 'Edit and resend', blocks: [], queue: [],
-  pendingSteers: [], phase: 'idle', load: 'ready', lastError: null, pendingAction: null, retrying: false,
+  pendingSteers: [], phase: 'idle', load: 'ready', lastError: null, pendingAction: null, retrying: false, failures: {},
   archived: false, status: 'idle', scroll: null, subagents: [], terminals: [],
 })
 const revision = ref(0)

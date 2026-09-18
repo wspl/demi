@@ -18,6 +18,7 @@ function agent(
   return {
     startedAt: '2026-09-09T00:00:00.000Z',
     blocks: [],
+    failures: {},
     ...partial,
   }
 }

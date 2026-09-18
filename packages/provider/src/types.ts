@@ -2,6 +2,7 @@ import type {
   FileExtension,
   ModelSelection,
   ProviderErrorDiagnostics,
+  ProviderFailureFacts,
   ThinkingConfig,
   ThinkingEffort,
   TokenUsage,
@@ -387,7 +388,22 @@ export interface Provider {
   listModels?(
     options?: ProviderModelListOptions
   ): Promise<ProviderModelList> | ProviderModelList
+  /**
+   * Reads a failure record this provider produced. Unset means it reads none:
+   * its failures show their record and nothing drawn from it.
+   */
+  readFailure?: ProviderFailureReader
 }
+
+/**
+ * Reads a failure record a provider produced (`docs/provider-errors-and-retries.md`
+ * § Reading a failure). `receivedAt` is when the failure was recorded, as an
+ * ISO time; a relative wait counts from it.
+ */
+export type ProviderFailureReader = (
+  diagnostics: ProviderErrorDiagnostics,
+  receivedAt: string
+) => ProviderFailureFacts
 
 export interface ProviderRuntimeFactory {
   createRuntime(
