@@ -6,9 +6,10 @@ withDefaults(defineProps<{
 </script>
 
 <template>
+  <!-- The dock floats over the scrolling transcript, so a chip takes the opaque control surface. -->
   <span
     role="button"
-    class="btn inline-flex h-7 cursor-default select-none items-center gap-1.5 rounded-full px-2.5 text-chrome text-fg-body hover:text-fg-emphasis"
+    class="btn-solid inline-flex h-7 cursor-default select-none items-center gap-1.5 rounded-full px-2.5 text-chrome text-fg-body hover:text-fg-emphasis"
   >
     <span
       v-if="dot"
