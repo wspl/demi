@@ -585,7 +585,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                   label="Test connection"
                   description="Sends one short request to the first model in the list."
                 >
-                  <!-- The upstream text in full, under the row: it is often a sentence with a link. -->
+                  <!-- The provider's own words in full, under the row; the page does not paraphrase them. -->
                   <template
                     v-if="selected.detail && testing !== selected.id && !operations?.[selected.id]"
                     #detail
@@ -619,7 +619,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                   <span
                     v-else-if="selected.detail"
                     class="min-w-0 truncate text-[12px] text-on-danger"
-                    >{{ selected.detailSummary ?? 'Failed' }}<template
+                    >Failed<template
                       v-if="selected.testedWith"
                     >
                       · {{ selected.testedWith }}</template
