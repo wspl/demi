@@ -124,6 +124,26 @@ failed frame reports an error without poisoning later queued frames. Closing or
 unsubscribing prevents delayed work from reaching the session. The underlying
 persistence and blob ownership are defined in [Storage](storage.md).
 
+## Failure facts
+
+An error block keeps the vendor's failure record as it arrived; what the
+browser shows from it is read when the block is sent
+([Provider errors](../provider-errors-and-retries.md#reading-a-failure)).
+For every error block in a transcript it sends, the backend asks the provider
+named in the block's model selection to read the record, and attaches the
+result as `failures`, keyed by block id, beside the blocks:
+
+- The conversation transport attaches it to root and subagent
+  `transcript_reset` and `transcript_patch` frames, for the blocks each frame
+  carries.
+- `GET /api/conversations/:id/transcript` attaches it to the root blocks and to
+  each subagent history.
+
+One backend function reads the failures of a list of blocks, and both paths
+call it. The facts are never stored, and the blocks themselves are sent
+unchanged. A frame or history without an error block that yields a fact
+carries no `failures`.
+
 ## Deployment and user ownership
 
 The local deployment runs one backend with in-process `ControlService`, local
