@@ -5,14 +5,16 @@ import type { ChatSessionState } from '@demicodes/web-ui/agent/types'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import SidebarAccount from '@demicodes/web-ui/sidebar/SidebarAccount.vue'
 import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
+import SessionToolsMenu from '@demicodes/web-ui/hosts/SessionToolsMenu.vue'
 import WorkspaceDirectoryMenu from '@demicodes/web-ui/hosts/WorkspaceDirectoryMenu.vue'
-import type { HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
+import type { ExposeMenuEntry, HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { transcriptDemoBlocks } from '../fixtures/blocks'
 import { gallerySubagents } from '../fixtures/subagents'
 import { galleryTerminals } from '../fixtures/terminals'
 import { createGalleryFileHosts } from '../fixtures/files'
 import GalleryComposer from './GalleryComposer.vue'
+import { demoExposes } from '../fixtures/settings'
 
 const props = withDefaults(defineProps<{ showActivity?: boolean }>(), { showActivity: true })
 const session = reactive<ChatSessionState>({
@@ -59,6 +61,25 @@ const mainHost = computed<HostMenuHost>(() => {
     : { id: 'cloud', name: 'Cloud', kind: 'cloud', online: true }
 })
 const attachedHosts = ref<HostMenuHost[]>([])
+// The session tools menu lists the settings fixture's exposes, named after the file hosts.
+const exposes = ref<ExposeMenuEntry[]>(demoExposes().map((expose) => ({
+  id: expose.id,
+  address: expose.address,
+  hostName: devices.find((device) => device.id === expose.deviceId)?.name ?? expose.deviceId,
+  url: expose.url,
+  expiresAt: expose.expiresAt,
+})))
+const exposePending = ref<string[]>([])
+function removeExpose(id: string): void {
+  if (exposePending.value.includes(id)) {
+    return
+  }
+  exposePending.value.push(id)
+  window.setTimeout(() => {
+    exposes.value = exposes.value.filter((expose) => expose.id !== id)
+    exposePending.value = exposePending.value.filter((entry) => entry !== id)
+  }, 600)
+}
 const locked = computed(() => session.phase !== 'idle' || session.archived)
 async function selectFolder(deviceId: string, path: string): Promise<boolean> {
   folder.value = {
@@ -137,6 +158,13 @@ function abortAgents(): void {
               @detach="detach"
             />
           </WorkspaceDirectoryMenu>
+        </template>
+        <template #tools>
+          <SessionToolsMenu
+            :exposes="exposes"
+            :pending-ids="exposePending"
+            @remove="removeExpose"
+          />
         </template>
         <template #composer
           ><GalleryComposer

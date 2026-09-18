@@ -11,7 +11,6 @@ import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import ToastHost from '@demicodes/web-ui/ui/ToastHost.vue'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
 import { useDevicePairing } from '@demicodes/web-ui/devices/pairing'
-import { isSettingsSectionEnabled } from '@demicodes/web-ui/settings/sections'
 import SettingsDialog from './settings/SettingsDialog.vue'
 import TargetDialog from './targets/TargetDialog.vue'
 import WorkPane from './conversation/WorkPane.vue'
@@ -78,13 +77,6 @@ const account = computed(() => ({
   name: resources.username,
   email: resources.email,
 }))
-/** The sidebar's Skills and Archived entries open their settings sections. */
-function openSettings(section?: string) {
-  if (section && isSettingsSectionEnabled(section)) {
-    resources.settingsTab = section
-  }
-  resources.settingsOpen = true
-}
 function reorder(request: SidebarReorder) {
   if (request.kind === 'project') {
     void resources
@@ -131,9 +123,7 @@ const actions: Record<string, () => void> = {
   sidebar: () => {
     resources.sidebarOpen = !resources.sidebarOpen
   },
-  settings: () => {
-    resources.settingsOpen = true
-  },
+  settings: () => resources.openSettings(),
 }
 useAppShortcuts(
   () => resources.signedIn,
@@ -179,7 +169,7 @@ useAppShortcuts(
         @pin="conversations.pin"
         @move-to-project="conversations.move"
         @archive="conversations.archive"
-        @open-settings="openSettings"
+        @open-settings="resources.openSettings"
         @sign-out="signOut"
       />
     </template>
