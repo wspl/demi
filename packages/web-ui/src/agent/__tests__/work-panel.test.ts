@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { addBrowserTab, closeBrowserTabs, changeTabPath, findChangeWorkTab, goBackInTab, goForwardInTab, showCallEdit, showChangeInTab, showFileInTab, workPanelTabs } from '../work-panel'
+import { addBrowserTab, loadBrowserAddress, closeBrowserTabs, changeTabPath, findChangeWorkTab, goBackInTab, goForwardInTab, showCallEdit, showChangeInTab, showFileInTab, workPanelTabs } from '../work-panel'
 import { closeTabs, tabsToClose } from '../tab-close'
 import type { CallEditSelection } from '../../files/changes'
 
@@ -20,7 +20,7 @@ describe('fixed work panel sections', () => {
     const second = addBrowserTab(first.tabs)
     expect(first.activeId).not.toBe(second.activeId)
     expect(second.tabs).toHaveLength(4)
-    expect(second.tabs[3]).toMatchObject({ kind: 'browser', title: 'New tab', address: '' })
+    expect(second.tabs[3]).toMatchObject({ kind: 'browser', title: 'New tab', address: '', url: null })
     expect(closeBrowserTabs(second.tabs, second.activeId, [second.activeId]).activeId).toBe(first.activeId)
     const closed = closeBrowserTabs(second.tabs, second.activeId, second.tabs.map((tab) => tab.id))
     expect(closed.tabs.map((tab) => tab.kind)).toEqual(['change', 'file'])
@@ -66,6 +66,37 @@ describe('fixed work panel sections', () => {
     tabs = showCallEdit(tabs, nextFile).tabs
     expect(changeTabPath(findChangeWorkTab(tabs)!)).toBe('src/other.ts')
     expect(changeTabPath(findChangeWorkTab(goBackInTab(tabs, 'change'))!)).toBe('src/index.ts')
+  })
+})
+
+describe('browser tab pages', () => {
+  test('a tab opened on a page shows it under the given title, with the URL in the address bar', () => {
+    const opened = addBrowserTab(workPanelTabs(), { url: 'https://abc.expose.demi.example/', title: '127.0.0.1:5173' })
+    expect(opened.tabs.at(-1)).toMatchObject({
+      id: opened.activeId,
+      title: '127.0.0.1:5173',
+      address: 'https://abc.expose.demi.example/',
+      url: 'https://abc.expose.demi.example/',
+    })
+  })
+
+  test('submitting the address loads http and https, tries a bare host as https, and ignores the rest', () => {
+    const empty = addBrowserTab(workPanelTabs()).tabs.at(-1)
+    if (empty?.kind !== 'browser') {
+      throw new Error('expected a browser tab')
+    }
+    expect(loadBrowserAddress({ ...empty, address: 'http://localhost:5173/app' })).toMatchObject({
+      title: 'localhost:5173',
+      address: 'http://localhost:5173/app',
+      url: 'http://localhost:5173/app',
+    })
+    expect(loadBrowserAddress({ ...empty, address: ' example.com ' })).toMatchObject({
+      title: 'example.com',
+      url: 'https://example.com/',
+    })
+    for (const address of ['', '   ', 'javascript://alert(1)', 'file:///etc/passwd', 'not a url']) {
+      expect(loadBrowserAddress({ ...empty, address })).toEqual({ ...empty, address })
+    }
   })
 })
 

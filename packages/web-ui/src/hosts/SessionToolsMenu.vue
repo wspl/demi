@@ -26,6 +26,8 @@ const props = defineProps<{
   pendingIds?: string[]
 }>()
 const emit = defineEmits<{
+  /** The host opens the URL; the product uses a work panel browser tab. */
+  open: [expose: ExposeMenuEntry]
   renew: [id: string]
   remove: [id: string]
   manageDevices: []
@@ -38,7 +40,7 @@ const liveLabel = computed(() =>
 
 function openUrl(expose: ExposeMenuEntry) {
   open.value = false
-  window.open(expose.url, '_blank', 'noopener,noreferrer')
+  emit('open', expose)
 }
 
 function manageDevices() {

@@ -11,6 +11,7 @@ import {
   showCallEdit,
   showFileInTab,
   type WorkTab,
+  type BrowserPage,
   type BrowserWorkTab,
   type ChangeWorkTab,
 } from '@demicodes/web-ui/agent/work-panel'
@@ -64,10 +65,14 @@ export const useWorkPanel = defineStore('work-panel', () => {
     state.activeId = id
   }
 
-  function addBrowser(state: WorkState): void {
-    const next = addBrowserTab(state.tabs)
+  /** A new browser tab, selected: empty, or showing `page` with the panel opened for it. */
+  function addBrowser(state: WorkState, page?: BrowserPage): void {
+    const next = addBrowserTab(state.tabs, page)
     state.tabs = next.tabs
     state.activeId = next.activeId
+    if (page) {
+      state.open = true
+    }
   }
 
   function closeTabs(state: WorkState, ids: string[]): void {

@@ -376,6 +376,7 @@ function itemLabel(id: string, list: {
           <SessionToolsMenu
             :exposes="sessionExposes"
             :pending-ids="sessionExposePending"
+            @open="showToast({ title: `Open ${$event.address} in a work panel browser tab` })"
             @renew="renewSessionExpose"
             @remove="removeSessionExpose"
             @manage-devices="showToast({ title: 'Open devices settings' })"

@@ -9,7 +9,16 @@ export interface BrowserWorkTab {
   id: string
   kind: 'browser'
   title: string
+  /** The address bar's draft; it becomes `url` when the user submits it. */
   address: string
+  /** The page the tab shows in its frame; null while the tab is empty. */
+  url: string | null
+}
+
+/** A page a browser tab opens on: an expose's URL under its address as the title. */
+export interface BrowserPage {
+  url: string
+  title: string
 }
 
 /** Initial fixed tabs for a conversation's work panel. */
@@ -17,10 +26,34 @@ export function workPanelTabs(path = ''): WorkTab[] {
   return [changeWorkTab('change', 'uncommitted'), fileWorkTab('file', path)]
 }
 
-/** Add an independent browser address draft and select its tab. */
-export function addBrowserTab(tabs: readonly WorkTab[]): { tabs: WorkTab[]; activeId: string } {
-  const tab: BrowserWorkTab = { id: crypto.randomUUID(), kind: 'browser', title: 'New tab', address: '' }
+/** Add a browser tab and select it: empty with its own address draft, or showing `page`. */
+export function addBrowserTab(tabs: readonly WorkTab[], page?: BrowserPage): { tabs: WorkTab[]; activeId: string } {
+  const tab: BrowserWorkTab = {
+    id: crypto.randomUUID(),
+    kind: 'browser',
+    title: page?.title ?? 'New tab',
+    address: page?.url ?? '',
+    url: page?.url ?? null,
+  }
   return { tabs: [...tabs, tab], activeId: tab.id }
+}
+
+/**
+ * The tab after the user submits its address draft: an `http` or `https` URL
+ * loads, a draft without a scheme is tried as `https`, and anything else
+ * leaves the tab as it is.
+ */
+export function loadBrowserAddress(tab: BrowserWorkTab): BrowserWorkTab {
+  const draft = tab.address.trim()
+  const candidate = draft.includes('://') ? draft : `https://${draft}`
+  if (!draft || !URL.canParse(candidate)) {
+    return tab
+  }
+  const url = new URL(candidate)
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return tab
+  }
+  return { ...tab, title: url.host, address: url.href, url: url.href }
 }
 
 /** Close browser tabs while preserving the fixed Change and File tabs. */

@@ -126,7 +126,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     <template #workspace
       ><WorkspaceInfo :project="project" :conversation="conversation"
     /></template>
-    <template #tools><SessionTools /></template>
+    <template #tools><SessionTools :conversation-id="conversation.id" /></template>
     <template #composer
       ><ConversationComposer
         :key="conversation.id"
