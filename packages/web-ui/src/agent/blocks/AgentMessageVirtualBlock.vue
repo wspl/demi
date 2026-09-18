@@ -138,6 +138,7 @@ const entersAsChrome = computed(() =>
         :message="block.message"
         :code="block.code"
         :diagnostics="block.diagnostics"
+        :created-at="block.createdAt"
       />
     </div>
     <div

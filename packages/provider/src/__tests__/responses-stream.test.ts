@@ -164,6 +164,32 @@ describe('mapResponsesEvents', () => {
       .toEqual(['因为', '天空是蓝的', 'and the next message'])
   })
 
+  it('keeps a usage limit whole: the wait for the retry policy, the status, and the vendor event', async () => {
+    const limit = {
+      type: 'error',
+      error: {
+        type: 'usage_limit_reached',
+        message: 'The usage limit has been reached',
+        plan_type: 'pro',
+        resets_at: 1790062659,
+        resets_in_seconds: 321250,
+      },
+      status_code: 429,
+      headers: { 'X-Codex-Primary-Used-Percent': '100' },
+    }
+    const [event] = await collect(mapResponsesEvents(decoded([limit]), 'Codex'))
+    expect(event).toMatchObject({
+      type: 'error',
+      message: 'The usage limit has been reached',
+      code: 'rate_limit',
+      retryAfterMs: 321_250_000,
+      diagnostics: { source: 'stream', providerCode: 'usage_limit_reached', httpStatus: 429 },
+    })
+    if (event?.type !== 'error')
+      throw new Error('expected an error event')
+    expect(JSON.parse(event.diagnostics!.upstream!)).toEqual(limit)
+  })
+
   it('maps failed, incomplete, and error events, naming the vendor', async () => {
     const events = await collect(mapResponsesEvents(decoded([
       {
@@ -188,7 +214,24 @@ describe('mapResponsesEvents', () => {
       { type: 'error' },
     ]), 'Codex'))
 
-    expect(events).toEqual([
+    // The vendor's event travels whole in the diagnostics; the rest is as before.
+    const upstreams = events.map((event) =>
+      event.type === 'error' ? event.diagnostics?.upstream : undefined
+    )
+    expect(upstreams.map((upstream) => upstream && JSON.parse(upstream))).toEqual([
+      { type: 'response.failed', response: { error: { code: 'context_length_exceeded', message: 'too long' } } },
+      undefined,
+      { type: 'error', code: 'server_error', message: 'backend failed' },
+      { type: 'error', error: { type: 'invalid_request_error', message: 'Invalid prompt_cache_key' }, status: 400 },
+      { type: 'error' },
+    ])
+    const withoutUpstream = events.map((event) => {
+      if (event.type !== 'error' || !event.diagnostics)
+        return event
+      const { upstream: _upstream, ...diagnostics } = event.diagnostics
+      return { ...event, diagnostics }
+    })
+    expect(withoutUpstream).toEqual([
       {
         type: 'error',
         message: 'too long',

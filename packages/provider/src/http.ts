@@ -1,7 +1,7 @@
 // Shared building blocks for HTTP-based provider adapters: secret redaction and
 // coarse error-code classification. Provider implementations import these instead
 // of re-deriving the same status/keyword tables.
-import { shortHash } from '@demicodes/utils'
+import { parseJsonOrString, shortHash } from '@demicodes/utils'
 import type { ProviderAuthState, ProviderEvent } from './types'
 
 type SecretResolver = () => string | Promise<string> | null | undefined
@@ -160,6 +160,33 @@ export function numberHeader(headers: Headers, name: string): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+/** How much of a vendor's failure the diagnostics keep. */
+const UPSTREAM_MAX_LENGTH = 16 * 1024
+
+/**
+ * The vendor's failure as the diagnostics keep it: JSON text (or the text it
+ * came as), redacted of the request's secret and bounded.
+ */
+export function upstreamDiagnostic(
+  failure: unknown,
+  secret?: string | null
+): string {
+  const text = typeof failure === 'string' ? failure : JSON.stringify(failure)
+  return redactSecretText(text, secret).slice(0, UPSTREAM_MAX_LENGTH)
+}
+
+/** Response headers worth keeping with a failure: when to retry, what quota is left, which request it was. */
+const KEPT_HEADER = /^(retry-after|x-ratelimit-|x-request-id$|request-id$)/i
+
+function keptHeaders(headers: Headers): Record<string, string> {
+  const kept: Record<string, string> = {}
+  headers.forEach((value, name) => {
+    if (KEPT_HEADER.test(name))
+      kept[name.toLowerCase()] = value
+  })
+  return kept
+}
+
 /** Builds a redacted provider `error` event from a failed HTTP response. */
 export async function httpRequestFailedEvent(
   response: Response,
@@ -175,7 +202,16 @@ export async function httpRequestFailedEvent(
   const event: ProviderEvent = {
     type: 'error',
     message,
-    code: httpErrorCode(response.status, message)
+    code: httpErrorCode(response.status, message),
+    diagnostics: {
+      source: 'http',
+      httpStatus: response.status,
+      upstream: upstreamDiagnostic({
+        status: response.status,
+        headers: keptHeaders(response.headers),
+        body: parseJsonOrString(text),
+      }, secret),
+    },
   }
   if (retryAfterMs !== undefined)
     event.retryAfterMs = retryAfterMs

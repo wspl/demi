@@ -1,5 +1,6 @@
 import type { ProviderErrorDiagnostics } from '@demicodes/core'
 import { z } from 'zod'
+import { retryAtFromUpstream } from '@demicodes/agent/client'
 import { t } from '@demicodes/web-ui/infra/i18n'
 
 /** A first line stays one line: past this the source's text goes in the body. */
@@ -57,9 +58,14 @@ export function errorPresentation(message: string): ErrorPresentation {
 /** The short facts a support thread asks for first, in one line under the upstream message. */
 export function errorFacts(
   code: string | null | undefined,
-  diagnostics: ProviderErrorDiagnostics | undefined
+  diagnostics: ProviderErrorDiagnostics | undefined,
+  createdAt?: string
 ): string[] {
   const facts: string[] = []
+  // When the vendor says it works again comes first: it is what the reader does next.
+  const retryAt = createdAt ? retryAtFromUpstream(diagnostics?.upstream, createdAt) : null
+  if (retryAt !== null)
+    facts.push(`resets ${new Date(retryAt).toLocaleString()}`)
   if (diagnostics?.httpStatus !== undefined)
     facts.push(`HTTP ${diagnostics.httpStatus}`)
   if (code)
@@ -91,6 +97,17 @@ export function errorReportText(
       if (value !== undefined && value !== '')
         lines.push(`${key}: ${value}`)
     }
+    if (diagnostics.upstream)
+      lines.push('', 'upstream:', prettyUpstream(diagnostics.upstream))
   }
   return lines.join('\n')
+}
+
+/** The stored vendor failure, indented when it is JSON, for a reader's eyes. */
+export function prettyUpstream(upstream: string): string {
+  try {
+    return JSON.stringify(JSON.parse(upstream), null, 2)
+  } catch {
+    return upstream
+  }
 }

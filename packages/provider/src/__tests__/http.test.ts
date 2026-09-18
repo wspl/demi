@@ -115,6 +115,30 @@ describe('httpRequestFailedEvent', () => {
       type: 'error',
       message: 'Acme API request failed with HTTP 401: nope [redacted]',
       code: 'auth_expired',
+      diagnostics: {
+        source: 'http',
+        httpStatus: 401,
+        upstream: '{"status":401,"headers":{},"body":"nope [redacted]"}',
+      },
+    })
+  })
+
+  it('keeps the vendor body and the headers that say when to retry', async () => {
+    const event = await httpRequestFailedEvent(
+      new Response('{"error":{"message":"slow down"}}', {
+        status: 429,
+        headers: { 'retry-after': '120', 'x-ratelimit-remaining': '0', 'set-cookie': 'a=b' },
+      }),
+      null,
+      'Acme'
+    )
+    if (event.type !== 'error')
+      throw new Error('expected an error event')
+    expect(event.retryAfterMs).toBe(120_000)
+    expect(JSON.parse(event.diagnostics!.upstream!)).toEqual({
+      status: 429,
+      headers: { 'retry-after': '120', 'x-ratelimit-remaining': '0' },
+      body: { error: { message: 'slow down' } },
     })
   })
 })

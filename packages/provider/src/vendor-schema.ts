@@ -19,6 +19,9 @@ export const tokenCountSchema = z.number().nullable().optional()
  */
 export const reportedStringSchema = z.string().optional().catch(undefined)
 
+/** A number the vendor may report; anything else reads as absent. */
+export const reportedNumberSchema = z.number().optional().catch(undefined)
+
 /**
  * A union of vendor payloads keyed by their `type` tag: read the tag first,
  * then validate the payload with the schema registered for that tag.

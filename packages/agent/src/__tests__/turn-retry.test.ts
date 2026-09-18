@@ -208,6 +208,28 @@ test('retries stop at maxAttempts and the final error surfaces', async () => {
   expect(provider.consumedTurns).toBe(3)
 })
 
+test('a vendor wait beyond the backoff ceiling is not retried: the failure is terminal at once', async () => {
+  const provider = new StubProvider([
+    [{ type: 'error', message: 'The usage limit has been reached', code: 'rate_limit', retryAfterMs: 321_250_000 }],
+    [events.text('never asked'), events.response()],
+  ])
+  const session = createSession(
+    provider,
+    createRuntime(),
+    undefined,
+    undefined,
+    { retry: fastRetry }
+  )
+  const emitted: SessionEvent[] = []
+  session.subscribe((event) => emitted.push(event))
+
+  await expect(session.send(text('hello'))).rejects.toThrow('The usage limit has been reached')
+
+  expect(emitted.filter((event) => event.type === 'retry_scheduled')).toHaveLength(0)
+  expect(provider.consumedTurns).toBe(1)
+  expect(session.transcript().blocks.at(-1)).toMatchObject({ type: 'error', code: 'rate_limit' })
+})
+
 test('retry policy helpers honor Retry-After and cap backoff', () => {
   const policy = resolveRetryPolicy({ baseDelayMs: 100, maxDelayMs: 500 })
   expect(policy.maxAttempts).toBe(DEFAULT_TURN_RETRY_POLICY.maxAttempts)

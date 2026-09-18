@@ -355,6 +355,13 @@ export interface ProviderErrorDiagnostics {
   providerResponseId?: string
   providerCode?: string
   httpStatus?: number
+  /**
+   * The vendor's failure as it arrived, as JSON text, redacted and bounded: the
+   * stream's error event, or `{ status, headers, body }` of an HTTP error. It is
+   * the record; what a reader needs from it (when a limit lifts) is read out of
+   * it, never stored beside it (`docs/provider-errors-and-retries.md`).
+   */
+  upstream?: string
 }
 
 // ── transcript block ────────────────────────────────────────────────

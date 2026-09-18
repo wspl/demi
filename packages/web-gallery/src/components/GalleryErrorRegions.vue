@@ -12,6 +12,19 @@ import GallerySpecimen from './GallerySpecimen.vue'
  * Each error surface once, in its fullest form. The other pages show where
  * each one sits; this page is the reference for what each one looks like.
  */
+
+const usageLimitPayload = JSON.stringify({
+  type: 'error',
+  error: {
+    type: 'usage_limit_reached',
+    message: 'The usage limit has been reached',
+    plan_type: 'pro',
+    resets_at: 1790062659,
+    resets_in_seconds: 321250,
+  },
+  status_code: 429,
+  headers: { 'X-Codex-Primary-Used-Percent': '100', 'X-Codex-Primary-Window-Minutes': '10080' },
+}, null, 2)
 </script>
 
 <template>
@@ -20,10 +33,11 @@ import GallerySpecimen from './GallerySpecimen.vue'
       title="ErrorNotice · a failure in the conversation"
       note="One tinted bar, full width where it sits. The first line is what the source said, never Demi's reading of it: a plain sentence is the whole record; a message that wraps a vendor's JSON body leads with the sentence inside it and keeps the full text below; only a message with no sentence to lead with gets the neutral line. Then the facts and Copy for a support thread. A turn's failure carries no button: Resume sits in the dock above the composer. With one line the controls sit centred; with facts they hold the first line."
     >
-      <GallerySpecimen wide variant="A plain sentence is the whole record">
+      <GallerySpecimen wide variant="A plain sentence is the whole record · when it lifts leads the facts · the vendor payload behind a disclosure">
         <ErrorNotice
           label="The usage limit has been reached"
-          :facts="['rate_limit', '3667df4b-19c0-4f31-8e93-aed23ceeb5c6']"
+          :facts="['resets 9/22/2026, 3:37:39 PM', 'HTTP 429', 'rate_limit', '3667df4b-19c0-4f31-8e93-aed23ceeb5c6']"
+          :raw="usageLimitPayload"
           copy-text="The usage limit has been reached"
         />
       </GallerySpecimen>

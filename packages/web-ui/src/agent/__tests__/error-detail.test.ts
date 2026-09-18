@@ -66,3 +66,20 @@ test('the report is the upstream message followed by every diagnostic', () => {
     .toBe('boom\ncode: rate_limit\nsource: http\nhttp: 429\nprovider code: rate_limit_error')
   expect(errorReportText('boom', null, undefined)).toBe('boom')
 })
+
+test('the facts lead with when the vendor says it works again, read from the stored payload', () => {
+  const upstream = JSON.stringify({ type: 'error', error: { resets_at: 1790062659 }, status_code: 429 })
+  const facts = errorFacts('rate_limit', { source: 'stream', httpStatus: 429, upstream }, '2026-09-18T14:00:00.000Z')
+  expect(facts[0]).toBe(`resets ${new Date(1790062659 * 1000).toLocaleString()}`)
+  expect(facts.slice(1)).toEqual(['HTTP 429', 'rate_limit'])
+  // Without a named time, or without the record's time for a relative wait, nothing is claimed.
+  expect(errorFacts('rate_limit', { source: 'stream', upstream: '{"error":{}}' }, '2026-09-18T14:00:00.000Z')).toEqual(['rate_limit'])
+})
+
+test('the copied report carries the vendor payload, indented', () => {
+  const report = errorReportText('The usage limit has been reached', 'rate_limit', {
+    source: 'stream',
+    upstream: '{"error":{"plan_type":"pro"}}',
+  })
+  expect(report).toContain('upstream:\n{\n  "error": {\n    "plan_type": "pro"\n  }\n}')
+})
