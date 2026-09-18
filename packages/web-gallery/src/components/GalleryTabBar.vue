@@ -52,6 +52,7 @@ function createTab(
       load: 'ready',
       pendingAction: null,
       retrying: false,
+      failures: {},
     },
   }
 }

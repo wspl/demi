@@ -4,6 +4,7 @@ import {
   decodeResponsesEvent,
   reportedStringSchema,
   responsesErrorSchema,
+  type ReceivedResponsesEvent,
   type ResponsesEvent
 } from '@demicodes/provider'
 import { parseSseResponseStream } from './sse'
@@ -31,7 +32,7 @@ export interface CodexTransportRequest {
 export interface CodexResponsesTransport {
   stream(
     request: CodexTransportRequest
-  ): AsyncIterable<ResponsesEvent>
+  ): AsyncIterable<ReceivedResponsesEvent>
 }
 
 export interface FetchCodexResponsesTransportOptions {
@@ -47,7 +48,7 @@ export class FetchCodexResponsesTransport implements CodexResponsesTransport {
 
   async *stream(
     request: CodexTransportRequest
-  ): AsyncIterable<ResponsesEvent> {
+  ): AsyncIterable<ReceivedResponsesEvent> {
     const headerTimeout = createAbortTimeout(
       request.headerTimeoutMs,
       'Codex SSE response headers timed out'
@@ -106,7 +107,7 @@ export class WebSocketCodexResponsesTransport
 
   async *stream(
     request: CodexTransportRequest
-  ): AsyncIterable<ResponsesEvent> {
+  ): AsyncIterable<ReceivedResponsesEvent> {
     const socket = await connectWebSocket(
       this.WebSocketCtor,
       request.websocketUrl,
@@ -114,7 +115,7 @@ export class WebSocketCodexResponsesTransport
       request.signal,
       request.websocketConnectTimeoutMs,
     )
-    const queue: Array<ResponsesEvent | Error | null> = []
+    const queue: Array<ReceivedResponsesEvent | Error | null> = []
     const waiters: Array<() => void> = []
     let idleTimer: ReturnType<typeof setTimeout> | null = null
     let finished = false
@@ -122,7 +123,7 @@ export class WebSocketCodexResponsesTransport
     const wake = (): void => {
       for (const waiter of waiters.splice(0)) waiter()
     }
-    const push = (value: ResponsesEvent | Error | null): void => {
+    const push = (value: ReceivedResponsesEvent | Error | null): void => {
       queue.push(value)
       wake()
     }
@@ -157,10 +158,10 @@ export class WebSocketCodexResponsesTransport
     const onMessage = (event: MessageEventLike): void => {
       armIdleTimer()
       try {
-        const parsed = parseWebSocketMessage(event.data)
-        if (parsed) {
-          push(parsed)
-          if (isTerminalResponseEvent(parsed)) {
+        const received = parseWebSocketMessage(event.data)
+        if (received) {
+          push(received)
+          if (isTerminalResponseEvent(received.event)) {
             finish()
             socket.close(1000, 'response_done')
           }
@@ -215,7 +216,7 @@ export class AutoCodexResponsesTransport implements CodexResponsesTransport {
 
   async *stream(
     request: CodexTransportRequest
-  ): AsyncIterable<ResponsesEvent> {
+  ): AsyncIterable<ReceivedResponsesEvent> {
     let started = false
     try {
       for await (const event of this.websocket.stream(request)) {
@@ -418,13 +419,20 @@ function connectWebSocket(
   })
 }
 
-function parseWebSocketMessage(data: unknown): ResponsesEvent | null {
+/** A WebSocket message as a Responses event with the text it arrived as. */
+function parseWebSocketMessage(data: unknown): ReceivedResponsesEvent | null {
+  const text = webSocketText(data)
+  if (text === null)
+    return null
+  const event = parseWebSocketJson(text)
+  return event ? { event, text } : null
+}
+
+function webSocketText(data: unknown): string | null {
   if (typeof data === 'string')
-    return parseWebSocketJson(data)
-  if (data instanceof ArrayBuffer)
-    return parseWebSocketJson(new TextDecoder().decode(data))
-  if (data instanceof Uint8Array)
-    return parseWebSocketJson(new TextDecoder().decode(data))
+    return data
+  if (data instanceof ArrayBuffer || data instanceof Uint8Array)
+    return new TextDecoder().decode(data)
   return null
 }
 

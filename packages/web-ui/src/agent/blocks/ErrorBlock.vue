@@ -6,25 +6,25 @@ import { errorFacts, errorPresentation, errorReportText, prettyUpstream } from '
 
 /**
  * The transcript record of a turn that failed: what its source said on the
- * first line, the full text below only when there is more, the diagnostics
- * and Copy. It says what
- * happened and offers no action: recovery sits in the dock above the composer
- * (`product.md` § Recovering an unfinished turn).
+ * first line, the full text below only when there is more, when the provider
+ * says it works again, the provider's response as it arrived, and Copy. It
+ * says what happened and offers no action: recovery sits in the dock above
+ * the composer (`product.md` § Recovering an unfinished turn).
  */
 const props = defineProps<{
   /** The upstream error as the provider reported it. */
   message: string
   code?: string | null
   diagnostics?: ProviderErrorDiagnostics
-  /** When the failure was recorded; a relative vendor wait counts from here. */
-  createdAt?: string
+  /** When the provider says the request can succeed again, as the backend read it. */
+  retryAt?: string | null
 }>()
 
 const presentation = computed(() => errorPresentation(props.message))
-const facts = computed(() => errorFacts(props.diagnostics, props.createdAt))
+const facts = computed(() => errorFacts(props.retryAt ?? null))
+// The provider's response as it arrived, whole.
 const raw = computed(() =>
-  // The reader sees what the vendor said; the transport headers stay in the copied report.
-  props.diagnostics?.upstream ? prettyUpstream(props.diagnostics.upstream, { headers: false }) : null,
+  props.diagnostics?.upstream ? prettyUpstream(props.diagnostics.upstream) : null,
 )
 const reportText = computed(() =>
   errorReportText(props.message, props.code, props.diagnostics),

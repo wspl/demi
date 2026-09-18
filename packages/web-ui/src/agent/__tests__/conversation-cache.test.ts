@@ -17,6 +17,7 @@ function fixture(id: string) {
     model: { providerId: 'stub', modelId: 'stub', thinkingEffort: null, serviceTierId: null },
     lastError: null, load: 'loading', pendingAction: null,
     retrying: false,
+    failures: {},
   }
   let receive: (frame: ServerFrame) => void = () => {}
   let connections = 0

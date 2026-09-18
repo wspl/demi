@@ -6,7 +6,7 @@ import {
   observeClaudeRateLimitHeaders,
   observeClaudeStreamBody,
 } from '../quota'
-import type { ClaudeTransport, ClaudeTransportFactory } from '../transport'
+import type { ClaudeStdoutLine, ClaudeTransport, ClaudeTransportFactory } from '../transport'
 
 test('mapClaudeUsagePayload maps five_hour and seven_day', () => {
   const snap = mapClaudeUsagePayload(
@@ -147,18 +147,18 @@ test.each([false, true])(
   }
 )
 
-class FakeClaudeTransport implements ClaudeTransport, AsyncIterator<unknown> {
+class FakeClaudeTransport implements ClaudeTransport, AsyncIterator<ClaudeStdoutLine> {
   private index = 0
   constructor(private readonly queue: unknown[]) {}
   async writeJson(): Promise<void> {}
-  messages(): AsyncIterable<unknown> {
+  messages(): AsyncIterable<ClaudeStdoutLine> {
     return { [Symbol.asyncIterator]: () => this }
   }
-  async next(): Promise<IteratorResult<unknown>> {
+  async next(): Promise<IteratorResult<ClaudeStdoutLine>> {
     if (this.index >= this.queue.length)
       return { done: true, value: undefined }
     const value = this.queue[this.index++]
-    return { done: false, value }
+    return { done: false, value: { text: JSON.stringify(value), value } }
   }
   async kill(): Promise<void> {}
   async wait(): Promise<{ exitCode: number | null }> {

@@ -9,7 +9,7 @@
  */
 import { parseJsonOrString } from '@demicodes/utils'
 import { zeroUsage } from '@demicodes/core'
-import { normalizeErrorCode, upstreamDiagnostic } from './http'
+import { normalizeErrorCode, withRetryWait } from './http'
 import {
   decodeResponsesEvent,
   tokenUsageFromResponsesUsage,
@@ -19,7 +19,7 @@ import {
   type ResponsesReasoningItem,
 } from './responses'
 import type { ServerSentEvent } from './sse'
-import type { ProviderEvent } from './types'
+import type { ProviderEvent, ProviderFailureReader } from './types'
 
 /**
  * What one response is streaming, carried between events: a tool call's
@@ -45,23 +45,35 @@ function newResponsesStreamState(): ResponsesStreamState {
 }
 
 /**
+ * A decoded Responses event with the text it arrived as: a failure keeps that
+ * text as its record (`docs/provider-errors-and-retries.md`).
+ */
+export interface ReceivedResponsesEvent {
+  event: ResponsesEvent
+  text: string
+}
+
+/**
  * Maps a decoded Responses stream — from SSE frames, a WebSocket, or any other
  * transport — to provider events. `vendorLabel` names the vendor in the errors
- * this reports (for example `Codex stream error`). When `signal` aborts, the
- * stream ends with an `abort` event.
+ * this reports (for example `Codex stream error`), and `readFailure` is the
+ * provider's reader, which sets a failure's retry wait. When `signal` aborts,
+ * the stream ends with an `abort` event.
  */
 export async function* mapResponsesEvents(
-  events: AsyncIterable<ResponsesEvent>,
+  events: AsyncIterable<ReceivedResponsesEvent>,
   vendorLabel: string,
+  readFailure: ProviderFailureReader,
   signal?: AbortSignal,
 ): AsyncIterable<ProviderEvent> {
   const state = newResponsesStreamState()
-  for await (const event of events) {
+  for await (const received of events) {
     if (signal?.aborted) {
       yield { type: 'abort' }
       return
     }
-    yield* mapResponsesEvent(event, vendorLabel, state)
+    for (const event of mapResponsesEvent(received, vendorLabel, state))
+      yield withRetryWait(event, readFailure)
   }
 }
 
@@ -73,21 +85,22 @@ export async function* mapResponsesEvents(
 export async function* mapResponsesStream(
   frames: AsyncIterable<ServerSentEvent>,
   vendorLabel: string,
+  readFailure: ProviderFailureReader,
   signal?: AbortSignal,
 ): AsyncIterable<ProviderEvent> {
   let completed = false
-  const events = async function* (): AsyncIterable<ResponsesEvent> {
+  const events = async function* (): AsyncIterable<ReceivedResponsesEvent> {
     for await (const frame of frames) {
-      const event = decodeResponsesFrame(frame.data)
-      if (!event)
+      const received = decodeResponsesFrame(frame.data)
+      if (!received)
         continue
-      if (event.type === 'response.completed')
+      if (received.event.type === 'response.completed')
         completed = true
-      yield event
+      yield received
     }
   }
 
-  yield* mapResponsesEvents(events(), vendorLabel, signal)
+  yield* mapResponsesEvents(events(), vendorLabel, readFailure, signal)
   // An aborted turn ends on its `abort` event; a finished one always reports
   // usage, even when the vendor closed the body without a completed response.
   if (!completed && !signal?.aborted)
@@ -100,19 +113,21 @@ export async function* mapResponsesStream(
  * JSON — and for an event type this adapter does not map; a mapped type with a
  * malformed payload throws.
  */
-export function decodeResponsesFrame(data: string): ResponsesEvent | null {
+export function decodeResponsesFrame(data: string): ReceivedResponsesEvent | null {
   const payload = data.trim()
   if (!payload || payload === '[DONE]')
     return null
-  return decodeResponsesEvent(JSON.parse(payload))
+  const event = decodeResponsesEvent(JSON.parse(payload))
+  return event ? { event, text: data } : null
 }
 
 /** Maps one decoded event, advancing `state`. */
 function* mapResponsesEvent(
-  event: ResponsesEvent,
+  received: ReceivedResponsesEvent,
   vendorLabel: string,
   state: ResponsesStreamState,
 ): Iterable<ProviderEvent> {
+  const event = received.event
   switch (event.type) {
     case 'response.output_item.added': {
       const item = event.item
@@ -207,18 +222,16 @@ function* mapResponsesEvent(
       const rawCode = error?.code ?? error?.type ?? null
       const providerRequestId = providerRequestIdFrom(error, message)
       const providerResponseId = event.response?.id
-      const retryAfterMs = resetWaitMs(error)
       yield {
         type: 'error',
         message,
         code: normalizeErrorCode(rawCode, message),
-        ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
         diagnostics: {
           source: 'stream',
           ...(rawCode ? { providerCode: rawCode } : {}),
           ...(providerRequestId ? { providerRequestId } : {}),
           ...(providerResponseId ? { providerResponseId } : {}),
-          upstream: upstreamDiagnostic(event),
+          upstream: received.text,
         },
       }
       return
@@ -242,18 +255,15 @@ function* mapResponsesEvent(
         ?? `${vendorLabel} stream error`
       const rawCode = event.code ?? nested?.code ?? nested?.type ?? null
       const providerRequestId = providerRequestIdFrom(nested, message)
-      const retryAfterMs = resetWaitMs(nested)
       yield {
         type: 'error',
         message,
         code: normalizeErrorCode(rawCode, message),
-        ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
         diagnostics: {
           source: 'stream',
           ...(rawCode ? { providerCode: rawCode } : {}),
           ...(providerRequestId ? { providerRequestId } : {}),
-          ...(event.status_code !== undefined ? { httpStatus: event.status_code } : {}),
-          upstream: upstreamDiagnostic(event),
+          upstream: received.text,
         },
       }
       return
@@ -295,11 +305,3 @@ function providerRequestIdFrom(
   return message.match(/request ID ([A-Za-z0-9-]+)/i)?.[1] ?? null
 }
 
-/** How long until a vendor's limit lifts, from the fields its error names; undefined when it names none. */
-function resetWaitMs(error: ResponsesError | undefined): number | undefined {
-  if (error?.resets_in_seconds !== undefined)
-    return error.resets_in_seconds * 1000
-  if (error?.resets_at !== undefined)
-    return Math.max(0, error.resets_at * 1000 - Date.now())
-  return undefined
-}
