@@ -44,14 +44,14 @@ function signIn(id: string): void {
   useSession().current = { status: 'signedIn', user }
 }
 
-test('panel open and closed choices survive reload with width in the same preferences', async () => {
+test('panel open and closed choices survive reload with the panel share in the same preferences', async () => {
   signIn('one')
   const work = useWorkPanel()
   expect(work.stateFor('a').open).toBe(false)
-  useResources().asideWidth = 480
+  useResources().asideShare = 0.5
   work.setOpen(work.stateFor('a'), true)
   await nextTick()
-  expect(readLocalState('one')).toMatchObject({ asideWidth: 480, workPanelOpen: { a: true } })
+  expect(readLocalState('one')).toMatchObject({ asideShare: 0.5, workPanelOpen: { a: true } })
 
   disposePinia(pinia)
   pinia = createPinia()
@@ -60,7 +60,7 @@ test('panel open and closed choices survive reload with width in the same prefer
   const restored = useWorkPanel()
   expect(restored.stateFor('a').open).toBe(true)
   expect(restored.stateFor('b').open).toBe(false)
-  expect(useResources().asideWidth).toBe(480)
+  expect(useResources().asideShare).toBe(0.5)
   restored.setOpen(restored.stateFor('a'), false)
   await nextTick()
   expect(readLocalState('one').workPanelOpen?.a).toBe(false)

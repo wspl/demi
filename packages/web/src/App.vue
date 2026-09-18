@@ -25,8 +25,8 @@ const resources = useResources()
 // The widths follow the dividers frame by frame; the preference takes them when a resize settles.
 const sidebarWidth = ref(resources.sidebarWidth)
 watch(() => resources.sidebarWidth, (width) => { sidebarWidth.value = width })
-const asideWidth = ref(resources.asideWidth)
-watch(() => resources.asideWidth, (width) => { asideWidth.value = width })
+const asideShare = ref(resources.asideShare)
+watch(() => resources.asideShare, (share) => { asideShare.value = share })
 const router = useRouter()
 const route = useRoute()
 const folded = computed({
@@ -144,10 +144,10 @@ useAppShortcuts(
     v-else-if="route.path !== '/login'"
     v-model:open="resources.sidebarOpen"
     v-model:width="sidebarWidth"
-    v-model:aside-width="asideWidth"
+    v-model:aside-share="asideShare"
     v-model:aside-open="asideOpen"
     @resize-end="resources.sidebarWidth = $event"
-    @aside-resize-end="resources.asideWidth = $event"
+    @aside-resize-end="resources.asideShare = $event"
   >
     <template #sidebar>
       <AppSidebar
