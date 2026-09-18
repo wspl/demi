@@ -36,7 +36,7 @@ changes.
 | `conversation` | Agent-tree hosting, history/Fork, summaries, target resolution, the one host entry for operations outside the agent, frame and file admission | [Sessions and targets](sessions-and-targets.md) |
 | Command assembly | Coding-agent roots plus the product's `host` group, manifests, incoming RPC dispatch | [Commands](commands.md) |
 | `llm`, `vault`, `usage` | Provider assembly, credential scope, model discovery, inference admission and accounting | [Providers](providers-and-vault.md) |
-| `runner` | Device pairing, live connection registry, remote Host handles, command relay, pipe broker | [Runner](runner.md) |
+| `runner` | Device pairing, live connection registry, remote Host handles, command relay, the device ends of pipes over `host-remote`'s broker | [Runner](runner.md) |
 | `lifecycle` | The conversation idle clock, Cloud idle scheduling and the conversation release | [Conversation idle and Host resource release](resource-lifecycle.md) |
 | `expose` | Expose records and their lifetime, the public relay on expose hostnames, the `demi host expose` leaves | [Host expose](expose.md) |
 | `managed` | Cloud policy, allocation, machine transitions, image generations and reset through the shared coordinator | [Managed hosts](managed-hosts.md) |
@@ -99,8 +99,9 @@ bytes. The conversation transport externalizes inline media in root and subagent
 reset/patch frames, preserving frame order. The browser retrieves the referenced
 bytes through the cookie-authenticated blob route in its user's namespace.
 
-Only the route's supported image, video, audio, and PDF media types are served
-inline. Other content downloads as `application/octet-stream`; responses include
+Only the media types [file previews](file-previews.md#keeping-file-content-inert)
+show in place are served inline, under the same content policy. Other content
+downloads as `application/octet-stream`; responses include
 `X-Content-Type-Options: nosniff`, private immutable caching for one year, and
 `Vary: Cookie`. A hash is not an authorization token across users.
 
