@@ -21,9 +21,10 @@ const props = defineProps<{
 }>()
 
 const presentation = computed(() => errorPresentation(props.message))
-const facts = computed(() => errorFacts(props.code, props.diagnostics, props.createdAt))
+const facts = computed(() => errorFacts(props.diagnostics, props.createdAt))
 const raw = computed(() =>
-  props.diagnostics?.upstream ? prettyUpstream(props.diagnostics.upstream) : null,
+  // The reader sees what the vendor said; the transport headers stay in the copied report.
+  props.diagnostics?.upstream ? prettyUpstream(props.diagnostics.upstream, { headers: false }) : null,
 )
 const reportText = computed(() =>
   errorReportText(props.message, props.code, props.diagnostics),
