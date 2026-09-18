@@ -578,13 +578,17 @@ export class RunnerRegistry {
     }
     if (message.type === 'pipe_done') {
       // HTTP EOF owns success; an endpoint can report a failed transfer early.
+      // A pipe the backend already ended, such as a transfer the browser
+      // stopped reading, fails on the device as well; that says nothing new.
       if (!message.ok) {
-        this.pipes.failFromDevice(
+        const ended = this.pipes.failFromDevice(
           message.pipeId, connection.deviceId, message.error ?? 'device transfer failed'
         )
-        this.log(
-          `pipe ${message.pipeId} on device ${connection.deviceId}: ${message.error ?? 'failed'}`
-        )
+        if (ended) {
+          this.log(
+            `pipe ${message.pipeId} on device ${connection.deviceId}: ${message.error ?? 'failed'}`
+          )
+        }
       }
       return
     }

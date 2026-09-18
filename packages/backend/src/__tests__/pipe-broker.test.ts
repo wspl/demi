@@ -412,12 +412,13 @@ test('cancelling a quiet process source wakes its pending iterator and rejects b
 test('device failure reports require ownership of an end and cannot replace a settled outcome', async () => {
   const broker = new PipeBroker()
   const pipe = broker.open({ deviceId: 'a' }, { deviceId: 'b' })
-  broker.failFromDevice(pipe.id, 'unrelated', 'unauthorized failure')
+  expect(broker.failFromDevice(pipe.id, 'unrelated', 'unauthorized failure')).toBe(false)
   const get = broker.get(pipe.id, 'b')
-  broker.failFromDevice(pipe.id, 'a', 'upload refused')
+  expect(broker.failFromDevice(pipe.id, 'a', 'upload refused')).toBe(true)
   await expect(pipe.done).rejects.toThrow('upload refused')
   expect((await get).status).toBe(409)
-  broker.failFromDevice(pipe.id, 'b', 'later failure')
+  // Once the pipe is over, the other end's failure is its consequence, not news.
+  expect(broker.failFromDevice(pipe.id, 'b', 'later failure')).toBe(false)
   await expect(pipe.done).rejects.toThrow('upload refused')
   broker.close()
 })
