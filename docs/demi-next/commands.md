@@ -145,9 +145,10 @@ accepts local connections only from the current account:
 | Windows | Account-restricted byte-mode named pipe |
 
 Each client opens one HTTP/2 connection and one invocation stream. The runner
-accepts every local connection ([Load](runner.md#load)). When the socket's
-queue of connections not yet accepted is full, a client waits and connects
-again; it gives up only after five seconds, which means the runner is gone.
+accepts every local connection ([Load](runner.md#load)). When it cannot accept
+one yet, because its queue of waiting connections is full or it has no open
+file to spare, the client waits and connects again for as long as the runner
+runs.
 Raw CLI metadata has its own schema; framing, input demand, and completion use
 the [native protocol](native-runtime.md#invocation-protocol). The runner authenticates
 the context before dispatching. Connection processing continues through blocked
