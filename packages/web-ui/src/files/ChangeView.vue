@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ArrowLeft, ArrowRight, Diff, Eye, FileOutput, FolderTree } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, Diff, Eye, FileOutput } from '@lucide/vue'
 import DiffEditor from '../editor/components/DiffEditor.vue'
 import type { DocumentPlace } from '../markdown/document'
 import IconButton from '../ui/IconButton.vue'
 import RegionStatus from '../ui/RegionStatus.vue'
-import ResizeHandle from '../ui/ResizeHandle.vue'
 import Segmented, { type SegmentedOption } from '../ui/Segmented.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import ChangeTree from './ChangeTree.vue'
@@ -14,7 +13,8 @@ import FileSummary from './FileSummary.vue'
 import ImagePreview from './ImagePreview.vue'
 import MarkdownDocument from './MarkdownDocument.vue'
 import PreviewPair from './PreviewPair.vue'
-import { changeDisplayPath, emptyChangeSetText, type ChangeMode, type ChangeSides, type ChangeSources } from './changes'
+import TreeFrame from './TreeFrame.vue'
+import { emptyChangeSetText, type ChangeMode, type ChangeSides, type ChangeSources } from './changes'
 import { TREE_WIDTH } from './file-view'
 import { baseName, resolveHostPath } from './paths'
 import { hasSourceView, previewKind, svgImageUrl } from './preview'
@@ -23,7 +23,8 @@ import { FileBrowserError, type FileContents } from './types'
 /**
  * One working-tree file or one retained segment of a call. The working-tree
  * sidebar, segment control and Back/Forward events use the selection held by the host.
- * A missing retained pair leaves the editor area empty.
+ * A missing retained pair leaves the editor area empty. The sidebar docks,
+ * hides and shows over the diff as its frame (`TreeFrame`) decides.
  *
  * Text shows as a diff. In Uncommitted mode an image, a video, an audio file
  * or a PDF shows its committed and working-tree versions side by side, and a
@@ -75,7 +76,6 @@ const selectedChange = computed(() => mode.value === 'conversation'
   ? call.value?.file ?? null
   : workingTree.value.files.find((file) => file.path === selected.value) ?? null)
 const segments = computed(() => call.value?.file.edits ?? [])
-const displayPath = computed(() => changeDisplayPath(selectedChange.value?.path ?? '', props.root))
 const absolutePath = computed(() => resolveHostPath(props.root, selectedChange.value?.path ?? ''))
 const treeAvailable = computed(() => mode.value === 'uncommitted' && workingTree.value.unavailable !== 'no-repository')
 const emptyText = computed(() => emptyChangeSetText(workingTree.value))
@@ -176,14 +176,21 @@ watch(
   { immediate: true },
 )
 
+const frame = ref<InstanceType<typeof TreeFrame> | null>(null)
+
+function pick(path: string): void {
+  frame.value?.dismiss()
+  selected.value = path
+}
+
 onBeforeUnmount(() => {
   controller?.abort()
 })
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 flex-col">
-    <div class="flex h-11 shrink-0 items-center gap-1 px-2">
+  <TreeFrame ref="frame" v-model:open="tree" v-model:width="treeWidth" name="changed files">
+    <template #header>
       <!-- Back and Forward move through what this view has shown, mode and file. -->
       <div class="flex shrink-0 items-center">
         <Tooltip content="Back">
@@ -194,15 +201,8 @@ onBeforeUnmount(() => {
         </Tooltip>
       </div>
       <Segmented v-model="mode" :options="modeOptions" size="sm" class="ml-1 shrink-0" />
-      <!-- The right side, whether or not a file is shown: its name and counts, then the controls. -->
-      <div class="ml-auto flex min-w-0 items-center gap-1">
-        <span v-if="selectedChange" class="flex min-w-0 items-center gap-1 pl-2 font-mono text-[11px] text-fg-muted">
-          <span class="truncate" :class="selectedChange.kind === 'deleted' ? 'line-through' : ''" :title="selectedChange.path">{{ displayPath }}</span>
-          <span class="shrink-0 tabular-nums">
-            <span v-if="selectedChange.added > 0" class="text-on-success">+{{ selectedChange.added }}</span>
-            <span v-if="selectedChange.removed > 0" class="ml-1 text-on-danger">−{{ selectedChange.removed }}</span>
-          </span>
-        </span>
+      <!-- The file's controls keep to the right, whether or not a file is shown. -->
+      <div class="ml-auto flex items-center gap-1">
         <div v-if="segments.length > 1" class="flex shrink-0 items-center gap-1 text-xs text-fg-muted">
           <IconButton :icon="ArrowLeft" variant="ghost" aria-label="Previous edit" :disabled="edit === 0" @click="edit -= 1" />
           <span class="whitespace-nowrap">Edit {{ edit + 1 }} of {{ segments.length }}</span>
@@ -225,97 +225,74 @@ onBeforeUnmount(() => {
             @click="selectedChange && emit('open', selectedChange.path)"
           />
         </Tooltip>
-        <Tooltip v-if="treeAvailable" :content="tree ? 'Hide changed files' : 'Show changed files'" class="shrink-0">
-          <IconButton
-            :icon="FolderTree"
-            variant="ghost"
-            :pressed="tree"
-            :aria-label="tree ? 'Hide changed files' : 'Show changed files'"
-            @click="tree = !tree"
-          />
-        </Tooltip>
       </div>
-    </div>
-    <div class="flex min-h-0 flex-1 border-t border-line">
-      <div class="relative min-w-0 flex-1">
-        <PreviewPair
-          v-if="state.phase === 'media' && mediaPair && contents && changes.uncommitted.committed"
-          :key="`${committedPath}:${absolutePath}`"
-          v-bind="labels"
-        >
-          <template v-if="hasBefore" #before>
-            <FilePreview
-              :path="committedPath"
-              :kind="mediaPair"
-              :contents="changes.uncommitted.committed"
-              :too-large="COMMITTED_TOO_LARGE"
-            />
-          </template>
-          <template v-if="hasAfter" #after>
-            <FilePreview :path="absolutePath" :kind="mediaPair" :contents="contents" />
-          </template>
-        </PreviewPair>
-        <PreviewPair v-else-if="state.phase === 'binary'" :key="`${committedPath}:${absolutePath}`" v-bind="labels">
-          <template v-if="hasBefore" #before>
-            <FileSummary :path="committedPath" :contents="changes.uncommitted.committed" :too-large="COMMITTED_TOO_LARGE" />
-          </template>
-          <template v-if="hasAfter" #after>
-            <FileSummary :path="absolutePath" :contents="contents" />
-          </template>
-        </PreviewPair>
-        <PreviewPair
-          v-else-if="state.phase === 'ready' && sourceView && presentation === 'preview'"
-          :key="`${call?.commandId ?? mode}:${absolutePath}:${edit}`"
-          v-bind="labels"
-        >
-          <template v-if="hasBefore" #before>
-            <MarkdownDocument v-if="kind === 'markdown'" :text="state.sides.original" :place="place" @open="emit('open', $event)" />
-            <ImagePreview v-else :src="svgImageUrl(state.sides.original)" :name="baseName(committedPath)" />
-          </template>
-          <template v-if="hasAfter" #after>
-            <MarkdownDocument v-if="kind === 'markdown'" :text="state.sides.modified" :place="place" @open="emit('open', $event)" />
-            <ImagePreview v-else :src="svgImageUrl(state.sides.modified)" :name="baseName(absolutePath)" />
-          </template>
-        </PreviewPair>
-        <!-- A diff is built for one pair of texts: a new file is a new editor. -->
-        <DiffEditor
-          v-else-if="state.phase === 'ready' && selectedChange"
-          :key="`${call?.commandId ?? mode}:${selectedChange.path}:${edit}`"
-          :original="state.sides.original"
-          :modified="state.sides.modified"
-          :path="selectedChange.path"
-        />
-        <RegionStatus
-          v-else-if="state.phase !== 'unavailable'"
-          class="h-full"
-          :busy="state.phase === 'loading'"
-          :failed="state.phase === 'failed'"
-          :label="state.phase === 'loading' ? 'Reading…' : state.phase === 'failed' ? 'Could not read this change.' : idleText"
-          :detail="state.phase === 'failed' ? state.message : null"
-          :action="state.phase === 'failed' ? 'Retry' : undefined"
-          @action="read"
-        />
-      </div>
-      <template v-if="treeAvailable && tree">
-        <ResizeHandle
-          v-model="treeWidth"
-          side="end"
-          :min="TREE_WIDTH.min"
-          :max="TREE_WIDTH.max"
-          :default-value="TREE_WIDTH.default"
-          label="Changed files width"
-        />
-        <ChangeTree
-          class="border-l border-line"
-          :style="{ flex: `0 0 ${treeWidth}px`, width: `${treeWidth}px` }"
-          :source="workingTree"
-          :root="root"
-          :root-name="rootName"
-          :selected="selected"
-          :empty-text="emptyText"
-          @select="selected = $event"
+    </template>
+    <PreviewPair
+      v-if="state.phase === 'media' && mediaPair && contents && changes.uncommitted.committed"
+      :key="`${committedPath}:${absolutePath}`"
+      v-bind="labels"
+    >
+      <template v-if="hasBefore" #before>
+        <FilePreview
+          :path="committedPath"
+          :kind="mediaPair"
+          :contents="changes.uncommitted.committed"
+          :too-large="COMMITTED_TOO_LARGE"
         />
       </template>
-    </div>
-  </div>
+      <template v-if="hasAfter" #after>
+        <FilePreview :path="absolutePath" :kind="mediaPair" :contents="contents" />
+      </template>
+    </PreviewPair>
+    <PreviewPair v-else-if="state.phase === 'binary'" :key="`${committedPath}:${absolutePath}`" v-bind="labels">
+      <template v-if="hasBefore" #before>
+        <FileSummary :path="committedPath" :contents="changes.uncommitted.committed" :too-large="COMMITTED_TOO_LARGE" />
+      </template>
+      <template v-if="hasAfter" #after>
+        <FileSummary :path="absolutePath" :contents="contents" />
+      </template>
+    </PreviewPair>
+    <PreviewPair
+      v-else-if="state.phase === 'ready' && sourceView && presentation === 'preview'"
+      :key="`${call?.commandId ?? mode}:${absolutePath}:${edit}`"
+      v-bind="labels"
+    >
+      <template v-if="hasBefore" #before>
+        <MarkdownDocument v-if="kind === 'markdown'" :text="state.sides.original" :place="place" @open="emit('open', $event)" />
+        <ImagePreview v-else :src="svgImageUrl(state.sides.original)" :name="baseName(committedPath)" />
+      </template>
+      <template v-if="hasAfter" #after>
+        <MarkdownDocument v-if="kind === 'markdown'" :text="state.sides.modified" :place="place" @open="emit('open', $event)" />
+        <ImagePreview v-else :src="svgImageUrl(state.sides.modified)" :name="baseName(absolutePath)" />
+      </template>
+    </PreviewPair>
+    <!-- A diff is built for one pair of texts: a new file is a new editor. -->
+    <DiffEditor
+      v-else-if="state.phase === 'ready' && selectedChange"
+      :key="`${call?.commandId ?? mode}:${selectedChange.path}:${edit}`"
+      :original="state.sides.original"
+      :modified="state.sides.modified"
+      :path="selectedChange.path"
+    />
+    <RegionStatus
+      v-else-if="state.phase !== 'unavailable'"
+      class="h-full"
+      :busy="state.phase === 'loading'"
+      :failed="state.phase === 'failed'"
+      :label="state.phase === 'loading' ? 'Reading…' : state.phase === 'failed' ? 'Could not read this change.' : idleText"
+      :detail="state.phase === 'failed' ? state.message : null"
+      :action="state.phase === 'failed' ? 'Retry' : undefined"
+      @action="read"
+    />
+    <template v-if="treeAvailable" #tree>
+      <ChangeTree
+        :source="workingTree"
+        :root="root"
+        :root-name="rootName"
+        :selected="selected"
+        :empty-text="emptyText"
+        @select="pick"
+      />
+    </template>
+  </TreeFrame>
 </template>
