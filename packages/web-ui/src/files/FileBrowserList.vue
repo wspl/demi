@@ -15,7 +15,7 @@ import FileIcon from './FileIcon.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import type { FileBrowserSort, FileBrowserSortKey } from './file-browser-state'
 import { entryKind, formatBytes, formatModified } from './format'
-import { isValidEntryName } from './paths'
+import { isHiddenName, isValidEntryName } from './paths'
 import type {
   FileBrowserEntry,
   FileBrowserFailure,
@@ -292,9 +292,9 @@ defineExpose({
               :name="entry.name"
               :is-directory="entry.isDirectory"
               :icon="entry.icon"
-              :class="pickable(entry) ? '' : 'opacity-40'"
+              :class="!pickable(entry) ? 'opacity-40' : isHiddenName(entry.name) ? 'faded' : ''"
             />
-            <span class="truncate" :title="entry.name">{{ entry.name }}</span>
+            <span class="truncate" :class="isHiddenName(entry.name) ? 'faded' : ''" :title="entry.name">{{ entry.name }}</span>
           </span>
           <span
             class="hidden truncate px-1 text-[12px] text-fg-subtle @md:block"
