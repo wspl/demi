@@ -34,6 +34,7 @@ const IDLE: Duration = Duration::from_secs(15 * 60);
 const TIMEOUT: Duration = Duration::from_secs(30);
 const CONCURRENT_COMPUTATIONS: usize = 2;
 
+/// How the working tree differs from HEAD at a path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChangeKind {
     Added,
@@ -53,10 +54,12 @@ impl ChangeKind {
     }
 }
 
-/// One changed file, its path relative to the requested directory.
+/// One path `git status` lists, relative to the requested directory.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Change {
     pub path: String,
+    /// git's two status letters for the path, as `git status --porcelain` prints them.
+    pub status: String,
     pub kind: ChangeKind,
     pub from: Option<String>,
     pub added: u64,
@@ -157,6 +160,10 @@ struct RootState {
 struct Baseline {
     head: Option<String>,
     files: BTreeMap<String, Change>,
+    /// Each staged rename under the root, new path to old, whether listed or
+    /// not. Renames change only with the index, and any change under `.git`
+    /// recomputes the whole, so a walk over some paths keeps these.
+    renames: BTreeMap<String, String>,
     truncated: bool,
 }
 
@@ -190,6 +197,7 @@ enum Scope {
 struct Computed {
     head: Option<String>,
     files: BTreeMap<String, Change>,
+    renames: BTreeMap<String, String>,
     truncated: bool,
 }
 
@@ -247,7 +255,7 @@ impl GitService {
         let watched = state.watcher.is_some();
         let scope = match &state.baseline {
             Some(baseline) if watched && !touched.whole => {
-                let scope = paths_scope(&touched.paths, &located);
+                let scope = paths_scope(&touched.paths, &located, baseline);
                 match scope {
                     Some(scope) => scope,
                     None => return Ok(baseline.to_changes(true)),
@@ -279,6 +287,7 @@ impl GitService {
             Scope::Whole => Baseline {
                 head: computed.head,
                 files: computed.files,
+                renames: computed.renames,
                 truncated: computed.truncated,
             },
             Scope::Paths { root_relative, .. } => {
@@ -370,14 +379,26 @@ impl GitService {
 impl Baseline {
     /// Replaces what was known under each re-examined path with the fresh result.
     fn merge(&mut self, computed: Computed, root_relative: &[String]) {
-        self.files.retain(|path, _| {
-            !root_relative
-                .iter()
-                .any(|examined| path == examined || path.starts_with(&format!("{examined}/")))
-        });
+        self.files.retain(|path, _| !within(path, root_relative));
         self.files.extend(computed.files);
         self.head = computed.head;
         self.truncated |= computed.truncated;
+    }
+
+    /// The other path of each staged rename that has only one of its paths
+    /// within `paths`: git pairs a rename only in a walk that takes in both.
+    fn rename_partners(&self, paths: &[String]) -> Vec<String> {
+        let mut partners = Vec::new();
+        for (path, from) in &self.renames {
+            let path_within = within(path, paths);
+            let from_within = within(from, paths);
+            if path_within && !from_within {
+                partners.push(from.clone());
+            } else if from_within && !path_within {
+                partners.push(path.clone());
+            }
+        }
+        partners
     }
 
     fn truncate(&mut self, max_files: usize) {
@@ -482,10 +503,14 @@ fn literal_pathspec(path: &str) -> BString {
     BString::from(format!(":(literal){path}"))
 }
 
-/// The touched paths as a scope: `None` when nothing under the root was
+/// The touched paths as a scope, with the other path of each staged rename
+/// that has one path among them: `None` when nothing under the root was
 /// touched, so the baseline stands.
-fn paths_scope(touched: &HashSet<PathBuf>, located: &Located) -> Option<Scope> {
-    let mut pathspecs = Vec::new();
+fn paths_scope(
+    touched: &HashSet<PathBuf>,
+    located: &Located,
+    baseline: &Baseline,
+) -> Option<Scope> {
     let mut root_relative = Vec::new();
     for path in touched {
         let Ok(relative) = path.strip_prefix(&located.workdir) else {
@@ -499,16 +524,28 @@ fn paths_scope(touched: &HashSet<PathBuf>, located: &Located) -> Option<Scope> {
             // The root itself: nothing narrower than a whole walk fits.
             return Some(Scope::Whole);
         }
-        pathspecs.push(literal_pathspec(&relative));
         root_relative.push(under_root.to_owned());
     }
-    if pathspecs.is_empty() {
+    if root_relative.is_empty() {
         return None;
     }
+    let partners = baseline.rename_partners(&root_relative);
+    root_relative.extend(partners);
+    let pathspecs = root_relative
+        .iter()
+        .map(|path| literal_pathspec(&join_prefix(&located.prefix, path).to_str_lossy()))
+        .collect();
     Some(Scope::Paths {
         pathspecs,
         root_relative,
     })
+}
+
+/// Whether `path` is one of `paths` or lies under one of them.
+fn within(path: &str, paths: &[String]) -> bool {
+    paths
+        .iter()
+        .any(|examined| path == examined || path.starts_with(&format!("{examined}/")))
 }
 
 /// `rela` (relative to the work tree) relative to the root, or `None` outside it.
@@ -568,14 +605,97 @@ fn head_tree(repo: &gix::Repository) -> Result<gix::Tree<'_>, GitError> {
     Ok(id.object().map_err(internal)?.into_tree())
 }
 
-/// What the status found about a path, before it is judged against HEAD and the disk.
+/// What `git status` says of a path, before it is judged against HEAD and the
+/// disk: its letter for the index and for the working tree, whether it is
+/// untracked or in conflict, and a staged rename's source.
 #[derive(Default)]
 struct Signal {
+    /// The index against HEAD: `M`, `T`, `A`, `D`, `R` or `C`.
+    index: Option<char>,
+    /// The working tree against the index: `M`, `T`, `D`, or `A` for an
+    /// entry added with intent.
+    worktree: Option<char>,
+    untracked: bool,
+    /// The pair git prints for a conflict, standing for both letters.
+    conflict: Option<&'static str>,
     rename_from: Option<BString>,
 }
 
-/// Lists the changes under the located directory, or under `pathspecs` when
-/// given, each judged against HEAD and the disk.
+impl Signal {
+    /// The two letters `git status --porcelain` prints for the path; `None`
+    /// when it lists nothing.
+    fn status(&self) -> Option<String> {
+        if let Some(pair) = self.conflict {
+            return Some(pair.to_owned());
+        }
+        // git lists a deletion staged under an untracked file twice; the
+        // untracked entry stands for both.
+        if self.untracked {
+            return Some("??".to_owned());
+        }
+        if self.index.is_none() && self.worktree.is_none() {
+            return None;
+        }
+        Some(format!(
+            "{}{}",
+            self.index.unwrap_or(' '),
+            self.worktree.unwrap_or(' ')
+        ))
+    }
+}
+
+/// The pair `git status --porcelain` prints for a conflict.
+fn conflict_pair(conflict: gix::status::plumbing::index_as_worktree::Conflict) -> &'static str {
+    use gix::status::plumbing::index_as_worktree::Conflict;
+    match conflict {
+        Conflict::BothDeleted => "DD",
+        Conflict::AddedByUs => "AU",
+        Conflict::DeletedByThem => "UD",
+        Conflict::AddedByThem => "UA",
+        Conflict::DeletedByUs => "DU",
+        Conflict::BothAdded => "AA",
+        Conflict::BothModified => "UU",
+    }
+}
+
+/// The working tree's letter for an index entry that is not in conflict:
+/// `None` for one that did not change, only its stats to refresh, and for a
+/// submodule, which is not examined.
+fn worktree_letter<T, U>(
+    status: &gix::status::plumbing::index_as_worktree::EntryStatus<T, U>,
+) -> Option<char> {
+    use gix::status::plumbing::index_as_worktree::{Change, EntryStatus};
+    match status {
+        EntryStatus::Change(Change::Removed) => Some('D'),
+        EntryStatus::Change(Change::Type { .. }) => Some('T'),
+        EntryStatus::Change(Change::Modification {
+            executable_bit_changed,
+            content_change,
+            ..
+        }) if *executable_bit_changed || content_change.is_some() => Some('M'),
+        EntryStatus::IntentToAdd => Some('A'),
+        _ => None,
+    }
+}
+
+/// Whether an index entry changed what it is, among a file, a symlink and a
+/// submodule; an executable bit alone is no change of type.
+fn type_changed(before: gix::index::entry::Mode, after: gix::index::entry::Mode) -> bool {
+    use gix::index::entry::Mode;
+    let kind = |mode: Mode| {
+        if mode.is_submodule() {
+            2
+        } else if mode == Mode::SYMLINK {
+            1
+        } else {
+            0
+        }
+    };
+    kind(before) != kind(after)
+}
+
+/// Lists the paths `git status` lists under the located directory, or under
+/// `pathspecs` when given, each judged against HEAD and the disk.
 fn compute(
     located: &Located,
     pathspecs: Option<Vec<BString>>,
@@ -597,7 +717,9 @@ fn compute(
         .status(gix::progress::Discard)
         .map_err(internal)?
         .untracked_files(gix::status::UntrackedFiles::Files)
-        .index_worktree_rewrites(Some(gix::diff::Rewrites::default()))
+        // git pairs no deletion with an untracked file: a move nobody staged
+        // is a deletion and an untracked file. Staged renames are found below.
+        .index_worktree_rewrites(None)
         .tree_index_track_renames(gix::status::tree_index::TrackRenames::Given(
             gix::diff::Rewrites::default(),
         ))
@@ -618,29 +740,49 @@ fn compute(
         let item = item.map_err(internal)?;
         match item {
             gix::status::Item::TreeIndex(change) => match change {
+                gix::diff::index::Change::Addition { location, .. } => {
+                    signals.entry(location.into_owned()).or_default().index = Some('A');
+                }
+                gix::diff::index::Change::Deletion { location, .. } => {
+                    signals.entry(location.into_owned()).or_default().index = Some('D');
+                }
+                gix::diff::index::Change::Modification {
+                    location,
+                    previous_entry_mode,
+                    entry_mode,
+                    ..
+                } => {
+                    let letter = if type_changed(previous_entry_mode, entry_mode) {
+                        'T'
+                    } else {
+                        'M'
+                    };
+                    signals.entry(location.into_owned()).or_default().index = Some(letter);
+                }
                 gix::diff::index::Change::Rewrite {
                     source_location,
                     location,
                     copy,
                     ..
                 } => {
-                    let source = source_location.into_owned();
-                    signals.entry(source.clone()).or_default();
                     let signal = signals.entry(location.into_owned()).or_default();
-                    if !copy {
-                        signal.rename_from = Some(source);
+                    if copy {
+                        signal.index = Some('C');
+                    } else {
+                        signal.index = Some('R');
+                        signal.rename_from = Some(source_location.into_owned());
                     }
-                }
-                change => {
-                    signals.entry(change.location().to_owned()).or_default();
                 }
             },
             gix::status::Item::IndexWorktree(item) => match item {
                 WorktreeItem::Modification {
                     rela_path, status, ..
                 } => {
-                    if !matches!(status, EntryStatus::NeedsUpdate(_)) {
-                        signals.entry(rela_path).or_default();
+                    if let EntryStatus::Conflict { summary, .. } = status {
+                        signals.entry(rela_path).or_default().conflict =
+                            Some(conflict_pair(summary));
+                    } else if let Some(letter) = worktree_letter(&status) {
+                        signals.entry(rela_path).or_default().worktree = Some(letter);
                     }
                 }
                 WorktreeItem::DirectoryContents { entry, .. } => {
@@ -650,28 +792,26 @@ fn compute(
                         Some(gix::dir::entry::Kind::File | gix::dir::entry::Kind::Symlink)
                     );
                     if untracked && file {
-                        signals.entry(entry.rela_path).or_default();
+                        signals.entry(entry.rela_path).or_default().untracked = true;
                     }
                 }
+                // Not asked for (`index_worktree_rewrites(None)`); should one come, it
+                // reads as git would put it: the source deleted, the destination untracked.
                 WorktreeItem::Rewrite {
                     source,
                     dirwalk_entry,
-                    copy,
                     ..
                 } => {
-                    let source_path = match source {
-                        RewriteSource::RewriteFromIndex {
-                            source_rela_path, ..
-                        } => Some(source_rela_path),
-                        RewriteSource::CopyFromDirectoryEntry { .. } => None,
-                    };
-                    if let Some(source_path) = &source_path {
-                        signals.entry(source_path.clone()).or_default();
+                    if let RewriteSource::RewriteFromIndex {
+                        source_rela_path, ..
+                    } = source
+                    {
+                        signals.entry(source_rela_path).or_default().worktree = Some('D');
                     }
-                    let signal = signals.entry(dirwalk_entry.rela_path).or_default();
-                    if !copy {
-                        signal.rename_from = source_path;
-                    }
+                    signals
+                        .entry(dirwalk_entry.rela_path)
+                        .or_default()
+                        .untracked = true;
                 }
             },
         }
@@ -685,6 +825,15 @@ fn compute(
         return Err(GitError::Cancelled);
     }
 
+    let renames: BTreeMap<String, String> = signals
+        .iter()
+        .filter_map(|(rela, signal)| {
+            let from = signal.rename_from.as_ref()?;
+            let path = root_relative_path(&rela.to_str_lossy(), &located.prefix)?.to_owned();
+            let from = root_relative_path(&from.to_str_lossy(), &located.prefix)?.to_owned();
+            Some((path, from))
+        })
+        .collect();
     let mut files: BTreeMap<String, Change> = BTreeMap::new();
     for (rela, signal) in signals {
         if interrupt.load(Ordering::Relaxed) && !truncated {
@@ -697,7 +846,20 @@ fn compute(
         if path.is_empty() {
             continue;
         }
-        let Some(change) = judge(&repo, &tree, located, rela.as_bstr(), signal, path)? else {
+        let Some(status) = signal.status() else {
+            continue;
+        };
+        let rename_from = renames.get(path).map(String::as_str);
+        let Some(change) = judge(
+            &repo,
+            &tree,
+            located,
+            rela.as_bstr(),
+            path,
+            status,
+            rename_from,
+        )?
+        else {
             continue;
         };
         files.insert(path.to_owned(), change);
@@ -706,17 +868,10 @@ fn compute(
             break;
         }
     }
-    // A rename's source is gone from the disk, but it is not a deletion of its own.
-    let rename_sources: Vec<String> = files
-        .values()
-        .filter_map(|change| change.from.clone())
-        .collect();
-    for source in rename_sources {
-        files.remove(&source);
-    }
     Ok(Computed {
         head,
         files,
+        renames,
         truncated,
     })
 }
@@ -742,26 +897,22 @@ impl Content {
     }
 }
 
-/// Decides what a signalled path is against HEAD and the disk: nothing when
-/// both sides agree.
+/// Decides what a path git lists is against HEAD and the disk, given git's
+/// letters for it and, for a staged rename, its old path relative to the
+/// root: nothing when neither side has it (added to the index, then deleted
+/// from the disk).
 fn judge(
     repo: &gix::Repository,
     tree: &gix::Tree<'_>,
     located: &Located,
     rela: &BStr,
-    signal: Signal,
     path: &str,
+    status: String,
+    rename_from: Option<&str>,
 ) -> Result<Option<Change>, GitError> {
     let disk = read_disk(&located.workdir.join(gix::path::from_bstr(rela)))?;
     let head = read_head(repo, tree, rela)?;
-    let rename_from = signal
-        .rename_from
-        .as_deref()
-        .and_then(|source| {
-            root_relative_path(&source.to_str_lossy(), &located.prefix).map(str::to_owned)
-        })
-        .filter(|source| !source.is_empty());
-    let (kind, before) = match (head.present(), disk.present(), rename_from.as_deref()) {
+    let (kind, before) = match (head.present(), disk.present(), rename_from) {
         (false, true, Some(source)) => {
             // A rename whose source the last commit knows counts against it.
             let source_head =
@@ -777,10 +928,6 @@ fn judge(
         (true, true, _) => (ChangeKind::Modified, head),
         (false, false, _) => return Ok(None),
     };
-    let same_bytes = matches!((before.bytes(), disk.bytes()), (Some(a), Some(b)) if a == b);
-    if kind == ChangeKind::Modified && same_bytes {
-        return Ok(None);
-    }
     // A side too large to read counts no lines, the way a binary one does.
     let unread = matches!(before, Content::Large) || matches!(disk, Content::Large);
     let (added, removed) = if unread {
@@ -789,12 +936,13 @@ fn judge(
         line_counts(before.bytes(), disk.bytes())
     };
     let from = if kind == ChangeKind::Renamed {
-        rename_from
+        rename_from.map(str::to_owned)
     } else {
         None
     };
     Ok(Some(Change {
         path: path.to_owned(),
+        status,
         kind,
         from,
         added,
@@ -888,6 +1036,7 @@ fn to_wire(changes: Changes) -> wire::GitOkChangesResult {
             .into_iter()
             .map(|change| wire::GitOkChangesResultFilesItem {
                 path: change.path,
+                status: change.status,
                 kind: change.kind.as_str().to_owned(),
                 from: change.from,
                 added: change.added,
@@ -896,5 +1045,51 @@ fn to_wire(changes: Changes) -> wire::GitOkChangesResult {
             .collect(),
         truncated: changes.truncated,
         watched: changes.watched,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_walk_over_one_path_of_a_staged_rename_takes_in_the_other() {
+        let located = Located {
+            workdir: PathBuf::from("/repo"),
+            git_dir: PathBuf::from("/repo/.git"),
+            prefix: "sub".into(),
+        };
+        // Its new path deleted from the disk too, the rename is not listed.
+        let baseline = Baseline {
+            head: None,
+            files: BTreeMap::new(),
+            renames: BTreeMap::from([("moved.txt".into(), "old/a.txt".into())]),
+            truncated: false,
+        };
+        for (touched, examined) in [
+            ("/repo/sub/moved.txt", ["moved.txt", "old/a.txt"]),
+            ("/repo/sub/old", ["old", "moved.txt"]),
+        ] {
+            let touched = HashSet::from([PathBuf::from(touched)]);
+            let Some(Scope::Paths {
+                pathspecs,
+                root_relative,
+            }) = paths_scope(&touched, &located, &baseline)
+            else {
+                panic!("{touched:?} is a paths scope");
+            };
+            assert_eq!(root_relative, examined);
+            let expected: Vec<BString> = examined
+                .iter()
+                .map(|path| literal_pathspec(&format!("sub/{path}")))
+                .collect();
+            assert_eq!(pathspecs, expected);
+        }
+        let unrelated = HashSet::from([PathBuf::from("/repo/sub/other.txt")]);
+        let Some(Scope::Paths { root_relative, .. }) = paths_scope(&unrelated, &located, &baseline)
+        else {
+            panic!("other.txt is a paths scope");
+        };
+        assert_eq!(root_relative, ["other.txt"]);
     }
 }
