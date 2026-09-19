@@ -9,7 +9,6 @@ import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { IN_DEVELOPMENT } from '@demicodes/web-ui/ui/disabled'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import RegionStatus from '@demicodes/web-ui/ui/RegionStatus.vue'
-import { t } from '@demicodes/web-ui/infra/i18n'
 import { copyConversationId } from '../agent/copy-conversation-id'
 import type {
   ListLoad,
@@ -369,8 +368,8 @@ function selectProjectConversations(project: SidebarProject): void {
         class="h-full min-h-40"
         :busy="listStatus === 'loading'"
         :failed="listStatus === 'failed'"
-        :label="listStatus === 'loading' ? t('agent.session.loadingList') : t('agent.session.listFailed')"
-        :action="listStatus === 'failed' ? t('agent.session.retry') : undefined"
+        :label="listStatus === 'loading' ? 'Loading conversations' : 'Couldn\'t load conversations.'"
+        :action="listStatus === 'failed' ? 'Retry' : undefined"
         @action="emit('retryList')"
       />
       <!-- Rows sit a hairline apart, the way menu items and the entries above do. -->

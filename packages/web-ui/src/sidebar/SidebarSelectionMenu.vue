@@ -5,7 +5,6 @@ import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import type { SidebarConversation, SidebarProject } from './types'
-import { t } from '../infra/i18n'
 
 /** One row gets open, rename and copy ID; any count gets pin, move and archive. Conversations are never deleted. */
 const props = defineProps<{
@@ -59,7 +58,7 @@ const many = computed(
       />
       <MenuItem
         :icon="Copy"
-        :label="t('agent.tab.copyConversationId')"
+        label="Copy conversation ID"
         @select="emit('copyId', single.id)"
       />
     </template>

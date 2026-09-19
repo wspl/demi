@@ -4,7 +4,6 @@ import type { ThinkingConfig } from '@demicodes/core'
 import { CircleX, TriangleAlert, Zap } from '@lucide/vue'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
-import { t } from '../infra/i18n'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import Button from '../ui/Button.vue'
@@ -92,7 +91,7 @@ const reasoningLabel = computed(() => {
           >{{ reasoningLabel }}</span
         >
         <Zap v-if="fast" :size="ICON_PX.in28" class="shrink-0" />
-        <Tooltip v-if="unavailable" :content="t('agent.input.switchModel')">
+        <Tooltip v-if="unavailable" content="This model is unavailable. Choose another to send.">
           <TriangleAlert
             :size="ICON_PX.in28"
             class="shrink-0 text-on-warning"

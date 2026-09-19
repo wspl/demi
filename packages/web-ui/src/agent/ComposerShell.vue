@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { Paperclip } from '@lucide/vue'
-import { t } from '../infra/i18n'
 import { ICON_PX } from '../ui/icon-metrics'
 import { dataTransferFiles, transferHasFiles } from './message-input/attachments'
 
@@ -96,7 +95,7 @@ function onDrop(event: DragEvent): void {
         aria-hidden="true"
       >
         <Paperclip :size="ICON_PX.in28" />
-        {{ t('agent.input.dropToAttach') }}
+        Drop to attach
       </div>
       <svg class="pointer-events-none absolute inset-0 z-20 h-full w-full text-line-focus" aria-hidden="true">
         <rect
