@@ -40,6 +40,8 @@ const props = defineProps<{
   isFocused?: boolean
   hasSubmenu?: boolean
   iconless?: boolean
+  /** Its icon and label drawn faded while it stays choosable, as a hidden file among a directory's entries. */
+  faded?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -161,6 +163,7 @@ const toneClass = computed(() => {
       <span
         v-if="showIconGutter"
         class="menu-cell-gutter relative flex size-4 shrink-0 items-center justify-center"
+        :class="faded ? 'faded' : ''"
       >
         <component
           :is="icon"
@@ -182,7 +185,7 @@ const toneClass = computed(() => {
           :aria-label="indicatorLabel"
         />
       </span>
-      <span class="menu-cell-label">
+      <span class="menu-cell-label" :class="faded ? 'faded' : ''">
         <slot>
           <span class="min-w-0 truncate">{{ label }}</span>
         </slot>

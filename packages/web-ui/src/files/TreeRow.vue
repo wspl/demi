@@ -3,6 +3,7 @@ import { ChevronRight } from '@lucide/vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import Tooltip from '../ui/Tooltip.vue'
 import FileIcon from './FileIcon.vue'
+import { isHiddenName } from './paths'
 import type { TreeRow } from './tree'
 
 /**
@@ -10,7 +11,7 @@ import type { TreeRow } from './tree'
  * for a directory, the file icon, the name. A tree dresses its rows through
  * the slots: `mark` sits on the icon's corner, `name` replaces the plain
  * name, `trailing` ends the row, kept off the scrollbar. A `tooltip` covers
- * the whole row.
+ * the whole row. A hidden entry's icon and name are faded.
  */
 defineProps<{
   row: TreeRow
@@ -50,12 +51,14 @@ defineEmits<{
         />
       </span>
       <span class="relative inline-flex shrink-0">
-        <FileIcon :name="row.name" :is-directory="row.isDirectory" />
+        <FileIcon :name="row.name" :is-directory="row.isDirectory" :class="isHiddenName(row.name) ? 'faded' : ''" />
         <slot name="mark" />
       </span>
-      <slot name="name">
-        <span class="truncate">{{ row.name }}</span>
-      </slot>
+      <span class="flex min-w-0" :class="isHiddenName(row.name) ? 'faded' : ''">
+        <slot name="name">
+          <span class="truncate">{{ row.name }}</span>
+        </slot>
+      </span>
       <slot name="trailing" />
     </Tooltip>
   </div>

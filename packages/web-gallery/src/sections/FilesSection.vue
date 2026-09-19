@@ -37,7 +37,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'List',
-    'Name, date and size, folders first, names in natural order; a header click sorts, a second click flips. A click selects, a double click or Enter opens a folder or confirms a file. Files show dimmed in folder mode and cannot be picked.'
+    'Name, date and size, folders first, names in VS Code\'s order: case ignored, numbers by value, punctuation first, so hidden entries lead and show faded; a header click sorts, a second click flips. A click selects, a double click or Enter opens a folder or confirms a file. Files show dimmed in folder mode and cannot be picked.'
   ],
   [
     'Keys',
@@ -318,7 +318,7 @@ onMounted(() => {
     <template v-if="view === 'tree'">
       <GallerySection
         title="Rows"
-        note="The workspace tree: open and closed directories, files, the selected file, hidden entries after the rest, deep nesting, long names truncated. Click a directory to fold it, a file to select it; the control at the caption's end lists the open directories again."
+        note="The workspace tree: open and closed directories, files, the selected file, deep nesting, long names truncated. Directories come before files and each sorts as VS Code's explorer does, so hidden entries lead, drawn faded. Click a directory to fold it, a file to select it; the control at the caption's end lists the open directories again."
       >
         <GallerySpecimen variant="rows · live">
           <div class="gallery-frame h-[28rem] w-[220px] overflow-hidden bg-surface-editor">
