@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { provideEditSelection, type EditSelectionHandler } from './edit-selection'
+import { provideMessageFiles } from '../markdown/message-files'
+import type { ConversationFiles } from '../markdown/types'
 import { computed, ref, watch } from 'vue'
 import { Archive, PanelRight, Play } from '@lucide/vue'
 import type { TranscriptVersion } from '@demicodes/agent/client'
@@ -34,6 +36,8 @@ const props = defineProps<{
   fork?: MessageForkHandler
   /** Whether the app frame's work panel is open; absent when the host has none. */
   asideOpen?: boolean
+  /** The conversation's Host files its messages name; absent, their paths stay text. */
+  files?: ConversationFiles
 }>()
 const emit = defineEmits<{
   archive: []
@@ -52,6 +56,8 @@ const emit = defineEmits<{
   saveScroll: [id: string, state: PersistedScrollState | null]
 }>()
 provideEditSelection((selection) => props.selectEdit?.(selection))
+// Relative paths resolve against the directory the conversation works in.
+provideMessageFiles(() => props.files && { ...props.files, cwd: props.conversation.cwd })
 const surface = ref<{ dockHeight: number }>()
 // Recovery of an unfinished turn needs a provider and a conversation that is
 // neither archived nor being edited.

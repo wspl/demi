@@ -1,12 +1,17 @@
+// Paths a message writes as link and image targets (`file-previews.md`
+// § Files named in messages).
+import { resolveHostPath } from '../files/paths'
+
 const LINE_RANGE_SUFFIX_RE = /:\d+(?:-\d+)?$/
 
-function joinPath(cwd: string, path: string): string {
-  const trimmedCwd = cwd.endsWith('/') ? cwd.slice(0, -1) : cwd
-  const trimmedPath = path.replace(/^\.\/+/, '')
-  return `${trimmedCwd}/${trimmedPath}`.replace(/\/{2,}/g, '/')
-}
+/** A URL scheme of two or more letters; a single letter before `:` is a drive. */
+const SCHEME_RE = /^[a-z][a-z0-9+.-]+:/i
 
-export function normalizeFilePath(rawPath: string): string {
+/**
+ * A target as the path it names: without a `file://` scheme, a `:line`
+ * suffix, a leading `./` or a trailing slash.
+ */
+function normalizeFilePath(rawPath: string): string {
   const trimmedPath = rawPath.trim()
   if (!trimmedPath)
     return ''
@@ -23,41 +28,44 @@ export function normalizeFilePath(rawPath: string): string {
   return withoutCurrentDirPrefix
 }
 
-export function resolveAbsolutePath(cwd: string, rawPath: string): string {
-  const normalizedPath = normalizeFilePath(rawPath)
-  if (!normalizedPath)
-    return ''
-  return normalizedPath.startsWith('/')
-    ? normalizedPath
-    : joinPath(cwd, normalizedPath)
+/** A target as written may be percent-encoded; one that does not decode stays as it is. */
+export function decodedTarget(value: string): string {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
+/**
+ * The Host path a message's link or image target names, its query and
+ * fragment dropped and resolved against the working directory; null for a
+ * target that names no file.
+ */
+export function messageHostPath(target: string, cwd: string): string | null {
+  if (!isLikelyFilePath(target))
+    return null
+  const path = decodedTarget(normalizeFilePath(target.split(/[?#]/)[0] ?? ''))
+  return path === '' ? null : resolveHostPath(cwd, path)
 }
 
 export function isHttpUrl(path: string): boolean {
   return path.startsWith('http://') || path.startsWith('https://')
 }
 
-export function isLikelyFilePath(rawPath: string): boolean {
+/** Whether a target names a file rather than a web page, a fragment, another scheme or a bare word. */
+function isLikelyFilePath(rawPath: string): boolean {
   const trimmedPath = rawPath.trim()
   const normalizedPath = normalizeFilePath(trimmedPath)
   if (!normalizedPath)
     return false
   if (normalizedPath.startsWith('#'))
     return false
-  if (normalizedPath.startsWith('mailto:'))
-    return false
-  if (isHttpUrl(normalizedPath))
+  if (SCHEME_RE.test(normalizedPath))
     return false
 
-  if (trimmedPath.endsWith('/'))
-    return true
-
-  return normalizedPath.startsWith('/')
-    || normalizedPath.startsWith('./')
-    || normalizedPath.startsWith('../')
-    || normalizedPath.includes('/')
+  // A directory, a path with a separator, or a file name with an extension.
+  return trimmedPath.endsWith('/')
+    || /[/\\]/.test(normalizedPath)
     || /^[^/\\\s]+\.[^/\\\s]+$/.test(normalizedPath)
-}
-
-export function toLocalFileUrl(filePath: string): string {
-  return `local-file://${encodeURI(filePath)}`
 }
