@@ -1,4 +1,4 @@
-import { memoryCommandStorage as memoryStorage } from '@demicodes/shell/testing'
+import { memoryCommandStorage as memoryStorage, TEST_COMMAND_CONTEXT } from '@demicodes/shell/testing'
 import { expect, test } from 'bun:test'
 import { z } from 'zod'
 import { bytesStream, deferred, encodeUtf8 } from '@demicodes/utils'
@@ -633,6 +633,7 @@ test(
 
     const result = await runRegisteredCommand(filerSpec, {
       argv: ['filer', '--help'],
+      context: TEST_COMMAND_CONTEXT,
       env: {},
       cwd: '/workspace',
       io,
@@ -652,6 +653,7 @@ test(
       const io = new MemoryIO()
       const result = await runRegisteredCommand(nestedSpec, {
         argv,
+        context: TEST_COMMAND_CONTEXT,
         stdin: bytesStream(encodeUtf8(stdin)),
         env: {},
         cwd: '/workspace',
@@ -681,6 +683,7 @@ test('runRegisteredCommand runs bare leaf roots', async () => {
   const bareIO = new MemoryIO()
   const bare = await runRegisteredCommand(bareLeaf, {
     argv: ['kcenv', 'HOME'],
+    context: TEST_COMMAND_CONTEXT,
     env: {},
     cwd: '/',
     io: bareIO,
@@ -712,6 +715,7 @@ test(
     }
     const run = runRegisteredCommand(command, {
       argv: ['attend'],
+      context: TEST_COMMAND_CONTEXT,
       env: {},
       cwd: '/',
       host: testHost,
@@ -741,6 +745,7 @@ test(
 
     const result = await runRegisteredCommand(filerSpec, {
       argv: ['filer', 'list', '--json'],
+      context: TEST_COMMAND_CONTEXT,
       env: {},
       cwd: '/workspace',
       io,
@@ -758,6 +763,7 @@ test('runRegisteredCommand rejects invalid JSON mode output', async () => {
   await expect(
     runRegisteredCommand(filerSpecWithListOutput('not json'), {
       argv: ['filer', 'list', '--json'],
+      context: TEST_COMMAND_CONTEXT,
       env: {},
       cwd: '/workspace',
       io: invalidJsonIO,
@@ -773,6 +779,7 @@ test('runRegisteredCommand rejects invalid JSON mode output', async () => {
       filerSpecWithListOutput(JSON.stringify({ files: [1] })),
       {
         argv: ['filer', 'list', '--json'],
+        context: TEST_COMMAND_CONTEXT,
         env: {},
         cwd: '/workspace',
         io: schemaMismatchIO,
@@ -792,6 +799,7 @@ test(
     await expect(
       runRegisteredCommand(filerSpec, {
         argv: ['filer', 'create', 'src/foo.ts', '--json'],
+        context: TEST_COMMAND_CONTEXT,
         env: {},
         cwd: '/workspace',
         io,

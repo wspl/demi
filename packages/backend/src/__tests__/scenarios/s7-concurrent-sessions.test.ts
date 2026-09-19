@@ -17,6 +17,9 @@ afterAll(async () => {
 })
 
 test('two sessions on one runner keep their cwd and state apart', async () => {
+  // The locale the user's browser reported travels in every job's context.
+  const locale = { timeZone: 'America/Sao_Paulo', languages: ['pt-BR', 'en'] }
+  await world.api('/api/settings/preferences', { locale }, 'PATCH')
   const a = await world.conversation('runner:alpha')
   const b = await world.conversation('runner:alpha')
   world.wire()
@@ -61,14 +64,16 @@ test('two sessions on one runner keep their cwd and state apart', async () => {
     .toContain(`b: ${b.filePath('')}`.replace(/\/$/, ''))
   expect(fourth.received[0]).toContain('mark=unset')
 
-  // Every job on the wire names the session it ran for, and names no PATH: a user host's jobs run in the device user's own environment.
-  const starts = world.wire('alpha')
-    .filter((f) => f.message.type === 'job_start')
-    .map((f) => (f.message.type === 'job_start' ? f.message.env : {}))
-  expect(starts.map((env) => env.DEMI_SESSION_ID).sort())
+  // Every job on the wire names the session it ran for in its context, and
+  // its environment names no PATH: a user host's jobs run in the device
+  // user's own environment.
+  const starts = world.wire('alpha').flatMap((f) =>
+    f.message.type === 'job_start' ? [f.message] : [])
+  expect(starts.map(({ context }) => context.caller.kind === 'agent' && context.caller.node).sort())
     .toEqual([a.id, a.id, b.id, b.id].sort())
+  expect(starts.every(({ context }) => Bun.deepEquals(context.locale, locale))).toBe(true)
   expect(
-    starts.every((env) => env.PATH === undefined && env.HOME === undefined)
+    starts.every(({ env }) => env.PATH === undefined && env.HOME === undefined)
   )
     .toBe(true)
 }, 30_000)

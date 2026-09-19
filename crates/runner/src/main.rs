@@ -1,4 +1,4 @@
-use demi_command_service::protocol::Invocation;
+use demi_command_service::protocol::LocalInvocation;
 use demi_runner::{
     commands::command_client::{self, RawCommand, Stdio},
     mode::{self, Options},
@@ -30,11 +30,7 @@ async fn command(root: String, argv: Vec<String>) -> io::Result<u8> {
         live: stdio::is_live(&stdin, &env)?,
     };
     request.validate()?;
-    let invocation = Invocation {
-        caller: "runner-local".into(),
-        conversation: "runner-local".into(),
-        json: None,
-        edits: None,
+    let invocation = LocalInvocation {
         operation: "raw".into(),
         invocation_id: uuid::Uuid::new_v4().simple().to_string(),
         args: serde_json::to_value(request).map_err(io::Error::other)?,
@@ -58,11 +54,7 @@ async fn command(root: String, argv: Vec<String>) -> io::Result<u8> {
 
 async fn manage(state: RunnerState, action: &str) -> io::Result<u8> {
     let active = state.active().await?;
-    let request = Invocation {
-        caller: "runner-local".into(),
-        conversation: "runner-local".into(),
-        json: None,
-        edits: None,
+    let request = LocalInvocation {
         operation: "manage".into(),
         invocation_id: uuid::Uuid::new_v4().simple().to_string(),
         args: serde_json::json!({"secret": active.secret, "action": action}),

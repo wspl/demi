@@ -375,8 +375,10 @@ Test code may depend upward for integration coverage. Production code must not.
   library without depending on runner or Demi command implementations.
 - `build.rs` consumes the Zod definitions in `packages/command-protocol`.
   `src/integrity.rs` owns streaming artifact verification reused by installers;
-  `src/protocol.rs` includes generated types and owns framing; `client.rs` and
-  `server.rs` own the two transport roles. `src/descriptors.rs` owns waiting
+  `src/protocol.rs` includes generated types and owns framing and the
+  `Metadata` an invocation stream opens with: a native `Invocation`, or the
+  local command client's `LocalInvocation`; `client.rs` and `server.rs` own the
+  two transport roles. `src/descriptors.rs` owns waiting
   out a lack of open files, for the runner, the edit recorder and command
   programs alike (`docs/demi-next/runner.md` § Load).
 - Depends on: Tokio, tokio-util, h2, http, futures-util, bytes, serde, serde_json,

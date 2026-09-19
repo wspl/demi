@@ -1,6 +1,9 @@
 #![cfg(feature = "test-fixtures")]
 
-use demi_command_service::protocol::{Invocation, PackageArtifact, PackageDescriptor, Record};
+use demi_command_service::protocol::{
+    CommandCaller, CommandContext, CommandLocale, Invocation, PackageArtifact, PackageDescriptor,
+    Record,
+};
 use demi_runner::commands::{
     cache::{ArtifactResolver, ArtifactSource, RuntimeError},
     native::{Services, target},
@@ -50,7 +53,11 @@ async fn conversation_state_retains_ownerless_services_and_release_joins_all_res
             let client = services.acquire(&descriptor, resolver.clone(), &CancellationToken::new()).await.unwrap();
             for conversation in ["one", "two"] {
                 let (mut input, mut output) = client.invoke(&Invocation {
-                    conversation: conversation.into(), caller: "node".into(),
+                    context: CommandContext {
+                        conversation: conversation.into(),
+                        caller: CommandCaller::agent("node"),
+                        locale: CommandLocale { time_zone: "UTC".into(), languages: vec!["en-US".into()] },
+                    },
                     operation: "retain".into(), invocation_id: format!("{index}-{conversation}"),
                     args: serde_json::json!({}), cwd: root.path().to_string_lossy().into_owned(),
                     env: BTreeMap::new(), edits: None, json: None,

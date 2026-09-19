@@ -28,7 +28,12 @@ pub(super) async fn execute(
         super::navigation::validate_url(url)?;
     }
     let batch = environment
-        .temporary_tabs(&context.request.caller, input.url.len(), cancel, deadline)
+        .temporary_tabs(
+            super::conversations::agent(context)?,
+            input.url.len(),
+            cancel,
+            deadline,
+        )
         .await?;
     let mut pages = Vec::with_capacity(input.url.len());
     let mut truncated = false;

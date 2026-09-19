@@ -100,6 +100,7 @@ function leafFromNode(
         stdin: ctx.stdin,
         cwd: ctx.cwd,
         env: ctx.env,
+        context: ctx.context,
         io: ctx.io,
         signal: ctx.signal,
         stdinStream: ctx.stdinStream,

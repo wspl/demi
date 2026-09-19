@@ -6,7 +6,7 @@ use brush_core::{CommandArg, ExecutionContext, ExecutionResult, builtins};
 use bytes::Bytes;
 use demi_command_service::{
     Handler, Input, InvocationContext, Output, ServiceError,
-    protocol::{Invocation, Record},
+    protocol::{LocalInvocation, Record},
 };
 use std::{collections::BTreeMap, io, sync::Arc};
 
@@ -73,11 +73,7 @@ pub(super) fn execute(
         ));
         let (output, mut records) = Output::channel(cancellation.clone());
         let invocation = commands.dispatcher.invoke(InvocationContext {
-            request: Invocation {
-                caller: "runner-local".into(),
-                conversation: "runner-local".into(),
-                json: None,
-                edits: None,
+            request: LocalInvocation {
                 operation: "raw".into(),
                 invocation_id: uuid::Uuid::new_v4().simple().to_string(),
                 args: serde_json::to_value(raw).map_err(io::Error::other)?,
