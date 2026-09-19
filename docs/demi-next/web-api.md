@@ -25,6 +25,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Conversation history | `GET /conversations/:id/transcript` returns root blocks and subagent histories, each with the [failure facts](backend.md#failure-facts) of its error blocks; `WS /conversations/:id/stream` carries agent frames |
 | Conversation files | `GET/POST /conversations/:id/fs`, `GET /conversations/:id/fs/file?path=...`, `GET /conversations/:id/fs/raw?path=...&version=...&download=true\|false`, `GET/POST /conversations/:id/hosts/:deviceId/fs` |
 | Working tree | `GET /conversations/:id/changes`, `GET /conversations/:id/changes/file?path=...`, `GET /conversations/:id/changes/raw?path=...&download=true\|false` |
+| User streams | `WS /conversations/:id/streams/:name` opens a declared [user stream](#user-streams); `POST /conversations/:id/activity` reports a user operation |
 | Sidebar | `POST /sidebar/reorder { kind, id, beforeId }` |
 | Models | `GET /models?refresh=true\|false` returns the account-wide catalog |
 | Providers | `GET /providers/catalog`, `GET/POST /providers`, `PATCH/DELETE /providers/:id`, `GET /providers/:id/status`, `POST /providers/:id/test`, `POST /providers/:id/quota`; account routes below |
@@ -118,6 +119,37 @@ cannot name another user's device or arbitrary image paths. Settings use this
 API even when the guest is offline or broken. Lifecycle behavior is defined in
 [Managed hosts](managed-hosts.md).
 
+## User streams
+
+`WS /api/conversations/:id/streams/:name` opens the declared
+[user stream](native-runtime.md#user-streams) `name` on the conversation's main
+Host; `browser` is the [live browser view](browser-live-view.md). The upgrade
+requires the session cookie, a conversation the user owns, and an `Origin` of
+the product: the stream operates a browser signed in to the user's sites, so
+an upgrade from any other origin answers 403 before the backend reaches the
+Host. The route answers before the upgrade:
+
+| Answer | When |
+| --- | --- |
+| 404 `unknown_stream` | No stream has that name |
+| 409 `conversation_archived` | The conversation is archived |
+| 409 `device_offline` | A paired device has no live runner |
+| 409 `host_stopped` | The Cloud is stopped; a user stream never wakes it |
+| 409 `conversation_busy` | An archive, a target change or a detach is ending the conversation's streams |
+
+Admission follows [Host operations](sessions-and-targets.md#host-operations).
+After the upgrade, binary messages carry the stream's bytes both ways, in
+order; message boundaries carry no meaning, since the stream frames its own
+messages. The backend reads from the Host only as fast as the page takes the
+bytes. It closes the socket when the stream ends, with a close reason: the
+invocation completed, the Host became unreachable, or an archive, a target or
+directory change, or a detach ended it.
+
+`POST /api/conversations/:id/activity` records one user operation on the
+conversation's Host as [activity](resource-lifecycle.md#activity) and answers
+204. The page calls it at most every 30 seconds while the user operates a
+user stream's view.
+
 ## Exposes
 
 An expose record carries `id`, `deviceId`, `address`, `url`, `createdAt`
@@ -169,14 +201,19 @@ and password recovery are not provided.
 
 ## User preferences
 
-`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel? } }`
+`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, locale? } }`
 for the signed-in user. These objects contain saved overrides; absent values use
 the browser host's defaults. `PATCH` accepts any subset of appearance fields
 (`theme`, `tone`, `accent`, `fontSize`) and shortcut keys (`new`, `sidebar`,
 `settings`). A null shortcut removes that override. `lastModel` stores the explicit new-conversation
 default as `{ providerId, modelId, thinkingEffort, serviceTierId }`, with nullable
 thinking and tier. Choosing a model in an unsent draft saves this preference;
-existing conversations keep their own selection. Unknown fields are rejected.
+existing conversations keep their own selection. `locale` stores the time
+zone and languages the user's browser last reported, as
+`{ timeZone, languages }` with an IANA zone name and BCP 47 tags in preference
+order; the product sends it whenever either changes, and the
+[conversation browser](browser.md#native-driver) starts with it. Unknown fields
+are rejected.
 The control service reads, merges and writes in one transaction, preserving
 concurrent changes to other fields. Preferences persist across restarts and are
 separate for every user in both instance modes. The product browser reads and

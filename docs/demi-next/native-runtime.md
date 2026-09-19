@@ -318,6 +318,41 @@ reports it, rather than claiming a successful release. Which events lead the
 backend to send a release is defined in
 [Conversation idle and Host resource release](resource-lifecycle.md).
 
+### User streams
+
+An operation can also serve the conversation's user directly, for as long as
+the user's page stays open. For example, the
+[live browser view](browser-live-view.md) streams pictures of the
+conversation's browser tabs to the work panel and the user's input back to
+them. It is the same conversation state the agent's `demi browser` commands
+use, reached through the same port.
+
+The application declares each user stream by name with a native binding, the
+way a command leaf binds an operation: the `browser` stream binds
+`demi.builtin` operation `browser.live`. The declarations are fixed with the
+command tree for the program's lifetime, and a page can open only a declared
+name.
+
+When the user opens a stream, the backend asks the conversation's Host runner
+for a [service stream](runner.md#service-streams). The runner invokes the
+operation with `POST /v1/invoke`, the contract every command uses, in the
+resident service that holds the conversation's state: the invocation uses the
+same package binding as the conversation's jobs, so it reaches the same
+service. Its trusted `conversation` field names the conversation, and its
+`caller` field is `user` instead of an agent node; `caller` is therefore a
+discriminated value, an agent node or the user. Its `cwd` is the
+conversation's directory and its environment carries only the job context
+variables.
+
+The invocation's input is the bytes the page sends and its output is the bytes
+the page receives. The operation frames its own messages; the runner and the
+backend forward bytes without reading them. The stream ends when either side
+ends it: the runner cancels the invocation when a pipe fails, and the
+invocation's completion ends the page's connection. A user stream holds one of
+the service's concurrent invocation streams while it lasts; how user streams
+count against that limit is an
+[open decision](browser-live-view.md#open-decisions).
+
 ## Invocation protocol
 
 Protocol version 1 uses direct HTTP/2 requests. The shared SDK owns process IO.

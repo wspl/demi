@@ -133,9 +133,9 @@ Lifecycle cleanup is the explicitly scoped extension below; it still uses this
 entry. Any other change to wake or gate behavior must be decided here, not
 introduced as a bypass in code.
 
-A file transfer is the one operation whose length the browser decides: the
-bytes of a [file preview](file-previews.md) or a download, which last as long
-as a user watches a video. It holds Host access like any operation, until its
+Two operations last as long as the browser decides. The first is a file
+transfer: the bytes of a [file preview](file-previews.md) or a download, which
+last as long as a user watches a video. It holds Host access like any operation, until its
 last byte is delivered or the browser ends it. Two rules keep a forgotten
 transfer from holding a Cloud awake or a conversation's file gate:
 
@@ -150,6 +150,23 @@ transfer from holding a Cloud awake or a conversation's file gate:
 - An archive, a target or directory change, and a detach end the
   conversation's open transfers instead of waiting for them or being refused
   by them. A Cloud stop or reset ends them with the device's other work.
+
+The second is a [user stream](native-runtime.md#user-streams), such as the
+[live browser view](browser-live-view.md), open for as long as the page shows
+it. Its admission checks ownership and the binding and refuses an archived
+conversation, like any operation, with two differences:
+
+- It never wakes a stopped Cloud: a stopped Cloud holds none of the state a
+  user stream shows, so the page learns that the Host is stopped. Work the
+  user starts from the view, such as opening a new browser tab, is ordinary
+  demand and wakes it.
+- Once admitted, it does not hold the conversation's file gate or keep a Cloud
+  awake. Its traffic is retention, not activity; the user operations it carries
+  report activity separately ([Activity](resource-lifecycle.md#activity)).
+
+An archive, a target or directory change, and a detach end the conversation's
+user streams as they end file transfers; a Cloud stop or reset ends them with
+the device's other work.
 
 One kind of access reaches a device without a conversation: the public relay
 of a [Host expose](expose.md#the-public-relay), whose traffic comes from
@@ -188,7 +205,8 @@ unstarted admission attempt may wait and re-enter. Reset/archive/loss preserve
 their explicit refusal semantics.
 
 A target/directory change or archive validates its request, reserves the idle
-tree, cancels existing viewers and file transfers, and awaits their release.
+tree, cancels existing viewers, file transfers and user streams, and awaits
+their release.
 Other file work follows normal busy admission and is not silently classified
 as a passive observer. After reserving conversation file admission, it sends the conversation
 release to the old device through the conversation's host access, then commits
@@ -209,7 +227,7 @@ Conversation and device admission protect different resources:
 | Scope | Protected transition | Work that prevents an idle transition |
 | --- | --- | --- |
 | One conversation tree | Target change | Root and child turns, restores, queued work, and wakeups admitted by the tree lifecycle |
-| Conversation files | Target change | Host operations: uploads, the working tree, file text. File transfers are ended, not awaited. |
+| Conversation files | Target change | Host operations: uploads, the working tree, file text. File transfers and user streams are ended, not awaited. |
 | One Cloud device | Shutdown or reset | Device operations and relevant agent trees across all of its user's conversations |
 
 The lifecycle module reserves device admission before the managed-host

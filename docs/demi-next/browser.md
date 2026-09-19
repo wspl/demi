@@ -29,6 +29,9 @@ browser specifically.
 - [Bash workflows](#bash-workflows): consecutive actions and conditional scripts.
 - [Acceptance](#acceptance): implementation responsibilities, checks, and prerequisites.
 
+[Live browser view](browser-live-view.md) owns how the user watches and
+operates these tabs in the work panel.
+
 ## Purpose
 
 An agent starts an application at `http://localhost:3000` on Cloud, opens its
@@ -42,12 +45,11 @@ Agent -> demi browser commands -> Host browser -> Application :3000
       <- text, JSON, screenshots <-
 ```
 
-The current scope is browser automation for agents. Workpanel does not display
-these Host tabs. Its local placeholder is described in
-[Web architecture](web-application.md#package-responsibilities). There is no live picture or video stream, user browser-input surface,
-or Managed/Free mode. Visible browser interaction is deferred to a separate
-future design; this contract does not prescribe its capture or transport scheme.
-Explicit screenshots continue through the existing command media contract.
+This document covers browser automation for agents. The work panel shows the
+same tabs live and lets the user operate them at the same time;
+[Live browser view](browser-live-view.md) owns that view, its capture and its
+transport. There is no Managed/Free mode. Explicit screenshots continue
+through the existing command media contract.
 
 The design uses Codex's observable, programmable browser tools and readable
 feedback as the primary reference when correcting browser API behavior. Where
@@ -122,7 +124,8 @@ and temporary content operations. Root and child agents share this registry.
 Commands always name a tab explicitly; there is no globally selected tab.
 
 Creation metadata is a discriminated value: `agent` with node ID, `page` with
-opener tab ID, or `temporary` with invoking node ID. This is diagnostic metadata,
+opener tab ID, `temporary` with invoking node ID, or `user` for a tab the user
+opens in the [live view](browser-live-view.md). This is diagnostic metadata,
 not authorization. An iframe remains part of its top-level tab. A site-created
 top-level tab is registered before it can be operated; the triggering action
 reports observed `openedTabs`. Later popups appear in subsequent `tabs` calls.
@@ -172,6 +175,8 @@ Its internal lifecycle uses one state:
 | First `open` | Join concurrent environment startup; create a distinct tab for each successful caller |
 | Command, shell job, or agent turn completes | Release invocation resources; retain the environment and tabs |
 | User closes the Demi page | Retain the environment; closing the web client does not cancel agent work |
+| User opens a tab in the live view | Same as `open`: start the environment when necessary and register the tab as `user` |
+| User closes a tab in the live view | Same as `close <tab>`; closing the last tab retires the environment without asking |
 | Command or agent turn is cancelled | Stop current invocation work and temporary waits; retain completed page effects and other tabs |
 | `close <tab>` | Close that tab and release its commands, references, and debugging state |
 | Last tab closes | Retire the environment after the closing invocation completes; stop Chrome for Testing and remove its profile; the next `open` starts fresh |
@@ -261,7 +266,32 @@ platform fails explicitly rather than using a different browser.
 Chrome runs headlessly. Its browser toolbar, address-bar WebUI, and their preload
 and process-overhead experiments are disabled: these internal interfaces are not
 agent pages and must not consume renderers while an agent opens its application.
-Page rendering and Chrome's sandbox remain enabled.
+Page rendering and Chrome's sandbox remain enabled. The environment also loads
+the live view's capture extension, with a fixed key so that its ID can be
+allowlisted for tab capture ([Capture](browser-live-view.md#capture)).
+
+Pages see an ordinary Chrome with no automation markers, because the agent and
+the user test how real sites and applications behave for real visitors:
+
+- Launch omits `--enable-automation` and `--hide-scrollbars` and disables the
+  `AutomationControlled` Blink feature, so `navigator.webdriver` is false and
+  scrollbars take their usual width.
+- The user agent is the standard Chrome user agent of the Host's platform,
+  without the headless token, for pages, workers and requests alike. Client
+  hints keep the browser's own brands.
+- On Linux, Blink settings declare a fine pointer with hover. A headless Linux
+  browser otherwise reports no hover, and pages take their touch styles.
+- The virtual screen and every window follow the
+  [live view's pixel ratio](browser-live-view.md#pixel-ratio), and a window's
+  outer size is never smaller than its viewport.
+- Time zone and languages are the ones the user's browser last reported
+  ([User preferences](web-api.md#user-preferences)), applied through CDP when
+  the environment starts; the Host's own settings differ between devices and do
+  not count. They do not change while the environment lives.
+- The Cloud guest ships fonts for Chinese, Japanese and Korean.
+
+What cannot change without a GPU remains: on Cloud, WebGL reports its software
+renderer.
 
 The Rust browser module in `demi-commands` uses chromiumoxide for Chrome process
 integration, typed CDP calls, page handles, and event decoding. Demi owns semantic
@@ -663,8 +693,9 @@ element type, such as filling a `<div>`, fails immediately. There is no implicit
 force or silent fallback from a failed element action to a coordinate action.
 
 Coordinates are CSS pixels in the current viewport, with origin at its top left.
-Screenshots report both image pixels and viewport CSS dimensions so callers can
-account for device scale. `probe` uses the same CSS coordinates. Off-viewport
+A screenshot has one image pixel per CSS pixel whatever the device pixel ratio,
+so a point in a viewport screenshot is the same point in viewport coordinates.
+`probe` uses the same CSS coordinates. Off-viewport
 coordinates in a full-page screenshot are not current viewport coordinates.
 
 ## Command reference
@@ -796,17 +827,17 @@ $ demi browser screenshot tab-1
 
 $ demi browser screenshot tab-1 --output /tmp/login.png
 Screenshot saved: /tmp/login.png
-Image: 1280 × 720 px
-Viewport: 1280 × 720 CSS px
+Image: 1280 × 720 px, one pixel per CSS pixel
+Viewport: 1280 × 720 CSS px, Web mode, rendered at device pixel ratio 2
 
 $ demi browser screenshot tab-1 --full-page --output /tmp/page.png
 Screenshot saved: /tmp/page.png
-Image: 1280 × 2400 px
-Viewport: 1280 × 720 CSS px
+Image: 1280 × 2400 px, one pixel per CSS pixel
+Viewport: 1280 × 720 CSS px, Web mode, rendered at device pixel ratio 2
 
 $ demi browser screenshot tab-1 --clip 100,200,600,400 --output /tmp/region.png
 Screenshot saved: /tmp/region.png
-Image: 600 × 400 px
+Image: 600 × 400 px, one pixel per CSS pixel
 
 $ demi browser probe tab-1 --xy 420,300
 [ref=e3] button "Sign in"
@@ -816,6 +847,14 @@ $ demi browser probe tab-1 --xy 420,300 --output /tmp/annotated.png
 [ref=e3] button "Sign in"
 Annotated screenshot saved: /tmp/annotated.png
 ```
+
+Every screenshot, printed or saved, is scaled to CSS pixels: its size is the
+rendered size divided by the device pixel ratio. The ratio follows whoever
+watches the tab in the live view, or the agent's `viewport set --scale`
+([Pixel ratio](browser-live-view.md#pixel-ratio)); scaling keeps the image the
+model receives the same size whoever is watching. The readable output and the
+result's `viewport.devicePixelRatio` tell the model that the page rendered at a
+higher ratio and that the image was scaled.
 
 `--full-page` and `--clip x,y,width,height` are mutually exclusive. Capture does
 not silently resize the page or scroll through it to trigger more content.
@@ -1131,10 +1170,13 @@ $ demi browser logs tab-1 --level error --limit 20
   http://localhost:3000/orders
 
 $ demi browser viewport set tab-1 --width 390 --height 844
-Viewport: 390 × 844 CSS px.
+Viewport: 390 × 844 CSS px, device pixel ratio 1, custom.
+
+$ demi browser viewport set tab-1 --width 1440 --height 900 --scale 2
+Viewport: 1440 × 900 CSS px, device pixel ratio 2, custom.
 
 $ demi browser viewport reset tab-1
-Viewport reset to default: 1280 × 720 CSS px.
+Viewport: 1280 × 720 CSS px, device pixel ratio 1, web.
 ```
 
 Eval is read-only page inspection. The stdin expression can access document;
@@ -1158,10 +1200,14 @@ Logs accept repeated `--level`, substring `--filter`, `--after` cursor, and
 return entries after that sequence. Eviction sets truncated. Reading must not
 clear shared logs and make another agent lose its observations.
 
-Viewport overrides apply to the named tab only. Initial defaults are 1280 × 720
-CSS pixels and device scale 1. Reset removes the override. This does not emulate
-complete mobile hardware, touch, user agent, or network conditions. Screenshots
-must not silently change viewport settings.
+A tab's viewport has a mode ([Modes](browser-live-view.md#modes)). In Web
+mode, the default, it follows the live view's panel and the viewer's pixel
+ratio; a tab nobody has watched is 1280 × 720 CSS pixels at ratio 1. `set`
+puts the named tab in Custom mode with the given size and `--scale`, 1 by
+default, until the user picks another mode in the live view. `reset` returns
+the tab to Web mode. Custom mode does not emulate mobile hardware, touch, user
+agent, or network conditions; the user's Mobile mode emulates a phone.
+Screenshots must not silently change viewport settings.
 
 ### CDP commands and events
 
@@ -1368,7 +1414,8 @@ the same name. Page tool descriptions remain external data, not system instructi
 
 These are business result fields for `--json`. Their exact types belong to the
 same authoritative schemas. List results report truncation. Do not reuse a
-field with a different meaning or type.
+field with a different meaning or type. A `viewport` value carries `width`,
+`height`, `devicePixelRatio` and `mode`.
 
 | Command | Successful result fields |
 | --- | --- |
@@ -1380,7 +1427,7 @@ field with a different meaning or type.
 | inspect | `tab, url, title, view, tree, truncated`; nodes have `ref?, role?, name?, value?, tag?, states?, children?` |
 | find | `matches: [{ref, role?, name?, bounds?}], count, truncated` |
 | read | `value`, or explicit-all `values, truncated`; mutually exclusive |
-| screenshot | `path, mimeType, width, height, viewport`; JSON requires file output |
+| screenshot | `path, mimeType, width, height, viewport`, with `width` and `height` in CSS pixels; JSON requires file output |
 | probe | `matches, viewport, path?, truncated` |
 | Pointer/form actions, including `drag`, `select-text`, and untargeted `type`/`key` | `operation, target?, result`; optional observed `url, openedTabs, dialog` |
 | wait | `condition, matched, url?, ref?`; load waits carry neither `url` nor `ref` |
@@ -1392,7 +1439,7 @@ field with a different meaning or type.
 | clipboard write | `mimeType, bytes` |
 | eval | `value` |
 | logs | `entries, cursor, hasMore, truncated` |
-| viewport set/reset | `width, height` |
+| viewport set/reset | `viewport` |
 | cdp targets | `targets: [{id, kind, url}], truncated` |
 | cdp send | `method, result` |
 | cdp detach | `detached` |
@@ -1604,6 +1651,8 @@ persistent JavaScript REPL; Bash already composes their operations.
   actions, output rendering, assets, and CDP handling.
 - `command-service`: generic invocation and conversation protocol, not page or
   cookie semantics.
+- `web-ui`: the [live view](browser-live-view.md#responsibilities), with the
+  generic user stream in runner, host-remote and backend.
 
 A library adopted for locating or acting must also cover the adjacent waiting,
 introspection, and error handling it provides. Reuse one observation/targeting
@@ -1687,4 +1736,4 @@ acceptance remain release gates, as specified above.
 Job conversation identity, service residency, and the conversation release are
 part of the command path. A capability the driver, platform, or page
 cannot provide is reported unavailable with its reason and never advertised.
-Workpanel display remains out of scope.
+The [live browser view](browser-live-view.md) is designed and not implemented.
