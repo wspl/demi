@@ -3,7 +3,6 @@ import { computed, ref, watch, type Component } from 'vue'
 import { Brain, History, SquareTerminal } from '@lucide/vue'
 import ActivityMark from '@demicodes/web-ui/ui/ActivityMark.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
-import { t } from '@demicodes/web-ui/infra/i18n'
 import type { ActivityKind, HandoffBlock } from '../activity-slot'
 import { parseToolCallInput } from '../block-helpers'
 import { useElapsedTime } from '../../composables/useElapsedTime'
@@ -46,7 +45,7 @@ interface Face {
 const waitLabel = computed(() => {
   switch (props.kind) {
     case 'connecting':
-      return t('agent.block.connecting')
+      return 'Connecting'
     case 'retrying':
     case 'requesting':
       return providerWaitLabel(props.kind, requestingElapsed.value ?? 0)

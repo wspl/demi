@@ -5,7 +5,6 @@ import { Check, Copy, GitFork, LoaderCircle } from '@lucide/vue'
 import type { MessageForkState } from '../message-fork'
 import Tooltip from '../../ui/Tooltip.vue'
 import RelativeTime from '../../ui/RelativeTime.vue'
-import { t } from '../../infra/i18n'
 
 const props = defineProps<{
   content: string
@@ -28,10 +27,10 @@ async function copyMessage(): Promise<void> {
 
 <template>
   <div class="mt-2 flex flex-wrap items-center gap-1 text-fg-faint">
-    <Tooltip :content="copied ? t('common.copied') : t('agent.user.copy')">
+    <Tooltip :content="copied ? 'Copied' : 'Copy'">
       <button
         type="button"
-        :aria-label="copied ? t('common.copied') : t('agent.user.copy')"
+        :aria-label="copied ? 'Copied' : 'Copy'"
         class="flex size-6 items-center justify-center rounded transition-colors hover:bg-hover hover:text-fg-muted"
         @click="copyMessage"
       >
@@ -39,10 +38,10 @@ async function copyMessage(): Promise<void> {
         <Copy v-else :size="13" />
       </button>
     </Tooltip>
-    <Tooltip :content="fork ? t('agent.assistant.fork') : t('agent.assistant.forkUnavailable')">
+    <Tooltip :content="fork ? 'Fork' : 'Fork is available after this message completes.'">
       <button
         type="button"
-        :aria-label="t('agent.assistant.fork')"
+        aria-label="Fork"
         :disabled="!fork || forkState?.phase === 'pending'"
         :aria-busy="forkState?.phase === 'pending'"
         class="flex size-6 items-center justify-center rounded transition-colors enabled:hover:bg-hover enabled:hover:text-fg-muted disabled:text-fg-ghost"
@@ -54,7 +53,7 @@ async function copyMessage(): Promise<void> {
     </Tooltip>
     <RelativeTime :timestamp="createdAt" class="ml-1 text-[11px] leading-6" />
     <span v-if="copyError" role="status" class="ml-1 text-[11px]">
-      {{ t('agent.assistant.copyFailed') }}
+      Could not copy. Try again.
     </span>
   </div>
 </template>

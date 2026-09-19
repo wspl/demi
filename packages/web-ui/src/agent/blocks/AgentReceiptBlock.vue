@@ -5,15 +5,14 @@ import type { AgentMessage } from '@demicodes/core'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import StreamedMarkdown from '@demicodes/web-ui/ui/StreamedMarkdown.vue'
 import FunctionalBlock from './FunctionalBlock.vue'
-import { t } from '../../infra/i18n'
 
 const props = defineProps<{ message: AgentMessage }>()
 const isOpen = defineModel<boolean>('open', { default: false })
 const label = computed(() => {
   const sender = props.message.sender.description || props.message.sender.id
   const event = props.message.event
-  const action = t(`agent.receipt.${event.type === 'message' ? 'update' : event.outcome}`)
-  return `${sender} ${action}`
+  // A finished child's outcome reads as its verb: completed, failed, aborted.
+  return `${sender} ${event.type === 'message' ? 'sent an update' : event.outcome}`
 })
 </script>
 

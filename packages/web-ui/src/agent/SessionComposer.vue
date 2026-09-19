@@ -4,7 +4,6 @@ import type { ThinkingConfig, TokenUsage } from '@demicodes/core'
 import { ArrowUp, File as FileIcon, HardDrive, Plus, RotateCcw, Square, X } from '@lucide/vue'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import { appOverlayStore } from '../overlay/appOverlay'
-import { t } from '../infra/i18n'
 import AttachmentTile from './AttachmentTile.vue'
 import {
   attachmentsReady,
@@ -117,7 +116,7 @@ const sendDisabled = computed(
 )
 const sendBlockReason = computed(() => {
   if (modelState.value.kind === 'unavailable') {
-    return t('agent.input.switchModel')
+    return 'This model is unavailable. Choose another to send.'
   }
   if (props.disabled) {
     return undefined
@@ -129,7 +128,7 @@ const sendBlockReason = computed(() => {
 // refused edit is the product's toast.
 watch(edit.attachmentError, (message) => {
   if (message) {
-    showToast({ title: t('agent.input.attachmentFailed'), message, tone: 'danger' })
+    showToast({ title: "Couldn't attach", message, tone: 'danger' })
   }
 })
 const expanded = computed(
@@ -220,8 +219,8 @@ function addFiles(files: File[]): void {
     <SessionNoticeBar
       v-if="archived"
       key="archived"
-      :label="t('agent.session.archived')"
-      :action="t('agent.session.restore')"
+      label="This conversation is archived."
+      action="Restore conversation"
       @action="emit('restore')"
     />
     <SessionNoticeBar
@@ -229,9 +228,9 @@ function addFiles(files: File[]): void {
         modelState.kind === 'none' && (!modelLoad || modelLoad === 'ready')
       "
       key="none"
-      :label="t('agent.input.noModels')"
+      label="No models available."
       :action="
-        canConfigure !== false ? t('agent.input.configureModels') : undefined
+        canConfigure !== false ? 'Configure models' : undefined
       "
       @action="emit('configure')"
     />
@@ -335,13 +334,13 @@ function addFiles(files: File[]): void {
             v-bind="attachOpen ? { open: true } : {}"
           >
             <template #trigger="{ isOpen }">
-              <Tooltip :content="t('agent.input.attach')">
+              <Tooltip content="Attach">
                 <IconButton
                   :icon="Plus"
                   variant="ghost"
                   circle
                   :pressed="isOpen"
-                  :aria-label="t('agent.input.attach')"
+                  aria-label="Attach"
                 />
               </Tooltip>
             </template>
@@ -349,19 +348,13 @@ function addFiles(files: File[]): void {
               <Menu>
                 <MenuItem
                   :icon="FileIcon"
-                  :label="
-                    t(
-                      remoteFiles
-                        ? 'agent.input.attachLocalFiles'
-                        : 'agent.input.attachFiles',
-                    )
-                  "
+                  :label="remoteFiles ? 'Attach local files' : 'Attach files'"
                   @select="pickFiles(close)"
                 />
                 <MenuItem
                   v-if="remoteFiles && !messageEdit"
                   :icon="HardDrive"
-                  :label="t('agent.input.attachRemoteFile')"
+                  label="Attach remote file…"
                   @select="emit('attachRemote')"
                 />
               </Menu>

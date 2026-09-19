@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { X } from '@lucide/vue'
-import { t } from '../infra/i18n'
 import { ICON_PX } from '../ui/icon-metrics'
 import FileIcon from '../files/FileIcon.vue'
 import {
@@ -119,7 +118,7 @@ const extension = computed(() => props.name.split('.').pop()?.toUpperCase() ?? '
       v-if="removable"
       type="button"
       class="absolute -top-1.5 -right-1.5 flex size-4 items-center justify-center rounded-full bg-surface-raised text-fg-muted opacity-0 ring-1 ring-line transition-opacity duration-150 ease-out group-hover/tile:opacity-100 hover:text-fg-body focus-visible:opacity-100"
-      :aria-label="t('common.close')"
+      aria-label="Close"
       @click.stop="emit('remove')"
     >
       <X :size="ICON_PX.in12" />

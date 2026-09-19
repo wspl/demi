@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { MessageSquareDashed, MessageSquareOff } from '@lucide/vue'
-import { t } from '../infra/i18n'
 import RegionStatus from '../ui/RegionStatus.vue'
 import { sessionStatusCopy, type SessionStatusKind } from './session-status'
 
@@ -26,10 +25,10 @@ const emit = defineEmits<{
 const copy = computed(() => sessionStatusCopy(props.kind))
 const actionLabel = computed(() => {
   if (copy.value.action === 'retry') {
-    return t('agent.session.retry')
+    return 'Retry'
   }
   if (copy.value.action === 'create') {
-    return t('agent.session.new')
+    return 'Start a conversation'
   }
   return undefined
 })
