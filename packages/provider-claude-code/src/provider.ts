@@ -1,4 +1,4 @@
-import { abortable } from '@demicodes/utils'
+import { AbortError, abortable, noop } from '@demicodes/utils'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import type { ToolResultContentBlock } from '@demicodes/core'
@@ -195,25 +195,25 @@ export class ClaudeCodeProvider implements AgentProvider {
         if (this.active === run)
           this.active = null
       }
-      const abort = new Promise<{
-        done: true;
-        value: undefined
-      }>((resolve) => {
-        if (signal.aborted) {
-          void onAbort().then(() => resolve({ done: true, value: undefined }))
-          return
-        }
-        abortListener = () => {
-          void onAbort()
-            .finally(() => resolve({ done: true, value: undefined }))
-        }
+      // The kill starts the moment the signal fires, wherever the loop is. A
+      // kill that fails leaves the process to end on its own, and the exit
+      // below is awaited either way.
+      let killed: Promise<void> = Promise.resolve()
+      const abortRun = (): void => {
+        killed = onAbort().catch(noop)
+      }
+      if (signal.aborted) {
+        abortRun()
+      } else {
+        abortListener = abortRun
         signal.addEventListener('abort', abortListener, { once: true })
-      })
+      }
 
       while (true) {
-        const next = await Promise.race([this.nextMessage(run), abort])
+        const next = await this.nextOrAbort(run, signal)
         if (next.done) {
           const wasAborted = signal.aborted
+          await killed
           const exit = await active.transport.wait()
           if (this.active === active)
             this.active = null
@@ -687,6 +687,26 @@ export class ClaudeCodeProvider implements AgentProvider {
     if (value !== undefined)
       return Promise.resolve({ done: false, value })
     return active.iterator.next()
+  }
+
+  /**
+   * The next message, or the end once `signal` fires: an abort ends the
+   * wait at once, and the turn then ends as a finished stream does. Each
+   * wait listens for the abort only while it lasts; racing every wait
+   * against one promise that lasts the turn would keep each message read
+   * reachable until the turn ends.
+   */
+  private async nextOrAbort(
+    active: ActiveClaudeRun,
+    signal: AbortSignal,
+  ): Promise<IteratorResult<ClaudeStdoutLine>> {
+    try {
+      return await abortable(this.nextMessage(active), signal)
+    } catch (error) {
+      if (error instanceof AbortError && signal.aborted)
+        return { done: true, value: undefined }
+      throw error
+    }
   }
 
   private async writeControlResponse(
