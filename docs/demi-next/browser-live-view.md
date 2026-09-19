@@ -86,9 +86,9 @@ use the same address bar component; only a Host tab has the viewport menu.
 3. The backend mints two pipes and asks the main Host's runner to open the
    `browser` user stream on them ([Service streams](runner.md#service-streams)).
 4. The runner invokes the declared operation on the resident `demi-commands`
-   service. The invocation names the conversation as its trusted
-   `conversation` and the user as its `caller`, and its input and output are
-   the two pipes.
+   service. Its [command context](native-runtime.md#command-context) names the
+   conversation and a `user` caller, and its input and output are the two
+   pipes.
 5. The live view module answers with the protocol version, the tab list and the
    watched tab's first key frame.
 

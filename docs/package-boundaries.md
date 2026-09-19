@@ -175,7 +175,7 @@ Test code may depend upward for integration coverage. Production code must not.
   algorithms remain native. See [Browser commands](demi-next/browser.md#command-contract).
 - Status: implemented.
 - Production deps: `@demicodes/agent`, `@demicodes/browser-protocol`, `@demicodes/core`, `@demicodes/shell`, `@demicodes/utils`.
-- Owns: coding harness, coding prompt, coding commands (the `demi` root: every subcommand is a noun domain group — `file` as `runtime` modules written against the ABI and `todo` as `rpc` built in, product groups like the backend's `host` composed in). A `reference` block reaches the model as its path; the model reads the file with tools.
+- Owns: coding harness, coding prompt, coding commands (the `demi` root: every subcommand is a noun domain group — `file` as `runtime` modules written against the ABI and `todo` as `rpc` built in, `context` as an `rpc` leaf that prints the [command context](demi-next/native-runtime.md#command-context), product groups like the backend's `host` composed in). A `reference` block reaches the model as its path; the model reads the file with tools.
 - Public boundary: harness and coding command construction based on Host and Command contracts.
 - Must not: instantiate AgentSession, AgentServer, a shell environment, concrete providers, or a Host implementation.
 - Runtime rule: defines Host, commands, prompt, preamble, lifecycle, and reference resolution through the harness; it must not replace the shell mechanism, the standard agent tool surface, or provide an alternate shell/tool runtime.
@@ -256,8 +256,8 @@ Test code may depend upward for integration coverage. Production code must not.
   import the domain modules that supply activity. See
   [Conversation idle and Host resource release](demi-next/resource-lifecycle.md).
 - Browser scope: the backend has no browser module. It names the conversation
-  and invoking node on every job it starts and sends the generic conversation
-  release; browser state lives in the native package. The live browser view
+  and invoking node in the command context of every job it starts and sends
+  the generic conversation release; browser state lives in the native package. The live browser view
   reaches the Host through the generic user stream route and activity reports
   ([Web API](demi-next/web-api.md#user-streams)).
 - Status: target contract.
@@ -306,7 +306,8 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/runner-protocol`
 
-- Conversation scope: jobs carry the conversation and invoking node identity;
+- Conversation scope: jobs and service streams carry the
+  [command context](demi-next/native-runtime.md#command-context);
   `conversation_release` is the one generic release message; no browser policy.
 - Status: implemented (the final wire: MessagePack frames, per-op fs messages, jobs, the rpc relay, the manifest push, transfers).
 - Production deps: `@demicodes/command-protocol`, `@demicodes/shell` (the Host types the fs messages carry), `@demicodes/utils`, `@msgpack/msgpack` (the Bun end's codec).
@@ -316,8 +317,8 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/host-remote`
 
-- Conversation scope: pass the conversation and invoking node identity with
-  each job and forward the conversation release; no browser knowledge.
+- Conversation scope: pass the command context with each job and forward the
+  conversation release; no browser knowledge.
 - Status: implemented (M9).
 - Production deps: `@demicodes/command-loader`, `@demicodes/command-protocol`, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`.
 - Owns: the backend's end of a runner — the pipe broker (`pipes.ts`: the rendezvous of a pipe's two ends, which the backend's `/api/pipes` routes feed, holding only the bytes in flight; `devicePipes` binds it to one device) and `RemoteHost`, a `Host` over a connection whose file contents travel through that device's pipes, with a jobs facet (stable object across reconnects, logical cwd fallback, injected store), a working-tree facet and a network facet (`net.open`: one TCP stream on the device as two pipes, `runner.md` § Network streams), and `RemoteShellEnvironment`, the `ShellEnvironment` of a real host over jobs (the model's view as the record, the working directory carried between execs). The production Host and shell the backend injects into the agent.
@@ -354,7 +355,7 @@ Test code may depend upward for integration coverage. Production code must not.
   scoped invocation/event wire schemas, following
   [Native runtime](demi-next/native-runtime.md#retained-resources).
 - Owns: authoritative Zod command-service wire and native package descriptor
-  schemas, derived TypeScript types, protocol constants and package identities.
+  schemas, including the [command context](demi-next/native-runtime.md#command-context), derived TypeScript types, protocol constants and package identities.
   Package identities use canonical JSON and SHA-256.
 - Production deps: none.
 - Public boundary: command wire and package schemas, types and constants.
@@ -407,8 +408,8 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `crates/runner` (Rust executable)
 
-- Conversation scope: `commands/` writes the trusted conversation and caller
-  identity, and the user's locale, into every native invocation, keeps a service resident while it holds
+- Conversation scope: `commands/` keeps each job's command context and writes
+  it into every native invocation, keeps a service resident while it holds
   conversation state, and forwards the conversation release; it implements no
   browser operation.
 - Owns: the `demi-runner` execution host, backend registration and connection,

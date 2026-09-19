@@ -53,8 +53,11 @@ these rules:
 | `env` with `inheritEnv: true` | Overlay supplied values on the device environment. |
 | Undefined value in an overlay | Remove that inherited variable. |
 
-Runner-owned context variables override caller values. An opaque context ties
-command callbacks to the live execution, registration, and pinned manifest.
+Runner-owned variables, the local endpoint, the opaque context handle,
+`DEMI_HOME` and the alias directory on `PATH`, override caller values. The
+opaque handle ties command callbacks to the live execution, registration, and
+pinned manifest; the live execution also holds the job's
+[command context](native-runtime.md#command-context).
 The runner releases contexts when execution completes, is cancelled, or loses
 its backend connection. Provider CLI assembly can request environment inheritance,
 but the runner has no provider-specific behavior.
@@ -155,8 +158,8 @@ what flows through it. The backend uses it for the public relay of
 
 A `service_open` request asks the runner to open a
 [user stream](native-runtime.md#user-streams) and carry its bytes both ways.
-It names the stream, the conversation, the user's locale, the declared package
-and operation, and two pipes ([Pipes and output](#pipes-and-output)): `input`, whose bytes the
+It names the stream, its [command context](native-runtime.md#command-context),
+the declared package and operation, and two pipes ([Pipes and output](#pipes-and-output)): `input`, whose bytes the
 runner delivers to the invocation as input chunks when the operation asks for
 them, and `output`, into which it writes the invocation's output. The runner
 starts the invocation in the resident service that holds the conversation's
@@ -173,6 +176,9 @@ runner does not parse what flows through it. The backend uses it for the
 ## Shell jobs
 
 A shell job owns its working directory, environment, IO, and asynchronous work.
+It also carries the [command context](native-runtime.md#command-context) the
+backend built for it; the runner never derives that context from the job's
+environment.
 Brush runs inside the resident runner process. Declared roots call the shared
 command dispatcher; external tools such as Git, Python, and Node run as child
 processes. Every in-process file write passes through the job's scope, which
