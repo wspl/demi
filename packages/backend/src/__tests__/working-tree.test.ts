@@ -90,7 +90,7 @@ test(
       root: string;
       repository: boolean;
       head: string | null;
-      files: Array<{ path: string; kind: string; added: number; removed: number }>;
+      files: Array<{ path: string; status: string; kind: string; added: number; removed: number }>;
       truncated: boolean;
       watched: boolean
     }
@@ -99,9 +99,9 @@ test(
     expect(changes.head).toMatch(/^[0-9a-f]{40}$/)
     expect(changes.truncated).toBe(false)
     expect(changes.files).toEqual([
-      { path: 'a.txt', kind: 'modified', added: 1, removed: 0 },
-      { path: 'b.txt', kind: 'added', added: 1, removed: 0 },
-      { path: 'blob.bin', kind: 'added', added: 0, removed: 0 },
+      { path: 'a.txt', status: ' M', kind: 'modified', added: 1, removed: 0 },
+      { path: 'b.txt', status: '??', kind: 'added', added: 1, removed: 0 },
+      { path: 'blob.bin', status: '??', kind: 'added', added: 0, removed: 0 },
     ])
 
     const modified = await api(backend, `/api/conversations/${conversation.id}/changes/file?path=a.txt`)

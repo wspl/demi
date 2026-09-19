@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 import {
   RUNNER_PROTOCOL_VERSION,
   createRunnerWire,
+  gitChangeSchema,
   type RunnerProtocolMessage
 } from '../index'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
@@ -225,4 +226,12 @@ test('job identity is required and conversation release replaces grants', () => 
   for (const type of ['resource_acquire', 'resource_release', 'resource_status', 'resource_cancel']) {
     expect(() => wire.decodeBackendToRunner(msgpackCodec.encode({ type, id: 'request' }))).toThrow('Malformed')
   }
+})
+
+test('a working-tree change carries one of the pairs git status prints', () => {
+  const change = { path: 'a.txt', kind: 'modified', added: 1, removed: 0 }
+  for (const status of ['??', ' M', 'M ', 'AM', 'RM', 'R ', 'C ', ' A', ' T', 'T ', 'UU', 'AA', 'DD', 'UD'])
+    expect(gitChangeSchema.safeParse({ ...change, status }).success).toBe(true)
+  for (const status of ['  ', '!!', 'U ', ' U', ' C', 'X ', 'M', 'MMM'])
+    expect(gitChangeSchema.safeParse({ ...change, status }).success).toBe(false)
 })

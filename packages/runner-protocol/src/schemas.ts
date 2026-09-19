@@ -215,9 +215,20 @@ const fsOkMessageSchema = z.union(
   FS_OPS.map(fsOkSchema) as unknown as [z.ZodType<FsOkMessage>, ...z.ZodType<FsOkMessage>[]]
 )
 
-/** One changed file of a working tree; the shape `ChangeFile` in `@demicodes/web-ui` renders. */
+/**
+ * git's two status letters for a path, as `git status --porcelain` prints
+ * them: the index against HEAD, then the working tree against the index;
+ * `??` for an untracked file, a conflict's pair for one in conflict.
+ */
+const gitStatusSchema = z.string().regex(/^(?:[MTADRC][ MTDAR]| [MTDAR]|\?\?|DD|AU|UD|UA|DU|AA|UU)$/)
+
+/**
+ * One path `git status` lists in a working tree (`runner.md` § Working tree);
+ * the shape `WorkingTreeChange` in `@demicodes/web-ui` renders.
+ */
 export const gitChangeSchema = z.strictObject({
   path: z.string(),
+  status: gitStatusSchema,
   kind: z.enum(['added', 'modified', 'deleted', 'renamed']),
   /** The path before a rename. */
   from: z.string().optional(),
