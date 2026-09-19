@@ -48,6 +48,7 @@ import GalleryMessageEditing from '../components/GalleryMessageEditing.vue'
 import GalleryAssistantMessages from '../components/GalleryAssistantMessages.vue'
 import GalleryModelPreference from '../components/GalleryModelPreference.vue'
 import GalleryFindBar from '../components/GalleryFindBar.vue'
+import GalleryUserMessageLengths from '../components/GalleryUserMessageLengths.vue'
 import { submitMessageEdit, type MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import { firstRunningTerminalId } from '@demicodes/web-ui/agent/terminals'
 import type { ThinkingConfig, UserContentBlock } from '@demicodes/core'
@@ -63,7 +64,6 @@ import {
   runningShellTool,
   shellTool,
   thinkingText,
-  longUserText,
   steerPrompt,
   transcriptDemoBlocks,
 } from '../fixtures/blocks'
@@ -393,12 +393,6 @@ const attachmentBubble = [
   {
     type: 'text' as const,
     text: 'Failing log and the screenshot from CI.',
-  },
-]
-const overflowBubble = [
-  {
-    type: 'text' as const,
-    text: longUserText,
   },
 ]
 const userBubble = [
@@ -961,7 +955,7 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="UserBlock"
-        note="User, attachments, overflow, pending steer, queued, and stuck."
+        note="User, attachments, pending steer, queued, and stuck. Long messages have a view of their own: Lengths."
       >
         <div class="specimen-stack specimen-stack-loose">
           <GallerySpecimen
@@ -991,16 +985,6 @@ function abortTerminal(id: string) {
           >
             <div class="gallery-frame gallery-user-frame bg-surface">
               <UserBlock :content="attachmentBubble" />
-            </div>
-          </GallerySpecimen>
-          <GallerySpecimen
-            variant="overflow"
-            wide
-          >
-            <div class="gallery-frame gallery-user-frame bg-surface">
-              <div class="gallery-user-overflow">
-                <UserBlock :content="overflowBubble" />
-              </div>
             </div>
           </GallerySpecimen>
           <GallerySpecimen
@@ -1207,6 +1191,10 @@ function abortTerminal(id: string) {
           </GallerySpecimen>
         </div>
       </GallerySection>
+    </template>
+
+    <template v-if="view === 'lengths'">
+      <GalleryUserMessageLengths :files="sessionFiles" :cwd="workspace.root" />
     </template>
 
     <template v-if="view === 'changes'">
