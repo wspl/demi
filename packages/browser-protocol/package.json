@@ -8,6 +8,11 @@
       "development": "./src/index.ts",
       "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
+    },
+    "./live": {
+      "development": "./src/live.ts",
+      "types": "./dist/live.d.mts",
+      "import": "./dist/live.mjs"
     }
   },
   "files": ["dist"],
