@@ -68,7 +68,11 @@ export interface FileBrowserSource {
   home: string
   /** Lists one directory. Rejects with a `FileBrowserError` for a known failure; anything else reads as `other`. */
   list(path: string, signal?: AbortSignal): Promise<FileBrowserEntry[]>
-  /** Absent when the source cannot create directories; the browser then offers no New folder. */
+  /**
+   * Makes the directory at `path` and any missing above it; one already
+   * there is left as it is. Absent when the source cannot create
+   * directories; the browser then offers no New folder.
+   */
   createDirectory?(path: string, signal?: AbortSignal): Promise<void>
   /** Reads one file as text. Absent when the source cannot read files; a file view then has nothing to show. */
   read?(path: string, signal?: AbortSignal): Promise<string>
@@ -78,10 +82,17 @@ export interface FileBrowserSource {
    * Writes `file` to `path` whole, its bytes streamed as they go: `progress`
    * hears how many have gone, and aborting `signal` stops the upload and
    * leaves `path` as it was. A `path` already taken rejects with a
-   * `FileBrowserError` of kind `exists` unless `replace`. Absent when the
-   * source cannot write; the tree then offers no Upload.
+   * `FileBrowserError` of kind `exists` unless `replace`; a directory there
+   * is never replaced. Absent when the source cannot write; the tree then
+   * offers no Upload.
    */
   upload?(path: string, file: File, options: FileUploadOptions): Promise<void>
+  /**
+   * Deletes the file or the directory at `path`, a directory with everything
+   * in it; nothing there is fine. Absent when the source cannot delete; an
+   * upload then cannot replace a folder.
+   */
+  remove?(path: string, signal?: AbortSignal): Promise<void>
 }
 
 export interface FileUploadOptions {
