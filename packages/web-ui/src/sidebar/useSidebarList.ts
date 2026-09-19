@@ -205,16 +205,23 @@ export function useSidebarList(
     event.preventDefault()
   }
 
-  /** Rows that left the list leave the selection too. */
+  /**
+   * Rows that left the list leave the selection too. A selection left empty
+   * collapses to the open conversation once it is listed: a page that loads
+   * opens its conversation before the list arrives, and a list that is
+   * loading again lists nothing for a while.
+   */
   function prune(): void {
     const present = new Set(entries.value.map((entry) => entry.id))
-    const next = [...selected.value].filter((id) => present.has(id))
-    if (next.length !== selected.value.size)
-      replaceSelection(next)
     if (focusedId.value && !present.has(focusedId.value))
       focusedId.value = null
     if (anchorId.value && !present.has(anchorId.value))
       anchorId.value = null
+    const next = [...selected.value].filter((id) => present.has(id))
+    if (next.length === 0 && openId.value && present.has(openId.value))
+      clearSelection()
+    else if (next.length !== selected.value.size)
+      replaceSelection(next)
   }
 
   return {
