@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import FileBrowser from '@demicodes/web-ui/files/FileBrowser.vue'
 import FileBrowserAddressBar from '@demicodes/web-ui/files/FileBrowserAddressBar.vue'
@@ -10,8 +10,9 @@ import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import FileTree from '@demicodes/web-ui/files/FileTree.vue'
 import FileUploadList from '@demicodes/web-ui/files/FileUploadList.vue'
 import UploadConflictDialog from '@demicodes/web-ui/files/UploadConflictDialog.vue'
-import type { FileUploadView } from '@demicodes/web-ui/files/file-uploads'
-import { TREE_ROOT, TREE_SELECTED, failingSource, offlineSource, rowsSource, stuckSource } from '../fixtures/file-trees'
+import { uploadsOf, type FileUploads } from '@demicodes/web-ui/files/file-uploads'
+import Button from '@demicodes/web-ui/ui/Button.vue'
+import { TREE_ROOT, TREE_SELECTED, failingSource, offlineSource, rowsSource, sizedFile, stuckSource, uploadSource } from '../fixtures/file-trees'
 import { createMemoryFileSource, dir, file } from '@demicodes/web-ui/files/memory-source'
 import type { FileBrowserMode, FileBrowserSource } from '@demicodes/web-ui/files/types'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
@@ -264,14 +265,48 @@ function selectHost(target: 'folder' | 'file', id: string) {
 const treeRows = rowsSource()
 
 const MiB = 1024 * 1024
-/** One upload in each state, at sizes a real one would have. */
-const uploadStates: FileUploadView[] = [
-  { id: 'recording', path: `${TREE_ROOT}/docs/demo-recording.mov`, file: { name: 'demo-recording.mov', size: 480 * MiB }, state: { phase: 'uploading', sent: 211 * MiB } },
-  { id: 'dataset', path: `${TREE_ROOT}/docs/dataset.parquet`, file: { name: 'dataset.parquet', size: Math.round(1.2 * 1024 * MiB) }, state: { phase: 'waiting' } },
-  { id: 'logo', path: `${TREE_ROOT}/src/logo.svg`, file: { name: 'logo.svg', size: 4_096 }, state: { phase: 'done' } },
-  { id: 'notes', path: `${TREE_ROOT}/notes.md`, file: { name: 'notes.md', size: 2_310 }, state: { phase: 'done' } },
-  { id: 'model', path: `${TREE_ROOT}/src/auth/model.bin`, file: { name: 'model.bin', size: 90 * MiB }, state: { phase: 'failed', message: 'Permission denied' } },
-]
+
+/**
+ * A workspace with an upload in each state, at sizes real ones have: two
+ * landed, one refused by `src/auth`, one on its way and one waiting behind it.
+ */
+function seededUploads(): { source: FileBrowserSource; uploads: FileUploads } {
+  const source = uploadSource()
+  const uploads = uploadsOf(source)
+  uploads.add(`${TREE_ROOT}/src`, [sizedFile('logo.svg', 4_096)], new Set())
+  uploads.add(TREE_ROOT, [sizedFile('notes.md', 2_310)], new Set())
+  uploads.add(`${TREE_ROOT}/src/auth`, [sizedFile('model.bin', 90 * MiB)], new Set())
+  uploads.add(`${TREE_ROOT}/docs`, [
+    sizedFile('demo-recording.mov', 480 * MiB),
+    sizedFile('dataset.parquet', Math.round(1.2 * 1024 * MiB)),
+  ], new Set())
+  return { source, uploads }
+}
+
+const pinnedUploads = shallowRef(seededUploads())
+
+/** Stops everything the specimen has waiting or on its way. */
+function stopPinnedUploads(): void {
+  const { uploads } = pinnedUploads.value
+  for (const item of [...uploads.items])
+    uploads.cancel(item.id)
+}
+
+function resetPinnedUploads(): void {
+  stopPinnedUploads()
+  pinnedUploads.value = seededUploads()
+}
+
+onBeforeUnmount(stopPinnedUploads)
+
+// The replace question: its answer shows beside it, and Show asks it again.
+const conflictOpen = ref(true)
+const conflictAnswer = ref<string | null>(null)
+
+function answerConflict(answer: string): void {
+  conflictAnswer.value = answer
+  conflictOpen.value = false
+}
 const treeStuckRoot = stuckSource(TREE_ROOT)
 const treeStuckDir = stuckSource(`${TREE_ROOT}/src/http`)
 const treeFailing = failingSource()
@@ -406,25 +441,42 @@ onMounted(() => {
       </GallerySection>
       <GallerySection
         title="Upload and download"
-        note="A right-click offers what the host can do there: a file downloads; a folder, or the empty space for the workspace itself, takes files uploaded into it. Picked names the folder already has wait on a question: Replace writes over them, Skip uploads the rest, closing uploads nothing. The uploads list under the tree, one on its way at a time and the rest waiting: a bar and how much has gone, where a landed file went, why one failed. Cancel stops one and leaves the folder as it was; Retry sends a failed one again; Clear drops the finished ones. A folder an upload lands in is listed again. Right-click the tree of the File view (Session, Panel) to upload for real, at a pace slow enough to watch."
+        note="A right-click offers what the host can do there: a file downloads; a folder, or the empty space for the workspace itself, takes files uploaded into it. Picked names the folder already has wait on a question: Replace writes over them, Skip uploads the rest, closing uploads nothing. The uploads list under the tree, one on its way at a time and the rest waiting: a bar and how much has gone, where a landed file went, why one failed. Cancel stops one and leaves the folder as it was; Retry sends a failed one again; Clear drops the finished ones. A folder an upload lands in is listed again. The first specimen is a workspace seeded with an upload in each state, src/auth refusing them; every control works, Reset seeds it again, and a right-click in its tree, or in the File view's (Session, Panel), uploads files you pick at a pace slow enough to watch."
       >
         <div class="flex flex-wrap items-start gap-6">
-          <GallerySpecimen variant="uploads · every state">
-            <div class="gallery-frame flex h-[28rem] w-[220px] flex-col overflow-hidden bg-surface-editor">
-              <FileTree class="flex-1" :source="treeRows" :root="TREE_ROOT" :selected="null" />
-              <FileUploadList :uploads="uploadStates" :root="TREE_ROOT" />
+          <GallerySpecimen variant="uploads · every state, live">
+            <!-- The stage lays children out in a row; the frame and its control stack in their own column. -->
+            <div class="flex flex-col gap-2">
+              <div class="gallery-frame flex h-[28rem] w-[220px] flex-col overflow-hidden bg-surface-editor">
+                <FileTree class="flex-1" :source="pinnedUploads.source" :root="TREE_ROOT" :selected="null" />
+                <FileUploadList :uploads="pinnedUploads.uploads" :root="TREE_ROOT" />
+              </div>
+              <div>
+                <Button size="sm" variant="ghost" @click="resetPinnedUploads">Reset</Button>
+              </div>
             </div>
           </GallerySpecimen>
           <GallerySpecimen variant="the question before replacing">
-            <GalleryDialogFrame>
-              <UploadConflictDialog
-                :is-open="true"
-                :overlay-store="appOverlayStore"
-                :names="['logo.svg', 'photo.png']"
-                directory="src"
-                :others="1"
-              />
-            </GalleryDialogFrame>
+            <div class="flex flex-col gap-2">
+              <GalleryDialogFrame v-if="conflictOpen">
+                <UploadConflictDialog
+                  :is-open="true"
+                  :overlay-store="appOverlayStore"
+                  :names="['logo.svg', 'photo.png']"
+                  directory="src"
+                  :others="1"
+                  @replace="answerConflict('Replace')"
+                  @skip="answerConflict('Skip')"
+                  @cancel="answerConflict('Closed, nothing uploaded')"
+                />
+              </GalleryDialogFrame>
+              <div v-else>
+                <Button size="sm" @click="conflictOpen = true">Show</Button>
+              </div>
+              <p class="select-none text-[12px] text-fg-subtle">
+                Answered: <span class="select-text text-fg-muted">{{ conflictAnswer ?? '—' }}</span>
+              </p>
+            </div>
           </GallerySpecimen>
         </div>
       </GallerySection>

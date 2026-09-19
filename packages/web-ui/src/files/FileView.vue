@@ -192,8 +192,6 @@ async function go(target: string): Promise<void> {
   treeView.value?.reveal(target)
 }
 
-const uploads = computed(() => uploadsOf(props.source))
-
 function openFromTree(path: string): void {
   frame.value?.dismiss()
   emit('open', path)
@@ -297,16 +295,7 @@ onBeforeUnmount(() => {
           :selected="located ?? path"
           @open="openFromTree"
         />
-        <FileUploadList
-          v-if="uploads.items.length > 0"
-          :uploads="uploads.items"
-          :root="root"
-          :root-name="rootName"
-          @cancel="uploads.cancel($event)"
-          @retry="uploads.retry($event)"
-          @dismiss="uploads.dismiss($event)"
-          @clear="uploads.clearFinished()"
-        />
+        <FileUploadList :uploads="uploadsOf(source)" :root="root" :root-name="rootName" />
       </div>
     </template>
   </TreeFrame>

@@ -10,20 +10,15 @@ export type FileUploadState =
   | { phase: 'done' }
   | { phase: 'failed'; message: string }
 
-/** What a list shows of one upload: the file's name and size, where it goes, and how far it has come. */
-export interface FileUploadView {
+/** One file sent into a directory of a source. */
+export interface FileUpload {
   id: string
   /** Where the file goes, by absolute path. */
   path: string
-  file: Pick<File, 'name' | 'size'>
-  state: FileUploadState
-}
-
-/** One file sent into a directory of a source. */
-export interface FileUpload extends FileUploadView {
   file: File
   /** Whether it may replace a file already at `path`. */
   replace: boolean
+  state: FileUploadState
 }
 
 /**
