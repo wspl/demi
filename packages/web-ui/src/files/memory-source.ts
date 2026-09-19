@@ -1,8 +1,9 @@
 /**
  * A `FileBrowserSource` over an in-memory tree, for prototypes and gallery specimens.
  * Nothing here touches a real disk; a directory can be marked as failing to exercise
- * the browser's error states, every read can carry a simulated latency, and an
- * upload moves at a simulated rate, landing as a file of its size.
+ * the browser's error states, every read can carry a simulated latency, and a
+ * source given an upload rate takes uploads at that rate, each landing as a
+ * file of its size; without one it cannot write, as a read-only host.
  */
 import { previewMediaType } from '@demicodes/core'
 import { delay } from '@demicodes/utils'
@@ -44,7 +45,7 @@ export interface MemoryFileSourceOptions {
   latencyMs?: number
   /** Every read rejects with this: the whole device is unreachable. */
   offline?: boolean
-  /** Bytes a second an upload moves at; a real link is never instant. */
+  /** Bytes a second an upload moves at; without it the source takes no uploads. */
   uploadRate?: number
 }
 
@@ -79,7 +80,7 @@ export function createMemoryFileSource(options: MemoryFileSourceOptions): FileBr
   root: MemoryDirectory
   contents: FileContents
 } {
-  const { root, latencyMs = 0, uploadRate = 24 * 1024 * 1024 } = options
+  const { root, latencyMs = 0, uploadRate } = options
 
   function lookup(path: string): MemoryNode | null {
     let node: MemoryNode = root
@@ -113,6 +114,32 @@ export function createMemoryFileSource(options: MemoryFileSourceOptions): FileBr
     if (!node || node.kind !== 'file')
       throw new FileBrowserError('not-found', `No such file: ${normalizePath(path)}`)
     return node
+  }
+
+  /** Uploads at `rate` bytes a second, each landing as a file of its size. */
+  function uploadAt(rate: number): NonNullable<FileBrowserSource['upload']> {
+    return async (path, file, { replace, signal, progress }) => {
+      if (options.offline)
+        throw new FileBrowserError('offline')
+      const parent = lookup(parentPath(path))
+      if (!parent || parent.kind !== 'directory')
+        throw new FileBrowserError('not-found', `No such directory: ${parentPath(path)}`)
+      // A directory that cannot be listed cannot be written to either.
+      if (parent.failure)
+        throw new FileBrowserError(parent.failure.kind, parent.failure.message)
+      const name = baseName(path)
+      if (parent.children[name] && !replace)
+        throw new FileBrowserError('exists', `${normalizePath(path)} already exists.`)
+      let sent = 0
+      while (sent < file.size) {
+        await delay(UPLOAD_TICK_MS, signal)
+        signal.throwIfAborted()
+        sent = Math.min(file.size, sent + rate * UPLOAD_TICK_MS / 1000)
+        progress(sent)
+      }
+      // The bytes stay with the page: the file lands as its size and time.
+      parent.children[name] = { kind: 'file', size: file.size, modifiedAt: new Date().toISOString() }
+    }
   }
 
   /** An asset's own URL, or a text file's content as a `data:` URL typed by its extension. */
@@ -187,27 +214,6 @@ export function createMemoryFileSource(options: MemoryFileSourceOptions): FileBr
         modifiedAt: new Date().toISOString()
       }
     },
-    async upload(path, file, { replace, signal, progress }) {
-      if (options.offline)
-        throw new FileBrowserError('offline')
-      const parent = lookup(parentPath(path))
-      if (!parent || parent.kind !== 'directory')
-        throw new FileBrowserError('not-found', `No such directory: ${parentPath(path)}`)
-      // A directory that cannot be listed cannot be written to either.
-      if (parent.failure)
-        throw new FileBrowserError(parent.failure.kind, parent.failure.message)
-      const name = baseName(path)
-      if (parent.children[name] && !replace)
-        throw new FileBrowserError('exists', `${normalizePath(path)} already exists.`)
-      let sent = 0
-      while (sent < file.size) {
-        await delay(UPLOAD_TICK_MS, signal)
-        signal.throwIfAborted()
-        sent = Math.min(file.size, sent + uploadRate * UPLOAD_TICK_MS / 1000)
-        progress(sent)
-      }
-      // The bytes stay with the page: the file lands as its size and time.
-      parent.children[name] = { kind: 'file', size: file.size, modifiedAt: new Date().toISOString() }
-    },
+    ...(uploadRate === undefined ? {} : { upload: uploadAt(uploadRate) }),
   }
 }

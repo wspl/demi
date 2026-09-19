@@ -44,12 +44,13 @@ function rowsTree(): MemoryDirectory {
 export const TREE_ROOT = '/w'
 export const TREE_SELECTED = `${TREE_ROOT}/src/auth/providers/oauth/github/client.ts`
 
-function wrap(root: MemoryDirectory, latencyMs = 0): FileBrowserSource {
+function wrap(root: MemoryDirectory, latencyMs = 0, uploadRate?: number): FileBrowserSource {
   return createMemoryFileSource({
     platform: 'macos',
     home: '/w',
     root: dir({ w: root }),
     latencyMs,
+    uploadRate,
   })
 }
 
@@ -81,6 +82,31 @@ export function failingSource(): FileBrowserSource {
   src.children['auth'] = dir({}, { failure: { kind: 'permission', message: 'Permission denied' } })
   root.children['tests'] = dir({}, { failure: { kind: 'other', message: 'Input/output error' } })
   return wrap(root)
+}
+
+const MiB = 1024 * 1024
+
+/**
+ * The rows workspace taking uploads at a pace slow enough to watch, with
+ * `src/auth` refusing them the way a directory without write access would.
+ */
+export function uploadSource(): FileBrowserSource {
+  const root = rowsTree()
+  const src = root.children['src'] as MemoryDirectory
+  src.children['auth'] = dir({}, { failure: { kind: 'permission', message: 'Permission denied' } })
+  return wrap(root, 0, 8 * MiB)
+}
+
+/**
+ * A file that says it is `size` bytes without holding them: one small blob
+ * referenced as many times as it takes, which a simulated upload never reads.
+ */
+export function sizedFile(name: string, size: number): File {
+  const block = new Blob([new Uint8Array(MiB)])
+  const parts: Blob[] = Array.from({ length: Math.floor(size / MiB) }, () => block)
+  if (size % MiB > 0)
+    parts.push(block.slice(0, size % MiB))
+  return new File(parts, name)
 }
 
 /** A workspace that cannot be listed at all. */
