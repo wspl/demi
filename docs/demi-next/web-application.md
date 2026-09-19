@@ -2,7 +2,13 @@
 
 Demi's browser application is a Vue 3 and TypeScript SPA, built with Vite and
 Tailwind. vue-router owns navigation; Pinia holds application state.
-`web/main.ts` composes the router and account-scoped stores.
+`web/main.ts` composes the router and account-scoped stores. A user message is
+a tiptap (ProseMirror) editor: editable in the composer, read-only in the
+conversation, so both show it one way
+([Writing a message](product.md#writing-a-message)). `web-ui` reads and writes
+the message's Markdown itself rather than through tiptap's Markdown extension,
+which backslash-escapes every `_` and writes `<` as `&lt;` in what the model
+would read.
 
 ## Package responsibilities
 
@@ -70,8 +76,9 @@ attachment without stopping the backend task. Reload starts a new browser cache.
 
 The backend owns saved conversation state, ordering, preferences, and attachments.
 Per-user IndexedDB retains local drafts, pending edits, unconfirmed submissions,
-and attachment bytes. Browser-local preferences hold presentation-only choices.
-Work-panel width and per-conversation open/closed state use the same account-scoped
+and attachment bytes. A draft is its Markdown, with a mark where each staged
+file's capsule sits, and those files in mark order. Browser-local preferences
+hold presentation-only choices. Work-panel width and per-conversation open/closed state use the same account-scoped
 local preferences. Refreshing restores whether the panel was open; a conversation
 without a saved choice starts closed. Tab selections and browser address drafts
 remain in memory for the page lifetime. Switching accounts uses that account's
