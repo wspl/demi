@@ -441,7 +441,7 @@ onMounted(() => {
       </GallerySection>
       <GallerySection
         title="Upload and download"
-        note="A right-click offers what the host can do there: a file downloads; a folder, or the empty space for the workspace itself, takes files uploaded into it. Picked names the folder already has wait on a question: Replace writes over them, Skip uploads the rest, closing uploads nothing. The uploads list under the tree, one on its way at a time and the rest waiting: a bar and how much has gone, where a landed file went, why one failed. Cancel stops one and leaves the folder as it was; Retry sends a failed one again; Clear drops the finished ones. A folder an upload lands in is listed again. The first specimen is a workspace seeded with an upload in each state, src/auth refusing them; every control works, Reset seeds it again, and a right-click in its tree, or in the File view's (Session, Panel), uploads files you pick at a pace slow enough to watch."
+        note="A right-click offers what the host can do there: a file downloads; a folder, or the empty space for the workspace itself, takes files uploaded into it. Picked names the folder already has wait on a question: Replace writes over them, Skip uploads the rest, closing uploads nothing. The uploads list under the tree, one on its way at a time and the rest waiting: a bar and how much has gone, Completed once one has landed, why one failed, and on hover where each goes. Cancel stops one and leaves the folder as it was; Retry sends a failed one again; Clear drops the finished ones. A folder an upload lands in is listed again. The first specimen is a workspace seeded with an upload in each state, src/auth refusing them; every control works, Reset seeds it again, and a right-click in its tree, or in the File view's (Session, Panel), uploads files you pick at a pace slow enough to watch."
       >
         <div class="flex flex-wrap items-start gap-6">
           <GallerySpecimen variant="uploads · every state, live">
@@ -449,7 +449,7 @@ onMounted(() => {
             <div class="flex flex-col gap-2">
               <div class="gallery-frame flex h-[28rem] w-[220px] flex-col overflow-hidden bg-surface-editor">
                 <FileTree class="flex-1" :source="pinnedUploads.source" :root="TREE_ROOT" :selected="null" />
-                <FileUploadList :uploads="pinnedUploads.uploads" :root="TREE_ROOT" />
+                <FileUploadList :uploads="pinnedUploads.uploads" />
               </div>
               <div>
                 <Button size="sm" variant="ghost" @click="resetPinnedUploads">Reset</Button>

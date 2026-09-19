@@ -295,7 +295,7 @@ onBeforeUnmount(() => {
           :selected="located ?? path"
           @open="openFromTree"
         />
-        <FileUploadList :uploads="uploadsOf(source)" :root="root" :root-name="rootName" />
+        <FileUploadList :uploads="uploadsOf(source)" />
       </div>
     </template>
   </TreeFrame>
