@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test'
 import { deferred } from '@demicodes/utils'
+import type { UserContentBlock } from '@demicodes/core'
 import { ConversationRuntime } from '@demicodes/web-ui/agent/conversation-runtime'
 import { toasts } from '@demicodes/web-ui/infra/toast'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
@@ -9,6 +10,7 @@ import { useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
 import { productStateSchema, type BackendConversation, type Preferences } from '../api/contracts'
 import { applyConversationEvent, updateLiveStatus } from './activity'
+import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
 
 const realFetch = globalThis.fetch
 
@@ -399,6 +401,69 @@ test('a draft keeps its files; the conversation itself is created on first send'
   rejectCreate = true
   await store.send(conversation)
   expect(conversation.pendingSend?.fileIds).toEqual([conversation.files[0]!.id])
+})
+
+test('a message sends its text and files in the order the composer shows them', async () => {
+  const store = useConversations()
+  const current = store.items[0]!
+  useProduct().snapshot!.providers.push({
+    id: 'stub', kind: 'api_key', providerType: 'stub', label: 'Stub',
+    wireApi: null, vendorId: null, baseUrl: null, models: null,
+    keyConfigured: true, details: null,
+  })
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    if (path.startsWith('/api/models')) {
+      return Response.json({ providers: [{
+        providerId: 'stub', displayName: 'Stub', sourceFetchedAt: '', stale: false,
+        warnings: [], auth: { status: 'ready' }, runtime: { status: 'ready' },
+        requiresProcessCapableHost: false,
+        availability: { available: true, reason: null, message: null },
+        models: [{
+          id: 'stub', displayName: 'Stub', contextWindow: 1000, outputLimit: null,
+          supportsAttachments: true, supportedThinkingEfforts: [], defaultThinkingEffort: null,
+          selection: {
+            providerId: 'stub', thinking: null,
+            model: { id: 'stub', name: 'Stub', contextWindow: 1000, outputLimit: null,
+              inputLimit: null, thinking: [], acceptedExtensions: [] },
+          },
+        }],
+      }] })
+    }
+    if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
+    if (path.endsWith('/transcript')) return Response.json({ blocks: [], failures: {}, subagents: [] })
+    return originalFetch(input, init)
+  }) as typeof fetch
+  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
+  let sent: UserContentBlock[] = []
+  const submit = spyOn(ConversationRuntime.prototype, 'submit').mockImplementation(async (content) => {
+    sent = content
+  })
+  try {
+    await useProduct().loadModels(true)
+    store.addFiles(current, [
+      new File(['before'], 'before.png', { type: 'image/png' }),
+      new File(['after'], 'after.png', { type: 'image/png' }),
+    ])
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    current.draft = `Compare ${ATTACHMENT_MARK} with ${ATTACHMENT_MARK}. The **modal** padding is off.`
+    // The capsules were dragged into the other order.
+    store.arrangeFiles(current, [current.files[1]!.id, current.files[0]!.id])
+    await store.send(current)
+    expect(sent.map((block) => block.type)).toEqual(['text', 'reference', 'text', 'reference', 'text'])
+    expect(sent.filter((block) => block.type === 'text')).toEqual([
+      { type: 'text', text: 'Compare ' },
+      { type: 'text', text: ' with ' },
+      { type: 'text', text: '. The **modal** padding is off.' },
+    ])
+    expect(JSON.stringify(sent[1])).toContain('after.png')
+    expect(JSON.stringify(sent[3])).toContain('before.png')
+  } finally {
+    submit.mockRestore()
+    connect.mockRestore()
+    globalThis.fetch = originalFetch
+  }
 })
 
 test('leaving an empty draft discards it without removing a draft with input', async () => {

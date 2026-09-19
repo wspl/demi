@@ -1,5 +1,5 @@
 import { readonly, shallowRef } from 'vue'
-import { createHighlighter, type Highlighter } from 'shiki'
+import { createHighlighter, getTokenStyleObject, stringifyTokenStyle, type Highlighter } from 'shiki'
 import { reportError } from '../infra/errors'
 import { appThemeStore } from '../theme/appTheme'
 import { codeTheme } from '../theme/codeTheme'
@@ -49,16 +49,10 @@ appThemeStore.subscribe(() => {
   renderVersion.value += 1
 })
 
-function resolveLang(lang: string): string {
-  if (!lang || lang === 'text' || lang === 'plaintext')
-    return 'text'
-  const instance = highlighter.value
-  if (!instance)
-    return 'text'
+/** The loaded grammar a fence's language names, directly or by a short name; plain text for any other. */
+function resolveLang(lang: string): (typeof LANGS)[number] | 'text' {
   const resolved = LANG_ALIASES[lang] ?? lang
-  return instance.getLoadedLanguages().includes(resolved)
-    ? resolved
-    : 'text'
+  return LANGS.find((each) => each === resolved) ?? 'text'
 }
 
 export function codeToHtml(code: string, lang: string): string {
@@ -75,6 +69,24 @@ export function codeToHtml(code: string, lang: string): string {
         node.properties['style'] = style.replace(/background-color:[^;]+;?\s*/g, '').trim() || undefined
       },
     }],
+  })
+}
+
+/**
+ * Code's highlighted runs in the app's mode: where each starts and ends in
+ * the code, and the CSS that colors it. Null until the highlighter arrives.
+ */
+export function codeStyles(code: string, lang: string): { from: number; to: number; style: string }[] | null {
+  const instance = highlighter.value
+  if (!instance)
+    return null
+  const { tokens } = instance.codeToTokens(code, {
+    lang: resolveLang(lang),
+    theme: codeTheme[appThemeStore.state.mode].shikiTheme,
+  })
+  return tokens.flat().flatMap((token) => {
+    const style = stringifyTokenStyle(getTokenStyleObject(token))
+    return style ? [{ from: token.offset, to: token.offset + token.content.length, style }] : []
   })
 }
 
