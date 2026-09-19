@@ -3,15 +3,19 @@ import {
   type FileBrowserFailure,
   type FileBrowserSource,
   type FileContents,
+  type FileUploadOptions,
 } from '@demicodes/web-ui/files/types'
 import { ApiError, apiRequest, apiUrl, invalidResponse, jsonBody, readResponse } from './client'
 import { directorySchema, fileHeadersSchema, fileTextSchema } from './contracts'
+import { uploadBytes } from './uploads'
 import type { Device } from '../state/types'
 
 /** What an API failure means to the file views; a `HEAD` answer has only its status to say it. */
 function failureKind(error: ApiError): FileBrowserFailure['kind'] {
   if (error.code === 'device_offline')
     return 'offline'
+  if (error.code === 'file_exists')
+    return 'exists'
   if (error.code === 'not_text' || error.status === 415)
     return 'binary'
   if (error.code === 'file_too_large' || error.status === 413)
@@ -63,24 +67,45 @@ export function rawFileContents(endpoint: string): FileContents {
   }
 }
 
+/** The routes a file source reads and writes through; each one it lacks leaves that capability out. */
+export interface FileRoutes {
+  /** Lists a directory, and makes one with `POST`. */
+  directory: string | null
+  /** A file's text. */
+  text?: string
+  /** A file's bytes. */
+  raw?: string
+  /** Takes a file's bytes with `PUT`. */
+  upload?: string
+  /** Deletes a file or a directory with `DELETE`. */
+  remove?: string
+}
+
 /**
  * A conversation's Host file routes (`web-api.md` § File text and working
- * tree changes): its directory listing, file text and raw bytes.
+ * tree changes): its directory listing, file text and raw bytes, uploads
+ * and deletes.
  */
-export function conversationFileRoutes(conversationId: string): { directory: string; text: string; raw: string } {
+export function conversationFileRoutes(conversationId: string): Required<FileRoutes> {
   const base = `/conversations/${encodeURIComponent(conversationId)}/fs`
-  return { directory: base, text: `${base}/file`, raw: `${base}/raw` }
+  return { directory: base, text: `${base}/file`, raw: `${base}/raw`, upload: `${base}/raw`, remove: base }
 }
 
 const sources = new Map<string, FileBrowserSource>()
 
 /** The shared browser handles paths and selection; this adapter handles HTTP. */
 export function fileSource(
-  endpoints: { directory: string | null; text?: string; raw?: string },
+  endpoints: FileRoutes,
   device: Pick<Device, 'platform' | 'home'> | null,
 ): FileBrowserSource {
-  const { directory: endpoint, text: textEndpoint, raw: rawEndpoint } = endpoints
-  const key = JSON.stringify([endpoint, textEndpoint, rawEndpoint, device?.platform, device?.home])
+  const {
+    directory: endpoint,
+    text: textEndpoint,
+    raw: rawEndpoint,
+    upload: uploadEndpoint,
+    remove: removeEndpoint,
+  } = endpoints
+  const key = JSON.stringify([endpoint, textEndpoint, rawEndpoint, uploadEndpoint, removeEndpoint, device?.platform, device?.home])
   const cached = sources.get(key)
   if (cached) {
     return cached
@@ -133,6 +158,33 @@ export function fileSource(
                 { signal },
               )
               return (await readResponse(response, fileTextSchema)).text
+            } catch (error) {
+              browserError(error)
+            }
+          },
+        }
+      : {}),
+    ...(uploadEndpoint
+      ? {
+          async upload(path: string, file: File, options: FileUploadOptions) {
+            const query = new URLSearchParams({ path, replace: String(options.replace) })
+            try {
+              await uploadBytes(`${uploadEndpoint}?${query}`, file, {
+                method: 'PUT',
+                signal: options.signal,
+                progress: options.progress,
+              })
+            } catch (error) {
+              browserError(error)
+            }
+          },
+        }
+      : {}),
+    ...(removeEndpoint
+      ? {
+          async remove(path: string, signal?: AbortSignal) {
+            try {
+              await apiRequest(`${removeEndpoint}?${new URLSearchParams({ path })}`, { method: 'DELETE', signal })
             } catch (error) {
               browserError(error)
             }
