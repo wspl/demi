@@ -451,9 +451,3 @@ export function filePreviewUrl(file: File): string | undefined {
 export function dataTransferFiles(transfer: DataTransfer): File[] {
   return [...transfer.files]
 }
-
-export function transferHasFiles(
-  transfer: DataTransfer | null | undefined,
-): boolean {
-  return transfer?.types.includes('Files') === true
-}

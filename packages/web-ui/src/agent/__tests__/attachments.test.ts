@@ -20,9 +20,9 @@ import {
   dataTransferFiles,
   filePreviewUrl,
   fileToUserContent,
-  transferHasFiles,
   type AttachmentUploadUpdate,
 } from '../message-input/attachments'
+import { transferHasFiles } from '../../composables/useFileDrop'
 
 test('image files get an object-url preview', () => {
   const png = filePreviewUrl(new File(['x'], 'shot.png', { type: 'image/png' }))

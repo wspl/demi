@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { TREE_ROW_PITCH_PX, TREE_ROW_PX, stickyTreeRows, type TreeRow } from '../tree'
+import { TREE_ROW_PITCH_PX, TREE_ROW_PX, stickyTreeRows, treeBlock, type TreeRow } from '../tree'
 
 // src/, src/auth/, src/auth/cookie.ts, src/auth/session.ts, src/index.ts, tests/
 const rows: TreeRow[] = [
@@ -45,4 +45,12 @@ describe('sticky tree rows', () => {
   test('nothing pins past the last row', () => {
     expect(paths(10 * TREE_ROW_PITCH_PX)).toEqual([])
   })
+})
+
+test('a directory\'s block runs from its row to the last row under it', () => {
+  expect(treeBlock(rows, '/w/src')).toEqual({ first: 0, last: 4 })
+  expect(treeBlock(rows, '/w/src/auth')).toEqual({ first: 1, last: 3 })
+  // A closed directory, or a file, holds no rows.
+  expect(treeBlock(rows, '/w/tests')).toEqual({ first: 5, last: 5 })
+  expect(treeBlock(rows, '/w/gone')).toBeNull()
 })

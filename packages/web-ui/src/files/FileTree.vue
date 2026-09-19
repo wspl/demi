@@ -2,6 +2,8 @@
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { Download, RefreshCw, Upload } from '@lucide/vue'
 import { useContextMenuOwner } from '../composables/useContextMenuOwner'
+import { useFileDrop } from '../composables/useFileDrop'
+import { showToast } from '../infra/toast'
 import { appOverlayStore } from '../overlay/appOverlay'
 import CornerDot from '../ui/CornerDot.vue'
 import IconButton from '../ui/IconButton.vue'
@@ -13,8 +15,16 @@ import Tooltip from '../ui/Tooltip.vue'
 import Tree from './Tree.vue'
 import UploadConflictDialog from './UploadConflictDialog.vue'
 import { downloadUrl } from './download'
-import { uploadsOf } from './file-uploads'
-import type { TreeRow } from './tree'
+import { droppedEntries, droppedItems, type DroppedEntry } from './dropped'
+import {
+  clashPlacement,
+  uploadItemName,
+  uploadsOf,
+  type ClashAnswer,
+  type UploadClash,
+  type UploadItem,
+} from './file-uploads'
+import type { TreeDropTarget, TreeRow } from './tree'
 import { FileBrowserError, type FileBrowserEntry, type FileBrowserFailure, type FileBrowserSource } from './types'
 import { baseName, joinPath, normalizePath, parentPath, relativePath } from './paths'
 import { DEFAULT_SORT, sortEntries } from './file-browser-state'
@@ -33,28 +43,48 @@ import { DEFAULT_SORT, sortEntries } from './file-browser-state'
  *
  * A right-click offers what the source can do there: a file downloads, and a
  * directory, or the empty space for the workspace itself, takes files
- * uploaded into it. Picked names the directory already has wait on a
- * question, Replace or Skip; the uploads themselves belong to the source
- * (`uploadsOf`), and a directory an upload lands in is listed again.
+ * uploaded into it. Files and folders dragged in from the desktop upload
+ * where they drop: into the directory under the pointer, the directory of a
+ * file under it, or the workspace over the empty space; that place lights
+ * while the drag is over it, and a closed directory the drag rests on opens.
+ * Names the directory already has wait on a question: Replace or Skip, and
+ * Merge once a folder meets a folder. The uploads themselves belong to the
+ * source (`uploadsOf`), and a directory an upload changes is listed again.
  */
 defineOptions({ inheritAttrs: false })
 
 const props = defineProps<{
-  source: Pick<FileBrowserSource, 'list' | 'contents' | 'upload'>
+  source: Pick<FileBrowserSource, 'list' | 'contents' | 'upload' | 'createDirectory' | 'remove'>
   root: string
   /** What heads the tree in place of the root directory's name. */
   rootName?: string
   /** The selected row, by absolute path: the open file, or a directory the host located. */
   selected: string | null
+  /**
+   * A drag of files shown held over this path as if one were, a row's or the
+   * root's for the empty space: for a specimen of the drop state.
+   */
+  dropping?: string
 }>()
 
 const emit = defineEmits<{
   open: [path: string]
 }>()
 
+// The generic `Tree` has no instance type to name; its exposed surface is spelled out.
+const tree = ref<{
+  $el: HTMLElement
+  scrollToRow(path: string): void
+  revealRow(path: string): void
+  scrollBy(px: number): void
+  rowAt(target: EventTarget | null): TreeRow | null
+} | null>(null)
+
 interface Listing {
   entries: FileBrowserEntry[]
   loading: boolean
+  /** Listed again once the listing on its way is in: a change may have come too late for it. */
+  again: boolean
   failure: FileBrowserFailure | null
   open: boolean
 }
@@ -65,16 +95,23 @@ const controller = new AbortController()
 function listing(path: string): Listing {
   let entry = listings.get(path)
   if (!entry) {
-    entry = { entries: [], loading: false, failure: null, open: false }
+    entry = { entries: [], loading: false, again: false, failure: null, open: false }
     listings.set(path, entry)
   }
   return entry
 }
 
-/** Lists a directory once; `again` lists it anew, its rows staying until the new ones land. */
+/**
+ * Lists a directory once; `again` lists it anew, its rows staying until the
+ * new ones land, and once more after a listing already on its way.
+ */
 async function load(path: string, again = false): Promise<void> {
   const entry = listing(path)
-  if (entry.loading || (entry.entries.length > 0 && !again)) {
+  if (entry.loading) {
+    entry.again ||= again
+    return
+  }
+  if (entry.entries.length > 0 && !again) {
     return
   }
   entry.loading = true
@@ -91,6 +128,10 @@ async function load(path: string, again = false): Promise<void> {
       : { kind: 'other', message: error instanceof Error ? error.message : String(error) }
   } finally {
     entry.loading = false
+  }
+  if (entry.again && !controller.signal.aborted) {
+    entry.again = false
+    void load(path, true)
   }
 }
 
@@ -245,9 +286,9 @@ function download(path: string): void {
 
 const uploads = computed(() => uploadsOf(props.source))
 
-// A file that lands in a listed directory shows there.
+// A directory an upload changes shows it, when it is listed.
 watch(uploads, (list, _previous, onCleanup) => {
-  onCleanup(list.onLanded((directory) => {
+  onCleanup(list.onChanged((directory) => {
     if (listings.get(directory)?.open)
       void load(directory, true)
   }))
@@ -256,7 +297,8 @@ watch(uploads, (list, _previous, onCleanup) => {
 const picker = ref<HTMLInputElement | null>(null)
 // The directory the file picker is choosing for, from the menu until it closes.
 let pickingFor: string | null = null
-const conflict = ref<{ directory: string; files: File[]; taken: string[] } | null>(null)
+// Items waiting on the question their names ask, with the directory they go into.
+const question = ref<{ directory: string; items: UploadItem[]; clashes: UploadClash[] } | null>(null)
 
 function chooseFiles(directory: string): void {
   menu.close()
@@ -264,7 +306,7 @@ function chooseFiles(directory: string): void {
   picker.value?.click()
 }
 
-async function onPicked(): Promise<void> {
+function onPicked(): void {
   const input = picker.value
   const directory = pickingFor
   const files = [...(input?.files ?? [])]
@@ -272,42 +314,138 @@ async function onPicked(): Promise<void> {
   // Picking the same file again must fire again.
   if (input)
     input.value = ''
-  if (!directory || files.length === 0)
+  if (directory)
+    void offer(directory, files.map((file) => ({ kind: 'file', file })))
+}
+
+/** Uploads `items` into `directory`, asking first about the names it has. */
+async function offer(directory: string, items: readonly UploadItem[]): Promise<void> {
+  if (items.length === 0)
     return
-  const taken = await takenNames(directory, files)
-  if (taken.length === 0) {
-    uploads.value.add(directory, files, new Set())
+  const clashes = await clashesIn(directory, items)
+  if (clashes.length === 0) {
+    uploads.value.add(directory, items.map((item) => ({ item, placement: 'add' })))
     return
   }
-  conflict.value = { directory, files, taken }
+  question.value = { directory, items: [...items], clashes }
 }
 
 /**
- * The picked names the directory already has. A listing that fails asks
- * nothing: the source still refuses to write over a file it was not told to.
+ * The items whose names the directory has, with what is there. A listing
+ * that fails asks nothing: the source still refuses to write over a file it
+ * was not told to.
  */
-async function takenNames(directory: string, files: readonly File[]): Promise<string[]> {
+async function clashesIn(directory: string, items: readonly UploadItem[]): Promise<UploadClash[]> {
+  let entries: FileBrowserEntry[]
   try {
-    const names = new Set((await props.source.list(directory, controller.signal)).map((entry) => entry.name))
-    return files.filter((file) => names.has(file.name)).map((file) => file.name)
+    entries = await props.source.list(directory, controller.signal)
   } catch {
     return []
   }
+  const taken = new Map(entries.map((entry) => [entry.name, entry.isDirectory]))
+  return items.flatMap((item) => {
+    const name = uploadItemName(item)
+    const takenByDirectory = taken.get(name)
+    return takenByDirectory === undefined ? [] : [{ name, isDirectory: item.kind === 'folder', takenByDirectory }]
+  })
 }
 
-/** Replace uploads every picked file, writing over the taken names; Skip uploads the others. */
-function answerConflict(replace: boolean): void {
-  const pending = conflict.value
-  conflict.value = null
+/** Each item goes in as the answer places it; one whose name is free is added. */
+function answer(choice: ClashAnswer): void {
+  const pending = question.value
+  question.value = null
   if (!pending)
     return
-  const taken = new Set(pending.taken)
-  const files = replace ? pending.files : pending.files.filter((file) => !taken.has(file.name))
-  uploads.value.add(pending.directory, files, replace ? taken : new Set())
+  const clashes = new Map(pending.clashes.map((clash) => [clash.name, clash]))
+  const placed = pending.items.flatMap((item) => {
+    const clash = clashes.get(uploadItemName(item))
+    const placement = clash ? clashPlacement(choice, clash.isDirectory, clash.takenByDirectory) : 'add'
+    return placement ? [{ item, placement }] : []
+  })
+  uploads.value.add(pending.directory, placed)
 }
 
-// The generic `Tree` has no instance type to name; its exposed surface is spelled out.
-const tree = ref<{ scrollToRow(path: string): void; revealRow(path: string): void; scrollBy(px: number): void } | null>(null)
+/** What else the question's items hold, which the directory does not have. */
+const questionOthers = computed(() => {
+  const pending = question.value
+  const clashing = new Set(pending?.clashes.map((clash) => clash.name))
+  const rest = pending?.items.filter((item) => !clashing.has(uploadItemName(item))) ?? []
+  const folders = rest.filter((item) => item.kind === 'folder').length
+  return { files: rest.length - folders, folders }
+})
+
+/** How long a drag rests on a closed directory before it opens, to drop deeper. */
+const OPEN_ON_HOLD_MS = 600
+
+// The row a drag of files is over, by path, or the root's over the empty space.
+const dragOver = ref<string | null>(null)
+// Opens the closed directory a drag rests on; stopped when the drag moves on, leaves or drops.
+let holdTimer: ReturnType<typeof setTimeout> | undefined
+
+onBeforeUnmount(() => {
+  clearTimeout(holdTimer)
+})
+
+/** Where a drop over `path` goes: a directory takes it, a file's directory does, and the root the empty space's. */
+function dropDirectory(path: string): string {
+  const root = normalizePath(props.root)
+  const row = rows.value.find((entry) => entry.path === path)
+  if (!row)
+    return root
+  return row.isDirectory ? row.path : (row.parent ?? root)
+}
+
+const dropTarget = computed<TreeDropTarget | null>(() => {
+  const over = dragOver.value ?? props.dropping
+  if (over === undefined)
+    return null
+  const directory = dropDirectory(over)
+  return directory === normalizePath(props.root) ? { kind: 'tree' } : { kind: 'row', path: directory }
+})
+
+const { over: dragging } = useFileDrop(() => tree.value?.$el, {
+  enabled: () => props.source.upload !== undefined,
+  over(event) {
+    const row = tree.value?.rowAt(event.target) ?? null
+    const path = row?.path ?? normalizePath(props.root)
+    if (dragOver.value === path)
+      return
+    dragOver.value = path
+    clearTimeout(holdTimer)
+    if (row?.isDirectory && !row.open)
+      holdTimer = setTimeout(() => open(row.path), OPEN_ON_HOLD_MS)
+  },
+  drop(event) {
+    const row = tree.value?.rowAt(event.target) ?? null
+    const directory = dropDirectory(row?.path ?? normalizePath(props.root))
+    // The transfer empties once this handler returns; its entries stay readable.
+    const entries = event.dataTransfer ? droppedEntries(event.dataTransfer) : []
+    void receive(directory, entries)
+  },
+})
+
+watch(dragging, (now) => {
+  if (now)
+    return
+  clearTimeout(holdTimer)
+  dragOver.value = null
+})
+
+/** Reads what a drop carried and offers it to `directory`; a drop that cannot be read says why. */
+async function receive(directory: string, entries: readonly (DroppedEntry | File)[]): Promise<void> {
+  let items: UploadItem[]
+  try {
+    items = await droppedItems(entries)
+  } catch (error) {
+    showToast({
+      title: 'Could not read what was dropped',
+      message: error instanceof Error ? error.message : String(error),
+      tone: 'danger',
+    })
+    return
+  }
+  await offer(directory, items)
+}
 
 watch([rows, revealing], () => {
   const target = revealing.value
@@ -322,6 +460,8 @@ defineExpose({
   reveal,
   scrollToRow: (path: string) => tree.value?.scrollToRow(path),
   scrollBy: (px: number) => tree.value?.scrollBy(px),
+  /** Uploads items into a directory as a drop there would, asking first about the names it has. */
+  upload: offer,
 })
 </script>
 
@@ -334,6 +474,7 @@ defineExpose({
     :caption-title="root"
     :selected="selectedPath"
     :menu-row="menu.isOpen.value ? menuTarget?.path : null"
+    :drop-target="dropTarget"
     :tooltip="failureText"
     @activate="activate"
     @menu="openMenu"
@@ -395,13 +536,14 @@ defineExpose({
   </Popover>
   <input ref="picker" type="file" multiple class="hidden" @change="onPicked">
   <UploadConflictDialog
-    :is-open="conflict !== null"
+    :is-open="question !== null"
     :overlay-store="appOverlayStore"
-    :names="conflict?.taken ?? []"
-    :directory="conflict ? relativePath(root, conflict.directory) || rootName : ''"
-    :others="conflict ? conflict.files.length - conflict.taken.length : 0"
-    @replace="answerConflict(true)"
-    @skip="answerConflict(false)"
-    @cancel="conflict = null"
+    :clashes="question?.clashes ?? []"
+    :directory="question ? relativePath(root, question.directory) || rootName : ''"
+    :others="questionOthers"
+    @replace="answer('replace')"
+    @merge="answer('merge')"
+    @skip="answer('skip')"
+    @cancel="question = null"
   />
 </template>

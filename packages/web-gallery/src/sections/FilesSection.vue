@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import FileBrowser from '@demicodes/web-ui/files/FileBrowser.vue'
 import FileBrowserAddressBar from '@demicodes/web-ui/files/FileBrowserAddressBar.vue'
@@ -10,9 +10,9 @@ import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import FileTree from '@demicodes/web-ui/files/FileTree.vue'
 import FileUploadList from '@demicodes/web-ui/files/FileUploadList.vue'
 import UploadConflictDialog from '@demicodes/web-ui/files/UploadConflictDialog.vue'
-import { uploadsOf, type FileUploads } from '@demicodes/web-ui/files/file-uploads'
+import { uploadsOf, type FileUploads, type UploadClash, type UploadItem, type UploadPlacement } from '@demicodes/web-ui/files/file-uploads'
 import Button from '@demicodes/web-ui/ui/Button.vue'
-import { TREE_ROOT, TREE_SELECTED, failingSource, offlineSource, rowsSource, sizedFile, stuckSource, uploadSource } from '../fixtures/file-trees'
+import { TREE_ROOT, TREE_SELECTED, failingSource, offlineSource, rowsSource, sizedFile, sizedFolder, stuckSource, uploadSource } from '../fixtures/file-trees'
 import { createMemoryFileSource, dir, file } from '@demicodes/web-ui/files/memory-source'
 import type { FileBrowserMode, FileBrowserSource } from '@demicodes/web-ui/files/types'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
@@ -266,24 +266,40 @@ const treeRows = rowsSource()
 
 const MiB = 1024 * 1024
 
+/** `count` files of about `size` bytes each, named `name-01.ext` on. */
+function numbered(name: string, ext: string, count: number, size: number): [string, number][] {
+  return Array.from({ length: count }, (_, index) => [`${name}-${String(index + 1).padStart(2, '0')}.${ext}`, size + index * 97_000])
+}
+
 /**
- * A workspace with an upload in each state, at sizes real ones have: two
- * landed, one refused by `src/auth`, one on its way and one waiting behind it.
+ * A workspace with an upload in each state, at sizes real ones have: files
+ * and a folder landed, a file refused by `src/auth`, a folder merged into
+ * `src` whose files there were refused too, a folder of screenshots on its
+ * way and two large files waiting behind it.
  */
 function seededUploads(): { source: FileBrowserSource; uploads: FileUploads } {
   const source = uploadSource()
   const uploads = uploadsOf(source)
-  uploads.add(`${TREE_ROOT}/src`, [sizedFile('logo.svg', 4_096)], new Set())
-  uploads.add(TREE_ROOT, [sizedFile('notes.md', 2_310)], new Set())
-  uploads.add(`${TREE_ROOT}/src/auth`, [sizedFile('model.bin', 90 * MiB)], new Set())
-  uploads.add(`${TREE_ROOT}/docs`, [
-    sizedFile('demo-recording.mov', 480 * MiB),
-    sizedFile('dataset.parquet', Math.round(1.2 * 1024 * MiB)),
-  ], new Set())
+  const add = (directory: string, item: UploadItem, placement: UploadPlacement = 'add') =>
+    uploads.add(directory, [{ item, placement }])
+  add(`${TREE_ROOT}/src`, { kind: 'file', file: sizedFile('logo.svg', 4_096) })
+  add(TREE_ROOT, sizedFolder('assets', ['icons'], [['icons/add.svg', 1_024], ['icons/close.svg', 980], ['banner.png', 182_000]]))
+  add(TREE_ROOT, { kind: 'file', file: sizedFile('notes.md', 2_310) })
+  add(`${TREE_ROOT}/src/auth`, { kind: 'file', file: sizedFile('model.bin', 90 * MiB) })
+  add(TREE_ROOT, sizedFolder('src', ['auth', 'http'], [
+    ['index.ts', 910],
+    ['auth/token.ts', 2_140],
+    ['auth/scopes.ts', 1_320],
+    ['http/client.ts', 4_010],
+  ]), 'overwrite')
+  add(`${TREE_ROOT}/docs`, sizedFolder('screenshots', [], numbered('screenshot', 'png', 24, 14 * MiB)))
+  add(`${TREE_ROOT}/docs`, { kind: 'file', file: sizedFile('demo-recording.mov', 480 * MiB) })
+  add(`${TREE_ROOT}/docs`, { kind: 'file', file: sizedFile('dataset.parquet', Math.round(1.2 * 1024 * MiB)) })
   return { source, uploads }
 }
 
 const pinnedUploads = shallowRef(seededUploads())
+const uploadTree = ref<InstanceType<typeof FileTree> | null>(null)
 
 /** Stops everything the specimen has waiting or on its way. */
 function stopPinnedUploads(): void {
@@ -299,14 +315,63 @@ function resetPinnedUploads(): void {
 
 onBeforeUnmount(stopPinnedUploads)
 
-// The replace question: its answer shows beside it, and Show asks it again.
-const conflictOpen = ref(true)
-const conflictAnswer = ref<string | null>(null)
-
-function answerConflict(answer: string): void {
-  conflictAnswer.value = answer
-  conflictOpen.value = false
+// What the drop buttons hand the tree, as a drop from the desktop would.
+function dropPhotos(): void {
+  void uploadTree.value?.upload(`${TREE_ROOT}/docs`, [
+    sizedFolder('photos', ['2025', '2025/raw'], [
+      ...numbered('2025/raw/IMG', 'heic', 6, 3 * MiB),
+      ...numbered('2025/IMG', 'jpg', 6, 2 * MiB),
+      ['cover.jpg', 4 * MiB],
+    ]),
+  ])
 }
+
+/** Two names the workspace has, a folder and a file, and one it has not: the question with Merge. */
+function dropOnWorkspace(): void {
+  void uploadTree.value?.upload(TREE_ROOT, [
+    sizedFolder('src', ['http'], [['index.ts', 950], ['http/cors.ts', 1_830]]),
+    { kind: 'file', file: sizedFile('README.md', 3_072) },
+    { kind: 'file', file: sizedFile('SECURITY.md', 1_536) },
+  ])
+}
+
+// The replace questions: each answer shows beside its own, and Show asks it again.
+const questions: { variant: string; clashes: UploadClash[]; directory: string; others: { files: number; folders: number } }[] = [
+  {
+    variant: 'files: Replace or Skip',
+    clashes: [
+      { name: 'logo.svg', isDirectory: false, takenByDirectory: false },
+      { name: 'photo.png', isDirectory: false, takenByDirectory: false },
+    ],
+    directory: 'src',
+    others: { files: 1, folders: 0 },
+  },
+  {
+    variant: 'a folder meets a folder: Merge too',
+    clashes: [{ name: 'photos', isDirectory: true, takenByDirectory: true }],
+    directory: 'docs',
+    others: { files: 0, folders: 0 },
+  },
+  {
+    variant: 'a folder and a file',
+    clashes: [
+      { name: 'src', isDirectory: true, takenByDirectory: true },
+      { name: 'README.md', isDirectory: false, takenByDirectory: false },
+    ],
+    directory: 'demi',
+    others: { files: 1, folders: 0 },
+  },
+]
+const questionState = reactive(questions.map(() => ({ open: true, answer: null as string | null })))
+
+function answerQuestion(index: number, answer: string): void {
+  questionState[index]!.answer = answer
+  questionState[index]!.open = false
+}
+
+// The drop states, held still: a drag over the empty space, a folder, a
+// file, a closed folder, and a folder whose row has scrolled under the stack.
+const dropPinned = ref<InstanceType<typeof FileTree> | null>(null)
 const treeStuckRoot = stuckSource(TREE_ROOT)
 const treeStuckDir = stuckSource(`${TREE_ROOT}/src/http`)
 const treeFailing = failingSource()
@@ -328,6 +393,8 @@ async function scrollPinnedSpecimens() {
   pinnedLeaving.value?.scrollBy(3 * 29 + 14)
   // Past: everything in src scrolled out, nothing pins.
   pinnedPast.value?.scrollToRow(`${TREE_ROOT}/tests`)
+  // A drop into oauth, its row scrolled under the stack like the path pinned above.
+  dropPinned.value?.scrollToRow(`${TREE_ROOT}/src/auth/providers/oauth`)
 }
 watch(view, (next) => {
   if (next === 'tree') {
@@ -440,41 +507,88 @@ onMounted(() => {
         </div>
       </GallerySection>
       <GallerySection
+        title="Drag and drop"
+        note="Files and folders dragged in from the desktop upload where they drop, and that place lights under a dashed line while the drag is over it: a folder with the rows it holds, the folder a file sits in, or the whole workspace over the empty space and over a file at the top. A folder whose row has scrolled under the pinned path lights there too. A drag resting on a closed folder opens it after a moment, to drop deeper. Only a host that takes uploads takes drops. These trees hold each state still and take no drops; the workspace under Upload and download takes real ones."
+      >
+        <div class="flex flex-wrap gap-6">
+          <GallerySpecimen variant="over the empty space: the workspace">
+            <div class="gallery-frame h-[20rem] w-[220px] overflow-hidden bg-surface-editor">
+              <FileTree :source="rowsSource()" :root="TREE_ROOT" :selected="null" :dropping="TREE_ROOT" />
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="over a folder: it and what it holds">
+            <div class="gallery-frame h-[20rem] w-[220px] overflow-hidden bg-surface-editor">
+              <FileTree :source="rowsSource()" :root="TREE_ROOT" :selected="`${TREE_ROOT}/src/http/router.ts`" :dropping="`${TREE_ROOT}/src/http`" />
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="over a file: the folder it sits in">
+            <div class="gallery-frame h-[20rem] w-[220px] overflow-hidden bg-surface-editor">
+              <FileTree :source="rowsSource()" :root="TREE_ROOT" :selected="`${TREE_ROOT}/src/http/router.ts`" :dropping="`${TREE_ROOT}/src/index.ts`" />
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="over a closed folder">
+            <div class="gallery-frame h-[20rem] w-[220px] overflow-hidden bg-surface-editor">
+              <FileTree :source="rowsSource()" :root="TREE_ROOT" :selected="null" :dropping="`${TREE_ROOT}/docs`" />
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="under the pinned path">
+            <div class="gallery-frame h-[20rem] w-[220px] overflow-hidden bg-surface-editor">
+              <FileTree
+                ref="dropPinned"
+                :source="rowsSource()"
+                :root="TREE_ROOT"
+                :selected="TREE_SELECTED"
+                :dropping="`${TREE_ROOT}/src/auth/providers/oauth`"
+              />
+            </div>
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
+      <GallerySection
         title="Upload and download"
-        note="A right-click offers what the host can do there: a file downloads; a folder, or the empty space for the workspace itself, takes files uploaded into it. Picked names the folder already has wait on a question: Replace writes over them, Skip uploads the rest, closing uploads nothing. The uploads list under the tree, one on its way at a time and the rest waiting: a bar and how much has gone, Completed once one has landed, why one failed, and on hover where each goes. Cancel stops one and leaves the folder as it was; Retry sends a failed one again; Clear drops the finished ones. A folder an upload lands in is listed again. The first specimen is a workspace seeded with an upload in each state, src/auth refusing them; every control works, Reset seeds it again, and a right-click in its tree, or in the File view's (Session, Panel), uploads files you pick at a pace slow enough to watch."
+        note="A right-click offers what the host can do there: a file downloads; a folder, or the empty space for the workspace itself, takes files uploaded into it. Names the folder already has wait on a question: Replace puts what came in place of what is there, Skip uploads the rest, closing uploads nothing; once a folder meets a folder, Merge adds its files to the one there, writing over files with the same names. The uploads list under the tree, one on its way at a time and the rest waiting, a folder as one row: a bar, how much has gone and how fast, and of a folder how many files; Completed once one has landed; why one failed, and of a folder whose files failed, how many, opening to list them; on hover where each goes. Cancel stops one, and a folder keeps the files that landed; Retry sends what failed again; Clear drops the finished ones. A folder an upload changes is listed again. The first specimen is a workspace seeded with an upload in each state, src/auth refusing them; every control works, Reset seeds it again, and the drop buttons hand its tree what a drop from the desktop would. Files and folders dropped on its tree, or right-clicked in, upload at a pace slow enough to watch, as they do in the File view (Session, Panel)."
       >
         <div class="flex flex-wrap items-start gap-6">
           <GallerySpecimen variant="uploads · every state, live">
-            <!-- The stage lays children out in a row; the frame and its control stack in their own column. -->
-            <div class="flex flex-col gap-2">
-              <div class="gallery-frame flex h-[28rem] w-[220px] flex-col overflow-hidden bg-surface-editor">
-                <FileTree class="flex-1" :source="pinnedUploads.source" :root="TREE_ROOT" :selected="null" />
+            <!-- The stage lays children out in a row; the frame and its controls stack in their own column. -->
+            <div class="flex w-[220px] flex-col gap-2">
+              <div class="gallery-frame flex h-[30rem] w-[220px] flex-col overflow-hidden bg-surface-editor">
+                <FileTree
+                  ref="uploadTree"
+                  class="flex-1"
+                  :source="pinnedUploads.source"
+                  :root="TREE_ROOT"
+                  :selected="null"
+                />
                 <FileUploadList :uploads="pinnedUploads.uploads" />
               </div>
-              <div>
+              <div class="flex flex-wrap gap-1">
                 <Button size="sm" variant="ghost" @click="resetPinnedUploads">Reset</Button>
+                <Button size="sm" variant="ghost" @click="dropPhotos">Drop photos/ on docs</Button>
+                <Button size="sm" variant="ghost" @click="dropOnWorkspace">Drop src/ + 2 files on the workspace</Button>
               </div>
             </div>
           </GallerySpecimen>
-          <GallerySpecimen variant="the question before replacing">
+          <GallerySpecimen v-for="(question, index) in questions" :key="question.variant" :variant="`the question · ${question.variant}`">
             <div class="flex flex-col gap-2">
-              <GalleryDialogFrame v-if="conflictOpen">
+              <GalleryDialogFrame v-if="questionState[index]!.open">
                 <UploadConflictDialog
                   :is-open="true"
                   :overlay-store="appOverlayStore"
-                  :names="['logo.svg', 'photo.png']"
-                  directory="src"
-                  :others="1"
-                  @replace="answerConflict('Replace')"
-                  @skip="answerConflict('Skip')"
-                  @cancel="answerConflict('Closed, nothing uploaded')"
+                  :clashes="question.clashes"
+                  :directory="question.directory"
+                  :others="question.others"
+                  @replace="answerQuestion(index, 'Replace')"
+                  @merge="answerQuestion(index, 'Merge')"
+                  @skip="answerQuestion(index, 'Skip')"
+                  @cancel="answerQuestion(index, 'Closed, nothing uploaded')"
                 />
               </GalleryDialogFrame>
               <div v-else>
-                <Button size="sm" @click="conflictOpen = true">Show</Button>
+                <Button size="sm" @click="questionState[index]!.open = true">Show</Button>
               </div>
               <p class="select-none text-[12px] text-fg-subtle">
-                Answered: <span class="select-text text-fg-muted">{{ conflictAnswer ?? '—' }}</span>
+                Answered: <span class="select-text text-fg-muted">{{ questionState[index]!.answer ?? '—' }}</span>
               </p>
             </div>
           </GallerySpecimen>

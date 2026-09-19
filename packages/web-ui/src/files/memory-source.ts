@@ -3,7 +3,8 @@
  * Nothing here touches a real disk; a directory can be marked as failing to exercise
  * the browser's error states, every read can carry a simulated latency, and a
  * source given an upload rate takes uploads at that rate, each landing as a
- * file of its size; without one it cannot write, as a read-only host.
+ * file of its size; without one it takes no uploads. Directories are made
+ * and entries deleted at once.
  */
 import { previewMediaType } from '@demicodes/core'
 import { delay } from '@demicodes/utils'
@@ -128,7 +129,10 @@ export function createMemoryFileSource(options: MemoryFileSourceOptions): FileBr
       if (parent.failure)
         throw new FileBrowserError(parent.failure.kind, parent.failure.message)
       const name = baseName(path)
-      if (parent.children[name] && !replace)
+      const taken = parent.children[name]
+      if (taken?.kind === 'directory')
+        throw new FileBrowserError('other', `${normalizePath(path)} is a folder.`)
+      if (taken && !replace)
         throw new FileBrowserError('exists', `${normalizePath(path)} already exists.`)
       let sent = 0
       while (sent < file.size) {
@@ -193,26 +197,41 @@ export function createMemoryFileSource(options: MemoryFileSourceOptions): FileBr
       return node.content ?? ''
     },
     contents,
-    async createDirectory(path) {
-      await wait()
+    async createDirectory(path, signal) {
+      await wait(signal)
+      if (options.offline)
+        throw new FileBrowserError('offline')
+      // Down from the root, making each directory that is missing.
+      let node: MemoryDirectory = root
+      let at = '/'
+      for (const segment of normalizePath(path).split('/').filter(Boolean)) {
+        at = joinPath(at, segment)
+        const child: MemoryNode | undefined = node.children[segment]
+        if (child?.kind === 'file')
+          throw new FileBrowserError('other', `${at} is a file.`)
+        if (child) {
+          node = child
+          continue
+        }
+        if (node.failure?.kind === 'permission')
+          throw new FileBrowserError('permission', node.failure.message)
+        const made: MemoryDirectory = { kind: 'directory', children: {}, modifiedAt: new Date().toISOString() }
+        node.children[segment] = made
+        node = made
+      }
+    },
+    async remove(path, signal) {
+      await wait(signal)
       if (options.offline)
         throw new FileBrowserError('offline')
       const parent = lookup(parentPath(path))
-      if (!parent || parent.kind !== 'directory')
-        throw new FileBrowserError('not-found', `No such directory: ${parentPath(path)}`)
-      if (parent.failure?.kind === 'permission')
-        throw new FileBrowserError('permission', parent.failure.message)
       const name = baseName(path)
-      if (parent.children[name])
-        throw new FileBrowserError(
-        'other',
-        `${joinPath(parentPath(path), name)} already exists.`
-      )
-      parent.children[name] = {
-        kind: 'directory',
-        children: {},
-        modifiedAt: new Date().toISOString()
-      }
+      if (!parent || parent.kind !== 'directory' || !parent.children[name])
+        return
+      // A directory that cannot be listed cannot be changed either.
+      if (parent.failure)
+        throw new FileBrowserError(parent.failure.kind, parent.failure.message)
+      delete parent.children[name]
     },
     ...(uploadRate === undefined ? {} : { upload: uploadAt(uploadRate) }),
   }
