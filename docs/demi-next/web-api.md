@@ -136,14 +136,19 @@ Host. The route answers before the upgrade:
 | 409 `device_offline` | A paired device has no live runner |
 | 409 `host_stopped` | The Cloud is stopped; a user stream never wakes it |
 | 409 `conversation_busy` | An archive, a target change or a detach is ending the conversation's streams |
+| 502 `stream_failed` | The Host could not open the stream: its service failed to start, or refused it |
 
 Admission follows [Host operations](sessions-and-targets.md#host-operations).
 After the upgrade, binary messages carry the stream's bytes both ways, in
 order; message boundaries carry no meaning, since the stream frames its own
 messages. The backend reads from the Host only as fast as the page takes the
-bytes. It closes the socket when the stream ends, with a close reason: the
-invocation completed, the Host became unreachable, or an archive, a target or
-directory change, or a detach ended it.
+bytes. It closes the socket when the stream ends, with a code and a reason:
+
+| Code and reason | When |
+| --- | --- |
+| 1000 `completed` | The invocation completed |
+| 1011 `host_unreachable` | The Host became unreachable, or a pipe to it failed |
+| 4000 `conversation_changed` | An archive, a target or directory change, or a detach ended the stream |
 
 `POST /api/conversations/:id/activity` records one user operation on the
 conversation's Host as [activity](resource-lifecycle.md#activity) and answers
