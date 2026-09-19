@@ -349,7 +349,8 @@ fn copy_entry<'a>(
         }
         if metadata.is_file() {
             // Out of open files, the copy waits for one (`runner.md` § Load).
-            demi_command_service::descriptors::retry(cancel, || fs::copy(source, destination)).await?;
+            demi_command_service::descriptors::retry(cancel, || fs::copy(source, destination))
+                .await?;
             return Ok(());
         }
         if !metadata.is_dir() {
