@@ -135,18 +135,20 @@ introduced as a bypass in code.
 
 A file transfer is the one operation whose length the browser decides: the
 bytes of a [file preview](file-previews.md) or a download, which last as long
-as a user watches a video. It holds Host access like any operation, until its
+as a user watches a video, and of an upload, which last as long as the
+browser takes to send them. It holds Host access like any operation, until its
 last byte is delivered or the browser ends it. Two rules keep a forgotten
 transfer from holding a Cloud awake or a conversation's file gate:
 
-- A transfer the browser has accepted no bytes from for 60 seconds releases
-  its access and stops the runner's read. Only time spent waiting for the
-  browser counts; waiting for the runner or for a Cloud to wake does not. The
-  response is left without an end, so when its connection closes the browser
-  sees it cut short, never complete, and a paused player asks again for the
-  range it still needs. A connection on which no byte has moved for 60
-  seconds is closed. Sixty seconds is the stalled-client timeout web servers
-  use, nginx's `send_timeout` among them.
+- A transfer the browser has accepted no bytes from, or sent none to, for 60
+  seconds releases its access and stops the runner's read or write. Only time
+  spent waiting for the browser counts; waiting for the runner or for a Cloud
+  to wake does not. A download's response is left without an end, so when its
+  connection closes the browser sees it cut short, never complete, and a
+  paused player asks again for the range it still needs; an upload's file is
+  left as it was. A connection on which no byte has moved for 60 seconds is
+  closed. Sixty seconds is the stalled-client timeout web servers use,
+  nginx's `send_timeout` among them.
 - An archive, a target or directory change, and a detach end the
   conversation's open transfers instead of waiting for them or being refused
   by them. A Cloud stop or reset ends them with the device's other work.
