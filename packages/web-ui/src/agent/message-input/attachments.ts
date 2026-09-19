@@ -1,8 +1,8 @@
 import type { UserContentBlock } from '@demicodes/core'
 import { ATTACHMENT_SNIPPET_MAX_CHARS, attachmentSnippet, isTextAttachment, sniffModelMediaType } from '@demicodes/core'
 
-/** An upload that fails leaves the composer with a toast; there is no failed phase to show. */
-export type AttachmentPhase = 'uploading' | 'ready'
+/** A failed upload keeps its capsule, which offers Retry; the toast says why it failed. */
+export type AttachmentPhase = 'uploading' | 'ready' | 'failed'
 
 /**
  * A local file on its way to the message. Every file reaches the host's
@@ -203,17 +203,6 @@ export function attachmentsReady(items: readonly ComposerAttachment[]): boolean 
   return items.every((item) => item.kind === 'reference' || item.phase === 'ready')
 }
 
-/** The tile's tooltip: a host file by host and path, an upload by its progress, a file by name. */
-export function attachmentCaption(item: ComposerAttachment): string {
-  if (item.kind === 'reference') {
-    return `${item.host} · ${item.path}`
-  }
-  if (item.phase === 'uploading') {
-    return `Uploading ${Math.round(attachmentProgress(item) * 100)}% · ${item.name}`
-  }
-  return item.name
-}
-
 export function encodeRemoteReference(host: string, path: string): string {
   const url = new URL('file:///')
   url.pathname = path.startsWith('/') ? path : `/${path}`
@@ -246,35 +235,12 @@ export function decodeRemoteReference(reference: string): {
   }
 }
 
-export function contentBlockCaption(block: UserContentBlock): string | undefined {
-  if (block.type === 'image') {
-    return imageNameFromSource(block.source)
-  }
-  if (block.type === 'document') {
-    return block.source.fileName
-  }
-  if (block.type === 'attachment') {
-    return `${block.name} · ${block.path}`
-  }
-  if (block.type === 'reference') {
-    const { host, path } = decodeRemoteReference(block.reference)
-    return host ? `${host} · ${path}` : path
-  }
-}
-
-function imageNameFromSource(
-  source: Extract<UserContentBlock, { type: 'image' }>['source'],
-): string {
-  if (source.type === 'url') {
-    const leaf = source.url.split('/').pop()
-    return leaf ? decodeURIComponent(leaf) : 'image'
-  }
-  return 'image'
-}
-
 export function attachmentSendBlockReason(
   items: readonly ComposerAttachment[],
 ): string | undefined {
+  if (items.some((item) => item.kind === 'file' && item.phase === 'failed')) {
+    return 'Retry or remove the attachments that did not upload'
+  }
   if (items.some((item) => item.kind === 'file' && item.phase === 'uploading')) {
     return 'Wait for attachments to finish uploading'
   }

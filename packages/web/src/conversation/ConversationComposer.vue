@@ -40,10 +40,6 @@ function addFiles(files: File[]) {
   store.addFiles(props.conversation, files)
 }
 
-function removeFile(id: string) {
-  store.removeFile(props.conversation, id)
-}
-
 const thinking = computed(() => intentThinkingConfig(props.conversation.model))
 const usage = computed(
   () =>
@@ -157,7 +153,8 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       @restore="store.archive([conversation.id], false)"
       @add-files="addFiles"
       @attach-remote="remotePicker?.open()"
-      @remove-attachment="removeFile"
+      @arrange-attachments="store.arrangeFiles(conversation, $event)"
+      @retry-attachment="store.retryFile(conversation, $event)"
       @select-model="selectModel"
       @change-thinking="store.setThinking(conversation, $event)"
       @change-service-tier="store.setTier(conversation, $event)"

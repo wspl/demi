@@ -1,6 +1,7 @@
 // Paths a message writes as link and image targets (`file-previews.md`
 // § Files named in messages).
 import { resolveHostPath } from '../files/paths'
+import type { MessageFiles } from './types'
 
 const LINE_RANGE_SUFFIX_RE = /:\d+(?:-\d+)?$/
 
@@ -54,7 +55,7 @@ export function isHttpUrl(path: string): boolean {
 }
 
 /** Whether a target names a file rather than a web page, a fragment, another scheme or a bare word. */
-function isLikelyFilePath(rawPath: string): boolean {
+export function isLikelyFilePath(rawPath: string): boolean {
   const trimmedPath = rawPath.trim()
   const normalizedPath = normalizeFilePath(trimmedPath)
   if (!normalizedPath)
@@ -68,4 +69,23 @@ function isLikelyFilePath(rawPath: string): boolean {
   return trimmedPath.endsWith('/')
     || /[/\\]/.test(normalizedPath)
     || /^[^/\\\s]+\.[^/\\\s]+$/.test(normalizedPath)
+}
+
+/**
+ * Where an image a message names loads from, and what a click on it opens:
+ * a web image in a new tab, a Host image in the File view, a `data:` image
+ * nothing. Null for a target that loads nothing, which shows its alt text.
+ */
+export function messageImage(
+  target: string,
+  files: MessageFiles | undefined,
+): { src: string; opens: { web: string } | { file: string } | null } | null {
+  if (isHttpUrl(target))
+    return { src: target, opens: { web: target } }
+  if (target.startsWith('data:'))
+    return { src: target, opens: null }
+  if (!files)
+    return null
+  const path = messageHostPath(target, files.cwd)
+  return path === null ? null : { src: files.imageUrl(path), opens: { file: path } }
 }

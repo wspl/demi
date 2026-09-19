@@ -34,6 +34,7 @@ import {
   encodeClientFrame,
   transcriptSchema,
 } from '../api/transcript'
+import { joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { createConversationUploads } from './uploads'
 import { useResources } from '../state/resources'
 import { useProduct } from '../state/product'
@@ -63,7 +64,7 @@ export const useConversations = defineStore('conversations', () => {
   const uploads = createConversationUploads(saveDrafts, (error) =>
     report('Could not upload the attachment', error),
   )
-  const { uploadFile, addFiles, removeFile } = uploads
+  const { uploadFile, addFiles, removeFile, arrangeFiles, retryFile } = uploads
   let lifetime = new AbortController()
   const cache = new ConversationCache()
   let storageErrorReported = false
@@ -428,7 +429,7 @@ export const useConversations = defineStore('conversations', () => {
         void attachTextSnippet(file, file.file)
       }
       if (isComposerFile(file) && !file.upload) {
-        void uploadFile(conversation, file).catch((error) => report('Could not upload the attachment', error))
+        void uploadFile(file).catch((error) => report('Could not upload the attachment', error))
       }
     }
   }
@@ -1161,43 +1162,33 @@ export const useConversations = defineStore('conversations', () => {
     const pending = conversation.pendingSend
     const signal = lifetime.signal
     pending.error = null
-    const draft = pending.text
-    const files = conversation.files.filter((file) =>
-      pending.fileIds.includes(file.id),
+    // The files in the order of their marks in the text.
+    const files = pending.fileIds.flatMap((id) =>
+      conversation.files.filter((file) => file.id === id),
     )
     conversation.submission = 'sending'
     saveDrafts()
     try {
       await persistConversation(conversation)
-      const content: UserContentBlock[] = draft.trim()
-        ? [
-            {
-              type: 'text',
-              text: draft.trim(),
-            },
-          ]
-        : []
-      for (const file of files) {
+      const references = files.map((file): UserContentBlock => {
         if (!isComposerFile(file)) {
-          content.push(
-            contentReference({
-              type: 'remote_file',
-              deviceId: file.deviceId,
-              path: file.path,
-            }),
-          )
-        } else if (file.upload) {
-          content.push(
-            contentReference({
-              type: 'upload',
-              ref: file.upload.id,
-              fileName: file.name,
-            }),
-          )
-        } else {
+          return contentReference({
+            type: 'remote_file',
+            deviceId: file.deviceId,
+            path: file.path,
+          })
+        }
+        if (!file.upload) {
           throw new Error(`${file.name} has not finished uploading.`)
         }
-      }
+        return contentReference({
+          type: 'upload',
+          ref: file.upload.id,
+          fileName: file.name,
+        })
+      })
+      // Each file where its capsule stands in the text.
+      const content = joinMessageContent(pending.text, references.map((reference) => [reference]))
       await (await runtimeFor(conversation)).submit(content, pending.id)
       clearSubmission(conversation, pending.id)
     } catch (error) {
@@ -1317,7 +1308,8 @@ export const useConversations = defineStore('conversations', () => {
       },
     }),
     addFiles,
-    removeFile,
+    arrangeFiles,
+    retryFile,
     saveDrafts,
     initialize,
     stopAll,

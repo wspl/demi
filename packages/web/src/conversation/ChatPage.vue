@@ -114,8 +114,8 @@ async function fork(request: MessageForkRequest): Promise<void> {
         ? {
             id: conversation.pendingSend.id,
             text: conversation.pendingSend.text,
-            attachments: conversation.files.filter((file) =>
-              conversation?.pendingSend?.fileIds.includes(file.id),
+            attachments: conversation.pendingSend.fileIds.flatMap((id) =>
+              conversation?.files.filter((file) => file.id === id) ?? [],
             ),
             error: conversation.pendingSend.error,
             sending: conversation.submission === 'sending',
