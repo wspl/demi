@@ -304,15 +304,10 @@ against the same harness profile list.
 
 ## Child identity
 
-Each child receives:
-
-| env | value |
-|---|---|
-| `DEMI_SESSION_ID` | child session id (same as `subagentId`) |
-| `DEMI_SUBAGENT_ID` | same id |
-| `DEMI_PARENT_SESSION_ID` | spawning session id |
-
-There is no depth marker: depth has no behavioral meaning.
+A child's jobs carry a
+[command context](demi-next/native-runtime.md#command-context) whose `caller`
+is the child's node, the same id as `subagentId`, with `parent` naming the
+spawning node. There is no depth marker: depth has no behavioral meaning.
 
 ## Child context
 

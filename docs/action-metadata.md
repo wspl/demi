@@ -57,7 +57,8 @@ One agent session can therefore use different Hosts across actions. A Host must
 be a stable object for one execution target so Demi can preserve that target's
 shell state. Shell and command handles are accepted only when they belong to the
 Host selected by the current metadata. Command-bridge calls do not carry action
-metadata: `DEMI_SHELL_ID` routes a child process back to the Host that created it.
+metadata: the job's [command context](demi-next/native-runtime.md#command-context)
+names its shell, which routes a child process back to the Host that created it.
 
 Yield wakeups inherit the scheduling tool invocation's metadata. A
 metadata-bearing wakeup does not steer into a different active action; it stays
