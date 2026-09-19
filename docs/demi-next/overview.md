@@ -128,6 +128,7 @@ implementation.
 | How are concurrent operations admitted? | [Execution coordination](sessions-and-targets.md#coordinate-shared-cloud-activity) |
 | How are commands declared and dispatched? | [Commands](commands.md) |
 | How does the agent operate browser tabs on its conversation Host? | [Conversation browser](browser.md) |
+| How does the user watch and operate those tabs? | [Live browser view](browser-live-view.md) |
 | How does a service on a device get a public URL? | [Host expose](expose.md) |
 | How are native commands installed and executed? | [Native runtime](native-runtime.md) |
 | What does a device runner own? | [Runner](runner.md) |

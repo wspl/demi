@@ -170,8 +170,9 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demicodes/coding-agent`
 
 - Browser scope: declare `demi browser` commands and help using schemas
-  from the `@demicodes/browser-protocol` dependency; algorithms remain
-  native. See [Browser commands](demi-next/browser.md#command-contract).
+  from the `@demicodes/browser-protocol` dependency, and the `browser`
+  [user stream](demi-next/native-runtime.md#user-streams) of the live view;
+  algorithms remain native. See [Browser commands](demi-next/browser.md#command-contract).
 - Status: implemented.
 - Production deps: `@demicodes/agent`, `@demicodes/browser-protocol`, `@demicodes/core`, `@demicodes/shell`, `@demicodes/utils`.
 - Owns: coding harness, coding prompt, coding commands (the `demi` root: every subcommand is a noun domain group — `file` as `runtime` modules written against the ABI and `todo` as `rpc` built in, product groups like the backend's `host` composed in). A `reference` block reaches the model as its path; the model reads the file with tools.
@@ -256,10 +257,12 @@ Test code may depend upward for integration coverage. Production code must not.
   [Conversation idle and Host resource release](demi-next/resource-lifecycle.md).
 - Browser scope: the backend has no browser module. It names the conversation
   and invoking node on every job it starts and sends the generic conversation
-  release; browser state lives in the native package.
+  release; browser state lives in the native package. The live browser view
+  reaches the Host through the generic user stream route and activity reports
+  ([Web API](demi-next/web-api.md#user-streams)).
 - Status: target contract.
 - Production deps: `@demicodes/agent`, `@demicodes/browser-protocol`, `@demicodes/coding-agent`, `@demicodes/command-loader`, `@demicodes/command-protocol`, `@demicodes/core`, `@demicodes/host-remote`, `@demicodes/machines`, `@demicodes/provider` and the concrete providers, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`; external: `hono` (HTTP framework, Bun runtime).
-- Owns: the hosted multi-user product's server — the storage module (SQLite layer, numbered control/conversation migrations, `ControlService` over `control.sqlite`, the per-conversation `AgentTreeStore` over node and block rows, blob store, DB-backed `HostStore`), the Web API (Hono routes + the per-conversation frame-protocol WebSocket with server-side session/cwd scoping and media by reference on the way out), AgentServer assembly with the shell environment chosen per Host, runner management (pairing, device registry, one live socket per device, the rpc relay, the pipe routes over `host-remote`'s broker, browse endpoints), the managed-hosts module (one managed device per user over the `ManagedHostProvisioner` contract, reached through `@demicodes/machines`' `RemoteProvisioner` as the machine manager's client; lifecycle/hibernate/reset, the backend-contributed `demi host` subcommand group), the expose module (`expose/`: expose records and their one-hour lifetime, the public relay answering expose hostnames over device access and the network stream, the `demi host expose` leaves; see `docs/demi-next/expose.md`), the LLM module (per-provider provider assembly, model metadata caching in memory and control.sqlite with TTL and shared refresh, metering wrap), the credential vault (instance secret, GCM-encrypted providers, subscription device-login flows over per-provider provider pools), and usage accounting (ledger + rate limit). The backend accepts explicitly submitted API keys and setup tokens at authenticated write boundaries, passes subscription material to provider-owned credential pools, and never returns secrets or proxies model traffic.
+- Owns: the hosted multi-user product's server — the storage module (SQLite layer, numbered control/conversation migrations, `ControlService` over `control.sqlite`, the per-conversation `AgentTreeStore` over node and block rows, blob store, DB-backed `HostStore`), the Web API (Hono routes + the per-conversation frame-protocol WebSocket with server-side session/cwd scoping and media by reference on the way out), AgentServer assembly with the shell environment chosen per Host, runner management (pairing, device registry, one live socket per device, the rpc relay, the pipe routes over `host-remote`'s broker, the user stream route bridging a page's WebSocket to a service stream's pipes with backpressure, browse endpoints), the managed-hosts module (one managed device per user over the `ManagedHostProvisioner` contract, reached through `@demicodes/machines`' `RemoteProvisioner` as the machine manager's client; lifecycle/hibernate/reset, the backend-contributed `demi host` subcommand group), the expose module (`expose/`: expose records and their one-hour lifetime, the public relay answering expose hostnames over device access and the network stream, the `demi host expose` leaves; see `docs/demi-next/expose.md`), the LLM module (per-provider provider assembly, model metadata caching in memory and control.sqlite with TTL and shared refresh, metering wrap), the credential vault (instance secret, GCM-encrypted providers, subscription device-login flows over per-provider provider pools), and usage accounting (ledger + rate limit). The backend accepts explicitly submitted API keys and setup tokens at authenticated write boundaries, passes subscription material to provider-owned credential pools, and never returns secrets or proxies model traffic.
 - Public boundary: `createBackend`, storage module types from root; the `demi-backend` bin.
 - May assemble: concrete providers, AgentServer, `RemoteHost`, `RemoteShellEnvironment` and the coding harness.
 - Builds the JS command manifest with Bun's transpiler, serves it to runners and executes authenticated RPC handlers. All shell scripts execute on the selected machine.
@@ -334,7 +337,8 @@ Test code may depend upward for integration coverage. Production code must not.
 - Status: implemented schemas and generated native bindings.
 - Production deps: no first-party packages; external: Zod.
 - Owns: browser operation arguments/results, tab state, observations,
-  and resource event payloads.
+  resource event payloads, and the live view protocol: its messages, frame
+  header and version ([Live browser view](demi-next/browser-live-view.md)).
   Generic resource envelopes remain in command-protocol/runner-protocol.
 - Public boundary: platform-neutral schemas and derived types. `coding-agent`
   uses them to declare CLI commands; backend validates browser data;
@@ -381,7 +385,9 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `crates/demi-commands` (Rust executable)
 
 - Browser scope: `browser/` owns browser/driver integration, the canonical
-  tab registry, observations, command operations and resource
+  tab registry, observations, command operations, the live view module with
+  its capture extension and page observers
+  ([Live browser view](demi-next/browser-live-view.md)), and resource
   cleanup. Browser business schemas come from `browser-protocol` and are generated
   by this crate's build for native consumers; no second Rust schema authority.
   The command catalog and its ownership follow the
@@ -407,7 +413,8 @@ Test code may depend upward for integration coverage. Production code must not.
   browser operation.
 - Owns: the `demi-runner` execution host, backend registration and connection,
   filesystem/process RPC with file contents through pipes, network streams (`net_open`: a TCP socket on the
-  device carried as two pipes, no protocol parsing), shell jobs, local command
+  device carried as two pipes, no protocol parsing), service streams
+  (`service_open`: a user stream's invocation carried as two pipes, no protocol parsing), shell jobs, local command
   forwarding and installation.
 - `build.rs` consumes the Zod runner-message and manifest definitions from
   `packages/runner-protocol` and `packages/command-loader`. Generated bindings
@@ -442,7 +449,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Owns: the reusable browser component library (Vue) — the agent Tab, List (+ blocks), and
   Input surfaces, the assembled ChatSession page, the message editor and its
   draft/submission lifecycle (`agent/message-editing.ts`, `SessionComposer.vue`, and the inert `MessageEditRegion.vue`), sidebar layout, workspace and
-  remote-file selection flows, file previews (`files/`: the viewer for each kind, the side-by-side change comparison, releasing a transfer when its preview hides; `markdown/document.ts`: a Markdown file rendered and sanitized as a document; `docs/demi-next/file-previews.md`), shared UI primitives, markdown/theme, shared sidebar presentation and list interaction, the sign-in page (`auth/EmailLoginPage`: email and password on the left, a wide empty intro on the right, over a host-reported phase), the settings surface (`settings/`: dialog shell and panels as presentation over host-mapped models), the reusable device pairing dialog and lifecycle (`devices/`, driven by a host-provided claim adapter), and the
+  remote-file selection flows, the live browser view (video, input, native control overlays and the viewport menu over an injected stream source; `docs/demi-next/browser-live-view.md`), file previews (`files/`: the viewer for each kind, the side-by-side change comparison, releasing a transfer when its preview hides; `markdown/document.ts`: a Markdown file rendered and sanitized as a document; `docs/demi-next/file-previews.md`), shared UI primitives, markdown/theme, shared sidebar presentation and list interaction, the sign-in page (`auth/EmailLoginPage`: email and password on the left, a wide empty intro on the right, over a host-reported phase), the settings surface (`settings/`: dialog shell and panels as presentation over host-mapped models), the reusable device pairing dialog and lifecycle (`devices/`, driven by a host-provided claim adapter), and the
   model-catalog DTOs the composer reads (`transport/protocol.ts`: `ProviderInfo`, `ModelInfo`
   and friends, which the host fills from its own catalog, plus the agent's frame, block and
   tool-view schemas re-exported for the host).
