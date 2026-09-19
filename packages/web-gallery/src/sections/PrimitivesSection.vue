@@ -91,7 +91,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
     <template v-if="view === 'buttons'">
       <GallerySection
         title="Button"
-        note="Enabled, disabled, sizes, and pressed."
+        note="Enabled, disabled, sizes, and pressed. A button that refreshes, renews or restarts turns its icon one whole revolution per click, and keeps turning while its work runs, always finishing the turn it is in."
       >
         <div class="specimen-row">
           <GallerySpecimen variant="spin · full revolution">
