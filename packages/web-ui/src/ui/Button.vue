@@ -27,7 +27,9 @@ const props = withDefaults(
     /** Why it is disabled, as a tooltip; only read while `disabled`. */
     disabledReason?: string
     pressed?: boolean
+    /** Turns the icon while true, a whole revolution at a time; the turn it is in always finishes. */
     spinning?: boolean
+    /** Turns the icon one whole revolution per click. Every button that refreshes, renews or restarts does. */
     spinOnClick?: boolean
   }>(),
   {
@@ -42,8 +44,11 @@ const tooltipContent = computed(() =>
 )
 const emit = defineEmits<{ spinEnd: [] }>()
 const root = ref<HTMLElement | null>(null)
-const { rotating, onClick } = useButtonIconSpin(root, props, () =>
-  emit('spinEnd'),
+// The icons a caller puts straight into the button, beside its label, turn.
+const { rotating, onClick } = useButtonIconSpin(
+  () => root.value ? [...root.value.querySelectorAll(':scope > svg')] : [],
+  props,
+  () => emit('spinEnd'),
 )
 
 const sizeClass = computed(() => {

@@ -73,6 +73,7 @@ function activate(row: ChangeTreeRow): void {
           size="xs"
           variant="ghost"
           aria-label="Refresh"
+          spin-on-click
           :spinning="source.refreshing"
           @click="source.refresh?.()"
         />
