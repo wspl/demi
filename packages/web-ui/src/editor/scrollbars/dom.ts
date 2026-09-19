@@ -95,16 +95,12 @@ export function mountScrollbarDom(view: EditorView, options: MountedScrollbarDom
   const renderMarkerNode = (marker: RawScrollbarMarker, parent: HTMLDivElement) => {
     const node = document.createElement('div')
     node.dataset['editorScrollbarMarker'] = marker.kind
-    if (marker.severity) {
-      node.dataset['editorScrollbarSeverity'] = marker.severity
-    }
-    node.dataset['editorScrollbarPriority'] = String(marker.priority)
     node.style.position = 'absolute'
     node.style.left = '0'
     node.style.right = '0'
     node.style.top = `${marker.startRatio * 100}%`
     const lineCount = Math.max(1, Math.round((marker.endRatio - marker.startRatio) * view.state.doc.lines))
-    if (marker.kind === 'diagnostic' || marker.kind === 'search') {
+    if (marker.kind === 'search') {
       node.style.height = `${lineCount * 2}px`
     } else {
       node.style.height = `${(marker.endRatio - marker.startRatio) * 100}%`
