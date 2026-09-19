@@ -64,14 +64,14 @@ function report(title: string, error: unknown): void {
   reportError(title, error, { userVisible: true })
 }
 
-const nameSave = ref<'idle' | 'saving' | 'saved'>('idle')
+const nameSaving = ref(false)
 const nameDraft = ref<string | null>(null)
 
 async function rename(nickname: string): Promise<void> {
-  if (!nickname.trim() || nameSave.value === 'saving') {
+  if (!nickname.trim() || nameSaving.value) {
     return
   }
-  nameSave.value = 'saving'
+  nameSaving.value = true
   nameDraft.value = nickname
   try {
     const response = await apiRequest('/auth/me', {
@@ -89,11 +89,11 @@ async function rename(nickname: string): Promise<void> {
       product.snapshot.user = user
     }
     nameDraft.value = null
-    nameSave.value = 'saved'
+    nameSaving.value = false
     await product.revalidate()
   } catch (error) {
     // The field keeps the draft; the toast says why it was not saved.
-    nameSave.value = 'idle'
+    nameSaving.value = false
     report('Could not change your name', error)
   }
 }
@@ -381,7 +381,7 @@ function resetShortcuts(): void {
     <SettingsAccount
       v-else-if="tab === 'account'"
       :name="nameDraft ?? resources.username"
-      :name-save="nameSave"
+      :name-saving="nameSaving"
       v-model:email-draft="emailDraft"
       v-model:password-draft="passwordDraft"
       v-model:email-open="emailOpen"
