@@ -12,7 +12,6 @@ import {
   ArrowLeft,
   ArrowRight,
   ArrowUp,
-  ChevronDown,
   Eye,
   EyeOff,
   FolderPlus,
@@ -342,12 +341,6 @@ watch(
 void load(path.value)
 
 onBeforeUnmount(() => pending?.abort())
-
-defineExpose({
-  /** The directory the browser shows. */
-  path,
-  goTo,
-})
 </script>
 
 <template>

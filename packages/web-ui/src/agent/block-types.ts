@@ -1,12 +1,4 @@
 import type { Block } from '@demicodes/core'
 
-// agent-gui exposed per-variant block interfaces; demi @demicodes/core exposes only the Block
-// union, so we recover the named variants here for the ported components.
-
-export type UserBlock = Extract<Block, { type: 'user' }>
-export type SteerBlock = Extract<Block, { type: 'steer' }>
-export type TextBlock = Extract<Block, { type: 'text' }>
-export type ThinkingBlock = Extract<Block, { type: 'thinking' }>
+/** A tool call block: @demicodes/core exports only the Block union. */
 export type ToolCallBlock = Extract<Block, { type: 'tool_call' }>
-export type ResponseBlock = Extract<Block, { type: 'response' }>
-export type ErrorBlock = Extract<Block, { type: 'error' }>

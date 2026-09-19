@@ -72,14 +72,3 @@ export function isValidEntryName(name: string): boolean {
     !trimmed.includes('/')
 }
 
-/** `Home` shortens the home directory to `~`; other paths stay absolute. */
-export function displayPath(path: string, home?: string): string {
-  if (!home)
-    return path
-  const normalizedHome = normalizePath(home)
-  if (path === normalizedHome)
-    return '~'
-  if (path.startsWith(`${normalizedHome}/`))
-    return `~${path.slice(normalizedHome.length)}`
-  return path
-}

@@ -182,7 +182,6 @@ function abortAgents(): void {
         <template #composer
           ><GalleryComposer
             placeholder="Ask Demi…"
-            conversation-id="shared-product-session"
             :archived="session.archived"
             @restore="session.archived = false"
             :attachments="[{ name: 'ready-example.png', phase: 'ready' }]"

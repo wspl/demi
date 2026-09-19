@@ -106,7 +106,6 @@ async function selectFolder(deviceId: string, path: string): Promise<boolean> {
   >
     <HostMenu
       :conversation="conversation"
-      :project="project"
       @switch-main="browse"
     />
   </WorkspaceDirectoryMenu>

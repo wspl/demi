@@ -7,7 +7,6 @@ import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Popover from '@demicodes/web-ui/ui/Popover.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { IN_DEVELOPMENT } from '@demicodes/web-ui/ui/disabled'
-import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import RegionStatus from '@demicodes/web-ui/ui/RegionStatus.vue'
 import { copyConversationId } from '../agent/copy-conversation-id'
 import type {
@@ -441,7 +440,6 @@ function selectProjectConversations(project: SidebarProject): void {
             :project="projectById.get(entry.id)!"
             :collapsed="isFolded(entry.id)"
             :focused="list.keyboardNav.value && list.focusedId.value === entry.id"
-            :menu-open="projectMenu.isOpen.value && menuProject?.id === entry.id"
             @toggle="list.onProjectClick(entry.id)"
             @create="emit('create', entry.id)"
             @contextmenu="(event) => openProjectMenu(projectById.get(entry.id)!, event)"
