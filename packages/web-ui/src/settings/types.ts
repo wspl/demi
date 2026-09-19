@@ -246,10 +246,6 @@ export type ProviderLoginPhase =
       expiresIn?: string
     }
   | {
-      kind: 'code-input'
-      url: string
-    }
-  | {
       kind: 'token'
       /** The command that prints the token, run in the user's own terminal. */
       command: string

@@ -62,7 +62,7 @@ function closeTab(agent: SubagentRecord): void {
       <TabItem
         v-for="agent in tabs"
         :key="agent.id"
-        :tab="{ id: agent.id, title: agent.name }"
+        :title="agent.name"
         :is-active="agent.id === active?.id"
         :status="subagentStatus(agent.phase)"
         mark="bot"

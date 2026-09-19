@@ -15,8 +15,8 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 
 /**
  * A subscription sign-in, as the vendor's own flow: a device code confirmed in a
- * browser, a code the user copies back, or a token the vendor's CLI hands out after
- * its own login. Owns nothing; the host drives the phase.
+ * browser, or a token the vendor's CLI hands out after its own login
+ * (`providers-and-vault.md`). Owns nothing; the host drives the phase.
  */
 import type { ProviderLoginPhase } from './types'
 export type { ProviderLoginPhase } from './types'
@@ -30,20 +30,17 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
-  submitCode: [code: string]
   submitToken: [token: string]
   /** The host opens the vendor's page the way it opens any external link. */
   open: [url: string]
   retry: []
 }>()
 
-const pasted = ref('')
 const token = ref('')
 watch(
   () => [props.isOpen, props.phase.kind],
   () => {
     token.value = ''
-    pasted.value = ''
   },
 )
 const { copy, copied } = useClipboard({ copiedDuring: 1500 })
@@ -65,9 +62,6 @@ const { copy, copied } = useClipboard({ copiedDuring: 1500 })
           <template v-if="phase.kind === 'device'"
             >Enter this code on the vendor's page. Demi keeps waiting
             here.</template
-          >
-          <template v-else-if="phase.kind === 'code-input'"
-            >Approve in the browser, then paste the code it shows you.</template
           >
           <template v-else-if="phase.kind === 'token'"
             >Sign in with the vendor's own tool, then paste the token it
@@ -118,26 +112,6 @@ const { copy, copied } = useClipboard({ copiedDuring: 1500 })
               · code expires in {{ phase.expiresIn }}</template
             >
           </span>
-        </div>
-      </div>
-
-      <div v-else-if="phase.kind === 'code-input'" class="flex flex-col gap-3">
-        <Button class="self-start" @click="emit('open', phase.url)">
-          Open in browser
-          <ExternalLink :size="ICON_PX.in24" />
-        </Button>
-        <div class="flex items-center gap-2">
-          <TextInput
-            v-model="pasted"
-            placeholder="Paste the code here"
-            class="flex-1"
-          />
-          <Button
-            variant="primary"
-            :disabled="!pasted.trim()"
-            @click="emit('submitCode', pasted.trim())"
-            >Continue</Button
-          >
         </div>
       </div>
 

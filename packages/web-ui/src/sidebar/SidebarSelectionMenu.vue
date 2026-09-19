@@ -1,16 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Archive, ArrowRight, Copy, FolderInput, Pencil, Pin, PinOff, Trash2 } from '@lucide/vue'
+import { Archive, ArrowRight, Copy, FolderInput, Pencil, Pin, PinOff } from '@lucide/vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import type { SidebarConversation, SidebarProject } from './types'
 import { t } from '../infra/i18n'
 
-/** One row gets open, rename and copy ID; any count gets pin, move, archive and delete. */
+/** One row gets open, rename and copy ID; any count gets pin, move and archive. Conversations are never deleted. */
 const props = defineProps<{
-  hidePin?: boolean
-  hideDelete?: boolean
   targets: SidebarConversation[]
   projects: SidebarProject[]
 }>()
@@ -22,7 +20,6 @@ const emit = defineEmits<{
   pin: [ids: string[], pinned: boolean]
   moveTo: [ids: string[], projectId: string | null]
   archive: [ids: string[]]
-  remove: [ids: string[]]
 }>()
 
 const ids = computed(() => props.targets.map((target) => target.id))
@@ -67,7 +64,6 @@ const many = computed(
       />
     </template>
     <MenuItem
-      v-if="!hidePin"
       :icon="allPinned ? PinOff : Pin"
       :label="`${allPinned ? 'Unpin' : 'Pin'}${many}`"
       shortcut="⌘⇧P"
@@ -99,15 +95,6 @@ const many = computed(
       :icon="Archive"
       :label="`Archive${many}`"
       @select="emit('archive', ids)"
-    />
-    <MenuDivider v-if="!hideDelete" />
-    <MenuItem
-      v-if="!hideDelete"
-      :icon="Trash2"
-      :label="`Delete${many}`"
-      shortcut="⌫"
-      is-danger
-      @select="emit('remove', ids)"
     />
   </Menu>
 </template>

@@ -47,7 +47,6 @@ function state(
     retrying: false,
     failures: {},
     archived: false,
-    status: 'idle',
     scroll: null,
     subagents: [],
     terminals: [],
@@ -77,7 +76,6 @@ const cases: SessionCase[] = [
     variant: 'Generation failed · error record',
     note: 'The record at the tail carries the message, the diagnostics, Copy and Retry. The dock adds nothing.',
     session: state('generation', {
-      status: 'error',
       lastError: 'Anthropic API request failed with HTTP 529: Overloaded.',
       blocks: [...shortTranscriptBlocks(), generationErrorBlock()],
     }),
@@ -87,7 +85,6 @@ const cases: SessionCase[] = [
     variant: 'Request refused · no record',
     note: 'The server refused a request without writing a record. A notice at the tail says so; there is nothing to retry.',
     session: state('refused', {
-      status: 'error',
       lastError: 'The request was refused: another view holds this conversation.',
       blocks: shortTranscriptBlocks(),
     }),

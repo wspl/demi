@@ -25,7 +25,6 @@ const props = defineProps<{
   menuOpen: boolean
   renaming: boolean
   pending?: boolean
-  hidePin?: boolean
   /** Inside a project: the row starts at the header's icon column, so its dot sits under the
       folder icon and its title aligns with the project name. */
 }>()
@@ -215,7 +214,6 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
         class="flex items-center"
       >
         <IconButton
-          v-if="!hidePin"
           :icon="conversation.pinned ? PinOff : Pin"
           :icon-size="ICON_PX.in20"
           size="sm"

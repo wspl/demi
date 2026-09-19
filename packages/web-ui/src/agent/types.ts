@@ -1,6 +1,5 @@
 import type { Block, ProviderFailureFacts, QueuedMessage, SessionPhase, UserContentBlock } from '@demicodes/core'
 import type { PendingAction } from './activity-slot'
-import type { ConversationStatus } from './conversation-status'
 import type { SessionLoad } from './session-status'
 import type { SubagentRecord } from './subagents'
 import type { TerminalRecord } from './terminals'
@@ -9,11 +8,6 @@ import type { PersistedScrollState } from '../composables/useBlockVirtualizer'
 import type { ModelIntent } from './model-selection'
 
 export type { ModelIntent } from './model-selection'
-
-export interface ConversationDraft {
-  inputModel: unknown | null
-  attachments: UserContentBlock[]
-}
 
 export interface PendingSteerMessage {
   id: string
@@ -30,23 +24,16 @@ export interface PendingSubmissionState {
   sending: boolean
 }
 
-/**
- * Reactive per-conversation state. Mirrors the shape agent-gui exposed via
- * `rpc.agent.$state.sessions[id]` so ported components read it the same way.
- */
+/** One conversation's live state, as the runtime keeps it and `ChatSession` reads it. */
 export interface ConversationState {
   id: string
   cwd: string
   title: string
-  createdAt: string
   blocks: Block[]
   phase: SessionPhase
   queue: QueuedMessage[]
   pendingSteers: PendingSteerMessage[]
   model: ModelIntent
-  draft: ConversationDraft | null
-  isResultSeen: boolean
-  hasContent: boolean
   lastError: string | null
   /** History restore and the live socket. A new conversation starts `ready`. */
   load: SessionLoad
@@ -83,7 +70,6 @@ export interface ChatSessionState
     | 'failures'
   > {
   archived: boolean
-  status: ConversationStatus
   scroll: PersistedScrollState | null
   subagents: SubagentRecord[]
   terminals: TerminalRecord[]

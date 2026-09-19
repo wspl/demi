@@ -84,8 +84,7 @@ import GalleryComposer from '../components/GalleryComposer.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
-import GalleryTabBar from '../components/GalleryTabBar.vue'
-import GalleryTabBarDrive from '../components/GalleryTabBarDrive.vue'
+import GalleryTabStripDrive from '../components/GalleryTabStripDrive.vue'
 import { useGalleryView } from '../gallery-views'
 
 const { view } = useGalleryView()
@@ -608,20 +607,14 @@ function abortTerminal(id: string) {
   <div :class="fillPane ? 'flex min-h-0 flex-1 flex-col' : 'flex flex-col gap-10'">
     <template v-if="view === 'tabs'">
       <GallerySection
-        title="Tab bar"
-        note="Session tabs and the conversation list. Tabs fit their icon and title up to 160px; longer titles truncate."
-      >
-        <GalleryTabBar />
-      </GallerySection>
-      <GallerySection
         title="Motion"
-        note="Every motion the strip owns, in a narrow frame that overflows and one at the pane width. A tab opens by growing from nothing and closes by collapsing, while the New tab control follows the last tab until they scroll and then holds the right edge. Selecting or opening a tab that is cut off scrolls, with the same timing as the tab, until it shows whole and clear of the fade; closing scrolls back when the end comes into reach. Play all runs through the cases; the tabs, their close controls and their menus work too."
+        note="The work panel's browser tabs, and every motion their strip owns, in a narrow frame that overflows and one at the pane width. Tabs fit their mark and title up to 160px; longer titles truncate. A tab opens by growing from nothing and closes by collapsing, while the New browser tab control follows the last tab until they scroll and then holds the right edge. Selecting or opening a tab that is cut off scrolls, with the same timing as the tab, until it shows whole and clear of the fade; closing scrolls back when the end comes into reach. Play all runs through the cases; the tabs, their close controls and their menus work too."
       >
         <GallerySpecimen variant="narrow · overflows" wide>
-          <GalleryTabBarDrive width="32rem" />
+          <GalleryTabStripDrive width="32rem" />
         </GallerySpecimen>
         <GallerySpecimen variant="wide · pane width" wide>
-          <GalleryTabBarDrive />
+          <GalleryTabStripDrive />
         </GallerySpecimen>
       </GallerySection>
     </template>

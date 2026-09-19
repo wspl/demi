@@ -79,7 +79,7 @@ export const GALLERY_VIEWS: Record<string, readonly GalleryViewOption[]> = {
   '/session': [
     {
       value: 'tabs',
-      label: 'Tab bar',
+      label: 'Tab strip',
     },
     {
       value: 'composer',

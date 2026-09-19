@@ -33,7 +33,6 @@ const session = reactive<ChatSessionState>({
   retrying: false,
   failures: {},
   archived: false,
-  status: 'idle',
   scroll: null,
   subagents: props.showActivity ? gallerySubagents() : [],
   terminals: props.showActivity ? galleryTerminals() : [],

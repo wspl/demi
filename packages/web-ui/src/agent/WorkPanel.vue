@@ -139,7 +139,7 @@ function openFromTree(path: string): void {
         <TabItem
           v-for="tab in browserTabs"
           :key="tab.id"
-          :tab="tab"
+          :title="tab.title"
           :is-active="tab.id === activeId"
           tabindex="0"
           @pointerdown="select(tab)"

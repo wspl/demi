@@ -42,8 +42,6 @@ const props = defineProps<{
   conversations: SidebarConversation[]
   activeId: string | null
   pendingIds?: string[]
-  hidePin?: boolean
-  hideDelete?: boolean
   /** `loading` is a spinner, not a first-run empty list. */
   listStatus?: ListLoad
 }>()
@@ -58,7 +56,6 @@ const emit = defineEmits<{
   pin: [ids: string[], pinned: boolean]
   moveToProject: [ids: string[], projectId: string | null]
   archive: [ids: string[]]
-  remove: [ids: string[]]
   /** Settings, on a section when an entry names one (`skills`, `archived`). */
   openSettings: [section?: string]
   signOut: []
@@ -175,8 +172,6 @@ function conversationsOf(ids: readonly string[]): SidebarConversation[] {
 }
 
 function togglePin(ids: string[]): void {
-  if (props.hidePin)
-    return
   const targets = conversationsOf(ids)
   emit('pin', ids, !targets.every((target) => target.pinned))
 }
@@ -187,10 +182,6 @@ const list = useSidebarList(entries, computed(() => props.activeId), {
   fold: setFolded,
   rename: (id) => {
     renamingId.value = id
-  },
-  remove: (ids) => {
-    if (!props.hideDelete)
-      emit('remove', ids)
   },
   togglePin,
 })
@@ -460,7 +451,6 @@ function selectProjectConversations(project: SidebarProject): void {
             v-else
             :conversation="byId.get(entry.id)!"
             :pending="pendingIds?.includes(entry.id)"
-            :hide-pin="hidePin"
             :open="entry.id === activeId"
             :selected="list.isSelected(entry.id)"
             :focused="list.keyboardNav.value && list.focusedId.value === entry.id"
@@ -518,8 +508,6 @@ function selectProjectConversations(project: SidebarProject): void {
     >
       <SidebarSelectionMenu
         :targets="menuTargets"
-        :hide-pin="hidePin"
-        :hide-delete="hideDelete"
         :projects="projects"
         @open="(id) => {
           rowMenu.close()
@@ -544,10 +532,6 @@ function selectProjectConversations(project: SidebarProject): void {
         @archive="(ids) => {
           rowMenu.close()
           emit('archive', ids)
-        }"
-        @remove="(ids) => {
-          rowMenu.close()
-          emit('remove', ids)
         }"
       />
     </Popover>
