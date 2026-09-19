@@ -50,7 +50,15 @@ impl ResidentService {
         command.wrap(process_wrap::tokio::ProcessGroup::leader());
         #[cfg(windows)]
         command.wrap(process_wrap::tokio::JobObject);
-        let mut child = command.spawn()?;
+        // Out of open files, the service waits for one (`runner.md` § Load).
+        let mut backoff = demi_command_service::descriptors::Backoff::default();
+        let mut child = loop {
+            match command.spawn() {
+                Ok(child) => break child,
+                Err(error) if demi_command_service::descriptors::exhausted(&error) => backoff.wait().await,
+                Err(error) => return Err(error.into()),
+            }
+        };
         let pid = child.id().expect("newly spawned process has an ID");
         let input = child.stdin().take().expect("piped stdin");
         let output = child.stdout().take().expect("piped stdout");

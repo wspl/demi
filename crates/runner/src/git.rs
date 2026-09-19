@@ -87,7 +87,6 @@ impl Changes {
 #[derive(Debug)]
 pub enum GitError {
     NotRepository,
-    Busy,
     Timeout,
     TooLarge,
     Cancelled,
@@ -99,7 +98,6 @@ impl GitError {
     pub fn code(&self) -> &str {
         match self {
             GitError::NotRepository => "not_repository",
-            GitError::Busy => "busy",
             GitError::Timeout => "timeout",
             GitError::TooLarge => "too_large",
             GitError::Cancelled => "cancelled",
@@ -111,7 +109,6 @@ impl GitError {
     pub fn message(&self) -> String {
         match self {
             GitError::NotRepository => "not inside a git repository".into(),
-            GitError::Busy => "the runner is busy with other working-tree requests".into(),
             GitError::Timeout => "the working-tree request timed out".into(),
             GitError::TooLarge => "the file is too large".into(),
             GitError::Cancelled => "the working-tree request was cancelled".into(),
@@ -121,7 +118,27 @@ impl GitError {
     }
 }
 
-fn internal(error: impl std::fmt::Display) -> GitError {
+impl std::fmt::Display for GitError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.message())
+    }
+}
+
+impl std::error::Error for GitError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            GitError::Io(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+
+fn internal<E: std::error::Error + Send + Sync + 'static>(error: E) -> GitError {
+    // Running out of open files stays an IO error, so the request waits for
+    // one (`runner.md` § Load).
+    if demi_command_service::descriptors::exhausted(&error) {
+        return GitError::Io(io::Error::other(error));
+    }
     GitError::Internal(error.to_string())
 }
 
@@ -255,12 +272,13 @@ impl GitService {
             }
             _ => Scope::Whole,
         };
-        let _permit = self
-            .shared
-            .computations
-            .clone()
-            .try_acquire_owned()
-            .map_err(|_| GitError::Busy)?;
+        // Past the computation limit a request waits its turn (`runner.md` § Load).
+        let _permit = tokio::select! {
+            permit = self.shared.computations.clone().acquire_owned() => {
+                permit.expect("working-tree computations are never closed")
+            }
+            _ = cancel.cancelled() => return Err(GitError::Cancelled),
+        };
         let interrupt = Arc::new(AtomicBool::new(false));
         let computed = {
             let located = located.clone();
@@ -310,7 +328,7 @@ impl GitService {
         let path = path.to_owned();
         blocking(cancel, move || {
             let located = locate(&root)?.ok_or(GitError::NotRepository)?;
-            let repo = gix::discover(&root).map_err(internal)?;
+            let repo = discover(&root)?.ok_or(GitError::NotRepository)?;
             let tree = head_tree(&repo)?;
             let rela = join_prefix(&located.prefix, &path);
             let entry = tree
@@ -441,11 +459,26 @@ async fn interruptible<T: Send + 'static>(
 }
 
 /// Finds the repository around `root`; `None` when there is none.
+/// The repository `root` lies in, if any. Running out of open files is no
+/// answer about the directory (`runner.md` § Load), but gix gives the answer
+/// "no repository" when it could not open a candidate's files as well (on
+/// Linux, without the cause), so that answer stands only once the runner can
+/// open the directory itself.
+fn discover(root: &Path) -> Result<Option<gix::Repository>, GitError> {
+    match gix::discover(root) {
+        Ok(repo) => Ok(Some(repo)),
+        Err(error) if demi_command_service::descriptors::exhausted(&error) => Err(internal(error)),
+        Err(gix::discover::Error::Discover(_)) => match std::fs::File::open(root) {
+            Err(error) if demi_command_service::descriptors::exhausted(&error) => Err(GitError::Io(error)),
+            _ => Ok(None),
+        },
+        Err(error) => Err(internal(error)),
+    }
+}
+
 fn locate(root: &Path) -> Result<Option<Located>, GitError> {
-    let repo = match gix::discover(root) {
-        Ok(repo) => repo,
-        Err(gix::discover::Error::Discover(_)) => return Ok(None),
-        Err(error) => return Err(internal(error)),
+    let Some(repo) = discover(root)? else {
+        return Ok(None);
     };
     let Some(workdir) = repo.workdir() else {
         return Ok(None);
@@ -585,7 +618,7 @@ fn compute(
     use gix::status::index_worktree::{Item as WorktreeItem, RewriteSource};
     use gix::status::plumbing::index_as_worktree::EntryStatus;
 
-    let repo = gix::discover(&located.workdir).map_err(internal)?;
+    let repo = discover(&located.workdir)?.ok_or(GitError::NotRepository)?;
     let head = repo.head().map_err(internal)?.id().map(|id| id.to_string());
     let tree = head_tree(&repo)?;
     let pathspecs = match pathspecs {
@@ -855,7 +888,10 @@ pub async fn handle(
     cancel: &CancellationToken,
 ) -> Option<Result<Outbound, wire::WireError>> {
     let id = message.git_request_id()?;
-    Some(match call(service, message, default_cwd, cancel).await {
+    // Out of open files, the request waits for one (`runner.md` § Load).
+    let result =
+        demi_command_service::descriptors::retry(cancel, || call(service, message, default_cwd, cancel)).await;
+    Some(match result {
         Ok(reply) => wire::within_limit(reply, |reason| {
             wire::git_error(id.to_owned(), GitError::TooLarge.code().to_owned(), reason)
         }),

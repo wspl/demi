@@ -317,7 +317,7 @@ impl TaskTable {
                             None
                         }
                     };
-                let logs = Logs::new(path).await?;
+                let logs = Logs::new(path, &cancel).await?;
                 job = Some((logs, scratch, recorder.clone()));
                 let commands = match (
                     &self.dispatcher,
@@ -649,8 +649,9 @@ struct Log {
 }
 
 impl Log {
-    async fn new(path: PathBuf) -> io::Result<Self> {
-        let file = tokio::fs::File::create(&path).await?;
+    async fn new(path: PathBuf, cancel: &CancellationToken) -> io::Result<Self> {
+        // Out of open files, the log waits for one (`runner.md` § Load).
+        let file = demi_command_service::descriptors::retry(cancel, || tokio::fs::File::create(&path)).await?;
         Ok(Self {
             path,
             file,
@@ -680,10 +681,10 @@ struct Logs {
     stderr: Log,
 }
 impl Logs {
-    async fn new(path: PathBuf) -> io::Result<Self> {
+    async fn new(path: PathBuf, cancel: &CancellationToken) -> io::Result<Self> {
         Ok(Self {
-            stdout: Log::new(path.join("stdout.txt")).await?,
-            stderr: Log::new(path.join("stderr.txt")).await?,
+            stdout: Log::new(path.join("stdout.txt"), cancel).await?,
+            stderr: Log::new(path.join("stderr.txt"), cancel).await?,
         })
     }
     async fn write(&mut self, stream: OutputStream, bytes: &Bytes) -> io::Result<Bytes> {

@@ -299,7 +299,6 @@ const gitOkMessageSchema = z.union(
  */
 export type GitErrorCode =
   | 'not_repository'
-  | 'busy'
   | 'timeout'
   | 'too_large'
   | 'cancelled'

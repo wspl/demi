@@ -173,32 +173,22 @@ impl HostServer {
             Inbound::FsWriteFile { .. } => return self.files.write(message, &self.default_cwd),
             _ => {}
         }
-        let id = message
-            .fs_request_id()
-            .ok_or_else(|| io::Error::other("not a filesystem request"))?;
+        if message.fs_request_id().is_none() {
+            return Err(io::Error::other("not a filesystem request"));
+        }
         if self.cancel.is_cancelled() {
             return Err(io::Error::other("host connection closed"));
         }
-        let permit = match self.filesystem_capacity.clone().try_acquire_owned() {
-            Ok(permit) => permit,
-            Err(_) => {
-                let reply = wire::fs_error(
-                    id.into(),
-                    Some("EBUSY".into()),
-                    "runner filesystem request limit reached".into(),
-                )
-                .map_err(io::Error::other)?;
-                return self
-                    .output
-                    .try_send(reply)
-                    .map_err(|error| io::Error::other(error.to_string()));
-            }
-        };
+        // Past the capacity a request waits for a slot (`runner.md` § Load).
+        let capacity = self.filesystem_capacity.clone();
         let cancel = self.cancel.clone();
         let output = self.output.clone();
         let cwd = self.default_cwd.clone();
         self.filesystem.spawn(async move {
-            let _permit = permit;
+            let _permit = tokio::select! {
+                permit = capacity.acquire_owned() => permit.expect("filesystem capacity is never closed"),
+                _ = cancel.cancelled() => return,
+            };
             match crate::fs::handle(&message, &cwd, &cancel)
                 .await
                 .expect("validated filesystem request")
@@ -224,40 +214,29 @@ impl HostServer {
     }
 
     /// Working-tree work rides the filesystem tracker with its own admission:
-    /// past eight requests in flight the runner answers `busy` at once.
+    /// past eight requests in flight, later ones wait for a slot.
     pub fn handle_git(&self, message: Inbound) -> io::Result<()> {
-        let id = message
-            .git_request_id()
-            .ok_or_else(|| io::Error::other("not a working-tree request"))?;
+        if message.git_request_id().is_none() {
+            return Err(io::Error::other("not a working-tree request"));
+        }
         if self.cancel.is_cancelled() {
             return Err(io::Error::other("host connection closed"));
         }
-        let permit = match self.git_capacity.clone().try_acquire_owned() {
-            Ok(permit) => permit,
-            Err(_) => {
-                let reply = wire::git_error(
-                    id.into(),
-                    "busy".into(),
-                    "runner working-tree request limit reached".into(),
-                )
-                .map_err(io::Error::other)?;
-                return self
-                    .output
-                    .try_send(reply)
-                    .map_err(|error| io::Error::other(error.to_string()));
-            }
-        };
+        let capacity = self.git_capacity.clone();
         if let Inbound::GitShow { .. } = message {
             return self
                 .files
-                .show(message, &self.default_cwd, self.git.clone(), permit);
+                .show(message, &self.default_cwd, self.git.clone(), capacity);
         }
         let cancel = self.cancel.clone();
         let output = self.output.clone();
         let cwd = self.default_cwd.clone();
         let git = self.git.clone();
         self.filesystem.spawn(async move {
-            let _permit = permit;
+            let _permit = tokio::select! {
+                permit = capacity.acquire_owned() => permit.expect("working-tree capacity is never closed"),
+                _ = cancel.cancelled() => return,
+            };
             match crate::git::handle(&git, &message, &cwd, &cancel)
                 .await
                 .expect("validated working-tree request")

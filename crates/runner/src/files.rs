@@ -7,6 +7,7 @@
 use std::{
     io::{self, SeekFrom},
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use bytes::Bytes;
@@ -14,7 +15,7 @@ use futures_util::StreamExt;
 use tokio::{
     fs,
     io::{AsyncRead, AsyncReadExt, AsyncSeekExt, AsyncWriteExt},
-    sync::{OwnedSemaphorePermit, mpsc},
+    sync::{Semaphore, mpsc},
 };
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
@@ -73,7 +74,7 @@ impl FileTransfers {
         let transfer = self.cancel.child_token();
         let shutdown = self.cancel.clone();
         self.transfers.spawn(async move {
-            let file = match open_range(target, offset.unwrap_or(0), length).await {
+            let file = match open_range(target, offset.unwrap_or(0), length, &transfer).await {
                 Ok(file) => file,
                 Err(error) => {
                     // Nothing moves; the pipe end is still reported, as every
@@ -147,7 +148,7 @@ impl FileTransfers {
         message: Inbound,
         default_cwd: &Path,
         git: GitService,
-        permit: OwnedSemaphorePermit,
+        capacity: Arc<Semaphore>,
     ) -> io::Result<()> {
         let Inbound::GitShow {
             id,
@@ -165,8 +166,17 @@ impl FileTransfers {
         let transfer = self.cancel.child_token();
         let shutdown = self.cancel.clone();
         self.transfers.spawn(async move {
+            // Past the working-tree capacity a request waits for a slot
+            // (`runner.md` § Load).
+            let permit = tokio::select! {
+                permit = capacity.acquire_owned() => permit.expect("working-tree capacity is never closed"),
+                _ = transfer.cancelled() => return,
+            };
             let decoded = match root {
-                Ok(root) => git.show(&root, &path, &transfer).await,
+                // Out of open files, the request waits for one (`runner.md` § Load).
+                Ok(root) => {
+                    demi_command_service::descriptors::retry(&transfer, || git.show(&root, &path, &transfer)).await
+                }
                 Err(error) => Err(crate::git::GitError::Io(error)),
             };
             // The decode is the admitted work; the upload is paced by the pipe.
@@ -211,8 +221,11 @@ async fn open_range(
     target: io::Result<PathBuf>,
     offset: u64,
     length: Option<u64>,
+    cancel: &CancellationToken,
 ) -> io::Result<impl AsyncRead + Unpin + Send + 'static> {
-    let mut file = fs::File::open(target?).await?;
+    let target = target?;
+    // Out of open files, the transfer waits for one (`runner.md` § Load).
+    let mut file = demi_command_service::descriptors::retry(cancel, || fs::File::open(&target)).await?;
     if !file.metadata().await?.is_file() {
         return Err(io::Error::new(
             io::ErrorKind::IsADirectory,
@@ -262,11 +275,9 @@ async fn write_from_pipe(
     // A fresh name beside the destination, so the rename stays on one volume
     // and the destination changes only once, whole.
     let temporary = parent.join(format!(".demi-write-{}", uuid::Uuid::new_v4()));
-    let mut file = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&temporary)
-        .await?;
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    let mut file = demi_command_service::descriptors::retry(cancel, || options.open(&temporary)).await?;
     let written = async {
         let mut body = pipes.get(url, cancel.clone()).await?;
         while let Some(chunk) = body.next().await {
