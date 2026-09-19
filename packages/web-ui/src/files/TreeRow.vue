@@ -11,11 +11,13 @@ import type { TreeRow } from './tree'
  * for a directory, the file icon, the name. A tree dresses its rows through
  * the slots: `mark` sits on the icon's corner, `name` replaces the plain
  * name, `trailing` ends the row, kept off the scrollbar. A `tooltip` covers
- * the whole row. A hidden entry's icon and name are faded.
+ * the whole row. A hidden entry's icon and name are faded. A row whose menu
+ * is open keeps its hover look until the menu closes.
  */
 defineProps<{
   row: TreeRow
   selected: boolean
+  menuOpen?: boolean
   tooltip?: string
 }>()
 
@@ -30,7 +32,7 @@ defineEmits<{
     :aria-selected="selected"
     :aria-expanded="row.isDirectory ? row.open : undefined"
     class="flex h-7 shrink-0 cursor-default select-none items-center rounded-md pr-2 text-chrome transition-colors duration-200 ease-out"
-    :class="selected ? 'bg-active text-fg-emphasis' : 'text-fg-body hover:bg-hover'"
+    :class="selected ? 'bg-active text-fg-emphasis' : menuOpen ? 'bg-hover text-fg' : 'text-fg-body hover:bg-hover'"
     :style="{ paddingLeft: `${4 + row.depth * 12}px` }"
     @click="$emit('activate')"
   >

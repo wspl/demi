@@ -333,6 +333,7 @@ defineExpose({
     :caption="rootName"
     :caption-title="root"
     :selected="selectedPath"
+    :menu-row="menu.isOpen.value ? menuTarget?.path : null"
     :tooltip="failureText"
     @activate="activate"
     @menu="openMenu"
