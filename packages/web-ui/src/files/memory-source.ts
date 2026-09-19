@@ -1,9 +1,11 @@
 /**
  * A `FileBrowserSource` over an in-memory tree, for prototypes and gallery specimens.
  * Nothing here touches a real disk; a directory can be marked as failing to exercise
- * the browser's error states, and every read can carry a simulated latency.
+ * the browser's error states, every read can carry a simulated latency, and an
+ * upload moves at a simulated rate, landing as a file of its size.
  */
 import { previewMediaType } from '@demicodes/core'
+import { delay } from '@demicodes/utils'
 import {
   FileBrowserError,
   type FileBrowserEntry,
@@ -42,7 +44,12 @@ export interface MemoryFileSourceOptions {
   latencyMs?: number
   /** Every read rejects with this: the whole device is unreachable. */
   offline?: boolean
+  /** Bytes a second an upload moves at; a real link is never instant. */
+  uploadRate?: number
 }
+
+/** How often a simulated upload reports its progress. */
+const UPLOAD_TICK_MS = 100
 
 /** Shorthand builders for fixture trees. */
 export function dir(
@@ -72,7 +79,7 @@ export function createMemoryFileSource(options: MemoryFileSourceOptions): FileBr
   root: MemoryDirectory
   contents: FileContents
 } {
-  const { root, latencyMs = 0 } = options
+  const { root, latencyMs = 0, uploadRate = 24 * 1024 * 1024 } = options
 
   function lookup(path: string): MemoryNode | null {
     let node: MemoryNode = root
@@ -179,6 +186,28 @@ export function createMemoryFileSource(options: MemoryFileSourceOptions): FileBr
         children: {},
         modifiedAt: new Date().toISOString()
       }
+    },
+    async upload(path, file, { replace, signal, progress }) {
+      if (options.offline)
+        throw new FileBrowserError('offline')
+      const parent = lookup(parentPath(path))
+      if (!parent || parent.kind !== 'directory')
+        throw new FileBrowserError('not-found', `No such directory: ${parentPath(path)}`)
+      // A directory that cannot be listed cannot be written to either.
+      if (parent.failure)
+        throw new FileBrowserError(parent.failure.kind, parent.failure.message)
+      const name = baseName(path)
+      if (parent.children[name] && !replace)
+        throw new FileBrowserError('exists', `${normalizePath(path)} already exists.`)
+      let sent = 0
+      while (sent < file.size) {
+        await delay(UPLOAD_TICK_MS, signal)
+        signal.throwIfAborted()
+        sent = Math.min(file.size, sent + uploadRate * UPLOAD_TICK_MS / 1000)
+        progress(sent)
+      }
+      // The bytes stay with the page: the file lands as its size and time.
+      parent.children[name] = { kind: 'file', size: file.size, modifiedAt: new Date().toISOString() }
     },
   }
 }

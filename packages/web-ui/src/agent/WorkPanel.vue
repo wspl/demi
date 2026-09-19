@@ -20,7 +20,7 @@ import ChangeView from '../files/ChangeView.vue'
 import FileView from '../files/FileView.vue'
 import { TREE_WIDTH } from '../files/file-view'
 import { callChangeSource, emptyChangeSet, type ReadCallChange, type ChangeMode, type ChangeSetSource, type ChangeSources } from '../files/changes'
-import { joinPath, normalizePath } from '../files/paths'
+import { joinPath, relativePath } from '../files/paths'
 import type { FileBrowserSource } from '../files/types'
 import BrowserPanel from './BrowserPanel.vue'
 import TabItem from './TabItem.vue'
@@ -108,9 +108,7 @@ function absolutePath(path: string): string {
 }
 
 function openFromTree(path: string): void {
-  const root = normalizePath(props.workspace?.root ?? '/')
-  const relative = path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path
-  emit('open', relative)
+  emit('open', relativePath(props.workspace?.root ?? '/', path))
 }
 </script>
 

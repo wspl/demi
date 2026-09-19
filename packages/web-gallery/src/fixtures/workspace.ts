@@ -568,6 +568,8 @@ export function createGalleryWorkspace(latencyMs = 200): {
     home: '/Users/zan',
     root: dir({ Users: dir({ zan: home }) }),
     latencyMs,
+    // Slow enough that a file of a few tens of MB shows its upload's progress.
+    uploadRate: 8 * 1024 * 1024,
   })
   const changes = createGalleryChangeSet(latencyMs)
   return { source, root: WORKSPACE_ROOT, changes }

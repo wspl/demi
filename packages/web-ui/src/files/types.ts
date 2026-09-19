@@ -19,12 +19,13 @@ export interface FileBrowserEntry {
 }
 
 /**
- * Why a directory could not be listed or a file read. `kind` picks the copy;
- * `message` is shown as the detail. `binary` and `too-large` are files the
- * text read cannot show, which a view shows as a card instead.
+ * Why a directory could not be listed, a file read or written. `kind` picks
+ * the copy; `message` is shown as the detail. `binary` and `too-large` are
+ * files the text read cannot show, which a view shows as a card instead;
+ * `exists` is a file an upload was not to replace.
  */
 export interface FileBrowserFailure {
-  kind: 'not-found' | 'permission' | 'offline' | 'binary' | 'too-large' | 'other'
+  kind: 'not-found' | 'permission' | 'offline' | 'binary' | 'too-large' | 'exists' | 'other'
   message?: string
 }
 
@@ -73,6 +74,20 @@ export interface FileBrowserSource {
   read?(path: string, signal?: AbortSignal): Promise<string>
   /** The files' bytes for previews and Download; absent when the source serves none. */
   contents?: FileContents
+  /**
+   * Writes `file` to `path` whole, its bytes streamed as they go: `progress`
+   * hears how many have gone, and aborting `signal` stops the upload and
+   * leaves `path` as it was. A `path` already taken rejects with a
+   * `FileBrowserError` of kind `exists` unless `replace`. Absent when the
+   * source cannot write; the tree then offers no Upload.
+   */
+  upload?(path: string, file: File, options: FileUploadOptions): Promise<void>
+}
+
+export interface FileUploadOptions {
+  replace: boolean
+  signal: AbortSignal
+  progress(sent: number): void
 }
 
 /** A shortcut in the sidebar: a home, a recent workspace, a pinned directory. */

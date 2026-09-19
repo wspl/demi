@@ -24,7 +24,10 @@ export function useContextMenuOwner(onClose?: () => void) {
   const isOpen = computed(() => activeId.value === id)
 
   function open(event: MouseEvent, contextEl?: HTMLElement | null) {
-    closeActive()
+    // Another owner's menu closes; this owner's own moves to the new spot and
+    // keeps whatever its caller just set for it.
+    if (activeId.value !== id)
+      closeActive()
     event.preventDefault()
     const el = contextEl
       ?? (event.currentTarget instanceof HTMLElement

@@ -1,12 +1,5 @@
 import { expect, test } from 'bun:test'
-import {
-  baseName,
-  isValidEntryName,
-  joinPath,
-  normalizePath,
-  parentPath,
-  pathSegments
-} from '../paths'
+import { baseName, isValidEntryName, joinPath, normalizePath, parentPath, pathSegments, relativePath } from '../paths'
 
 test('normalizePath collapses slashes and resolves dot segments from the root', () => {
   expect(normalizePath('/Users//zan/./Projects/')).toBe('/Users/zan/Projects')
@@ -43,3 +36,10 @@ test('entry names may not be empty, dots or contain a separator', () => {
   expect(isValidEntryName('a/b')).toBe(false)
 })
 
+
+test('relativePath reads a path from a root, and leaves one outside it whole', () => {
+  expect(relativePath('/work/demi', '/work/demi/src/a.ts')).toBe('src/a.ts')
+  expect(relativePath('/work/demi/', '/work/demi')).toBe('')
+  expect(relativePath('/work/demi', '/work/demi-other/a.ts')).toBe('/work/demi-other/a.ts')
+  expect(relativePath('/', '/etc/hosts')).toBe('etc/hosts')
+})

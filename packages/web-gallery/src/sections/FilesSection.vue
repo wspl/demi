@@ -8,6 +8,9 @@ import WorkspaceDialog from '@demicodes/web-ui/hosts/WorkspaceDialog.vue'
 import type { WorkspaceDraft, WorkspaceProject } from '@demicodes/web-ui/hosts/workspace'
 import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import FileTree from '@demicodes/web-ui/files/FileTree.vue'
+import FileUploadList from '@demicodes/web-ui/files/FileUploadList.vue'
+import UploadConflictDialog from '@demicodes/web-ui/files/UploadConflictDialog.vue'
+import type { FileUploadView } from '@demicodes/web-ui/files/file-uploads'
 import { TREE_ROOT, TREE_SELECTED, failingSource, offlineSource, rowsSource, stuckSource } from '../fixtures/file-trees'
 import { createMemoryFileSource, dir, file } from '@demicodes/web-ui/files/memory-source'
 import type { FileBrowserMode, FileBrowserSource } from '@demicodes/web-ui/files/types'
@@ -259,6 +262,16 @@ function selectHost(target: 'folder' | 'file', id: string) {
 
 // The Tree view: one source per specimen, and the pinned-path specimens set up scrolled.
 const treeRows = rowsSource()
+
+const MiB = 1024 * 1024
+/** One upload in each state, at sizes a real one would have. */
+const uploadStates: FileUploadView[] = [
+  { id: 'recording', path: `${TREE_ROOT}/docs/demo-recording.mov`, file: { name: 'demo-recording.mov', size: 480 * MiB }, state: { phase: 'uploading', sent: 211 * MiB } },
+  { id: 'dataset', path: `${TREE_ROOT}/docs/dataset.parquet`, file: { name: 'dataset.parquet', size: Math.round(1.2 * 1024 * MiB) }, state: { phase: 'waiting' } },
+  { id: 'logo', path: `${TREE_ROOT}/src/logo.svg`, file: { name: 'logo.svg', size: 4_096 }, state: { phase: 'done' } },
+  { id: 'notes', path: `${TREE_ROOT}/notes.md`, file: { name: 'notes.md', size: 2_310 }, state: { phase: 'done' } },
+  { id: 'model', path: `${TREE_ROOT}/src/auth/model.bin`, file: { name: 'model.bin', size: 90 * MiB }, state: { phase: 'failed', message: 'Permission denied' } },
+]
 const treeStuckRoot = stuckSource(TREE_ROOT)
 const treeStuckDir = stuckSource(`${TREE_ROOT}/src/http`)
 const treeFailing = failingSource()
@@ -388,6 +401,30 @@ onMounted(() => {
             <div class="gallery-frame h-[16rem] w-[220px] overflow-hidden bg-surface-editor">
               <FileTree ref="pinnedPast" :source="rowsSource()" :root="TREE_ROOT" :selected="TREE_SELECTED" />
             </div>
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
+      <GallerySection
+        title="Upload and download"
+        note="A right-click offers what the host can do there: a file downloads; a folder, or the empty space for the workspace itself, takes files uploaded into it. Picked names the folder already has wait on a question: Replace writes over them, Skip uploads the rest, closing uploads nothing. The uploads list under the tree, one on its way at a time and the rest waiting: a bar and how much has gone, where a landed file went, why one failed. Cancel stops one and leaves the folder as it was; Retry sends a failed one again; Clear drops the finished ones. A folder an upload lands in is listed again. Right-click the tree of the File view (Session, Panel) to upload for real, at a pace slow enough to watch."
+      >
+        <div class="flex flex-wrap items-start gap-6">
+          <GallerySpecimen variant="uploads · every state">
+            <div class="gallery-frame flex h-[28rem] w-[220px] flex-col overflow-hidden bg-surface-editor">
+              <FileTree class="flex-1" :source="treeRows" :root="TREE_ROOT" :selected="null" />
+              <FileUploadList :uploads="uploadStates" :root="TREE_ROOT" />
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="the question before replacing">
+            <GalleryDialogFrame>
+              <UploadConflictDialog
+                :is-open="true"
+                :overlay-store="appOverlayStore"
+                :names="['logo.svg', 'photo.png']"
+                directory="src"
+                :others="1"
+              />
+            </GalleryDialogFrame>
           </GallerySpecimen>
         </div>
       </GallerySection>

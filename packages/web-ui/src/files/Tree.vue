@@ -14,7 +14,9 @@ import { TREE_ROW_PITCH_PX, TREE_ROW_PX, stickyTreeRows, type TreeRow as Row } f
  * directory scrolls its own row to the top, or acts as the row once it is
  * there. The rows are dressed through
  * the slots `mark`, `name` and `trailing`, given the row; `tooltip` covers a
- * row with a hint; `empty` fills the tree while it has no rows.
+ * row with a hint; `empty` fills the tree while it has no rows. A right-click
+ * asks the host for a menu (`menu`), on a row or, given no row, on the tree's
+ * empty space; a host with nothing to offer leaves the browser's own.
  */
 const props = defineProps<{
   rows: readonly R[]
@@ -29,6 +31,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   activate: [row: R]
+  menu: [row: R | null, event: MouseEvent]
 }>()
 
 defineSlots<{
@@ -155,7 +158,13 @@ defineExpose({ scrollToRow, revealRow, scrollBy })
 
 <template>
   <!-- The tree paints its own surface, the editor's, so the pinned stack matches it wherever it sits. -->
-  <ScrollArea ref="scrollArea" class="h-full min-h-0 bg-surface-editor" viewport-class="p-1" @scroll="updateSticky">
+  <ScrollArea
+    ref="scrollArea"
+    class="h-full min-h-0 bg-surface-editor"
+    viewport-class="p-1"
+    @scroll="updateSticky"
+    @contextmenu="emit('menu', null, $event)"
+  >
     <!-- The pinned stack: the caption stays put; the directories under it
          slide up beneath the caption as the tree scrolls past them. -->
     <!-- Above the rows (whose transformed chevrons would otherwise paint through), below the
@@ -185,6 +194,7 @@ defineExpose({ scrollToRow, revealRow, scrollBy })
             :selected="row.path === selected"
             :tooltip="tooltip?.(row)"
             @activate="activatePinned(row)"
+            @contextmenu.stop="emit('menu', row, $event)"
           >
             <template #mark><slot name="mark" :row="row" /></template>
             <template #name><slot name="name" :row="row" /></template>
@@ -206,6 +216,7 @@ defineExpose({ scrollToRow, revealRow, scrollBy })
         :selected="row.path === selected && !selectedUnderStack"
         :tooltip="tooltip?.(row)"
         @activate="emit('activate', row)"
+        @contextmenu.stop="emit('menu', row, $event)"
       >
         <template #mark><slot name="mark" :row="row" /></template>
         <template #name><slot name="name" :row="row" /></template>
