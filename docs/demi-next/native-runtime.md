@@ -298,13 +298,12 @@ Backend: builds the context and keeps it in the job's or stream's record
    v
 Runner: keeps it in the job's live execution context
    |-- native invocation { context, edits, cwd, env, args } --> command service
-   |-- rpc_call { jobId } --> backend: the handler receives the record's context
-   `-- programs in the job: `demi context`
+   `-- rpc_call { jobId } --> backend: the handler receives the record's context
 ```
 
 - The backend builds the context when it starts a job or opens a user stream,
-  and keeps it in that job's or stream's record. A job that `demi host shell` starts on
-  another Host carries its invoking job's context.
+  and keeps it in that job's or stream's record. A job that `demi host shell`
+  starts on another Host carries its invoking job's context.
 - The runner keeps the context in the job's live execution context and writes
   it into every native invocation record. The invocation's `edits`, `cwd` and
   `env` stay separate: they describe the runner's resources and the process,
@@ -312,11 +311,11 @@ Runner: keeps it in the job's live execution context
 - An application callback names only its job. The backend gives the handler
   the context from its own record of that job
   ([Bind jobs to their caller](sessions-and-targets.md#bind-jobs-to-their-caller)).
-- A program the job runs, such as a script, prints the context with
-  `demi context`, or the object with `demi context --json`. It is an ordinary
-  declared command whose handler prints the context it receives. The job
-  environment carries only what reaching the runner needs: the local endpoint,
-  the opaque context handle, `DEMI_HOME` and the command aliases on `PATH`
+- Only declared commands receive the context. Other programs the job runs,
+  such as scripts, neither receive nor need it. The job environment carries
+  only what a command alias needs to reach the runner: the local endpoint, the
+  opaque context handle, `DEMI_HOME` and the aliases on `PATH`. The runner
+  finds the job's context through the handle
   ([External command clients](commands.md#external-command-clients)).
 
 A new context field changes the schema and the backend's construction of the

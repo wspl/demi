@@ -134,10 +134,10 @@ cwd, environment, and its live execution context, then streams command IO. It
 contains no native command algorithms. Brush builtins call the dispatcher directly
 and do not need this extra process or connection.
 
-The runner injects the endpoint and context into its jobs. A program that needs
-the [command context](native-runtime.md#command-context) runs `demi context`
-rather than reading other environment variables. The runner accepts local
-connections only from the current account:
+The runner injects the endpoint and the job's opaque context handle into its
+jobs. The handle leads the runner to the job's live execution context, and with
+it to the [command context](native-runtime.md#command-context). The runner
+accepts local connections only from the current account:
 
 | Platform | Local transport |
 | --- | --- |
