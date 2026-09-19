@@ -8,9 +8,9 @@ function resetToasts() {
 
 test('showToast appends a notice and dismissToast removes it', () => {
   resetToasts()
-  const id = showToast({ title: 'Copied', durationMs: 0 })
+  const id = showToast({ title: 'Copied', tone: 'success', durationMs: 0 })
   expect(toasts).toHaveLength(1)
-  expect(toasts[0]).toMatchObject({ id, title: 'Copied', tone: 'neutral' })
+  expect(toasts[0]).toMatchObject({ id, title: 'Copied', tone: 'success' })
   dismissToast(id)
   expect(toasts).toEqual([])
 })
