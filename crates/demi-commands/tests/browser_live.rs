@@ -19,7 +19,7 @@ use tokio::time::Instant;
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
 const PAGE: &str = r#"<!doctype html>
-<meta name="viewport" content="width=device-width">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 body { margin: 0; font: 16px sans-serif; height: 3000px }
 #spin { position: absolute; left: 0; top: 400px; width: 40px; height: 40px; background: red }
@@ -33,6 +33,8 @@ body { margin: 0; font: 16px sans-serif; height: 3000px }
 <button id="alert" style="position: absolute; left: 10px; top: 240px; width: 100px; height: 30px"
   onclick="alert('hello')">Alert</button>
 <p id="copy" style="position: absolute; left: 10px; top: 290px">copy me</p>
+<div id="stripes" style="position: absolute; left: 150px; top: 380px; width: 200px; height: 60px;
+  background: repeating-linear-gradient(90deg, #000 0, #000 .5px, #fff .5px, #fff 1px)"></div>
 <button id="write" style="position: absolute; left: 10px; top: 340px; width: 100px; height: 30px"
   onclick="navigator.clipboard.writeText('written').then(() => window.wrote = 'ok', error => window.wrote = String(error))">Write</button>
 <div id="spin"></div>
@@ -674,6 +676,120 @@ async fn two_viewers_share_a_tab_and_the_last_to_operate_decides() {
             })
             .await;
         assert_eq!(first.close().await.exit_code, 0);
+        fixture
+    })
+    .await;
+}
+
+/// The picture the viewer received, decoded by ffmpeg into pixels.
+fn decoded(frame: &[u8]) -> (u32, Vec<u8>) {
+    let directory = tempfile::tempdir().expect("a place for the frame");
+    let encoded = directory.path().join("frame.h264");
+    let image = directory.path().join("frame.png");
+    std::fs::write(&encoded, frame).expect("write the frame");
+    let ffmpeg = std::process::Command::new("ffmpeg")
+        .args(["-y", "-loglevel", "error", "-f", "h264", "-i"])
+        .arg(&encoded)
+        .args(["-frames:v", "1"])
+        .arg(&image)
+        .status()
+        .expect("ffmpeg decodes the picture");
+    assert!(ffmpeg.success(), "ffmpeg could not decode the picture");
+    let bytes = std::fs::read(&image).expect("the decoded picture");
+    let mut reader = png::Decoder::new(std::io::Cursor::new(bytes))
+        .read_info()
+        .expect("png");
+    let mut pixels = vec![0; reader.output_buffer_size().unwrap_or(0)];
+    let info = reader.next_frame(&mut pixels).expect("png frame");
+    pixels.truncate(info.buffer_size());
+    assert_eq!(info.color_type, png::ColorType::Rgb, "ffmpeg writes RGB");
+    (info.width, pixels)
+}
+
+/// The largest brightness step between neighbouring pixels of a row.
+fn contrast(width: u32, pixels: &[u8], row: u32, from: u32, to: u32) -> u8 {
+    let stride = width as usize * 3;
+    let mut most = 0;
+    for x in from..to.saturating_sub(1) {
+        let at = row as usize * stride + x as usize * 3;
+        if at + 4 >= pixels.len() {
+            break;
+        }
+        most = most.max(pixels[at].abs_diff(pixels[at + 3]));
+    }
+    most
+}
+
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn a_watched_tab_arrives_with_the_detail_of_the_viewers_ratio() {
+    with_browser_fixture(|fixture| async move {
+        let site = site().await;
+        let tab = fixture
+            .call("browser.open", json!({"url": site.base, "timeout": 120000}))
+            .await["tab"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let mut view = View::open(&fixture);
+        // Half-CSS-pixel stripes are flat grey at ratio 1 and sharp above it.
+        view.send(json!({"type": "hello", "platform": "linux"}));
+        view.send(json!({
+            "type": "panel", "width": 800, "height": 600, "devicePixelRatio": 1,
+            "screenWidth": 1440, "screenHeight": 900,
+        }));
+        view.message("state").await;
+        view.send(json!({"type": "watch", "tab": tab}));
+        let single = view
+            .until("a stream at ratio 1", |message| {
+                message["type"] == "stream" && message["width"] == 800
+            })
+            .await;
+        eventually(&fixture, &tab, "devicePixelRatio === 1").await;
+        let (_, key, width, _, frame) = view.picture(single["generation"].as_u64().unwrap()).await;
+        assert!(key);
+        assert_eq!(width, 800);
+        let (decoded_width, pixels) = decoded(&frame);
+        assert_eq!(decoded_width, 800, "the picture is the viewport at ratio 1");
+        let flat = contrast(decoded_width, &pixels, 400, 150, 350);
+
+        // The same page at the viewer's ratio 2, where every stripe is a pixel.
+        view.send(json!({
+            "type": "panel", "width": 800, "height": 600, "devicePixelRatio": 2,
+            "screenWidth": 1440, "screenHeight": 900,
+        }));
+        let double = view
+            .until("a stream at ratio 2", |message| {
+                message["type"] == "stream" && message["width"] == 1600
+            })
+            .await;
+        eventually(&fixture, &tab, "devicePixelRatio === 2").await;
+        let (_, key, width, height, frame) =
+            view.picture(double["generation"].as_u64().unwrap()).await;
+        assert!(key);
+        assert_eq!((width, height), (1600, 1200));
+        let (retina, pixels) = decoded(&frame);
+        assert_eq!(retina, 1600, "the picture is twice the viewport at ratio 2");
+        let sharp = contrast(retina, &pixels, 800, 300, 700);
+        // At ratio 1 the stripes average into grey; at ratio 2 each one is its
+        // own pixel, as sharp as the gradient's own antialiasing allows.
+        assert!(flat < 40, "stripes at ratio 1 are flat grey, not {flat}");
+        assert!(
+            sharp > 100 && sharp > u8::from(flat) * 3,
+            "stripes at ratio 2 are sharp, not {sharp} against {flat}",
+        );
+
+        // The agent's screenshot stays in CSS pixels whatever the ratio.
+        let shot = fixture
+            .call(
+                "browser.screenshot",
+                json!({"tab": tab, "output": "shot.png", "overwrite": true}),
+            )
+            .await;
+        assert_eq!(shot["width"], 800);
+        assert_eq!(shot["height"], 600);
+        assert_eq!(shot["viewport"]["devicePixelRatio"], 2.0);
+        assert_eq!(view.close().await.exit_code, 0);
         fixture
     })
     .await;
