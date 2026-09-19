@@ -1,35 +1,9 @@
-import { Facet, Text } from '@codemirror/state'
-import { ViewPlugin, type PluginValue } from '@codemirror/view'
-import { getSearchQuery, setSearchQuery } from '@codemirror/search'
-import { getChunks } from '@codemirror/merge'
+import type { EditorState, Text } from '@codemirror/state'
+import { ViewPlugin, type EditorView, type PluginValue, type ViewUpdate } from '@codemirror/view'
+import { getChunks, getOriginalDoc } from '@codemirror/merge'
+import { searchMatches } from '../searchMatches'
 import { mountScrollbarDom } from './dom'
-import { getResolvedDiagnostics } from '../lsp/diagnostics'
-import { buildScrollbarMarkers } from './markers'
-
-export const scrollbarDiffOriginalDoc = Facet.define<Text | null, Text | null>({
-  combine(values) {
-    return values[0] ?? null
-  },
-})
-
-function collectSearchMatches(view: import('@codemirror/view').EditorView, mapLine?: (line: number) => number) {
-  const query = getSearchQuery(view.state)
-  if (!query.valid || !query.search) return []
-
-  const matches: Array<{ fromLine: number; toLine: number }> = []
-  const cursor = query.getCursor(view.state.doc)
-  let result = cursor.next()
-
-  while (!result.done) {
-    matches.push({
-      fromLine: mapLine?.(view.state.doc.lineAt(result.value.from).number) ?? view.state.doc.lineAt(result.value.from).number,
-      toLine: mapLine?.(view.state.doc.lineAt(result.value.to).number) ?? view.state.doc.lineAt(result.value.to).number,
-    })
-    result = cursor.next()
-  }
-
-  return matches
-}
+import { buildScrollbarMarkers, type DiffScrollbarInput, type LineRange } from './markers'
 
 function countLinesInRange(doc: Text, from: number, to: number) {
   if (to <= from) return 0
@@ -40,15 +14,20 @@ function countLinesInRange(doc: Text, from: number, to: number) {
   return endLine - startLine + 1
 }
 
-function createUnifiedLineMapper(view: import('@codemirror/view').EditorView) {
-  const chunkState = getChunks(view.state)
-  const originalDoc = view.state.facet(scrollbarDiffOriginalDoc)
-  if (!chunkState || !originalDoc) return null
+/**
+ * A unified diff's rows: the current text with each removed stretch shown
+ * above its replacement, so a marker sits at its row, not at its line of the
+ * current text. Null when the view is not a diff.
+ */
+function unifiedLayout(state: EditorState) {
+  const chunkState = getChunks(state)
+  if (!chunkState) return null
 
-  const modifiedDoc = view.state.doc
+  const originalDoc = getOriginalDoc(state)
+  const modifiedDoc = state.doc
   let deletedLinesBefore = 0
   const offsets: Array<{ startLine: number; deletedLines: number }> = []
-  const diffs: Array<{ fromLine: number; toLine: number; kind: 'added' | 'deleted' }> = []
+  const diffs: DiffScrollbarInput[] = []
 
   for (const chunk of chunkState.chunks) {
     const startLine = modifiedDoc.lineAt(Math.min(modifiedDoc.length, Math.max(0, chunk.fromB))).number
@@ -90,38 +69,34 @@ function createUnifiedLineMapper(view: import('@codemirror/view').EditorView) {
   }
 }
 
-function collectDiffChunks(view: import('@codemirror/view').EditorView) {
-  const layout = createUnifiedLineMapper(view)
-  if (!layout) return []
-  return layout.diffs
+function collectSearchMatches(state: EditorState, mapLine: (line: number) => number): LineRange[] {
+  return searchMatches(state).ranges.map((match) => ({
+    fromLine: mapLine(state.doc.lineAt(match.from).number),
+    toLine: mapLine(state.doc.lineAt(match.to).number),
+  }))
 }
 
-function collectSelections(view: import('@codemirror/view').EditorView, mapLine?: (line: number) => number) {
-  return view.state.selection.ranges
+function collectSelections(state: EditorState, mapLine: (line: number) => number): LineRange[] {
+  return state.selection.ranges
     .filter((range) => !range.empty)
-    .map((range) => {
-      const from = Math.min(range.from, range.to)
-      const to = Math.max(range.from, range.to)
-      const safeTo = Math.max(from, to - 1)
-      return {
-        fromLine: mapLine?.(view.state.doc.lineAt(from).number) ?? view.state.doc.lineAt(from).number,
-        toLine: mapLine?.(view.state.doc.lineAt(safeTo).number) ?? view.state.doc.lineAt(safeTo).number,
-      }
-    })
+    .map((range) => ({
+      fromLine: mapLine(state.doc.lineAt(range.from).number),
+      toLine: mapLine(state.doc.lineAt(Math.max(range.from, range.to - 1)).number),
+    }))
 }
 
 class CustomScrollbarPlugin implements PluginValue {
   private mounted
   private frame = 0
-  private readonly view: import('@codemirror/view').EditorView
+  private readonly view: EditorView
   private readonly onScroll: () => void
   private lastScrollTop: number
   private lastScrollLeft: number
 
-  constructor(view: import('@codemirror/view').EditorView) {
+  constructor(view: EditorView) {
     this.view = view
     this.mounted = mountScrollbarDom(view, {
-      splitDiffLanes: !!view.state.facet(scrollbarDiffOriginalDoc),
+      splitDiffLanes: getChunks(view.state) !== null,
     })
     this.lastScrollTop = view.scrollDOM.scrollTop
     this.lastScrollLeft = view.scrollDOM.scrollLeft
@@ -140,40 +115,23 @@ class CustomScrollbarPlugin implements PluginValue {
     this.schedule(view)
   }
 
-  update(update: import('@codemirror/view').ViewUpdate) {
-    const searchChanged = update.transactions.some((transaction) =>
-      transaction.effects.some((effect) => effect.is(setSearchQuery)))
-    if (
-      update.docChanged
-      || update.geometryChanged
-      || update.viewportChanged
-      || update.selectionSet
-      || searchChanged
-      || update.transactions.length > 0
-    ) {
+  update(update: ViewUpdate) {
+    // Any transaction may move a marker: the text, the selection or the search query.
+    if (update.transactions.length > 0 || update.geometryChanged || update.viewportChanged)
       this.schedule(update.view)
-    }
   }
 
-  private schedule(view: import('@codemirror/view').EditorView) {
+  private schedule(view: EditorView) {
     if (this.frame) return
     this.frame = requestAnimationFrame(() => {
       this.frame = 0
-      const diffLayout = createUnifiedLineMapper(view)
-      const diagnostics = getResolvedDiagnostics(view).map((item) => ({
-        fromLine: diffLayout?.mapLine(view.state.doc.lineAt(item.from).number) ?? view.state.doc.lineAt(item.from).number,
-        toLine: diffLayout?.mapLine(view.state.doc.lineAt(item.to).number) ?? view.state.doc.lineAt(item.to).number,
-        severity: item.severity,
-      }))
-      const searches = collectSearchMatches(view, diffLayout?.mapLine)
-      const diffs = collectDiffChunks(view)
-      const selections = collectSelections(view, diffLayout?.mapLine)
+      const layout = unifiedLayout(view.state)
+      const mapLine = layout?.mapLine ?? ((line: number) => line)
       this.mounted.update(view, buildScrollbarMarkers({
-        totalLines: diffLayout?.totalLines ?? view.state.doc.lines,
-        diagnostics,
-        searches,
-        selections,
-        diffs,
+        totalLines: layout?.totalLines ?? view.state.doc.lines,
+        searches: collectSearchMatches(view.state, mapLine),
+        selections: collectSelections(view.state, mapLine),
+        diffs: layout?.diffs ?? [],
       }))
       this.lastScrollTop = view.scrollDOM.scrollTop
       this.lastScrollLeft = view.scrollDOM.scrollLeft

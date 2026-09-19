@@ -2,12 +2,11 @@ import type { Extension } from '@codemirror/state'
 import { EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view'
 import { createStickyOverlayDom } from './dom'
 import { createStickyHeaderViews } from './headerViews'
-import { getStickyStructureStack } from './structure'
-import type { EditorHost } from '../host/types'
+import { getStickyStructureStack, type StickyStructureItem } from './structure'
 
 const STICKY_HEADER_EPSILON_PX = 0.01
 
-export function stickyHeadersExtension(editorHost: EditorHost): Extension {
+export function stickyHeadersExtension(): Extension {
   return ViewPlugin.fromClass(class {
     overlay: ReturnType<typeof createStickyOverlayDom>
     headers: ReturnType<typeof createStickyHeaderViews>
@@ -15,7 +14,7 @@ export function stickyHeadersExtension(editorHost: EditorHost): Extension {
     private applyFrame = 0
     private pendingMeasure:
       | {
-          items: Array<{ from: number; to: number; headerLineNumber: number; depth: number }>
+          items: StickyStructureItem[]
           scrollLeft: number
           gutterWidths: { lineNumbers: number; fold: number }
           frame: { top: number; left: number; width: number; paddingTop: number }
@@ -56,7 +55,7 @@ export function stickyHeadersExtension(editorHost: EditorHost): Extension {
     constructor(view: EditorView) {
       this.view = view
       this.overlay = createStickyOverlayDom(this.view.dom)
-      this.headers = createStickyHeaderViews(this.view, this.overlay.rowsHost, editorHost)
+      this.headers = createStickyHeaderViews(this.view, this.overlay.rowsHost)
       this.view.scrollDOM.addEventListener('scroll', this.onScroll, { passive: true })
       this.scheduleSync()
     }
@@ -101,7 +100,7 @@ export function stickyHeadersExtension(editorHost: EditorHost): Extension {
           const scrollViewportTop = view.scrollDOM.getBoundingClientRect().top
           const contentProbeX = view.contentDOM.getBoundingClientRect().left + 1
 
-          let items: Array<{ from: number; to: number; headerLineNumber: number; depth: number }> = []
+          let items: StickyStructureItem[] = []
 
           for (let iteration = 0; iteration < 4; iteration += 1) {
             const measuredOffset = visibleStickyRowHeights
@@ -185,7 +184,6 @@ export function stickyHeadersExtension(editorHost: EditorHost): Extension {
 
             const items = next.items.map((item) => ({
               text: this.view.state.doc.line(item.headerLineNumber).text,
-              depth: item.depth,
               lineNumber: item.headerLineNumber,
             }))
 

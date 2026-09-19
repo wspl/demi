@@ -90,7 +90,7 @@ export function laptopTree(): MemoryDirectory {
                 'pipeline.ts': 9_210,
                 'thumbs.ts': 3_004
               }, day(2)),
-              wynk: project({ 'main.ts': 5_555 }, old(12, 30)),
+              sketchbook: project({ 'main.ts': 5_555 }, old(12, 30)),
               'a project with a very long directory name that will not fit in the address bar': project({ 'index.ts': 12 }, old(9, 9)),
             },
             { modifiedAt: day(7, 9) },

@@ -2,8 +2,6 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ArrowLeft, ArrowRight, Diff, Eye, FileOutput, FolderTree } from '@lucide/vue'
 import DiffEditor from '../editor/components/DiffEditor.vue'
-import { appEditorHost } from '../editor/host/appHost'
-import { toEditorUri } from '../editor/editorUri'
 import type { DocumentPlace } from '../markdown/document'
 import IconButton from '../ui/IconButton.vue'
 import RegionStatus from '../ui/RegionStatus.vue'
@@ -43,8 +41,6 @@ const props = defineProps<{
   contents?: FileContents
   canBack?: boolean
   canForward?: boolean
-  /** Fold the unchanged stretches between changes in the diff; off shows whole files. */
-  collapseUnchanged?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -285,12 +281,9 @@ onBeforeUnmount(() => {
         <DiffEditor
           v-else-if="state.phase === 'ready' && selectedChange"
           :key="`${call?.commandId ?? mode}:${selectedChange.path}:${edit}`"
-          :host="appEditorHost"
           :original="state.sides.original"
           :modified="state.sides.modified"
-          :filename="selectedChange.path"
-          :resource-uri="toEditorUri('workspace', absolutePath)"
-          :collapse-unchanged="collapseUnchanged"
+          :path="selectedChange.path"
         />
         <RegionStatus
           v-else-if="state.phase !== 'unavailable'"
