@@ -21,6 +21,16 @@ interface Options {
   jsonObjects?: Set<z.core.$ZodType>
 }
 
+/** The object variants of a union, nested unions flattened. */
+export function unionOptions(schema: z.core.$ZodType): z.ZodObject[] {
+  const def = (schema as z.core.$ZodTypes)._zod.def
+  if (def.type === 'union')
+    return def.options.flatMap(unionOptions)
+  if (def.type !== 'object')
+    throw new Error('Tagged variants must be objects')
+  return [schema as z.ZodObject]
+}
+
 /** Generates serde types and native value checks from the owning Zod schemas. */
 export class RustZodTypes {
   readonly declarations = new Map<string, string>()
@@ -265,6 +275,26 @@ export class RustZodTypes {
       }
     }
     return lines.filter(line => line.trim()).join('\n')
+  }
+
+  /**
+   * A union of objects tagged by a literal `type` field, as an internally
+   * tagged serde enum with one struct variant per tag. Field types are named
+   * after `prefix` and the tag.
+   */
+  taggedEnum(
+    schema: z.core.$ZodType,
+    name: string,
+    options: { prefix?: string, derive?: string } = {},
+  ): string {
+    const variants = unionOptions(schema).map(variant => {
+      const tag = (variant.shape.type as z.ZodLiteral<string>).value
+      const fields = this.fields(variant, `${options.prefix ?? ''}${rustPascal(tag)}`, new Set(['type'])).replaceAll('pub ', '')
+      return `#[serde(rename = ${rustString(tag)})]\n${rustPascal(tag)} {\n${fields}\n},`
+    })
+    return `#[derive(${options.derive ?? 'Debug, Clone, serde::Serialize, serde::Deserialize'})]
+    #[serde(tag = "type", deny_unknown_fields)]
+    pub enum ${name} { ${variants.join('\n')} }`
   }
 
   finish(): string {
