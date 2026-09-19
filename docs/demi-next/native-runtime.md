@@ -285,7 +285,7 @@ command context, one value with one schema in `command-protocol`:
 | Field | Meaning |
 | --- | --- |
 | `conversation` | The conversation the work belongs to. |
-| `caller` | Who started the work: `agent`, with the agent `node`, the `shell` it runs in and, for a subagent, the `parent` node that spawned it; or `user`, for a [user stream](#user-streams). |
+| `caller` | Who started the work: `agent`, with the agent `node`, or `user`, for a [user stream](#user-streams). |
 | `locale` | The time zone, an IANA name, and the languages, BCP 47 tags in preference order, that the user's browser last reported ([User preferences](web-api.md#user-preferences)). |
 
 The backend is the context's only source, and nothing reads it from

@@ -37,11 +37,11 @@ background work, and cancellation follow the [runner job contract](runner.md#she
 
 ## Bind jobs to their caller
 
-The backend registers a job before sending it. Its live record binds the device
-and invoking Host and holds the job's
-[command context](native-runtime.md#command-context): the root conversation,
-the agent node and its shell. These identities remain fixed for that job even
-when another shell starts or another conversation uses the same device.
+The backend registers a job before sending it. Its live record binds the
+device, the shell and the invoking Host, and holds the job's
+[command context](native-runtime.md#command-context): the root conversation and
+the agent node. These identities remain fixed for that job even when another
+shell starts or another conversation uses the same device.
 
 For example, node `a1` can run jobs on both the main laptop and attached device
 `ci`. The table shows which state a callback accesses:

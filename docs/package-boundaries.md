@@ -338,8 +338,8 @@ Test code may depend upward for integration coverage. Production code must not.
 - Status: implemented schemas and generated native bindings.
 - Production deps: no first-party packages; external: Zod.
 - Owns: browser operation arguments/results, tab state, observations,
-  resource event payloads, and the live view protocol: its messages, frame
-  header and version ([Live browser view](demi-next/browser-live-view.md)).
+  resource event payloads, and the live view protocol: its messages and frame
+  header ([Live browser view](demi-next/browser-live-view.md)).
   Generic resource envelopes remain in command-protocol/runner-protocol.
 - Public boundary: platform-neutral schemas and derived types. `coding-agent`
   uses them to declare CLI commands; backend validates browser data;
