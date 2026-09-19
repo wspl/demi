@@ -355,10 +355,11 @@ function addFiles(files: File[]): void {
             </template>
           </Dropdown>
         </template>
-        <template #model>
+        <template #model="{ room }">
           <div :inert="!!messageEdit && !edit.editable.value">
             <ModelSelector
               :load="modelLoad"
+              :room="room"
               @retry="emit('retryModels')"
               :providers="providers"
               :models="models"

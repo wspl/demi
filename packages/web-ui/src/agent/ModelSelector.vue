@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { ThinkingConfig } from '@demicodes/core'
-import { CircleX, TriangleAlert, Zap } from '@lucide/vue'
+import { CircleX, Sparkles, TriangleAlert, Zap } from '@lucide/vue'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
@@ -22,6 +22,11 @@ const props = defineProps<{
   selectedModelId?: string | null
   thinkingConfig?: ThinkingConfig
   serviceTierId?: string | null
+  /**
+   * How much wider than its least the editor beside the selector is, in px,
+   * negative when narrower; absent, there is room for the label.
+   */
+  room?: number
 }>()
 
 const emit = defineEmits<{
@@ -52,67 +57,99 @@ const reasoningLabel = computed(() => {
   const reasoning = buildReasoningState(selected.value?.model ?? null)
   return reasoning ? reasoningOptionLabel(reasoning, props.thinkingConfig) : ''
 })
+
+// Each state is an icon and a label. The label shows while the editor keeps its
+// least width with it; otherwise the selector is its icon, and the label its tooltip.
+const labelText = computed(() => {
+  if (props.load === 'loading')
+    return 'Loading models…'
+  if (props.load === 'failed')
+    return "Couldn't load models."
+  return reasoningLabel.value ? `${state.value.label} · ${reasoningLabel.value}` : state.value.label
+})
+const label = ref<HTMLElement | null>(null)
+const compact = ref(false)
+
+// A hidden label stays laid out, out of the flow, so its width is known either way.
+watch([() => props.room, labelText, label], () => {
+  if (props.room === undefined || !label.value) {
+    compact.value = false
+    return
+  }
+  // Hidden, the label leaves the editor its whole width more than shown.
+  const roomWithLabel = props.room - (compact.value ? label.value.offsetWidth : 0)
+  compact.value = roomWithLabel < 0
+}, { flush: 'post' })
 </script>
 
 <template>
-  <span
-    v-if="load === 'loading'"
-    class="inline-flex h-7 items-center gap-1.5 px-2 text-chrome text-fg-subtle"
-    role="status"
-    ><IndeterminateSpinner :size="14" /> Loading models…</span
-  >
-  <span
-    v-else-if="load === 'failed'"
-    class="inline-flex h-7 items-center gap-1.5 pl-2 text-chrome text-on-danger"
-    role="alert"
-    ><CircleX :size="14" /> Couldn't load models.
-    <Button size="sm" @click="emit('retry')">Retry</Button></span
-  >
-  <Dropdown
-    v-else-if="state.kind === 'ready' || state.kind === 'unavailable'"
-    :overlay-store="appOverlayStore"
-    variant="ghost"
-    trigger-label="Model"
-    placement="bottom-end"
-  >
-    <template #trigger="{ isOpen }">
-      <span class="inline-flex min-w-0 items-center gap-1">
-        <!-- The name sits a step above the chip's tone and the level a step below it, so the
-             two stay two steps apart whether the chip is subtle (closed) or body (open). -->
-        <span
-          class="truncate"
-          :class="isOpen ? 'text-fg-body' : 'text-fg-muted'"
-          >{{ state.label }}</span
-        >
-        <span
-          v-if="reasoningLabel"
-          class="shrink-0"
-          :class="isOpen ? 'text-fg-subtle' : 'text-fg-faint'"
-          >{{ reasoningLabel }}</span
-        >
-        <Zap v-if="fast" :size="ICON_PX.in28" class="shrink-0" />
-        <Tooltip v-if="unavailable" content="This model is unavailable. Choose another to send.">
-          <TriangleAlert
-            :size="ICON_PX.in28"
-            class="shrink-0 text-on-warning"
-          />
-        </Tooltip>
-      </span>
-    </template>
-    <template #content>
-      <ModelMenu
-        :providers="providers"
-        :models="models"
-        :selected-provider-id="selectedProviderId"
-        :selected-model-id="selectedModelId"
-        :thinking-config="thinkingConfig"
-        :service-tier-id="serviceTierId"
-        @select-model="
-          (providerId, modelId) => emit('selectModel', providerId, modelId)
-        "
-        @change-thinking="(config) => emit('changeThinking', config)"
-        @change-service-tier="(tierId) => emit('changeServiceTier', tierId)"
-      />
-    </template>
-  </Dropdown>
+  <Tooltip :content="labelText" :disabled="!compact" tag="div" class="flex">
+    <span
+      v-if="load === 'loading'"
+      class="relative inline-flex h-7 items-center overflow-hidden px-2 text-chrome text-fg-subtle"
+      role="status"
+      :aria-label="labelText"
+    >
+      <IndeterminateSpinner :size="14" />
+      <span ref="label" class="whitespace-nowrap pl-1.5" :class="compact ? 'invisible absolute left-0 top-0' : ''">{{ labelText }}</span>
+    </span>
+    <span
+      v-else-if="load === 'failed'"
+      class="relative inline-flex h-7 items-center overflow-hidden pl-2 text-chrome text-on-danger"
+      role="alert"
+      :aria-label="labelText"
+    >
+      <CircleX :size="14" class="shrink-0" />
+      <span ref="label" class="whitespace-nowrap pl-1.5" :class="compact ? 'invisible absolute left-0 top-0' : ''">{{ labelText }}</span>
+      <Button size="sm" class="ml-1.5" @click="emit('retry')">Retry</Button>
+    </span>
+    <Dropdown
+      v-else-if="state.kind === 'ready' || state.kind === 'unavailable'"
+      :overlay-store="appOverlayStore"
+      variant="ghost"
+      trigger-label="Model"
+      placement="bottom-end"
+    >
+      <template #trigger="{ isOpen }">
+        <span class="relative inline-flex items-center overflow-hidden">
+          <Sparkles :size="ICON_PX.in28" class="shrink-0" />
+          <!-- The name sits a step above the chip's tone and the level a step below it, so the
+               two stay two steps apart whether the chip is subtle (closed) or body (open). -->
+          <span
+            ref="label"
+            class="inline-flex items-center gap-1 whitespace-nowrap pl-1"
+            :class="compact ? 'invisible absolute left-0 top-0' : ''"
+          >
+            <span :class="isOpen ? 'text-fg-body' : 'text-fg-muted'">{{ state.label }}</span>
+            <span
+              v-if="reasoningLabel"
+              :class="isOpen ? 'text-fg-subtle' : 'text-fg-faint'"
+            >{{ reasoningLabel }}</span>
+          </span>
+          <Zap v-if="fast" :size="ICON_PX.in28" class="ml-1 shrink-0" />
+          <Tooltip v-if="unavailable" content="This model is unavailable. Choose another to send.">
+            <TriangleAlert
+              :size="ICON_PX.in28"
+              class="ml-1 shrink-0 text-on-warning"
+            />
+          </Tooltip>
+        </span>
+      </template>
+      <template #content>
+        <ModelMenu
+          :providers="providers"
+          :models="models"
+          :selected-provider-id="selectedProviderId"
+          :selected-model-id="selectedModelId"
+          :thinking-config="thinkingConfig"
+          :service-tier-id="serviceTierId"
+          @select-model="
+            (providerId, modelId) => emit('selectModel', providerId, modelId)
+          "
+          @change-thinking="(config) => emit('changeThinking', config)"
+          @change-service-tier="(tierId) => emit('changeServiceTier', tierId)"
+        />
+      </template>
+    </Dropdown>
+  </Tooltip>
 </template>

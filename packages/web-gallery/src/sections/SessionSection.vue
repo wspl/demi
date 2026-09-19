@@ -619,7 +619,7 @@ function abortTerminal(id: string) {
     <template v-if="view === 'composer'">
       <GallerySection
         title="Composer"
-        note="Idle through Fast Mode, local upload phases, a remote host file as the same tile, and queue. One send; a running turn queues. An unavailable last model keeps the chip, warns, and blocks send. No usable model and an archived conversation both replace the input with the same snackbar: a line on the left, Configure models or Restore conversation on the right."
+        note="Idle through Fast Mode, local upload phases, a remote host file as the same tile, and queue. One send; a running turn queues. An unavailable last model keeps the chip, warns, and blocks send. No usable model and an archived conversation both replace the input with the same snackbar: a line on the left, Configure models or Restore conversation on the right. The input keeps at least 128px: where the model chip's name and level would leave it less, the chip is its sparkle alone, the name and level in its tooltip, and it names the model again once there is room; loading and a failed load give way the same. The narrow composer resizes from its corner."
       >
         <div class="specimen-stack specimen-stack-loose">
           <GallerySpecimen
@@ -627,6 +627,14 @@ function abortTerminal(id: string) {
             wide
           >
             <GalleryComposer placeholder="Ask Demi…" />
+          </GallerySpecimen>
+          <GallerySpecimen
+            variant="narrow · the model chip is its icon"
+            wide
+          >
+            <div class="max-w-full resize-x overflow-hidden pb-3" style="width: 343px; min-width: 14rem">
+              <GalleryComposer placeholder="Ask Demi…" />
+            </div>
           </GallerySpecimen>
           <GallerySpecimen
             variant="focused"
