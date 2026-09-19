@@ -211,7 +211,8 @@ thinking and tier. Choosing a model in an unsent draft saves this preference;
 existing conversations keep their own selection. `locale` stores the time
 zone and languages the user's browser last reported, as
 `{ timeZone, languages }` with an IANA zone name and BCP 47 tags in preference
-order; the product sends it whenever either changes, and the
+order; the product sends it whenever either changes. Commands receive it in
+their [command context](native-runtime.md#command-context), and the
 [conversation browser](browser.md#native-driver) starts with it. Unknown fields
 are rejected.
 The control service reads, merges and writes in one transaction, preserving

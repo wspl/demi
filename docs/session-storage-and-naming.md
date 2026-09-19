@@ -106,7 +106,7 @@ Everything a session persists lives under one `HostStore` prefix:
 ```
 
 Agent-owned shells store command artifacts under their actual agent session id.
-Anonymous shells have no `DEMI_SESSION_ID` and use their shell id only as the
+Anonymous shells have no agent session and use their shell id only as the
 internal command-artifact storage key.
 
 ### Roles

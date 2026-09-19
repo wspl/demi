@@ -37,10 +37,11 @@ background work, and cancellation follow the [runner job contract](runner.md#she
 
 ## Bind jobs to their caller
 
-The backend registers a job before sending it. Its live record binds the device,
-root conversation, agent node, shell, and invoking Host. These identities remain
-fixed for that job even when another shell starts or another conversation uses
-the same device.
+The backend registers a job before sending it. Its live record binds the device
+and invoking Host and holds the job's
+[command context](native-runtime.md#command-context): the root conversation,
+the agent node and its shell. These identities remain fixed for that job even
+when another shell starts or another conversation uses the same device.
 
 For example, node `a1` can run jobs on both the main laptop and attached device
 `ci`. The table shows which state a callback accesses:
@@ -50,12 +51,12 @@ For example, node `a1` can run jobs on both the main laptop and attached device
 | `j1` from `a1` | laptop | `a1`'s tree and storage | laptop |
 | `j2` from `a1` | ci | `a1`'s tree and storage | ci |
 
-A callback supplies its job reference. The backend checks the authenticated
-device connection and live job record, then validates node/shell identity and
-command arguments. Unknown, completed, or disconnected jobs cannot invoke
+A callback supplies only its job reference. The backend checks the
+authenticated device connection and the live job record, gives the handler the
+command context from that record, and validates the command arguments. Unknown, completed, or disconnected jobs cannot invoke
 callbacks. A device token does not authorize another user's jobs.
 
-Cross-host jobs preserve their originating conversation, node, and shell.
+A cross-host job carries its originating job's command context.
 Pipe authorization remains bound to the participating device endpoints.
 [Commands](commands.md) defines dispatch; the backend runner registry owns
 product authorization rather than delegating it to the generic Host adapter.

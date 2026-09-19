@@ -274,6 +274,54 @@ The runner must report that failure rather than claim isolated cancellation.
 Changing the startup catalog creates new pinned bindings, not an in-place
 replacement of an executable serving an existing context.
 
+## Command context
+
+A command often needs to know more than its arguments: which conversation it
+serves, who started it, and how to present results to the user. For example,
+`demi browser open` keeps its tabs in the invoking conversation's browser, and
+that browser starts Chrome in the user's time zone. These facts form the
+command context, one value with one schema in `command-protocol`:
+
+| Field | Meaning |
+| --- | --- |
+| `conversation` | The conversation the work belongs to. |
+| `caller` | Who started the work: `agent`, with the agent `node`, the `shell` it runs in and, for a subagent, the `parent` node that spawned it; or `user`, for a [user stream](#user-streams). |
+| `locale` | The time zone, an IANA name, and the languages, BCP 47 tags in preference order, that the user's browser last reported ([User preferences](web-api.md#user-preferences)). |
+
+The backend is the context's only source, and nothing reads it from
+environment variables: a script can change those, and every program the job
+runs inherits them.
+
+```text
+Backend: builds the context and keeps it in the job's or stream's record
+   | job_start { context }, service_open { context }
+   v
+Runner: keeps it in the job's live execution context
+   |-- native invocation { context, edits, cwd, env, args } --> command service
+   |-- rpc_call { jobId } --> backend: the handler receives the record's context
+   `-- programs in the job: `demi context`
+```
+
+- The backend builds the context when it starts a job or opens a user stream,
+  and keeps it in that job's or stream's record. A job that `demi host shell` starts on
+  another Host carries its invoking job's context.
+- The runner keeps the context in the job's live execution context and writes
+  it into every native invocation record. The invocation's `edits`, `cwd` and
+  `env` stay separate: they describe the runner's resources and the process,
+  not the origin of the work.
+- An application callback names only its job. The backend gives the handler
+  the context from its own record of that job
+  ([Bind jobs to their caller](sessions-and-targets.md#bind-jobs-to-their-caller)).
+- A program the job runs, such as a script, prints the context with
+  `demi context`, or the object with `demi context --json`. It is an ordinary
+  declared command whose handler prints the context it receives. The job
+  environment carries only what reaching the runner needs: the local endpoint,
+  the opaque context handle, `DEMI_HOME` and the command aliases on `PATH`
+  ([External command clients](commands.md#external-command-clients)).
+
+A new context field changes the schema and the backend's construction of the
+context; its consumers read it where they already receive the context.
+
 ## Conversation-scoped state
 
 A native operation can keep state that must survive the shell job that created
@@ -291,23 +339,9 @@ mechanism specific to any tool. A tool that needs more than this port is
 evidence that the port is missing a generic capability, not a reason to give
 that tool a path of its own through the runner or the backend.
 
-Every job the backend starts names its conversation and the invoking agent
-node. The runner places them in the job environment as `DEMI_CONVERSATION_ID`
-and `DEMI_AGENT_NODE_ID`, so external programs can see them, and writes the same
-values into the `conversation` and `caller` fields of every native invocation
-record it builds. Native handlers use the invocation fields. A value written into
-the shell environment by a script never reaches those fields, so it cannot
-select another conversation's state.
-
-Every job and user stream also carries the time zone and languages the
-conversation's user last reported
-([User preferences](web-api.md#user-preferences)), and the runner writes them
-into the invocation's `locale` field. An operation that presents something to
-the user in the user's terms reads them there: the conversation browser starts
-Chrome with them ([Native driver](browser.md#native-driver)). They are not job
-environment variables: those would reach every program the job runs, a script
-could change them, and the standard `TZ` and `LANG` would change how the
-user's own tools and tests behave.
+Native handlers find the conversation in the invocation's
+[command context](#command-context). A script cannot change the context, so it
+cannot select another conversation's state.
 
 Calls from every conversation on a device share one resident service per
 artifact and security context. The service separates state by conversation.
@@ -348,11 +382,9 @@ for a [service stream](runner.md#service-streams). The runner invokes the
 operation with `POST /v1/invoke`, the contract every command uses, in the
 resident service that holds the conversation's state: the invocation uses the
 same package binding as the conversation's jobs, so it reaches the same
-service. Its trusted `conversation` field names the conversation, its
-`caller` field is `user` instead of an agent node, so `caller` is a
-discriminated value, an agent node or the user, and its `locale` is the user's.
-Its `cwd` is the conversation's directory and its environment carries only the
-job context variables.
+service. Its [command context](#command-context) names the conversation and
+a `user` caller, with the user's locale. Its `cwd` is the conversation's
+directory and its environment is empty.
 
 The invocation's input is the bytes the page sends and its output is the bytes
 the page receives. The operation frames its own messages; the runner and the
@@ -421,16 +453,14 @@ sizes while decoding, before allocating unbounded memory. These limits apply:
 | Invocation metadata JSON | 256 KiB |
 | Response record payload | 64 KiB |
 | HTTP/2 header list | 16 KiB |
+| Concurrent admitted service streams | 32 |
 | Queued output records per invocation | 4 |
 | HTTP/2 handshake, service info, and invocation metadata timeout | 10 seconds per phase |
 | Cooperative cancellation grace | 5 seconds |
 
-These are fixed SDK limits. The number of concurrent invocations is not
-limited. Each invocation stream has its own flow-control window and a bounded
-output queue, and the connection's window is set to the protocol maximum, so it
-never becomes the constraint: a slow consumer holds back only its own
-invocation, never an unrelated one. Memory grows with the number of live
-invocations, each bounded by its window and queue.
+These are fixed SDK limits. Flow control and bounded queues, both per stream and
+across streams, prevent a slow consumer from blocking unrelated calls or growing
+memory without bound.
 
 The SDK returns input receive capacity while assembling one requested, bounded
 chunk. It reserves output capacity before sending DATA. Connection processing

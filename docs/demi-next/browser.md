@@ -86,11 +86,10 @@ Conversation
         +-- child
 ```
 
-Commands obtain the conversation and invoking agent node from the
-`conversation` and `caller` fields of the native invocation record, which the
-runner fills from the job the backend started; the same values are visible to
-scripts as `DEMI_CONVERSATION_ID` and `DEMI_AGENT_NODE_ID`, but a script that
-changes those variables changes nothing the browser reads. Commands have no
+Commands obtain the conversation and invoking agent node from the invocation's
+[command context](native-runtime.md#command-context), which the runner fills
+from the job the backend started. A script can print the context with
+`demi context` but cannot change it. Commands have no
 `--conversation`, `--session`, `--profile`, `--cdp-url`, or browser-process
 argument.
 
@@ -285,8 +284,8 @@ the user test how real sites and applications behave for real visitors:
   [live view's pixel ratio](browser-live-view.md#pixel-ratio), and a window's
   outer size is never smaller than its viewport.
 - Time zone and languages are the ones the user's browser last reported,
-  which arrive in the starting invocation's `locale`
-  ([Conversation-scoped state](native-runtime.md#conversation-scoped-state)),
+  which arrive in the starting invocation's
+  [command context](native-runtime.md#command-context),
   applied through CDP when the environment starts; the Host's own settings
   differ between devices and do not count. They do not change while the
   environment lives.
@@ -1645,9 +1644,9 @@ persistent JavaScript REPL; Bash already composes their operations.
 - `browser-protocol`: shared browser schemas and derived types.
 - `coding-agent`: declared commands using those schemas and generated help;
   assemble available commands through injected capabilities.
-- `backend`: names the conversation and invoking node on every job and sends
-  the generic conversation release; no browser module.
-- `runner` and `host-remote`: trusted invocation identity, service residency,
+- `backend`: builds the command context of every job and sends the generic
+  conversation release; no browser module.
+- `runner` and `host-remote`: the command context of every invocation, service residency,
   the release forward, cancellation, and transport; no webpage algorithms.
 - `demi-commands`: driver, per-conversation environments, page observation,
   actions, output rendering, assets, and CDP handling.
@@ -1672,8 +1671,8 @@ and isolated storage. Never run tests that call real models.
    environment failure separately from a browser result.
 2. Retain tabs and login state across shell jobs, agent turns, and user Web
    disconnect while the environment is live.
-3. Reject cross-conversation tab/ref use, including a script that rewrites
-   `DEMI_CONVERSATION_ID`. Isolate browser storage. A main-Host shell and an
+3. Reject cross-conversation tab/ref use, including a script that sets
+   environment variables naming another conversation. Isolate browser storage. A main-Host shell and an
    attached-Host shell of one conversation use separate environments.
 4. Verify target changes, archive, Fork, sleep/reset, disconnect, and crashes.
    Old handles never identify replacement pages.
