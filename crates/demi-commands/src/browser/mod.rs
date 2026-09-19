@@ -17,6 +17,7 @@ mod history;
 mod installation;
 mod keyboard;
 mod launch;
+mod live;
 mod logs;
 mod navigation;
 mod observation;
@@ -37,6 +38,7 @@ mod webmcp;
 
 pub(crate) use conversations::Conversations;
 pub use environment::{BrowserEnvironment, LaunchOptions, with_browser};
+pub(crate) use live::OPERATION as LIVE_OPERATION;
 pub use operation::{BrowserError, Result};
 pub(crate) use protocol::OPERATIONS;
 pub use tab::BrowserTab;

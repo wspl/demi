@@ -9,7 +9,8 @@
     clippy::collapsible_if,
     clippy::redundant_closure_call,
     clippy::clone_on_copy,
-    clippy::large_enum_variant
+    clippy::large_enum_variant,
+    clippy::neg_cmp_op_on_partial_ord
 )]
 mod generated {
     include!(concat!(env!("OUT_DIR"), "/browser.rs"));

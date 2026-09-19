@@ -9,7 +9,10 @@ use std::{
 
 use chromiumoxide::{
     Browser, BrowserConfig,
-    cdp::browser_protocol::target::{EventTargetCreated, GetTargetsParams, TargetId, TargetInfo},
+    cdp::browser_protocol::target::{
+        EventTargetCreated, EventTargetDestroyed, EventTargetInfoChanged, GetTargetsParams,
+        TargetId, TargetInfo,
+    },
     handler::viewport::Viewport,
 };
 use demi_command_service::protocol::CommandLocale;
@@ -32,7 +35,8 @@ struct TabRegistry {
     created: chromiumoxide::listeners::EventStream<EventTargetCreated>,
     openers: HashMap<TargetId, TargetId>,
     live: HashMap<TargetId, BrowserTab>,
-    public_ids: HashMap<TargetId, Arc<str>>,
+    /// Each page's public ID, in the order the browser created them.
+    public_ids: HashMap<TargetId, (Arc<str>, usize)>,
 }
 
 impl TabRegistry {
@@ -64,11 +68,12 @@ impl TabRegistry {
 
     /// Retain browser target identities even after their live tab is pruned.
     fn public_id(&mut self, target: &TargetId) -> Result<Arc<str>> {
-        if let Some(id) = self.public_ids.get(target) {
+        if let Some((id, _)) = self.public_ids.get(target) {
             return Ok(id.clone());
         }
         let id: Arc<str> = super::handles::fresh("t")?.into();
-        self.public_ids.insert(target.clone(), id.clone());
+        let order = self.public_ids.len();
+        self.public_ids.insert(target.clone(), (id.clone(), order));
         Ok(id)
     }
 }
@@ -102,7 +107,11 @@ pub struct BrowserEnvironment {
     report_failure: watch::Sender<Option<String>>,
     pub(super) observers: TaskTracker,
     pub(super) download_directory: PathBuf,
+    /// Files the user chose in the live view, until the browser retires.
+    pub(super) upload_directory: PathBuf,
     pub(super) acquisition: Arc<RwLock<()>>,
+    /// The live view of this browser (`browser-live-view.md`).
+    pub(super) live: Arc<super::live::Hub>,
 }
 
 /// Own Chrome, its event task and its profile until the conversation work ends.
@@ -127,6 +136,8 @@ where
     let mut process = ChromeProcess::new(profile.path(), &options.executable);
     let download_directory = profile.path().join("downloads");
     tokio::fs::create_dir(&download_directory).await?;
+    let upload_directory = profile.path().join("uploads");
+    tokio::fs::create_dir(&upload_directory).await?;
     let builder = BrowserConfig::builder()
         .respect_https_errors()
         .surface_invalid_messages()
@@ -139,11 +150,17 @@ where
         })
         .launch_timeout(Duration::from_secs(60))
         .request_timeout(Duration::from_secs(30));
-    let config =
-        super::launch::configure(builder, profile.path(), &options.version, &options.locale)
-            .await?
-            .build()
-            .map_err(BrowserError::Configuration)?;
+    let capture = super::live::capture::CaptureServer::bind().await?;
+    let config = super::launch::configure(
+        builder,
+        profile.path(),
+        &options.version,
+        &options.locale,
+        &capture.address()?,
+    )
+    .await?
+    .build()
+    .map_err(BrowserError::Configuration)?;
     let platform_arguments = super::launch::platform_arguments(&options.locale);
     // Only joined retirement may remove a profile once Chrome could be writing.
     profile.disable_cleanup(true);
@@ -164,6 +181,13 @@ where
     let ended = CancellationToken::new();
     let observers = TaskTracker::new();
     let _end_on_drop = ended.clone().drop_guard();
+    let captures = Arc::new(super::live::capture::Captures::default());
+    capture.serve(captures.clone(), &observers, ended.clone());
+    let live = Arc::new(super::live::Hub::new(
+        captures,
+        observers.clone(),
+        ended.clone(),
+    ));
     let pump_ended = ended.clone();
     let pump_failure = failure.clone();
     let pump = AbortOnDropHandle::new(tokio::spawn(async move {
@@ -210,6 +234,7 @@ where
                 .events_enabled(true)
                 .build().map_err(BrowserError::Configuration)?).await?;
             let created = browser.lock().await.event_listener::<EventTargetCreated>().await?;
+            watch_targets(&browser, &live, &observers, &ended).await?;
             let environment = BrowserEnvironment {
                 browser: Arc::downgrade(&browser),
                 ended: ended.clone(),
@@ -222,7 +247,9 @@ where
                 report_failure: failure.clone(),
                 observers: observers.clone(),
                 download_directory,
+                upload_directory,
                 acquisition: Arc::new(RwLock::new(())),
+                live: live.clone(),
             };
             owned_tabs = Some(environment.tabs.clone());
             work(environment).await
@@ -274,7 +301,9 @@ impl BrowserEnvironment {
         let _acquisition = operation
             .run(async { Ok(self.acquisition.read().await) })
             .await?;
-        let tab = self.create_tab(caller, "agent", &operation).await?;
+        let tab = self
+            .create_tab(created_by("agent", Some(caller))?, &operation)
+            .await?;
         let mut references = tab
             .state
             .operations
@@ -292,8 +321,32 @@ impl BrowserEnvironment {
         Ok((tab, url))
     }
 
+    /// A tab the user opens in the live view, blank or loading `url`; the
+    /// page shows its loading, so opening does not wait for it.
+    pub(super) async fn open_user(
+        &self,
+        url: Option<&str>,
+        cancellation: &CancellationToken,
+        deadline: tokio::time::Instant,
+    ) -> Result<BrowserTab> {
+        if let Some(url) = url {
+            super::navigation::validate_url(url)?;
+        }
+        let operation = Operation::until(&self.ended, cancellation, deadline);
+        let _acquisition = operation
+            .run(async { Ok(self.acquisition.read().await) })
+            .await?;
+        let tab = self
+            .create_tab(created_by("user", None)?, &operation)
+            .await?;
+        if let Some(url) = url {
+            super::live::visit(&tab, url);
+        }
+        Ok(tab)
+    }
+
     /// Register a blank browser tab before any command can navigate it.
-    async fn blank_tab(&self, caller: &str, kind: &str) -> Result<BrowserTab> {
+    async fn blank_tab(&self, created_by: BrowserCreatedBy) -> Result<BrowserTab> {
         let mut registry = self.tabs.lock().await;
         let page = self
             .browser
@@ -303,17 +356,13 @@ impl BrowserEnvironment {
             .await
             .new_page("about:blank")
             .await?;
-        let created_by =
-            serde_json::from_value(serde_json::json!({"kind": kind, "nodeId": caller}))
-                .map_err(|error| BrowserError::Configuration(error.to_string()))?;
         self.tab(&mut registry, page, Some(created_by)).await
     }
 
     /// Join browser tab creation after cancellation so its newly created target is closed.
     async fn create_tab(
         &self,
-        caller: &str,
-        kind: &str,
+        created_by: BrowserCreatedBy,
         operation: &Operation<'_>,
     ) -> Result<BrowserTab> {
         use std::sync::atomic::{AtomicU8, Ordering};
@@ -321,7 +370,7 @@ impl BrowserEnvironment {
         let phase = AtomicU8::new(0);
         let creation = async {
             phase.store(1, Ordering::Relaxed);
-            let result = self.blank_tab(caller, kind).await;
+            let result = self.blank_tab(created_by).await;
             phase.store(2, Ordering::Relaxed);
             result
         };
@@ -359,9 +408,10 @@ impl BrowserEnvironment {
         };
         let result = async {
             for _ in 0..count {
-                batch
-                    .tabs
-                    .push(self.create_tab(caller, "temporary", &operation).await?);
+                batch.tabs.push(
+                    self.create_tab(created_by("temporary", Some(caller))?, &operation)
+                        .await?,
+                );
             }
             Ok(())
         }
@@ -393,6 +443,21 @@ impl BrowserEnvironment {
         cancellation: &CancellationToken,
         timeout: Duration,
     ) -> Result<Vec<BrowserTab>> {
+        Ok(self
+            .listed(cancellation, timeout)
+            .await?
+            .into_iter()
+            .map(|(tab, _)| tab)
+            .collect())
+    }
+
+    /// The tabs in the order the browser created them, with what the browser
+    /// knows of each: its title and URL.
+    pub(super) async fn listed(
+        &self,
+        cancellation: &CancellationToken,
+        timeout: Duration,
+    ) -> Result<Vec<(BrowserTab, TargetInfo)>> {
         let operation = Operation::new(&self.ended, cancellation, timeout);
         operation
             .run(async {
@@ -434,9 +499,19 @@ impl BrowserEnvironment {
                 }
                 let mut tabs = Vec::with_capacity(pages.len());
                 for page in pages {
-                    tabs.push(self.tab(&mut registry, page, None).await?);
+                    let info = targets
+                        .iter()
+                        .find(|target| &target.target_id == page.target_id())
+                        .cloned()
+                        .expect("pages are listed targets");
+                    let order = registry
+                        .public_ids
+                        .get(page.target_id())
+                        .map(|(_, order)| *order);
+                    tabs.push((self.tab(&mut registry, page, None).await?, info, order));
                 }
-                Ok(tabs)
+                tabs.sort_by_key(|(_, _, order)| *order);
+                Ok(tabs.into_iter().map(|(tab, info, _)| (tab, info)).collect())
             })
             .await
     }
@@ -476,6 +551,7 @@ impl BrowserEnvironment {
             ended.clone(),
             &self.observers,
             self.report_failure.clone(),
+            self.live.changes(),
         )
         .await?;
         let tab = BrowserTab::new(
@@ -520,6 +596,47 @@ impl TemporaryBatch {
         }
         cleanup
     }
+}
+
+/// Creation metadata for a tab opened by `kind`, for the agent `node` if any.
+fn created_by(kind: &str, node: Option<&str>) -> Result<BrowserCreatedBy> {
+    let mut value = serde_json::json!({ "kind": kind });
+    if let Some(node) = node {
+        value["nodeId"] = serde_json::json!(node);
+    }
+    serde_json::from_value(value).map_err(|error| BrowserError::Configuration(error.to_string()))
+}
+
+/// Tells the live view whenever a tab opens, closes or changes its title or
+/// URL.
+async fn watch_targets(
+    browser: &Mutex<Browser>,
+    live: &Arc<super::live::Hub>,
+    tasks: &TaskTracker,
+    ended: &CancellationToken,
+) -> Result<()> {
+    let browser = browser.lock().await;
+    let mut created = browser.event_listener::<EventTargetCreated>().await?;
+    let mut destroyed = browser.event_listener::<EventTargetDestroyed>().await?;
+    let mut changed = browser.event_listener::<EventTargetInfoChanged>().await?;
+    drop(browser);
+    let live = live.clone();
+    let ended = ended.clone();
+    tasks.spawn(async move {
+        loop {
+            let event = tokio::select! {
+                _ = ended.cancelled() => break,
+                event = created.next() => event.map(|_| ()),
+                event = destroyed.next() => event.map(|_| ()),
+                event = changed.next() => event.map(|_| ()),
+            };
+            if event.is_none() {
+                break;
+            }
+            live.changed();
+        }
+    });
+    Ok(())
 }
 
 /// Stop Chrome before joining the CDP pump; it must run while close is in flight.
