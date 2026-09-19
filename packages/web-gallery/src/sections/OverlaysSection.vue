@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Copy, Pencil, Plus, Trash2 } from '@lucide/vue'
+import { Copy, Folder, Pencil, Plus, Settings, Trash2 } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { showToast } from '@demicodes/web-ui/infra/toast'
 import Button from '@demicodes/web-ui/ui/Button.vue'
@@ -15,6 +15,7 @@ import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
 import MenuGroup from '@demicodes/web-ui/ui/MenuGroup.vue'
 import Switch from '@demicodes/web-ui/ui/Switch.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
+import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { ref } from 'vue'
 import HostPicker from '@demicodes/web-ui/hosts/HostPicker.vue'
 import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
@@ -636,6 +637,36 @@ function itemLabel(id: string, list: {
             </Dropdown>
           </GallerySpecimen>
         </GalleryOverlayWell>
+      </GallerySection>
+
+      <GallerySection
+        title="Dropdown width"
+        note="How wide a dropdown is. content keeps its trigger's width whatever the row, so in a row too narrow for it what follows is pushed out. shrink keeps it while the row has room and gives way when it has not, its label truncating. fill spans the row and gives way the same. Every wrapper around the trigger gives way alike. Each frame resizes from its corner."
+      >
+        <GallerySpecimen v-for="width in (['content', 'shrink', 'fill'] as const)" :key="width" :variant="width" wide>
+          <div class="flex max-w-full resize-x items-center gap-1 overflow-hidden pb-3" style="width: 20rem; min-width: 4rem">
+            <Dropdown :overlay-store="appOverlayStore" :width="width" :variant="width === 'fill' ? 'field' : undefined" trigger-label="Directory">
+              <!-- A field fills; the others are a button as wide as its label, the way the header's directory menu is. -->
+              <template #trigger>
+                <template v-if="width === 'fill'">
+                  <Folder :size="ICON_PX.in28" class="shrink-0 text-fg-muted" />
+                  <span class="min-w-0 flex-1 truncate">a-rather-long-directory-name</span>
+                </template>
+                <Button v-else variant="ghost" class="max-w-full">
+                  <Folder :size="ICON_PX.in28" />
+                  <span class="truncate">a-rather-long-directory-name</span>
+                </Button>
+              </template>
+              <template #content="{ close }">
+                <Menu @click="close">
+                  <MenuItem :icon="Folder" label="a-rather-long-directory-name" />
+                  <MenuItem :icon="Folder" label="demi" />
+                </Menu>
+              </template>
+            </Dropdown>
+            <IconButton :icon="Settings" variant="ghost" aria-label="Settings" />
+          </div>
+        </GallerySpecimen>
       </GallerySection>
 
       <GallerySection title="ContextMenu" note="Right-click Menu.">

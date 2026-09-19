@@ -63,7 +63,7 @@ function connect() {
     v-model:open="open"
     :overlay-store="appOverlayStore"
     :disabled="pending"
-    class="min-w-0 [&>div]:min-w-0"
+    width="shrink"
   >
     <template #trigger>
       <Button
