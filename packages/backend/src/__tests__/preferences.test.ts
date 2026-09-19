@@ -98,7 +98,7 @@ test(
         locale: { timeZone: 'Asia/Shanghai', languages: ['zh-cn', 'EN', 'zh-CN'] }
       }))
       expect(response.status).toBe(200)
-      expect((await response.json()).preferences.locale)
+      expect(((await response.json()) as { preferences: { locale: unknown } }).preferences.locale)
         .toEqual({ timeZone: 'Asia/Shanghai', languages: ['zh-CN', 'en'] })
     } finally {
       await backend.close()

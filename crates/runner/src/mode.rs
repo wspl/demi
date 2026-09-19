@@ -8,6 +8,7 @@ use crate::{
     commands::local::Server,
     commands::native::{self, Services},
     commands::rpc::Calls,
+    commands::streams::ServiceStreams,
     connection::Connection,
     host::HostServer,
     management::{Management, Phase},
@@ -170,6 +171,16 @@ impl Runtime {
             self.pipes.clone(),
         );
         self.management.attach(host.tasks.clone());
+        let streams = ServiceStreams::new(
+            connection.control.clone(),
+            self.pipes.clone(),
+            self.services.clone(),
+            self.artifacts.clone(),
+            native::target().into(),
+            self.management.draining.clone(),
+            self.contexts.clone(),
+            connection.cancellation().child_token(),
+        );
         let volumes = crate::volumes::Volumes::new(
             self.options.volumes.clone(),
             connection.control.clone(),
@@ -206,7 +217,8 @@ impl Runtime {
                         continue;
                     },
                     _ = self.contexts.changed() => {
-                        let retained = self.contexts.retained_artifacts(native::target());
+                        let mut retained = self.contexts.retained_artifacts(native::target());
+                        retained.extend(streams.retained_artifacts());
                         self.services.retain(&retained).await;
                         continue;
                     },
@@ -259,7 +271,7 @@ impl Runtime {
                             .map_err(io::Error::other)?;
                     }
                     message if self.management.phase() == Phase::Online => {
-                        self.message(message, &host, &connection, &volumes, &lifecycle)
+                        self.message(message, &host, &streams, &connection, &volumes, &lifecycle)
                             .await?
                     }
                     _ => {
@@ -274,7 +286,7 @@ impl Runtime {
         self.contexts.close();
         self.calls.detach();
         self.artifacts.detach();
-        tokio::join!(host.close(), volumes.close());
+        tokio::join!(host.close(), streams.close(), volumes.close());
         self.services.disconnect().await;
         lifecycle.close();
         lifecycle.wait().await;
@@ -290,6 +302,7 @@ impl Runtime {
         &self,
         message: Inbound,
         host: &HostServer,
+        streams: &ServiceStreams,
         connection: &Connection,
         volumes: &crate::volumes::Volumes,
         lifecycle: &TaskTracker,
@@ -341,6 +354,7 @@ impl Runtime {
             message if message.fs_request_id().is_some() => host.handle_filesystem(message)?,
             message if message.git_request_id().is_some() => host.handle_git(message)?,
             Inbound::NetOpen { .. } => host.handle_net(message)?,
+            Inbound::ServiceOpen { .. } => streams.handle_open(message)?,
             message => {
                 let started = matches!(message, Inbound::JobStart { .. } | Inbound::Spawn { .. });
                 let setup = async {

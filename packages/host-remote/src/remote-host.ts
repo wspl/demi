@@ -1,6 +1,9 @@
 import {
   artifactLocationSchema,
+  type ArtifactResolver,
   type CommandContext,
+  type NativeArtifact,
+  type NativePackage,
 } from '@demicodes/command-protocol'
 import type { RemoteCommandCatalog } from './shell-environment-factory'
 import type {
@@ -41,7 +44,8 @@ import type {
   JobExitMessage,
   NetErrorCode,
   PipeRef,
-  RunnerToBackendMessage
+  RunnerToBackendMessage,
+  ServiceErrorCode
 } from '@demicodes/runner-protocol'
 import type { HostPipes, Pipe } from './pipes'
 
@@ -89,6 +93,57 @@ export class RemoteNetError extends Error {
     this.name = 'RemoteNetError'
     this.code = code
   }
+}
+
+/**
+ * The runner's service facet (`runner.md` § Service streams): one user stream
+ * as an invocation of a resident native service, its input and output the
+ * two pipes. `open` resolves when the runner answers `service_opened`; a
+ * refusal is a `RemoteServiceError` with the runner's code. Until the stream
+ * is closed, it answers the runner's requests for its service's executable.
+ */
+export interface RemoteServices {
+  open(params: {
+    context: CommandContext
+    package: NativePackage
+    operation: string
+    cwd: string
+    input: PipeRef
+    output: PipeRef
+    resolveArtifact: ArtifactResolver
+  }): Promise<RemoteServiceStream>
+}
+
+export interface RemoteServiceStream {
+  /** The stream is over: its artifact requests are no longer answered. */
+  close(): void
+}
+
+export class RemoteServiceError extends Error {
+  readonly code: ServiceErrorCode
+
+  constructor(code: ServiceErrorCode, message: string) {
+    super(message)
+    this.name = 'RemoteServiceError'
+    this.code = code
+  }
+}
+
+/** An artifact request's owner: the live job or user stream it serves. */
+type ArtifactOwner = Extract<RunnerToBackendMessage, { type: 'artifact_resolve' }>['owner']
+
+/** What the live work an artifact request names may run. */
+interface ArtifactGrant {
+  packages: NativePackage[]
+  resolve: ArtifactResolver
+  signal: AbortSignal
+  live(): boolean
+}
+
+interface ServiceStreamState {
+  package: NativePackage
+  resolveArtifact: ArtifactResolver
+  controller: AbortController
 }
 
 /**
@@ -147,11 +202,14 @@ export class RemoteHost implements Host {
   readonly process: HostProcess
   readonly git: RemoteGit
   readonly net: RemoteNet
+  readonly services: RemoteServices
 
   private send: ((message: BackendToRunnerMessage) => void) | null = null
   private currentIdentity: HostIdentity
   private readonly pendingCalls = new Map<string, Deferred<unknown>>()
   private readonly pendingNet = new Map<string, Deferred<void>>()
+  private readonly pendingServices = new Map<string, Deferred<void>>()
+  private readonly serviceStreams = new Map<string, ServiceStreamState>()
   private readonly activeSpawns = new Map<string, RemoteSpawn>()
   private readonly activeJobs = new Map<string, RemoteJobState>()
   private readonly artifactRequests = new Set<string>()
@@ -176,6 +234,7 @@ export class RemoteHost implements Host {
       },
     }
     this.net = { open: (params) => this.openNet(params) }
+    this.services = { open: (params) => this.openService(params) }
     this.process = {
       spawn: (params) => this.spawn(params),
       openCwd: async (path) => this.openCwd(path),
@@ -213,11 +272,15 @@ export class RemoteHost implements Host {
     for (const call of pending) {
       call.reject(offlineError(reason))
     }
-    const streams = [...this.pendingNet.values()]
+    const streams = [...this.pendingNet.values(), ...this.pendingServices.values()]
     this.pendingNet.clear()
+    this.pendingServices.clear()
     for (const stream of streams) {
       stream.reject(offlineError(reason))
     }
+    for (const stream of this.serviceStreams.values())
+      stream.controller.abort(offlineError(reason))
+    this.serviceStreams.clear()
     const spawns = [...this.activeSpawns.values()]
     this.activeSpawns.clear()
     for (const spawn of spawns) {
@@ -281,6 +344,13 @@ export class RemoteHost implements Host {
     return this.activeJobs.get(jobId)?.context ?? null
   }
 
+  /** Whether the live job or user stream an artifact request names is this Host's. */
+  serves(owner: ArtifactOwner): boolean {
+    return 'jobId' in owner
+      ? this.activeJobs.has(owner.jobId)
+      : this.serviceStreams.has(owner.streamId)
+  }
+
   /**
    * Runs the script on the runner as one job; offline, the job fails
    * at once. `stdin` / `stdout` attach the job's fd 0 / fd 1 to pipes whose
@@ -338,13 +408,17 @@ export class RemoteHost implements Host {
     return job.handle()
   }
 
+  /**
+   * Answers the runner's request for an executable's location, for the live
+   * job or user stream that runs it and only while it does.
+   */
   private async resolveArtifact(message: Extract<RunnerToBackendMessage, { type: 'artifact_resolve' }>): Promise<void> {
     const send = this.send
     if (!send)
       return
-    const job = this.activeJobs.get(message.jobId)
-    if (!job?.commands || job.commands.manifest.hash !== message.manifestHash) {
-      send({ type: 'artifact_location', id: message.id, error: 'No matching active job command catalog' })
+    const grant = this.artifactGrant(message.owner)
+    if (!grant) {
+      send({ type: 'artifact_location', id: message.id, error: 'No matching live job or stream' })
       return
     }
     if (this.artifactRequests.has(message.id) || this.artifactRequests.size >= 32) {
@@ -353,19 +427,43 @@ export class RemoteHost implements Host {
     }
     this.artifactRequests.add(message.id)
     try {
-      const artifact = Object.values(job.commands.manifest.packages)
+      const artifact = grant.packages
         .map(descriptor => descriptor.targets[message.target])
-        .find(artifact => artifact.sha256 === message.sha256)
+        .find((artifact): artifact is NativeArtifact => artifact?.sha256 === message.sha256)
       if (!artifact)
-        throw new Error('Artifact does not belong to the active job catalog')
-      const location = artifactLocationSchema.parse(await job.commands.resolveArtifact(artifact, job.signal))
-      if (this.send === send && this.activeJobs.get(message.jobId) === job)
+        throw new Error('Artifact does not belong to the live work\'s packages')
+      const location = artifactLocationSchema.parse(await grant.resolve(artifact, grant.signal))
+      if (this.send === send && grant.live())
         send({ type: 'artifact_location', id: message.id, location })
     } catch (error) {
-      if (this.send === send && this.activeJobs.get(message.jobId) === job)
+      if (this.send === send && grant.live())
         send({ type: 'artifact_location', id: message.id, error: errorMessage(error) })
     } finally {
       this.artifactRequests.delete(message.id)
+    }
+  }
+
+  private artifactGrant(owner: ArtifactOwner): ArtifactGrant | null {
+    if ('jobId' in owner) {
+      const job = this.activeJobs.get(owner.jobId)
+      const commands = job?.commands
+      if (!job || !commands || commands.manifest.hash !== owner.manifestHash)
+        return null
+      return {
+        packages: Object.values(commands.manifest.packages),
+        resolve: commands.resolveArtifact,
+        signal: job.signal,
+        live: () => this.activeJobs.get(owner.jobId) === job,
+      }
+    }
+    const stream = this.serviceStreams.get(owner.streamId)
+    if (!stream)
+      return null
+    return {
+      packages: [stream.package],
+      resolve: stream.resolveArtifact,
+      signal: stream.controller.signal,
+      live: () => this.serviceStreams.get(owner.streamId) === stream,
     }
   }
 
@@ -406,6 +504,15 @@ export class RemoteHost implements Host {
       this.pendingCalls.delete(message.id)
       if (message.type === 'git_ok') pending.resolve(message.result)
       else pending.reject(new RemoteGitError(message.code, message.message))
+      return
+    }
+    if (message.type === 'service_opened' || message.type === 'service_error') {
+      const pending = this.pendingServices.get(message.streamId)
+      if (!pending)
+        return
+      this.pendingServices.delete(message.streamId)
+      if (message.type === 'service_opened') pending.resolve()
+      else pending.reject(new RemoteServiceError(message.code, message.message))
       return
     }
     if (message.type === 'net_opened' || message.type === 'net_error') {
@@ -619,6 +726,50 @@ export class RemoteHost implements Host {
     } finally {
       release?.()
     }
+  }
+
+  /**
+   * One `service_open` stream, answered by `service_opened` under the stream
+   * id; a refusal rejects with the runner's code. The pipes' own outcomes
+   * arrive later as `pipe_done`. It reserves no machine activity: a user
+   * stream is retention (`resource-lifecycle.md` § Activity).
+   */
+  private async openService(params: Parameters<RemoteServices['open']>[0]): Promise<RemoteServiceStream> {
+    const send = this.send
+    if (!send)
+      throw offlineError('runner disconnected')
+    const streamId = createId()
+    const pending = deferred<void>()
+    const stream: ServiceStreamState = {
+      package: params.package,
+      resolveArtifact: params.resolveArtifact,
+      controller: new AbortController(),
+    }
+    const close = () => {
+      stream.controller.abort(new Error('Service stream closed'))
+      if (this.serviceStreams.get(streamId) === stream)
+        this.serviceStreams.delete(streamId)
+    }
+    this.pendingServices.set(streamId, pending)
+    this.serviceStreams.set(streamId, stream)
+    try {
+      send({
+        type: 'service_open',
+        streamId,
+        context: params.context,
+        package: params.package,
+        operation: params.operation,
+        cwd: params.cwd,
+        input: params.input,
+        output: params.output,
+      })
+      await pending.promise
+    } catch (error) {
+      this.pendingServices.delete(streamId)
+      close()
+      throw error
+    }
+    return { close }
   }
 
   private async spawn(params: HostSpawnParams): Promise<HostSpawnHandle> {

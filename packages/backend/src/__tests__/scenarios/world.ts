@@ -27,6 +27,8 @@ import { Driver, type Target } from './driver'
 export interface WorldOptions {
   /** A packaged release for acceptance on real managed guests. */
   nativeCommands?: BackendOptions['nativeCommands']
+  /** The user streams pages may open (`native-runtime.md` § User streams). */
+  userStreams?: BackendOptions['userStreams']
   /** Conversation idle-deadline test policy. */
   lifecycle?: BackendOptions['lifecycle']
   /** Runner names; each becomes a device and a workspace. */
@@ -150,6 +152,7 @@ export class World {
       dataDir,
       lifecycle: options.lifecycle,
       ...(options.nativeCommands ? { nativeCommands: options.nativeCommands } : {}),
+      ...(options.userStreams ? { userStreams: options.userStreams } : {}),
       port: options.port ?? 0,
       runner: {
         pingIntervalMs: options.pingIntervalMs ?? 0,
@@ -265,6 +268,9 @@ export class World {
   }
 
   private pipeEndsNamed(device: Device): number {
+    // A user stream names its two pipes; one the runner never opened uses
+    // neither (`runner.md` § Service streams).
+    const unopened = 2 * this.jobCount(device, 'in', 'service_error')
     return this.frames.filter(
       f => f.deviceId === device.deviceId && f.direction === 'out'
     ).reduce((n, f) => {
@@ -274,13 +280,13 @@ export class World {
       if (m.type === 'job_start')
         return n + (m.stdin ? 1 : 0) + (m.stdout ? 1 : 0)
       // A relayed network stream names its two pipes on the wire too.
-      if (m.type === 'net_open')
+      if (m.type === 'net_open' || m.type === 'service_open')
         return n + 2
       // A file's contents travel through one pipe (`runner.md` § File contents).
       if (m.type === 'fs_readFile' || m.type === 'fs_writeFile' || m.type === 'git_show')
         return n + 1
       return n
-    }, 0)
+    }, 0) - unopened
   }
 
   private pipeEndsReported(device: Device): number {

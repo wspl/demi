@@ -616,11 +616,11 @@ export class RunnerRegistry {
     // fs results, spawn and job streams: each per-target host claims its own ids.
     const deviceHosts = this.hosts.get(connection.deviceId)
     if (message.type === 'artifact_resolve') {
-      const host = [...(deviceHosts?.values() ?? [])].find(host => host.jobContext(message.jobId) !== null)
+      const host = [...(deviceHosts?.values() ?? [])].find(host => host.serves(message.owner))
       if (host)
         host.handleMessage(message)
       else
-        connection.send({ type: 'artifact_location', id: message.id, error: 'No matching active job on this device' })
+        connection.send({ type: 'artifact_location', id: message.id, error: 'No matching live job or stream on this device' })
       return
     }
     // The device access Host claims its own replies (`net_opened` among them).
