@@ -286,7 +286,7 @@ command context, one value with one schema in `command-protocol`:
 | --- | --- |
 | `conversation` | The conversation the work belongs to. |
 | `caller` | Who started the work: `agent`, with the agent `node`, or `user`, for a [user stream](#user-streams). |
-| `locale` | The time zone, an IANA name, and the languages, BCP 47 tags in preference order, that the user's browser last reported ([User preferences](web-api.md#user-preferences)). |
+| `locale` | The time zone, an IANA name, and the languages, BCP 47 tags in preference order, that the conversation's user's browser last reported ([User preferences](web-api.md#user-preferences)), or `UTC` and `en-US` until it reports them. |
 
 The backend is the context's only source, and nothing reads it from
 environment variables: a script can change those, and every program the job
