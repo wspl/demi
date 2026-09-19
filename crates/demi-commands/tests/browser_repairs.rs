@@ -1365,30 +1365,35 @@ async fn viewport_overrides_are_per_tab_and_survive_screenshots() {
         let second = browser
             .open(&base, &CancellationToken::new(), TIMEOUT)
             .await?;
-        let default = json!({"width":1280,"height":720});
-        let size = json!({"width":390,"height":844});
+        let viewport = |width: u32, height: u32, mode: &str| {
+            json!({"width":width,"height":height,"devicePixelRatio":1.0,"mode":mode})
+        };
+        let size = |width: u32, height: u32| json!({"width":width,"height":height});
+        let default = viewport(1280, 720, "web");
         for tab in [&first, &second] {
             assert_eq!(command(tab, "info", json!({})).await?["viewport"], default);
         }
-        assert_eq!(command(&first, "viewport.set", size.clone()).await?, size);
-        for tab in [&first, &second] {
-            let expected = if tab.id() == first.id() {
-                &size
-            } else {
-                &default
-            };
+        let custom = viewport(390, 844, "custom");
+        assert_eq!(
+            command(&first, "viewport.set", size(390, 844)).await?,
+            json!({"viewport": custom})
+        );
+        for (tab, expected, css) in [
+            (&first, &custom, size(390, 844)),
+            (&second, &default, size(1280, 720)),
+        ] {
             assert_eq!(
                 &command(tab, "info", json!({})).await?["viewport"],
                 expected
             );
             assert_eq!(
-                &tab.read_only(
+                tab.read_only(
                     "({width: innerWidth, height: innerHeight})",
                     &CancellationToken::new(),
                     TIMEOUT
                 )
                 .await?,
-                expected
+                css
             );
             let bytes = tab.screenshot(&CancellationToken::new(), TIMEOUT).await?;
             let png = png::Decoder::new(std::io::Cursor::new(bytes))
@@ -1396,28 +1401,30 @@ async fn viewport_overrides_are_per_tab_and_survive_screenshots() {
                 .unwrap();
             assert_eq!(
                 json!({"width":png.info().width,"height":png.info().height}),
-                *expected
+                css
             );
             assert_eq!(
                 &command(tab, "info", json!({})).await?["viewport"],
                 expected
             );
         }
-        let second_size = json!({"width":640,"height":480});
         assert_eq!(
-            command(&second, "viewport.set", second_size.clone()).await?,
-            second_size
+            command(&second, "viewport.set", size(640, 480)).await?,
+            json!({"viewport": viewport(640, 480, "custom")})
         );
-        assert_eq!(command(&first, "viewport.reset", json!({})).await?, default);
-        for (tab, expected) in [(&first, &default), (&second, &second_size)] {
+        assert_eq!(
+            command(&first, "viewport.reset", json!({})).await?,
+            json!({"viewport": default})
+        );
+        for (tab, css) in [(&first, size(1280, 720)), (&second, size(640, 480))] {
             assert_eq!(
-                &tab.read_only(
+                tab.read_only(
                     "({width: innerWidth, height: innerHeight})",
                     &CancellationToken::new(),
                     TIMEOUT
                 )
                 .await?,
-                expected
+                css
             );
         }
         Ok(())
