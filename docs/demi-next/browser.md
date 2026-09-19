@@ -284,10 +284,12 @@ the user test how real sites and applications behave for real visitors:
 - The virtual screen and every window follow the
   [live view's pixel ratio](browser-live-view.md#pixel-ratio), and a window's
   outer size is never smaller than its viewport.
-- Time zone and languages are the ones the user's browser last reported
-  ([User preferences](web-api.md#user-preferences)), applied through CDP when
-  the environment starts; the Host's own settings differ between devices and do
-  not count. They do not change while the environment lives.
+- Time zone and languages are the ones the user's browser last reported,
+  which arrive in the starting invocation's `locale`
+  ([Conversation-scoped state](native-runtime.md#conversation-scoped-state)),
+  applied through CDP when the environment starts; the Host's own settings
+  differ between devices and do not count. They do not change while the
+  environment lives.
 - The Cloud guest ships fonts for Chinese, Japanese and Korean.
 
 What cannot change without a GPU remains: on Cloud, WebGL reports its software

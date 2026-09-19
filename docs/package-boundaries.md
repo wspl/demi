@@ -408,7 +408,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `crates/runner` (Rust executable)
 
 - Conversation scope: `commands/` writes the trusted conversation and caller
-  identity into every native invocation, keeps a service resident while it holds
+  identity, and the user's locale, into every native invocation, keeps a service resident while it holds
   conversation state, and forwards the conversation release; it implements no
   browser operation.
 - Owns: the `demi-runner` execution host, backend registration and connection,
