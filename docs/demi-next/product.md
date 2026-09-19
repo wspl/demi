@@ -245,7 +245,10 @@ it opens it the same way ([Message editing](../message-editing.md)).
 
 A message is Markdown in the user dialect below. The composer formats a
 construct as it is typed, once its closing delimiter is; Backspace right after
-gives back the characters. Pasted text is read the same way.
+gives back the characters. A star typed right before the construct holds it
+back, so `**bold**` does not turn italic at its first closing star. A fence
+typed as a line of its own opens a code block when the line ends, and typed
+as the block's last line closes it. Pasted text is read the same way.
 
 | Written | Shows as |
 | --- | --- |
@@ -253,14 +256,21 @@ gives back the characters. Pasted text is read the same way.
 | A fenced code block | A highlighted code block |
 | `[text](target)`, a bare `http` or `https` URL | A link, resolved as in [Files named in messages](file-previews.md#files-named-in-messages) |
 | `![alt](target)` | The image, resolved the same way |
-| A line break | A line break |
+| A line break | A line break; a blank line is an empty line |
 | `_` and `__`, a single `~`, HTML, `<…>`, math, tables, and lines that start a list, heading, quote, rule or indented code | The characters as typed |
 
 The literal ones are what a conversation about code types as text:
-`snake_case`, `__init__`, `~/.zshrc`, `x < y`, `$PATH`, `- item`. The model
-receives the message's Markdown. Where the user typed literally a character
-the dialect would read as formatting, it carries a backslash (`\*args`);
-nothing else is escaped, so `snake_case` and `x < y` reach the model as typed.
+`snake_case`, `__init__`, `~/.zshrc`, `x < y`, `$PATH`, `- item`. Formatting
+stays on its line and on its side of a capsule: `**a` and `b**` on two lines
+are the characters as typed. Emphasis beside CJK text follows the
+[CJK-friendly amendment](https://github.com/tats-u/markdown-cjk-friendly/blob/main/specification.md)
+to CommonMark, so `**注意：**这是` is bold as its writer means it.
+
+The model receives the message's Markdown. Where the user typed literally a
+character the dialect would read as formatting, it carries a backslash
+(`\*args`); nothing else is escaped, so `snake_case` and `x < y` reach the
+model as typed. Copying a sent message gives its Markdown, each file by its
+name.
 
 Enter sends and Shift+Enter breaks the line; in a code block Enter breaks the
 line and ⌘/Ctrl+Enter sends. An input method's Enter never sends. The
@@ -276,10 +286,13 @@ composer's paste thresholds. Dropped, selected, and pasted files use the same
 staged attachment flow.
 
 Each attachment is a capsule in the message's text: a dropped file lands where
-it is dropped, a picked or pasted one at the cursor. A capsule shows an image's
-thumbnail or another file's icon, then the file's name; while the file uploads
-it shows how far along it is, and a failed upload offers Retry. Deleting a
-capsule removes its attachment. The message's content keeps text and
+it is dropped, a picked or pasted one at the cursor, and one added from a
+file browser at the cursor. A capsule shows an image's thumbnail or another
+file's icon, then the file's name; pointed at, it shows the picture larger.
+While the file uploads it shows how far along it is, and a failed upload
+offers Retry. Deleting a capsule removes its attachment; a capsule can be
+dragged to another place in the text. In the conversation, a click on a
+capsule opens its file in the File view. The message's content keeps text and
 attachments in the order the composer shows them: for the example in
 [Writing a message](#writing-a-message), `Compare `, then `before.png`, then
 ` with `, then `after.png`, then the rest. Providers pass content in order, so

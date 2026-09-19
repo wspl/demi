@@ -53,6 +53,7 @@ import { submitMessageEdit, type MessageEditState } from '@demicodes/web-ui/agen
 import { firstRunningTerminalId } from '@demicodes/web-ui/agent/terminals'
 import type { ThinkingConfig, UserContentBlock } from '@demicodes/core'
 import { composerAttachment, encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/attachments'
+import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import {
@@ -342,24 +343,11 @@ const markdownSnippet = `# Release notes · 0.9
 - Session cookie renamed to \`session\`
 - Login page keeps both fields on a rejected sign-in
 - Terminal tabs close with the running command`
-const attachmentBubble = [
+/** A sent message with its files where the user put them: a record for each, the picture before an image's. */
+const attachmentBubble: UserContentBlock[] = [
+  { type: 'text', text: 'The spec is ' },
   {
-    type: 'image' as const,
-    source: {
-      type: 'url' as const,
-      url: demoImageUrl,
-    },
-  },
-  {
-    type: 'attachment' as const,
-    name: 'login-fail.png',
-    path: '/home/demi/.demi/attachments/demo/login-fail.png',
-    mediaType: 'image/png',
-    sizeBytes: 48211,
-    sha256: 'demo-png',
-  },
-  {
-    type: 'document' as const,
+    type: 'document',
     source: {
       data: new Uint8Array(),
       mediaType: 'application/pdf',
@@ -367,15 +355,26 @@ const attachmentBubble = [
     },
   },
   {
-    type: 'attachment' as const,
+    type: 'attachment',
     name: 'login-failure.pdf',
     path: '/home/demi/.demi/attachments/demo/login-failure.pdf',
     mediaType: 'application/pdf',
     sizeBytes: 120334,
     sha256: 'demo-pdf',
   },
+  { type: 'text', text: ', the screenshot from CI is ' },
+  { type: 'image', source: { type: 'url', url: demoImageUrl } },
   {
-    type: 'attachment' as const,
+    type: 'attachment',
+    name: 'login-fail.png',
+    path: '/home/demi/.demi/attachments/demo/login-fail.png',
+    mediaType: 'image/png',
+    sizeBytes: 48211,
+    sha256: 'demo-png',
+  },
+  { type: 'text', text: ' and its log is ' },
+  {
+    type: 'attachment',
     name: 'ci.log',
     path: '/home/demi/.demi/attachments/demo/ci.log',
     mediaType: 'text/plain',
@@ -383,18 +382,39 @@ const attachmentBubble = [
     sha256: 'demo-log',
     snippet: pastedSnippet,
   },
+  { type: 'text', text: '. The manifest on my laptop is ' },
   {
-    type: 'reference' as const,
-    reference: encodeRemoteReference(
-      'zan-mbp',
-      '/Users/zan/Projects/demi/package.json',
-    ),
+    type: 'reference',
+    reference: encodeRemoteReference('zan-mbp', '/Users/zan/Projects/demi/package.json'),
   },
+  { type: 'text', text: '.' },
+]
+/** A message in the dialect: formatting, a link and a bare URL, and a fenced block. */
+const formattedBubble: UserContentBlock[] = [
   {
-    type: 'text' as const,
-    text: 'Failing log and the screenshot from CI.',
+    type: 'text',
+    text: [
+      'The **modal** `padding` is off by *one* column, ~~not two~~. See [the layout notes](docs/layout.md) and https://example.com/issues/42.',
+      'Keep snake_case names and ~/.zshrc as they are; 2 * 3 stays text.',
+      '```ts',
+      'export const padding = 12',
+      '```',
+    ].join('\n'),
   },
 ]
+/** The composer's drafts: the Markdown with a mark where each capsule stands, beside their files in that order. */
+const composerDrafts = {
+  ready: `The spec is ${ATTACHMENT_MARK}, the screenshot from CI is ${ATTACHMENT_MARK} and the manifest on my laptop is ${ATTACHMENT_MARK}.`,
+  uploading: `Wait for ${ATTACHMENT_MARK} and ${ATTACHMENT_MARK} to arrive.`,
+  failed: `The capture ${ATTACHMENT_MARK} did not upload; the log ${ATTACHMENT_MARK} did.`,
+  pasted: `Summarize ${ATTACHMENT_MARK}, then check it against ${ATTACHMENT_MARK}.`,
+  formatted: [
+    'The **modal** `padding` is off by *one* column, ~~not two~~. See [the layout notes](docs/layout.md) and https://example.com/issues/42.',
+    '```ts',
+    'export const padding = 12',
+    '```',
+  ].join('\n'),
+}
 const userBubble = [
   {
     type: 'text' as const,
@@ -451,12 +471,6 @@ function interruptPendingSteer(id: string): void {
   if (!pending) {
     return
   }
-  const text = pending.content.find(
-    (part): part is Extract<typeof part, { type: 'text' }> => part.type === 'text',
-  )?.text
-  if (!text) {
-    return
-  }
   sessionFlow.stop()
   session.blocks = [
     ...session.blocks,
@@ -466,17 +480,17 @@ function interruptPendingSteer(id: string): void {
       turnId: 'turn-gallery',
       createdAt: new Date().toISOString(),
       model: demoModel,
-      content: [{ type: 'text', text }],
+      content: pending.content,
     },
   ]
-  sessionFlow.turn(text)
+  sessionFlow.turn(pending.content)
 }
 
-function queueDraft(text: string): void {
+function queueDraft(content: UserContentBlock[]): void {
   session.queue.push({
     id: `q${nextQueue++}`,
-    text,
-    content: [{ type: 'text', text }],
+    text: content.flatMap((part) => part.type === 'text' ? [part.text] : []).join(''),
+    content,
   })
 }
 
@@ -613,7 +627,7 @@ function abortTerminal(id: string) {
     <template v-if="view === 'composer'">
       <GallerySection
         title="Composer"
-        note="Idle through Fast Mode, local upload phases, a remote host file as the same tile, and queue. One send; a running turn queues. An unavailable last model keeps the chip, warns, and blocks send. No usable model and an archived conversation both replace the input with the same snackbar: a line on the left, Configure models or Restore conversation on the right. The input keeps at least 128px: where the model chip's name and level would leave it less, the chip is its sparkle alone, the name and level in its tooltip, and it names the model again once there is room; loading and a failed load give way the same. The narrow composer resizes from its corner."
+        note="Idle through Fast Mode; text formatted as it is typed; each file a capsule where it was put, through its upload phases, a failed upload with Retry, and a remote host file naming its device; and queue. One send; a running turn queues. An unavailable last model keeps the chip, warns, and blocks send. No usable model and an archived conversation both replace the input with the same snackbar: a line on the left, Configure models or Restore conversation on the right. The input keeps at least 128px: where the model chip's name and level would leave it less, the chip is its sparkle alone, the name and level in its tooltip, and it names the model again once there is room; loading and a failed load give way the same. The narrow composer resizes from its corner."
       >
         <div class="specimen-stack specimen-stack-loose">
           <GallerySpecimen
@@ -658,12 +672,21 @@ function abortTerminal(id: string) {
             />
           </GallerySpecimen>
           <GallerySpecimen
-            variant="attachments · ready"
+            variant="formatting · as it will look"
             wide
           >
             <GalleryComposer
               placeholder="Ask Demi…"
-              draft="Failing log and the screenshot from CI."
+              :draft="composerDrafts.formatted"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen
+            variant="attachments · capsules in the text"
+            wide
+          >
+            <GalleryComposer
+              placeholder="Ask Demi…"
+              :draft="composerDrafts.ready"
               :attachments="[
                 {
                   id: 'pdf',
@@ -690,7 +713,7 @@ function abortTerminal(id: string) {
           >
             <GalleryComposer
               placeholder="Ask Demi…"
-              draft="Wait for the screenshot."
+              :draft="composerDrafts.uploading"
               :attachments="[
                 {
                   id: 'up',
@@ -709,11 +732,35 @@ function abortTerminal(id: string) {
             />
           </GallerySpecimen>
           <GallerySpecimen
-            variant="drop · anywhere on the composer"
+            variant="attachments · an upload failed · Retry"
             wide
           >
             <GalleryComposer
               placeholder="Ask Demi…"
+              :draft="composerDrafts.failed"
+              :attachments="[
+                {
+                  id: 'failed',
+                  name: 'capture.png',
+                  src: demoImageUrl,
+                  phase: 'failed',
+                },
+                {
+                  id: 'log',
+                  name: 'ci.log',
+                  phase: 'ready',
+                  snippet: pastedSnippet,
+                },
+              ]"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen
+            variant="drop · where the files land"
+            wide
+          >
+            <GalleryComposer
+              placeholder="Ask Demi…"
+              draft="Drop a file between these words."
               dropping
             />
           </GallerySpecimen>
@@ -723,7 +770,7 @@ function abortTerminal(id: string) {
           >
             <GalleryComposer
               placeholder="Paste 2000+ characters or 40+ lines here…"
-              draft="Summarize this log."
+              :draft="composerDrafts.pasted"
               :attachments="[
                 {
                   name: 'pasted-text.txt',
@@ -955,7 +1002,7 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="UserBlock"
-        note="User, attachments, pending steer, queued, and stuck. Long messages have a view of their own: Lengths."
+        note="User; files as capsules where they were put, a picture or a text file's opening lines shown when pointed at; formatting; pending steer, queued, and stuck. Long messages have a view of their own: Lengths."
       >
         <div class="specimen-stack specimen-stack-loose">
           <GallerySpecimen
@@ -980,11 +1027,19 @@ function abortTerminal(id: string) {
             </div>
           </GallerySpecimen>
           <GallerySpecimen
-            variant="attachments"
+            variant="files in the text"
             wide
           >
             <div class="gallery-frame gallery-user-frame bg-surface">
               <UserBlock :content="attachmentBubble" />
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen
+            variant="formatting"
+            wide
+          >
+            <div class="gallery-frame gallery-user-frame bg-surface">
+              <UserBlock :content="formattedBubble" />
             </div>
           </GallerySpecimen>
           <GallerySpecimen
@@ -1414,7 +1469,7 @@ function abortTerminal(id: string) {
             <div class="gallery-frame bg-surface">
               <PendingSubmission
                 id="pending-example"
-                text="Review the attached notes."
+                :text="`Review the notes ${ATTACHMENT_MARK} before the next run.`"
                 :attachments="[composerAttachment({ name: 'notes.txt', phase: 'ready' })]"
                 :sending="submissionError === null"
                 :error="submissionError"

@@ -61,8 +61,8 @@ const specimens: { variant: string; content: UserContentBlock[]; pending?: boole
   { variant: 'one line', content: text('Rename the session cookie in the login test.') },
   { variant: 'five lines · whole', content: text(steps.join('\n')) },
   {
-    variant: 'five lines in two paragraphs · whole',
-    content: text(['The login test fails after the cookie rename.', 'CI is red on main too.', '', ...steps.slice(1, 4)].join('\n')),
+    variant: 'five lines with a blank one · whole',
+    content: text(['The login test fails after the cookie rename.', '', ...steps.slice(0, 3)].join('\n')),
   },
   {
     variant: 'six lines · the fifth fades',
@@ -82,7 +82,7 @@ const specimens: { variant: string; content: UserContentBlock[]; pending?: boole
     content: text('![The test pattern](assets/photo.png)\nThis is what the capture should show; ours is shifted left by a column.'),
   },
   { variant: 'a code block', content: text(code) },
-  { variant: 'a table', content: text(table) },
+  { variant: 'a table, as typed', content: text(table) },
   {
     variant: 'a path with no spaces',
     content: text('The failing import: /Users/zan/Projects/demi/packages/web-ui/src/agent/blocks/UserBlock.vue/../../markdown/message-files/../render/../md/../types/../../../../web/src/conversation/changes.ts'),
@@ -92,8 +92,9 @@ const specimens: { variant: string; content: UserContentBlock[]; pending?: boole
     content: text('登录测试在我们把会话 cookie 从 sid 改名为 session 之后开始失败。主分支和这个分支上的 CI 都是红的。辅助函数写出的 Set-Cookie 仍然正确，出问题的是断言：它还在找 sid= 前缀，以及一个我们已经不再发送的 Session 头。请只改 auth.test.ts，不要重命名辅助函数，也不要动 cookie.ts。过期 cookie 的用例可以留到下一次。'),
   },
   {
-    variant: 'attachments above',
+    variant: 'a file in the text',
     content: [
+      { type: 'text', text: 'The capture ' },
       { type: 'image', source: { type: 'url', url: demoImageUrl } },
       {
         type: 'attachment',
@@ -103,7 +104,7 @@ const specimens: { variant: string; content: UserContentBlock[]; pending?: boole
         sizeBytes: 48211,
         sha256: 'demo-png',
       },
-      { type: 'text', text: longUserText },
+      { type: 'text', text: ` shows it. ${longUserText}` },
     ],
   },
   { variant: 'pending', content: text(longUserText), pending: true },
@@ -114,7 +115,7 @@ const specimens: { variant: string; content: UserContentBlock[]; pending?: boole
 <template>
   <GallerySection
     title="User message length"
-    note="A message longer than five lines shows its first five, and the fifth fades out. A line of text across the cut shows whole; an image, a code block or a table across it is cut there. Attachments sit above and are not counted. Drag a frame's right edge: the cut follows the wrapping."
+    note="A message longer than five lines shows its first five, and the fifth fades out. A line of text across the cut shows whole; an image or a code block across it is cut there. A file is a capsule on its line and counts as text. Drag a frame's right edge: the cut follows the wrapping."
   >
     <div class="specimen-stack specimen-stack-loose">
       <GallerySpecimen

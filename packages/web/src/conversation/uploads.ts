@@ -18,7 +18,6 @@ export function createConversationUploads(
 ) {
   const uploads = new AttachmentUploadQueue()
   async function uploadFile(
-    conversation: Conversation,
     item: Extract<ProductAttachment, { kind: 'file' }>,
   ): Promise<void> {
     const ready = await uploads.start(
@@ -35,12 +34,21 @@ export function createConversationUploads(
       },
       (update) => applyAttachmentUpdate(item, update),
     ).catch((error: unknown) => {
-      // A failed upload leaves the composer; the caller toasts the reason.
-      removeFile(conversation, item.id)
+      // A failed upload keeps its capsule, which offers Retry; the caller toasts the reason.
+      applyAttachmentUpdate(item, { phase: 'failed' })
+      onChange()
       throw error
     })
     if (ready)
       onChange()
+  }
+
+  /** Uploads a file that failed again. */
+  function retryFile(conversation: Conversation, id: string): void {
+    const item = conversation.files.find((file) => file.id === id)
+    if (item && isComposerFile(item) && item.phase === 'failed') {
+      void uploadFile(item).catch(onError)
+    }
   }
 
   function addFiles(conversation: Conversation, files: File[]): void {
@@ -61,7 +69,7 @@ export function createConversationUploads(
       )!
       if (isComposerFile(reactiveItem)) {
         void attachTextSnippet(reactiveItem, file)
-        void uploadFile(conversation, reactiveItem).catch(onError)
+        void uploadFile(reactiveItem).catch(onError)
       }
     }
   }
@@ -73,6 +81,24 @@ export function createConversationUploads(
       URL.revokeObjectURL(item.src)
     }
     conversation.files = conversation.files.filter((item) => item.id !== id)
+    onChange()
+  }
+
+  /**
+   * Keeps the draft's files to its capsules, in their order: a file whose
+   * capsule left the text is removed. The files of a message still being
+   * sent are not the draft's.
+   */
+  function arrangeFiles(conversation: Conversation, ids: readonly string[]): void {
+    const sending = new Set(conversation.pendingSend?.fileIds ?? [])
+    for (const file of conversation.files) {
+      if (!sending.has(file.id) && !ids.includes(file.id))
+        removeFile(conversation, file.id)
+    }
+    conversation.files = [
+      ...conversation.files.filter((file) => sending.has(file.id)),
+      ...ids.flatMap((id) => conversation.files.filter((file) => file.id === id)),
+    ]
     onChange()
   }
 
@@ -89,7 +115,9 @@ export function createConversationUploads(
   return {
     uploadFile,
     addFiles,
+    retryFile,
     removeFile,
+    arrangeFiles,
     dispose,
   }
 }

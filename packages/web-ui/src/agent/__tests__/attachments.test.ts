@@ -3,7 +3,6 @@ import { delay } from '@demicodes/utils'
 import {
   applyAttachmentUpdate,
   AttachmentUploadQueue,
-  attachmentCaption,
   attachmentFileError,
   attachmentProgress,
   attachmentsReady,
@@ -12,7 +11,6 @@ import {
   composerAttachment,
   composerAttachmentFromFile,
   composerRemoteAttachment,
-  contentBlockCaption,
   decodeRemoteReference,
   encodeRemoteReference,
   fileNameFromPath,
@@ -103,17 +101,7 @@ test('progress is a 0–1 unit only while uploading', () => {
   expect(item.progress).toBeUndefined()
 })
 
-test('caption is the file name, or the upload progress, never a path', () => {
-  expect(attachmentCaption(composerAttachment({ name: 'shot.png', phase: 'ready' }))).toBe('shot.png')
-  expect(attachmentCaption(composerAttachment({ name: 'shot.png', phase: 'uploading' }))).toBe(
-    'Uploading 0% · shot.png',
-  )
-  expect(
-    attachmentCaption(composerAttachment({ name: 'spec.pdf', phase: 'uploading', progress: 0.42 })),
-  ).toBe('Uploading 42% · spec.pdf')
-})
-
-test('a remote file is a ready tile whose tooltip identifies its host and full path', () => {
+test('a remote file is ready at once, and its reference names its host and full path', () => {
   const remote = composerRemoteAttachment(
     {
       host: 'zan-mbp',
@@ -123,8 +111,6 @@ test('a remote file is a ready tile whose tooltip identifies its host and full p
   expect(fileNameFromPath(remote.path)).toBe('package.json')
   expect(remote.name).toBe('package.json')
   expect(remote.kind).toBe('reference')
-  expect(attachmentCaption(remote)).toBe('zan-mbp · /Users/zan/Projects/demi/package.json')
-  expect(attachmentCaption(remote)).toContain(remote.path)
   expect(attachmentsReady([remote])).toBe(true)
   expect(attachmentSendBlockReason([remote])).toBeUndefined()
   expect(remoteAttachmentError(remote.path, remote.host, [remote])).toBeDefined()
@@ -136,17 +122,6 @@ test('a remote file is a ready tile whose tooltip identifies its host and full p
     path: remote.path,
     name: 'package.json',
   })
-  expect(contentBlockCaption({ type: 'reference', reference: encoded })).toBe(
-    'zan-mbp · /Users/zan/Projects/demi/package.json'
-  )
-  expect(contentBlockCaption({
-    type: 'document',
-    source: {
-      data: new Uint8Array(),
-      mediaType: 'application/pdf',
-      fileName: 'login-failure.pdf'
-    },
-  })).toBe('login-failure.pdf')
 })
 
 test('empty, oversized, and duplicate files are refused', () => {
