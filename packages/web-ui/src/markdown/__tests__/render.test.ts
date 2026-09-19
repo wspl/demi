@@ -39,16 +39,24 @@ test('an image loads from the web, as a data URL, or from the Host; anything els
     '![chart](out/chart.png) ![logo](https://example.com/l.png) ![dot](data:image/png;base64,AAAA) ![mail](mailto:a@b.c)',
     { files },
   )
-  expect(html).toContain(`<img src="/raw?path=${encodeURIComponent('/work/out/chart.png')}" alt="chart" />`)
-  expect(html).toContain('<img src="https://example.com/l.png" alt="logo" />')
-  expect(html).toContain('<img src="data:image/png;base64,AAAA" alt="dot" />')
+  // A click shows the image whole: a Host file in the File view, a web image in a new tab.
+  expect(html).toContain(`<a href="/work/out/chart.png" data-file-link><img src="/raw?path=${encodeURIComponent('/work/out/chart.png')}" alt="chart" /></a>`)
+  expect(html).toContain('<a href="https://example.com/l.png" target="_blank" rel="noopener noreferrer"><img src="https://example.com/l.png" alt="logo" /></a>')
+  expect(html).toContain(' <img src="data:image/png;base64,AAAA" alt="dot" /> ')
   expect(html).toContain(' mail</p>')
+})
+
+test('an image inside a link follows the link', () => {
+  expect(renderMarkdown('[![build](https://example.com/badge.svg)](https://example.com/ci)', { files }))
+    .toBe('<p><a href="https://example.com/ci" target="_blank" rel="noopener noreferrer"><img src="https://example.com/badge.svg" alt="build" /></a></p>\n')
+  expect(renderMarkdown('[![chart](out/chart.png)](docs/charts.md)', { files }))
+    .toContain(`<a href="/work/docs/charts.md" data-file-link><img src="/raw?path=${encodeURIComponent('/work/out/chart.png')}" alt="chart" /></a>`)
 })
 
 test('without a Host, paths stay text and Host images show their alt text', () => {
   const html = renderMarkdown('[plot](scripts/plot.py) ![chart](out/chart.png) ![logo](https://example.com/l.png)')
   expect(html).not.toContain('data-file-link')
-  expect(html).toContain('<p>plot chart <img src="https://example.com/l.png" alt="logo" /></p>')
+  expect(html).toContain('<p>plot chart <a href="https://example.com/l.png" target="_blank" rel="noopener noreferrer"><img src="https://example.com/l.png" alt="logo" /></a></p>')
 })
 
 test('a path in code or plain text is not a link', () => {

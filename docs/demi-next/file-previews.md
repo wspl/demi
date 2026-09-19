@@ -80,7 +80,8 @@ HTML inside the Markdown renders after it is sanitized
 such as a centered logo or a `<details>` block look as their authors meant.
 Heading ids and `<a name>` anchors carry a `user-content-` prefix, as on
 GitHub, so a document's names never collide with the page's; `#` links follow
-the prefix.
+the prefix. An image is scaled down to the document's width with its
+proportions kept; a tall image makes the document longer, as on GitHub.
 
 Links and images resolve against the file:
 
@@ -109,6 +110,15 @@ document's image does, and a click on `plot.py` opens it in the File view.
 | `http` or `https` URL | Opens in a new browser tab | Loaded from that URL |
 | `data:` URL | Shown as text | Shown as it is |
 | Anything else | Shown as text | Its alt text |
+
+An image is scaled down, its proportions kept, to at most the message's width
+and 60 percent of the conversation's visible height, the part the composer
+does not cover; a smaller image keeps its size. For example, where 800
+pixels of the conversation are visible, a 1000 × 8000 screenshot shows 480
+pixels tall and 60 wide, instead of 5600 pixels tall at a 700-pixel message
+width. A click shows the image whole: a Host image in the File
+view, a web image in a new browser tab. An image inside a link follows the
+link.
 
 A `:line` suffix on a path is dropped, since the File view opens a whole file.
 Only a Markdown link or image names a file: a path in code or plain text stays
