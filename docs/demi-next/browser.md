@@ -88,8 +88,7 @@ Conversation
 
 Commands obtain the conversation and invoking agent node from the invocation's
 [command context](native-runtime.md#command-context), which the runner fills
-from the job the backend started. A script can print the context with
-`demi context` but cannot change it. Commands have no
+from the job the backend started. A script cannot change it. Commands have no
 `--conversation`, `--session`, `--profile`, `--cdp-url`, or browser-process
 argument.
 
