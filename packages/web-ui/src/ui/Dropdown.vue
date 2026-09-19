@@ -21,7 +21,10 @@ const props = withDefaults(defineProps<{
   disabled?: boolean
   /** Why it is disabled, as a tooltip; only read while `disabled`. */
   disabledReason?: string
-  /** Take the row's full width, the trigger with it; a `field` trigger wants this. */
+  /**
+   * Take the row's full width, the trigger with it, and give way as the row
+   * narrows, so what the trigger holds can truncate; a `field` trigger wants this.
+   */
   fill?: boolean
 }>(), {
   placement: 'bottom-start',
@@ -76,14 +79,14 @@ defineExpose({ open, close })
     :disabled="!tooltipContent"
     tag="div"
     class="relative"
-    :class="props.fill ? 'flex w-full' : 'inline-flex'"
+    :class="props.fill ? 'flex w-full min-w-0' : 'inline-flex'"
     :open-delay-ms="80"
   >
-    <div class="relative" :class="props.fill ? 'flex w-full' : 'inline-flex'">
+    <div class="relative" :class="props.fill ? 'flex w-full min-w-0' : 'inline-flex'">
       <div
         ref="triggerRef"
         class="cursor-default"
-        :class="props.fill ? 'w-full' : ''"
+        :class="props.fill ? 'w-full min-w-0' : ''"
         @click="handleClick"
       >
         <DropdownTrigger
