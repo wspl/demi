@@ -89,8 +89,8 @@ use the same address bar component; only a Host tab has the viewport menu.
    service. Its [command context](native-runtime.md#command-context) names the
    conversation and a `user` caller, and its input and output are the two
    pipes.
-5. The live view module answers with the protocol version, the tab list and the
-   watched tab's first key frame.
+5. The live view module answers with the tab list and the watched tab's first
+   key frame.
 
 One view is one invocation. The page shows one Host: the conversation's main Host. A browser on an
 attached Host is not shown.
@@ -106,11 +106,9 @@ message with a length prefix. The backend forwards bytes as they arrive; the
 page and the module split frames. Control messages are JSON validated against
 `browser-protocol` schemas. Video frames are binary: a header naming the tab,
 the stream generation, a sequence number, whether the frame is a key frame, its
-timestamp and its size, followed by H.264 Annex B data.
-
-The first message carries the protocol version. A page and a Host with
-different versions do not talk: the page says whether to refresh the page or
-update the device. There is no compatibility mode.
+timestamp and its size, followed by H.264 Annex B data. The page and the
+module ship in the same release, as the page and the backend do, so the
+protocol carries no version.
 
 ### Backpressure
 
@@ -224,9 +222,8 @@ smaller than its inner size.
   viewer that operated most recently.
 - macOS accepts only whole screen ratios. A fractional viewer ratio, such as
   1.5, rounds up, and the page scales the picture down.
-- A minute after the last viewer leaves, the screen returns to ratio 1 and
-  every tab's ratio follows. Pages see `devicePixelRatio` change, as they do
-  when a user drags a window to another display.
+- The ratio stays as it is when viewers leave; only the next viewer's
+  operation changes it.
 - The agent's screenshots stay in CSS pixels whatever the ratio
   ([Screenshot and probe](browser.md#screenshot-and-probe)).
 
@@ -267,7 +264,7 @@ viewer saw, or to one its own earlier choice produced, so fast typing into a
 suggestion field is not rejected. The page receives the value with synthetic
 `input` and `change` events. Chosen files travel through the stream itself,
 which is a pipe, into a directory of the environment, and then attach to the
-input; one choice carries at most 25 MiB, the attachment limit. Observers run
+input. Observers run
 in an isolated world, so pages can neither see nor call them.
 
 A user operation, meaning a button press, a key, a wheel turn, a paste or a
@@ -325,7 +322,7 @@ checks read it there.
 
 | Where | Responsibility |
 | --- | --- |
-| `packages/browser-protocol` | The live protocol: message schemas, the frame header and the protocol version; generated native bindings. |
+| `packages/browser-protocol` | The live protocol: message schemas and the frame header; generated native bindings. |
 | `crates/demi-commands` | The live view module: viewers, capture control, delivery and congestion, heartbeat, input, viewport modes and screen ratio; the capture extension and page observers as embedded resources; launch configuration. |
 | `crates/command-service`, `crates/runner`, `packages/runner-protocol`, `packages/host-remote` | [User streams](native-runtime.md#user-streams) and [service streams](runner.md#service-streams), with no browser knowledge. |
 | `packages/coding-agent` | Declaring the `browser` user stream and `viewport set --scale`. |

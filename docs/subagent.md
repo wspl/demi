@@ -306,8 +306,8 @@ against the same harness profile list.
 
 A child's jobs carry a
 [command context](demi-next/native-runtime.md#command-context) whose `caller`
-is the child's node, the same id as `subagentId`, with `parent` naming the
-spawning node. There is no depth marker: depth has no behavioral meaning.
+is the child's node, the same id as `subagentId`. There is no depth marker:
+depth has no behavioral meaning.
 
 ## Child context
 
