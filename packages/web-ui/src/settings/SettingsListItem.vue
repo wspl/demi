@@ -1,14 +1,10 @@
 <script setup lang="ts">
-import type { Component } from 'vue'
 import { Trash2 } from '@lucide/vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
-import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 
-/** One entry in a SettingsSplit list: a mark or icon, the name, and a dot when its state matters. */
+/** One entry in a SettingsSplit list: its mark (the `leading` slot), the name, and a dot when its state matters. */
 defineProps<{
   label: string
-  detail?: string
-  icon?: Component
   selected?: boolean
   /** A dot on the mark's corner. Omit it when there is nothing to say. */
   badge?: 'success' | 'warning' | 'danger'
@@ -37,14 +33,7 @@ const emit = defineEmits<{
     @click="emit('select')"
   >
     <span class="relative flex shrink-0 items-center">
-      <slot name="leading">
-        <component
-          :is="icon"
-          v-if="icon"
-          :size="ICON_PX.in28"
-          class="text-fg-muted"
-        />
-      </slot>
+      <slot name="leading" />
       <span
         v-if="badge"
         class="absolute -right-px -top-px size-1.5 rounded-full ring-1 ring-surface"
@@ -61,9 +50,6 @@ const emit = defineEmits<{
         :class="selected ? 'text-fg-emphasis' : 'text-fg'"
         >{{ label }}</span
       >
-      <span v-if="detail" class="truncate text-[11px] text-fg-subtle">{{
-        detail
-      }}</span>
     </span>
     <span
       v-if="removable"

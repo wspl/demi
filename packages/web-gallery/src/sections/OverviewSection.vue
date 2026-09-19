@@ -63,7 +63,6 @@ function sampleThinkingEndedAt(index: number): string | null {
           v-for="(block, index) in sampleBlocks"
           :key="block.id"
           :block="block"
-          conversation-id="demo"
           :is-thinking-streaming="false"
           :thinking-ended-at="sampleThinkingEndedAt(index)"
         />

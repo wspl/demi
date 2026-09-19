@@ -1,4 +1,4 @@
-/** Shared ANSI fixtures so gallery and product show the same colored jobs. */
+/** Colored output for the gallery's terminal jobs: the ANSI colors the xterm specimen shows. */
 
 const reset = '\x1b[0m'
 const bold = '\x1b[1m'

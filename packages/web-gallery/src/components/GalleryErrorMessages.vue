@@ -103,7 +103,6 @@ const pending: PendingSubmissionState = {
         <div class="rounded-lg bg-surface py-3">
           <AgentMessageVirtualBlock
             :block="block"
-            conversation-id="error-messages"
             :is-thinking-streaming="false"
             :thinking-ended-at="null"
             :retry="tail ? () => {} : undefined"
@@ -114,7 +113,6 @@ const pending: PendingSubmissionState = {
         <div class="rounded-lg bg-surface py-3">
           <AgentMessageVirtualBlock
             :block="toolFailure"
-            conversation-id="error-messages"
             :is-thinking-streaming="false"
             :thinking-ended-at="null"
           />

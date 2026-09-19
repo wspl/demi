@@ -1,4 +1,4 @@
-import type { Block, ProviderFailureFacts, QueuedMessage, SessionPhase, UserContentBlock } from '@demicodes/core'
+import type { Block, PendingSteer, ProviderFailureFacts, QueuedMessage, SessionPhase } from '@demicodes/core'
 import type { PendingAction } from './activity-slot'
 import type { SessionLoad } from './session-status'
 import type { SubagentRecord } from './subagents'
@@ -9,11 +9,8 @@ import type { ModelIntent } from './model-selection'
 
 export type { ModelIntent } from './model-selection'
 
-export interface PendingSteerMessage {
-  id: string
-  content: UserContentBlock[]
-  baselineSteerBlockIds: string[]
-}
+/** A steer the server holds for the running turn, as it sends them. */
+export type PendingSteerMessage = Pick<PendingSteer, 'id' | 'content'>
 
 /** A message sent but not yet confirmed: the composer's own text and attachments, shown as the message they will become. */
 export interface PendingSubmissionState {

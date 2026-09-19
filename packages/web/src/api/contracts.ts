@@ -341,7 +341,6 @@ export type BackendConversation = z.infer<typeof conversationSummarySchema>
 export type BackendProvider = z.infer<typeof providerStateSchema>
 export type CatalogProvider = z.infer<typeof catalogProviderSchema>
 export type CatalogModel = z.infer<typeof catalogModelSchema>
-export type ConfiguredModel = z.infer<typeof configuredModelSchema>
 export type VendorCatalog = z.infer<typeof vendorCatalogSchema>
 
 /**

@@ -11,8 +11,6 @@ const ACTIVE_OUTPUT_CLOSE_DELAY_MS = 1000
 const props = defineProps<{
   label?: string
   detail?: string
-  suffix?: string
-  trailing?: string
   loading?: boolean
   /** The failure text, shown under the body. A failure as it happens opens the block and keeps it open; a block mounted over a past failure starts closed like any other. Pair with `tone="danger"`. */
   errorText?: string
@@ -132,11 +130,6 @@ onUpdated(() => {
             class="min-w-0 truncate font-mono text-fg-body group-hover:text-fg-emphasis"
             :class="loading ? 'thinking-shimmer' : ''"
           >{{ detail }}</span>
-          <span
-            v-if="suffix"
-            class="shrink-0 text-fg-subtle group-hover:text-fg-muted"
-            :class="loading ? 'thinking-shimmer' : ''"
-          >{{ suffix }}</span>
         </div>
       </ChromeRoll>
       <span class="-ml-1 shrink-0 text-xs">
@@ -145,10 +138,6 @@ onUpdated(() => {
           :open="isOpen"
           :class="tone === 'danger' ? 'text-on-danger-muted group-hover:text-on-danger' : 'text-fg-faint group-hover:text-fg-muted'"
         />
-        <span
-          v-else-if="!loading && trailing"
-          class="text-fg-subtle group-hover:text-fg-muted"
-        >{{ trailing }}</span>
       </span>
       <div class="flex-1"></div>
     </div>

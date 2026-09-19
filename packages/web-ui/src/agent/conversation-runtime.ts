@@ -18,7 +18,6 @@ import type { ConversationState } from './types'
 export function isRecordedTurnFailure(error: unknown): boolean {
   return error instanceof ProviderStreamError
 }
-import { createPendingSteerMessage } from './pending-steers'
 import { hasAcceptedSubmission } from './submission'
 
 export type RuntimeState = Pick<
@@ -366,9 +365,7 @@ export class ConversationRuntime {
         state.queue = event.queue
         break
       case 'pending_steers':
-        state.pendingSteers = event.pendingSteers.map((pending) =>
-          createPendingSteerMessage(pending.id, pending.content, state.blocks),
-        )
+        state.pendingSteers = event.pendingSteers
         break
       case 'error':
         state.lastError = event.message

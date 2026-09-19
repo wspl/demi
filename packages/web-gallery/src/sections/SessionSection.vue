@@ -51,7 +51,6 @@ import GalleryFindBar from '../components/GalleryFindBar.vue'
 import { submitMessageEdit, type MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import { firstRunningTerminalId } from '@demicodes/web-ui/agent/terminals'
 import type { ThinkingConfig, UserContentBlock } from '@demicodes/core'
-import { createPendingSteerMessage } from '@demicodes/web-ui/agent/pending-steers'
 import { composerAttachment, encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/attachments'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import Button from '@demicodes/web-ui/ui/Button.vue'
@@ -93,7 +92,6 @@ const submissionError = ref<string | null>('Connection closed before confirmatio
 const messageEdit = ref<MessageEditState | null>(null)
 const editRevision = ref(0)
 const compacting = ref(false)
-const fullComposer = ref<{ setDraft: (text: string) => void }>()
 const agents = reactive(gallerySubagents())
 const terminals = reactive(galleryTerminals())
 const finishedOnly = agents.filter((agent) => agent.phase !== 'running')
@@ -285,7 +283,7 @@ const sessionFlow = useTurnFlow({
   terminals,
 })
 const session = sessionFlow.state
-session.pendingSteers = [createPendingSteerMessage('pending-1', steerPrompt, session.blocks)]
+session.pendingSteers = [{ id: 'pending-1', content: steerPrompt }]
 session.queue = [
   {
     id: 'q1',
@@ -500,7 +498,7 @@ function sendNow(id: string): void {
   session.queue = session.queue.filter((entry) => entry.id !== id)
   session.pendingSteers = [
     ...session.pendingSteers,
-    createPendingSteerMessage(`gallery-${nextSent++}`, item.content, session.blocks),
+    { id: `gallery-${nextSent++}`, content: item.content },
   ]
 }
 
@@ -1042,7 +1040,6 @@ function abortTerminal(id: string) {
             <div class="gallery-frame gallery-user-frame bg-surface">
               <UserBlock
                 :content="stuckBubble"
-                variant="steer"
                 force-stuck
               />
             </div>
@@ -1598,7 +1595,6 @@ function abortTerminal(id: string) {
                 <template #composer>
                   <GalleryComposer
                     placeholder="Ask Demi about the failing login test…"
-                    :conversation-id="session.id"
                     :running="session.phase === 'running'"
                     @send="sessionFlow.turn"
                     @queue="queueDraft"
@@ -1756,11 +1752,9 @@ function abortTerminal(id: string) {
       >
         <template #composer>
           <GalleryComposer
-            ref="fullComposer"
             v-model:message-edit="messageEdit"
             @submit-edit="submitEdit"
             placeholder="Ask Demi about the failing login test…"
-            :conversation-id="session.id"
             :running="session.phase === 'running'"
             :compacting="compacting"
             :archived="session.archived"

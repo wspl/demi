@@ -132,7 +132,6 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       v-model:message-edit="conversation.messageEdit"
       @submit-edit="store.submitEdit(conversation)"
       placeholder="Ask Demi…"
-      :conversation-id="conversation.id"
       :running="conversation.phase === 'running'"
       :compacting="conversation.phase === 'compacting'"
       :disabled="

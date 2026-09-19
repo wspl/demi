@@ -18,6 +18,7 @@ import { ICON_PX } from '../ui/icon-metrics'
 import FileIcon from '../files/FileIcon.vue'
 import ChangeView from '../files/ChangeView.vue'
 import FileView from '../files/FileView.vue'
+import { TREE_WIDTH } from '../files/file-view'
 import { callChangeSource, emptyChangeSet, type ReadCallChange, type ChangeMode, type ChangeSetSource, type ChangeSources } from '../files/changes'
 import { joinPath, normalizePath } from '../files/paths'
 import type { FileBrowserSource } from '../files/types'
@@ -52,7 +53,9 @@ const emit = defineEmits<{
   close: []
 }>()
 
+// File and Change share their tree's visibility and width, so both hold across files and views.
 const treeOpen = ref(true)
+const treeWidth = ref<number>(TREE_WIDTH.default)
 const active = computed(() => props.tabs.find((tab) => tab.id === props.activeId) ?? null)
 const changes = computed<ChangeSources>(() => {
   const call = active.value?.kind === 'change' ? active.value.call : null
@@ -167,6 +170,7 @@ function openFromTree(path: string): void {
         <FileView
           v-else-if="active?.kind === 'file' && workspace"
           v-model:tree="treeOpen"
+          v-model:tree-width="treeWidth"
           v-model:mode="fileMode"
           :source="workspace.source"
           :root="workspace.root"
@@ -181,6 +185,7 @@ function openFromTree(path: string): void {
         <ChangeView
           v-else-if="active?.kind === 'change'"
           v-model:tree="treeOpen"
+          v-model:tree-width="treeWidth"
           v-model:presentation="changePresentation"
           :mode="active.mode"
           :selected="changeSelection(active)"

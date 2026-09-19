@@ -1,6 +1,5 @@
 import type { UserContentBlock } from '@demicodes/core'
 import { ATTACHMENT_SNIPPET_MAX_CHARS, attachmentSnippet, isTextAttachment, sniffModelMediaType } from '@demicodes/core'
-import { delay } from '@demicodes/utils'
 
 /** An upload that fails leaves the composer with a toast; there is no failed phase to show. */
 export type AttachmentPhase = 'uploading' | 'ready'
@@ -43,12 +42,6 @@ export function isComposerFile(
   item: ComposerAttachment,
 ): item is ComposerFileAttachment {
   return item.kind === 'file'
-}
-
-export function isComposerRemote(
-  item: ComposerAttachment,
-): item is ComposerRemoteAttachment {
-  return item.kind === 'reference'
 }
 
 export function fileNameFromPath(path: string): string {
@@ -116,8 +109,6 @@ export async function attachTextSnippet(
     item.snippet = snippet
   }
 }
-export const PROTOTYPE_UPLOAD_MS = 1400
-
 export function clampUnit(value: number): number {
   if (!Number.isFinite(value) || value <= 0) {
     return 0
@@ -308,62 +299,42 @@ export function composerFileNames(items: readonly ComposerAttachment[]): string[
   return items.filter(isComposerFile).map((item) => item.name)
 }
 
-/** In-flight upload jobs. Cancel on remove; a finished job is a no-op if the file is gone. */
+/** In-flight uploads by attachment id. Removing an attachment cancels its upload, which then reports nothing. */
 export class AttachmentUploadQueue {
   readonly #jobs = new Map<string, AbortController>()
 
-  start(
+  /**
+   * Runs `work` and reports its phase and progress through `apply`. Resolves
+   * true once the upload is ready and false when it was cancelled; rejects
+   * with the work's error when it fails.
+   */
+  async start(
     id: string,
     work: (signal: AbortSignal, report: (progress: number) => void) => Promise<void>,
     apply: (update: AttachmentUploadUpdate) => void,
-    onFail?: (id: string) => void,
-  ): void {
+  ): Promise<boolean> {
     this.cancel(id)
-    const ac = new AbortController()
-    this.#jobs.set(id, ac)
-    apply({
-      phase: 'uploading',
-      progress: 0,
-    })
-    const report = (progress: number) => {
-      if (!ac.signal.aborted) {
-        apply({
-          phase: 'uploading',
-          progress: clampUnit(progress),
-        })
-      }
+    const controller = new AbortController()
+    this.#jobs.set(id, controller)
+    apply({ phase: 'uploading', progress: 0 })
+    try {
+      await work(controller.signal, (progress) => {
+        if (!controller.signal.aborted)
+          apply({ phase: 'uploading', progress: clampUnit(progress) })
+      })
+      if (controller.signal.aborted)
+        return false
+      apply({ phase: 'ready' })
+      return true
+    } catch (error) {
+      // A cancelled upload is not a failure: whoever removed the file has moved on.
+      if (controller.signal.aborted)
+        return false
+      throw error
+    } finally {
+      if (this.#jobs.get(id) === controller)
+        this.#jobs.delete(id)
     }
-    void work(ac.signal, report)
-      .then(() => {
-        if (!ac.signal.aborted) {
-          apply({ phase: 'ready' })
-        }
-      })
-      .catch(() => {
-        if (!ac.signal.aborted) {
-          onFail?.(id)
-        }
-      })
-      .finally(() => {
-        if (this.#jobs.get(id) === ac) {
-          this.#jobs.delete(id)
-        }
-      })
-  }
-
-  /** Prototype host: a timed sweep from 0 to 1, then ready (or `onFail` when `fail` is set). */
-  startPrototype(
-    id: string,
-    apply: (update: AttachmentUploadUpdate) => void,
-    onFail?: (id: string) => void,
-    fail = false,
-  ): void {
-    this.start(
-      id,
-      (signal, report) => runPrototypeProgress(signal, report, fail),
-      apply,
-      onFail,
-    )
   }
 
   cancel(id: string): void {
@@ -429,26 +400,6 @@ function readFileBytes(
     }
     reader.readAsArrayBuffer(file)
   })
-}
-
-async function runPrototypeProgress(
-  signal: AbortSignal,
-  report: (progress: number) => void,
-  fail: boolean,
-): Promise<void> {
-  const started = performance.now()
-  report(0)
-  while (!signal.aborted) {
-    const progress = clampUnit((performance.now() - started) / PROTOTYPE_UPLOAD_MS)
-    report(progress)
-    if (progress >= 1) {
-      if (fail) {
-        throw new Error('upload failed')
-      }
-      return
-    }
-    await delay(16, signal)
-  }
 }
 
 export async function fileToUserContent(

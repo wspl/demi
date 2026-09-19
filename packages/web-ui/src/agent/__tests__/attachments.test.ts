@@ -157,43 +157,33 @@ test('empty, oversized, and duplicate files are refused', () => {
   expect(attachmentFileError(new File(['x'], 'note.txt'), [])).toBeUndefined()
 })
 
-test('the upload queue applies ready, drops a failure, and ignores a cancelled job', async () => {
+test('the upload queue reports ready, rejects a failure, and silences a cancelled job', async () => {
   const queue = new AttachmentUploadQueue()
   const updates: AttachmentUploadUpdate[] = []
-  const dropped: string[] = []
-  queue.start('a', async (_signal, report) => {
+  const record = (update: AttachmentUploadUpdate) => updates.push({ ...update })
+
+  expect(await queue.start('a', async (_signal, report) => {
     report(0.25)
     report(0.8)
-  }, (update) => updates.push({ ...update }), (id) => dropped.push(id))
-  await delay(5)
+  }, record)).toBe(true)
   expect(updates).toEqual([
     { phase: 'uploading', progress: 0 },
     { phase: 'uploading', progress: 0.25 },
     { phase: 'uploading', progress: 0.8 },
     { phase: 'ready' },
   ])
-  expect(dropped).toEqual([])
 
   updates.length = 0
-  queue.start('b', async () => {
+  await expect(queue.start('b', async () => {
     throw new Error('no')
-  }, (update) => updates.push({ ...update }), (id) => dropped.push(id))
-  await delay(5)
+  }, record)).rejects.toThrow('no')
   expect(updates).toEqual([{ phase: 'uploading', progress: 0 }])
-  expect(dropped).toEqual(['b'])
 
   updates.length = 0
-  dropped.length = 0
-  queue.start(
-    'c',
-    async (signal) => delay(30, signal),
-    (update) => updates.push({ ...update }),
-    (id) => dropped.push(id)
-  )
+  const cancelled = queue.start('c', async (signal) => delay(30, signal), record)
   queue.cancel('c')
-  await delay(40)
+  expect(await cancelled).toBe(false)
   expect(updates).toEqual([{ phase: 'uploading', progress: 0 }])
-  expect(dropped).toEqual([])
 })
 
 test('unknown bytes become a document block', async () => {

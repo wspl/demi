@@ -73,11 +73,6 @@ export function applyThemeToDocument(): () => void {
   }
 }
 
-/** The saved choice, or `system` while the theme follows the OS. */
-export function themeChoice(): ThemeChoice {
-  return storedMode() ?? 'system'
-}
-
 /** A mode is remembered; `system` forgets the choice and follows the OS from now on. */
 export function setThemeChoice(choice: ThemeChoice): void {
   if (choice !== 'system') {

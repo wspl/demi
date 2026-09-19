@@ -1,8 +1,4 @@
-import {
-  DEMO_BUN_TEST,
-  DEMO_GIT_DIFF,
-  DEMO_RG,
-} from '@demicodes/web-ui/agent/terminal-demo'
+import { DEMO_BUN_TEST, DEMO_GIT_DIFF, DEMO_RG } from './terminal-output'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import { ago } from './time'
 

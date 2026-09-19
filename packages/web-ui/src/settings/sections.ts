@@ -146,14 +146,3 @@ export function isSettingsSectionEnabled(
   )
 }
 
-/** First section a host can land on when the current tab is deferred. */
-export function firstEnabledSettingsTab(
-  sections: SettingsNavGroup[] = SETTINGS_SECTIONS
-): SettingsTab {
-  for (const group of sections) {
-    const item = group.items.find((entry) => !entry.disabled)
-    if (item)
-      return item.id
-  }
-  return 'general'
-}

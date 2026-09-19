@@ -2,14 +2,13 @@
 import { computed } from 'vue'
 import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
 import type { HostMenuHost } from '@demicodes/web-ui/hosts/types'
-import type { Conversation, Project } from '../state/types'
+import type { Conversation } from '../state/types'
 import { useResources } from '../state/resources'
 import { executionFor } from './execution'
 import { useConversations } from '../conversation/store'
 
 const props = defineProps<{
   conversation: Conversation
-  project?: Project
 }>()
 const emit = defineEmits<{
   switchMain: [deviceId: string, cwd?: string | null]

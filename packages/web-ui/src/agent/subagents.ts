@@ -69,21 +69,6 @@ export function subagentStatus(phase: SubagentPhase): ConversationStatus {
   return 'done'
 }
 
-export function subagentIndicator(
-  phase: SubagentPhase,
-): 'accent' | 'success' | 'danger' | 'muted' {
-  if (phase === 'running') {
-    return 'accent'
-  }
-  if (phase === 'completed') {
-    return 'success'
-  }
-  if (phase === 'error' || phase === 'aborted') {
-    return 'danger'
-  }
-  return 'muted'
-}
-
 /** Compact elapsed time for roster rows: `12s`, `2m`, `2m14s`, `1h3m`. */
 export function formatDuration(ms: number): string {
   const totalSeconds = Math.max(0, Math.round(ms / 1000))

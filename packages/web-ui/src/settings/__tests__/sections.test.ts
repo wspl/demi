@@ -1,6 +1,5 @@
 import { expect, test } from 'bun:test'
 import {
-  firstEnabledSettingsTab,
   isSettingsSectionEnabled,
   SETTINGS_SECTIONS,
 } from '../sections'
@@ -17,8 +16,4 @@ test('deferred whole pages stay listed and cannot be opened', () => {
   expect(isSettingsSectionEnabled('skills')).toBe(false)
   expect(isSettingsSectionEnabled('general')).toBe(true)
   expect(isSettingsSectionEnabled('account')).toBe(true)
-})
-
-test('the first usable tab is the first enabled rail item', () => {
-  expect(firstEnabledSettingsTab()).toBe('general')
 })

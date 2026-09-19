@@ -13,7 +13,6 @@ const props = defineProps<{
   icon?: Component
   label: string
   shortcut?: string
-  count?: number
   pressed?: boolean
   emphasis?: boolean
   disabled?: boolean
@@ -60,13 +59,7 @@ const emit = defineEmits<{
       />
       <span class="min-w-0 flex-1 truncate">{{ label }}</span>
       <span
-        v-if="count !== undefined"
-        class="rounded-full bg-hover px-1.5 text-[11px] leading-4 text-fg-subtle"
-      >
-        {{ count }}
-      </span>
-      <span
-        v-else-if="shortcut"
+        v-if="shortcut"
         class="text-[11px] text-fg-faint [@media(hover:none)]:hidden"
       >{{ shortcut }}</span>
     </div>

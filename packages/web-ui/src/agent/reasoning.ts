@@ -40,12 +40,6 @@ export function thinkingConfigToEffort(config: ThinkingConfig): string | null {
     : null
 }
 
-export function effortToThinkingConfig(effort: string | null): ThinkingConfig {
-  return effort
-    ? { type: 'effort', effort, summary: null }
-    : { type: 'disabled' }
-}
-
 export function resolveThinkingConfig(
   state: ReasoningState,
   config: ThinkingConfig | undefined

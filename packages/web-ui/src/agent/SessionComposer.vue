@@ -35,13 +35,9 @@ import Tooltip from '../ui/Tooltip.vue'
 const props = withDefaults(
   defineProps<{
     placeholder: string
-    conversationId?: string
     running?: boolean
     compacting?: boolean
     disabled?: boolean
-    hasContent?: boolean
-    multiline?: boolean
-    canCompact?: boolean
     attachments?: ComposerAttachment[]
     messageEdit?: MessageEditState | null
     /** The conversation has a host with files: the menu offers a remote file beside local ones. */
@@ -64,7 +60,6 @@ const props = withDefaults(
   }>(),
   {
     attachments: () => [],
-    canCompact: true,
     canConfigure: true,
   },
 )
@@ -96,7 +91,7 @@ const focused = ref(false)
 const fileInput = ref<HTMLInputElement>()
 const hasDraft = computed(
   () => props.messageEdit ? editHasContent(props.messageEdit)
-    : props.hasContent || !!draft.value.trim() || !!props.attachments.length,
+    : !!draft.value.trim() || !!props.attachments.length,
 )
 const modelState = computed(() =>
   composerModel(
@@ -135,7 +130,7 @@ const expanded = computed(
   () =>
     props.messageEdit
       ? edit.textParts.value.length > 1 || edit.textParts.value.some(({ part }) => part.type === 'text' && part.text.includes('\n')) || !!edit.attachments.value.length
-      : props.multiline || draft.value.includes('\n') || !!props.attachments.length,
+      : draft.value.includes('\n') || !!props.attachments.length,
 )
 const selected = computed(() =>
   props.models[props.selectedProviderId ?? '']?.find(
@@ -312,19 +307,18 @@ function addFiles(files: File[]): void {
               />
             </template>
           </div>
-          <slot v-else name="editor">
-            <textarea
-              v-model="draft"
-              rows="1"
-              aria-label="Message"
-              :placeholder="placeholder"
-              class="w-full resize-none bg-transparent text-conversation text-fg outline-none placeholder:text-fg-subtle"
-              @focus="focused = true"
-              @blur="focused = false"
-              @keydown="keydown"
-              @paste="paste"
-            />
-          </slot>
+          <textarea
+            v-else
+            v-model="draft"
+            rows="1"
+            aria-label="Message"
+            :placeholder="placeholder"
+            class="w-full resize-none bg-transparent text-conversation text-fg outline-none placeholder:text-fg-subtle"
+            @focus="focused = true"
+            @blur="focused = false"
+            @keydown="keydown"
+            @paste="paste"
+          />
         </template>
         <template #attach>
           <Dropdown
@@ -382,12 +376,11 @@ function addFiles(files: File[]): void {
         </template>
         <template #actions>
           <ContextUsageIndicator
-            :conversation-id="conversationId"
             :usage="usage"
             :context-window="selected?.contextWindow"
             :input-limit="selected?.inputLimit"
             :is-compacting="compacting"
-            :is-clickable="!messageEdit && !running && canCompact !== false"
+            :is-clickable="!messageEdit && !running"
             @compact="emit('compact')"
           />
           <Tooltip v-if="messageEdit" content="Cancel edit">

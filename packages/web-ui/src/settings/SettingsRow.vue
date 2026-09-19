@@ -5,8 +5,7 @@ import Tooltip from '../ui/Tooltip.vue'
 
 /**
  * Label and explanation on the left, the control on the right. Icons align with
- * the title. Controls center by default, or align with the title when detail is
- * present; controlsAlign overrides that choice for the content's visual density.
+ * the title. Controls center, or align with the title when detail is present.
  * In a narrow card the control drops under the text and keeps its right alignment.
  * An inset row belongs to the row above it (an agent's models). A compact row is
  * for lists of like items (models, accounts); an interactive one opens on click
@@ -25,7 +24,6 @@ const props = defineProps<{
   disabled?: boolean
   /** Why it is disabled, as a tooltip; only read while `disabled`. */
   disabledReason?: string
-  controlsAlign?: 'start' | 'center'
 }>()
 
 const tooltipContent = computed(() => disabledTooltip(props.disabled, props.disabledReason))
@@ -91,7 +89,7 @@ const emit = defineEmits<{
         class="flex min-w-0 items-center justify-end gap-2 self-stretch @sm:basis-auto @sm:max-w-[66%]"
         :class="[
         inset ? 'shrink-0' : 'basis-full',
-        (controlsAlign ?? ($slots.detail ? 'start' : 'center')) === 'start' ? '@sm:h-5 @sm:self-start' : '',
+        $slots.detail ? '@sm:h-5 @sm:self-start' : '',
         disabled ? 'pointer-events-none' : '',
       ]"
       >

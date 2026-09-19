@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { Cloud, FolderOpen, Monitor, Plus, X } from '@lucide/vue'
-import { CLOUD_HOST_ID, hostIcon } from './icons'
+import { hostIcon } from './icons'
 import { ICON_PX } from '../ui/icon-metrics'
 import { baseName } from '../files/paths'
 import type { OverlayStore } from '../overlay/overlayStore'

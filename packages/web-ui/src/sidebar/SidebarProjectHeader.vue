@@ -11,7 +11,6 @@ defineProps<{
   collapsed: boolean
   /** The keyboard cursor is here. */
   focused: boolean
-  menuOpen: boolean
 }>()
 
 const emit = defineEmits<{
