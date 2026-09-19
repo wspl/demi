@@ -28,6 +28,7 @@ export {
   type GitParams,
   type GitResult,
   type NetErrorCode,
+  type ServiceErrorCode,
   type JobExitMessage,
   type JobOutput,
   type RpcCallMessage,

@@ -1,6 +1,6 @@
 import type { RemoteHost } from '@demicodes/host-remote'
 import { reachableHosts } from './hosts'
-import { ActivityGate, noop } from '@demicodes/utils'
+import { ActivityGate, deferred, noop } from '@demicodes/utils'
 import type { ManagedHosts } from '../managed/lifecycle'
 import type { ConversationLifecycle } from '../lifecycle/conversations'
 import type { RunnerRegistry } from '../runner/registry'
@@ -38,11 +38,28 @@ export type SwitchTargetResult = {
 
 export class HostAccessRefused extends Error {
   constructor(
-    readonly code: 'conversation_archived' | 'host_not_attached' | 'conversation_busy',
+    readonly code:
+      'conversation_archived' |
+      'host_not_attached' |
+      'conversation_busy' |
+      'device_offline' |
+      'host_stopped',
     message: string,
   ) {
     super(message)
   }
+}
+
+/** An open user stream's hold on its conversation's main Host. */
+export interface UserStreamAccess {
+  host: RemoteHost
+  deviceId: string
+  /** The conversation's directory on the Host. */
+  cwd: string
+  /** Aborted when an archive, a target or directory change, or a detach ends the stream. */
+  signal: AbortSignal
+  /** The stream is over; a change waiting to end it proceeds. */
+  release(): void
 }
 
 export type ConversationHostAccess = ConversationTargets['withHost']
@@ -230,6 +247,59 @@ export class ConversationTargets {
   }
 
   /**
+   * A user stream (`sessions-and-targets.md` § Host operations): admitted on
+   * the conversation's main Host like any operation, except that it never
+   * wakes a stopped Cloud, and once open it holds neither the file gate nor
+   * the Cloud awake. An archive, a target or directory change, or a detach
+   * ends it through the access's signal, as it ends file transfers.
+   */
+  async stream(id: string, signal: AbortSignal): Promise<UserStreamAccess> {
+    if (this.transfersClosed.has(id))
+      throw new HostAccessRefused('conversation_busy', 'The conversation is changing; its streams are closed')
+    const releaseFiles = await this.files(id).enter(signal)
+    try {
+      if (this.transfersClosed.has(id))
+        throw new HostAccessRefused('conversation_busy', 'The conversation is changing; its streams are closed')
+      const selected = await this.select(id, undefined, false)
+      if (!this.deps.registry.deviceOnline(selected.device.id)) {
+        throw selected.device.kind === 'managed'
+          ? new HostAccessRefused('host_stopped', 'The Cloud is stopped; a user stream does not wake it')
+          : new HostAccessRefused('device_offline', 'The device has no live runner')
+      }
+      const host = this.deps.registry.hostFor(
+        { deviceId: selected.device.id, path: selected.path },
+        id,
+        this.deps.stores.hostStore(id)
+      )
+      this.deps.lifecycle?.track(id)
+      const controller = new AbortController()
+      const settled = deferred<void>()
+      const transfer: Transfer = { controller, settled: settled.promise }
+      let open = this.transfers.get(id)
+      if (!open) {
+        open = new Set()
+        this.transfers.set(id, open)
+      }
+      open.add(transfer)
+      const streams = open
+      return {
+        host,
+        deviceId: selected.device.id,
+        cwd: selected.path,
+        signal: controller.signal,
+        release: () => {
+          streams.delete(transfer)
+          if (streams.size === 0 && this.transfers.get(id) === streams)
+            this.transfers.delete(id)
+          settled.resolve()
+        },
+      }
+    } finally {
+      releaseFiles()
+    }
+  }
+
+  /**
    * Ends the conversation's file transfers and refuses new ones until the
    * returned release, so an archive, a target change, a detach or a Cloud
    * reset can take the file gate. Resolves once every ended transfer has
@@ -303,6 +373,9 @@ export class ConversationTargets {
       : target.kind === 'cloud'
         ? allocate ? await control.getOrCreateCloudDevice(conversation.userId) : await control.getManagedDevice(conversation.userId)
         : await control.getDevice(target.deviceId)
+    // Without allocation, a Cloud that was never made is a stopped one.
+    if (!device && !allocate && target.kind === 'cloud' && !selected)
+      throw new HostAccessRefused('host_stopped', 'The Cloud is stopped')
     if (!device || device.userId !== conversation.userId)
       throw new Error('Device not owned by this user')
     if (device.kind === 'managed' && !managedHosts)

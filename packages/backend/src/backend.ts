@@ -43,6 +43,8 @@ import { ExposeRelay } from './expose/relay'
 import { ManagedHosts, type ManagedHostsConfig } from './managed/lifecycle'
 import type { ManagedHostProvisioner } from '@demicodes/machines'
 import { createApp } from './http/app'
+import { withDrain } from './http/user-streams'
+import type { NativeBinding } from '@demicodes/command-protocol'
 import {
   ProviderAssembly,
   builtinProviderTypes,
@@ -84,6 +86,12 @@ export interface BackendOptions {
   exposeDomain?: string
   /** Exact native package catalog and deployment-owned artifact resolution. */
   nativeCommands: RemoteShellEnvironmentFactoryOptions
+  /**
+   * The user streams a page may open, by name, each bound to an operation
+   * of a package in `nativeCommands` (`native-runtime.md` § User streams).
+   * By default the live browser view, when the package provides it.
+   */
+  userStreams?: Record<string, NativeBinding>
   /**
    * Directory produced by scripts/native/release-runner.ts; exposes paired
    * client/runner downloads.
@@ -157,6 +165,21 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   const lifecycle = new LifecycleCoordinator(options.lifecycle?.now)
   const createShellEnvironment = createRemoteShellEnvironmentFactory(options.nativeCommands)
   const browserPackage = options.nativeCommands.packages.find(descriptor => descriptor.id === 'demi.builtin' && descriptor.operations.includes('browser.open'))
+  // Declared with the command tree, fixed for the program's lifetime; a
+  // binding the packages do not provide declares nothing.
+  const userStreams = new Map(Object.entries(options.userStreams ?? {
+    browser: { package: 'demi.builtin', operation: 'browser.live' },
+  }).flatMap(([name, binding]) => {
+    const descriptor = options.nativeCommands.packages.find(candidate =>
+      candidate.id === binding.package && candidate.operations.includes(binding.operation))
+    return descriptor
+      ? [[name, {
+          package: descriptor,
+          operation: binding.operation,
+          resolveArtifact: options.nativeCommands.resolveArtifact,
+        }] as const]
+      : []
+  }))
   const controlDb = openSqliteDatabase(join(options.dataDir, 'control.sqlite'))
   migrate(controlDb, CONTROL_MIGRATIONS)
   const control: ControlService = new LocalControlService(controlDb)
@@ -465,6 +488,9 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     changes,
     withHost: targets.withHost.bind(targets),
     transfer: targets.transfer.bind(targets),
+    targets,
+    userStreams,
+    ...(options.publicUrl ? { publicOrigin: new URL(options.publicUrl).origin } : {}),
     managedHosts,
     createCloudWorkspace: managedHosts
       ? (userId, name) => createCloudWorkspace({
@@ -483,7 +509,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     port: options.port ?? 0,
     idleTimeout: 0,
     fetch: app.fetch,
-    websocket,
+    websocket: withDrain(websocket),
   })
   const url = `http://localhost:${server.port}`
 
