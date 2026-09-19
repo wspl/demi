@@ -651,7 +651,9 @@ struct Log {
 impl Log {
     async fn new(path: PathBuf, cancel: &CancellationToken) -> io::Result<Self> {
         // Out of open files, the log waits for one (`runner.md` § Load).
-        let file = demi_command_service::descriptors::retry(cancel, || tokio::fs::File::create(&path)).await?;
+        let file =
+            demi_command_service::descriptors::retry(cancel, || tokio::fs::File::create(&path))
+                .await?;
         Ok(Self {
             path,
             file,

@@ -34,7 +34,8 @@ impl Job {
         let (error_reader, stderr) = pipe()?;
         env.remove(crate::stdio::LIVE_INPUT_ENV);
         // Keep the reference handle alive until every interpreter task finishes.
-        let input_reference = demi_command_service::descriptors::retry_blocking(|| stdin.try_clone())?;
+        let input_reference =
+            demi_command_service::descriptors::retry_blocking(|| stdin.try_clone())?;
         if live {
             env.insert(
                 crate::stdio::LIVE_INPUT_ENV.into(),

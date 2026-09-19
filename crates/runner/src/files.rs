@@ -225,7 +225,8 @@ async fn open_range(
 ) -> io::Result<impl AsyncRead + Unpin + Send + 'static> {
     let target = target?;
     // Out of open files, the transfer waits for one (`runner.md` § Load).
-    let mut file = demi_command_service::descriptors::retry(cancel, || fs::File::open(&target)).await?;
+    let mut file =
+        demi_command_service::descriptors::retry(cancel, || fs::File::open(&target)).await?;
     if !file.metadata().await?.is_file() {
         return Err(io::Error::new(
             io::ErrorKind::IsADirectory,
@@ -277,7 +278,8 @@ async fn write_from_pipe(
     let temporary = parent.join(format!(".demi-write-{}", uuid::Uuid::new_v4()));
     let mut options = fs::OpenOptions::new();
     options.write(true).create_new(true);
-    let mut file = demi_command_service::descriptors::retry(cancel, || options.open(&temporary)).await?;
+    let mut file =
+        demi_command_service::descriptors::retry(cancel, || options.open(&temporary)).await?;
     let written = async {
         let mut body = pipes.get(url, cancel.clone()).await?;
         while let Some(chunk) = body.next().await {
