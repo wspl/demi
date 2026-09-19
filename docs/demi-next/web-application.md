@@ -27,25 +27,29 @@ The gallery is the reference for components, appearance, layout, and interaction
 examples. Those details are not duplicated in design documents. This document
 covers only the browser's technology and architectural boundaries.
 
-[Conversation browser](browser.md#purpose) currently covers agent commands only.
-The work panel's browser tabs, owned by `web-ui`, do not connect to the Host
-browser: a tab shows a page in the user's own browser, in a sandboxed iframe.
+The work panel shows the tabs of the [conversation browser](browser.md) live,
+and the user operates them there while the agent does;
+[Live browser view](browser-live-view.md) owns that view, its stream, its input
+and its viewport menu. Until the
+[open decision on local frame tabs](browser-live-view.md#open-decisions) is
+settled, the panel also keeps local browser tabs, owned by `web-ui`, which do
+not connect to the Host browser: such a tab shows a page in the user's own
+browser, in a sandboxed iframe.
 A tab opens on a URL, as an [expose](expose.md#product-surface) does, or loads
 the `http` or `https` address the user submits; an empty tab shows nothing.
 The frame may run scripts, submit forms and open popups, which land in
 ordinary browser tabs; it cannot navigate the product page. The parent sees
 nothing of a cross-origin page, so Back and Forward stay unavailable, Refresh
 reloads the tab's URL, and a control opens that URL in an ordinary browser
-tab for pages that refuse framing. Showing the Host browser's pages, with
-navigation and streaming transport, remains deferred. Explicit screenshots
-use existing command media handling; live browser interaction requires a
-separate design.
+tab for pages that refuse framing.
 
 ## Backend communication
 
 The browser uses same-origin cookie authentication. REST supplies account,
 conversation, project, device, provider, and preference data. The agent WebSocket
-supplies live transcript, queue, child-agent, and shell-job events. Browser API
+supplies live transcript, queue, child-agent, and shell-job events. A live
+browser view uses its own [user stream](web-api.md#user-streams) WebSocket, so
+its pictures never delay those events. Browser API
 adapters validate REST responses before applying them to state. Agent frames,
 transcript blocks, and tool views are validated against the session contract's
 own schemas: the agent client checks every frame it receives, and `web-ui`
@@ -85,8 +89,10 @@ Editing and Fork use their backend operation contracts; see
 
 Product adapters connect shared file interfaces to device filesystem APIs,
 the working-tree change routes, the raw file routes behind
-[file previews](file-previews.md), and uploads, and shared account interfaces to
-provider, pairing, and Cloud APIs.
+[file previews](file-previews.md), and uploads; the live browser view's source
+to the user stream route; and shared account interfaces to provider, pairing,
+and Cloud APIs. The product reports the time zone and languages of the user's
+browser to the user's preferences when they change.
 The work panel keeps one file selection, one change selection and local browser
 tabs per conversation. Change and File are fixed view selections; browser tabs
 can be added and closed. One active tab selects the
