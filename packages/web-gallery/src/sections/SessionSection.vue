@@ -11,6 +11,7 @@ import ActivitySlot from '@demicodes/web-ui/agent/blocks/ActivitySlot.vue'
 import type { ActivityKind, HandoffBlock } from '@demicodes/web-ui/agent/activity-slot'
 import { provideEditSelection } from '@demicodes/web-ui/agent/edit-selection'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
+import type { ConversationFiles } from '@demicodes/web-ui/markdown/types'
 import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
 import { changeWorkTab, changeTabPath, workPanelTabs, addBrowserTab, closeBrowserTabs, findChangeWorkTab, goBackInTab, goForwardInTab, showChangeInTab, showCallEdit, showFileInTab, type BrowserPage, type BrowserWorkTab, type ChangeWorkTab, type WorkTab } from '@demicodes/web-ui/agent/work-panel'
 import { callChangeSource, type CallEditSelection, type ChangeMode, type ChangeSources } from '@demicodes/web-ui/files/changes'
@@ -222,6 +223,15 @@ function fileViewGoForward() {
   fileViewPath.value = next
 }
 const panelWork = useWorkTabs('change')
+/** The session's messages reach the gallery workspace: images from its fixtures, files opened in the frame's panel. */
+const sessionFiles: ConversationFiles = {
+  imageUrl: (path) => workspace.source.contents.url(path),
+  open: (path) => {
+    panelWork.open(path)
+    panelAsideOpen.value = true
+    view.value = 'panel'
+  },
+}
 const exhibitWork = useWorkTabs('file')
 const editWork = useWorkTabs('change')
 provideEditSelection(editWork.selectEdit)
@@ -270,6 +280,7 @@ let nextSent = 1
 const sessionFlow = useTurnFlow({
   id: 'gallery-session',
   title: 'Login test',
+  cwd: workspace.root,
   blocks: transcriptDemoBlocks(),
   subagents: agents,
   terminals,
@@ -1580,6 +1591,7 @@ function abortTerminal(id: string) {
                 has-provider
                 :aside-open="panelAsideOpen"
                 :select-edit="(selection) => { panelWork.selectEdit(selection); panelAsideOpen = true }"
+                :files="sessionFiles"
                 @open-aside="panelAsideOpen = true"
                 @retry="sessionFlow.resume()"
                 @abort-subagents="abortAgents"
@@ -1734,6 +1746,7 @@ function abortTerminal(id: string) {
         :conversation="session"
         has-provider
         :select-edit="(selection) => { panelWork.selectEdit(selection); panelAsideOpen = true; view = 'panel' }"
+        :files="sessionFiles"
         :edit-version="editVersion"
         v-model:message-edit="messageEdit"
         @retry="sessionFlow.resume()"

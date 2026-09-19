@@ -26,7 +26,7 @@ const shipped = [
     'Session',
     'Transcript and composer on one surface. File drop on the shell. Send does not call a real model. Subagent roster, live terminals, and half-pane inspect windows.'
   ],
-  ['MarkdownPreview / CodePreview', 'Own routes. Full-pane previews.'],
+  ['Message Markdown', 'Own route. A full-pane message.'],
   [
     'Transcript blocks',
     'User, assistant, thinking, shell tools, error, abort, and compaction.'

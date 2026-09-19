@@ -5,6 +5,7 @@ import { useClipboard, useResizeObserver } from '@vueuse/core'
 import { ArrowUp, Check, ChevronsUp, Copy, Pencil, X } from '@lucide/vue'
 import type { UserContentBlock } from '@demicodes/core'
 import { md } from '@demicodes/web-ui/markdown/md'
+import { openFileLink, useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { t } from '@demicodes/web-ui/infra/i18n'
 import AttachmentTile from '../AttachmentTile.vue'
@@ -149,7 +150,8 @@ function mediaName(block: MediaBlock, index: number): string {
   return `${block.type}-${index}`
 }
 
-const renderedMarkdown = computed(() => md.renderUser(userText.value))
+const files = useMessageFiles()
+const renderedMarkdown = computed(() => md.renderUser(userText.value, { files: files() }))
 
 const textClass = computed(() => (props.pending ? 'text-fg-subtle' : 'text-fg-body'))
 
@@ -277,6 +279,7 @@ useResizeObserver(contentRef, () => {
           class="markdown-body select-text text-conversation"
           :class="textClass"
           v-html="renderedMarkdown"
+          @click="openFileLink($event, files())"
         />
       </div>
     </div>

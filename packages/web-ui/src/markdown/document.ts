@@ -10,6 +10,7 @@ import { gfmHeadingId } from 'marked-gfm-heading-id'
 import markedKatex from 'marked-katex-extension'
 import { utf8Bytes } from '@demicodes/utils'
 import { joinPath, parentPath } from '../files/paths'
+import { decodedTarget } from './filePath'
 import { codeToHtml } from './highlight'
 import { escapeHtml } from './html'
 
@@ -214,7 +215,7 @@ function hasScheme(target: string): boolean {
 export function linkTarget(target: string, place: DocumentPlace): string | null {
   const trimmed = target.trim()
   if (trimmed.startsWith('#'))
-    return trimmed === '#' ? null : `#${ID_PREFIX}${decoded(trimmed.slice(1))}`
+    return trimmed === '#' ? null : `#${ID_PREFIX}${decodedTarget(trimmed.slice(1))}`
   if (isExternal(trimmed))
     return trimmed
   if (hasScheme(trimmed))
@@ -235,19 +236,10 @@ export function imageTarget(target: string, place: DocumentPlace): string | null
 
 /** The Host path a relative or `/`-rooted target names, its query and fragment dropped. */
 function hostPath(target: string, place: DocumentPlace): string | null {
-  const file = decoded(target.split(/[?#]/)[0] ?? '')
+  const file = decodedTarget(target.split(/[?#]/)[0] ?? '')
   if (file === '')
     return null
   return file.startsWith('/') ? joinPath(place.root, file) : joinPath(parentPath(place.path), file)
-}
-
-/** A target as written may be percent-encoded; one that does not decode stays as it is. */
-function decoded(value: string): string {
-  try {
-    return decodeURIComponent(value)
-  } catch {
-    return value
-  }
 }
 
 /** Leading YAML front matter as a YAML code block, fenced past any backticks inside it. */

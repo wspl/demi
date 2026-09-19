@@ -70,6 +70,7 @@ export function assetFile(url: string, size: number, modifiedAt: string): Memory
 
 export function createMemoryFileSource(options: MemoryFileSourceOptions): FileBrowserSource & {
   root: MemoryDirectory
+  contents: FileContents
 } {
   const { root, latencyMs = 0 } = options
 

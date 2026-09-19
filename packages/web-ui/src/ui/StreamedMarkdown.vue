@@ -2,7 +2,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { md } from '@demicodes/web-ui/markdown/md'
 import { useMarkdownRenderVersion } from '@demicodes/web-ui/markdown/highlight'
-import { isHttpUrl } from '@demicodes/web-ui/markdown/filePath'
+import { openFileLink, useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import { useStreamReveal } from '@demicodes/web-ui/composables/useStreamReveal'
 import {
   closeOpenInlineMarkdown,
@@ -27,12 +27,13 @@ const visible = computed(() => {
 })
 
 const renderVersion = useMarkdownRenderVersion()
+const files = useMessageFiles()
 
 // Closers apply to finished text too: an aborted stream leaves the same half-open markers.
 // The render also follows the highlighter: its arrival and the document's theme.
 const renderedMarkdown = computed(() => {
   void renderVersion.value
-  return md.render(visible.value + closeOpenInlineMarkdown(visible.value))
+  return md.render(visible.value + closeOpenInlineMarkdown(visible.value), { files: files() })
 })
 
 /** The frontier spans of the current render, so clearing them is not a subtree search. */
@@ -94,19 +95,6 @@ watch(
   },
   { flush: 'post' },
 )
-
-function handleClick(event: MouseEvent) {
-  const target = (event.target as HTMLElement).closest('a')
-  if (!target)
-    return
-  const href = target.getAttribute('href')
-  if (!href)
-    return
-  if (isHttpUrl(href)) {
-    event.preventDefault()
-    window.open(href, '_blank', 'noopener,noreferrer')
-  }
-}
 </script>
 
 <template>
@@ -116,6 +104,6 @@ function handleClick(event: MouseEvent) {
     :class="streaming ? 'is-streaming' : ''"
     :aria-busy="streaming || undefined"
     v-html="renderedMarkdown"
-    @click="handleClick"
+    @click="openFileLink($event, files())"
   />
 </template>
