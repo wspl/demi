@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import FileBrowser from '@demicodes/web-ui/files/FileBrowser.vue'
+import FileBrowserAddressBar from '@demicodes/web-ui/files/FileBrowserAddressBar.vue'
 import FileBrowserDialog from '@demicodes/web-ui/files/FileBrowserDialog.vue'
 import WorkspaceDialog from '@demicodes/web-ui/hosts/WorkspaceDialog.vue'
 import type { WorkspaceDraft, WorkspaceProject } from '@demicodes/web-ui/hosts/workspace'
@@ -15,6 +16,7 @@ import GalleryDialogFrame from '../components/GalleryDialogFrame.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { createGalleryRemoteFileHosts, laptopTree } from '../fixtures/files'
+import { createGalleryWorkspace } from '../fixtures/workspace'
 import { useGalleryView } from '../gallery-views'
 import { baseName } from '@demicodes/web-ui/files/paths'
 
@@ -29,7 +31,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Address',
-    'Crumbs from the root, each a jump; deep paths fold their middle into an ellipsis. Clicking the free space turns the bar into a text field with the full path.'
+    'Crumbs from the root, each a jump. A bar too narrow for every name turns crumbs into their glyphs, one at a time from the left, each name kept in a tooltip, so the crumbs nearest the end keep their names longest; when even the glyphs overflow, the bar keeps its right end and clips its left. Clicking the free space turns the bar into a text field with the full path.'
   ],
   [
     'Icons',
@@ -153,6 +155,15 @@ const folderKey = ref(0)
 // Open file: the composer's remote attachment, opening inside a project.
 const fileHostId = ref('mac')
 const fileHost = computed(() => hosts.find((host) => host.id === fileHostId.value)!)
+// The address bar at shrinking widths: a file deep in the workspace, as the File view shows it.
+const addressWorkspace = createGalleryWorkspace()
+const addressPath = `${addressWorkspace.root}/packages/web-ui/src/files/FileBrowserAddressBar.vue`
+const addressWidths = [
+  { variant: 'every name', width: '40rem' },
+  { variant: 'names go from the left', width: '28rem' },
+  { variant: 'glyphs only', width: '15rem' },
+  { variant: 'the left clipped', width: '9rem' },
+] as const
 const narrowHostId = ref(hosts[0]!.id)
 const narrowHost = computed(() => hosts.find((host) => host.id === narrowHostId.value)!)
 const fileChosen = ref<string | null>(null)
@@ -481,8 +492,40 @@ onMounted(() => {
       </GallerySection>
 
       <GallerySection
+        title="Address bar"
+        note="One path at shrinking widths. Crumbs give up their names from the left, a hover shows each name; the file's crumb keeps its name longest, then the bar clips its left and never its right. The last frame resizes from its corner."
+      >
+        <GallerySpecimen v-for="entry in addressWidths" :key="entry.variant" :variant="entry.variant" wide>
+          <div class="flex" :style="{ width: entry.width }">
+            <FileBrowserAddressBar
+              class="min-w-0 flex-1"
+              mode="browse"
+              :path="addressPath"
+              :root="addressWorkspace.root"
+              :source="addressWorkspace.source"
+              leaf="file"
+              :editable="false"
+            />
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="drag the corner" wide>
+          <div class="flex max-w-full resize-x overflow-hidden pb-3" style="width: 30rem; min-width: 4rem">
+            <FileBrowserAddressBar
+              class="min-w-0 flex-1"
+              mode="browse"
+              :path="addressPath"
+              :root="addressWorkspace.root"
+              :source="addressWorkspace.source"
+              leaf="file"
+              :editable="false"
+            />
+          </div>
+        </GallerySpecimen>
+      </GallerySection>
+
+      <GallerySection
         title="Narrow"
-        note="At a phone width the device and nav keep the toolbar's left, the places become a menu at its right, the path takes its own row under it, Forward and the date column go, and the address bar folds."
+        note="At a phone width the device and nav keep the toolbar's left, the places become a menu at its right, the path takes its own row under it, Forward and the date column go, and the address bar turns its crumbs into glyphs."
       >
         <GalleryDialogFrame class="max-w-[22rem]">
           <FileBrowserDialog

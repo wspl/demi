@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { computed, nextTick, provide, ref, watch } from 'vue'
-import { ChevronRight, Ellipsis } from '@lucide/vue'
+import { ChevronRight } from '@lucide/vue'
 import { useElementSize } from '@vueuse/core'
 import { appOverlayStore } from '../overlay/appOverlay'
 import Popover from '../ui/Popover.vue'
 import TextInput from '../ui/TextInput.vue'
+import Tooltip from '../ui/Tooltip.vue'
 import { menuRootKey } from '../ui/menu-context'
 import DirectoryMenu from './DirectoryMenu.vue'
 import FileIcon from './FileIcon.vue'
 import { ICON_PX } from '../ui/icon-metrics'
+import { fitCrumbs, type CrumbFit } from './crumb-fit'
 import { landmarkIcon } from './file-icons'
 import { normalizePath, parentPath, pathSegments } from './paths'
 import type { FileBrowserSource } from './types'
@@ -22,6 +24,11 @@ import type { FileBrowserSource } from './types'
  * nothing edits. A bar with a `root` starts its crumbs there, the way a file
  * view shows a path inside its workspace; `leaf` says what the last crumb is,
  * so a file shows its file glyph.
+ *
+ * A bar too narrow for every name turns crumbs into their glyphs, one at a
+ * time from the left, the name kept in a tooltip; the last crumb keeps its
+ * name longest. When even the glyphs overflow, the bar keeps its right end and
+ * clips its left.
  */
 const props = withDefaults(
   defineProps<{
@@ -93,7 +100,8 @@ const editing = ref(false)
 const draft = ref('')
 const input = ref<InstanceType<typeof TextInput>>()
 const bar = ref<HTMLElement>()
-const { width } = useElementSize(bar)
+const spacer = ref<HTMLElement>()
+const ruler = ref<HTMLElement>()
 
 const crumbs = computed(() => {
   const all = pathSegments(props.path)
@@ -105,18 +113,36 @@ const crumbs = computed(() => {
     return fromRoot
   return [{ ...fromRoot[0]!, name: props.rootName }, ...fromRoot.slice(1)]
 })
-/** Deep paths keep the root and the last few crumbs, fewer in a narrow bar; the middle folds into an ellipsis. */
-const shown = computed(() => {
-  const all = crumbs.value
-  const keep = width.value > 0 && width.value < 360 ? 2 : 3
-  if (all.length <= keep + 2)
-    return all.map((crumb) => ({ ...crumb, folded: false }))
-  return [
-    { ...all[0]!, folded: false },
-    { name: '…', path: '', folded: true },
-    ...all.slice(-keep).map((crumb) => ({ ...crumb, folded: false })),
-  ]
-})
+/** What a crumb is laid out as, shown or measured: the classes that decide its width. */
+const CRUMB_LAYOUT = 'flex h-5 shrink-0 items-center gap-1 rounded px-1 text-chrome'
+
+const fit = ref<CrumbFit>({ collapsed: 0, clipped: false })
+
+function width(el: Element | null): number {
+  return el ? el.getBoundingClientRect().width : 0
+}
+
+/** Reads every crumb's width from the ruler, and fits them to the bar's room less the spacer's minimum. */
+function measure(): void {
+  if (!bar.value || !spacer.value || !ruler.value)
+    return
+  // Each crumb's ruler entry holds it with its name, then as its glyph alone.
+  const widths = [...ruler.value.querySelectorAll('[data-crumb]')].map((entry) => ({
+    full: width(entry.firstElementChild),
+    icon: width(entry.lastElementChild),
+  }))
+  const style = getComputedStyle(bar.value)
+  const available = bar.value.clientWidth -
+    Number.parseFloat(style.paddingLeft) -
+    Number.parseFloat(style.paddingRight) -
+    Number.parseFloat(getComputedStyle(spacer.value).minWidth)
+  fit.value = fitCrumbs(widths, width(ruler.value.querySelector('[data-separator]')), available)
+}
+
+// The bar's width, and the ruler's for names that change width as the path or a font does.
+const { width: barWidth } = useElementSize(bar)
+const { width: rulerWidth } = useElementSize(ruler)
+watch([barWidth, rulerWidth, crumbs], measure, { flush: 'post', immediate: true })
 
 function startEdit() {
   if (!props.editable)
@@ -166,48 +192,59 @@ watch(() => props.path, () => {
   <div
     v-else
     ref="bar"
-    class="flex h-7 min-w-0 cursor-default select-none items-center overflow-hidden rounded-md bg-surface-raised px-1 ring-1 ring-line"
+    class="relative flex h-7 min-w-0 cursor-default select-none items-center overflow-hidden rounded-md bg-surface-raised px-1 ring-1 ring-line"
     role="navigation"
     aria-label="Current path"
     @click.self="startEdit"
   >
-    <template v-for="(crumb, index) in shown" :key="crumb.path || index">
-      <ChevronRight
-        v-if="index > 0"
-        :size="ICON_PX.in24"
-        class="shrink-0 text-fg-faint"
-      />
-      <span
-        v-if="crumb.folded"
-        class="flex h-5 shrink-0 items-center px-1 text-fg-subtle"
-        aria-hidden="true"
-      >
-        <Ellipsis :size="ICON_PX.in24" />
-      </span>
-      <span
-        v-else
-        :ref="(el) => bindCrumb(crumb.path, el)"
-        :role="mode === 'browse' ? 'button' : 'link'"
-        :aria-expanded="mode === 'browse' ? menuCrumb?.path === crumb.path : undefined"
-        class="flex h-5 min-w-0 shrink items-center gap-1 rounded px-1 text-chrome transition-colors duration-200 ease-out"
-        :class="[
-          index === shown.length - 1 ? 'max-w-[60%] shrink-0 text-fg-emphasis' : 'text-fg-muted',
-          index === shown.length - 1 && mode === 'navigate' ? '' : 'hover:bg-hover hover:text-fg',
-          menuCrumb?.path === crumb.path ? 'bg-hover text-fg' : '',
-          index === 0 ? 'shrink-0' : '',
-        ]"
-        @click="onCrumbClick(crumb.path)"
-      >
-        <!-- The root and the home wear their landmark glyphs; every crumb has the same shape. -->
-        <FileIcon
-          :name="crumb.name"
-          :is-directory="!(leaf === 'file' && index === shown.length - 1)"
-          :icon="landmarkIcon(crumb.path, source)"
+    <!-- Clipped, the row ends at its right edge, so what overflows is the left. -->
+    <div class="flex min-w-0 items-center overflow-hidden" :class="fit.clipped ? 'justify-end' : ''">
+      <template v-for="(crumb, index) in crumbs" :key="crumb.path">
+        <ChevronRight
+          v-if="index > 0"
+          :size="ICON_PX.in24"
+          class="shrink-0 text-fg-faint"
         />
-        <span class="truncate">{{ crumb.name }}</span>
+        <Tooltip :content="crumb.name" :disabled="index >= fit.collapsed" class="shrink-0">
+          <span
+            :ref="(el) => bindCrumb(crumb.path, el)"
+            :role="mode === 'browse' ? 'button' : 'link'"
+            :aria-label="index < fit.collapsed ? crumb.name : undefined"
+            :aria-expanded="mode === 'browse' ? menuCrumb?.path === crumb.path : undefined"
+            class="transition-colors duration-200 ease-out"
+            :class="[
+              CRUMB_LAYOUT,
+              index === crumbs.length - 1 ? 'text-fg-emphasis' : 'text-fg-muted',
+              index === crumbs.length - 1 && mode === 'navigate' ? '' : 'hover:bg-hover hover:text-fg',
+              menuCrumb?.path === crumb.path ? 'bg-hover text-fg' : '',
+            ]"
+            @click="onCrumbClick(crumb.path)"
+          >
+            <!-- The root and the home wear their landmark glyphs; every crumb has the same shape. -->
+            <FileIcon
+              :name="crumb.name"
+              :is-directory="!(leaf === 'file' && index === crumbs.length - 1)"
+              :icon="landmarkIcon(crumb.path, source)"
+            />
+            <span v-if="index >= fit.collapsed" class="whitespace-nowrap">{{ crumb.name }}</span>
+          </span>
+        </Tooltip>
+      </template>
+    </div>
+    <span ref="spacer" class="h-full min-w-4 flex-1" @click="startEdit" />
+    <!-- Every crumb both ways and a separator, out of sight, so the bar knows what fits. -->
+    <div ref="ruler" class="pointer-events-none invisible absolute left-0 top-0 flex w-max items-center" aria-hidden="true">
+      <span data-separator class="flex shrink-0"><ChevronRight :size="ICON_PX.in24" /></span>
+      <span v-for="(crumb, index) in crumbs" :key="crumb.path" data-crumb class="flex">
+        <span :class="CRUMB_LAYOUT">
+          <FileIcon :name="crumb.name" :is-directory="!(leaf === 'file' && index === crumbs.length - 1)" />
+          <span class="whitespace-nowrap">{{ crumb.name }}</span>
+        </span>
+        <span :class="CRUMB_LAYOUT">
+          <FileIcon :name="crumb.name" :is-directory="!(leaf === 'file' && index === crumbs.length - 1)" />
+        </span>
       </span>
-    </template>
-    <span class="h-full min-w-4 flex-1" @click="startEdit" />
+    </div>
     <!-- Inside the bar, so the bar stays the component's one root and keeps the host's classes. -->
     <Popover
       v-if="mode === 'browse' && source.list"
