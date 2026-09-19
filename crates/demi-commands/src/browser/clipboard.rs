@@ -18,9 +18,10 @@ use super::{
     protocol::{BrowserCommand, CLIPBOARD_PNG_BYTES, CLIPBOARD_PNG_PIXELS, STDIN_BYTES},
 };
 
-/// Publish the pinned headless clipboard's verified platform isolation policy.
-pub(super) async fn capability(page: &chromiumoxide::Page) -> Result<Value> {
-    let reason = if cfg!(target_os = "macos")
+/// Why the pinned headless clipboard may not be the browser's own, or none
+/// where its isolation from the Host user's clipboard is verified.
+pub(super) fn unisolated() -> Option<&'static str> {
+    if cfg!(target_os = "macos")
         || (cfg!(target_os = "linux") && std::env::var_os("WAYLAND_DISPLAY").is_none())
     {
         None
@@ -28,8 +29,12 @@ pub(super) async fn capability(page: &chromiumoxide::Page) -> Result<Value> {
         Some(
             "clipboard isolation from the Host user's system clipboard has not been verified for this platform configuration",
         )
-    };
-    let reason = match reason {
+    }
+}
+
+/// Publish the pinned headless clipboard's verified platform isolation policy.
+pub(super) async fn capability(page: &chromiumoxide::Page) -> Result<Value> {
+    let reason = match unisolated() {
         Some(reason) => Some(reason),
         None => {
             let available: bool = page
@@ -50,6 +55,20 @@ pub(super) async fn capability(page: &chromiumoxide::Page) -> Result<Value> {
             json!({"id": "clipboard", "available": true, "schema": {"mimeTypes": ["text/plain", "text/html", "image/png"], "help": "demi browser clipboard --help"}})
         }
     })
+}
+
+/// Lets pages use the browser's own clipboard.
+pub(super) async fn grant(
+    browser: &std::sync::Weak<tokio::sync::Mutex<chromiumoxide::Browser>>,
+) -> Result<()> {
+    let browser = browser.upgrade().ok_or(BrowserError::Closed)?;
+    #[allow(deprecated)]
+    let permissions = GrantPermissionsParams::new(vec![
+        PermissionType::ClipboardReadWrite,
+        PermissionType::ClipboardSanitizedWrite,
+    ]);
+    browser.lock().await.execute(permissions).await?;
+    Ok(())
 }
 
 /// Read or replace browser clipboard data only after permission and input validation.
@@ -77,18 +96,7 @@ pub(super) async fn execute(
         .operations
         .try_lock()
         .map_err(|_| BrowserError::Busy)?;
-    let browser = environment.browser.upgrade().ok_or(BrowserError::Closed)?;
-    #[allow(deprecated)]
-    let permissions = GrantPermissionsParams::new(vec![
-        PermissionType::ClipboardReadWrite,
-        PermissionType::ClipboardSanitizedWrite,
-    ]);
-    operation
-        .run(async {
-            browser.lock().await.execute(permissions).await?;
-            Ok(())
-        })
-        .await?;
+    operation.run(grant(&environment.browser)).await?;
     match command {
         BrowserCommand::ClipboardWrite(input) => {
             let mime = input.mime.as_deref().unwrap_or("text/plain");

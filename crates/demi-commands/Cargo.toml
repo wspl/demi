@@ -29,6 +29,7 @@ getrandom = "0.4"
 url = "2"
 zip = { version = "6", default-features = false, features = ["deflate"] }
 png = "0.18"
+tokio-tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
 # Validate page tool schemas and the pinned CDP protocol without fetching external refs (MIT).
 jsonschema = { version = "0.56", default-features = false }
 
@@ -45,4 +46,4 @@ uuid = { version = "1", features = ["v4"] }
 
 [package.metadata.demi]
 id = "demi.builtin"
-operations = ["file.read", "file.create", "file.edit", "file.patch"]
+operations = ["file.read", "file.create", "file.edit", "file.patch", "browser.live"]

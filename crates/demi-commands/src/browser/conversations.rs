@@ -45,8 +45,11 @@ enum State {
 pub(super) struct Controller {
     state: Mutex<State>,
     installation: Arc<Installation>,
-    cancellation: CancellationToken,
+    /// Cancelled when the conversation's release arrives.
+    pub(super) cancellation: CancellationToken,
     commands: TaskTracker,
+    /// Counts the environments started, so a waiting viewer learns of one.
+    started: watch::Sender<u64>,
 }
 
 impl Controller {
@@ -99,6 +102,7 @@ impl Controller {
                 stop,
                 owner,
             };
+            self.started.send_modify(|started| *started += 1);
         }
         let mut ready = match &*state {
             State::Absent => return Ok(None),
@@ -151,8 +155,13 @@ impl Controller {
         Ok(())
     }
 
+    /// Watches for the next environment to start.
+    pub(super) fn started(&self) -> watch::Receiver<u64> {
+        self.started.subscribe()
+    }
+
     /// Retire an empty browser only after all tab-acquisition batches have finished.
-    async fn retire_empty(&self, environment: &BrowserEnvironment) -> Result<()> {
+    pub(super) async fn retire_empty(&self, environment: &BrowserEnvironment) -> Result<()> {
         if let Ok(_admission) = environment.acquisition.clone().try_write_owned()
             && environment
                 .tabs(&CancellationToken::new(), super::operation::CONTROL_TIMEOUT)
@@ -222,6 +231,7 @@ impl Conversations {
                         installation: self.installation.clone(),
                         cancellation: CancellationToken::new(),
                         commands: TaskTracker::new(),
+                        started: watch::channel(0).0,
                     })
                 })
                 .clone();
@@ -231,6 +241,10 @@ impl Conversations {
             let command = controller.commands.token();
             (controller, command)
         };
+        // A view ends itself on release, so it can tell its page why.
+        if context.request.operation == super::live::OPERATION {
+            return super::live::serve(controller, context).await;
+        }
         let cancellation = context.cancellation.clone();
         let work = self.invoke_admitted(&controller, context);
         tokio::pin!(work);

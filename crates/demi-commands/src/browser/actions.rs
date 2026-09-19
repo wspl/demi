@@ -5,7 +5,7 @@ use std::time::Duration;
 use chromiumoxide::{
     cdp::browser_protocol::{
         input::{DispatchMouseEventParams, DispatchMouseEventType, MouseButton},
-        page::{GetLayoutMetricsParams, GetNavigationHistoryParams, HandleJavaScriptDialogParams},
+        page::{GetLayoutMetricsParams, GetNavigationHistoryParams},
         target::GetTargetInfoParams,
     },
     layout::Point,
@@ -649,37 +649,16 @@ impl BrowserTab {
                             (input.text.is_some() && dialog.r#type != chromiumoxide::cdp::browser_protocol::page::DialogType::Prompt)) {
                             return Err(BrowserError::InvalidDialogAction);
                         }
-                        let mut request = HandleJavaScriptDialogParams::new(matches!(
-                            command,
-                            BrowserCommand::DialogAccept(_)
-                        ));
-                        if let BrowserCommand::DialogAccept(input) = command {
-                            request.prompt_text = input.text.clone();
-                        }
-                        self.page.execute(request).await?;
-                        self.state.dialog.send_if_modified(|current| {
-                            if current
-                                .as_ref()
-                                .is_some_and(|current| std::sync::Arc::ptr_eq(current, &dialog))
-                            {
-                                *current = None;
-                                true
-                            } else {
-                                false
-                            }
-                        });
-                        let mut releases = self.state.deferred_release.lock().await;
-                        while self.state.dialog.borrow().is_none() && !releases.is_empty() {
-                            match &releases[0] {
-                                super::tab::InputRelease::Mouse(event) => {
-                                    self.page.execute(event.clone()).await?;
-                                }
-                                super::tab::InputRelease::Key(event) => {
-                                    self.page.execute(event.clone()).await?;
-                                }
-                            }
-                            releases.remove(0);
-                        }
+                        let text = match command {
+                            BrowserCommand::DialogAccept(input) => input.text.clone(),
+                            _ => None,
+                        };
+                        self.answer_dialog(
+                            &dialog,
+                            matches!(command, BrowserCommand::DialogAccept(_)),
+                            text,
+                        )
+                        .await?;
                         Ok(
                             json!({ "type": dialog.r#type, "outcome": if matches!(command, BrowserCommand::DialogAccept(_)) { "accepted" } else { "dismissed" } }),
                         )

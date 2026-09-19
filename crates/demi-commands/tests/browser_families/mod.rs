@@ -5,11 +5,17 @@ use std::{collections::BTreeMap, future::Future, sync::Arc};
 
 use demi_command_service::{
     Handler, Input, InvocationContext, Output, ServiceError,
-    protocol::{CommandCaller, CommandContext, CommandLocale, Invocation, Record},
+    protocol::{CommandCaller, CommandContext, CommandLocale, Completion, Invocation, Record},
 };
 use demi_commands::DemiCommands;
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
+
+/// An invocation's output records and the future that runs it.
+pub type Invoked = (
+    tokio::sync::mpsc::Receiver<Record>,
+    std::pin::Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>>,
+);
 
 #[derive(Clone)]
 pub struct BrowserFixture {
@@ -39,21 +45,24 @@ impl BrowserFixture {
             .await
     }
 
-    pub async fn result_with_input(
+    /// Starts an invocation for `caller` reading `input`; its output records
+    /// arrive on the returned queue.
+    pub fn start(
         &self,
         operation: &str,
         args: Value,
+        caller: CommandCaller,
+        input: Input,
         cancel: CancellationToken,
-        bytes: Vec<u8>,
-    ) -> (u8, Value) {
-        let (output, mut records) = Output::channel(CancellationToken::new());
+    ) -> Invoked {
+        let (output, records) = Output::channel(CancellationToken::new());
         let context = InvocationContext {
             request: Invocation {
                 operation: operation.into(),
                 invocation_id: uuid::Uuid::new_v4().to_string(),
                 context: CommandContext {
                     conversation: self.conversation.clone(),
-                    caller: CommandCaller::agent(self.caller.clone()),
+                    caller,
                     locale: self.locale.clone(),
                 },
                 json: Some(true),
@@ -62,11 +71,27 @@ impl BrowserFixture {
                 cwd: self.root.path().to_str().unwrap().into(),
                 env: self.env.clone(),
             },
-            input: Input::from_stream(futures_util::stream::iter([Ok(bytes::Bytes::from(bytes))])),
+            input,
             output,
             cancellation: cancel,
         };
-        let invoke = self.service.invoke(context);
+        (records, self.service.invoke(context))
+    }
+
+    pub async fn result_with_input(
+        &self,
+        operation: &str,
+        args: Value,
+        cancel: CancellationToken,
+        bytes: Vec<u8>,
+    ) -> (u8, Value) {
+        let (mut records, invoke) = self.start(
+            operation,
+            args,
+            CommandCaller::agent(self.caller.clone()),
+            Input::from_stream(futures_util::stream::iter([Ok(bytes::Bytes::from(bytes))])),
+            cancel,
+        );
         let collect = async {
             let mut stdout = Vec::new();
             let mut stderr = Vec::new();

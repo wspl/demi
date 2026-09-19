@@ -5,7 +5,8 @@
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxEbN9JvhuUKNePCYRYXDXQ5KGYdOpkAfE8FI0ktJnYQVtF4kTxGfvUzdZHFhb/2irPQaY2Rxyd/UKhJyc0hKeoUaZw218k5tiVgoVaWabHxFURDuXUGNlVyatpWdgdz+WovMEaOvLD2CpSpLZ0USgCI4yZHKqxjQdVXOvughaS0GHj2OUDhuvUEXLeJU6cEluVN+PCbkAly6uc3sKqD2sLsCEQpOWC9vFacxJjP/ZsfhUgnOry7d6Px0RZUmvgk2qVIK3iijjJLhERSxbabqR6rFIT2hk0T6/sY3qSqR+OPa3D40KSb/rwNPZIK0ugtLhLqDUierSmQZGS6N1sesLQIDAQAB",
   "permissions": [
     "tabCapture",
-    "offscreen"
+    "offscreen",
+    "debugger"
   ],
   "background": {
     "service_worker": "background.js",
