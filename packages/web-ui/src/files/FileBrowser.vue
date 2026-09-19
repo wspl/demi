@@ -37,6 +37,7 @@ import FileIcon from './FileIcon.vue'
 import { landmarkIcon } from './file-icons'
 import {
   createFileBrowserHistory,
+  DEFAULT_SORT,
   filterEntries,
   nextSort,
   sortEntries,
@@ -104,10 +105,7 @@ const canForward = ref(false)
 const entries = shallowRef<FileBrowserEntry[]>([])
 const loading = ref(false)
 const failure = ref<FileBrowserFailure | null>(null)
-const sort = ref<FileBrowserSort>({
-  key: null,
-  direction: 'asc',
-})
+const sort = ref<FileBrowserSort>(DEFAULT_SORT)
 const selected = ref<string | null>(null)
 const error = ref<string | null>(null)
 const folderCreation = ref<'idle' | 'naming' | 'saving'>('idle')

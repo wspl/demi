@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Globe, RefreshCw, Search, X } from '@lucide/vue'
+import { Code, Eye, Globe, RefreshCw, Search, X } from '@lucide/vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
@@ -22,6 +22,12 @@ const segmentOptions = [
   { value: 'second', label: 'Second' },
   { value: 'third', label: 'Third' },
 ]
+// Icons alone, as the File view switches a document between Preview and Source.
+const view = ref('preview')
+const viewOptions = [
+  { value: 'preview', label: 'Preview', icon: Eye },
+  { value: 'source', label: 'Source', icon: Code },
+]
 const surfaces = [
   { name: 'base', class: 'bg-surface-base' },
   { name: 'surface', class: 'bg-surface' },
@@ -34,7 +40,7 @@ const surfaces = [
 <template>
   <GallerySection
     title="Control layout"
-    note="Production CSS checks: all input sizes, fixed and flexible widths, adornments, disabled and bare fields. Command text and copy controls share a vertical center."
+    note="Production CSS checks: all input sizes, fixed and flexible widths, adornments, disabled and bare fields. A segmented control can show icons alone, each naming itself in a tooltip. Command text and copy controls share a vertical center."
   >
     <div class="mb-6 flex flex-wrap gap-4">
       <div
@@ -48,6 +54,7 @@ const surfaces = [
         <Segmented v-model="selected" :options="segmentOptions" size="sm" />
         <Segmented v-model="selected" :options="segmentOptions" />
         <Segmented v-model="selected" :options="segmentOptions" disabled />
+        <Segmented v-model="view" :options="viewOptions" size="sm" icon-only />
         <IconButton :icon="Search" variant="solid" circle aria-label="Solid icon button" />
       </div>
     </div>

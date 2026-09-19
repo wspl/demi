@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { createFileBrowserHistory, filterEntries, nextSort, sortEntries } from '../file-browser-state'
+import { compareFileNames, createFileBrowserHistory, DEFAULT_SORT, filterEntries, nextSort, sortEntries } from '../file-browser-state'
 import { entryKind, formatBytes, formatModified } from '../format'
 import type { FileBrowserEntry } from '../types'
 
@@ -40,13 +40,11 @@ test('directories lead and names sort naturally', () => {
   )
 })
 
-test('the tree and the breadcrumb menu push hidden names to the end of their kind', () => {
-  expect(
-    names(sortEntries(entries, { key: null, direction: 'asc' }, { hiddenLast: true })),
-  ).toEqual(['src', '.git', 'file2.txt', 'file10.txt'])
-  expect(names(sortEntries(entries, { key: null, direction: 'asc' }))).toEqual(
-    ['.git', 'src', 'file2.txt', 'file10.txt']
-  )
+test('names follow VS Code: punctuation and hidden names first, case ignored, numbers by value', () => {
+  const sorted = ['src', 'Zeta', 'foo01', '.gitignore', 'file10.ts', 'alpha', '_draft', 'foo1', '.env', 'README.md', 'file2.ts']
+    .sort(compareFileNames)
+  expect(sorted).toEqual(['_draft', '.env', '.gitignore', 'alpha', 'file2.ts', 'file10.ts', 'foo1', 'foo01', 'README.md', 'src', 'Zeta'])
+  expect(names(sortEntries(entries, DEFAULT_SORT))).toEqual(['.git', 'src', 'file2.txt', 'file10.txt'])
 })
 
 test('time and size sort within each kind and fall back to the name', () => {
