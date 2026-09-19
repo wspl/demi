@@ -12,9 +12,10 @@ import {
 } from '@demicodes/web-ui/agent/message-editing'
 import type { Block } from '@demicodes/core'
 import { demoModel } from '../fixtures/blocks'
+import { WORKSPACE_ROOT } from '../fixtures/workspace'
 
 const session = reactive<ChatSessionState>({
-  id: 'editing-example', title: 'Edit and resend', blocks: [], queue: [],
+  id: 'editing-example', cwd: WORKSPACE_ROOT, title: 'Edit and resend', blocks: [], queue: [],
   pendingSteers: [], phase: 'idle', load: 'ready', lastError: null, pendingAction: null, retrying: false, failures: {},
   archived: false, status: 'idle', scroll: null, subagents: [], terminals: [],
 })

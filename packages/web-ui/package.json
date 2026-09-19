@@ -21,7 +21,7 @@
   "homepage": "https://github.com/wspl/demi/tree/main/packages/web-ui#readme",
   "bugs": "https://github.com/wspl/demi/issues",
   "scripts": {
-    "typecheck": "vue-tsc --noEmit -p tsconfig.json"
+    "typecheck": "bun ../../scripts/typecheck-vue.ts tsconfig.json"
   },
   "dependencies": {
     "@codemirror/commands": "6.10.3",
@@ -69,8 +69,7 @@
   "devDependencies": {
     "@vue/tsconfig": "^0.9.1",
     "typescript": "^6.0.3",
-    "vite": "^8.2.2",
-    "vue-tsc": "^3.3.5"
+    "vite": "^8.2.2"
   },
   "license": "Apache-2.0"
 }

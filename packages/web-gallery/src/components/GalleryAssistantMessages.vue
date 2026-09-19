@@ -6,10 +6,11 @@ import type { ChatSessionState } from '@demicodes/web-ui/agent/types'
 import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import { demoModel } from '../fixtures/blocks'
+import { WORKSPACE_ROOT } from '../fixtures/workspace'
 
 const createdAt = new Date(Date.now() - 35_000).toISOString()
 const source = reactive<ChatSessionState>({
-  id: 'fork-source', title: 'Planning', phase: 'running', status: 'active',
+  id: 'fork-source', cwd: WORKSPACE_ROOT, title: 'Planning', phase: 'running', status: 'active',
   load: 'ready', lastError: null, pendingAction: null, retrying: false, failures: {}, archived: false, queue: [], pendingSteers: [],
   scroll: null, subagents: [], terminals: [],
   blocks: [
