@@ -8,7 +8,6 @@ import WorkspaceDialog from '@demicodes/web-ui/hosts/WorkspaceDialog.vue'
 import type { WorkspaceDraft, WorkspaceProject } from '@demicodes/web-ui/hosts/workspace'
 import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import FileTree from '@demicodes/web-ui/files/FileTree.vue'
-import FileUploadList from '@demicodes/web-ui/files/FileUploadList.vue'
 import UploadConflictDialog from '@demicodes/web-ui/files/UploadConflictDialog.vue'
 import { uploadsOf, type FileUploads, type UploadClash, type UploadItem, type UploadPlacement } from '@demicodes/web-ui/files/file-uploads'
 import Button from '@demicodes/web-ui/ui/Button.vue'
@@ -546,21 +545,19 @@ onMounted(() => {
       </GallerySection>
       <GallerySection
         title="Upload and download"
-        note="A right-click offers what the host can do there: a file downloads; a folder, or the empty space for the workspace itself, takes files uploaded into it. Names the folder already has wait on a question: Replace puts what came in place of what is there, Skip uploads the rest, closing uploads nothing; once a folder meets a folder, Merge adds its files to the one there, writing over files with the same names. The uploads list under the tree, one on its way at a time and the rest waiting, a folder as one row: a bar, how much has gone and how fast, and of a folder how many files; Completed once one has landed; why one failed, and of a folder whose files failed, how many, opening to list them; on hover where each goes. Cancel stops one, and a folder keeps the files that landed; Retry sends what failed again; Clear drops the finished ones. A folder an upload changes is listed again. The first specimen is a workspace seeded with an upload in each state, src/auth refusing them; every control works, Reset seeds it again, and the drop buttons hand its tree what a drop from the desktop would. Files and folders dropped on its tree, or right-clicked in, upload at a pace slow enough to watch, as they do in the File view (Session, Panel)."
+        note="A right-click offers what the host can do there: a file downloads; a folder, or the empty space for the workspace itself, takes files uploaded into it. Names the folder already has wait on a question: Replace puts what came in place of what is there, Skip uploads the rest, closing uploads nothing; once a folder meets a folder, Merge adds its files to the one there, writing over files with the same names. The uploads list under the tree, fitting its rows until the divider above it sets its height, one on its way at a time and the rest waiting, a folder as one row. Each row is its name and one line of facts, the one on its way with a bar between them: how much has gone and how fast, and of a folder how many files; Completed once one has landed; why one failed, or of a folder how many of its files did. A line too long for the list is cut and its tooltip shows it whole; the name's shows where it goes, and a folder's failures list in theirs. Cancel stops one, and a folder keeps the files that landed; Retry sends what failed again; Clear drops the finished ones. A folder an upload changes is listed again. The first specimen is a workspace seeded with an upload in each state, src/auth refusing them; every control works, Reset seeds it again, and the drop buttons hand its tree what a drop from the desktop would. Files and folders dropped on its tree, or right-clicked in, upload at a pace slow enough to watch, as they do in the File view (Session, Panel)."
       >
         <div class="flex flex-wrap items-start gap-6">
           <GallerySpecimen variant="uploads · every state, live">
             <!-- The stage lays children out in a row; the frame and its controls stack in their own column. -->
             <div class="flex w-[220px] flex-col gap-2">
-              <div class="gallery-frame flex h-[30rem] w-[220px] flex-col overflow-hidden bg-surface-editor">
+              <div class="gallery-frame h-[30rem] w-[220px] overflow-hidden bg-surface-editor">
                 <FileTree
                   ref="uploadTree"
-                  class="flex-1"
                   :source="pinnedUploads.source"
                   :root="TREE_ROOT"
                   :selected="null"
                 />
-                <FileUploadList :uploads="pinnedUploads.uploads" />
               </div>
               <div class="flex flex-wrap gap-1">
                 <Button size="sm" variant="ghost" @click="resetPinnedUploads">Reset</Button>
