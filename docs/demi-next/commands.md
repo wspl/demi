@@ -148,7 +148,10 @@ Each client opens one HTTP/2 connection and one invocation stream. The runner
 accepts every local connection ([Load](runner.md#load)). When it cannot accept
 one yet, because its queue of waiting connections is full or it has no open
 file to spare, the client waits and connects again for as long as the runner
-runs.
+runs. A refused connection looks the same whether the runner is busy or gone,
+so the runner holds a lock on a file beside its socket while it runs; the
+system releases it when the runner exits, even by crashing. A refused client
+checks the lock and waits while it is held, and fails at once otherwise.
 Raw CLI metadata has its own schema; framing, input demand, and completion use
 the [native protocol](native-runtime.md#invocation-protocol). The runner authenticates
 the context before dispatching. Connection processing continues through blocked
