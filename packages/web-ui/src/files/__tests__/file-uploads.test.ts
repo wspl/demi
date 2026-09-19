@@ -28,8 +28,9 @@ test('uploads go one at a time, in order, and each landing names its directory',
   expect(source.calls.map((call) => call.path)).toEqual(['/w/assets/a.png'])
   expect(uploads.items.map((item) => item.state.phase)).toEqual(['uploading', 'waiting'])
 
+  // Too soon after the start to tell a rate.
   source.calls[0]!.options.progress(4)
-  expect(uploads.items[0]!.state).toEqual({ phase: 'uploading', sent: 4 })
+  expect(uploads.items[0]!.state).toEqual({ phase: 'uploading', sent: 4, rate: null })
 
   source.calls[0]!.done.resolve()
   await settle()
@@ -79,4 +80,16 @@ test('a failure stays listed with its reason until retried or cleared', async ()
 
   uploads.clearFinished()
   expect(uploads.items).toEqual([])
+})
+
+test('an upload on its way tells its pace once it has moved for a moment', async () => {
+  const source = fakeSource()
+  const uploads = new FileUploads(source)
+  uploads.add('/w', [bytes('a', 10_000)], new Set())
+  await new Promise((resolve) => setTimeout(resolve, 600))
+  source.calls[0]!.options.progress(3_000)
+  const state = uploads.items[0]!.state
+  // About 3,000 bytes in 0.6 seconds, however late the timer fired.
+  expect(state.phase === 'uploading' ? state.rate : undefined).toBeGreaterThan(1_500)
+  expect(state.phase === 'uploading' ? state.rate : undefined).toBeLessThan(6_000)
 })
