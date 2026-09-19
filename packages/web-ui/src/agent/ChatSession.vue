@@ -21,7 +21,6 @@ import type { MessageForkHandler } from './message-fork'
 
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
-import { t } from '../infra/i18n'
 import { sessionFailureNotice, turnRecovery } from './session-status'
 import { getVisibleBlocks } from './visible-blocks'
 import type { PersistedScrollState } from '../composables/useBlockVirtualizer'
@@ -204,7 +203,7 @@ watch(() => props.conversation.id, close)
               <!-- The transcript says what happened; the one recovery control is here, over the input. -->
               <SessionDockChip v-if="recovery" @click="emit('retry')">
                 <Play :size="ICON_PX.in28" />
-                {{ t(recovery === 'resume' ? 'agent.dock.resume' : 'agent.dock.continue') }}
+                {{ recovery === 'resume' ? 'Resume' : 'Continue' }}
               </SessionDockChip>
               <TerminalChip
                 :terminals="conversation.terminals"

@@ -1,4 +1,3 @@
-import { t } from '../infra/i18n'
 
 /** Sidebar conversation list, or a session that is not reconnecting. */
 export type ListLoad = 'ready' | 'loading' | 'failed'
@@ -89,27 +88,27 @@ export function sessionStatusCopy(kind: SessionStatusKind): {
   action?: 'retry' | 'create'
 } {
   if (kind === 'loading') {
-    return { label: t('agent.session.loading') }
+    return { label: 'Loading conversation' }
   }
   if (kind === 'failed') {
     return {
-      label: t('agent.session.failed'),
+      label: "Couldn't load this conversation.",
       action: 'retry',
     }
   }
   if (kind === 'missing') {
     return {
-      label: t('agent.session.missing'),
+      label: 'Conversation not found.',
       action: 'create',
     }
   }
   if (kind === 'none') {
     return {
-      label: t('agent.session.none'),
+      label: 'No conversation open.',
       action: 'create',
     }
   }
-  return { label: t('agent.session.empty') }
+  return { label: 'No messages yet.' }
 }
 
 /**

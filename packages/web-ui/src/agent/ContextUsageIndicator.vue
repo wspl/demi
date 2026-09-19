@@ -3,7 +3,6 @@ import { computed } from 'vue'
 import type { TokenUsage } from '@demicodes/core'
 import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
-import { t } from '@demicodes/web-ui/infra/i18n'
 import { formatTokens } from '../ui/token-count'
 
 const props = defineProps<{
@@ -112,22 +111,22 @@ function handleClick() {
     </span>
     <template #overlay>
       <template v-if="isCompacting">
-        <div class="text-fg-body">{{ t('agent.context.compacting') }}</div>
+        <div class="text-fg-body">Compacting context…</div>
       </template>
       <template v-else>
         <template v-if="isTokenLimitAvailable">
           <div class="text-fg">{{ percentage }}% used <span
               class="text-fg-subtle"
             >({{ formatTokens(usedTokens) }} / {{ formatTokens(effectiveLimit) }})</span></div>
-          <div v-if="!isUsageAvailable" class="mt-0.5 text-fg-subtle">{{ t('agent.context.noUsage') }}</div>
+          <div v-if="!isUsageAvailable" class="mt-0.5 text-fg-subtle">No usage recorded yet</div>
         </template>
-        <div v-else class="text-fg-muted">{{ t('agent.context.unavailable') }}</div>
+        <div v-else class="text-fg-muted">Context usage unavailable</div>
         <div
           v-for="file in instructionFiles"
           :key="file"
           class="mt-0.5 max-w-48 truncate text-left text-fg-subtle direction-rtl"
         >{{ file }}</div>
-        <div v-if="isClickable" class="mt-1 text-fg-subtle">{{ t('agent.context.compactHint') }}</div>
+        <div v-if="isClickable" class="mt-1 text-fg-subtle">Click to compact context</div>
       </template>
     </template>
   </Tooltip>

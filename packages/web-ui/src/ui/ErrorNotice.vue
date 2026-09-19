@@ -2,7 +2,6 @@
 import { ref } from 'vue'
 import { useClipboard } from '@vueuse/core'
 import { Check, CircleX, Copy } from '@lucide/vue'
-import { t } from '../infra/i18n'
 import Button from './Button.vue'
 import Fold from './Fold.vue'
 import FoldChevron from './FoldChevron.vue'
@@ -78,7 +77,7 @@ const rawOpen = ref(false)
             @click="rawOpen = !rawOpen"
           >
             <!-- The label, then its chevron, as the transcript's foldable rows read ("Thought briefly ›"). -->
-            {{ t('error.upstream') }}
+            Provider response
             <FoldChevron :open="rawOpen" :size="ICON_PX.in12" />
           </button>
           <!-- Mounted while closed so the height can animate both ways. -->
@@ -98,13 +97,13 @@ const rawOpen = ref(false)
     >
       <Tooltip
         v-if="copyText"
-        :content="copied ? t('common.copied') : t('common.copy')"
+        :content="copied ? 'Copied' : 'Copy'"
       >
         <IconButton
           :icon="copied ? Check : Copy"
           size="sm"
           variant="ghost"
-          :aria-label="t('common.copy')"
+          aria-label="Copy"
           @click="copy(props.copyText ?? '')"
         />
       </Tooltip>

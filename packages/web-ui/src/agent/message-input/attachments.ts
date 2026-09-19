@@ -1,7 +1,6 @@
 import type { UserContentBlock } from '@demicodes/core'
 import { ATTACHMENT_SNIPPET_MAX_CHARS, attachmentSnippet, isTextAttachment, sniffModelMediaType } from '@demicodes/core'
 import { delay } from '@demicodes/utils'
-import { t } from '../../infra/i18n'
 
 /** An upload that fails leaves the composer with a toast; there is no failed phase to show. */
 export type AttachmentPhase = 'uploading' | 'ready'
@@ -219,7 +218,7 @@ export function attachmentCaption(item: ComposerAttachment): string {
     return `${item.host} · ${item.path}`
   }
   if (item.phase === 'uploading') {
-    return `${t('agent.input.attachmentUploading')} ${Math.round(attachmentProgress(item) * 100)}% · ${item.name}`
+    return `Uploading ${Math.round(attachmentProgress(item) * 100)}% · ${item.name}`
   }
   return item.name
 }
@@ -286,7 +285,7 @@ export function attachmentSendBlockReason(
   items: readonly ComposerAttachment[],
 ): string | undefined {
   if (items.some((item) => item.kind === 'file' && item.phase === 'uploading')) {
-    return t('agent.input.waitForAttachments')
+    return 'Wait for attachments to finish uploading'
   }
 }
 

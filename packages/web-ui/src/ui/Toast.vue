@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { CircleCheck, CircleX, X } from '@lucide/vue'
-import { t } from '../infra/i18n'
 import type { ToastTone } from '../infra/toast'
 import { ICON_PX } from './icon-metrics'
 import IconButton from './IconButton.vue'
@@ -42,7 +41,7 @@ const emit = defineEmits<{
       :icon="X"
       size="xs"
       variant="ghost"
-      :aria-label="t('common.close')"
+      aria-label="Close"
       @click="emit('dismiss')"
     />
   </div>

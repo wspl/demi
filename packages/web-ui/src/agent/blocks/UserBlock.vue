@@ -7,7 +7,6 @@ import type { UserContentBlock } from '@demicodes/core'
 import { md } from '@demicodes/web-ui/markdown/md'
 import { openFileLink, useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
-import { t } from '@demicodes/web-ui/infra/i18n'
 import AttachmentTile from '../AttachmentTile.vue'
 import ContentMedia from '../ContentMedia.vue'
 import {
@@ -60,14 +59,14 @@ const actions = computed<BubbleAction[]>(() => {
   if (!props.pending) {
     list.push({
       key: 'copy',
-      hint: copied.value ? t('common.copied') : t('agent.user.copy'),
+      hint: copied.value ? 'Copied' : 'Copy',
       icon: copied.value ? Check : Copy,
       emit: () => void copy(userText.value),
     })
     if (props.editable) {
       list.push({
         key: 'edit',
-        hint: t('agent.user.edit'),
+        hint: 'Edit',
         icon: Pencil,
         emit: () => emit('edit'),
       })
@@ -76,7 +75,7 @@ const actions = computed<BubbleAction[]>(() => {
   if (props.deletable) {
     list.push({
       key: 'delete',
-      hint: props.sendable ? t('agent.queue.remove') : t('agent.steer.discard'),
+      hint: props.sendable ? 'Remove' : 'Discard',
       icon: X,
       emit: () => emit('delete'),
     })
@@ -84,7 +83,7 @@ const actions = computed<BubbleAction[]>(() => {
   if (props.sendable) {
     list.push({
       key: 'send',
-      hint: t('agent.queue.sendNow'),
+      hint: 'Send now',
       icon: ArrowUp,
       emit: () => emit('sendNow'),
     })
@@ -92,7 +91,7 @@ const actions = computed<BubbleAction[]>(() => {
   if (props.interruptible) {
     list.push({
       key: 'interrupt',
-      hint: t('agent.steer.interrupt'),
+      hint: 'Interrupt and send',
       icon: ChevronsUp,
       emit: () => emit('interrupt'),
     })

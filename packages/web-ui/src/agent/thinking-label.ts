@@ -1,4 +1,3 @@
-import { t } from '@demicodes/web-ui/infra/i18n'
 
 export function formatThinkingDuration(ms: number): string {
   const s = Math.round(ms / 1000)
@@ -15,13 +14,10 @@ export function formatThinkingDuration(ms: number): string {
 
 export function thinkingFaceLabel(streaming: boolean, elapsedMs: number | null): string {
   if (elapsedMs === null)
-    return t('agent.block.thinking')
+    return 'Thinking'
   if (elapsedMs <= 1000)
-    return t(streaming ? 'agent.block.thinking' : 'agent.block.thoughtBriefly')
-  const prefix = t(streaming
-    ? 'agent.block.thinkingFor'
-    : 'agent.block.thoughtFor')
-  return `${prefix} ${formatThinkingDuration(elapsedMs)}`
+    return streaming ? 'Thinking' : 'Thought briefly'
+  return `${streaming ? 'Thinking for' : 'Thought for'} ${formatThinkingDuration(elapsedMs)}`
 }
 
 /**
@@ -29,10 +25,8 @@ export function thinkingFaceLabel(streaming: boolean, elapsedMs: number | null):
  * agent asks again on its own, with how long the request has waited.
  */
 export function providerWaitLabel(kind: 'requesting' | 'retrying', elapsedMs: number): string {
-  const [short, long] = kind === 'retrying'
-    ? ['agent.block.retrying', 'agent.block.retryingFor']
-    : ['agent.block.requesting', 'agent.block.requestingFor']
+  const verb = kind === 'retrying' ? 'Retrying' : 'Requesting'
   if (elapsedMs <= 1000)
-    return t(short)
-  return `${t(long)} ${formatThinkingDuration(elapsedMs)}`
+    return verb
+  return `${verb} for ${formatThinkingDuration(elapsedMs)}`
 }

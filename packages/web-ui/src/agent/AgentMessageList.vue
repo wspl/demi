@@ -24,7 +24,6 @@ import {
   type SessionLoad,
 } from './session-status'
 import { COMPOSER_CLEARANCE_PX } from './composer-clearance'
-import { t } from '../infra/i18n'
 import MessageEditRegion from './MessageEditRegion.vue'
 import { lastEditableUserMessageId, messageEditSuffixIds } from './message-editing'
 import { useMessageForks, type MessageForkHandler } from './message-fork'
@@ -280,7 +279,7 @@ defineExpose({
         <div v-if="failure" class="px-[var(--agent-pad-x,2rem)] py-1.5">
           <ErrorNotice
             :label="failure.label"
-            :action="failure.retry ? t('agent.session.retry') : undefined"
+            :action="failure.retry ? 'Retry' : undefined"
             @action="emit('retryLoad')"
           />
         </div>

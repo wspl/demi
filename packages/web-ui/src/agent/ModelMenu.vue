@@ -2,7 +2,6 @@
 import { computed, watch } from 'vue'
 import type { ThinkingConfig } from '@demicodes/core'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
-import { t } from '@demicodes/web-ui/infra/i18n'
 import {
   buildReasoningState,
   reasoningOptionConfig,
@@ -111,7 +110,7 @@ watch(
   <Menu iconless>
     <MenuItem
       v-if="fastTier"
-      :label="t('providers.fastMode')"
+      label="Fast Mode"
       @select="setFast(!fast)"
     >
       <template #suffix>
@@ -125,7 +124,7 @@ watch(
     </MenuItem>
     <MenuItem
       v-if="reasoningState"
-      :label="t('providers.reasoning')"
+      label="Reasoning"
       :value="reasoningLabel"
     >
       <template #submenu>
@@ -142,7 +141,7 @@ watch(
       </template>
     </MenuItem>
     <MenuDivider v-if="fastTier || reasoningState" />
-    <MenuItem :label="t('providers.model')" :value="selectedModelLabel">
+    <MenuItem label="Model" :value="selectedModelLabel">
       <template #submenu>
         <Menu iconless>
           <MenuGroup

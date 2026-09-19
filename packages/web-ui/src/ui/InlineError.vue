@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { CircleX, X } from '@lucide/vue'
-import { t } from '../infra/i18n'
 import IconButton from './IconButton.vue'
 
 /**
@@ -43,7 +42,7 @@ defineEmits<{
       size="xs"
       variant="ghost"
       class="-my-0.5 shrink-0"
-      :aria-label="t('common.close')"
+      aria-label="Close"
       @click="$emit('dismiss')"
     />
   </div>
