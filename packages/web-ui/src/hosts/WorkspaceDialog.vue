@@ -246,7 +246,7 @@ function selectDevice(id: string, close: () => void): void {
                     variant="field"
                     fill
                     trigger-label="Device"
-                    class="min-w-0 flex-1"
+                    class="flex-1"
                   >
                     <template #trigger>
                       <component

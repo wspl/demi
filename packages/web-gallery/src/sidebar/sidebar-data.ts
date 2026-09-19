@@ -10,6 +10,12 @@ export const demoAccount: SidebarAccount = {
   email: 'zan@example.com',
 }
 
+/** An account with no name, so its email stands in: too long for the narrowest sidebar, not the default. */
+export const emailOnlyAccount: SidebarAccount = {
+  name: '',
+  email: 'alex.chen@acme.dev',
+}
+
 export function demoProjects(): SidebarProject[] {
   return [
     {
