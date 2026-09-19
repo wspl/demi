@@ -66,13 +66,6 @@ export function callChangeSource(selection: CallEditSelection, read: ReadCallCha
   }
 }
 
-/** Display under-root paths relatively without changing their lookup identity. */
-export function changeDisplayPath(path: string, root: string): string {
-  const normalized = path.replaceAll('\\', '/')
-  const prefix = root.replaceAll('\\', '/').replace(/\/$/, '') + '/'
-  return normalized.startsWith(prefix) ? normalized.slice(prefix.length) : normalized
-}
-
 /** What an empty change set says in place of its files, by why it is empty. */
 export function emptyChangeSetText(source: ChangeSetSource): string {
   if (source.unavailable === 'no-repository') {

@@ -1667,13 +1667,25 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="File view"
-        note="A file of the workspace: the path as crumbs from the workspace root, the file itself, and the workspace tree beside it with the file selected. Text opens read-only in the code editor, colored by its language, with folding and the first lines of the enclosing blocks kept at the top while scrolling. Mod-f in the text opens a find bar below it: the query with its match count, Match case, Match whole word and Use regular expression, and Previous and Next, which Shift+Enter and Enter in the field also do. Typing selects the first match from the selection on, the count shows ? while the selection is on no match, a count past 9999 stops there with a +, and the scrollbar marks every match counted until Escape or Close shuts the bar. An image fits the pane without being enlarged, over a checkerboard where it is transparent, and a click shows it at its actual size; video and audio play in the browser's own player and PDF in its own viewer, each with its pixel size and file size under it. Markdown renders like a repository file on GitHub: its HTML sanitized, so the script and the handler at the end of the README never run, its math and code rendered, its front matter a YAML block, and its links opening files here, scrolling to headings, or leaving for the web. Markdown and SVG switch between Preview and Source. A file that is neither text nor previewable is a card with its facts and Download, and every file has Download in the header. A crumb opens a menu of what lies beside it, directories unfolding into their own; a file picked there, clicked in the tree or linked from a document replaces the one shown, and Back and Forward before the crumbs walk the files shown. A click on the crumb row anywhere but a crumb turns it into a text field with the path, a relative one starting from the workspace: Enter opens a file, or finds a folder in the tree, unfolding down to it and selecting it until another file opens; a folder outside the workspace says the tree shows the workspace only. The control at the end of the crumb row hides and shows the tree. Reads carry the fixture's latency, so the text and each directory show their loading state first."
+        note="A file of the workspace: the path as crumbs from the workspace root, the file itself, and the workspace tree beside it with the file selected. Text opens read-only in the code editor, colored by its language, with folding and the first lines of the enclosing blocks kept at the top while scrolling. Mod-f in the text opens a find bar below it: the query with its match count, Match case, Match whole word and Use regular expression, and Previous and Next, which Shift+Enter and Enter in the field also do. Typing selects the first match from the selection on, the count shows ? while the selection is on no match, a count past 9999 stops there with a +, and the scrollbar marks every match counted until Escape or Close shuts the bar. An image fits the pane without being enlarged, over a checkerboard where it is transparent, and a click shows it at its actual size; video and audio play in the browser's own player and PDF in its own viewer, each with its pixel size and file size under it. Markdown renders like a repository file on GitHub: its HTML sanitized, so the script and the handler at the end of the README never run, its math and code rendered, its front matter a YAML block, and its links opening files here, scrolling to headings, or leaving for the web. Markdown and SVG switch between Preview and Source. A file that is neither text nor previewable is a card with its facts and Download, and every file has Download in the header. A crumb opens a menu of what lies beside it, directories unfolding into their own; a file picked there, clicked in the tree or linked from a document replaces the one shown, and Back and Forward before the crumbs walk the files shown. A click on the crumb row anywhere but a crumb turns it into a text field with the path, a relative one starting from the workspace: Enter opens a file, or finds a folder in the tree, unfolding down to it and selecting it until another file opens; a folder outside the workspace says the tree shows the workspace only. The control at the end of the crumb row hides and shows the tree. A view that would keep less than 320px beside the tree hides it by itself; the control then shows the tree over the file, and the control, a click beside the tree or a file picked in it puts it away. The tree docks again once the view is wide enough, and its divider stops where the file would get narrower than that; the narrow frame resizes from its corner. Reads carry the fixture's latency, so the text and each directory show their loading state first."
       >
         <div class="flex flex-wrap gap-1">
           <Button v-for="file in previewFiles" :key="file" size="sm" @click="showInFileView(`${workspace.root}/${file}`)">{{ file }}</Button>
         </div>
-        <GallerySpecimen variant="workspace file · live" wide>
-          <div class="gallery-frame flex h-[40rem] overflow-hidden">
+        <GallerySpecimen
+          v-for="specimen in [
+            { variant: 'workspace file · live', narrow: false },
+            { variant: 'narrow · the tree hides, its control shows it over the file', narrow: true },
+          ]"
+          :key="specimen.variant"
+          :variant="specimen.variant"
+          wide
+        >
+          <div
+            class="gallery-frame flex overflow-hidden"
+            :class="specimen.narrow ? 'h-[32rem] max-w-full resize-x' : 'h-[40rem]'"
+            :style="specimen.narrow ? { width: '30rem', minWidth: '16rem' } : undefined"
+          >
             <FileView
               class="w-full"
               v-model:tree="fileViewTree"
@@ -1693,22 +1705,27 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="Change view"
-        note="Diffs from one of two sources, the switch in the header picks. A changed image, video, audio file or PDF shows its committed version beside the working tree's instead, each with its sizes, a new file only the second; a binary file with no preview shows a card per side with Download, and a committed version over 8 MiB says it is too large, with no Download. Markdown and SVG switch between the text diff and Preview, which renders both sides, labeled Committed and Working tree, or Before and After in Conversation. Uncommitted is the working tree against the last commit: the diff of the selected file beside the tree of changed files with the kind of each change (a green dot for a new file, a struck name for a deleted one) and its line counts, the files and lines summed up in the tree's caption. Conversation shows only the file picked under a shell call, without a file tree or a list source. It shows that file’s retained edits, with a segment control when other calls wrote between them. Missing contents leave the diff blank. Either way the header names the file shown with its counts. Back and Forward walk what the view has shown, across modes. The header also opens the selected file itself. Only Uncommitted offers a tree toggle; its tree's caption lists the changes again, its control turning while the list is on its way. Picking a file opens Conversation; selecting the fixed Change section returns to Uncommitted; with nothing picked, Conversation says how to fill it. Under Uncommitted, a workspace outside a Git repository shows “Not a git repository.” without the file tree or its toggle. It keeps the last list when a listing failed, and says under the rows when the list was cut short. A host can name the workspace in place of its directory's name, as the product does for the Cloud's own session directory."
+        note="Diffs from one of two sources, the switch in the header picks. A changed image, video, audio file or PDF shows its committed version beside the working tree's instead, each with its sizes, a new file only the second; a binary file with no preview shows a card per side with Download, and a committed version over 8 MiB says it is too large, with no Download. Markdown and SVG switch between the text diff and Preview, which renders both sides, labeled Committed and Working tree, or Before and After in Conversation. Uncommitted is the working tree against the last commit: the diff of the selected file beside the tree of changed files with the kind of each change (a green dot for a new file, a struck name for a deleted one) and its line counts, the files and lines summed up in the tree's caption. Conversation shows only the file picked under a shell call, without a file tree or a list source. It shows that file’s retained edits, with a segment control when other calls wrote between them. Missing contents leave the diff blank. Back and Forward walk what the view has shown, across modes. The header also opens the selected file itself. Only Uncommitted offers a tree toggle, and in a narrow view its tree hides and shows over the diff the way the File view's does; its tree's caption lists the changes again, its control turning while the list is on its way. Picking a file opens Conversation; selecting the fixed Change section returns to Uncommitted; with nothing picked, Conversation says how to fill it. Under Uncommitted, a workspace outside a Git repository shows “Not a git repository.” without the file tree or its toggle. It keeps the last list when a listing failed, and says under the rows when the list was cut short. A host can name the workspace in place of its directory's name, as the product does for the Cloud's own session directory."
       >
         <GallerySpecimen
           v-for="specimen in [
-            { variant: 'uncommitted · live', work: changeUncommitted, rootName: undefined },
-            { variant: 'uncommitted · not a repository, named Workspace', work: changeNoRepository, rootName: 'Workspace' },
-            { variant: 'uncommitted · listing failed, cut short', work: changeStale, rootName: undefined },
-            { variant: 'conversation · picked', work: changePicked, rootName: undefined },
-            { variant: 'conversation · a Markdown file picked', work: changeDocument, rootName: undefined },
-            { variant: 'conversation · nothing picked', work: changeEmpty, rootName: undefined },
+            { variant: 'uncommitted · live', work: changeUncommitted, rootName: undefined, narrow: false },
+            { variant: 'uncommitted · narrow, the tree hides, its control shows it over the diff', work: changeUncommitted, rootName: undefined, narrow: true },
+            { variant: 'uncommitted · not a repository, named Workspace', work: changeNoRepository, rootName: 'Workspace', narrow: false },
+            { variant: 'uncommitted · listing failed, cut short', work: changeStale, rootName: undefined, narrow: false },
+            { variant: 'conversation · picked', work: changePicked, rootName: undefined, narrow: false },
+            { variant: 'conversation · a Markdown file picked', work: changeDocument, rootName: undefined, narrow: false },
+            { variant: 'conversation · nothing picked', work: changeEmpty, rootName: undefined, narrow: false },
           ]"
           :key="specimen.variant"
           :variant="specimen.variant"
           wide
         >
-          <div class="gallery-frame flex h-[40rem] overflow-hidden">
+          <div
+            class="gallery-frame flex overflow-hidden"
+            :class="specimen.narrow ? 'h-[32rem] max-w-full resize-x' : 'h-[40rem]'"
+            :style="specimen.narrow ? { width: '30rem', minWidth: '16rem' } : undefined"
+          >
             <ChangeView
               class="w-full"
               v-model:tree="changeViewTree"
