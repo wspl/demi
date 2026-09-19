@@ -1,4 +1,4 @@
-use demi_command_service::protocol::Invocation;
+use demi_command_service::protocol::LocalInvocation;
 use demi_runner::connection::wire::{HelloRunner, HelloRunnerIdentity, JobExitOutput, WireBytes};
 use demi_runner::{
     commands::command_client::{Stdio, forward},
@@ -97,7 +97,8 @@ async fn backend_job_invokes_same_binary_alias_and_drain_releases_installation()
         // No stdin EOF is sent: --help must complete without waiting for input.
         send(
             &mut socket,
-            json!({"type":"job_start", "jobId":"job", "manifestHash":hash, "conversation":"conversation", "node":"node",
+            json!({"type":"job_start", "jobId":"job", "manifestHash":hash,
+            "context":{"conversation":"conversation", "caller":{"kind":"agent", "node":"node"}, "locale":{"timeZone":"UTC", "languages":["en-US"]}},
             "script":"fixture --help && printf done", "cwd":home, "env":{}}),
         )
         .await;
@@ -134,11 +135,7 @@ async fn backend_job_invokes_same_binary_alias_and_drain_releases_installation()
         let state = Arc::new(RunnerState::open(state_dir.clone()).await.unwrap());
         let active = state.active().await.unwrap();
         assert!(state.lock().is_err());
-        let request = Invocation {
-            caller: "runner-local".into(),
-            conversation: "runner-local".into(),
-            json: None,
-            edits: None,
+        let request = LocalInvocation {
             operation: "manage".into(),
             invocation_id: "drain".into(),
             args: json!({"secret":active.secret, "action":"drain"}),

@@ -1,4 +1,4 @@
-import type { NativeBinding } from '@demicodes/command-protocol'
+import type { CommandContext, NativeBinding } from '@demicodes/command-protocol'
 
 /** A writer for stdout or stderr: text is UTF-8, bytes pass through. */
 export type CommandWriter = (data: string | Uint8Array) => Promise<void> | void
@@ -13,6 +13,7 @@ export interface NativeInvocation {
   args: Record<string, unknown>
   cwd: string
   env: Record<string, string>
+  context: CommandContext
   stdin: AsyncIterable<Uint8Array>
   stdout: CommandWriter
   stderr: CommandWriter
@@ -37,6 +38,11 @@ export interface DispatchIO {
   stderr: CommandWriter
   cwd: string
   env: Record<string, string>
+  /**
+   * The conversation, caller and locale of the invoking work
+   * (`native-runtime.md` § Command context).
+   */
+  context: CommandContext
   signal?: AbortSignal
   /**
    * The executing leaf's hint, cleared when it settles; help and invalid

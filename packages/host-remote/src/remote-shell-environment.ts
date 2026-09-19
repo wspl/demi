@@ -1,3 +1,4 @@
+import type { CommandContext } from '@demicodes/command-protocol'
 import type { RemoteCommandCatalog } from './shell-environment-factory'
 import {
   DEFAULT_BINARY_LIMIT_BYTES,
@@ -31,8 +32,11 @@ import type { RemoteHost, RemoteJob, RemoteJobExit } from './remote-host'
 
 export interface RemoteShellEnvironmentOptions extends ShellEnvironmentOptions {
   host: RemoteHost
-  conversation: string
-  node: string
+  /**
+   * The command context for the next job, built by the backend when the job
+   * starts (`native-runtime.md` § Command context).
+   */
+  commandContext: () => Promise<CommandContext>
   commands?: RemoteCommandCatalog
   commandStorage?: (signal?: AbortSignal) => CommandStorage
   /** Publish edit snapshots before exposing the command as completed. */
@@ -78,8 +82,7 @@ const ABORT_GRACE_MS = 5_000
  * same shell; nothing else of the shell's state does.
  */
 export class RemoteShellEnvironment implements ShellEnvironment {
-  private readonly conversation: string
-  private readonly node: string
+  private readonly commandContext: RemoteShellEnvironmentOptions['commandContext']
   private readonly host: RemoteHost
   private readonly shellIdFactory: () => string
   private readonly commandIdFactory: () => string
@@ -102,8 +105,7 @@ export class RemoteShellEnvironment implements ShellEnvironment {
     this.retainEdits = options.retainEdits
     this.runJob = options.runJob
     this.host = options.host
-    this.conversation = options.conversation
-    this.node = options.node
+    this.commandContext = options.commandContext
     this.shellIdFactory = options.shellIdFactory
       ?? (() => globalThis.crypto.randomUUID())
     this.commandIdFactory = options.commandIdFactory
@@ -245,14 +247,15 @@ export class RemoteShellEnvironment implements ShellEnvironment {
     signal.addEventListener('abort', onAbort, { once: true })
     const execute = async () => {
       signal.throwIfAborted()
+      const context = await this.commandContext()
+      signal.throwIfAborted()
       const job = this.host.startJob({
         script,
         cwd: shell.cwd,
         env: { ...shell.env, PWD: shell.cwd },
         commands: this.commands,
         commandStorage: this.commandStorage?.(signal),
-        conversation: this.conversation,
-        node: this.node,
+        context,
       })
       running.job = job
       const head: { stdout: Uint8Array[]; stderr: Uint8Array[] } = { stdout: [], stderr: [] }
@@ -448,18 +451,12 @@ export class RemoteShellEnvironment implements ShellEnvironment {
     initialCwd?: string
   ): RemoteShell {
     const id = this.shellIdFactory()
-    const env: Record<string, string> = {
-      ...this.initialEnv,
-      DEMI_SHELL_ID: id
-    }
-    if (agentSessionId)
-      env.DEMI_SESSION_ID = agentSessionId
     const shell: RemoteShell = {
       id,
       agentSessionId: agentSessionId ?? null,
       commandStorageId: agentSessionId ?? id,
       cwd: initialCwd ?? this.host.defaultCwd,
-      env,
+      env: { ...this.initialEnv },
       exited: false,
     }
     this.shells.set(id, shell)

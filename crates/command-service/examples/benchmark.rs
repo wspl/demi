@@ -2,7 +2,7 @@
 use bytes::Bytes;
 use demi_command_service::{
     Client, Handler, InvocationContext, ServiceError,
-    protocol::{Completion, Invocation, Record},
+    protocol::{CommandCaller, CommandContext, CommandLocale, Completion, Invocation, Record},
     serve_stdio,
 };
 use std::{
@@ -23,6 +23,8 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 
 struct Fixture;
 impl Handler for Fixture {
+    type Metadata = Invocation;
+
     fn operations(&self) -> Vec<String> {
         vec!["echo".into(), "flood".into()]
     }
@@ -50,8 +52,7 @@ impl Handler for Fixture {
 
 fn request(operation: &str) -> Invocation {
     Invocation {
-        caller: "node".into(),
-        conversation: "conversation".into(),
+        context: context(),
         json: None,
         edits: None,
         operation: operation.into(),
@@ -223,5 +224,16 @@ async fn main() -> Result<(), Error> {
             let _cancelled_driver = driver.await;
             Err(format!("benchmark failed: {failure:?}").into())
         }
+    }
+}
+
+fn context() -> CommandContext {
+    CommandContext {
+        conversation: "conversation".into(),
+        caller: CommandCaller::agent("node"),
+        locale: CommandLocale {
+            time_zone: "UTC".into(),
+            languages: vec!["en-US".into()],
+        },
     }
 }

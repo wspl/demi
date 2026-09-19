@@ -8,7 +8,7 @@ mod patch;
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use bytes::Bytes;
-use demi_command_service::protocol::{CommandError, Completion};
+use demi_command_service::protocol::{CommandError, Completion, Invocation};
 use demi_command_service::{ConversationContext, Handler, InvocationContext, ServiceError};
 use tokio::{io::AsyncReadExt, sync::Mutex};
 
@@ -19,6 +19,8 @@ pub struct DemiCommands {
 }
 
 impl Handler for DemiCommands {
+    type Metadata = Invocation;
+
     fn conversation(
         &self,
         context: ConversationContext,

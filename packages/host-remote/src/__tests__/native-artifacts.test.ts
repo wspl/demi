@@ -6,6 +6,7 @@ import { memoryHostStore } from '@demicodes/shell/testing'
 import fixture from '../../../command-protocol/tests/fixtures/package.json'
 import { PipeBroker, devicePipes } from '../pipes'
 import { RemoteHost } from '../remote-host'
+import { TEST_COMMAND_CONTEXT } from '@demicodes/host-remote/testing'
 
 const descriptor = nativePackageSchema.parse(fixture.descriptor)
 
@@ -13,7 +14,7 @@ async function setup(resolveArtifact: Parameters<RemoteHost['startJob']>[0]['com
   const host = new RemoteHost({ defaultCwd: '/work', identity: { uid: 1, gid: 1, hostname: 'fixture', homeDir: '/work' }, store: memoryHostStore(), pipes: devicePipes(new PipeBroker(), 'unused') })
   const messages: BackendToRunnerMessage[] = []
   host.attach(message => messages.push(message))
-  host.startJob({ conversation: 'test-conversation', node: 'test-session', script: 'native', cwd: '/work', env: {}, commands: resolveArtifact })
+  host.startJob({ context: TEST_COMMAND_CONTEXT, script: 'native', cwd: '/work', env: {}, commands: resolveArtifact })
   const start = messages.find(message => message.type === 'job_start')!
   if (start.type !== 'job_start')
     throw new Error('Missing job start')

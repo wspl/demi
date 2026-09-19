@@ -185,6 +185,17 @@ impl Controller {
     }
 }
 
+/// The agent node a browser command acts for: tabs, debugging sessions and
+/// temporary tabs belong to it (`native-runtime.md` § Command context).
+pub(super) fn agent(context: &InvocationContext) -> Result<&str> {
+    context
+        .request
+        .context
+        .caller
+        .node()
+        .ok_or_else(|| BrowserError::Configuration("browser commands act for an agent".into()))
+}
+
 #[derive(Default)]
 pub(crate) struct Conversations {
     controllers: Mutex<HashMap<String, Arc<Controller>>>,
@@ -201,7 +212,7 @@ impl Conversations {
         let (controller, _command) = {
             let mut controllers = self.controllers.lock().await;
             let controller = controllers
-                .entry(context.request.conversation.clone())
+                .entry(context.request.context.conversation.clone())
                 .or_insert_with(|| {
                     Arc::new(Controller {
                         state: Mutex::new(State::Absent),
@@ -306,7 +317,7 @@ impl Conversations {
                     && let Some(tab) = details["tab"].as_str()
                 {
                     let callers = controller
-                        .debugging_callers(tab, Some(&context.request.caller))
+                        .debugging_callers(tab, context.request.context.caller.node())
                         .await;
                     if !callers.is_empty() {
                         details["debuggingCallers"] = serde_json::json!(callers);
@@ -363,7 +374,7 @@ impl Conversations {
             let (tab, url) = environment
                 .open_for(
                     &input.url,
-                    &context.request.caller,
+                    agent(context)?,
                     input.load.as_deref().unwrap_or("domcontentloaded"),
                     cancellation,
                     deadline,

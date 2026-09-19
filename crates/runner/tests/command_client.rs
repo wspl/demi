@@ -10,7 +10,7 @@ use std::{
 use bytes::Bytes;
 use demi_command_service::{
     Handler, InvocationContext, ServiceError,
-    protocol::{Completion, Invocation},
+    protocol::{Completion, LocalInvocation},
 };
 use demi_runner::{
     commands::command_client::{Stdio, forward},
@@ -23,6 +23,8 @@ use tokio_util::sync::CancellationToken;
 struct Commands;
 
 impl Handler for Commands {
+    type Metadata = LocalInvocation;
+
     fn operations(&self) -> Vec<String> {
         vec![
             "no-input".into(),
@@ -32,7 +34,7 @@ impl Handler for Commands {
     }
     fn invoke(
         &self,
-        mut context: InvocationContext,
+        mut context: InvocationContext<LocalInvocation>,
     ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
         Box::pin(async move {
             if context.request.operation == "pending-input" {
@@ -66,12 +68,8 @@ impl AsyncRead for NeverRead {
     }
 }
 
-fn invocation(operation: &str) -> Invocation {
-    Invocation {
-        caller: "runner-local".into(),
-        conversation: "runner-local".into(),
-        json: None,
-        edits: None,
+fn invocation(operation: &str) -> LocalInvocation {
+    LocalInvocation {
         operation: operation.into(),
         invocation_id: operation.into(),
         args: serde_json::json!({}),

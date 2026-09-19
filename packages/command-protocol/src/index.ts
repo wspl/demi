@@ -126,17 +126,49 @@ export const serviceInfoSchema = z.object({
   protocolVersion: z.number().int().nonnegative(),
   operations: z.array(z.string()),
 }).strict()
+/**
+ * Who started the work: an agent node, or the conversation's user through a
+ * user stream (`native-runtime.md` § Command context).
+ */
+export const commandCallerSchema = z.union([
+  z.strictObject({ kind: z.literal('agent'), node: z.string().min(1) }),
+  z.strictObject({ kind: z.literal('user') }),
+])
+export const COMMAND_LOCALE_LANGUAGES = 16
+/** An IANA time zone and BCP 47 language tags in preference order. */
+export const commandLocaleSchema = z.strictObject({
+  timeZone: z.string().min(1).max(64),
+  languages: z.array(z.string().min(1).max(64)).min(1).max(COMMAND_LOCALE_LANGUAGES),
+})
+/**
+ * What a declared command knows beyond its arguments. The backend is its only
+ * source; nothing reads it from the environment.
+ */
+export const commandContextSchema = z.strictObject({
+  conversation: z.string().min(1),
+  caller: commandCallerSchema,
+  locale: commandLocaleSchema,
+})
+export type CommandCaller = z.infer<typeof commandCallerSchema>
+export type CommandLocale = z.infer<typeof commandLocaleSchema>
+export type CommandContext = z.infer<typeof commandContextSchema>
+
 export const invocationSchema = z.object({
   operation: z.string().min(1),
   invocationId: z.string().min(1),
-  conversation: z.string().min(1),
-  caller: z.string().min(1),
+  context: commandContextSchema,
   args: commandArgsSchema,
   cwd: z.string().min(1).regex(/^[^\0]*$/),
   env: z.record(z.string().min(1).regex(/^[^\0=]+$/), z.string().regex(/^[^\0]*$/)),
   edits: editContextSchema.optional(),
   json: z.boolean().optional(),
 }).strict()
+/**
+ * Raw CLI metadata from the local command client (`commands.md` § External
+ * command clients). The client names only its opaque execution context, in
+ * `args`; the runner finds the command context through it.
+ */
+export const localInvocationSchema = invocationSchema.omit({ context: true, edits: true, json: true })
 export const commandErrorSchema = z.object({
   code: z.string(),
   message: z.string(),

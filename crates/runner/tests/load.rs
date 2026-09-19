@@ -5,7 +5,10 @@
 
 use demi_command_service::{
     Client,
-    protocol::{Invocation, PackageArtifact, PackageDescriptor, Record},
+    protocol::{
+        CommandCaller, CommandContext, CommandLocale, Invocation, LocalInvocation, PackageArtifact,
+        PackageDescriptor, Record,
+    },
 };
 use demi_runner::{
     commands::artifacts::Artifacts,
@@ -48,10 +51,20 @@ impl ArtifactResolver for Local {
     }
 }
 
+fn command_context(conversation: &str) -> CommandContext {
+    CommandContext {
+        conversation: conversation.into(),
+        caller: CommandCaller::agent("node"),
+        locale: CommandLocale {
+            time_zone: "UTC".into(),
+            languages: vec!["en-US".into()],
+        },
+    }
+}
+
 fn invocation(operation: &str, conversation: &str) -> Invocation {
     Invocation {
-        conversation: conversation.into(),
-        caller: "node".into(),
+        context: command_context(conversation),
         operation: operation.into(),
         invocation_id: operation.into(),
         args: json!({}),
@@ -192,16 +205,13 @@ async fn backend_commands_are_never_turned_away() {
             .create(
                 "job".into(),
                 &hash,
-                "conversation".into(),
-                "session".into(),
-                &BTreeMap::from([
-                    ("DEMI_SESSION_ID".into(), "session".into()),
-                    ("DEMI_SHELL_ID".into(), "shell".into()),
-                ]),
+                command_context("conversation"),
             )
             .await
             .unwrap();
-        let request = Invocation {
+        let request = LocalInvocation {
+            operation: "raw".into(),
+            invocation_id: "raw".into(),
             args: serde_json::to_value(RawCommand {
                 context: context.id.clone(),
                 root: "fixture".into(),
@@ -209,9 +219,8 @@ async fn backend_commands_are_never_turned_away() {
                 live: true,
             })
             .unwrap(),
-            operation: "raw".into(),
             cwd: cwd.to_string_lossy().into_owned(),
-            ..invocation("raw", "runner-local")
+            env: BTreeMap::new(),
         };
         let cancel = CancellationToken::new();
         let mut running = tokio::task::JoinSet::new();

@@ -3,7 +3,10 @@
 //! closes, then finishes (`runner.md` § Load). One test in its own binary: it
 //! lowers the process's open-file limit and holds every remaining descriptor.
 
-use demi_command_service::protocol::{Invocation, PackageArtifact, PackageDescriptor};
+use demi_command_service::protocol::{
+    CommandCaller, CommandContext, CommandLocale, LocalInvocation, PackageArtifact,
+    PackageDescriptor,
+};
 use demi_runner::{
     commands::artifacts::Artifacts,
     commands::cache::{ArtifactResolver, ArtifactSource, RuntimeError},
@@ -479,23 +482,10 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
     });
     let server = Server::start(dispatcher).await.unwrap();
     let (context, _lease) = contexts
-        .create(
-            "job".into(),
-            &hash,
-            "conversation".into(),
-            "session".into(),
-            &BTreeMap::from([
-                ("DEMI_SESSION_ID".into(), "session".into()),
-                ("DEMI_SHELL_ID".into(), "shell".into()),
-            ]),
-        )
+        .create("job".into(), &hash, command_context())
         .await
         .unwrap();
-    let request = Invocation {
-        caller: "runner-local".into(),
-        conversation: "runner-local".into(),
-        json: None,
-        edits: None,
+    let request = LocalInvocation {
         operation: "raw".into(),
         invocation_id: "invocation".into(),
         args: serde_json::to_value(RawCommand {
@@ -540,4 +530,15 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
     calls.detach();
     server.close().await.unwrap();
     services.close().await;
+}
+
+fn command_context() -> CommandContext {
+    CommandContext {
+        conversation: "conversation".into(),
+        caller: CommandCaller::agent("session"),
+        locale: CommandLocale {
+            time_zone: "UTC".into(),
+            languages: vec!["en-US".into()],
+        },
+    }
 }

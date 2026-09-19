@@ -8,7 +8,7 @@
 import { z } from 'zod'
 import {
   artifactDigestSchema, artifactLocationSchema, nativeTargetSchema,
-  editFileSchema, EDIT_JOB_FILES
+  editFileSchema, EDIT_JOB_FILES, commandContextSchema
 } from '@demicodes/command-protocol'
 import type {
   HostDirent,
@@ -451,7 +451,9 @@ export const runnerToBackendMessageSchema = z.union([
     filesTruncated: z.boolean(),
   }),
   /**
-   * An `rpc` command invoked on the target. `stdin` says whether the process
+   * An `rpc` command invoked on the target. It names only its job: the
+   * backend's record of the job holds the command context
+   * (`native-runtime.md` § Command context). `stdin` says whether the process
    * has a pipe on fd 0; the pipe itself travels as an HTTP stream once
    * `rpc_pipes` names it (`runner.md` § Pipes). The live stdin follows as
    * `rpc_stdin` frames.
@@ -460,8 +462,6 @@ export const runnerToBackendMessageSchema = z.union([
     type: z.literal('rpc_call'),
     jobId: z.string(),
     callId: z.string(),
-    agentSessionId: z.string(),
-    shellId: z.string(),
     root: z.string(),
     path: z.array(z.string()),
     argv: z.array(z.string()),
@@ -571,16 +571,16 @@ export const backendToRunnerMessageSchema = z.union([
       signal: z.string().optional()
     }),
     /**
-     * One job: `bash -c script` in `cwd` with exactly `env`; the shell ids
-     * ride in `env`. `stdin` / `stdout` attach the job's fd 0 / fd 1 to pipes
-     * whose other ends are elsewhere (`runner.md` § Pipes).
+     * One job: `bash -c script` in `cwd` with exactly `env`. Its declared
+     * commands receive `context` (`native-runtime.md` § Command context).
+     * `stdin` / `stdout` attach the job's fd 0 / fd 1 to pipes whose other
+     * ends are elsewhere (`runner.md` § Pipes).
      */
     z.strictObject({
       type: z.literal('job_start'),
       jobId: z.string(),
       manifestHash: artifactDigestSchema.optional(),
-      conversation: z.string().min(1),
-      node: z.string().min(1),
+      context: commandContextSchema,
       script: z.string(),
       cwd: z.string(),
       env: z.record(z.string(), z.string()),

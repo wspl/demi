@@ -11,6 +11,8 @@ const repositoryRoot = resolve(import.meta.dir, '../../..')
 let binary: Promise<string> | undefined
 let packageFixture: ReturnType<typeof buildNativePackageFixture> | undefined
 
+export { TEST_COMMAND_CONTEXT } from '@demicodes/shell/testing'
+
 export function nativePackageFixture() {
   return packageFixture ??= buildNativePackageFixture(repositoryRoot)
 }

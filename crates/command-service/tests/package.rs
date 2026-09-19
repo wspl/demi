@@ -58,13 +58,55 @@ fn generated_deserialization_enforces_package_value_constraints() {
 #[test]
 fn generated_invocation_checks_nested_values_and_optional_nulls() {
     use demi_command_service::protocol::{Completion, Invocation};
-    let valid = serde_json::json!({"operation":"read", "invocationId":"call", "conversation":"conversation", "caller":"node", "args":{}, "cwd":"/work", "env":{}});
+    let context = serde_json::json!({
+        "conversation": "conversation",
+        "caller": {"kind": "agent", "node": "node"},
+        "locale": {"timeZone": "UTC", "languages": ["en-US"]},
+    });
+    let valid = serde_json::json!({"operation":"read", "invocationId":"call", "context":context, "args":{}, "cwd":"/work", "env":{}});
     assert!(serde_json::from_value::<Invocation>(valid.clone()).is_ok());
+    let mut user = valid.clone();
+    user["context"]["caller"] = serde_json::json!({"kind": "user"});
+    assert!(serde_json::from_value::<Invocation>(user).is_ok());
     for (field, replacement) in [
         ("operation", serde_json::json!("")),
         ("invocationId", serde_json::json!("")),
-        ("conversation", serde_json::json!("")),
-        ("caller", serde_json::json!("")),
+        (
+            "context",
+            serde_json::json!({"conversation": "", "caller": context["caller"], "locale": context["locale"]}),
+        ),
+        (
+            "context",
+            serde_json::json!({"conversation": "c", "caller": {"kind": "agent"}, "locale": context["locale"]}),
+        ),
+        (
+            "context",
+            serde_json::json!({"conversation": "c", "caller": {"kind": "agent", "node": ""}, "locale": context["locale"]}),
+        ),
+        (
+            "context",
+            serde_json::json!({"conversation": "c", "caller": {"kind": "user", "node": "n"}, "locale": context["locale"]}),
+        ),
+        (
+            "context",
+            serde_json::json!({"conversation": "c", "caller": {"kind": "system"}, "locale": context["locale"]}),
+        ),
+        (
+            "context",
+            serde_json::json!({"conversation": "c", "caller": context["caller"], "locale": {"timeZone": "UTC", "languages": []}}),
+        ),
+        (
+            "context",
+            serde_json::json!({"conversation": "c", "caller": context["caller"], "locale": {"timeZone": "", "languages": ["en"]}}),
+        ),
+        (
+            "context",
+            serde_json::json!({"conversation": "c", "caller": context["caller"], "locale": {"timeZone": "UTC", "languages": vec!["en"; 17]}}),
+        ),
+        (
+            "context",
+            serde_json::json!({"conversation": "c", "caller": context["caller"]}),
+        ),
         ("args", serde_json::json!([])),
         ("cwd", serde_json::json!("bad\0path")),
         ("env", serde_json::json!({"A=B":"value"})),
@@ -77,11 +119,9 @@ fn generated_invocation_checks_nested_values_and_optional_nulls() {
             "{field}"
         );
     }
-    for field in ["conversation", "caller"] {
-        let mut missing = valid.clone();
-        missing.as_object_mut().unwrap().remove(field);
-        assert!(serde_json::from_value::<Invocation>(missing).is_err());
-    }
+    let mut missing = valid.clone();
+    missing.as_object_mut().unwrap().remove("context");
+    assert!(serde_json::from_value::<Invocation>(missing).is_err());
     let mut grant = valid.clone();
     grant["resource"] = serde_json::json!({"id":"old", "kind":"browser"});
     assert!(serde_json::from_value::<Invocation>(grant).is_err());

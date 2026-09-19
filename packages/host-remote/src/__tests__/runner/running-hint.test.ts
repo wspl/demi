@@ -12,7 +12,7 @@ import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 import { type Command } from '@demicodes/shell'
 import { memoryHostStore } from '@demicodes/shell/testing'
 import { waitFor } from '@demicodes/utils'
-import { nativeCommandFixture, servePipe, startRunner, type Runner } from '../../testing'
+import { nativeCommandFixture, servePipe, startRunner, type Runner, TEST_COMMAND_CONTEXT } from '../../testing'
 
 const wire = createRunnerWire(msgpackCodec)
 
@@ -54,7 +54,7 @@ test(
       store: memoryHostStore(),
       pipes: devicePipes(pipes, device.id),
     })
-    const shell = new RemoteShellEnvironment({ conversation: 'test-conversation', node: 'test-session', host, commands: { manifest, resolveArtifact: native.resolveArtifact } })
+    const shell = new RemoteShellEnvironment({ commandContext: async () => TEST_COMMAND_CONTEXT, host, commands: { manifest, resolveArtifact: native.resolveArtifact } })
     const inbound: RunnerToBackendMessage[] = []
     const calls = new Map<string, {
       stream: ReadableStream<Uint8Array>;

@@ -11,7 +11,7 @@ import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 import { type Command } from '@demicodes/shell'
 import { memoryHostStore } from '@demicodes/shell/testing'
 import { waitFor } from '@demicodes/utils'
-import { runnerBinary, startRunner, nativeCommandFixture } from '../../testing'
+import { runnerBinary, startRunner, nativeCommandFixture, TEST_COMMAND_CONTEXT } from '../../testing'
 
 async function fixture(label: string, commands: Command[] = []) {
   const home = await realpath(await mkdtemp(join(tmpdir(), 'demi-native-home-')))
@@ -38,7 +38,7 @@ async function fixture(label: string, commands: Command[] = []) {
     store: memoryHostStore(),
     pipes: devicePipes(new PipeBroker(), 'unused'),
   })
-  const shell = new RemoteShellEnvironment({ conversation: 'test-conversation', node: 'test-session', host, commands: catalog })
+  const shell = new RemoteShellEnvironment({ commandContext: async () => TEST_COMMAND_CONTEXT, host, commands: catalog })
   let sendManifest: (value: Manifest) => void
   const server = Bun.serve(
     { port: 0, fetch: (request, server) => server.upgrade(request) ? undefined : new Response(
@@ -99,15 +99,13 @@ test(
         })
       ])
       expect(JSON.parse(calls[0]!.stdout.delta)).toEqual({
-        conversation: 'test-conversation',
-        caller: 'test-session',
+        context: TEST_COMMAND_CONTEXT,
         label: 'A',
         cwd: a.home,
         value: 'alpha'
       })
       expect(JSON.parse(calls[1]!.stdout.delta)).toEqual({
-        conversation: 'test-conversation',
-        caller: 'test-session',
+        context: TEST_COMMAND_CONTEXT,
         label: 'B',
         cwd: b.home,
         value: 'beta'

@@ -14,8 +14,8 @@ use tokio_util::task::AbortOnDropHandle;
 
 use crate::protocol::{
     CONVERSATION_PATH, CommandError, Completion, ConversationRequest, INFO_PATH, INVOKE_PATH,
-    Invocation, MAX_METADATA_BYTES, MAX_RECORD_BYTES, Record, SHUTDOWN_PATH,
-    ServiceInfo, VERSION,
+    Invocation, MAX_METADATA_BYTES, MAX_RECORD_BYTES, Metadata, Record, SHUTDOWN_PATH, ServiceInfo,
+    VERSION,
 };
 use crate::{
     Input, ServiceError,
@@ -26,8 +26,8 @@ const OUTPUT_QUEUE_RECORDS: usize = 4;
 const METADATA_TIMEOUT: Duration = Duration::from_secs(10);
 const CANCEL_TIMEOUT: Duration = Duration::from_secs(5);
 
-pub struct InvocationContext {
-    pub request: Invocation,
+pub struct InvocationContext<M = Invocation> {
+    pub request: M,
     pub input: Input,
     pub output: Output,
     pub cancellation: CancellationToken,
@@ -43,10 +43,13 @@ pub struct ConversationContext {
 /// Handlers own per-invocation state and must cooperate with cancellation.
 /// Blocking and CPU work must run away from the connection's async worker.
 pub trait Handler: Send + Sync + 'static {
+    /// What opens each invocation: [`Invocation`] for a native service.
+    type Metadata: Metadata;
+
     fn operations(&self) -> Vec<String>;
     fn invoke(
         &self,
-        context: InvocationContext,
+        context: InvocationContext<Self::Metadata>,
     ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>>;
 
     /// Trusted parent-only lifecycle calls, never declared CLI operations.
@@ -130,21 +133,23 @@ impl Output {
 
 /// Serves one parent-owned connection and joins cooperative invocation tasks.
 /// A cancellation deadline fault requires the process owner to retire the service.
-pub async fn serve<T>(io: T, handler: Arc<dyn Handler>) -> Result<(), ServiceError>
+pub async fn serve<T, H>(io: T, handler: Arc<H>) -> Result<(), ServiceError>
 where
     T: AsyncRead + AsyncWrite + Unpin,
+    H: Handler + ?Sized,
 {
     serve_cancellable(io, handler, CancellationToken::new()).await
 }
 
 /// Stops accepting requests on owner cancellation, then cancels and joins handlers.
-pub async fn serve_cancellable<T>(
+pub async fn serve_cancellable<T, H>(
     io: T,
-    handler: Arc<dyn Handler>,
+    handler: Arc<H>,
     owner: CancellationToken,
 ) -> Result<(), ServiceError>
 where
     T: AsyncRead + AsyncWrite + Unpin,
+    H: Handler + ?Sized,
 {
     let operations = handler.operations();
     let unique: HashSet<_> = operations.iter().collect();
@@ -269,18 +274,18 @@ fn reject(response: &mut SendResponse<Bytes>, status: StatusCode) -> Result<(), 
     Ok(())
 }
 
-async fn invoke(
+async fn invoke<H: Handler + ?Sized>(
     request: Request<h2::RecvStream>,
     mut response: SendResponse<Bytes>,
-    handler: Arc<dyn Handler>,
+    handler: Arc<H>,
     operations: Vec<String>,
     cancellation: CancellationToken,
     conversation: bool,
 ) -> Result<(), ServiceError> {
     let _cancel_on_drop = cancellation.drop_guard_ref();
     let mut input = Input::new(request.into_body());
-    enum Call {
-        Invocation(Box<Invocation>),
+    enum Call<M> {
+        Invocation(Box<M>),
         Conversation(ConversationRequest),
     }
     let metadata = async {
@@ -289,7 +294,7 @@ async fn invoke(
             request.validate()?;
             Ok::<_, ServiceError>(Call::Conversation(request))
         } else {
-            let request: Invocation = input.metadata().await?;
+            let request: H::Metadata = input.metadata().await?;
             request.validate()?;
             Ok(Call::Invocation(Box::new(request)))
         }
@@ -303,7 +308,9 @@ async fn invoke(
         _ => return reject(&mut response, StatusCode::BAD_REQUEST),
     };
     if let Call::Invocation(request) = &call
-        && !operations.contains(&request.operation)
+        && !operations
+            .iter()
+            .any(|operation| operation == request.operation())
     {
         return reject(&mut response, StatusCode::NOT_FOUND);
     }

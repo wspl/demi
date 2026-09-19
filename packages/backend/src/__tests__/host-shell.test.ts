@@ -260,8 +260,8 @@ test(
       const turn = frames.slice(from)
       for (const { message } of turn) {
         if (message.type === 'job_start') {
-          expect(message.conversation).toBe(conversation.id)
-          expect(message.node).toBe(conversation.id)
+          expect(message.context.conversation).toBe(conversation.id)
+          expect(message.context.caller).toEqual({ kind: 'agent', node: conversation.id })
         }
       }
       const of = (deviceId: string, direction: 'in' | 'out') => turn.filter(

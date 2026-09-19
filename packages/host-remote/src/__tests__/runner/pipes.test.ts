@@ -8,7 +8,7 @@ import {
 } from '@demicodes/runner-protocol'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 import { deferred, waitFor } from '@demicodes/utils'
-import { startRunner } from '../../testing'
+import { startRunner, TEST_COMMAND_CONTEXT } from '../../testing'
 
 // The runner's ends of pipes (`runner.md` § Pipes): a job started with
 // `stdin` GETs the origin-relative URL with its device token into the job's
@@ -101,7 +101,7 @@ test(
     // In through fd 0, out through fd 1: `tr` upper-cases the 3 MB as it streams.
     uploads.set('/api/pipes/out1', deferred<Uint8Array>())
     send({
-      type: 'job_start', conversation: 'test-conversation', node: 'test-session',
+      type: 'job_start', context: TEST_COMMAND_CONTEXT,
       jobId: 'j1',
       script: 'tr a-z A-Z',
       cwd: runnerDir,
@@ -148,7 +148,7 @@ test(
 
     // A refused stdout end is reported and released: the job still runs to its end instead of blocking on a reader that left.
     send({
-      type: 'job_start', conversation: 'test-conversation', node: 'test-session',
+      type: 'job_start', context: TEST_COMMAND_CONTEXT,
       jobId: 'j2',
       script: 'head -c 2000000 /dev/zero; echo done >&2',
       cwd: runnerDir,
@@ -171,7 +171,7 @@ test(
 
     // A refused stdin end closes the job's stdin, so a reader of it ends rather than waits.
     send({
-      type: 'job_start', conversation: 'test-conversation', node: 'test-session',
+      type: 'job_start', context: TEST_COMMAND_CONTEXT,
       jobId: 'j3',
       script: 'wc -c',
       cwd: runnerDir,
@@ -190,7 +190,7 @@ test(
 
     // Refusal before the first output byte cancels a pending read without stopping the job log.
     send({
-      type: 'job_start', conversation: 'test-conversation', node: 'test-session', jobId: 'j4', script: 'sleep 0.1; head -c 2000000 /dev/zero',
+      type: 'job_start', context: TEST_COMMAND_CONTEXT, jobId: 'j4', script: 'sleep 0.1; head -c 2000000 /dev/zero',
       cwd: runnerDir, env: {
         PATH: process.env.PATH ?? '/usr/bin:/bin',
         HOME: runnerDir

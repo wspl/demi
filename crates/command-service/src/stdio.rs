@@ -6,7 +6,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 
 /// The executable owns the process lifetime. On Windows it must exit after this
 /// returns to release a synchronous input worker still waiting on the parent.
-pub async fn serve_stdio(handler: Arc<dyn Handler>) -> Result<(), ServiceError> {
+pub async fn serve_stdio<H: Handler + ?Sized>(handler: Arc<H>) -> Result<(), ServiceError> {
     crate::serve(transport()?, handler).await
 }
 

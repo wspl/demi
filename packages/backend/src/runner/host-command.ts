@@ -171,7 +171,7 @@ async function runOnHost(
   conversationId: string,
   target: ReachableHost,
   script: string,
-  ctx: Pick<CommandRunContext, 'io' | 'stdin' | 'env' | 'stdinStream' | 'signal' | 'storage'>,
+  ctx: Pick<CommandRunContext, 'io' | 'stdin' | 'context' | 'stdinStream' | 'signal' | 'storage'>,
 ): Promise<{ exitCode: number }> {
   return deps.withHost(conversationId, async host => {
     if (ctx.signal.aborted) return { exitCode: 130 }
@@ -179,19 +179,19 @@ async function runOnHost(
       await ctx.io.stderr(`host shell: host ${target.deviceId} is offline\n`)
       return { exitCode: 1 }
     }
-    const env: Record<string, string> = { DEMI_SESSION_ID: ctx.env.DEMI_SESSION_ID ??
-        conversationId }
-    if (ctx.env.DEMI_SHELL_ID)
-      env.DEMI_SHELL_ID = ctx.env.DEMI_SHELL_ID
-    const commands = await deps.catalogFor(env.DEMI_SESSION_ID!)
+    // The job carries its invoking job's context (`native-runtime.md`
+    // § Command context), and with it that agent's commands.
+    const { caller } = ctx.context
+    if (caller.kind !== 'agent')
+      throw new Error('host shell runs for an agent')
+    const commands = await deps.catalogFor(caller.node)
     const { stdin, stdout } = attachEnds(ctx.io, target.deviceId)
     const job = host.startJob({
-      conversation: conversationId,
-      node: env.DEMI_SESSION_ID!,
+      context: ctx.context,
       commands,
       script,
       cwd: target.path,
-      env,
+      env: {},
       commandStorage: ctx.storage,
       ...(stdin ? { stdin: stdin.ref() } : {}),
       stdout: stdout.ref()

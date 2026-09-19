@@ -26,7 +26,7 @@ export function settingsRoutes(options: {
     if (!parsed.success)
       return c.json({
         code: 'invalid_body',
-        message: 'Expected appearance and/or shortcut overrides'
+        message: 'Expected appearance, shortcut, model or locale overrides'
       }, 400)
     return c.json(
       { preferences: await options.control.patchUserPreferences(

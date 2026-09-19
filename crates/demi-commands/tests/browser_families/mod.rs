@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, future::Future, sync::Arc};
 
 use demi_command_service::{
     Handler, Input, InvocationContext, Output, ServiceError,
-    protocol::{Invocation, Record},
+    protocol::{CommandCaller, CommandContext, CommandLocale, Invocation, Record},
 };
 use demi_commands::DemiCommands;
 use serde_json::{Value, json};
@@ -49,8 +49,14 @@ impl BrowserFixture {
             request: Invocation {
                 operation: operation.into(),
                 invocation_id: uuid::Uuid::new_v4().to_string(),
-                caller: self.caller.clone(),
-                conversation: self.conversation.clone(),
+                context: CommandContext {
+                    conversation: self.conversation.clone(),
+                    caller: CommandCaller::agent(self.caller.clone()),
+                    locale: CommandLocale {
+                        time_zone: "UTC".into(),
+                        languages: vec!["en-US".into()],
+                    },
+                },
                 json: Some(true),
                 edits: None,
                 args,

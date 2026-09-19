@@ -10,7 +10,7 @@ import {
 } from '@demicodes/runner-protocol'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 import { waitFor } from '@demicodes/utils'
-import { startRunner } from '../../testing'
+import { startRunner, TEST_COMMAND_CONTEXT } from '../../testing'
 
 const wire = createRunnerWire(msgpackCodec)
 
@@ -52,7 +52,7 @@ test(
         const start = received.length
         const script = 'printf ready; sleep 2'
         send(kind === 'job'
-          ? { type: 'job_start', conversation: 'test-conversation', node: 'test-session', jobId: kind, script, cwd: home, env: {} }
+          ? { type: 'job_start', context: TEST_COMMAND_CONTEXT, jobId: kind, script, cwd: home, env: {} }
           : {
             type: 'spawn',
             spawnId: kind,

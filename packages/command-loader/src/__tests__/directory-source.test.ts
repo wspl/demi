@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { LocalHost } from '@demicodes/host-remote/testing'
+import { TEST_COMMAND_CONTEXT } from '@demicodes/shell/testing'
 import { emptyByteStream } from '@demicodes/utils'
 import { buildManifest } from '../manifest/build'
 import { createLoader } from '../loader/loader'
@@ -42,6 +43,7 @@ test(
       stderr: () => {},
       cwd: root,
       env: {},
+      context: TEST_COMMAND_CONTEXT,
     })
     expect(code).toBe(0)
     expect(stdout).toBe(`copied in.txt -> out.txt in ${root}\n`)

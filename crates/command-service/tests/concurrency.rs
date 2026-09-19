@@ -3,7 +3,9 @@
 use std::{collections::BTreeMap, future::Future, pin::Pin, sync::Arc, time::Duration};
 
 use bytes::Bytes;
-use demi_command_service::protocol::{Completion, Invocation, Record};
+use demi_command_service::protocol::{
+    CommandCaller, CommandContext, CommandLocale, Completion, Invocation, Record,
+};
 use demi_command_service::{
     Client, CommandInput, CommandOutput, Handler, InvocationContext, ServiceError, serve,
 };
@@ -12,6 +14,8 @@ use tokio::task::JoinSet;
 struct Fixture;
 
 impl Handler for Fixture {
+    type Metadata = Invocation;
+
     fn operations(&self) -> Vec<String> {
         ["hold", "short", "flood"].map(String::from).to_vec()
     }
@@ -42,8 +46,7 @@ impl Handler for Fixture {
 
 fn request(operation: &str) -> Invocation {
     Invocation {
-        caller: "node".into(),
-        conversation: "conversation".into(),
+        context: context(),
         json: None,
         edits: None,
         operation: operation.into(),
@@ -203,4 +206,15 @@ async fn many_callers_back_to_back_all_succeed() {
     })
     .await
     .unwrap();
+}
+
+fn context() -> CommandContext {
+    CommandContext {
+        conversation: "conversation".into(),
+        caller: CommandCaller::agent("node"),
+        locale: CommandLocale {
+            time_zone: "UTC".into(),
+            languages: vec!["en-US".into()],
+        },
+    }
 }

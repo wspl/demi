@@ -354,34 +354,23 @@ impl Runtime {
                     let mut lease: Option<Box<dyn Send>> = None;
                     if let Inbound::JobStart {
                         job_id,
-                        manifest_hash,
+                        manifest_hash: Some(hash),
                         env,
-                        conversation,
-                        node,
+                        context,
                         ..
                     } = &message
                     {
-                        environment.insert("DEMI_CONVERSATION_ID".into(), conversation.clone());
-                        environment.insert("DEMI_AGENT_NODE_ID".into(), node.clone());
-                        if let Some(hash) = manifest_hash {
-                            let (context, lifetime) = self
-                                .contexts
-                                .create(
-                                    job_id.clone(),
-                                    hash,
-                                    conversation.clone(),
-                                    node.clone(),
-                                    env,
-                                )
-                                .await?;
-                            let path = env.get("PATH").or_else(|| self.options.env.get("PATH"));
-                            environment.extend(context.environment(
-                                self.server.endpoint(),
-                                &self.state.root.to_string_lossy(),
-                                path.map(String::as_str),
-                            )?);
-                            lease = Some(Box::new(lifetime));
-                        }
+                        let (context, lifetime) = self
+                            .contexts
+                            .create(job_id.clone(), hash, context.clone())
+                            .await?;
+                        let path = env.get("PATH").or_else(|| self.options.env.get("PATH"));
+                        environment.extend(context.environment(
+                            self.server.endpoint(),
+                            &self.state.root.to_string_lossy(),
+                            path.map(String::as_str),
+                        )?);
+                        lease = Some(Box::new(lifetime));
                     }
                     if let Inbound::JobKill { job_id, .. } = &message {
                         self.contexts.cancel_owner(&format!("job:{job_id}"));

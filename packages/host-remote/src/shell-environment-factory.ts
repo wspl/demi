@@ -1,4 +1,4 @@
-import { nativePackageSchema, type ArtifactResolver, type NativePackage } from '@demicodes/command-protocol'
+import { nativePackageSchema, type ArtifactResolver, type CommandContext, type NativePackage } from '@demicodes/command-protocol'
 import { buildManifest, type Manifest } from '@demicodes/command-loader'
 import type { CommandRegistry, CommandStorage, Host, ShellEnvironmentOptions } from '@demicodes/shell'
 import { RemoteHost } from './remote-host'
@@ -18,6 +18,8 @@ export interface RemoteShellEnvironmentFactoryOptions {
 export interface RemoteShellEnvironmentContext {
   rootSessionId: string
   agentSessionId: string
+  /** Builds each job's command context (`native-runtime.md` § Command context). */
+  commandContext: () => Promise<CommandContext>
   host: Host
   commands: Pick<CommandRegistry, 'list'>
   commandStorage(signal?: AbortSignal): CommandStorage
@@ -41,8 +43,7 @@ export function createRemoteShellEnvironmentFactory(options: RemoteShellEnvironm
     return new RemoteShellEnvironment({
       ...context.shell,
       host: context.host,
-      conversation: context.rootSessionId,
-      node: context.agentSessionId,
+      commandContext: context.commandContext,
       commandStorage: context.commandStorage,
       retainEdits: context.retainEdits,
       runJob: context.runJob,

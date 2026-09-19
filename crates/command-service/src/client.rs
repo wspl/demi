@@ -3,9 +3,9 @@ use http::{Method, Request};
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::protocol::{
-    CONVERSATION_PATH, ConversationRequest, INFO_PATH, INVOKE_PATH, Invocation,
-    MAX_METADATA_BYTES, MAX_RECORD_BYTES, ProtocolError, Record, RecordDecoder, SHUTDOWN_PATH,
-    ServiceInfo, VERSION,
+    CONVERSATION_PATH, ConversationRequest, INFO_PATH, INVOKE_PATH, MAX_METADATA_BYTES,
+    MAX_RECORD_BYTES, Metadata, ProtocolError, Record, RecordDecoder, SHUTDOWN_PATH, ServiceInfo,
+    VERSION,
 };
 use crate::{
     ServiceError,
@@ -63,7 +63,7 @@ impl Client {
 
     pub async fn invoke(
         &self,
-        invocation: &Invocation,
+        invocation: &impl Metadata,
     ) -> Result<(CommandInput, CommandOutput), ServiceError> {
         self.invoke_at(INVOKE_PATH, invocation.encode()?).await
     }

@@ -83,8 +83,6 @@ test('runner messages round-trip through the MessagePack wire', () => {
     type: 'rpc_call',
     jobId: 'j1',
     callId: 'c9',
-    agentSessionId: 'a',
-    shellId: 's',
     root: 'demi',
     path: ['demi', 'file', 'write'],
     argv: ['demi', 'file', 'write', 'x'],
@@ -105,7 +103,12 @@ test('runner messages round-trip through the MessagePack wire', () => {
   }
   expect(roundTrip(pipes)).toEqual(pipes)
   const job: RunnerProtocolMessage = {
-    type: 'job_start', conversation: 'test-conversation', node: 'test-session',
+    type: 'job_start',
+    context: {
+      conversation: 'test-conversation',
+      caller: { kind: 'agent', node: 'test-session' },
+      locale: { timeZone: 'UTC', languages: ['en-US'] }
+    },
     jobId: 'j1',
     script: 'tar x',
     cwd: '/work',
@@ -212,12 +215,24 @@ test(
   }
 )
 
-test('job identity is required and conversation release replaces grants', () => {
-  const job = { type: 'job_start', jobId: 'job', script: 'true', cwd: '/', env: {} }
+test('a job carries its command context and conversation release replaces grants', () => {
+  const job = { type: 'job_start', jobId: 'job', script: 'true', cwd: '/', env: {} } as const
   expect(() => wire.decodeBackendToRunner(msgpackCodec.encode(job))).toThrow('Malformed')
-  for (const identity of [{ conversation: '', node: 'node' }, { conversation: 'conversation', node: '' }]) {
-    expect(() => wire.decodeBackendToRunner(msgpackCodec.encode({ ...job, ...identity }))).toThrow('Malformed')
+  const locale = { timeZone: 'UTC', languages: ['en-US'] }
+  const agent = { kind: 'agent', node: 'node' } as const
+  for (const context of [
+    { conversation: '', caller: agent, locale },
+    { conversation: 'conversation', caller: { kind: 'agent', node: '' }, locale },
+    { conversation: 'conversation', caller: { kind: 'user', node: 'node' }, locale },
+    { conversation: 'conversation', caller: agent, locale: { ...locale, languages: [] } },
+    { conversation: 'conversation', caller: agent },
+    // The shell and session ids no longer travel: the context is the identity.
+    { conversation: 'conversation', caller: agent, locale, shell: 'shell' },
+  ]) {
+    expect(() => wire.decodeBackendToRunner(msgpackCodec.encode({ ...job, context }))).toThrow('Malformed')
   }
+  const valid = { ...job, context: { conversation: 'conversation', caller: agent, locale } }
+  expect(wire.decodeBackendToRunner(msgpackCodec.encode(valid))).toEqual(valid)
   const request = { type: 'conversation_release', id: 'request', conversationId: 'conversation' } as const
   expect(wire.decodeBackendToRunner(wire.encode(request))).toEqual(request)
   const response = { type: 'conversation_released', id: 'request' } as const

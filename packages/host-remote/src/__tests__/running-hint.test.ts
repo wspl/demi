@@ -6,6 +6,7 @@ import {
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
 import { memoryHostStore } from '@demicodes/shell/testing'
 import { PipeBroker, RemoteHost, RemoteShellEnvironment, devicePipes } from '../index'
+import { TEST_COMMAND_CONTEXT } from '@demicodes/host-remote/testing'
 
 test(
   'remote statuses track active invocation hints independently and discard them at job exit',
@@ -27,7 +28,7 @@ test(
           signal: 'SIGTERM'
         })
     })
-    const shell = new RemoteShellEnvironment({ conversation: 'test-conversation', node: 'test-session', host })
+    const shell = new RemoteShellEnvironment({ commandContext: async () => TEST_COMMAND_CONTEXT, host })
     const wire = createRunnerWire(msgpackCodec)
     try {
       const started = await shell.exec({
@@ -88,7 +89,7 @@ test('disconnect clears a remote job hint with the failed job', async () => {
     if (message.type === 'job_start')
       jobId = message.jobId
   })
-  const job = host.startJob({ conversation: 'test-conversation', node: 'test-session', script: 'attend', cwd: '/work', env: {} })
+  const job = host.startJob({ context: TEST_COMMAND_CONTEXT, script: 'attend', cwd: '/work', env: {} })
   host.handleMessage({
     type: 'job_running_hint',
     jobId,

@@ -3,7 +3,7 @@
 use bytes::Bytes;
 use demi_command_service::{
     Client, CommandInput, CommandOutput,
-    protocol::{Completion, Invocation, MAX_RECORD_BYTES, Record},
+    protocol::{Completion, LocalInvocation, MAX_RECORD_BYTES, Record},
 };
 use serde::{Deserialize, Serialize};
 use std::{io, time::Duration};
@@ -52,7 +52,7 @@ pub struct Stdio<I, O, E> {
 /// continue while that read waits, including when the user never types anything.
 pub async fn forward<I, O, E>(
     endpoint: &str,
-    request: &Invocation,
+    request: &LocalInvocation,
     stdio: Stdio<I, O, E>,
     cancel: CancellationToken,
 ) -> io::Result<Completion>

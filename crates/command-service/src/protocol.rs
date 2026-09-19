@@ -17,11 +17,12 @@ mod generated {
     include!(concat!(env!("OUT_DIR"), "/protocol.rs"));
 }
 pub use generated::{
-    ArtifactLocation, CONVERSATION_PATH, CommandError, Completion, ConversationRequest,
-    ConversationStatus, EDIT_FILE_BYTES, EDIT_JOB_BYTES, EDIT_JOB_FILES, EDIT_JOB_SEGMENTS,
-    EditContext, EditCopies, EditFile, EditJournal, INFO_PATH, INVOKE_PATH, Invocation,
-    MAX_METADATA_BYTES, MAX_RECORD_BYTES, PackageDescriptor,
-    PackageDescriptorTargetsValue as PackageArtifact, SHUTDOWN_PATH, ServiceInfo, TARGETS, VERSION,
+    ArtifactLocation, CONVERSATION_PATH, CommandCaller, CommandContext, CommandError,
+    CommandLocale, Completion, ConversationRequest, ConversationStatus, EDIT_FILE_BYTES,
+    EDIT_JOB_BYTES, EDIT_JOB_FILES, EDIT_JOB_SEGMENTS, EditContext, EditCopies, EditFile,
+    EditJournal, INFO_PATH, INVOKE_PATH, Invocation, LocalInvocation, MAX_METADATA_BYTES,
+    MAX_RECORD_BYTES, PackageDescriptor, PackageDescriptorTargetsValue as PackageArtifact,
+    SHUTDOWN_PATH, ServiceInfo, TARGETS, VERSION,
 };
 pub use package::{canonical_digest, host_target, target_artifact};
 
@@ -43,14 +44,53 @@ impl EditJournal {
     }
 }
 
-impl Invocation {
-    pub fn validate(&self) -> Result<(), ProtocolError> {
+impl CommandCaller {
+    pub fn agent(node: impl Into<String>) -> Self {
+        Self::Variant0(generated::CommandCallerVariant0 {
+            kind: "agent".into(),
+            node: node.into(),
+        })
+    }
+
+    /// The agent node that started the work; none when the user did.
+    pub fn node(&self) -> Option<&str> {
+        match self {
+            Self::Variant0(agent) => Some(&agent.node),
+            Self::Variant1(_) => None,
+        }
+    }
+}
+
+/// The metadata that opens an invocation stream: the native protocol's
+/// [`Invocation`], or the local command client's [`LocalInvocation`], which
+/// shares its framing, input demand and completion.
+pub trait Metadata: serde::Serialize + serde::de::DeserializeOwned + Send + 'static {
+    fn validate(&self) -> Result<(), ProtocolError>;
+    fn operation(&self) -> &str;
+
+    fn encode(&self) -> Result<Bytes, ProtocolError> {
+        self.validate()?;
+        encode_metadata(self)
+    }
+}
+
+impl Metadata for Invocation {
+    fn validate(&self) -> Result<(), ProtocolError> {
         generated::invocation_validate(self).map_err(|_| ProtocolError::InvalidMetadata)
     }
 
-    pub fn encode(&self) -> Result<Bytes, ProtocolError> {
-        self.validate()?;
-        encode_metadata(self)
+    fn operation(&self) -> &str {
+        &self.operation
+    }
+}
+
+impl Metadata for LocalInvocation {
+    fn validate(&self) -> Result<(), ProtocolError> {
+        generated::local_invocation_validate(self).map_err(|_| ProtocolError::InvalidMetadata)
+    }
+
+    fn operation(&self) -> &str {
+        &self.operation
     }
 }
 

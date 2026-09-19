@@ -2,6 +2,7 @@
 
 use crate::commands::command_client::{CONTEXT_ENV, ENDPOINT_ENV};
 use crate::commands::manifest::Manifest;
+use demi_command_service::protocol::CommandContext;
 use std::{
     collections::{BTreeMap, HashMap},
     io,
@@ -14,9 +15,9 @@ pub struct ExecutionContext {
     pub id: String,
     pub owner: String,
     pub job_id: String,
-    pub conversation: String,
-    pub agent_session_id: String,
-    pub shell_id: String,
+    /// What the backend told the job's declared commands
+    /// (`native-runtime.md` § Command context).
+    pub command: CommandContext,
     pub manifest: Arc<Manifest>,
     pub cancel: CancellationToken,
     pub edits: OnceLock<demi_command_service::protocol::EditContext>,
@@ -112,9 +113,7 @@ impl Contexts {
         &self,
         job_id: String,
         manifest_hash: &str,
-        conversation: String,
-        node: String,
-        env: &BTreeMap<String, String>,
+        command: CommandContext,
     ) -> io::Result<(Arc<ExecutionContext>, Lease)> {
         let manifest = self
             .state
@@ -150,9 +149,7 @@ impl Contexts {
             id: id.clone(),
             owner: format!("job:{job_id}"),
             job_id,
-            conversation,
-            agent_session_id: node,
-            shell_id: env.get("DEMI_SHELL_ID").cloned().unwrap_or_default(),
+            command,
             manifest,
             cancel: CancellationToken::new(),
             edits: OnceLock::new(),
@@ -273,8 +270,6 @@ impl ExecutionContext {
             (ENDPOINT_ENV.into(), endpoint.into()),
             (CONTEXT_ENV.into(), self.id.clone()),
             ("DEMI_HOME".into(), home.into()),
-            ("DEMI_CONVERSATION_ID".into(), self.conversation.clone()),
-            ("DEMI_AGENT_NODE_ID".into(), self.agent_session_id.clone()),
             ("PATH".into(), path),
         ]))
     }

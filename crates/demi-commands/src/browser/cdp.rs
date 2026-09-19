@@ -128,7 +128,7 @@ pub(super) async fn execute(
         .operations
         .try_lock()
         .map_err(|_| BrowserError::Busy)?;
-    let owner = &context.request.caller;
+    let owner = super::conversations::agent(context)?;
     if matches!(command, BrowserCommand::CdpDetach(_)) {
         cancel_owner(tab, owner).await?;
         return Ok(json!({"detached":tab.id()}));

@@ -1,4 +1,4 @@
-import { nativeBindingSchema, type NativeBinding } from '@demicodes/command-protocol'
+import { nativeBindingSchema, type CommandContext, type NativeBinding } from '@demicodes/command-protocol'
 import {
   asError,
   collectBytes,
@@ -148,6 +148,11 @@ export interface CommandRunContext<
   /** The Host the invoking shell runs against. */
   host: Host
   /**
+   * The conversation, caller and locale of the job that invoked the command,
+   * from the backend's record of it (`native-runtime.md` § Command context).
+   */
+  context: CommandContext
+  /**
    * Aborted when the shell command is aborted (shell_abort, shell teardown).
    */
   signal: AbortSignal
@@ -198,6 +203,8 @@ export interface CommandExecutionContext {
    */
   storage?: CommandStorage
   host: Host
+  /** What the invoking work's declared commands receive. */
+  context: CommandContext
   signal?: AbortSignal
   /** Stdin written after the command started, for `rpc` handlers that steer. */
   stdinStream?: AsyncIterable<Uint8Array>
@@ -471,6 +478,7 @@ export async function runRegisteredCommand(
         io,
         storage: ctx.storage ?? unavailableStorage(displayPath),
         host: ctx.host,
+        context: ctx.context,
         signal,
         stdinStream,
       })
@@ -482,6 +490,7 @@ export async function runRegisteredCommand(
         args: parsed.values,
         cwd: ctx.cwd,
         env: ctx.env,
+        context: ctx.context,
         stdin: consumed ? stdinStream : concatByteStreams(stdin, stdinStream),
         stdout: io.stdout,
         stderr: io.stderr,

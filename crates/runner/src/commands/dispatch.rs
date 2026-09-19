@@ -10,7 +10,7 @@ use crate::{
     management::{self, Management},
 };
 use bytes::Bytes;
-use demi_command_service::protocol::{Completion, Invocation, Record};
+use demi_command_service::protocol::{Completion, Invocation, LocalInvocation, Record};
 use demi_command_service::{Handler, Input, InvocationContext, ServiceError};
 use std::{future::Future, pin::Pin, sync::Arc};
 use tokio::sync::mpsc;
@@ -25,13 +25,15 @@ pub struct Dispatcher {
 }
 
 impl Handler for Dispatcher {
+    type Metadata = LocalInvocation;
+
     fn operations(&self) -> Vec<String> {
         vec!["raw".into(), "manage".into()]
     }
 
     fn invoke(
         &self,
-        context: InvocationContext,
+        context: InvocationContext<LocalInvocation>,
     ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
         let dispatcher = self.clone();
         Box::pin(async move {
@@ -56,7 +58,10 @@ impl Handler for Dispatcher {
 }
 
 impl Dispatcher {
-    async fn manage(&self, context: InvocationContext) -> Result<Completion, ServiceError> {
+    async fn manage(
+        &self,
+        context: InvocationContext<LocalInvocation>,
+    ) -> Result<Completion, ServiceError> {
         let request: management::Request = serde_json::from_value(context.request.args)?;
         if !self.management.authorize(&request) {
             return Err(handler("invalid management secret"));
@@ -71,7 +76,10 @@ impl Dispatcher {
         Ok(completed(0))
     }
 
-    async fn command(&self, mut invocation: InvocationContext) -> Result<Completion, ServiceError> {
+    async fn command(
+        &self,
+        mut invocation: InvocationContext<LocalInvocation>,
+    ) -> Result<Completion, ServiceError> {
         let raw: RawCommand = serde_json::from_value(invocation.request.args.clone())?;
         raw.validate().map_err(handler)?;
         let context = self.contexts.get(&raw.context).map_err(handler)?;
@@ -126,8 +134,7 @@ impl Dispatcher {
                     .await
                     .map_err(handler)?;
                 let request = Invocation {
-                    caller: context.agent_session_id.clone(),
-                    conversation: context.conversation.clone(),
+                    context: context.command.clone(),
                     json: Some(parsed.json),
                     edits: context.edits.get().cloned(),
                     operation: binding.operation.clone(),

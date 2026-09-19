@@ -2,7 +2,8 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { z } from 'zod'
 import {
-  commandArgsSchema, commandErrorSchema, completionSchema, invocationSchema,
+  commandArgsSchema, commandErrorSchema, completionSchema, invocationSchema, localInvocationSchema,
+  commandCallerSchema, commandLocaleSchema, commandContextSchema,
   serviceInfoSchema, nativePackageSchema, NATIVE_TARGETS, NATIVE_PROTOCOL_VERSION,
   MAX_METADATA_BYTES, MAX_RECORD_BYTES, INFO_PATH, INVOKE_PATH, CONVERSATION_PATH, SHUTDOWN_PATH,
   conversationRequestSchema, conversationStatusSchema,
@@ -31,6 +32,7 @@ async function wire(): Promise<string> {
     dateType: 'super::Timestamp',
     overrides: new Map<z.core.$ZodType, string>([
       [editCopiesSchema, 'demi_command_service::protocol::EditCopies'],
+      [commandContextSchema, 'demi_command_service::protocol::CommandContext'],
       [nativePackageSchema, 'demi_command_service::protocol::PackageDescriptor'],
       [artifactLocationSchema, 'demi_command_service::protocol::ArtifactLocation'],
     ]),
@@ -112,10 +114,13 @@ function commandProtocol(): string {
     ConversationStatus: conversationStatusSchema,
     ArtifactLocation: artifactLocationSchema,
     PackageDescriptor: nativePackageSchema, ServiceInfo: serviceInfoSchema,
-    CommandError: commandErrorSchema, Completion: completionSchema, Invocation: invocationSchema }
+    CommandCaller: commandCallerSchema, CommandLocale: commandLocaleSchema,
+    CommandContext: commandContextSchema,
+    CommandError: commandErrorSchema, Completion: completionSchema, Invocation: invocationSchema,
+    LocalInvocation: localInvocationSchema }
   for (const [name, schema] of Object.entries(types))
     generator.type(schema, name)
-  const checks = Object.entries(types).filter(([name]) => ['PackageDescriptor', 'Invocation', 'ConversationRequest', 'ConversationStatus', 'EditContext', 'EditJournal'].includes(name)).map(([name, schema]) =>
+  const checks = Object.entries(types).filter(([name]) => ['PackageDescriptor', 'Invocation', 'LocalInvocation', 'ConversationRequest', 'ConversationStatus', 'EditContext', 'EditJournal'].includes(name)).map(([name, schema]) =>
     `pub fn ${rustField(name)}_validate(value: &${name}) -> Result<(), String> {
       ${generator.validate(schema, 'value')}\nOk(())
     }`)

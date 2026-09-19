@@ -181,21 +181,21 @@ test(
         'session',
         memoryHostStore()
       )
-      host.startJob({ conversation: 'session', node: 'session',
+      host.startJob({
+        context: {
+          conversation: 'session',
+          caller: { kind: 'agent', node: 'session' },
+          locale: { timeZone: 'UTC', languages: ['en-US'] }
+        },
         script: 'demi host shell',
         cwd: '/',
-        env: {
-          DEMI_SESSION_ID: 'session',
-          DEMI_SHELL_ID: 'shell'
-        }
+        env: {}
       })
       const jobId = a.frames.find((frame) => frame.type === 'job_start')!.jobId
       a.handleMessage(wire.encode({
         type: 'rpc_call',
         jobId,
         callId: 'call',
-        agentSessionId: 'session',
-        shellId: 'shell',
         root: 'demi',
         path: ['host', 'shell'],
         argv: [],
@@ -249,9 +249,10 @@ test(
 
 
 test(
-  'rpc authority comes from a live job on the authenticated device, with matching node and shell',
+  'rpc authority comes from a live job on the authenticated device, and the handler receives that job\'s context',
   async () => {
     let invoked = 0
+    let received: unknown
     const pipes = new PipeBroker()
     const registry = new RunnerRegistry({
       control: {
@@ -264,8 +265,9 @@ test(
       } as ControlService,
       pipes,
       pingIntervalMs: 0,
-      rpc: async () => {
+      rpc: async (_call, _io, execution) => {
         invoked++;
+        received = execution.context
         throw new Error('authorized handler reached')
       }
     })
@@ -288,21 +290,17 @@ test(
         'root',
         memoryHostStore()
       )
-      host.startJob({ conversation: 'root', node: 'child',
-        script: 'demi todo list',
-        cwd: '/',
-        env: {
-          DEMI_SESSION_ID: 'child',
-          DEMI_SHELL_ID: 'shell'
-        }
-      })
+      const context = {
+        conversation: 'root',
+        caller: { kind: 'agent' as const, node: 'child' },
+        locale: { timeZone: 'Europe/Berlin', languages: ['de-DE', 'en'] }
+      }
+      host.startJob({ context, script: 'demi todo list', cwd: '/', env: {} })
       const jobId = a.frames.find((frame) => frame.type === 'job_start')!.jobId
       const call = {
         type: 'rpc_call' as const,
         jobId,
         callId: 'call',
-        agentSessionId: 'child',
-        shellId: 'shell',
         root: 'demi',
         path: ['demi', 'todo', 'list'],
         argv: ['todo', 'list'],
@@ -313,16 +311,8 @@ test(
         stdin: false
       }
       for (const [name, target, changes] of [
-        ['wrong-device', b, {}], ['wrong-node', a, { agentSessionId: 'root' }],
-        [
-          'wrong-shell',
-          a,
-          { shellId: 'invented' }
-        ], [
-          'unknown-job',
-          a,
-          { jobId: 'invented' }
-        ],
+        ['wrong-device', b, {}],
+        ['unknown-job', a, { jobId: 'invented' }],
       ] as const) {
         target.handleMessage(wire.encode({ ...call, ...changes, callId: name }))
         await waitFor(
@@ -340,6 +330,7 @@ test(
       }
       a.handleMessage(wire.encode(call))
       await waitFor(() => invoked === 1)
+      expect(received).toEqual(context)
       a.handleMessage(
         wire.encode({ type: 'job_exit', files: [], filesTruncated: false, jobId, exitCode: 0, cwd: '/' })
       )

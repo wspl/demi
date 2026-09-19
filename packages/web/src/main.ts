@@ -110,6 +110,13 @@ const stopAppearance = watch(
   },
 )
 const stopTheme = applyThemeToDocument()
+const stopLocale = watch(
+  () => product.snapshot?.preferences,
+  () => void preferences.reportLocale(),
+  { immediate: true },
+)
+const reportLocale = () => void preferences.reportLocale()
+window.addEventListener('languagechange', reportLocale)
 const saveDrafts = () => {
   conversations.saveDrafts()
   closeDraftStorage()
@@ -120,6 +127,7 @@ const refreshVisible = () => {
     return
   }
   void product.revalidate()
+  void preferences.reportLocale()
   const id = product.activeConversationId
   if (id) {
     void conversations.markRead(id)
@@ -136,6 +144,8 @@ if (import.meta.hot) {
     stopExpiry()
     stopAppearance()
     stopTheme()
+    stopLocale()
+    window.removeEventListener('languagechange', reportLocale)
     conversations.stopAll()
     closeDraftStorage()
     preferences.stop()

@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { SerialQueue } from '@demicodes/utils'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
-import { preferencesSchema, type PreferencesPatch } from '../api/contracts'
+import { preferencesSchema, type Locale, type PreferencesPatch } from '../api/contracts'
 import { useProduct } from './product'
 
 export const DEFAULT_KEYS = [
@@ -135,7 +135,47 @@ export const usePreferences = defineStore('preferences', () => {
     })
   }
 
+  /** The locale a report in flight sends, so a second trigger does not repeat it. */
+  let reporting: string | null = null
+  /**
+   * Sends the browser's time zone and languages whenever they differ from the
+   * stored ones; commands receive them (`web-api.md` § User preferences).
+   */
+  async function reportLocale(): Promise<void> {
+    const stored = product.snapshot?.preferences
+    const locale = browserLocale()
+    if (!stored || !locale) {
+      return
+    }
+    const key = JSON.stringify(locale)
+    if (key === JSON.stringify(stored.locale ?? null) || key === reporting) {
+      return
+    }
+    reporting = key
+    const current = controller
+    await writes.run(async () => {
+      try {
+        const response = await apiRequest('/settings/preferences', {
+          method: 'PATCH',
+          ...jsonBody({ locale }),
+          signal: current.signal,
+        })
+        await readResponse(response, z.object({ preferences: preferencesSchema }))
+        await product.refresh()
+      } catch (error) {
+        if (!current.signal.aborted) {
+          reportError('Could not report the time zone and languages', error)
+        }
+      } finally {
+        if (reporting === key) {
+          reporting = null
+        }
+      }
+    })
+  }
+
   function stop(): void {
+    reporting = null
     controller.abort()
     controller = new AbortController()
     if (timer !== null) {
@@ -151,6 +191,22 @@ export const usePreferences = defineStore('preferences', () => {
     keys,
     update,
     flush,
+    reportLocale,
     stop,
   }
 })
+
+/**
+ * The browser's own time zone and languages, as the backend stores them;
+ * null when the browser reports neither.
+ */
+function browserLocale(): Locale | null {
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
+  const reported = navigator.languages?.length ? navigator.languages : [navigator.language]
+  try {
+    const languages = Intl.getCanonicalLocales(reported.filter(Boolean)).slice(0, 16)
+    return timeZone && languages.length > 0 ? { timeZone, languages } : null
+  } catch {
+    return null
+  }
+}
