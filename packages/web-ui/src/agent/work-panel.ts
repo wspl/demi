@@ -1,9 +1,35 @@
+import type { LiveTab } from '@demicodes/browser-protocol/live'
 import type { CallEditSelection, ChangeFile, ChangeMode } from '../files/changes'
 import { baseName } from '../files/paths'
 import { closeTabs } from './tab-close'
 
-/** Fixed Change and File tabs and removable browser tabs for one conversation. */
-export type WorkTab = FileWorkTab | ChangeWorkTab | BrowserWorkTab
+/**
+ * Fixed Change and File tabs, the conversation browser's own tabs, and the
+ * local browser tabs of one conversation
+ * (`web-application.md` § Package responsibilities).
+ */
+export type WorkTab = FileWorkTab | ChangeWorkTab | BrowserWorkTab | HostWorkTab
+
+/** A tab of the conversation's browser, shown live. */
+export interface HostWorkTab {
+  id: string
+  kind: 'host'
+  tab: LiveTab
+}
+
+/** Work-panel IDs of Host tabs are the browser's own, prefixed. */
+export function hostWorkTabId(tab: string): string {
+  return `host:${tab}`
+}
+
+/**
+ * The work tabs with the browser's own tabs first, as the live view reports
+ * them; tabs that closed on the Host go with them.
+ */
+export function withHostTabs(tabs: readonly WorkTab[], live: readonly LiveTab[]): WorkTab[] {
+  const host: WorkTab[] = live.map((tab) => ({ id: hostWorkTabId(tab.id), kind: 'host', tab }))
+  return [...host, ...tabs.filter((tab) => tab.kind !== 'host')]
+}
 
 export interface BrowserWorkTab {
   id: string
@@ -62,6 +88,7 @@ export function loadBrowserAddress(tab: BrowserWorkTab): BrowserWorkTab {
 
 /** Close browser tabs while preserving the fixed Change and File tabs. */
 export function closeBrowserTabs(tabs: readonly WorkTab[], activeId: string | null, ids: readonly string[]) {
+  // Host tabs close on the Host itself, not here.
   const browserIds = tabs.filter((tab) => tab.kind === 'browser' && ids.includes(tab.id)).map((tab) => tab.id)
   return closeTabs(tabs, activeId, browserIds)
 }
@@ -196,7 +223,7 @@ export function showFileInTab(
 /** The tab showing what it showed before, the current step kept for Forward. */
 export function goBackInTab(tabs: readonly WorkTab[], id: string): WorkTab[] {
   return tabs.map((tab) => {
-    if (tab.id !== id || tab.kind === 'browser' || tab.back.length === 0) {
+    if (tab.id !== id || tab.kind === 'browser' || tab.kind === 'host' || tab.back.length === 0) {
       return tab
     }
     if (tab.kind === 'file') {
@@ -213,7 +240,7 @@ export function goBackInTab(tabs: readonly WorkTab[], id: string): WorkTab[] {
 /** The tab showing what Back left, the current step kept for Back. */
 export function goForwardInTab(tabs: readonly WorkTab[], id: string): WorkTab[] {
   return tabs.map((tab) => {
-    if (tab.id !== id || tab.kind === 'browser' || tab.forward.length === 0) {
+    if (tab.id !== id || tab.kind === 'browser' || tab.kind === 'host' || tab.forward.length === 0) {
       return tab
     }
     if (tab.kind === 'file') {
@@ -227,9 +254,24 @@ export function goForwardInTab(tabs: readonly WorkTab[], id: string): WorkTab[] 
   })
 }
 
-/** The section label, or the selected file's basename. */
+/** The section label, the tab's title, or the selected file's basename. */
 export function workTabTitle(tab: WorkTab): string {
-  return tab.kind === 'file' ? baseName(tab.path) : tab.kind === 'change' ? 'Change' : tab.title
+  if (tab.kind === 'file') {
+    return baseName(tab.path)
+  }
+  if (tab.kind === 'change') {
+    return 'Change'
+  }
+  if (tab.kind === 'browser') {
+    return tab.title
+  }
+  return tab.tab.title || hostTabAddress(tab.tab) || 'New tab'
+}
+
+/** A Host tab's address as the strip and the bar show it. */
+export function hostTabAddress(tab: LiveTab): string {
+  const url = URL.parse(tab.url)
+  return url ? url.host || url.href : tab.url
 }
 
 /** The one change tab, when it is open. */
