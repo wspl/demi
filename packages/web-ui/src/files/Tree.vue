@@ -26,6 +26,8 @@ const props = defineProps<{
   captionTitle?: string
   /** The selected row, by path. */
   selected: string | null
+  /** The row whose menu is open, by path; it keeps its hover look until the menu closes. */
+  menuRow?: string | null
   tooltip?: (row: R) => string
 }>()
 
@@ -192,6 +194,7 @@ defineExpose({ scrollToRow, revealRow, scrollBy })
             :style="index === stickyRows.length - 1 ? { transform: `translateY(${stickyOffset}px)` } : undefined"
             :row="row"
             :selected="row.path === selected"
+            :menu-open="row.path === menuRow"
             :tooltip="tooltip?.(row)"
             @activate="activatePinned(row)"
             @contextmenu.stop="emit('menu', row, $event)"
@@ -214,6 +217,7 @@ defineExpose({ scrollToRow, revealRow, scrollBy })
         :ref="(el) => bindRow(row.path, el)"
         :row="row"
         :selected="row.path === selected && !selectedUnderStack"
+        :menu-open="row.path === menuRow"
         :tooltip="tooltip?.(row)"
         @activate="emit('activate', row)"
         @contextmenu.stop="emit('menu', row, $event)"
