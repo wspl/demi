@@ -90,6 +90,10 @@ export const GALLERY_VIEWS: Record<string, readonly GalleryViewOption[]> = {
       label: 'Blocks',
     },
     {
+      value: 'lengths',
+      label: 'Lengths',
+    },
+    {
       value: 'changes',
       label: 'Changes',
     },

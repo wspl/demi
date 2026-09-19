@@ -153,39 +153,63 @@ const renderedMarkdown = computed(() => md.renderUser(userText.value, { files: f
 
 const textClass = computed(() => (props.pending ? 'text-fg-subtle' : 'text-fg-body'))
 
+/** How many lines a long message shows; the last of them fades out. */
+const VISIBLE_LINES = 5
+
 const contentRef = ref<HTMLElement>()
-const isOverflowing = ref(false)
-/** Clip height for a long message: ends on a line box, so the hover actions can sit on the last visible line. */
-const clipHeight = ref<number | null>(null)
+const bodyRef = ref<HTMLElement>()
+/**
+ * Where a long message is cut, and the line box its fade spans; null while
+ * it shows whole. The cut is five lines down, or lower, at the end of a line
+ * of text across that mark, so it cuts no letter; anything else across it,
+ * such as an image, a code block or a table, is cut there.
+ */
+const clip = ref<{ height: number; line: number } | null>(null)
 
-const MAX_CONTENT_PX = 192
-
-useResizeObserver(contentRef, () => {
-  const el = contentRef.value
-  if (!el) {
+function measure(): void {
+  const box = contentRef.value
+  const body = bodyRef.value
+  if (!box || !body) {
+    clip.value = null
     return
   }
-  const top = el.getBoundingClientRect().top
-  const lineHeight =
-    Number.parseFloat(getComputedStyle(el.firstElementChild ?? el).lineHeight) || 0
+  const line = Number.parseFloat(getComputedStyle(body).lineHeight) || 0
+  const limit = VISIBLE_LINES * line
+  const full = body.getBoundingClientRect().height
+  if (full <= limit + 1) {
+    clip.value = null
+    return
+  }
+  const top = box.getBoundingClientRect().top
+  // A glyph box sits in its line box a little off centre, so a line crosses
+  // the mark only with a quarter of it on each side.
+  const slack = line / 4
+  let height = limit
+  const texts = document.createTreeWalker(body, NodeFilter.SHOW_TEXT)
   const range = document.createRange()
-  range.selectNodeContents(el)
-  let lastFit = 0
-  let overflow = false
-  for (const rect of range.getClientRects()) {
-    // Client rects are glyph boxes; extend to the line box so the clip does not cut descenders.
-    const bottom = Math.round(
-      rect.bottom - top + Math.max(0, (lineHeight - rect.height) / 2),
-    )
-    if (bottom <= MAX_CONTENT_PX) {
-      lastFit = Math.max(lastFit, bottom)
-    } else {
-      overflow = true
+  for (let text = texts.nextNode(); text; text = texts.nextNode()) {
+    range.selectNodeContents(text)
+    const rects = [...range.getClientRects()]
+    // Text runs top to bottom: once it starts below the mark, the rest does too.
+    if (rects[0] && rects[0].top - top > limit) {
+      break
+    }
+    for (const rect of rects) {
+      // A glyph box is shorter than its line; take the line box around it.
+      const half = Math.max(0, (line - rect.height) / 2)
+      const lineTop = rect.top - top - half
+      const lineBottom = rect.bottom - top + half
+      if (lineTop < limit - slack && lineBottom > limit + slack) {
+        height = Math.max(height, Math.ceil(lineBottom))
+      }
     }
   }
-  isOverflowing.value = overflow
-  clipHeight.value = overflow ? lastFit : null
-})
+  // Five lines in paragraphs run past the mark by their gaps and show whole.
+  clip.value = height < full - 1 ? { height, line } : null
+}
+
+// Wrapping follows the width, so a narrower or wider column changes the cut.
+useResizeObserver([contentRef, bodyRef], measure)
 </script>
 
 <template>
@@ -263,17 +287,17 @@ useResizeObserver(contentRef, () => {
         ref="contentRef"
         class="overflow-hidden"
         :style="
-          isOverflowing
+          clip
             ? {
-                height: `${clipHeight}px`,
-                maskImage:
-                  'linear-gradient(to bottom, black calc(100% - 2rem), transparent)',
+                height: `${clip.height}px`,
+                maskImage: `linear-gradient(to bottom, black calc(100% - ${clip.line}px), transparent)`,
               }
             : undefined
         "
       >
         <div
           v-if="userText"
+          ref="bodyRef"
           class="markdown-body select-text text-conversation"
           :class="textClass"
           v-html="renderedMarkdown"
