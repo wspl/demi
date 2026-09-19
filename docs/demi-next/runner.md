@@ -159,13 +159,19 @@ what flows through it. The backend uses it for the public relay of
 A `service_open` request asks the runner to open a
 [user stream](native-runtime.md#user-streams) and carry its bytes both ways.
 It names the stream, its [command context](native-runtime.md#command-context),
-the declared package and operation, and two pipes ([Pipes and output](#pipes-and-output)): `input`, whose bytes the
+the declared package and operation, the conversation's directory, which
+becomes the invocation's `cwd`, and two pipes ([Pipes and output](#pipes-and-output)): `input`, whose bytes the
 runner delivers to the invocation as input chunks when the operation asks for
-them, and `output`, into which it writes the invocation's output. The runner
+them, and `output`, into which it writes the invocation's standard output. Its
+standard error goes to the runner's log. The runner
 starts the invocation in the resident service that holds the conversation's
 state, starting the service when needed, and answers `service_opened`, or
 `service_error` with `unknown_operation`, `service_failed`, or `refused`; no
-bytes move before that answer. The input pipe ending ends the invocation's
+bytes move before that answer. Starting the service may need its executable:
+the runner asks the backend for its location as it does for a job's command
+([Install the selected executable](native-runtime.md#install-the-selected-executable)),
+naming the stream instead of a job, and the backend answers only while the
+stream is open. The input pipe ending ends the invocation's
 input; the invocation's completion ends the output pipe, which is how the
 backend learns the stream is over; a pipe failing or the connection to the
 backend closing cancels the invocation. The runner reports each pipe end with `pipe_done` like any other
