@@ -55,9 +55,14 @@ async fn browser_contract_and_cleanup() {
     let retained_tab = Arc::new(Mutex::new(None));
     let save_tab = retained_tab.clone();
     let result = with_browser(
-        LaunchOptions {
-            executable: executable.clone(),
-        },
+        LaunchOptions::pinned(
+            executable.clone(),
+            demi_command_service::protocol::CommandLocale {
+                time_zone: "UTC".into(),
+                languages: vec!["en-US".into()],
+            },
+        )
+        .unwrap(),
         CancellationToken::new(),
         |browser| exercise_browser(browser, url, requests, save_tab),
     )
@@ -71,9 +76,14 @@ async fn browser_contract_and_cleanup() {
     ));
 
     let result = with_browser(
-        LaunchOptions {
-            executable: executable.clone(),
-        },
+        LaunchOptions::pinned(
+            executable.clone(),
+            demi_command_service::protocol::CommandLocale {
+                time_zone: "UTC".into(),
+                languages: vec!["en-US".into()],
+            },
+        )
+        .unwrap(),
         CancellationToken::new(),
         |browser| async move {
             browser
@@ -89,13 +99,24 @@ async fn browser_contract_and_cleanup() {
     );
     let stop = CancellationToken::new();
     let end = stop.clone();
-    let result = with_browser(LaunchOptions { executable }, stop, |browser| async move {
-        browser
-            .open("about:blank", &CancellationToken::new(), DEADLINE)
-            .await?;
-        end.cancel();
-        std::future::pending::<demi_commands::browser::Result<()>>().await
-    })
+    let result = with_browser(
+        LaunchOptions::pinned(
+            executable,
+            demi_command_service::protocol::CommandLocale {
+                time_zone: "UTC".into(),
+                languages: vec!["en-US".into()],
+            },
+        )
+        .unwrap(),
+        stop,
+        |browser| async move {
+            browser
+                .open("about:blank", &CancellationToken::new(), DEADLINE)
+                .await?;
+            end.cancel();
+            std::future::pending::<demi_commands::browser::Result<()>>().await
+        },
+    )
     .await;
     assert!(matches!(result, Err(BrowserError::Cancelled)), "{result:?}");
     stop_site.cancel();

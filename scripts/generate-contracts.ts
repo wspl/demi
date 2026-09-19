@@ -13,7 +13,7 @@ import {
 } from '../packages/command-protocol/src/index'
 import { manifestSchema, manifestNodeSchema } from '../packages/command-loader/src/manifest/schema'
 import { RustZodTypes, rustField, rustPascal, rustString } from './rust-zod'
-import { BROWSER_CLIPBOARD_PNG_BYTES, BROWSER_CLIPBOARD_PNG_PIXELS, BROWSER_STDIN_BYTES, BROWSER_FETCH_URLS, BROWSER_CONSOLE_ENTRIES, BROWSER_CONSOLE_BYTES, BROWSER_CDP_EVENTS, BROWSER_CDP_BYTES, browserQuerySchema, browserErrorSchema, browserOperations, browserTargetSchema, browserNodeSchema, browserCreatedBySchema, browserReleaseSchema, browserInstallationSchema, browserRuntimeConfigSchema, browserDefaultTimeout, BROWSER_DEFAULT_NODES, BROWSER_MAX_NODES, BROWSER_INLINE_BYTES } from '../packages/browser-protocol/src/index'
+import { BROWSER_CLIPBOARD_PNG_BYTES, BROWSER_CLIPBOARD_PNG_PIXELS, BROWSER_STDIN_BYTES, BROWSER_FETCH_URLS, BROWSER_CONSOLE_ENTRIES, BROWSER_CONSOLE_BYTES, BROWSER_CDP_EVENTS, BROWSER_CDP_BYTES, browserQuerySchema, browserErrorSchema, browserOperations, browserTargetSchema, browserNodeSchema, browserCreatedBySchema, browserViewportSchema, browserReleaseSchema, browserInstallationSchema, browserRuntimeConfigSchema, browserDefaultTimeout, BROWSER_DEFAULT_NODES, BROWSER_MAX_NODES, BROWSER_INLINE_BYTES } from '../packages/browser-protocol/src/index'
 
 function flatten(schema: z.core.$ZodType): z.ZodObject[] {
   const def = (schema as z.core.$ZodTypes)._zod.def
@@ -147,6 +147,7 @@ function browserProtocol(): string {
   generator.type(browserQuerySchema, 'BrowserQuery')
   generator.type(browserNodeSchema, 'BrowserNode')
   generator.type(browserCreatedBySchema, 'BrowserCreatedBy')
+  generator.type(browserViewportSchema, 'BrowserViewport')
   generator.type(browserReleaseSchema, 'BrowserRelease')
   generator.type(browserInstallationSchema, 'BrowserInstallation')
   generator.type(browserRuntimeConfigSchema, 'BrowserRuntimeConfig')

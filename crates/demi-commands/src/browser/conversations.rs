@@ -4,7 +4,8 @@ use std::{collections::HashMap, sync::Arc};
 
 use bytes::Bytes;
 use demi_command_service::{
-    ConversationContext, InvocationContext, ServiceError, protocol::Completion,
+    ConversationContext, InvocationContext, ServiceError,
+    protocol::{CommandLocale, Completion},
 };
 use tokio::sync::{Mutex, watch};
 use tokio_util::{
@@ -49,17 +50,19 @@ pub(super) struct Controller {
 }
 
 impl Controller {
-    /// First open starts this conversation's Chrome; concurrent opens join startup.
+    /// First open starts this conversation's Chrome in the starting caller's
+    /// locale; concurrent opens join startup.
     pub async fn environment(
         &self,
-        start: bool,
+        start: Option<&CommandLocale>,
         cancel: &CancellationToken,
     ) -> Result<Option<BrowserEnvironment>> {
         let mut state = self.state.lock().await;
         if cancel.is_cancelled() {
             return Err(BrowserError::Cancelled);
         }
-        if matches!(*state, State::Absent) && start {
+        if let (State::Absent, Some(locale)) = (&*state, start) {
+            let locale = locale.clone();
             let stop = CancellationToken::new();
             let owner_stop = stop.clone();
             let installation = self.installation.clone();
@@ -68,7 +71,7 @@ impl Controller {
                 let result = async {
                     let executable = installation.executable(&owner_stop).await?;
                     with_browser(
-                        LaunchOptions { executable },
+                        LaunchOptions::pinned(executable, locale)?,
                         owner_stop.clone(),
                         |environment| async {
                             publish.send_replace(Some(Ok(environment)));
@@ -353,12 +356,13 @@ impl Conversations {
         cancellation: &CancellationToken,
         deadline: tokio::time::Instant,
     ) -> Result<CommandOutput> {
+        let starts = matches!(
+            command,
+            BrowserCommand::Open(_) | BrowserCommand::ContentFetch(_)
+        );
         let environment = controller
             .environment(
-                matches!(
-                    command,
-                    BrowserCommand::Open(_) | BrowserCommand::ContentFetch(_)
-                ),
+                starts.then_some(&context.request.context.locale),
                 cancellation,
             )
             .await?;

@@ -4,7 +4,6 @@ use std::time::Duration;
 
 use chromiumoxide::{
     cdp::browser_protocol::{
-        emulation::SetDeviceMetricsOverrideParams,
         input::{DispatchMouseEventParams, DispatchMouseEventType, MouseButton},
         page::{GetLayoutMetricsParams, GetNavigationHistoryParams, HandleJavaScriptDialogParams},
         target::GetTargetInfoParams,
@@ -65,14 +64,7 @@ impl BrowserTab {
         Operation::for_tab(self, cancel, tokio::time::Instant::now() + timeout)
             .run(async {
                 let mut result = self.navigation_result().await?;
-                let viewport = self
-                    .page
-                    .execute(GetLayoutMetricsParams {})
-                    .await?
-                    .result
-                    .css_layout_viewport;
-                result["viewport"] =
-                    json!({"width": viewport.client_width, "height": viewport.client_height});
+                result["viewport"] = self.viewport().report();
                 Ok(result)
             })
             .await
@@ -737,21 +729,19 @@ impl BrowserTab {
                     Ok(result)
                 }),
                 BrowserCommand::ViewportSet(input) => Box::pin(async {
-                    self.page
-                        .execute(SetDeviceMetricsOverrideParams::new(
-                            input.width as i64,
-                            input.height as i64,
-                            1.0,
-                            false,
-                        ))
-                        .await?;
-                    Ok(json!({ "width": input.width, "height": input.height }))
+                    let viewport = super::viewport::Viewport {
+                        mode: super::viewport::Mode::Custom,
+                        width: input.width as u32,
+                        height: input.height as u32,
+                        ratio: input.scale.unwrap_or(1.0),
+                    };
+                    self.set_viewport(viewport).await?;
+                    Ok(json!({ "viewport": viewport.report() }))
                 }),
                 BrowserCommand::ViewportReset(_) => Box::pin(async {
-                    self.page
-                        .execute(SetDeviceMetricsOverrideParams::new(1280, 720, 1.0, false))
-                        .await?;
-                    Ok(json!({ "width": 1280, "height": 720 }))
+                    let viewport = self.web_viewport();
+                    self.set_viewport(viewport).await?;
+                    Ok(json!({ "viewport": viewport.report() }))
                 }),
                 BrowserCommand::ContentRead(input) => Box::pin(async {
                     let content = self

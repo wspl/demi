@@ -23,6 +23,17 @@ pub(super) struct Installation {
     installed: Mutex<Option<PathBuf>>,
 }
 
+/// The pinned Chrome for Testing release (`browser.md` § Browser distribution).
+fn release() -> Result<BrowserRelease> {
+    serde_json::from_str(include_str!("releases/chrome.json"))
+        .map_err(|error| BrowserError::Configuration(error.to_string()))
+}
+
+/// The pinned release's version, such as `153.0.8010.36`.
+pub fn pinned_version() -> Result<String> {
+    Ok(release()?.version)
+}
+
 impl Installation {
     /// Install the release once per service; each browser retains its own profile.
     pub async fn executable(&self, cancel: &CancellationToken) -> Result<PathBuf> {
@@ -33,8 +44,7 @@ impl Installation {
         if let Some(path) = &*installed {
             return Ok(path.clone());
         }
-        let release: BrowserRelease = serde_json::from_str(include_str!("releases/chrome.json"))
-            .map_err(|error| BrowserError::Configuration(error.to_string()))?;
+        let release = release()?;
         let record = release
             .platforms
             .into_iter()

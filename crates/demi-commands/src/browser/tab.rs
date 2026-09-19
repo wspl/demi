@@ -42,6 +42,7 @@ pub(super) struct TabState {
     pub console: Arc<Mutex<super::logs::Console>>,
     pub dialog: watch::Sender<Option<Arc<EventJavascriptDialogOpening>>>,
     pub deferred_release: Mutex<Vec<InputRelease>>,
+    pub viewport: std::sync::Mutex<super::viewport::Viewports>,
 }
 
 impl TabState {
@@ -66,6 +67,7 @@ impl TabState {
             webmcp: Mutex::new(super::webmcp::State::default()),
             dialog: watch::channel(None).0,
             deferred_release: Mutex::new(Vec::new()),
+            viewport: std::sync::Mutex::new(Default::default()),
         });
         let observed = state.clone();
         tasks.spawn(async move {
@@ -97,7 +99,7 @@ impl TabState {
 #[derive(Clone)]
 pub struct BrowserTab {
     pub(super) page: Page,
-    browser: Weak<Mutex<Browser>>,
+    pub(super) browser: Weak<Mutex<Browser>>,
     pub(super) ended: CancellationToken,
     environment_ended: CancellationToken,
     pub(super) state: Arc<TabState>,

@@ -17,7 +17,14 @@ where
     let server = browser_server::Server::start(include_str!("repairs.html")).await;
     let base = server.base.clone();
     let result = with_browser(
-        LaunchOptions { executable },
+        LaunchOptions::pinned(
+            executable,
+            demi_command_service::protocol::CommandLocale {
+                time_zone: "UTC".into(),
+                languages: vec!["en-US".into()],
+            },
+        )
+        .unwrap(),
         CancellationToken::new(),
         |browser| async move {
             Ok(

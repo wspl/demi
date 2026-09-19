@@ -41,14 +41,8 @@ impl BrowserTab {
                 .map_err(|error| BrowserError::InvalidResult(error.to_string()))?,
             );
         }
-        let viewport = self
-            .page
-            .execute(chromiumoxide::cdp::browser_protocol::page::GetLayoutMetricsParams {})
-            .await?
-            .result
-            .css_layout_viewport;
         Ok(
-            json!({"matches":nodes,"viewport":{"width":viewport.client_width,"height":viewport.client_height},"truncated":elements.len()>DEFAULT_NODES}),
+            json!({"matches":nodes,"viewport":self.viewport().report(),"truncated":elements.len()>DEFAULT_NODES}),
         )
     }
 }

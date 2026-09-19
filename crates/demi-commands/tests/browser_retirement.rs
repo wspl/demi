@@ -52,9 +52,14 @@ async fn canceled_launch_reaps_helpers_before_removing_profile() {
     let cancel = stop.clone();
     let (result, recorded) = tokio::join!(
         with_browser(
-            LaunchOptions {
-                executable: launcher
-            },
+            LaunchOptions::pinned(
+                launcher,
+                demi_command_service::protocol::CommandLocale {
+                    time_zone: "UTC".into(),
+                    languages: vec!["en-US".into()]
+                }
+            )
+            .unwrap(),
             stop,
             |_| async {
                 Err::<(), _>(BrowserError::Configuration(
@@ -112,9 +117,14 @@ async fn chrome_process_tree_and_profile_retire_together() {
         let mut observed = None;
         let observation = &mut observed;
         let result = with_browser(
-            LaunchOptions {
-                executable: executable.clone(),
-            },
+            LaunchOptions::pinned(
+                executable.clone(),
+                demi_command_service::protocol::CommandLocale {
+                    time_zone: "UTC".into(),
+                    languages: vec!["en-US".into()],
+                },
+            )
+            .unwrap(),
             stop,
             |browser| async move {
                 browser

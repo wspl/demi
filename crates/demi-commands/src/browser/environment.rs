@@ -12,6 +12,7 @@ use chromiumoxide::{
     cdp::browser_protocol::target::{EventTargetCreated, GetTargetsParams, TargetId, TargetInfo},
     handler::viewport::Viewport,
 };
+use demi_command_service::protocol::CommandLocale;
 use futures_util::{FutureExt, StreamExt};
 use tokio::sync::{Mutex, OwnedRwLockReadGuard, RwLock, watch};
 use tokio_util::{
@@ -75,6 +76,22 @@ impl TabRegistry {
 /// The caller supplies the installed, verified release executable, never a PATH lookup.
 pub struct LaunchOptions {
     pub executable: PathBuf,
+    /// The release's version, for the user agent pages see.
+    version: String,
+    /// The user's time zone and languages; they do not change while the
+    /// environment lives (`browser.md` § Native driver).
+    pub locale: CommandLocale,
+}
+
+impl LaunchOptions {
+    /// The pinned release installed at `executable`, started in `locale`.
+    pub fn pinned(executable: PathBuf, locale: CommandLocale) -> Result<Self> {
+        Ok(Self {
+            executable,
+            version: super::installation::pinned_version()?,
+            locale,
+        })
+    }
 }
 
 #[derive(Clone)]
@@ -110,33 +127,30 @@ where
     let mut process = ChromeProcess::new(profile.path(), &options.executable);
     let download_directory = profile.path().join("downloads");
     tokio::fs::create_dir(&download_directory).await?;
-    let config = BrowserConfig::builder()
+    let builder = BrowserConfig::builder()
         .respect_https_errors()
         .surface_invalid_messages()
         .chrome_executable(options.executable)
         .user_data_dir(profile.path())
-        .arg("no-startup-window")
-        // Headless automation has no browser toolbar or omnibox. Avoid their
-        // WebUI renderers and preload work, including Chrome's overhead trial.
-        .arg((
-            "disable-features",
-            "InitialWebUI,WebUIToolbarProcessOverheadExperiment,PreloadTopChromeWebUI,WebUIOmniboxPopup,WebUIOmniboxAimPopup",
-        ))
         .viewport(Viewport {
-            width: 1280,
-            height: 720,
+            width: super::viewport::Viewport::UNWATCHED.width,
+            height: super::viewport::Viewport::UNWATCHED.height,
             ..Viewport::default()
         })
         .launch_timeout(Duration::from_secs(60))
-        .request_timeout(Duration::from_secs(30))
-        .build()
-        .map_err(BrowserError::Configuration)?;
+        .request_timeout(Duration::from_secs(30));
+    let config =
+        super::launch::configure(builder, profile.path(), &options.version, &options.locale)
+            .await?
+            .build()
+            .map_err(BrowserError::Configuration)?;
+    let platform_arguments = super::launch::platform_arguments(&options.locale);
     // Only joined retirement may remove a profile once Chrome could be writing.
     profile.disable_cleanup(true);
     let launched = tokio::select! {
         biased;
         _ = stop.cancelled() => Err(BrowserError::Cancelled),
-        result = Browser::launch_with(config, |command| process.spawn(command)) => result.map_err(BrowserError::from),
+        result = Browser::launch_with(config, |command| process.spawn(command.args(&platform_arguments))) => result.map_err(BrowserError::from),
     };
     let (browser, mut handler) = match launched {
         Ok(launched) => launched,
@@ -473,6 +487,9 @@ impl BrowserEnvironment {
             id,
             created_by,
         );
+        // Every page starts at the unwatched viewport; its window must hold it.
+        tab.set_viewport(super::viewport::Viewport::UNWATCHED)
+            .await?;
         tabs.live.insert(tab.page.target_id().clone(), tab.clone());
         Ok(tab)
     }
@@ -586,6 +603,57 @@ async fn remove_profile(profile: tempfile::TempDir, retired: Result<()>) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    #[ignore = "requires DEMI_TEST_CHROME pointing to an installed Chrome for Testing release"]
+    async fn the_capture_extension_runs_beside_the_pages_and_is_never_a_tab() {
+        let executable =
+            PathBuf::from(std::env::var_os("DEMI_TEST_CHROME").expect("DEMI_TEST_CHROME"));
+        let locale = CommandLocale {
+            time_zone: "UTC".into(),
+            languages: vec!["en-US".into()],
+        };
+        let timeout = Duration::from_secs(60);
+        with_browser(
+            LaunchOptions::pinned(executable, locale).unwrap(),
+            CancellationToken::new(),
+            |environment| async move {
+                let tab = environment
+                    .open("about:blank", &CancellationToken::new(), timeout)
+                    .await?;
+                let prefix = format!(
+                    "chrome-extension://{}/",
+                    super::super::launch::CAPTURE_EXTENSION_ID
+                );
+                let browser = environment.browser.upgrade().ok_or(BrowserError::Closed)?;
+                let mut loaded = false;
+                for _ in 0..100 {
+                    let targets = browser
+                        .lock()
+                        .await
+                        .execute(GetTargetsParams::default())
+                        .await?
+                        .result
+                        .target_infos;
+                    if targets.iter().any(|target| target.url.starts_with(&prefix)) {
+                        loaded = true;
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(50)).await;
+                }
+                drop(browser);
+                assert!(loaded, "the capture extension never ran");
+                let tabs = environment.tabs(&CancellationToken::new(), timeout).await?;
+                assert_eq!(
+                    tabs.iter().map(BrowserTab::id).collect::<Vec<_>>(),
+                    vec![tab.id()]
+                );
+                Ok(())
+            },
+        )
+        .await
+        .unwrap();
+    }
 
     #[tokio::test]
     async fn failed_process_retirement_retains_the_profile_and_cause() {

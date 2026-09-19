@@ -16,6 +16,7 @@ mod handles;
 mod history;
 mod installation;
 mod keyboard;
+mod launch;
 mod logs;
 mod navigation;
 mod observation;
@@ -31,6 +32,7 @@ mod select;
 mod selection;
 mod tab;
 mod upload;
+mod viewport;
 mod webmcp;
 
 pub(crate) use conversations::Conversations;
