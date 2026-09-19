@@ -11,14 +11,14 @@ import type { FileUpload, FileUploads } from './file-uploads'
 import { formatBytes } from './format'
 
 /**
- * A source's uploads under its file tree, in the order they were asked for,
- * and nothing while there are none. The one on its way shows a bar, how much
- * of the file has gone and how fast it is going, the rest wait their turn, a
- * landed one says it completed, and a failed one why; a row's hover names
- * where its file goes.
- * Cancel stops an upload and drops it;
- * Retry sends a failed one again; Clear drops the finished ones, and a
- * finished one can be dismissed alone.
+ * A source's uploads under its file tree, and nothing while there are none:
+ * the one on its way first, then those waiting, the failed ones, and the
+ * completed ones last, each group in the order it was asked for. The one on
+ * its way shows a bar, how much of the file has gone and how fast; a waiting
+ * one its size, a completed one a check, a failed one a cross and why; a
+ * row's hover names where its file goes. Cancel stops an upload and drops it,
+ * Retry sends a failed one again, and Clear drops the finished ones, which
+ * can also be dismissed one by one.
  */
 const props = defineProps<{
   uploads: FileUploads
@@ -30,6 +30,12 @@ function underWay(upload: FileUpload): boolean {
 }
 
 const finished = computed(() => props.uploads.items.some((upload) => !underWay(upload)))
+
+/** Where each phase sorts: what still needs attention above what is done. */
+const PHASE_ORDER = { uploading: 0, waiting: 1, failed: 2, done: 3 } as const
+
+const ordered = computed(() =>
+  [...props.uploads.items].sort((a, b) => PHASE_ORDER[a.state.phase] - PHASE_ORDER[b.state.phase]))
 
 function stop(upload: FileUpload): void {
   if (underWay(upload))
@@ -52,7 +58,7 @@ function stop(upload: FileUpload): void {
     <ul class="min-h-0 overflow-y-auto px-1 pb-1">
       <!-- The name and its controls share the first line; what follows runs under the controls too. -->
       <li
-        v-for="upload in uploads.items"
+        v-for="upload in ordered"
         :key="upload.id"
         class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-1.5 rounded-md py-1 pl-2 pr-1"
       >
