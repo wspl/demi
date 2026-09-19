@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { Download, RefreshCw, Upload } from '@lucide/vue'
+import { useElementSize } from '@vueuse/core'
 import { useContextMenuOwner } from '../composables/useContextMenuOwner'
 import { useFileDrop } from '../composables/useFileDrop'
 import { showToast } from '../infra/toast'
@@ -11,7 +12,9 @@ import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import Popover from '../ui/Popover.vue'
+import ResizeHandle from '../ui/ResizeHandle.vue'
 import Tooltip from '../ui/Tooltip.vue'
+import FileUploadList from './FileUploadList.vue'
 import Tree from './Tree.vue'
 import UploadConflictDialog from './UploadConflictDialog.vue'
 import { downloadUrl } from './download'
@@ -50,6 +53,10 @@ import { DEFAULT_SORT, sortEntries } from './file-browser-state'
  * Names the directory already has wait on a question: Replace or Skip, and
  * Merge once a folder meets a folder. The uploads themselves belong to the
  * source (`uploadsOf`), and a directory an upload changes is listed again.
+ *
+ * While the source has uploads they list under the tree, fitting their rows
+ * up to `UPLOADS_FIT_PX`; the divider between the two sizes the list, which
+ * then keeps that height, leaving the tree at least `TREE_MIN_PX`.
  */
 defineOptions({ inheritAttrs: false })
 
@@ -70,6 +77,13 @@ const props = defineProps<{
 const emit = defineEmits<{
   open: [path: string]
 }>()
+
+/** The uploads list's height before its divider is moved: its rows, up to this. */
+const UPLOADS_FIT_PX = 240
+/** The least the divider leaves the uploads list: its caption and one row. */
+const UPLOADS_MIN_PX = 76
+/** The least the divider leaves the tree: its caption and two rows. */
+const TREE_MIN_PX = 96
 
 // The generic `Tree` has no instance type to name; its exposed surface is spelled out.
 const tree = ref<{
@@ -286,6 +300,20 @@ function download(path: string): void {
 
 const uploads = computed(() => uploadsOf(props.source))
 
+// The uploads list's height, once its divider has set one; until then it fits its rows.
+const uploadsHeight = ref<number | null>(null)
+const panel = ref<HTMLElement | null>(null)
+const uploadsList = ref<InstanceType<typeof FileUploadList> | null>(null)
+const { height: panelHeight } = useElementSize(panel)
+const { height: listHeight } = useElementSize(uploadsList, undefined, { box: 'border-box' })
+const uploadsRoom = computed(() => Math.max(UPLOADS_MIN_PX, Math.floor(panelHeight.value - TREE_MIN_PX)))
+const uploadsSize = computed({
+  get: () => uploadsHeight.value ?? Math.round(listHeight.value),
+  set: (height: number) => {
+    uploadsHeight.value = height
+  },
+})
+
 // A directory an upload changes shows it, when it is listed.
 watch(uploads, (list, _previous, onCleanup) => {
   onCleanup(list.onChanged((directory) => {
@@ -463,59 +491,77 @@ defineExpose({
 </script>
 
 <template>
-  <Tree
-    ref="tree"
-    v-bind="$attrs"
-    :rows="rows"
-    :caption="rootName"
-    :caption-title="root"
-    :selected="selectedPath"
-    :menu-row="menu.isOpen.value ? menuTarget?.path : null"
-    :drop-target="dropTarget"
-    :tooltip="failureText"
-    @activate="activate"
-    @menu="openMenu"
-  >
-    <template #captionTrailing>
-      <Tooltip content="Refresh" class="ml-2 shrink-0">
-        <IconButton
-          :icon="RefreshCw"
-          size="xs"
-          variant="ghost"
-          aria-label="Refresh"
-          spin-on-click
-          :spinning="refreshing"
-          @click="refresh"
+  <div ref="panel" class="flex h-full min-h-0 flex-col" v-bind="$attrs">
+    <Tree
+      ref="tree"
+      class="min-h-0 flex-1"
+      :rows="rows"
+      :caption="rootName"
+      :caption-title="root"
+      :selected="selectedPath"
+      :menu-row="menu.isOpen.value ? menuTarget?.path : null"
+      :drop-target="dropTarget"
+      :tooltip="failureText"
+      @activate="activate"
+      @menu="openMenu"
+    >
+      <template #captionTrailing>
+        <Tooltip content="Refresh" class="ml-2 shrink-0">
+          <IconButton
+            :icon="RefreshCw"
+            size="xs"
+            variant="ghost"
+            aria-label="Refresh"
+            spin-on-click
+            :spinning="refreshing"
+            @click="refresh"
+          />
+        </Tooltip>
+      </template>
+      <template #mark="{ row }">
+        <CornerDot v-if="failureOf(row)" tone="danger" size="xs" ring="editor" :label="failureText(row)" />
+      </template>
+      <template #trailing="{ row }">
+        <IndeterminateSpinner
+          v-if="isLoading(row)"
+          class="ml-auto shrink-0 text-fg-faint"
+          :size="12"
+          :stroke-width="1.5"
         />
-      </Tooltip>
-    </template>
-    <template #mark="{ row }">
-      <CornerDot v-if="failureOf(row)" tone="danger" size="xs" ring="editor" :label="failureText(row)" />
-    </template>
-    <template #trailing="{ row }">
-      <IndeterminateSpinner
-        v-if="isLoading(row)"
-        class="ml-auto shrink-0 text-fg-faint"
-        :size="12"
-        :stroke-width="1.5"
+      </template>
+      <template #empty>
+        <div
+          v-if="rootListing?.loading"
+          class="flex flex-1 select-none items-center justify-center py-10 text-fg-subtle"
+        >
+          <IndeterminateSpinner :size="16" />
+        </div>
+        <div
+          v-else-if="rootListing?.failure"
+          class="flex flex-1 select-none flex-col items-center justify-center gap-1 px-4 py-10 text-center text-[13px] text-fg-subtle"
+        >
+          <span>Could not list the workspace.</span>
+          <span class="text-[11px] text-fg-faint">{{ rootListing.failure.message }}</span>
+        </div>
+      </template>
+    </Tree>
+    <template v-if="uploads.items.length > 0">
+      <ResizeHandle
+        v-model="uploadsSize"
+        orientation="horizontal"
+        side="end"
+        :min="UPLOADS_MIN_PX"
+        :max="uploadsRoom"
+        label="uploads"
+      />
+      <FileUploadList
+        ref="uploadsList"
+        class="shrink-0"
+        :style="uploadsHeight === null ? { maxHeight: `${UPLOADS_FIT_PX}px` } : { height: `${uploadsHeight}px` }"
+        :uploads="uploads"
       />
     </template>
-    <template #empty>
-      <div
-        v-if="rootListing?.loading"
-        class="flex flex-1 select-none items-center justify-center py-10 text-fg-subtle"
-      >
-        <IndeterminateSpinner :size="16" />
-      </div>
-      <div
-        v-else-if="rootListing?.failure"
-        class="flex flex-1 select-none flex-col items-center justify-center gap-1 px-4 py-10 text-center text-[13px] text-fg-subtle"
-      >
-        <span>Could not list the workspace.</span>
-        <span class="text-[11px] text-fg-faint">{{ rootListing.failure.message }}</span>
-      </div>
-    </template>
-  </Tree>
+  </div>
   <Popover
     :key="menu.menuKey.value"
     :overlay-store="appOverlayStore"

@@ -12,11 +12,9 @@ import FileBrowserAddressBar from './FileBrowserAddressBar.vue'
 import FilePreview from './FilePreview.vue'
 import FileSummary from './FileSummary.vue'
 import FileTree from './FileTree.vue'
-import FileUploadList from './FileUploadList.vue'
 import MarkdownDocument from './MarkdownDocument.vue'
 import TreeFrame from './TreeFrame.vue'
 import { downloadUrl } from './download'
-import { uploadsOf } from './file-uploads'
 import { TREE_WIDTH } from './file-view'
 import { baseName, normalizePath, parentPath } from './paths'
 import { hasSourceView, previewKind, TOO_LARGE_NOTE } from './preview'
@@ -38,7 +36,8 @@ import { FileBrowserError, type FileBrowserSource } from './types'
  * asks the host to show it here; Back and Forward before the crumbs ask for
  * the files shown before and after. A path typed into the crumb row opens
  * that file, or finds that folder in the tree and selects it there. Files
- * uploaded from the tree's menu list under it until cleared.
+ * dropped on the tree, or uploaded from its menu, list under it until
+ * cleared (`FileTree`).
  */
 const props = defineProps<{
   source: FileBrowserSource
@@ -285,18 +284,14 @@ onBeforeUnmount(() => {
       @action="read"
     />
     <template #tree>
-      <div class="flex h-full min-h-0 flex-col">
-        <FileTree
-          ref="treeView"
-          class="flex-1"
-          :source="source"
-          :root="root"
-          :root-name="rootName"
-          :selected="located ?? path"
-          @open="openFromTree"
-        />
-        <FileUploadList :uploads="uploadsOf(source)" />
-      </div>
+      <FileTree
+        ref="treeView"
+        :source="source"
+        :root="root"
+        :root-name="rootName"
+        :selected="located ?? path"
+        @open="openFromTree"
+      />
     </template>
   </TreeFrame>
 </template>
