@@ -64,6 +64,14 @@ User's browser (Demi web)      Backend                     Host (Cloud or paired
 - `web-ui` shows the video, sends input, and places the page's native form
   controls over the video.
 
+The work panel has two kinds of browser tab, which are different things side
+by side. A Host tab is one tab of the conversation browser, shown live: the
+agent's `open` adds one, a tab closed on the Host disappears, and the user
+opens and closes Host tabs in the panel. A local tab shows a page in the user's
+own browser, in a frame, and is where exposes open
+([Web architecture](web-application.md#package-responsibilities)). Both kinds
+use the same address bar component; only a Host tab has the viewport menu.
+
 ## The stream
 
 ### Opening a view
@@ -84,8 +92,10 @@ User's browser (Demi web)      Backend                     Host (Cloud or paired
 5. The live view module answers with the protocol version, the tab list and the
    watched tab's first key frame.
 
-One view is one invocation. The page shows one Host: the conversation's main
-Host. A browser on an attached Host is not shown.
+One view is one invocation. Like a running command, it occupies one of its
+service's concurrent invocation streams, and only while the page shows it.
+The page shows one Host: the conversation's main Host. A browser on an
+attached Host is not shown.
 
 When no browser runs, the page says so and offers a new tab. A new tab is
 ordinary demand: it wakes a stopped Cloud, starts the environment as the
@@ -325,22 +335,6 @@ checks read it there.
 | `packages/web-ui` | The live view: video, input, native control overlays, clipboard, dialogs, the viewport menu, stall display. It depends on `browser-protocol` for the protocol, as it depends on `agent` for agent frames. |
 | `packages/web`, `packages/web-gallery` | The product's stream source and activity reports; a gallery source replaying recorded frames and messages. |
 | `packages/guest-image` | Fonts for Chinese, Japanese and Korean text. |
-
-## Open decisions
-
-- **Local frame tabs.** The work panel's browser tabs today show pages in the
-  user's own browser, in a frame, and exposes open there
-  ([Web architecture](web-application.md#package-responsibilities)). Host
-  tabs either replace them, or the panel keeps both kinds side by side.
-- **Time zone and languages on the Host.** The browser applies the user's
-  last time zone and languages ([Native driver](browser.md#native-driver)).
-  They reach the Host either as job context variables, such as
-  `DEMI_TIME_ZONE` and `DEMI_LANGUAGES`, or as a trusted invocation field. The
-  standard `TZ` and `LANG` are not used: they would change the behavior of the
-  user's own tools and tests.
-- **Stream budget.** A service admits at most 32 concurrent invocation streams,
-  and a user stream holds one for as long as the view is open. User streams
-  need their own count, so that open views never block agent commands.
 
 ## Rationale
 
