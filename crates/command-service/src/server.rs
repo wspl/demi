@@ -14,10 +14,13 @@ use tokio_util::task::AbortOnDropHandle;
 
 use crate::protocol::{
     CONVERSATION_PATH, CommandError, Completion, ConversationRequest, INFO_PATH, INVOKE_PATH,
-    Invocation, MAX_INVOCATIONS, MAX_METADATA_BYTES, MAX_RECORD_BYTES, Record, SHUTDOWN_PATH,
+    Invocation, MAX_METADATA_BYTES, MAX_RECORD_BYTES, Record, SHUTDOWN_PATH,
     ServiceInfo, VERSION,
 };
-use crate::{Input, ServiceError, stream::send_bytes};
+use crate::{
+    Input, ServiceError,
+    stream::{CONNECTION_WINDOW, send_bytes},
+};
 
 const OUTPUT_QUEUE_RECORDS: usize = 4;
 const METADATA_TIMEOUT: Duration = Duration::from_secs(10);
@@ -158,12 +161,16 @@ where
     if info.len() > MAX_METADATA_BYTES {
         return Err(ServiceError::InvalidCatalog);
     }
+    // Invocations are not counted (`native-runtime.md` § Validation and flow
+    // control). The runner may abandon any number of requests it just sent,
+    // which h2's guard against a flood of resets would otherwise answer by
+    // closing the connection.
     let mut builder = h2::server::Builder::new();
     builder
-        .max_concurrent_streams(MAX_INVOCATIONS as u32)
         .max_header_list_size(16 * 1024)
         .initial_window_size(MAX_RECORD_BYTES as u32)
-        .initial_connection_window_size((MAX_RECORD_BYTES * MAX_INVOCATIONS) as u32);
+        .initial_connection_window_size(CONNECTION_WINDOW)
+        .max_pending_accept_reset_streams(usize::MAX);
     let mut connection = tokio::select! {
         _ = owner.cancelled() => return Err(ServiceError::Cancelled),
         result = tokio::time::timeout(METADATA_TIMEOUT, builder.handshake(io)) => result.map_err(|_| ServiceError::HandshakeTimeout)??,
@@ -195,7 +202,7 @@ where
                         None => break Ok(()),
                     };
                     match (request.method(), request.uri().path()) {
-                        (&Method::GET, INFO_PATH) if !draining && tasks.len() < MAX_INVOCATIONS => {
+                        (&Method::GET, INFO_PATH) if !draining => {
                             let body = info.clone();
                             tasks.spawn(async move {
                                 let mut stream = response.send_response(Response::new(()), false)?;
@@ -209,7 +216,7 @@ where
                             response.send_response(Response::new(()), true)?;
                             connection.graceful_shutdown();
                         }
-                        (&Method::POST, INVOKE_PATH | CONVERSATION_PATH) if !draining && tasks.len() < MAX_INVOCATIONS => {
+                        (&Method::POST, INVOKE_PATH | CONVERSATION_PATH) if !draining => {
                             let conversation = request.uri().path() == CONVERSATION_PATH;
                             tasks.spawn(invoke(
                                 request, response, handler.clone(), operations.clone(),
@@ -217,12 +224,14 @@ where
                             ));
                         }
                         _ => {
-                            let status = if draining || tasks.len() >= MAX_INVOCATIONS {
+                            let status = if draining {
                                 StatusCode::SERVICE_UNAVAILABLE
                             } else {
                                 StatusCode::NOT_FOUND
                             };
-                            reject(&mut response, status)?;
+                            // The caller may already have reset this stream; that
+                            // ends its own request, never the connection.
+                            let _already_reset = reject(&mut response, status);
                         }
                     }
                 }
