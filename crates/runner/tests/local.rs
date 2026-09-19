@@ -120,3 +120,73 @@ async fn private_endpoint_streams_binary_input_on_demand_and_joins_cancelled_cal
     .await
     .unwrap();
 }
+
+/// A refused client waits while the runner holds its lock, and fails at once
+/// when the runner has stopped or crashed (`commands.md` § External command
+/// clients).
+#[cfg(unix)]
+#[tokio::test]
+async fn a_client_waits_for_a_busy_runner_but_not_for_a_gone_one() {
+    // Stopped: the runner removed its endpoint.
+    let server = Server::start(Arc::new(Commands {
+        cancelled: Arc::new(AtomicBool::new(false)),
+    }))
+    .await
+    .unwrap();
+    let endpoint = server.endpoint().to_owned();
+    server.close().await.unwrap();
+    let stopped = tokio::time::timeout(
+        Duration::from_secs(1),
+        local::connect(&endpoint, &CancellationToken::new()),
+    )
+    .await;
+    assert!(matches!(stopped, Ok(Err(_))), "a stopped runner fails at once");
+
+    // Crashed: its socket is left behind, nothing listens and no lock is held.
+    let crashed = tempfile::tempdir().unwrap();
+    let socket = crashed.path().join("ipc.sock");
+    drop(std::os::unix::net::UnixListener::bind(&socket).unwrap());
+    std::fs::File::create(crashed.path().join("ipc.alive")).unwrap();
+    let gone = tokio::time::timeout(
+        Duration::from_secs(1),
+        local::connect(socket.to_str().unwrap(), &CancellationToken::new()),
+    )
+    .await;
+    assert!(matches!(gone, Ok(Err(_))), "a crashed runner fails at once");
+
+    // Busy: the queue of connections not yet accepted is full while the
+    // runner holds its lock.
+    let busy = tempfile::tempdir().unwrap();
+    let socket = busy.path().join("ipc.sock");
+    let unaccepted = tokio::net::UnixSocket::new_stream().unwrap();
+    unaccepted.bind(&socket).unwrap();
+    let listener = unaccepted.listen(1).unwrap();
+    let alive = std::fs::File::create(busy.path().join("ipc.alive")).unwrap();
+    alive.try_lock().unwrap();
+    let mut queued = Vec::new();
+    while let Ok(Ok(stream)) = tokio::time::timeout(
+        Duration::from_millis(100),
+        tokio::net::UnixStream::connect(&socket),
+    )
+    .await
+    {
+        queued.push(stream);
+    }
+    let waiting = tokio::spawn({
+        let socket = socket.to_str().unwrap().to_owned();
+        async move {
+            local::connect(&socket, &CancellationToken::new())
+                .await
+                .map(|_| ())
+        }
+    });
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert!(!waiting.is_finished(), "a busy runner is waited for");
+    drop(listener);
+    drop(alive);
+    let after = tokio::time::timeout(Duration::from_secs(2), waiting).await;
+    assert!(
+        matches!(after, Ok(Ok(Err(_)))),
+        "once the runner is gone the waiting client fails"
+    );
+}

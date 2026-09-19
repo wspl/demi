@@ -65,14 +65,7 @@ impl Volumes {
     }
 
     pub fn sync(&self, id: String) -> io::Result<()> {
-        let permit = match self.sync_capacity.clone().try_acquire_owned() {
-            Ok(permit) => permit,
-            Err(_) => {
-                let message = wire::sync_done(id, Some("filesystem sync capacity reached".into()))
-                    .map_err(io::Error::other)?;
-                return self.output.try_send(message).map_err(io::Error::other);
-            }
-        };
+        let capacity = self.sync_capacity.clone();
         let mounts: Vec<_> = self
             .blocks
             .iter()
@@ -81,7 +74,11 @@ impl Volumes {
         let output = self.output.clone();
         let stop = self.stop.clone();
         self.tasks.spawn(async move {
-            let _permit = permit;
+            // Past the capacity a sync waits for a slot (`runner.md` § Load).
+            let _permit = tokio::select! {
+                permit = capacity.acquire_owned() => permit.expect("sync capacity is never closed"),
+                _ = stop.cancelled() => return,
+            };
             let result = tokio::task::spawn_blocking(move || sync_filesystems(&mounts))
                 .await
                 .map_err(io::Error::other)

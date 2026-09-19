@@ -34,7 +34,7 @@ impl Job {
         let (error_reader, stderr) = pipe()?;
         env.remove(crate::stdio::LIVE_INPUT_ENV);
         // Keep the reference handle alive until every interpreter task finishes.
-        let input_reference = stdin.try_clone()?;
+        let input_reference = demi_command_service::descriptors::retry_blocking(|| stdin.try_clone())?;
         if live {
             env.insert(
                 crate::stdio::LIVE_INPUT_ENV.into(),
@@ -261,7 +261,8 @@ fn pump(
 }
 
 pub(super) fn pipe() -> io::Result<(File, File)> {
-    let (reader, writer) = std::io::pipe()?;
+    // Out of open files, the job waits for one (`runner.md` § Load).
+    let (reader, writer) = demi_command_service::descriptors::retry_blocking(std::io::pipe)?;
     #[cfg(unix)]
     {
         use std::os::fd::OwnedFd;

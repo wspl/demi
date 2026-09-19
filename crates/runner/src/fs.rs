@@ -74,7 +74,8 @@ async fn call(
             cwd,
             with_file_types,
         } => {
-            let mut directory = fs::read_dir(path(value, cwd)?).await?;
+            let target = path(value, cwd)?;
+            let mut directory = read_dir(&target, cancel).await?;
             let mut entries = Vec::new();
             while let Some(entry) = directory.next_entry().await? {
                 check_cancelled(cancel)?;
@@ -116,7 +117,7 @@ async fn call(
             recursive,
             force,
         } => {
-            match remove(&path(value, cwd)?, *recursive == Some(true)).await {
+            match remove(&path(value, cwd)?, *recursive == Some(true), cancel).await {
                 Err(error) if *force == Some(true) && error.kind() == io::ErrorKind::NotFound => {}
                 result => result?,
             }
@@ -146,7 +147,7 @@ async fn call(
                 Ok(()) => {}
                 Err(error) if error.kind() == io::ErrorKind::CrossesDevices => {
                     copy(&source, &destination, true, cancel).await?;
-                    remove(&source, true).await?;
+                    remove(&source, true, cancel).await?;
                 }
                 Err(error) => return Err(error),
             }
@@ -241,7 +242,12 @@ pub async fn chmod(path: &Path, mode: u32) -> io::Result<()> {
     }
 }
 
-async fn remove(path: &Path, recursive: bool) -> io::Result<()> {
+/// Out of open files, reading a directory waits for one (`runner.md` § Load).
+async fn read_dir(path: &Path, cancel: &CancellationToken) -> io::Result<fs::ReadDir> {
+    demi_command_service::descriptors::retry(cancel, || fs::read_dir(path)).await
+}
+
+async fn remove(path: &Path, recursive: bool, cancel: &CancellationToken) -> io::Result<()> {
     if fs::symlink_metadata(path).await?.is_dir() {
         if !recursive {
             return Err(io::Error::new(
@@ -249,7 +255,9 @@ async fn remove(path: &Path, recursive: bool) -> io::Result<()> {
                 "recursive removal is required for a directory",
             ));
         }
-        fs::remove_dir_all(path).await
+        // Out of open files, the removal waits for one and continues where
+        // it stopped.
+        demi_command_service::descriptors::retry(cancel, || fs::remove_dir_all(path)).await
     } else {
         fs::remove_file(path).await
     }
@@ -340,7 +348,8 @@ fn copy_entry<'a>(
             return symlink(&fs::read_link(source).await?, destination).await;
         }
         if metadata.is_file() {
-            fs::copy(source, destination).await?;
+            // Out of open files, the copy waits for one (`runner.md` § Load).
+            demi_command_service::descriptors::retry(cancel, || fs::copy(source, destination)).await?;
             return Ok(());
         }
         if !metadata.is_dir() {
@@ -350,7 +359,7 @@ fn copy_entry<'a>(
             ));
         }
         fs::create_dir_all(destination).await?;
-        let mut entries = fs::read_dir(source).await?;
+        let mut entries = read_dir(source, cancel).await?;
         while let Some(entry) = entries.next_entry().await? {
             copy_entry(&entry.path(), &destination.join(entry.file_name()), cancel).await?;
         }

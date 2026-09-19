@@ -94,11 +94,6 @@ impl Artifacts {
             let (sender, receiver) = oneshot::channel();
             let (output, stop) = {
                 let mut state = self.state.lock().unwrap();
-                if state.pending.len() >= 32 {
-                    return Err(RuntimeError::Artifact(
-                        "artifact request limit reached".into(),
-                    ));
-                }
                 let connection = state.connection.as_ref().ok_or(RuntimeError::Cancelled)?;
                 let output = connection.output.clone();
                 let stop = connection.stop.clone();
