@@ -132,6 +132,7 @@ implementation.
 | How does a service on a device get a public URL? | [Host expose](expose.md) |
 | How are native commands installed and executed? | [Native runtime](native-runtime.md) |
 | What does a device runner own? | [Runner](runner.md) |
+| What happens when many requests arrive at once? | [Load](runner.md#load) |
 | What did a tool call edit? | [Edit tracking](edit-tracking.md) |
 | How does the work panel show images, media, PDF and Markdown? | [File previews](file-previews.md) |
 | How does a message show a file it names? | [Files named in messages](file-previews.md#files-named-in-messages) |

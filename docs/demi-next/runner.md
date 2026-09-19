@@ -131,11 +131,11 @@ The runner keeps at most eight watched directories per connection and drops one
 after fifteen minutes without a request; closing the connection drops them all.
 
 Working-tree work runs on blocking threads off the connection's control loop.
-At most two computations run at a time; a request beyond that answers `busy`
-at once, and requests for the same directory share one computation. A
-computation stops at its next check when the connection closes or after thirty
-seconds (`timeout`). A failure inside the git library answers `internal` for
-that request and affects nothing else.
+At most two computations run at a time; a request beyond that waits for one to
+finish ([Load](#load)), and requests for the same directory share one
+computation. A computation stops at its next check when the connection closes
+or after thirty seconds of running (`timeout`). A failure inside the git
+library answers `internal` for that request and affects nothing else.
 
 ### Network streams
 
@@ -172,6 +172,50 @@ backend closing cancels the invocation. The runner reports each pipe end with `p
 pipe. Like a network stream, the service stream is generic mechanism: the
 runner does not parse what flows through it. The backend uses it for the
 [live browser view](browser-live-view.md).
+
+## Load
+
+The runner never refuses, drops or fails a request because others are in
+flight. Work that lasts as long as its caller wants is not counted at all:
+native command calls, commands the backend implements, user streams, network
+streams and local command connections. Each is paced by its own backpressure,
+a stream window or a pipe that moves only what the other side accepts, so a
+slow reader holds back only itself and memory grows only with what runs. An
+agent's `demi browser wait` or a user's open live view holds nothing another
+command needs.
+
+Host work that finishes on its own runs a few at a time, and a request beyond
+that waits for a slot:
+
+| Work | At a time |
+| --- | --- |
+| Filesystem requests | 32 |
+| Working-tree requests | 8 |
+| Working-tree computations | 2 |
+| Filesystem syncs | 4 |
+
+A waiting request still ends when its connection closes.
+
+Every pipe, relayed connection and file transfer holds an open file while it
+lasts. At start the runner raises its open-file allowance to 65,536, or to the
+system's maximum when that is lower: a shell's default, 256 on macOS, runs out
+long before memory does. Jobs inherit the raised allowance.
+
+One refusal remains, and it is not about load: a browser command that
+conflicts with another command on the same tab answers `tab_busy`
+([Conversation browser](browser.md#one-tab-registry)).
+
+### Implementation discrepancy
+
+The runner at this revision still refuses at each of these points. A native
+call past 32 in flight waits behind them, or fails with 503 while others end
+and start. A command the backend implements fails past 32. A filesystem
+request past 32 answers `EBUSY`, a working-tree request past 8 or a
+computation past 2 answers `busy`, and a sync past 4 fails. A local connection
+past 64 is dropped. Cancelling a burst of just-sent native calls can close the
+service's connection. The runner keeps the shell's open-file allowance. In the
+command-service SDK, a caller's EOF after a service finished early can still
+fail ([Request body and input demand](native-runtime.md#request-body-and-input-demand)).
 
 ## Shell jobs
 
