@@ -9,22 +9,18 @@ import { ICON_PX } from '../ui/icon-metrics'
 import FileIcon from './FileIcon.vue'
 import type { FileUpload, FileUploads } from './file-uploads'
 import { formatBytes } from './format'
-import { baseName, parentPath, relativePath } from './paths'
 
 /**
  * A source's uploads under its file tree, in the order they were asked for,
  * and nothing while there are none. The one on its way shows a bar and how
- * much of the file has gone, the rest wait their turn, a landed one says
- * where it went, and a failed one why. Cancel stops an upload and drops it;
+ * much of the file has gone, the rest wait their turn, a landed one says it
+ * completed, and a failed one why; a row's hover names where its file goes.
+ * Cancel stops an upload and drops it;
  * Retry sends a failed one again; Clear drops the finished ones, and a
  * finished one can be dismissed alone.
  */
 const props = defineProps<{
   uploads: FileUploads
-  /** The workspace, to say where a file goes from it. */
-  root: string
-  /** What the workspace is called in place of its directory's name. */
-  rootName?: string
 }>()
 
 /** Waiting or on its way: what Cancel stops, where a finished upload is dismissed instead. */
@@ -33,11 +29,6 @@ function underWay(upload: FileUpload): boolean {
 }
 
 const finished = computed(() => props.uploads.items.some((upload) => !underWay(upload)))
-
-/** The directory a file goes into, as it reads from the workspace. */
-function destination(upload: FileUpload): string {
-  return relativePath(props.root, parentPath(upload.path)) || props.rootName || baseName(props.root) || '/'
-}
 
 function stop(upload: FileUpload): void {
   if (underWay(upload))
@@ -78,7 +69,7 @@ function stop(upload: FileUpload): void {
           </div>
           <div v-else-if="upload.state.phase === 'done'" class="flex min-w-0 items-center gap-1 text-[11px] leading-4 text-fg-subtle">
             <Check :size="ICON_PX.in20" class="shrink-0 text-on-success" />
-            <span class="truncate">In {{ destination(upload) }}</span>
+            <span class="truncate">Completed</span>
           </div>
           <div v-else class="line-clamp-2 text-[11px] leading-4 text-on-danger">
             {{ upload.state.message }}
