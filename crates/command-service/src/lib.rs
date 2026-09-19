@@ -1,5 +1,6 @@
 //! HTTP/2 command services over caller-owned duplex transports.
 
+pub mod descriptors;
 pub mod edits;
 pub mod integrity;
 pub mod protocol;
