@@ -12,9 +12,10 @@ import { formatBytes } from './format'
 
 /**
  * A source's uploads under its file tree, in the order they were asked for,
- * and nothing while there are none. The one on its way shows a bar and how
- * much of the file has gone, the rest wait their turn, a landed one says it
- * completed, and a failed one why; a row's hover names where its file goes.
+ * and nothing while there are none. The one on its way shows a bar, how much
+ * of the file has gone and how fast it is going, the rest wait their turn, a
+ * landed one says it completed, and a failed one why; a row's hover names
+ * where its file goes.
  * Cancel stops an upload and drops it;
  * Retry sends a failed one again; Clear drops the finished ones, and a
  * finished one can be dismissed alone.
@@ -49,44 +50,46 @@ function stop(upload: FileUpload): void {
       <Button v-if="finished" size="sm" variant="ghost" class="shrink-0" @click="uploads.clearFinished()">Clear</Button>
     </div>
     <ul class="min-h-0 overflow-y-auto px-1 pb-1">
+      <!-- The name and its controls share the first line; what follows runs under the controls too. -->
       <li
         v-for="upload in uploads.items"
         :key="upload.id"
-        class="flex items-start gap-1.5 rounded-md py-1 pl-2 pr-1"
+        class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-1.5 rounded-md py-1 pl-2 pr-1"
       >
-        <FileIcon :name="upload.file.name" :is-directory="false" class="mt-0.5" />
-        <div class="min-w-0 flex-1">
-          <div class="truncate text-chrome leading-5 text-fg-body" :title="upload.path">{{ upload.file.name }}</div>
-          <div
-            v-if="upload.state.phase === 'uploading'"
-            class="flex items-center gap-2 text-[11px] leading-4 text-fg-subtle tabular-nums"
-          >
-            <ProgressBar class="min-w-0 flex-1" :value="upload.state.sent" :max="upload.file.size" :label="upload.file.name" />
-            <span class="shrink-0">{{ formatBytes(upload.state.sent) }} / {{ formatBytes(upload.file.size) }}</span>
-          </div>
-          <div v-else-if="upload.state.phase === 'waiting'" class="truncate text-[11px] leading-4 text-fg-subtle">
+        <FileIcon :name="upload.file.name" :is-directory="false" />
+        <div class="truncate text-chrome leading-5 text-fg-body" :title="upload.path">{{ upload.file.name }}</div>
+        <div class="flex shrink-0 items-center">
+          <Tooltip v-if="upload.state.phase === 'failed'" content="Retry">
+            <IconButton :icon="RotateCw" size="xs" variant="ghost" aria-label="Retry" spin-on-click @click="uploads.retry(upload.id)" />
+          </Tooltip>
+          <Tooltip :content="underWay(upload) ? 'Cancel' : 'Dismiss'">
+            <IconButton
+              :icon="X"
+              size="xs"
+              variant="ghost"
+              :aria-label="underWay(upload) ? 'Cancel' : 'Dismiss'"
+              @click="stop(upload)"
+            />
+          </Tooltip>
+        </div>
+        <div class="col-span-2 col-start-2 min-w-0 text-[11px] leading-4">
+          <template v-if="upload.state.phase === 'uploading'">
+            <ProgressBar class="my-1" :value="upload.state.sent" :max="upload.file.size" :label="upload.file.name" />
+            <div class="truncate text-fg-subtle tabular-nums">
+              {{ formatBytes(upload.state.sent) }} / {{ formatBytes(upload.file.size) }}<template v-if="upload.state.rate !== null"> · {{ formatBytes(upload.state.rate) }}/s</template>
+            </div>
+          </template>
+          <div v-else-if="upload.state.phase === 'waiting'" class="truncate text-fg-subtle">
             Waiting · {{ formatBytes(upload.file.size) }}
           </div>
-          <div v-else-if="upload.state.phase === 'done'" class="flex min-w-0 items-center gap-1 text-[11px] leading-4 text-fg-subtle">
+          <div v-else-if="upload.state.phase === 'done'" class="flex min-w-0 items-center gap-1 text-fg-subtle">
             <Check :size="ICON_PX.in20" class="shrink-0 text-on-success" />
             <span class="truncate">Completed</span>
           </div>
-          <div v-else class="line-clamp-2 text-[11px] leading-4 text-on-danger">
+          <div v-else class="line-clamp-2 text-on-danger">
             {{ upload.state.message }}
           </div>
         </div>
-        <Tooltip v-if="upload.state.phase === 'failed'" content="Retry" class="shrink-0">
-          <IconButton :icon="RotateCw" size="xs" variant="ghost" aria-label="Retry" spin-on-click @click="uploads.retry(upload.id)" />
-        </Tooltip>
-        <Tooltip :content="underWay(upload) ? 'Cancel' : 'Dismiss'" class="shrink-0">
-          <IconButton
-            :icon="X"
-            size="xs"
-            variant="ghost"
-            :aria-label="underWay(upload) ? 'Cancel' : 'Dismiss'"
-            @click="stop(upload)"
-          />
-        </Tooltip>
       </li>
     </ul>
   </section>
