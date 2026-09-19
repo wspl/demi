@@ -205,9 +205,8 @@ failing.
 Two refusals remain. A browser command that conflicts with another command on
 the same tab answers `tab_busy`; that is about the page, not load
 ([Conversation browser](browser.md#one-tab-registry)). An expose answers 503
-beyond 16 concurrent connections: anyone on the internet can reach it, and the
-limit keeps one expose from taking most of the runner's open files
-([Host expose](expose.md#the-public-relay)).
+beyond 64 concurrent connections: anyone on the internet can reach it, so it
+sheds load instead of queuing it ([Host expose](expose.md#the-public-relay)).
 
 ### Implementation discrepancy
 
