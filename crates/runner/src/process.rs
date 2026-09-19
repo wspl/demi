@@ -88,7 +88,9 @@ impl ChildProcess {
         let mut child = loop {
             match command.spawn() {
                 Ok(child) => break child,
-                Err(error) if demi_command_service::descriptors::exhausted(&error) => backoff.wait().await,
+                Err(error) if demi_command_service::descriptors::exhausted(&error) => {
+                    backoff.wait().await
+                }
                 Err(error) => return Err(classify_failure(error, &options).await),
             }
         };

@@ -469,7 +469,9 @@ fn discover(root: &Path) -> Result<Option<gix::Repository>, GitError> {
         Ok(repo) => Ok(Some(repo)),
         Err(error) if demi_command_service::descriptors::exhausted(&error) => Err(internal(error)),
         Err(gix::discover::Error::Discover(_)) => match std::fs::File::open(root) {
-            Err(error) if demi_command_service::descriptors::exhausted(&error) => Err(GitError::Io(error)),
+            Err(error) if demi_command_service::descriptors::exhausted(&error) => {
+                Err(GitError::Io(error))
+            }
             _ => Ok(None),
         },
         Err(error) => Err(internal(error)),
@@ -889,8 +891,10 @@ pub async fn handle(
 ) -> Option<Result<Outbound, wire::WireError>> {
     let id = message.git_request_id()?;
     // Out of open files, the request waits for one (`runner.md` § Load).
-    let result =
-        demi_command_service::descriptors::retry(cancel, || call(service, message, default_cwd, cancel)).await;
+    let result = demi_command_service::descriptors::retry(cancel, || {
+        call(service, message, default_cwd, cancel)
+    })
+    .await;
     Some(match result {
         Ok(reply) => wire::within_limit(reply, |reason| {
             wire::git_error(id.to_owned(), GitError::TooLarge.code().to_owned(), reason)
