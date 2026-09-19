@@ -374,6 +374,49 @@ async fn later_requests_follow_the_watch_and_a_commit_starts_over() {
 }
 
 #[tokio::test]
+async fn watched_requests_follow_ignore_rules_and_modes() {
+    let (_dir, repo) = committed_repo();
+    std::fs::write(repo.join("dir/new.txt"), "n\n").unwrap();
+    std::fs::write(repo.join("scratch.log"), "l\n").unwrap();
+    let service = GitService::default();
+    let first = changes(&service, &repo).await;
+    assert_eq!(statuses(&first), git_status(&repo));
+
+    // A rule that ignores a listed file takes it off the list.
+    std::fs::write(repo.join(".gitignore"), "*.log\n").unwrap();
+    let ignored = poll(&service, &repo, |result| {
+        !statuses(result).contains_key("scratch.log")
+    })
+    .await;
+    assert_eq!(statuses(&ignored), git_status(&repo));
+
+    // Only the mode changes.
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(repo.join("b.txt"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    let executable = poll(&service, &repo, |result| {
+        statuses(result).contains_key("b.txt")
+    })
+    .await;
+    assert_eq!(statuses(&executable), git_status(&repo));
+}
+
+#[tokio::test]
+async fn a_rule_above_the_root_reaches_under_it() {
+    let (_dir, repo) = committed_repo();
+    std::fs::write(repo.join("dir/new.log"), "n\n").unwrap();
+    let root = repo.join("dir");
+    let service = GitService::default();
+    let first = changes(&service, &root).await;
+    assert_eq!(
+        statuses(&first).into_keys().collect::<Vec<_>>(),
+        ["new.log"]
+    );
+
+    std::fs::write(repo.join(".gitignore"), "*.log\n").unwrap();
+    poll(&service, &root, |result| result.files.is_empty()).await;
+}
+
+#[tokio::test]
 async fn a_staged_rename_stays_one_entry_across_watched_requests() {
     let (_dir, repo) = committed_repo();
     git(&repo, &["mv", "a.txt", "moved.txt"]);

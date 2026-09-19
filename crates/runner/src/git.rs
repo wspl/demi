@@ -12,23 +12,24 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 
 use gix::bstr::{BStr, BString, ByteSlice};
-use notify::Watcher as _;
 use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 
 use crate::connection::wire::{self as wire, Inbound, Outbound};
 use crate::paths::resolve;
+use crate::tree_watch::{TreeWatch, WatchEvent};
 
 /// The list stops here and reports `truncated`.
 pub const MAX_FILES: usize = 5_000;
 /// Files beyond this size count no lines; `git_show` refuses them.
 pub const MAX_BLOB_BYTES: u64 = 8 * 1024 * 1024;
-/// Beyond this many recorded paths a watch is no better than a whole walk.
-const MAX_TOUCHED: usize = 10_000;
+/// Beyond this many recorded paths a whole walk is cheaper: a walk over some
+/// paths checks every index entry against each of them.
+const MAX_TOUCHED: usize = 100;
 const MAX_ROOTS: usize = 8;
 const IDLE: Duration = Duration::from_secs(15 * 60);
 const TIMEOUT: Duration = Duration::from_secs(30);
@@ -152,7 +153,7 @@ struct Root {
 
 struct RootState {
     baseline: Option<Baseline>,
-    watcher: Option<notify::RecommendedWatcher>,
+    watcher: Option<TreeWatch>,
     /// A watch is tried once per root; a failure means whole walks from then on.
     watch_tried: bool,
 }
@@ -164,8 +165,14 @@ struct Baseline {
     /// not. Renames change only with the index, and any change under `.git`
     /// recomputes the whole, so a walk over some paths keeps these.
     renames: BTreeMap<String, String>,
+    /// The rules files above the root as this walk found them.
+    rules_above: Vec<RulesStamp>,
     truncated: bool,
 }
+
+/// A `.gitignore` or `.gitattributes` as a walk found it: its size and when
+/// it was last written, or `None` when it was not there.
+type RulesStamp = Option<(u64, SystemTime)>;
 
 /// What the watch recorded: paths to re-examine, or the need for a whole walk.
 #[derive(Default)]
@@ -234,16 +241,28 @@ impl GitService {
             _ = cancel.cancelled() => return Err(GitError::Cancelled),
         };
         let root_path = root.path.clone();
-        let located = blocking(cancel, move || locate(&root_path)).await?;
-        let Some(located) = located else {
+        let located = blocking(cancel, move || {
+            Ok(locate(&root_path)?.map(|located| {
+                let rules = rules_above(&root_path, &located);
+                (located, rules)
+            }))
+        })
+        .await?;
+        let Some((located, rules)) = located else {
             // A directory that stops being a repository loses its baseline and watch.
             state.baseline = None;
             state.watcher = None;
             return Ok(Changes::outside_repository());
         };
         if !state.watch_tried {
+            let root_path = root.path.clone();
+            let git_dir = located.git_dir.clone();
+            let touched = root.touched.clone();
+            state.watcher = blocking(cancel, move || {
+                Ok(start_watch(&root_path, &git_dir, touched))
+            })
+            .await?;
             state.watch_tried = true;
-            state.watcher = start_watch(&root.path, &located.git_dir, root.touched.clone());
         }
         let touched = {
             let mut touched = lock(&root.touched);
@@ -254,7 +273,7 @@ impl GitService {
         }
         let watched = state.watcher.is_some();
         let scope = match &state.baseline {
-            Some(baseline) if watched && !touched.whole => {
+            Some(baseline) if watched && !touched.whole && baseline.rules_above == rules => {
                 let scope = paths_scope(&touched.paths, &located, baseline);
                 match scope {
                     Some(scope) => scope,
@@ -288,6 +307,7 @@ impl GitService {
                 head: computed.head,
                 files: computed.files,
                 renames: computed.renames,
+                rules_above: rules,
                 truncated: computed.truncated,
             },
             Scope::Paths { root_relative, .. } => {
@@ -560,44 +580,72 @@ fn root_relative_path<'a>(rela: &'a str, prefix: &str) -> Option<&'a str> {
         .and_then(|rest| rest.strip_prefix('/'))
 }
 
-fn start_watch(
-    root: &Path,
-    git_dir: &Path,
-    touched: Arc<Mutex<Touched>>,
-) -> Option<notify::RecommendedWatcher> {
-    let git_dir_owned = git_dir.to_path_buf();
-    let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
-        let mut touched = lock(&touched);
-        let event = match event {
-            Ok(event) => event,
-            Err(_) => {
-                touched.broken = true;
+impl Touched {
+    /// Notes what a watch saw. Metadata alone under `.git` changes nothing
+    /// git lists; any other change there, or to a `.gitignore` or
+    /// `.gitattributes`, can change what git lists anywhere, so the next walk
+    /// is whole.
+    fn record(&mut self, event: WatchEvent, git_dir: &Path) {
+        let (path, metadata) = match event {
+            WatchEvent::Changed { path, metadata } => (path, metadata),
+            WatchEvent::Lost => {
+                self.whole = true;
+                return;
+            }
+            WatchEvent::Failed => {
+                self.broken = true;
                 return;
             }
         };
-        if event.need_rescan() {
-            touched.whole = true;
-        }
-        for path in event.paths {
-            if path.starts_with(&git_dir_owned) {
-                touched.whole = true;
-            } else if !touched.whole {
-                touched.paths.insert(path);
-                if touched.paths.len() > MAX_TOUCHED {
-                    touched.whole = true;
-                    touched.paths.clear();
-                }
+        if path.starts_with(git_dir) {
+            if !metadata {
+                self.whole = true;
+            }
+        } else if !metadata && rules_file(&path) {
+            self.whole = true;
+        } else if !self.whole {
+            self.paths.insert(path);
+            if self.paths.len() > MAX_TOUCHED {
+                self.whole = true;
+                self.paths.clear();
             }
         }
-    })
-    .ok()?;
-    watcher.watch(root, notify::RecursiveMode::Recursive).ok()?;
-    if !git_dir.starts_with(root) {
-        watcher
-            .watch(git_dir, notify::RecursiveMode::Recursive)
-            .ok()?;
     }
-    Some(watcher)
+}
+
+/// Whether git reads `path` to decide what it lists and how it compares
+/// files: a `.gitignore` or a `.gitattributes`.
+fn rules_file(path: &Path) -> bool {
+    matches!(
+        path.file_name().and_then(|name| name.to_str()),
+        Some(".gitignore" | ".gitattributes")
+    )
+}
+
+/// Watches the root, and the repository's `.git` when that lies outside it.
+fn start_watch(root: &Path, git_dir: &Path, touched: Arc<Mutex<Touched>>) -> Option<TreeWatch> {
+    let mut trees = vec![root];
+    if !git_dir.starts_with(root) {
+        trees.push(git_dir);
+    }
+    let git_dir = git_dir.to_path_buf();
+    TreeWatch::start(&trees, move |event| lock(&touched).record(event, &git_dir))
+}
+
+/// The `.gitignore` and `.gitattributes` of each directory above the root,
+/// up to the work tree, as they stand. They decide what git lists under the
+/// root too, but the watch covers only the root, so a request compares them
+/// with what the last walk found.
+fn rules_above(root: &Path, located: &Located) -> Vec<RulesStamp> {
+    root.ancestors()
+        .skip(1)
+        .take_while(|directory| directory.starts_with(&located.workdir))
+        .flat_map(|directory| [".gitignore", ".gitattributes"].map(|name| directory.join(name)))
+        .map(|path| {
+            let metadata = std::fs::metadata(path).ok()?;
+            Some((metadata.len(), metadata.modified().ok()?))
+        })
+        .collect()
 }
 
 fn head_tree(repo: &gix::Repository) -> Result<gix::Tree<'_>, GitError> {
@@ -1053,6 +1101,46 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_watch_notes_what_can_change_what_git_lists() {
+        let git_dir = Path::new("/repo/.git");
+        let changed = |path: &str, metadata| WatchEvent::Changed {
+            path: PathBuf::from(path),
+            metadata,
+        };
+
+        // Metadata alone under `.git` changes nothing.
+        let mut touched = Touched::default();
+        touched.record(changed("/repo/.git/objects/01/e79c", true), git_dir);
+        touched.record(changed("/repo/.git/index", true), git_dir);
+        assert!(touched.paths.is_empty());
+        assert!(!touched.whole);
+
+        // A file written or given another mode is re-examined, a rules file's
+        // mode alone too.
+        touched.record(changed("/repo/a.txt", false), git_dir);
+        touched.record(changed("/repo/x.sh", true), git_dir);
+        touched.record(changed("/repo/.gitignore", true), git_dir);
+        let expected = ["/repo/a.txt", "/repo/x.sh", "/repo/.gitignore"].map(PathBuf::from);
+        assert_eq!(touched.paths, HashSet::from(expected));
+        assert!(!touched.whole);
+
+        // Anything else under `.git`, a rules file changed, or lost events.
+        for event in [
+            changed("/repo/.git/index", false),
+            changed("/repo/sub/.gitattributes", false),
+            changed("/repo/.gitignore", false),
+            WatchEvent::Lost,
+        ] {
+            let mut touched = Touched::default();
+            touched.record(event, git_dir);
+            assert!(touched.whole);
+        }
+        let mut touched = Touched::default();
+        touched.record(WatchEvent::Failed, git_dir);
+        assert!(touched.broken);
+    }
+
+    #[test]
     fn a_walk_over_one_path_of_a_staged_rename_takes_in_the_other() {
         let located = Located {
             workdir: PathBuf::from("/repo"),
@@ -1064,6 +1152,7 @@ mod tests {
             head: None,
             files: BTreeMap::new(),
             renames: BTreeMap::from([("moved.txt".into(), "old/a.txt".into())]),
+            rules_above: Vec::new(),
             truncated: false,
         };
         for (touched, examined) in [

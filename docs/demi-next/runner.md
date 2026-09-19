@@ -130,14 +130,27 @@ over 8 MiB, which report 0 and 0. `git_show` refuses a blob over 8 MiB with
 
 The first request for a directory walks its whole tree. It also starts a
 filesystem watch of the directory, and of the repository's `.git` when that
-lies outside it, which only records the paths changed since. The next request
-re-examines those paths, with the other path of any staged rename among them
-so that the two still pair, and merges them into the previous result; a change
-under `.git` (a commit, a checkout, a staging) recomputes the whole. Anything
-that makes the watch unreliable turns it off for that directory, and the runner
-walks again: the watch cannot be created (an inotify limit, permissions, an
-unsupported filesystem), events overflowed, the platform asks for a rescan, or
-more than 10,000 paths accumulated. `watched` reports the outcome.
+lies outside it, which records only the paths changed since: reading a file
+changes nothing, and neither does metadata alone under `.git`. On macOS the
+watch is an FSEvents stream, which covers a tree of any size with one
+subscription; notify's kqueue backend there would hold a file descriptor for
+every file, more than a repository and the usual limit of 256 allow.
+
+The next request re-examines the recorded paths, with the other path of any staged
+rename among them so that the two still pair, and merges them into the
+previous result. It walks the whole tree again instead when a path under
+`.git` changed (a commit, a checkout, a staging), when a `.gitignore` or
+`.gitattributes` changed, since those decide what git lists for other paths,
+or when more than 100 paths changed: a walk over some paths checks every index
+entry against each of them, so past about a hundred it costs more than a whole
+walk. The watch covers only the directory, so each request also compares the
+`.gitignore` and `.gitattributes` files in the directories above it, up to the
+work tree, with what the last walk found. Settings outside the repository, such
+as the user's global ignore file, apply from the next whole walk. When the
+watch cannot be created (an inotify limit, permissions, an unsupported
+filesystem) or fails, the runner walks the whole tree for every request; when
+it lost events or the platform asks for a rescan, the next request walks the
+whole tree. `watched` reports whether a watch is running.
 
 The runner keeps at most eight watched directories per connection and drops one
 after fifteen minutes without a request; closing the connection drops them all.
