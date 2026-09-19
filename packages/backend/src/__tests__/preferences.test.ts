@@ -78,3 +78,30 @@ test(
     }
   }
 )
+
+test(
+  'the reported locale is validated and stored canonically',
+  async () => {
+    const dataDir = await mkdtemp(join(tmpdir(), 'demi-preferences-'))
+    const backend = await openBackend({ dataDir, port: 0 })
+    try {
+      const path = '/api/settings/preferences'
+      const reject = async (locale: unknown) => expect(
+        (await backend.session.fetch(path, json({ locale }))).status
+      ).toBe(400)
+      await reject({ timeZone: 'Mars/Olympus_Mons', languages: ['en'] })
+      await reject({ timeZone: 'UTC', languages: ['en_US'] })
+      await reject({ timeZone: 'UTC', languages: [] })
+      await reject({ timeZone: 'UTC', languages: Array.from({ length: 17 }, () => 'en') })
+      await reject({ timeZone: 'UTC' })
+      const response = await backend.session.fetch(path, json({
+        locale: { timeZone: 'Asia/Shanghai', languages: ['zh-cn', 'EN', 'zh-CN'] }
+      }))
+      expect(response.status).toBe(200)
+      expect((await response.json()).preferences.locale)
+        .toEqual({ timeZone: 'Asia/Shanghai', languages: ['zh-CN', 'en'] })
+    } finally {
+      await backend.close()
+    }
+  }
+)

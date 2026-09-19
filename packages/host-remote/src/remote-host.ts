@@ -1,5 +1,6 @@
 import {
   artifactLocationSchema,
+  type CommandContext,
 } from '@demicodes/command-protocol'
 import type { RemoteCommandCatalog } from './shell-environment-factory'
 import type {
@@ -273,11 +274,11 @@ export class RemoteHost implements Host {
   }
 
   /**
-   * The immutable environment of a live job, recorded before dispatch; absent
-   * after exit/disconnect.
+   * The command context of a live job, recorded before dispatch; absent after
+   * exit/disconnect (`native-runtime.md` § Command context).
    */
-  jobEnvironment(jobId: string): Readonly<Record<string, string>> | null {
-    return this.activeJobs.get(jobId)?.env ?? null
+  jobContext(jobId: string): CommandContext | null {
+    return this.activeJobs.get(jobId)?.context ?? null
   }
 
   /**
@@ -293,19 +294,15 @@ export class RemoteHost implements Host {
     stdout?: PipeRef;
     commandStorage?: CommandStorage;
     commands?: RemoteCommandCatalog
-    conversation: string
-    node: string
+    /** What the job's declared commands receive; the backend built it. */
+    context: CommandContext
   }): RemoteJob {
     const release = this.options.admit?.()
     const jobId = createId()
     const job = new RemoteJobState(
       jobId,
       (message) => this.dispatch(message),
-      Object.freeze({
-        ...params.env,
-        DEMI_CONVERSATION_ID: params.conversation,
-        DEMI_AGENT_NODE_ID: params.node,
-      }),
+      params.context,
       params.commandStorage,
       params.commands ? { ...params.commands } : undefined
     )
@@ -325,8 +322,7 @@ export class RemoteHost implements Host {
       this.send({
         type: 'job_start',
         ...(params.commands ? { manifestHash: params.commands.manifest.hash } : {}),
-        conversation: params.conversation,
-        node: params.node,
+        context: params.context,
         jobId,
         script: params.script,
         cwd: params.cwd,
@@ -808,7 +804,7 @@ class RemoteJobState {
   constructor(
     private readonly jobId: string,
     private readonly send: (message: BackendToRunnerMessage) => void,
-    readonly env: Readonly<Record<string, string>>,
+    readonly context: CommandContext,
     readonly commandStorage?: CommandStorage,
     readonly commands?: RemoteCommandCatalog,
   ) {}

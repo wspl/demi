@@ -12,7 +12,7 @@ use std::{
 use bytes::Bytes;
 use demi_command_service::{
     Client, Handler, InvocationContext, ServiceError,
-    protocol::{Completion, Invocation, Record},
+    protocol::{Completion, LocalInvocation, Record},
 };
 use demi_runner::commands::local::{self, Server};
 use tokio_util::sync::CancellationToken;
@@ -22,13 +22,15 @@ struct Commands {
 }
 
 impl Handler for Commands {
+    type Metadata = LocalInvocation;
+
     fn operations(&self) -> Vec<String> {
         vec!["echo".into(), "wait".into()]
     }
 
     fn invoke(
         &self,
-        mut context: InvocationContext,
+        mut context: InvocationContext<LocalInvocation>,
     ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
         let cancelled = self.cancelled.clone();
         Box::pin(async move {
@@ -49,12 +51,8 @@ impl Handler for Commands {
     }
 }
 
-fn invocation(operation: &str) -> Invocation {
-    Invocation {
-        caller: "runner-local".into(),
-        conversation: "runner-local".into(),
-        json: None,
-        edits: None,
+fn invocation(operation: &str) -> LocalInvocation {
+    LocalInvocation {
         operation: operation.into(),
         invocation_id: operation.into(),
         args: serde_json::json!({}),
@@ -140,7 +138,10 @@ async fn a_client_waits_for_a_busy_runner_but_not_for_a_gone_one() {
         local::connect(&endpoint, &CancellationToken::new()),
     )
     .await;
-    assert!(matches!(stopped, Ok(Err(_))), "a stopped runner fails at once");
+    assert!(
+        matches!(stopped, Ok(Err(_))),
+        "a stopped runner fails at once"
+    );
 
     // Crashed: its socket is left behind, nothing listens and no lock is held.
     let crashed = tempfile::tempdir().unwrap();

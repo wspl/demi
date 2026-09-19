@@ -36,6 +36,7 @@ import { ConversationForks } from './conversation/fork'
 import { ConversationTargets } from './conversation/target'
 import { CLOUD_HOME } from './conversation/execution-target'
 import { createCloudWorkspace } from './managed/cloud-workspace'
+import { buildCommandContext } from './runner/command-context'
 import { createHostCommandGroup } from './runner/host-command'
 import { Exposes } from './expose/records'
 import { ExposeRelay } from './expose/relay'
@@ -201,11 +202,10 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
       await managedHosts.growVolume(deviceId, volume, bytes)
     },
     rpc: async (call, io, execution) => {
-      const shell = sessionCommands.get(call.agentSessionId)
+      const { caller } = execution.context
+      const shell = caller.kind === 'agent' ? sessionCommands.get(caller.node) : undefined
       if (!shell || shell.rootSessionId !== execution.conversationId)
-        throw new Error(
-          `no authorized session ${call.agentSessionId} behind this job`
-        )
+        throw new Error(`no authorized session behind job ${call.jobId}`)
       if (!execution.commandStorage)
         throw new Error('rpc job has no agent command storage')
       const transport = inProcessRpc(shell.commands.list(), {
@@ -223,13 +223,8 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
         // write them here.
         stdin: io.stdin?.stream() ?? null,
         cwd: call.cwd,
-        env: {
-          ...call.env,
-          DEMI_CONVERSATION_ID: execution.conversationId,
-          DEMI_AGENT_NODE_ID: call.agentSessionId,
-          DEMI_SESSION_ID: call.agentSessionId,
-          DEMI_SHELL_ID: call.shellId
-        },
+        env: call.env,
+        context: execution.context,
         io: io.commandIO(),
         signal: io.signal,
         stdinStream: io.stdinStream,
@@ -373,6 +368,11 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     })
     return createShellEnvironment({
       ...ctx,
+      commandContext: () => buildCommandContext(
+        control,
+        ctx.rootSessionId,
+        { kind: 'agent', node: ctx.agentSessionId }
+      ),
       runJob: (signal, operation) => targets.withHost(ctx.rootSessionId, async host => {
         if (host !== ctx.host) throw new Error('Conversation Host changed before job dispatch')
         return operation()

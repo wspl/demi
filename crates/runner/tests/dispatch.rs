@@ -1,4 +1,6 @@
-use demi_command_service::protocol::Invocation;
+use demi_command_service::protocol::{
+    CommandCaller, CommandContext, CommandLocale, LocalInvocation,
+};
 use demi_runner::{
     commands::artifacts::Artifacts,
     commands::command_client::{RawCommand, Stdio, forward},
@@ -101,25 +103,12 @@ impl Fixture {
         demi_runner::commands::contexts::Lease,
     ) {
         self.contexts
-            .create(
-                "job".into(),
-                &self.hash,
-                "conversation".into(),
-                "session".into(),
-                &BTreeMap::from([
-                    ("DEMI_SESSION_ID".into(), "session".into()),
-                    ("DEMI_SHELL_ID".into(), "shell".into()),
-                ]),
-            )
+            .create("job".into(), &self.hash, command_context())
             .await
             .unwrap()
     }
-    fn request(&self, id: String, argv: Vec<String>) -> Invocation {
-        Invocation {
-            caller: "runner-local".into(),
-            conversation: "runner-local".into(),
-            json: None,
-            edits: None,
+    fn request(&self, id: String, argv: Vec<String>) -> LocalInvocation {
+        LocalInvocation {
             operation: "raw".into(),
             invocation_id: "invocation".into(),
             args: serde_json::to_value(RawCommand {
@@ -311,4 +300,15 @@ async fn declared_shell_builtin_dispatches_without_a_local_endpoint() {
     })
     .await
     .unwrap();
+}
+
+fn command_context() -> CommandContext {
+    CommandContext {
+        conversation: "conversation".into(),
+        caller: CommandCaller::agent("session"),
+        locale: CommandLocale {
+            time_zone: "UTC".into(),
+            languages: vec!["en-US".into()],
+        },
+    }
 }

@@ -1,5 +1,6 @@
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
+use demi_command_service::protocol::{CommandCaller, CommandContext, CommandLocale};
 use demi_runner::connection::wire::{self as wire, Inbound};
 use demi_runner::{host::HostServer, pipes::PipeClient};
 use tokio::sync::{RwLock, mpsc};
@@ -21,8 +22,7 @@ async fn filesystem_requests_and_kill_remain_available_during_job() {
         host.handle_task(
             &Inbound::JobStart {
                 manifest_hash: None,
-                conversation: "conversation".into(),
-                node: "node".into(),
+                context: context(),
                 job_id: "live".into(),
                 script: "sleep 60".into(),
                 cwd: root.path().to_string_lossy().into_owned(),
@@ -94,8 +94,7 @@ async fn job_environment_combines_device_request_and_owned_context() {
         host.handle_task(
             &Inbound::JobStart {
                 manifest_hash: None,
-                conversation: "conversation".into(),
-                node: "node".into(),
+                context: context(),
                 job_id: "env".into(),
                 script: "printf '%s:%s:%s' \"$DEVICE\" \"$OVERRIDE\" \"$CONTEXT\"".into(),
                 cwd: root.path().to_string_lossy().into_owned(),
@@ -230,4 +229,15 @@ async fn raw_spawn_inherits_environment_only_when_requested() {
         );
     }
     host.close().await;
+}
+
+fn context() -> CommandContext {
+    CommandContext {
+        conversation: "conversation".into(),
+        caller: CommandCaller::agent("node"),
+        locale: CommandLocale {
+            time_zone: "UTC".into(),
+            languages: vec!["en-US".into()],
+        },
+    }
 }

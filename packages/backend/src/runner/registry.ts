@@ -12,6 +12,7 @@ import {
   type RunnerToBackendMessage,
 } from '@demicodes/runner-protocol'
 import { msgpackCodec } from '@demicodes/runner-protocol/msgpack'
+import type { CommandContext } from '@demicodes/command-protocol'
 import type {
   CommandIO,
   CommandStorage,
@@ -116,7 +117,8 @@ export interface RpcRelayIO {
 export interface RpcExecution {
   conversationId: string
   host: Host
-  env: Readonly<Record<string, string>>
+  /** The job's command context, from the backend's record of the job. */
+  context: CommandContext
   commandStorage?: CommandStorage
 }
 
@@ -614,7 +616,7 @@ export class RunnerRegistry {
     // fs results, spawn and job streams: each per-target host claims its own ids.
     const deviceHosts = this.hosts.get(connection.deviceId)
     if (message.type === 'artifact_resolve') {
-      const host = [...(deviceHosts?.values() ?? [])].find(host => host.jobEnvironment(message.jobId) !== null)
+      const host = [...(deviceHosts?.values() ?? [])].find(host => host.jobContext(message.jobId) !== null)
       if (host)
         host.handleMessage(message)
       else
@@ -665,16 +667,13 @@ export class RunnerRegistry {
     call: Omit<RpcCallMessage, 'type'>
   ): RpcExecution {
     for (const host of this.hosts.get(deviceId)?.values() ?? []) {
-      const env = host.jobEnvironment(call.jobId)
-      if (!env)
+      const context = host.jobContext(call.jobId)
+      if (!context)
         continue
       const conversationId = this.conversationOfHost.get(host)!
-      if (env.DEMI_CONVERSATION_ID !== conversationId ||
-        env.DEMI_AGENT_NODE_ID !== call.agentSessionId ||
-        env.DEMI_SHELL_ID !== call.shellId) {
-        throw new Error('rpc identity does not match the dispatched job')
-      }
-      return { conversationId, host, env, commandStorage: host.jobCommandStorage(call.jobId) }
+      if (context.conversation !== conversationId)
+        throw new Error('rpc job belongs to another conversation')
+      return { conversationId, host, context, commandStorage: host.jobCommandStorage(call.jobId) }
     }
     throw new Error('rpc requires a live job dispatched to this device')
   }

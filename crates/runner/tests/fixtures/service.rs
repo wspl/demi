@@ -1,6 +1,6 @@
 //! Deliberately faulty operations available only in native integration tests.
 use bytes::Bytes;
-use demi_command_service::protocol::Completion;
+use demi_command_service::protocol::{Completion, Invocation};
 use demi_command_service::{ConversationContext, Handler, InvocationContext, ServiceError};
 use std::{
     collections::BTreeSet,
@@ -15,6 +15,8 @@ struct Fixture {
 }
 
 impl Handler for Fixture {
+    type Metadata = Invocation;
+
     fn operations(&self) -> Vec<String> {
         ["where", "echo", "first", "spin", "result", "retain"]
             .map(String::from)
@@ -33,13 +35,12 @@ impl Handler for Fixture {
                     conversations
                         .lock()
                         .unwrap()
-                        .insert(context.request.conversation);
+                        .insert(context.request.context.conversation);
                 }
                 "where" => {
                     let value = serde_json::json!({
                         "label": context.request.args.get("label"),
-                        "conversation": context.request.conversation,
-                        "caller": context.request.caller,
+                        "context": context.request.context,
                         "cwd": context.request.cwd,
                         "value": context.request.env.get("PROBE"),
                     });

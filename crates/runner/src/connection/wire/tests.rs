@@ -26,14 +26,20 @@ fn decodes_binary_and_dates_written_by_the_typescript_codec() {
         }
         _ => panic!("wrong message type"),
     }
-    assert!(matches!(
-        decode(include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../packages/runner-protocol/src/fixtures/job.msgpack"
-        )))
-        .unwrap(),
-        Inbound::JobStart { .. }
-    ));
+    match decode(include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../packages/runner-protocol/src/fixtures/job.msgpack"
+    )))
+    .unwrap()
+    {
+        Inbound::JobStart { context, .. } => {
+            assert_eq!(context.conversation, "conversation");
+            assert_eq!(context.caller.node(), Some("node"));
+            assert_eq!(context.locale.time_zone, "Asia/Shanghai");
+            assert_eq!(context.locale.languages, ["zh-CN", "en"]);
+        }
+        _ => panic!("wrong message type"),
+    }
 }
 
 #[test]

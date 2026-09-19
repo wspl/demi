@@ -5,7 +5,9 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_command_service::protocol::{Completion, Invocation, Record};
+use demi_command_service::protocol::{
+    CommandCaller, CommandContext, CommandLocale, Completion, Invocation, Record,
+};
 use demi_command_service::{Client, Handler, InvocationContext, ServiceError, serve};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -15,6 +17,8 @@ use tokio::{
 struct Echo;
 
 impl Handler for Echo {
+    type Metadata = Invocation;
+
     fn operations(&self) -> Vec<String> {
         vec!["echo".into()]
     }
@@ -46,8 +50,7 @@ where
         let driver = tokio::spawn(connection);
         let (mut input, mut output) = client
             .invoke(&Invocation {
-                caller: "node".into(),
-                conversation: "conversation".into(),
+                context: context(),
                 json: None,
                 edits: None,
                 operation: "echo".into(),
@@ -108,4 +111,15 @@ async fn http2_over_two_stdio_pipes_streams_before_eof_and_shuts_down() {
         pipe::Sender::from_owned_fd(OwnedFd::from(response_write)).unwrap(),
     );
     exchange(client, server).await;
+}
+
+fn context() -> CommandContext {
+    CommandContext {
+        conversation: "conversation".into(),
+        caller: CommandCaller::agent("node"),
+        locale: CommandLocale {
+            time_zone: "UTC".into(),
+            languages: vec!["en-US".into()],
+        },
+    }
 }

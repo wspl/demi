@@ -53,6 +53,7 @@ export async function createLoader(options: LoaderOptions): Promise<Loader> {
           stdinStream: io.stdinStream,
           env: io.env,
           cwd: io.cwd,
+          context: io.context,
           io: { stdout: io.stdout, stderr: io.stderr },
           host: options.host,
           signal: io.signal,

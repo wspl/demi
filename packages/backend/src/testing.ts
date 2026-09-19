@@ -18,6 +18,7 @@ import { memoryCommandStorage } from '@demicodes/shell/testing'
 import { runnerSocketRoutes } from './http/runner-socket'
 import { pipeRoutes } from './http/pipes'
 import { generateDeviceToken, hashDeviceToken } from './runner/claim-codes'
+import { DEFAULT_LOCALE } from './runner/command-context'
 import { PipeBroker } from '@demicodes/host-remote'
 import { RunnerRegistry } from './runner/registry'
 import { LocalControlService } from './storage/control'
@@ -56,14 +57,13 @@ export async function runnerShell(options: ShellEnvironmentOptions & {
   }, agentSessionId, host.store)
   const native = await nativePackageFixture()
   const environment = new RemoteShellEnvironment({
-    conversation: agentSessionId,
-    node: agentSessionId,
+    commandContext: async () => ({
+      conversation: agentSessionId,
+      caller: { kind: 'agent', node: agentSessionId },
+      locale: DEFAULT_LOCALE,
+    }),
     commands: { manifest: await buildManifest(commands.list(), { packages: native.packages }), resolveArtifact: native.resolveArtifact },
     ...shell,
-    initialEnv: {
-      DEMI_SESSION_ID: agentSessionId,
-      ...shell.initialEnv
-    },
     host: remote,
     commandStorage: commandStorage ?? (() => storage)
   })
@@ -122,8 +122,11 @@ async function createFixture(
     rpc: async (call, io, execution) => {
       if (!execution.commandStorage)
         throw new Error('rpc job has no command storage')
+      const { caller } = execution.context
+      if (caller.kind !== 'agent')
+        throw new Error('rpc job has no agent caller')
       const result = await inProcessRpc(
-        commands.get(call.agentSessionId)!.list(),
+        commands.get(caller.node)!.list(),
         {
           host: execution.host,
           storage: execution.commandStorage.withSignal(io.signal)
@@ -137,6 +140,7 @@ async function createFixture(
         stdin: io.stdin?.stream() ?? null,
         cwd: call.cwd,
         env: call.env,
+        context: execution.context,
         io: io.commandIO(),
         signal: io.signal,
         stdinStream: io.stdinStream,

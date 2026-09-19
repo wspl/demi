@@ -93,7 +93,7 @@ demi browser read "$tab" --css output --property text --json`, 30000),
       model.say('Fresh controller has no tabs'),
     ] })
     expect(empty.received[0]).toContain('"tabs":[]')
-    expect(world.frames.some(frame => frame.message.type === 'job_start' && frame.message.conversation === driver.id && frame.message.node === driver.id)).toBe(true)
+    expect(world.frames.some(frame => frame.message.type === 'job_start' && frame.message.context.conversation === driver.id && frame.message.context.caller.kind === 'agent' && frame.message.context.caller.node === driver.id)).toBe(true)
   } finally {
     await world.close()
     application.stop(true)

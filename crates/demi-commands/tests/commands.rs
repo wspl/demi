@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, process::Stdio, time::Duration};
 
 use demi_command_service::{
     Client,
-    protocol::{Completion, Invocation, Record},
+    protocol::{CommandCaller, CommandContext, CommandLocale, Completion, Invocation, Record},
 };
 use tokio::process::Command;
 
@@ -16,8 +16,14 @@ async fn call(
     exchange(
         client,
         &Invocation {
-            caller: "file-test".into(),
-            conversation: "file-test-conversation".into(),
+            context: CommandContext {
+                conversation: "file-test-conversation".into(),
+                caller: CommandCaller::agent("file-test"),
+                locale: CommandLocale {
+                    time_zone: "UTC".into(),
+                    languages: vec!["en-US".into()],
+                },
+            },
             json: None,
             edits: Some(demi_command_service::protocol::EditContext {
                 directory: std::path::Path::new(cwd)
@@ -49,7 +55,7 @@ async fn exchange(
         client
             .conversation(&demi_command_service::protocol::ConversationRequest {
                 operation: request.operation.clone(),
-                conversation: Some(request.conversation.clone()),
+                conversation: Some(request.context.conversation.clone()),
             })
             .await
     } else {
@@ -110,13 +116,19 @@ async fn conversation_browser_commands_share_state_and_retire() {
         let request = |operation: &str, args: Value| Invocation {
             operation: operation.into(),
             invocation_id: uuid::Uuid::new_v4().to_string(),
-            caller: "agent-root".into(),
             cwd: root.path().to_str().unwrap().into(),
             args,
             env: BTreeMap::new(),
             edits: None,
             json: Some(true),
-            conversation: conversation.clone(),
+            context: CommandContext {
+                conversation: conversation.clone(),
+                caller: CommandCaller::agent("agent-root"),
+                locale: CommandLocale {
+                    time_zone: "UTC".into(),
+                    languages: vec!["en-US".into()],
+                },
+            },
         };
         let (completion, stdout, stderr) =
             exchange(&client, &request("browser.tabs", json!({})), false).await;

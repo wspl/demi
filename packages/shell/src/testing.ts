@@ -1,3 +1,4 @@
+import type { CommandContext } from '@demicodes/command-protocol'
 import type { CommandStorage } from './command'
 // Test helpers for packages exercising the Host contract. Shipped as the
 // `@demicodes/shell/testing` entrypoint, never imported by runtime code:
@@ -12,6 +13,17 @@ import {
   errorCode,
   isRecord
 } from '@demicodes/utils'
+
+/**
+ * The command context test work carries (`native-runtime.md` § Command
+ * context); its locale differs from the backend's default so a command that
+ * reports it shows where it came from.
+ */
+export const TEST_COMMAND_CONTEXT: CommandContext = {
+  conversation: 'test-conversation',
+  caller: { kind: 'agent', node: 'test-session' },
+  locale: { timeZone: 'Asia/Shanghai', languages: ['zh-CN', 'en'] },
+}
 
 /** In-memory `HostStore` for tests (values held by reference, no cloning). */
 export function memoryHostStore(): HostStore {
