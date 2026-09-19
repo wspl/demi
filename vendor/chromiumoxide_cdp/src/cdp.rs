@@ -63297,7 +63297,7 @@ pub mod browser_protocol {
             pub r#type: DispatchTouchEventType,
             #[doc = "Active touch points on the touch device. One event per any changed point (compared to\nprevious touch event in a sequence) is generated, emulating pressing/moving/releasing points\none by one."]
             #[serde(rename = "touchPoints")]
-            #[serde(skip_serializing_if = "Vec::is_empty")]
+            // Demi: a required parameter; TouchEnd and TouchCancel send it empty.
             pub touch_points: Vec<TouchPoint>,
             #[doc = "Bit field representing pressed modifier keys. Alt=1, Ctrl=2, Meta/Command=4, Shift=8\n(default: 0)."]
             #[serde(rename = "modifiers")]
