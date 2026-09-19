@@ -25,6 +25,7 @@
       "@demicodes/host-remote/testing": ["./packages/host-remote/src/testing.ts"],
       "@demicodes/shell/testing": ["./packages/shell/src/testing.ts"],
       "@demicodes/backend/testing": ["./packages/backend/src/testing.ts"],
+      "@demicodes/browser-protocol/live": ["./packages/browser-protocol/src/live.ts"],
       "@demicodes/*": ["./packages/*/src/index.ts"]
     }
   },

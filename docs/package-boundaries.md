@@ -452,7 +452,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Status: implemented; published to npm as a source-form package (no build step — `.vue`/`.ts`
   source exports compiled by the consumer's bundler, which must handle Vue SFC + TypeScript).
-- Production deps: `@demicodes/core`, `@demicodes/agent`, `@demicodes/utils`, `zod`.
+- Production deps: `@demicodes/core`, `@demicodes/agent`, `@demicodes/browser-protocol`, `@demicodes/utils`, `zod`.
 - Owns: the reusable browser component library (Vue) — the agent Tab, List (+ blocks), and
   Input surfaces, the assembled ChatSession page, the message editor and its
   draft/submission lifecycle (`agent/message-editing.ts`, `SessionComposer.vue`, and the inert `MessageEditRegion.vue`), sidebar layout, workspace and
@@ -496,7 +496,7 @@ Test code may depend upward for integration coverage. Production code must not.
 ### `@demicodes/web-gallery`
 
 - Status: implemented.
-- Production deps: `@demicodes/web-ui`, `@demicodes/core`, `@demicodes/utils`, `zod`.
+- Production deps: `@demicodes/web-ui`, `@demicodes/browser-protocol`, `@demicodes/core`, `@demicodes/utils`, `zod`.
 - Owns: the Vite-only component catalog for `@demicodes/web-ui`. It remaps `web-ui` tokens so paradigms
   (tone, accent, density, radius, shadow, light/dark) can be compared against the catalog.
   Pages are vue-router paths; Markdown is a full-pane message route. Roadmap
@@ -532,8 +532,8 @@ runner-protocol -> command-protocol, shell, utils
 machines -> utils
 host-remote -> command-loader, command-protocol, runner-protocol, shell, utils
 backend -> agent, browser-protocol, coding-agent, command-loader, command-protocol, core, host-remote, machines, provider, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shell, utils
-web-ui -> agent, core, utils
-web-gallery -> web-ui, core, utils
+web-ui -> agent, browser-protocol, core, utils
+web-gallery -> web-ui, browser-protocol, core, utils
 web -> web-ui, core, utils
 ```
 
