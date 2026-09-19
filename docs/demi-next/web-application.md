@@ -27,14 +27,13 @@ The gallery is the reference for components, appearance, layout, and interaction
 examples. Those details are not duplicated in design documents. This document
 covers only the browser's technology and architectural boundaries.
 
-The work panel shows the tabs of the [conversation browser](browser.md) live,
-and the user operates them there while the agent does;
+The work panel has two kinds of browser tab, both owned by `web-ui`, side by
+side. A Host tab shows a tab of the [conversation browser](browser.md) live,
+and the user operates it there while the agent does;
 [Live browser view](browser-live-view.md) owns that view, its stream, its input
-and its viewport menu. Until the
-[open decision on local frame tabs](browser-live-view.md#open-decisions) is
-settled, the panel also keeps local browser tabs, owned by `web-ui`, which do
-not connect to the Host browser: such a tab shows a page in the user's own
-browser, in a sandboxed iframe.
+and its viewport menu. A local tab does not connect to the Host browser: it
+shows a page in the user's own browser, in a sandboxed iframe. The two kinds
+share the address bar component.
 A tab opens on a URL, as an [expose](expose.md#product-surface) does, or loads
 the `http` or `https` address the user submits; an empty tab shows nothing.
 The frame may run scripts, submit forms and open popups, which land in
@@ -94,7 +93,8 @@ to the user stream route; and shared account interfaces to provider, pairing,
 and Cloud APIs. The product reports the time zone and languages of the user's
 browser to the user's preferences when they change.
 The work panel keeps one file selection, one change selection and local browser
-tabs per conversation. Change and File are fixed view selections; browser tabs
+tabs per conversation; its Host tabs follow the conversation browser's tab
+registry. Change and File are fixed view selections; browser tabs
 can be added and closed. One active tab selects the
 view. Closing the active browser tab selects its nearest remaining predecessor,
 or the first remaining tab. Browser address drafts and shown URLs belong to their tabs.

@@ -155,8 +155,8 @@ what flows through it. The backend uses it for the public relay of
 
 A `service_open` request asks the runner to open a
 [user stream](native-runtime.md#user-streams) and carry its bytes both ways.
-It names the stream, the conversation, the declared package and operation, and
-two pipes ([Pipes and output](#pipes-and-output)): `input`, whose bytes the
+It names the stream, the conversation, the user's locale, the declared package
+and operation, and two pipes ([Pipes and output](#pipes-and-output)): `input`, whose bytes the
 runner delivers to the invocation as input chunks when the operation asks for
 them, and `output`, into which it writes the invocation's output. The runner
 starts the invocation in the resident service that holds the conversation's

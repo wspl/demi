@@ -299,6 +299,16 @@ record it builds. Native handlers use the invocation fields. A value written int
 the shell environment by a script never reaches those fields, so it cannot
 select another conversation's state.
 
+Every job and user stream also carries the time zone and languages the
+conversation's user last reported
+([User preferences](web-api.md#user-preferences)), and the runner writes them
+into the invocation's `locale` field. An operation that presents something to
+the user in the user's terms reads them there: the conversation browser starts
+Chrome with them ([Native driver](browser.md#native-driver)). They are not job
+environment variables: those would reach every program the job runs, a script
+could change them, and the standard `TZ` and `LANG` would change how the
+user's own tools and tests behave.
+
 Calls from every conversation on a device share one resident service per
 artifact and security context. The service separates state by conversation.
 A service that holds conversation state stays resident: before retiring a
@@ -338,20 +348,20 @@ for a [service stream](runner.md#service-streams). The runner invokes the
 operation with `POST /v1/invoke`, the contract every command uses, in the
 resident service that holds the conversation's state: the invocation uses the
 same package binding as the conversation's jobs, so it reaches the same
-service. Its trusted `conversation` field names the conversation, and its
-`caller` field is `user` instead of an agent node; `caller` is therefore a
-discriminated value, an agent node or the user. Its `cwd` is the
-conversation's directory and its environment carries only the job context
-variables.
+service. Its trusted `conversation` field names the conversation, its
+`caller` field is `user` instead of an agent node, so `caller` is a
+discriminated value, an agent node or the user, and its `locale` is the user's.
+Its `cwd` is the conversation's directory and its environment carries only the
+job context variables.
 
 The invocation's input is the bytes the page sends and its output is the bytes
 the page receives. The operation frames its own messages; the runner and the
 backend forward bytes without reading them. The stream ends when either side
 ends it: the runner cancels the invocation when a pipe fails, and the
-invocation's completion ends the page's connection. A user stream holds one of
-the service's concurrent invocation streams while it lasts; how user streams
-count against that limit is an
-[open decision](browser-live-view.md#open-decisions).
+invocation's completion ends the page's connection. Like a running command, a
+user stream occupies one of the service's concurrent invocation streams while
+it lasts ([Validation and flow control](#validation-and-flow-control)); a page
+opens one only while it shows the view, so a user holds a few at most.
 
 ## Invocation protocol
 
