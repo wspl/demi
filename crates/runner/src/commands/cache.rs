@@ -180,12 +180,24 @@ impl ArtifactCache {
                 );
                 let cache = self.clone();
                 self.tasks.spawn(async move {
-                    let result = tokio::select! {
-                        biased;
-                        _ = cache.cancel.cancelled() => Err(RuntimeError::Cancelled),
-                        result = tokio::time::timeout(std::time::Duration::from_secs(300), cache.download(&artifact, resolver.as_ref())) => {
-                            result.unwrap_or_else(|_| Err(RuntimeError::Deadline("artifact download")))
-                        },
+                    // Out of open files, the download waits for one; the five
+                    // minutes count only an attempt that has its files
+                    // (`runner.md` § Load).
+                    let mut backoff = demi_command_service::descriptors::Backoff::default();
+                    let result = loop {
+                        let attempt = tokio::select! {
+                            biased;
+                            _ = cache.cancel.cancelled() => Err(RuntimeError::Cancelled),
+                            result = tokio::time::timeout(std::time::Duration::from_secs(300), cache.download(&artifact, resolver.as_ref())) => {
+                                result.unwrap_or_else(|_| Err(RuntimeError::Deadline("artifact download")))
+                            },
+                        };
+                        match attempt {
+                            Err(RuntimeError::Io(error)) if demi_command_service::descriptors::exhausted(&error) => {
+                                backoff.wait().await
+                            }
+                            other => break other,
+                        }
                     }.map_err(Arc::new);
                     sender.send_replace(Some(result));
                     cache.state.lock().await.flights.remove(&artifact.sha256);

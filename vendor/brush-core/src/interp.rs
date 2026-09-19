@@ -473,7 +473,7 @@ async fn spawn_pipeline_processes(
     // command.
     if pipeline_len > 1 {
         for _ in 0..(pipeline_len - 1) {
-            let (reader, writer) = std::io::pipe()?;
+            let (reader, writer) = shell.pipe()?;
             pipe_readers.push(Some(reader.into()));
             pipe_writers.push(Some(writer.into()));
         }
@@ -779,8 +779,8 @@ impl Execute for ast::CoprocessCommand {
         }
 
         // Set up the pipes that we'll use to communicate with the coprocess.
-        let (stdin_reader, stdin_writer) = std::io::pipe()?;
-        let (stdout_reader, stdout_writer) = std::io::pipe()?;
+        let (stdin_reader, stdin_writer) = shell.pipe()?;
+        let (stdout_reader, stdout_writer) = shell.pipe()?;
 
         // Allocate new fds in the (parent) shell for the read end of the coprocess's stdout
         // and the write end of the coprocess's stdin.
@@ -1976,7 +1976,7 @@ fn setup_process_substitution(
     child_params.process_group_policy = ProcessGroupPolicy::SameProcessGroup;
 
     // Set up pipe so we can connect to the command.
-    let (reader, writer) = std::io::pipe()?;
+    let (reader, writer) = shell.pipe()?;
     let (reader, writer) = (reader.into(), writer.into());
 
     let target_file = match kind {

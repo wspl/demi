@@ -138,37 +138,47 @@ impl NetStreams {
     }
 }
 
-/// Resolves the host on the device and connects within 10 seconds, mapping
-/// the failure to the wire's code.
+/// Resolves the host on the device and connects within 10 seconds of having a
+/// socket, mapping the failure to the wire's code.
 async fn connect(host: &str, port: u16) -> Result<TcpStream, (NetErrorCode, String)> {
-    let connect = async {
+    // `None` is a socket that could not be made for want of an open file.
+    let attempt = || async {
         let addrs = tokio::net::lookup_host((host, port))
             .await
-            .map_err(|error| (NetErrorCode::ResolveFailed, error.to_string()))?
+            .map_err(|error| Some((NetErrorCode::ResolveFailed, error.to_string())))?
             .collect::<Vec<_>>();
         if addrs.is_empty() {
-            return Err((
+            return Err(Some((
                 NetErrorCode::ResolveFailed,
                 format!("{host}:{port} resolved to no address"),
-            ));
+            )));
         }
-        TcpStream::connect(addrs.as_slice())
-            .await
-            .map_err(|error| match error.kind() {
-                io::ErrorKind::ConnectionRefused => {
-                    (NetErrorCode::Refused, error.to_string())
-                }
+        TcpStream::connect(addrs.as_slice()).await.map_err(|error| {
+            if demi_command_service::descriptors::exhausted(&error) {
+                return None;
+            }
+            Some(match error.kind() {
+                io::ErrorKind::ConnectionRefused => (NetErrorCode::Refused, error.to_string()),
                 _ => (NetErrorCode::Unreachable, error.to_string()),
             })
-    };
-    tokio::time::timeout(CONNECT_TIMEOUT, connect)
-        .await
-        .unwrap_or_else(|_| {
-            Err((
-                NetErrorCode::Timeout,
-                format!("connecting to {host}:{port} exceeded 10 seconds"),
-            ))
         })
+    };
+    // Out of open files, the socket waits for one; the ten seconds count
+    // only an attempt that has a socket.
+    let mut backoff = demi_command_service::descriptors::Backoff::default();
+    loop {
+        match tokio::time::timeout(CONNECT_TIMEOUT, attempt()).await {
+            Ok(Ok(stream)) => return Ok(stream),
+            Ok(Err(None)) => backoff.wait().await,
+            Ok(Err(Some(failure))) => return Err(failure),
+            Err(_) => {
+                return Err((
+                    NetErrorCode::Timeout,
+                    format!("connecting to {host}:{port} exceeded 10 seconds"),
+                ));
+            }
+        }
+    }
 }
 
 /// The wire's connect-failure codes, spelled once (`netErrorCodeSchema` on

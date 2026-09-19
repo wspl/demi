@@ -105,9 +105,12 @@ impl Scope {
         writing: bool,
     ) -> io::Result<File> {
         self.check()?;
+        // Out of open files, a redirection or utility waits for one
+        // (`runner.md` § Load).
+        let open = || demi_command_service::descriptors::retry_blocking(|| options.open(path));
         let file = match (&self.edits, writing) {
-            (Some(edits), true) => edits.record(path, || options.open(path))?,
-            _ => options.open(path)?,
+            (Some(edits), true) => edits.record(path, open)?,
+            _ => open()?,
         };
         if writing
             && self.edits.is_some()
@@ -324,6 +327,11 @@ impl ExecutionHost for Scope {
         resolve_path(path, cwd)
     }
 
+    /// Out of open files, a pipe waits for one (`runner.md` § Load).
+    fn pipe(&self) -> io::Result<(std::io::PipeReader, std::io::PipeWriter)> {
+        demi_command_service::descriptors::retry_blocking(std::io::pipe)
+    }
+
     fn spawn(&self, mut command: Command) -> io::Result<ChildProcess> {
         self.check()?;
         if let Some(context) = &self.commands {
@@ -338,7 +346,8 @@ impl ExecutionHost for Scope {
         command.wrap(process_wrap::tokio::ProcessGroup::leader());
         #[cfg(windows)]
         command.wrap(process_wrap::tokio::JobObject);
-        let mut child = command.spawn()?;
+        // Out of open files, the external command waits for one (`runner.md` § Load).
+        let mut child = demi_command_service::descriptors::retry_blocking(|| command.spawn())?;
         let pid = child.id().expect("new child has a PID") as i32;
         let cancellation = self.cancellation.clone();
         let (result, receiver) = tokio::sync::oneshot::channel();

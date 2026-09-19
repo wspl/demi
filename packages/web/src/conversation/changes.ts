@@ -94,8 +94,6 @@ function failureText(error: unknown): string {
     switch (error.code) {
       case 'device_offline':
         return 'The device is offline.'
-      case 'changes_busy':
-        return 'The device is busy; try again in a moment.'
       case 'changes_timeout':
         return 'Listing the changes took too long.'
       default:
