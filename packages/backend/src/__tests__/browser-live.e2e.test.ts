@@ -302,6 +302,18 @@ acceptance('a viewer watches the conversation\'s browser, types into it and ends
     () => `area records: ${JSON.stringify(records('input').filter((record) => record.target === 'area'))}`,
     { timeoutMs: 20_000 })
 
+  // 8. A page that stops showing frames does not pile them up: the Host
+  // stops sending past its window, and the page resumes from a key frame.
+  view.acknowledge = false
+  const held = view.frames.length
+  await new Promise((resolve) => setTimeout(resolve, 3000))
+  const whileHeld = view.frames.length - held
+  expect(whileHeld).toBeLessThan(16)
+  view.acknowledge = true
+  view.send({ type: 'keyframe', generation })
+  await waitFor(() => view.frames.slice(held + whileHeld).some((frame) => frame.key),
+    () => 'no key frame after the page caught up', { timeoutMs: 20_000 })
+
   // 7. Closing the last tab ends the browser, and the view says so.
   view.send({ type: 'close', tab })
   const ended = await view.message('ended')
