@@ -6,7 +6,6 @@ import {
   formatSubagentDuration,
   finishedSubagents,
   runningSubagents,
-  subagentIndicator,
   subagentPanelTabs,
   subagentStatus,
   type SubagentRecord,
@@ -56,15 +55,11 @@ test('running agents are oldest first; finished are newest close first', () => {
   expect(finishedSubagents(agents).map((item) => item.id)).toEqual(['d', 'b'])
 })
 
-test('status and indicator follow the child phase', () => {
+test('status follows the child phase', () => {
   expect(subagentStatus('running')).toBe('active')
   expect(subagentStatus('completed')).toBe('done')
   expect(subagentStatus('aborted')).toBe('aborted')
   expect(subagentStatus('error')).toBe('error')
-  expect(subagentIndicator('running')).toBe('accent')
-  expect(subagentIndicator('completed')).toBe('success')
-  expect(subagentIndicator('aborted')).toBe('danger')
-  expect(subagentIndicator('error')).toBe('danger')
 })
 
 test('duration is compact and uses endedAt once the child is finished', () => {

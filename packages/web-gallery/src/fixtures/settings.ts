@@ -2,15 +2,10 @@ import { reactive } from 'vue'
 import type { ExposeMenuEntry } from '@demicodes/web-ui/hosts/types'
 import type {
   SettingsMcpServer,
-  SettingsMcpState,
-  SettingsProviderAccount,
   SettingsProviderEntry,
   SettingsProviderModel,
-  SettingsProviderState,
-  SettingsQuotaWindow,
   SettingsSkillSource,
-  SettingsVendor,
-  SettingsWireApi
+  SettingsVendor
 } from '@demicodes/web-ui/settings/types'
 import { ahead } from './time'
 
@@ -45,20 +40,11 @@ export function demoExposes(): ExposeMenuEntry[] {
     },
   ]
 }
-export type ServerState = SettingsMcpState
-
-/** Wire protocols the openai family can speak; the others have one each. */
-export type WireApi = SettingsWireApi
-
 /** The shared model plus what the mock knows but the page does not show. */
 export interface MockModel extends SettingsProviderModel {
   tools: boolean | null
   defaultEffort: string | null
 }
-
-export type QuotaWindow = SettingsQuotaWindow
-export type MockAccount = SettingsProviderAccount
-export type MockProviderState = SettingsProviderState
 
 export interface MockProvider extends SettingsProviderEntry {
   /** Runtime family; subscriptions name their CLI vendor. */

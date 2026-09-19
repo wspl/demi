@@ -175,14 +175,12 @@ const exploratoryMarks: {
         />
         <AgentMessageVirtualBlock
           :block="entranceThinking"
-          conversation-id="motion"
           :is-thinking-streaming="false"
           :thinking-ended-at="entranceThinkingEndedAt"
           entering
         />
         <AgentMessageVirtualBlock
           :block="shellTool"
-          conversation-id="motion"
           :is-thinking-streaming="false"
           entering
         />

@@ -1,13 +1,6 @@
 import { AgentClient, type ClientFrame } from '@demicodes/agent/client'
 import { parsePortableJson, stringifyPortableJson } from '@demicodes/utils'
 
-export function agentSocketUrl(baseUrl: string, cwd: string): string {
-  const url = new URL('/agent', baseUrl)
-  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-  url.searchParams.set('cwd', cwd)
-  return url.toString()
-}
-
 /**
  * The connection itself could not be made or was lost before it opened: a
  * transport failure, not the session's. The runtime retries these on its own.

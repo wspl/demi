@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import {
+  applyAttachmentUpdate,
   attachmentFileError,
+  AttachmentUploadQueue,
   attachTextSnippet,
   composerAttachmentFromFile,
   composerFileNames,
@@ -14,45 +16,34 @@ export function createConversationUploads(
   onChange: () => void,
   onError: (error: unknown) => void,
 ) {
-  const uploads = new Map<string, AbortController>()
+  const uploads = new AttachmentUploadQueue()
   async function uploadFile(
     conversation: Conversation,
     item: Extract<ProductAttachment, { kind: 'file' }>,
   ): Promise<void> {
-    const controller = new AbortController()
-    uploads.get(item.id)?.abort()
-    uploads.set(item.id, controller)
-    item.phase = 'uploading'
-    item.progress = 0
-    try {
-      const result = await uploadBytes(
-        '/attachments',
-        item.file,
-        controller.signal,
-        (fraction) => {
-          item.progress = fraction
-        },
-        item.file.type || 'application/octet-stream',
-      )
-      controller.signal.throwIfAborted()
-      const attachment = z
-        .object({ attachment: z.object({ id: z.string() }) })
-        .parse(result).attachment
-      item.upload = { id: attachment.id }
-      item.phase = 'ready'
-      item.progress = undefined
-      onChange()
-    } catch (error) {
+    const ready = await uploads.start(
+      item.id,
+      async (signal, report) => {
+        const result = await uploadBytes(
+          '/attachments',
+          item.file,
+          signal,
+          report,
+          item.file.type || 'application/octet-stream',
+        )
+        const attachment = z
+          .object({ attachment: z.object({ id: z.string() }) })
+          .parse(result).attachment
+        item.upload = { id: attachment.id }
+      },
+      (update) => applyAttachmentUpdate(item, update),
+    ).catch((error: unknown) => {
       // A failed upload leaves the composer; the caller toasts the reason.
-      if (!controller.signal.aborted) {
-        removeFile(conversation, item.id)
-        throw error
-      }
-    } finally {
-      if (uploads.get(item.id) === controller) {
-        uploads.delete(item.id)
-      }
-    }
+      removeFile(conversation, item.id)
+      throw error
+    })
+    if (ready)
+      onChange()
   }
 
   function addFiles(conversation: Conversation, files: File[]): void {
@@ -79,8 +70,7 @@ export function createConversationUploads(
   }
 
   function removeFile(conversation: Conversation, id: string): void {
-    uploads.get(id)?.abort()
-    uploads.delete(id)
+    uploads.cancel(id)
     const item = conversation.files.find((item) => item.id === id)
     if (item && isComposerFile(item) && item.src) {
       URL.revokeObjectURL(item.src)
@@ -90,10 +80,7 @@ export function createConversationUploads(
   }
 
   function dispose(conversations: Conversation[]): void {
-    for (const controller of uploads.values()) {
-      controller.abort()
-    }
-    uploads.clear()
+    uploads.cancelAll()
     for (const conversation of conversations) {
       for (const item of conversation.files) {
         if (isComposerFile(item) && item.src) {

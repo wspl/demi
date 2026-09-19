@@ -1,25 +1,14 @@
-import type { Block, TokenUsage } from '@demicodes/core'
 import type { ShellToolView } from '@demicodes/agent'
 import { shellToolViewSchema } from '@demicodes/agent/client'
 import { Allow, parse } from 'partial-json'
 import { z } from 'zod'
+import type { ToolCallBlock } from './block-types'
 import { shouldParsePartialToolInput } from './tool-rendering'
-
-type ToolCallBlock = Extract<Block, { type: 'tool_call' }>
 
 export type ShellTerminalOutputChunk = ShellToolView['chunks'][number]
 
 /** A tool call's input is a JSON object; anything else is nothing to render. */
 const toolInputSchema = z.record(z.string(), z.unknown())
-
-export function getLatestResponseUsage(blocks: readonly Block[]): TokenUsage | null {
-  for (let i = blocks.length - 1; i >= 0; i--) {
-    const block = blocks[i]!
-    if (block.type === 'response')
-      return block.usage
-  }
-  return null
-}
 
 export function getToolErrorText(block: ToolCallBlock): string | undefined {
   if (block.status !== 'error')
@@ -30,16 +19,6 @@ export function getToolErrorText(block: ToolCallBlock): string | undefined {
       texts.push(part.text)
   }
   return texts.length > 0 ? texts.join('\n') : undefined
-}
-
-export function toolOutputText(block: ToolCallBlock): string {
-  const source = block.status === 'executing'
-    ? block.streamingOutput
-    : block.streamingOutput.length > 0 ? block.streamingOutput : block.output
-  return source
-    .filter((part): part is Extract<typeof part, { type: 'text' }> => part.type === 'text')
-    .map((part) => part.text)
-    .join('\n')
 }
 
 /**

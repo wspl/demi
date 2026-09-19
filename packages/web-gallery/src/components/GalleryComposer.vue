@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { onBeforeUnmount, ref } from 'vue'
 import type { ThinkingConfig, TokenUsage } from '@demicodes/core'
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
 import type { MessageEditState } from '@demicodes/web-ui/agent/message-editing'
@@ -23,11 +23,11 @@ import type { ModelInfo, ProviderInfo } from '@demicodes/web-ui/transport/protoc
 import { demoUsage } from '../fixtures/blocks'
 import { demoModels, demoProviders } from '../fixtures/catalog'
 import { createGalleryRemoteFileHosts } from '../fixtures/files'
+import { sweepUpload } from '../fixtures/upload-sweep'
 
 const props = withDefaults(
   defineProps<{
     placeholder: string
-    conversationId?: string
     running?: boolean
     compacting?: boolean
     disabled?: boolean
@@ -49,7 +49,6 @@ const props = withDefaults(
     messageEdit?: MessageEditState | null
   }>(),
   {
-    conversationId: 'demo',
     draft: '',
     attachments: () => [],
     selectedProviderId: 'anthropic',
@@ -121,7 +120,8 @@ function addFiles(files: File[]) {
     const item = composerAttachmentFromFile(file)
     attached.value.push(item)
     void attachTextSnippet(attached.value.find((held) => held.id === item.id) as typeof item, file)
-    uploads.startPrototype(item.id, (update) => applyUpdate(item.id, update), remove)
+    // The sweep never fails; a failure would drop the file as the product does.
+    uploads.start(item.id, sweepUpload, (update) => applyUpdate(item.id, update)).catch(() => remove(item.id))
   }
 }
 
@@ -142,12 +142,6 @@ onBeforeUnmount(() => {
   while (attached.value.length) {
     remove(attached.value[0]!.id)
   }
-})
-
-defineExpose({
-  setDraft(text: string) {
-    draft.value = text
-  },
 })
 </script>
 

@@ -1,7 +1,6 @@
 import type { z } from 'zod'
 import type { AgentMessage, Block, ModelSelection, TokenUsage, UserContentBlock } from '@demicodes/core'
 import { encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/attachments'
-import type { PendingSteerRenderBlock } from '@demicodes/web-ui/agent/pending-steers'
 import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import type { shellToolViewSchema } from '@demicodes/web-ui/transport/protocol'
 
@@ -416,13 +415,6 @@ export function generationErrorBlock(): Block {
 }
 
 /** A steer typed while the turn runs. Renders after every transcript block, never among them. */
-export const pendingSteerDemo: PendingSteerRenderBlock = {
-  type: 'pending_steer',
-  id: 'pending-steer-1',
-  pendingSteerId: 'pending-1',
-  content: steerPrompt,
-}
-
 export function transcriptDemoBlocks(): Block[] {
   const thinkingStartedAt = iso(18_000)
   const thinkingEndedAt = iso(10_000)

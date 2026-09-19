@@ -6,13 +6,11 @@ import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { formatTokens } from '../ui/token-count'
 
 const props = defineProps<{
-  conversationId?: string
   usage?: TokenUsage | null
   contextWindow?: number | null
   inputLimit?: number | null
   isCompacting?: boolean
   isClickable?: boolean
-  instructionFiles?: string[]
 }>()
 
 const emit = defineEmits<{
@@ -121,11 +119,6 @@ function handleClick() {
           <div v-if="!isUsageAvailable" class="mt-0.5 text-fg-subtle">No usage recorded yet</div>
         </template>
         <div v-else class="text-fg-muted">Context usage unavailable</div>
-        <div
-          v-for="file in instructionFiles"
-          :key="file"
-          class="mt-0.5 max-w-48 truncate text-left text-fg-subtle direction-rtl"
-        >{{ file }}</div>
         <div v-if="isClickable" class="mt-1 text-fg-subtle">Click to compact context</div>
       </template>
     </template>

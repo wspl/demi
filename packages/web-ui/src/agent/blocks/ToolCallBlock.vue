@@ -12,7 +12,6 @@ import { toolRenderKind } from '../tool-rendering'
 
 const props = defineProps<{
   block: ToolCallBlock
-  conversationId: string
   isStreaming: boolean
 }>()
 

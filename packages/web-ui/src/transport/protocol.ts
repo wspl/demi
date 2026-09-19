@@ -34,27 +34,16 @@ export interface ModelInfo {
   serviceTiers: ModelServiceTier[] | null
 }
 
-export interface PrepareSessionParams {
-  providerId: string
-  modelId: string
-  thinkingEffort?: string | null
-  serviceTierId?: string | null
-}
-
 // The agent owns the session contract; an embedder reads it through here so it
 // never has to describe a frame, a block or a tool view a second time.
 export {
-  agentMessageSchema,
   modelSelectionSchema,
-  thinkingConfigSchema,
   editRequestSchema,
-  editResultSchema,
-  transcriptVersionSchema,
   blockSchema,
   failuresSchema,
   refSourceSchema,
   shellToolViewSchema,
 } from '@demicodes/agent/client'
-export type { ProviderSelection, ClientFrame, ServerFrame, ClientSessionEvent } from '@demicodes/agent/client'
+export type { ProviderSelection, ClientFrame, ClientSessionEvent } from '@demicodes/agent/client'
 
 export { applyTranscriptPatches } from '@demicodes/agent/client'

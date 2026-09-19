@@ -5,7 +5,6 @@ import type { SidebarConversation, SidebarReorder } from '@demicodes/web-ui/side
 import { RestoreSweep } from '../fixtures/restore-sweep'
 import type { ListLoad } from '@demicodes/web-ui/agent/session-status'
 import Button from '@demicodes/web-ui/ui/Button.vue'
-import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'

@@ -20,7 +20,6 @@ defineOptions({ inheritAttrs: false })
 
 const props = defineProps<{
   block: MessageListBlock
-  conversationId: string
   isThinkingStreaming: boolean
   isTextStreaming?: boolean
   showAssistantFooter?: boolean
@@ -68,14 +67,12 @@ const entersAsChrome = computed(() =>
     v-else-if="block.type === 'steer'"
     v-bind="attrs"
     :content="block.content"
-    variant="steer"
     :editable="false"
   />
   <UserBlock
     v-else-if="block.type === 'pending_steer'"
     v-bind="attrs"
     :content="block.content"
-    variant="steer"
     pending
     deletable
     interruptible
@@ -86,7 +83,6 @@ const entersAsChrome = computed(() =>
     v-else-if="block.type === 'queued_message'"
     v-bind="attrs"
     :content="block.content"
-    variant="steer"
     pending
     deletable
     sendable
@@ -128,7 +124,6 @@ const entersAsChrome = computed(() =>
     >
       <ToolCallBlock
         :block="block"
-        :conversation-id="props.conversationId"
         :is-streaming="block.status === 'executing'"
       />
     </div>
@@ -151,10 +146,7 @@ const entersAsChrome = computed(() =>
     </div>
     <CompactionBlock
       v-else-if="block.type === 'compaction_boundary'"
-      :summary="block.summary"
       :summary-tokens="block.summaryTokens"
-      :is-compacting="false"
-      :created-at="block.createdAt"
     />
   </div>
 </template>
