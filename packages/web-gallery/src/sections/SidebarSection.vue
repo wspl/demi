@@ -10,7 +10,7 @@ import GallerySpecimen from '../components/GallerySpecimen.vue'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import { SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
-import { demoAccount, demoConversations, demoProjects } from '../sidebar/sidebar-data'
+import { demoAccount, demoConversations, demoProjects, emailOnlyAccount } from '../sidebar/sidebar-data'
 
 const projects = ref(demoProjects())
 const conversations = ref(demoConversations())
@@ -48,7 +48,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Bottom',
-    'The account (avatar and name) with settings and sign-out behind it. The name stands alone; the menu can still show the email.'
+    'The account (avatar and name), whose menu holds settings and sign-out, then Settings. Without a name the email stands in. A name too long to fit beside the avatar hides whole, leaving the avatar, and Settings keeps the end of the row. The menu names the account, with the email under a name.'
   ],
   ['Search', 'Not designed yet.'],
 ]
@@ -291,6 +291,32 @@ onBeforeUnmount(() => listRestore.stop())
               :conversations="emptyList"
               :active-id="null"
               @create="(projectId) => (emptyList = [{ id: 'first', title: 'New conversation', updatedAt: new Date().toISOString(), status: 'idle', projectId, pinned: false, unread: false }])"
+            />
+          </div>
+        </GallerySpecimen>
+      </div>
+    </GallerySection>
+
+    <GallerySection
+      title="Account"
+      note="The foot of the sidebar at its narrowest and at its default width. The email that stands in for a missing name fits at 256px but not at 200px, where it hides and leaves the avatar, with Settings still at the row's end."
+    >
+      <div class="specimen-row specimen-row-wide items-start">
+        <GallerySpecimen
+          v-for="specimen in [
+            { variant: '200px · a name', width: SIDEBAR_WIDTH.min, account: demoAccount },
+            { variant: '200px · only an email', width: SIDEBAR_WIDTH.min, account: emailOnlyAccount },
+            { variant: '256px · only an email', width: SIDEBAR_WIDTH.default, account: emailOnlyAccount },
+          ]"
+          :key="specimen.variant"
+          :variant="specimen.variant"
+        >
+          <div class="gallery-frame flex h-[20rem] overflow-hidden" :style="{ '--sidebar-width': `${specimen.width}px` }">
+            <AppSidebar
+              :account="specimen.account"
+              :projects="[]"
+              :conversations="[]"
+              :active-id="null"
             />
           </div>
         </GallerySpecimen>
