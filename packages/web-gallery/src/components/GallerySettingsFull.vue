@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { demoDeviceInstallation } from '../fixtures/device-installation'
 import type { CloudState } from '@demicodes/web-ui/cloud/types'
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import type { ThemeChoice } from '@demicodes/web-ui/theme/appTheme'
 import {
@@ -87,6 +87,19 @@ const accent = computed({
     galleryState.accent = value
   },
 })
+
+// The field shows the new name at once and waits a beat, as the product's save does.
+const nameSaving = ref(false)
+let nameTimer = 0
+function rename(name: string) {
+  s.value.account.name = name
+  nameSaving.value = true
+  window.clearTimeout(nameTimer)
+  nameTimer = window.setTimeout(() => {
+    nameSaving.value = false
+  }, 600)
+}
+onBeforeUnmount(() => window.clearTimeout(nameTimer))
 
 // Email: the code goes out after a beat; 000000 is the one code that is wrong.
 const emailOpen = ref(false)
@@ -286,7 +299,8 @@ function resetShortcuts() {
 
   <SettingsAccount
     v-else-if="tab === 'account'"
-    v-model:name="s.account.name"
+    :name="s.account.name"
+    :name-saving="nameSaving"
     v-model:email-open="emailOpen"
     v-model:password-open="passwordOpen"
     :overlay-store="appOverlayStore"
@@ -295,6 +309,7 @@ function resetShortcuts() {
     :password-changed="s.account.passwordChanged"
     :email-phase="emailPhase"
     :password-phase="passwordPhase"
+    @update:name="rename"
     @change-email="openChangeEmail"
     @change-password="openChangePassword"
     @submit-email="submitEmail"
