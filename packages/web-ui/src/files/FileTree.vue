@@ -235,6 +235,7 @@ defineExpose({
           size="xs"
           variant="ghost"
           aria-label="Refresh"
+          spin-on-click
           :spinning="refreshing"
           @click="refresh"
         />

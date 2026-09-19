@@ -45,6 +45,7 @@ function submitAddress(): void {
           :icon="RotateCw"
           variant="ghost"
           aria-label="Refresh"
+          spin-on-click
           :disabled="tab.url === null"
           @click="reloads += 1"
         />
