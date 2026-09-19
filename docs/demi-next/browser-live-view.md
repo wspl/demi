@@ -359,5 +359,16 @@ checks read it there.
 
 ## Implementation status
 
-Designed, not implemented. The prototype and its measurements live in the
+The protocol, the [user stream](native-runtime.md#user-streams) that carries
+it, and the Host's live view module are implemented: `browser.live` serves
+viewers, captures the tabs they watch, adapts to their paths, and delivers
+their input, with its capture extension and page observers. Real Chrome tests
+on macOS and Linux arm64 cover watching a tab beside the agent, the viewport
+modes, dialogs, native controls, chosen files, the clipboard, held input and
+two viewers of one tab.
+
+Not implemented: the view in `web-ui`, the product's stream source and
+activity reports in `web`, the gallery's replay source, the CJK fonts in the
+guest image, and the acceptance runs above on a macOS paired device, a Linux
+paired device and Cloud. The prototype and its measurements live in the
 separate Tab Lab repository (`browser-remote-lab`).
