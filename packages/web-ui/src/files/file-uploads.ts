@@ -3,12 +3,20 @@ import { createId } from '@demicodes/utils'
 import { joinPath, parentPath } from './paths'
 import { FileBrowserError, type FileBrowserSource } from './types'
 
-/** Where one upload is: waiting its turn, on its way, landed, or stopped by a failure. */
+/**
+ * Where one upload is: waiting its turn, on its way, landed, or stopped by a
+ * failure. On its way, `rate` is how many bytes a second it has moved over
+ * the last few seconds, null until it has moved long enough to tell.
+ */
 export type FileUploadState =
   | { phase: 'waiting' }
-  | { phase: 'uploading'; sent: number }
+  | { phase: 'uploading'; sent: number; rate: number | null }
   | { phase: 'done' }
   | { phase: 'failed'; message: string }
+
+/** How far back an upload's rate looks, and how much of that it needs before it says one. */
+const RATE_WINDOW_MS = 3000
+const RATE_MIN_SPAN_MS = 500
 
 /** One file sent into a directory of a source. */
 export interface FileUpload {
@@ -101,13 +109,14 @@ export class FileUploads {
       return
     const controller = new AbortController()
     this.#running = { id: item.id, controller }
-    item.state = { phase: 'uploading', sent: 0 }
+    item.state = { phase: 'uploading', sent: 0, rate: null }
+    const pace = recentPace()
     void this.source.upload(item.path, item.file, {
       replace: item.replace,
       signal: controller.signal,
       progress: (sent) => {
         if (!controller.signal.aborted)
-          item.state = { phase: 'uploading', sent }
+          item.state = { phase: 'uploading', sent, rate: pace(sent) }
       },
     }).then(
       () => {
@@ -127,6 +136,23 @@ export class FileUploads {
       this.#running = null
       this.#next()
     })
+  }
+}
+
+/**
+ * Bytes a second over the last `RATE_WINDOW_MS`, from the byte counts it is
+ * given as they arrive; null while they span less than `RATE_MIN_SPAN_MS`.
+ */
+function recentPace(): (sent: number) => number | null {
+  const samples = [{ at: performance.now(), sent: 0 }]
+  return (sent) => {
+    const at = performance.now()
+    samples.push({ at, sent })
+    while (samples.length > 2 && at - samples[0]!.at > RATE_WINDOW_MS)
+      samples.shift()
+    const first = samples[0]!
+    const span = at - first.at
+    return span < RATE_MIN_SPAN_MS ? null : (sent - first.sent) / (span / 1000)
   }
 }
 
