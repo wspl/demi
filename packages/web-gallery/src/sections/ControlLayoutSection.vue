@@ -133,7 +133,7 @@ const surfaces = [
         <Menu class="w-72" data-row-actions>
           <MenuItem :icon="Globe" label="127.0.0.1:5173" value="52 min left">
             <template #actions>
-              <IconButton :icon="RefreshCw" size="xs" variant="ghost" aria-label="Renew" />
+              <IconButton :icon="RefreshCw" size="xs" variant="ghost" aria-label="Renew" spin-on-click />
               <IconButton :icon="X" size="xs" variant="ghost" aria-label="Remove" />
             </template>
           </MenuItem>

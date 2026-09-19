@@ -42,6 +42,7 @@ const countdown = computed(() => formatTimeRemaining(remaining.value))
         size="xs"
         variant="ghost"
         aria-label="Renew for an hour"
+        spin-on-click
         :disabled="pending"
         @click.stop="emit('renew')"
       />

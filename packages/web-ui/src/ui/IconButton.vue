@@ -33,7 +33,9 @@ const props = withDefaults(
     /** Why it is disabled, as a tooltip; only read while `disabled`. */
     disabledReason?: string
     pressed?: boolean
+    /** Turns the icon while true, a whole revolution at a time; the turn it is in always finishes. */
     spinning?: boolean
+    /** Turns the icon one whole revolution per click. Every button that refreshes, renews or restarts does. */
     spinOnClick?: boolean
     /** A status on the icon's top-right corner: a small dot in this tone, none when null. */
     indicator?: CornerDotTone | null
@@ -51,9 +53,12 @@ const tooltipContent = computed(() =>
   disabledTooltip(props.disabled, props.disabledReason),
 )
 const emit = defineEmits<{ spinEnd: [] }>()
-const root = ref<HTMLElement | null>(null)
-const { rotating, onClick } = useButtonIconSpin(root, props, () =>
-  emit('spinEnd'),
+// The icon's own box turns, not the dot on its corner.
+const glyph = ref<HTMLElement | null>(null)
+const { rotating, onClick } = useButtonIconSpin(
+  () => glyph.value ? [glyph.value] : [],
+  props,
+  () => emit('spinEnd'),
 )
 
 const glyphPx = computed(() => {
@@ -80,7 +85,6 @@ const glyphPx = computed(() => {
     :open-delay-ms="80"
   >
     <span
-      ref="root"
       v-bind="restAttrs"
       :data-spinning="rotating || undefined"
       @click="onClick"
@@ -126,12 +130,14 @@ const glyphPx = computed(() => {
     >
       <IndeterminateSpinner v-if="loading" :size="glyphPx" />
       <span v-else class="relative flex">
-        <component
-          :is="icon"
-          :size="glyphPx"
-          :width="glyphPx"
-          :height="glyphPx"
-        />
+        <span ref="glyph" class="flex">
+          <component
+            :is="icon"
+            :size="glyphPx"
+            :width="glyphPx"
+            :height="glyphPx"
+          />
+        </span>
         <CornerDot
           v-if="indicator !== undefined"
           :tone="indicator"
