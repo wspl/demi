@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { LocalHost } from '@demicodes/host-remote/testing'
+import { TEST_COMMAND_CONTEXT } from '@demicodes/shell/testing'
 import { z } from 'zod'
 import type { Command, DispatchIO } from '@demicodes/shell'
 import {
@@ -57,6 +58,7 @@ async function world(withRpc = true) {
         : data),
       cwd: dir,
       env,
+      context: TEST_COMMAND_CONTEXT,
     }
     const exit = await loader.dispatch(root, argv, io)
     return {
@@ -251,6 +253,7 @@ describe('dispatch', () => {
           stdin: null,
           cwd: dir,
           env: {},
+          context: TEST_COMMAND_CONTEXT,
           io: { stdout: async () => {}, stderr: async () => {} },
           signal: new AbortController().signal,
           stdinStream: emptyByteStream(),

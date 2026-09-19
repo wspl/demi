@@ -1,6 +1,6 @@
 //! Private local duplex endpoints used by shell builtins and external clients.
 
-use demi_command_service::{Handler, ServiceError};
+use demi_command_service::{Handler, ServiceError, protocol::LocalInvocation};
 use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -27,7 +27,7 @@ pub struct Server {
 }
 
 impl Server {
-    pub async fn start(handler: Arc<dyn Handler>) -> io::Result<Self> {
+    pub async fn start(handler: Arc<dyn Handler<Metadata = LocalInvocation>>) -> io::Result<Self> {
         let mut listener = Listener::bind().await?;
         let endpoint = listener.endpoint().to_owned();
         let cancel = CancellationToken::new();
@@ -284,7 +284,10 @@ const ALIVE: &str = "ipc.alive";
 fn runner_alive(endpoint: &str) -> bool {
     let path = std::path::Path::new(endpoint).with_file_name(ALIVE);
     match std::fs::File::open(path) {
-        Ok(file) => matches!(file.try_lock_shared(), Err(std::fs::TryLockError::WouldBlock)),
+        Ok(file) => matches!(
+            file.try_lock_shared(),
+            Err(std::fs::TryLockError::WouldBlock)
+        ),
         // Without an open file to read the lock with, assume the runner is
         // there; the client waits and looks again.
         Err(error) => demi_command_service::descriptors::exhausted(&error),

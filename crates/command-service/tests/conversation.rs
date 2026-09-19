@@ -3,7 +3,7 @@ use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 use bytes::{BufMut, Bytes, BytesMut};
 use demi_command_service::{
     Client, ConversationContext, Handler, InvocationContext, ServiceError,
-    protocol::{Completion, ConversationRequest, Record},
+    protocol::{Completion, ConversationRequest, Invocation, Record},
     serve,
 };
 use tokio::sync::Notify;
@@ -11,6 +11,8 @@ use tokio::sync::Notify;
 struct Stateless;
 
 impl Handler for Stateless {
+    type Metadata = Invocation;
+
     fn operations(&self) -> Vec<String> {
         vec!["noop".into()]
     }
@@ -117,6 +119,8 @@ struct Lifecycle {
 }
 
 impl Handler for Lifecycle {
+    type Metadata = Invocation;
+
     fn operations(&self) -> Vec<String> {
         vec!["noop".into()]
     }

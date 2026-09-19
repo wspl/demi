@@ -206,11 +206,6 @@ impl Calls {
         output: CommandOutput,
         cancel: CancellationToken,
     ) -> Result<u8, ServiceError> {
-        if request.context.agent_session_id.is_empty() || request.context.shell_id.is_empty() {
-            return Err(ServiceError::Handler(
-                "RPC requires an application-dispatched job and session".into(),
-            ));
-        }
         let id = uuid::Uuid::new_v4().simple().to_string();
         let stop = cancel.child_token();
         let _stop_guard = stop.clone().drop_guard();
@@ -239,8 +234,6 @@ impl Calls {
         let message = wire::rpc_call(
             request.context.job_id.clone(),
             id.clone(),
-            request.context.agent_session_id.clone(),
-            request.context.shell_id.clone(),
             request.root.clone(),
             request.parsed.path.clone(),
             request.argv.clone(),

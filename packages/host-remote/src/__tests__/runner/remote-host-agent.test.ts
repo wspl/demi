@@ -10,7 +10,7 @@ import {
   type AgentHarness,
   type ClientSessionEvent
 } from '@demicodes/agent'
-import { LocalHost } from '@demicodes/host-remote/testing'
+import { LocalHost, TEST_COMMAND_CONTEXT } from '@demicodes/host-remote/testing'
 import { defineProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { PipeBroker, RemoteHost, RemoteShellEnvironment, devicePipes } from '@demicodes/host-remote'
@@ -151,7 +151,7 @@ test(
     const agentServer = new AgentServer({ store: memoryAgentStores(),
       agent: harness,
       providers: [provider],
-      shellEnvironment: (ctx) => new RemoteShellEnvironment({ conversation: ctx.rootSessionId, node: ctx.agentSessionId,
+      shellEnvironment: (ctx) => new RemoteShellEnvironment({ commandContext: async () => ({ ...TEST_COMMAND_CONTEXT, conversation: ctx.rootSessionId, caller: { kind: 'agent', node: ctx.agentSessionId } }),
         ...ctx.shell,
         host: remoteHost
       }),

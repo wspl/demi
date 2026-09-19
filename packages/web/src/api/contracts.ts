@@ -21,11 +21,16 @@ export const appearanceSchema = z.object({
     .optional(),
   fontSize: z.number().int().min(12).max(18).optional(),
 })
+export const localeSchema = z.object({
+  timeZone: z.string(),
+  languages: z.array(z.string()),
+})
 export const preferencesSchema = z.object({
   lastModel: modelIntentSchema.extend({
     providerId: z.string().min(1),
     modelId: z.string().min(1),
   }).optional(),
+  locale: localeSchema.optional(),
   appearance: appearanceSchema,
   shortcuts: z.object({
     new: z.string().optional(),
@@ -34,6 +39,7 @@ export const preferencesSchema = z.object({
   }),
 })
 export type AppearancePatch = z.infer<typeof appearanceSchema>
+export type Locale = z.infer<typeof localeSchema>
 export type Preferences = z.infer<typeof preferencesSchema>
 export type PreferencesPatch = {
   lastModel?: Preferences['lastModel']

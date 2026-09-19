@@ -1,7 +1,10 @@
 use std::{collections::BTreeMap, future::Future, pin::Pin, sync::Arc, time::Duration};
 
 use bytes::Bytes;
-use demi_command_service::protocol::{Completion, Invocation, Record, RecordDecoder};
+use demi_command_service::protocol::{
+    CommandCaller, CommandContext, CommandLocale, Completion, Invocation, Metadata, Record,
+    RecordDecoder,
+};
 use demi_command_service::{Handler, InvocationContext, ServiceError, serve};
 use http::Request;
 use tokio::sync::Notify;
@@ -11,6 +14,8 @@ struct Fixture {
 }
 
 impl Handler for Fixture {
+    type Metadata = Invocation;
+
     fn operations(&self) -> Vec<String> {
         vec!["echo".into(), "wait".into(), "flood".into()]
     }
@@ -55,8 +60,7 @@ impl Handler for Fixture {
 
 fn invocation(operation: &str) -> Bytes {
     Invocation {
-        caller: "node".into(),
-        conversation: "conversation".into(),
+        context: context(),
         json: None,
         edits: None,
         operation: operation.into(),
@@ -189,8 +193,7 @@ async fn sdk_client_keeps_other_calls_live_while_one_output_is_blocked() {
         let (client, connection) = Client::connect(client_io).await.unwrap();
         let driver = tokio::spawn(connection);
         let request = |operation: &str| Invocation {
-            caller: "node".into(),
-            conversation: "conversation".into(),
+            context: context(),
             json: None,
             edits: None,
             operation: operation.into(),
@@ -233,4 +236,15 @@ async fn sdk_client_keeps_other_calls_live_while_one_output_is_blocked() {
     })
     .await
     .unwrap();
+}
+
+fn context() -> CommandContext {
+    CommandContext {
+        conversation: "conversation".into(),
+        caller: CommandCaller::agent("node"),
+        locale: CommandLocale {
+            time_zone: "UTC".into(),
+            languages: vec!["en-US".into()],
+        },
+    }
 }

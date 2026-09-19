@@ -1,3 +1,4 @@
+import type { CommandContext } from '@demicodes/command-protocol'
 import {
   isCommandGroup,
   resolveCommand,
@@ -28,6 +29,8 @@ export interface RpcInvocation {
   stdin: AsyncIterable<Uint8Array> | null
   cwd: string
   env: Record<string, string>
+  /** The invoking job's command context (`native-runtime.md` § Command context). */
+  context: CommandContext
   io: CommandIO
   signal: AbortSignal
   stdinStream: AsyncIterable<Uint8Array>
@@ -69,6 +72,7 @@ export function inProcessRpc(
       io: invocation.io,
       storage: deps.storage,
       host: deps.host,
+      context: invocation.context,
       signal: invocation.signal,
       stdinStream: invocation.stdinStream,
     })

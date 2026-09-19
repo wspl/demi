@@ -1,7 +1,9 @@
 use bytes::Bytes;
 use demi_command_service::{
     ConversationContext, Handler, Input, InvocationContext, Output, ServiceError,
-    protocol::{ConversationRequest, Invocation, Record},
+    protocol::{
+        CommandCaller, CommandContext, CommandLocale, ConversationRequest, Invocation, Record,
+    },
 };
 use demi_commands::DemiCommands;
 use serde_json::json;
@@ -22,8 +24,14 @@ async fn release_cancels_a_browser_command_blocked_on_output() {
         request: Invocation {
             operation: "browser.tabs".into(),
             invocation_id: "blocked-output".into(),
-            conversation: "conversation".into(),
-            caller: "caller".into(),
+            context: CommandContext {
+                conversation: "conversation".into(),
+                caller: CommandCaller::agent("caller"),
+                locale: CommandLocale {
+                    time_zone: "UTC".into(),
+                    languages: vec!["en-US".into()],
+                },
+            },
             args: json!({}),
             cwd: "/".into(),
             env: Default::default(),

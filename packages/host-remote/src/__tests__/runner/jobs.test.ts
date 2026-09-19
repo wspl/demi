@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, realpath, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { connectTestRunner, TEST_RUNNER_DEVICE } from '@demicodes/host-remote/testing'
+import { connectTestRunner, TEST_RUNNER_DEVICE, TEST_COMMAND_CONTEXT } from '@demicodes/host-remote/testing'
 import { memoryHostStore } from '@demicodes/shell/testing'
 import { delay, waitFor } from '@demicodes/utils'
 import { PipeBroker, RemoteHost, RemoteShellEnvironment, devicePipes } from '@demicodes/host-remote'
@@ -36,7 +36,7 @@ async function connected() {
     onClose: () => remote.detach('runner disconnected'),
   })
   cleanups.push(connection.close)
-  const shell = new RemoteShellEnvironment({ conversation: 'test-conversation', node: 'test-session',
+  const shell = new RemoteShellEnvironment({ commandContext: async () => TEST_COMMAND_CONTEXT,
     host: remote,
     initialEnv: { PATH: '/usr/bin:/bin' }
   })
@@ -73,18 +73,18 @@ test(
 )
 
 test(
-  'a job runs in the device environment underneath the shell\'s: a device entry reaches it, a backend entry wins, DEMI_HOME is the runner\'s',
+  'a job runs in the device environment underneath the shell\'s: a device entry reaches it, a backend entry wins, DEMI_HOME is the runner\'s, and no identity rides in it',
   async () => {
     const { shell } = await connected()
     const result = await shell.exec({
-      script: 'echo "$DEVICE_FACT|$SHARED|${DEMI_SESSION_ID:-none}"; echo "$PATH"',
+      script: 'echo "$DEVICE_FACT|$SHARED|${DEMI_SESSION_ID:-none}|${DEMI_SHELL_ID:-none}|${DEMI_CONVERSATION_ID:-none}|${DEMI_AGENT_NODE_ID:-none}"; echo "$PATH"',
       timeoutMs: 5_000,
       agentSessionId: 's1'
     })
     const [facts, path] = (result.status === 'exited' ? result.stdout.delta : '').split('\n')
-    expect(facts).toBe('from the device|device|s1')
+    expect(facts).toBe('from the device|device|none|none|none|none')
     expect(path?.split(':')).toContain('/usr/bin')
-    const overriding = new RemoteShellEnvironment({ conversation: 'test-conversation', node: 'test-session',
+    const overriding = new RemoteShellEnvironment({ commandContext: async () => TEST_COMMAND_CONTEXT,
       host: (await connected()).remote,
       initialEnv: { SHARED: 'backend' }
     })
