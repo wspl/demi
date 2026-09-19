@@ -1,6 +1,5 @@
 import type { ProviderErrorDiagnostics } from '@demicodes/core'
 import { z } from 'zod'
-import { t } from '@demicodes/web-ui/infra/i18n'
 
 /** A first line stays one line: past this the source's text goes in the body. */
 const HEADLINE_MAX_LENGTH = 160
@@ -51,7 +50,7 @@ export function errorPresentation(message: string): ErrorPresentation {
     return { label: sentence, detail: text }
   if (text.length > 0 && text.length <= HEADLINE_MAX_LENGTH && !text.includes('\n'))
     return { label: text, detail: null }
-  return { label: t('agent.error.failed'), detail: text || null }
+  return { label: 'The turn failed', detail: text || null }
 }
 
 /**

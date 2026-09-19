@@ -34,7 +34,6 @@ import {
   sessionPaneStatus,
   type SessionLoad,
 } from '@demicodes/web-ui/agent/session-status'
-import { t } from '@demicodes/web-ui/infra/i18n'
 import SessionDock from '@demicodes/web-ui/agent/SessionDock.vue'
 import SessionDockChip from '@demicodes/web-ui/agent/SessionDockChip.vue'
 import AgentsChip from '@demicodes/web-ui/agent/AgentsChip.vue'
