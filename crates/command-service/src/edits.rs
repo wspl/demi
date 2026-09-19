@@ -69,15 +69,15 @@ impl Recorder {
     }
 
     fn locked(&self) -> io::Result<Recording> {
-        let lock = OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .read(true)
-            .write(true)
-            .open(&self.context.lock)?;
+        // Out of open files, recording waits for one rather than leave an
+        // edit out (`runner.md` § Load).
+        let mut options = OpenOptions::new();
+        options.create(true).truncate(false).read(true).write(true);
+        let lock = crate::descriptors::retry_blocking(|| options.open(&self.context.lock))?;
         lock.lock()?;
         let directory = PathBuf::from(&self.context.directory);
-        let journal = match fs::read(directory.join("journal.json")) {
+        let journal_path = directory.join("journal.json");
+        let journal = match crate::descriptors::retry_blocking(|| fs::read(&journal_path)) {
             Ok(bytes) => {
                 let journal: EditJournal =
                     serde_json::from_slice(&bytes).map_err(io::Error::other)?;
@@ -338,7 +338,7 @@ impl Contents {
             Err(_) => return Self::Unavailable(None),
             Ok(metadata) => FileStamp::read(&metadata),
         };
-        let bytes = File::open(path).and_then(|file| {
+        let bytes = crate::descriptors::retry_blocking(|| File::open(path)).and_then(|file| {
             let mut bytes = Vec::new();
             file.take((EDIT_FILE_BYTES + 1) as u64)
                 .read_to_end(&mut bytes)?;
@@ -383,7 +383,8 @@ fn publish_file(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let directory = path
         .parent()
         .ok_or_else(|| io::Error::other("snapshot has no parent"))?;
-    let mut temporary = tempfile::NamedTempFile::new_in(directory)?;
+    let mut temporary =
+        crate::descriptors::retry_blocking(|| tempfile::NamedTempFile::new_in(directory))?;
     temporary.write_all(bytes)?;
     temporary.persist(path).map_err(|error| error.error)?;
     Ok(())

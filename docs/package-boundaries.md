@@ -376,10 +376,14 @@ Test code may depend upward for integration coverage. Production code must not.
 - `build.rs` consumes the Zod definitions in `packages/command-protocol`.
   `src/integrity.rs` owns streaming artifact verification reused by installers;
   `src/protocol.rs` includes generated types and owns framing; `client.rs` and
-  `server.rs` own the two transport roles.
+  `server.rs` own the two transport roles. `src/descriptors.rs` owns waiting
+  out a lack of open files, for the runner, the edit recorder and command
+  programs alike (`docs/demi-next/runner.md` § Load).
 - Depends on: Tokio, tokio-util, h2, http, futures-util, bytes, serde, serde_json,
-  thiserror and package-identity hashing/canonicalization libraries.
-- Public boundary: protocol types, client, service entry point, handler and IO.
+  thiserror, package-identity hashing/canonicalization libraries, and libc or
+  windows-sys for the system's error codes.
+- Public boundary: protocol types, client, service entry point, handler and IO,
+  and waiting out a lack of open files.
 - Must not: implement commands, download artifacts, start command processes,
   hold credentials or change process-global cwd/environment for an invocation.
 
