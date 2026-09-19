@@ -568,9 +568,6 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                       : 'Stored encrypted on the server.'
                   "
                 >
-                  <template v-if="selected.keyConfigured" #tags>
-                    <Tag tone="success">Saved</Tag>
-                  </template>
                   <CommitTextInput
                     :disabled="!!operations?.[selected.id]"
                     :model-value="selected.apiKey"
