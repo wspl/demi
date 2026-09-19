@@ -358,10 +358,7 @@ The invocation's input is the bytes the page sends and its output is the bytes
 the page receives. The operation frames its own messages; the runner and the
 backend forward bytes without reading them. The stream ends when either side
 ends it: the runner cancels the invocation when a pipe fails, and the
-invocation's completion ends the page's connection. Like a running command, a
-user stream occupies one of the service's concurrent invocation streams while
-it lasts ([Validation and flow control](#validation-and-flow-control)); a page
-opens one only while it shows the view, so a user holds a few at most.
+invocation's completion ends the page's connection.
 
 ## Invocation protocol
 
@@ -424,14 +421,16 @@ sizes while decoding, before allocating unbounded memory. These limits apply:
 | Invocation metadata JSON | 256 KiB |
 | Response record payload | 64 KiB |
 | HTTP/2 header list | 16 KiB |
-| Concurrent admitted service streams | 32 |
 | Queued output records per invocation | 4 |
 | HTTP/2 handshake, service info, and invocation metadata timeout | 10 seconds per phase |
 | Cooperative cancellation grace | 5 seconds |
 
-These are fixed SDK limits. Flow control and bounded queues, both per stream and
-across streams, prevent a slow consumer from blocking unrelated calls or growing
-memory without bound.
+These are fixed SDK limits. The number of concurrent invocations is not
+limited. Each invocation stream has its own flow-control window and a bounded
+output queue, and the connection's window is set to the protocol maximum, so it
+never becomes the constraint: a slow consumer holds back only its own
+invocation, never an unrelated one. Memory grows with the number of live
+invocations, each bounded by its window and queue.
 
 The SDK returns input receive capacity while assembling one requested, bounded
 chunk. It reserves output capacity before sending DATA. Connection processing

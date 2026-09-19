@@ -92,9 +92,7 @@ use the same address bar component; only a Host tab has the viewport menu.
 5. The live view module answers with the protocol version, the tab list and the
    watched tab's first key frame.
 
-One view is one invocation. Like a running command, it occupies one of its
-service's concurrent invocation streams, and only while the page shows it.
-The page shows one Host: the conversation's main Host. A browser on an
+One view is one invocation. The page shows one Host: the conversation's main Host. A browser on an
 attached Host is not shown.
 
 When no browser runs, the page says so and offers a new tab. A new tab is
