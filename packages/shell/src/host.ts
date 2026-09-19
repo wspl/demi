@@ -36,13 +36,20 @@ export interface HostFileSystem {
       signal?: AbortSignal
     }
   ): Promise<AsyncIterable<Uint8Array>>
-  /** Replaces the file whole: a failed write leaves it as it was. */
+  /**
+   * Replaces the file whole with `data`: its bytes at once, or a stream of
+   * them written as they come, the next taken once the last is written. A
+   * failed write, a stream that fails, or aborting `signal` leaves the file
+   * as it was; the stream's failure, or the abort's reason, is the one
+   * thrown.
+   */
   writeFile(
     path: string,
-    data: Uint8Array,
+    data: Uint8Array | AsyncIterable<Uint8Array>,
     options?: {
       cwd?: string;
-      createParents?: boolean
+      createParents?: boolean;
+      signal?: AbortSignal
     }
   ): Promise<void>
   exists(path: string, options?: { cwd?: string }): Promise<boolean>
