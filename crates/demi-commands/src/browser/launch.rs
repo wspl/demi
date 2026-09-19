@@ -16,6 +16,8 @@ pub(super) const CAPTURE_EXTENSION_ID: &str = "ekadkclcinpnbbdeloemlmaimcklplko"
 const CAPTURE_EXTENSION: &[(&str, &str)] = &[
     ("manifest.json", include_str!("capture/manifest.json")),
     ("background.js", include_str!("capture/background.js")),
+    ("offscreen.html", include_str!("capture/offscreen.html")),
+    ("offscreen.js", include_str!("capture/offscreen.js")),
 ];
 
 /// The height the browser's own chrome adds to a window, so that a page never
@@ -110,18 +112,27 @@ fn desktop_user_agent(version: &str) -> String {
 }
 
 /// Configures Chrome's switches, the user's locale and the capture extension
-/// on a profile about to be launched.
+/// on a profile about to be launched; the extension dials `capture`.
 pub(super) async fn configure(
     builder: BrowserConfigBuilder,
     profile: &Path,
     version: &str,
     locale: &CommandLocale,
+    capture: &str,
 ) -> Result<BrowserConfigBuilder> {
     let extension = profile.join("demi-capture");
     tokio::fs::create_dir(&extension).await?;
     for (name, contents) in CAPTURE_EXTENSION {
         tokio::fs::write(extension.join(name), contents).await?;
     }
+    tokio::fs::write(
+        extension.join("config.js"),
+        format!(
+            "export const socket = {};\n",
+            serde_json::Value::String(capture.to_owned())
+        ),
+    )
+    .await?;
     // The profile's language preference sets `navigator.languages` and every
     // request's `Accept-Language` from the first byte, in popups and workers too.
     let preferences = profile.join("Default");

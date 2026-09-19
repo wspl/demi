@@ -38,6 +38,7 @@ impl Handler for DemiCommands {
         ["file.read", "file.create", "file.edit", "file.patch"]
             .into_iter()
             .chain(browser::OPERATIONS.iter().copied())
+            .chain([browser::LIVE_OPERATION])
             .map(String::from)
             .collect()
     }

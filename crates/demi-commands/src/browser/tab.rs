@@ -11,7 +11,7 @@ use chromiumoxide::{
             DispatchKeyEventParams, DispatchMouseEventParams, DispatchMouseEventType,
             InsertTextParams, MouseButton,
         },
-        page::EventJavascriptDialogOpening,
+        page::{EventJavascriptDialogOpening, HandleJavaScriptDialogParams},
         target::{CloseTargetParams, EventTargetDestroyed},
     },
 };
@@ -42,7 +42,11 @@ pub(super) struct TabState {
     pub console: Arc<Mutex<super::logs::Console>>,
     pub dialog: watch::Sender<Option<Arc<EventJavascriptDialogOpening>>>,
     pub deferred_release: Mutex<Vec<InputRelease>>,
-    pub viewport: std::sync::Mutex<super::viewport::Viewports>,
+    pub viewport: watch::Sender<super::viewport::Viewports>,
+    /// Tells the live view that what it shows of the browser changed.
+    pub changes: watch::Sender<u64>,
+    /// The live view's observer of this tab, once a viewer watched it.
+    pub observed: tokio::sync::OnceCell<Arc<super::live::Observed>>,
 }
 
 impl TabState {
@@ -51,6 +55,7 @@ impl TabState {
         ended: CancellationToken,
         tasks: &TaskTracker,
         failure: watch::Sender<Option<String>>,
+        changes: watch::Sender<u64>,
     ) -> Result<Arc<Self>> {
         // Headless dialogs are closed only by this controller. Handling clears
         // the exact opening incarnation, so a subsequent prompt cannot be erased
@@ -67,7 +72,9 @@ impl TabState {
             webmcp: Mutex::new(super::webmcp::State::default()),
             dialog: watch::channel(None).0,
             deferred_release: Mutex::new(Vec::new()),
-            viewport: std::sync::Mutex::new(Default::default()),
+            viewport: watch::channel(Default::default()).0,
+            changes,
+            observed: tokio::sync::OnceCell::new(),
         });
         let observed = state.clone();
         tasks.spawn(async move {
@@ -513,6 +520,45 @@ impl BrowserTab {
             .build()
             .map_err(BrowserError::Configuration)?;
         self.release_mouse(result, release).await
+    }
+}
+
+impl BrowserTab {
+    /// Answers the open dialog, whether the agent or the user answers first,
+    /// then delivers the input releases it held back.
+    pub(super) async fn answer_dialog(
+        &self,
+        dialog: &Arc<EventJavascriptDialogOpening>,
+        accept: bool,
+        text: Option<String>,
+    ) -> Result<()> {
+        let mut request = HandleJavaScriptDialogParams::new(accept);
+        request.prompt_text = text;
+        self.page.execute(request).await?;
+        self.state.dialog.send_if_modified(|current| {
+            if current
+                .as_ref()
+                .is_some_and(|current| Arc::ptr_eq(current, dialog))
+            {
+                *current = None;
+                true
+            } else {
+                false
+            }
+        });
+        let mut releases = self.state.deferred_release.lock().await;
+        while self.state.dialog.borrow().is_none() && !releases.is_empty() {
+            match &releases[0] {
+                InputRelease::Mouse(event) => {
+                    self.page.execute(event.clone()).await?;
+                }
+                InputRelease::Key(event) => {
+                    self.page.execute(event.clone()).await?;
+                }
+            }
+            releases.remove(0);
+        }
+        Ok(())
     }
 }
 
