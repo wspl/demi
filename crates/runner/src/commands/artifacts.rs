@@ -78,62 +78,108 @@ impl Artifacts {
         let _cancelled_request = sender.send(result);
     }
 
-    async fn request(
+    /// The resolver for a user stream's service (`runner.md` § Service
+    /// streams): the backend authorizes its artifact by the open stream.
+    pub fn for_stream(self: &Arc<Self>, stream: String) -> Arc<dyn ArtifactResolver> {
+        Arc::new(StreamArtifacts {
+            artifacts: self.clone(),
+            stream,
+        })
+    }
+
+    /// Asks the backend where the artifact is on behalf of `owner`, the live
+    /// work that authorizes it; `None` once `ended`, when the owner no longer
+    /// does.
+    async fn locate(
         &self,
+        owner: wire::ArtifactResolveOwner,
         artifact: &PackageArtifact,
         cancel: &CancellationToken,
-    ) -> Result<ArtifactSource, RuntimeError> {
-        loop {
-            let context = self
-                .contexts
-                .for_artifact(&artifact.sha256, &self.target)
-                .ok_or_else(|| {
-                    RuntimeError::Artifact("no live job authorizes this artifact".into())
-                })?;
-            let id = uuid::Uuid::new_v4().simple().to_string();
-            let (sender, receiver) = oneshot::channel();
-            let (output, stop) = {
-                let mut state = self.state.lock().unwrap();
-                let connection = state.connection.as_ref().ok_or(RuntimeError::Cancelled)?;
-                let output = connection.output.clone();
-                let stop = connection.stop.clone();
-                state.pending.insert(id.clone(), sender);
-                (output, stop)
-            };
-            let _pending = Pending {
-                id: id.clone(),
-                state: self.state.clone(),
-            };
-            let message = wire::artifact_resolve(
-                id,
-                context.job_id.clone(),
-                context.manifest.hash.clone(),
-                artifact.sha256.clone(),
-                self.target.clone(),
-            )
-            .map_err(|error| RuntimeError::Artifact(error.to_string()))?;
-            let location = tokio::select! {
-                biased;
-                _ = cancel.cancelled() => return Err(RuntimeError::Cancelled),
-                _ = stop.cancelled() => return Err(RuntimeError::Cancelled),
-                // A shared download can select another still-live authorized job.
-                _ = context.cancel.cancelled() => continue,
-                result = tokio::time::timeout(Duration::from_secs(15), async {
-                    output.send(message).await.map_err(|_| RuntimeError::Cancelled)?;
-                    receiver.await.map_err(|_| RuntimeError::Cancelled)?.map_err(RuntimeError::Artifact)
-                }) => result.map_err(|_| RuntimeError::Deadline("artifact location"))??,
-            };
-            return ArtifactSource::from_location(location);
-        }
+        ended: impl std::future::Future<Output = ()>,
+    ) -> Result<Option<ArtifactSource>, RuntimeError> {
+        let id = uuid::Uuid::new_v4().simple().to_string();
+        let (sender, receiver) = oneshot::channel();
+        let (output, stop) = {
+            let mut state = self.state.lock().unwrap();
+            let connection = state.connection.as_ref().ok_or(RuntimeError::Cancelled)?;
+            let output = connection.output.clone();
+            let stop = connection.stop.clone();
+            state.pending.insert(id.clone(), sender);
+            (output, stop)
+        };
+        let _pending = Pending {
+            id: id.clone(),
+            state: self.state.clone(),
+        };
+        let message =
+            wire::artifact_resolve(id, owner, artifact.sha256.clone(), self.target.clone())
+                .map_err(|error| RuntimeError::Artifact(error.to_string()))?;
+        let location = tokio::select! {
+            biased;
+            _ = cancel.cancelled() => return Err(RuntimeError::Cancelled),
+            _ = stop.cancelled() => return Err(RuntimeError::Cancelled),
+            _ = ended => return Ok(None),
+            result = tokio::time::timeout(Duration::from_secs(15), async {
+                output.send(message).await.map_err(|_| RuntimeError::Cancelled)?;
+                receiver.await.map_err(|_| RuntimeError::Cancelled)?.map_err(RuntimeError::Artifact)
+            }) => result.map_err(|_| RuntimeError::Deadline("artifact location"))??,
+        };
+        ArtifactSource::from_location(location).map(Some)
     }
 }
 
 impl ArtifactResolver for Artifacts {
+    /// A job's command: any live job whose catalog holds the artifact
+    /// authorizes it.
     fn resolve<'a>(
         &'a self,
         artifact: &'a PackageArtifact,
         cancel: &'a CancellationToken,
     ) -> BoxFuture<'a, Result<ArtifactSource, RuntimeError>> {
-        Box::pin(self.request(artifact, cancel))
+        Box::pin(async move {
+            loop {
+                let context = self
+                    .contexts
+                    .for_artifact(&artifact.sha256, &self.target)
+                    .ok_or_else(|| {
+                        RuntimeError::Artifact("no live job authorizes this artifact".into())
+                    })?;
+                let owner =
+                    wire::ArtifactResolveOwner::Variant0(wire::ArtifactResolveOwnerVariant0 {
+                        job_id: context.job_id.clone(),
+                        manifest_hash: context.manifest.hash.clone(),
+                    });
+                // A shared download can select another still-live authorized job.
+                if let Some(source) = self
+                    .locate(owner, artifact, cancel, context.cancel.cancelled())
+                    .await?
+                {
+                    return Ok(source);
+                }
+            }
+        })
+    }
+}
+
+struct StreamArtifacts {
+    artifacts: Arc<Artifacts>,
+    stream: String,
+}
+
+impl ArtifactResolver for StreamArtifacts {
+    fn resolve<'a>(
+        &'a self,
+        artifact: &'a PackageArtifact,
+        cancel: &'a CancellationToken,
+    ) -> BoxFuture<'a, Result<ArtifactSource, RuntimeError>> {
+        Box::pin(async move {
+            let owner = wire::ArtifactResolveOwner::Variant1(wire::ArtifactResolveOwnerVariant1 {
+                stream_id: self.stream.clone(),
+            });
+            self.artifacts
+                .locate(owner, artifact, cancel, std::future::pending())
+                .await?
+                .ok_or(RuntimeError::Cancelled)
+        })
     }
 }

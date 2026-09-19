@@ -11,3 +11,4 @@ pub mod manifest;
 pub mod native;
 pub mod rpc;
 pub mod services;
+pub mod streams;
