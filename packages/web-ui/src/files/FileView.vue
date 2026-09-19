@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { ArrowLeft, ArrowRight, Download, FolderTree } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, Code, Download, Eye, FolderTree } from '@lucide/vue'
 import CodeEditor from '../editor/components/CodeEditor.vue'
 import { appEditorHost } from '../editor/host/appHost'
 import { toEditorUri } from '../editor/editorUri'
@@ -64,8 +64,8 @@ const treeWidth = defineModel<number>('treeWidth', { default: TREE_WIDTH.default
 const mode = defineModel<'preview' | 'source'>('mode', { default: 'preview' })
 
 const modeOptions: readonly SegmentedOption<'preview' | 'source'>[] = [
-  { value: 'preview', label: 'Preview' },
-  { value: 'source', label: 'Source' },
+  { value: 'preview', label: 'Preview', icon: Eye },
+  { value: 'source', label: 'Source', icon: Code },
 ]
 
 const kind = computed(() => props.path === null ? 'text' : previewKind(props.path))
@@ -189,6 +189,7 @@ onBeforeUnmount(() => {
         v-model="mode"
         :options="modeOptions"
         size="sm"
+        icon-only
         class="shrink-0"
         :disabled="tooLargeToRender"
         disabled-reason="Too large to render; showing its source"

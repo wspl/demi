@@ -9,7 +9,7 @@ import Tree from './Tree.vue'
 import type { TreeRow } from './tree'
 import { FileBrowserError, type FileBrowserEntry, type FileBrowserFailure, type FileBrowserSource } from './types'
 import { baseName, joinPath, normalizePath, parentPath } from './paths'
-import { sortEntries, type FileBrowserSort } from './file-browser-state'
+import { DEFAULT_SORT, sortEntries } from './file-browser-state'
 
 /**
  * A directory tree over a `FileBrowserSource`, rooted at `root`, on a
@@ -53,9 +53,6 @@ function listing(path: string): Listing {
   return entry
 }
 
-/** Directories first, hidden names last, then by name: a tree has no sort controls. */
-const listingOrder: FileBrowserSort = { key: null, direction: 'asc' }
-
 /** Lists a directory once; `again` lists it anew, its rows staying until the new ones land. */
 async function load(path: string, again = false): Promise<void> {
   const entry = listing(path)
@@ -65,11 +62,8 @@ async function load(path: string, again = false): Promise<void> {
   entry.loading = true
   entry.failure = null
   try {
-    entry.entries = sortEntries(
-      await props.source.list(path, controller.signal),
-      listingOrder,
-      { hiddenLast: true },
-    )
+    // A tree has no sort controls: folders first, then names.
+    entry.entries = sortEntries(await props.source.list(path, controller.signal), DEFAULT_SORT)
   } catch (error) {
     if (controller.signal.aborted) {
       return

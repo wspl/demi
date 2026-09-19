@@ -10,37 +10,35 @@ export interface FileBrowserSort {
   direction: 'asc' | 'desc'
 }
 
-export interface FileBrowserSortOptions {
-  /** Hidden names sort after the visible ones, among directories and files alike. */
-  hiddenLast?: boolean
+/** Folders first, then names: every listing without sort controls, and the browser until a column is chosen. */
+export const DEFAULT_SORT: Readonly<FileBrowserSort> = Object.freeze({ key: null, direction: 'asc' })
+
+const fileNameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
+
+/**
+ * Names in VS Code's explorer order: case ignored, numbers by value so
+ * `file2` precedes `file10`, and punctuation first, so hidden names lead.
+ * Names equal that way order by length, `foo1` before `foo01`.
+ */
+export function compareFileNames(a: string, b: string): number {
+  return fileNameCollator.compare(a, b) || a.length - b.length
 }
 
-/** Directories first, then the chosen column; names compare naturally so `file2` precedes `file10`. */
-export function sortEntries(
-  entries: readonly FileBrowserEntry[],
-  sort: FileBrowserSort,
-  options: FileBrowserSortOptions = {}
-): FileBrowserEntry[] {
-  const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
+/** Directories first, then the chosen column, ties broken by name. */
+export function sortEntries(entries: readonly FileBrowserEntry[], sort: FileBrowserSort): FileBrowserEntry[] {
   const sign = sort.direction === 'asc' ? 1 : -1
   return [...entries].sort((a, b) => {
     if (a.isDirectory !== b.isDirectory)
       return a.isDirectory ? -1 : 1
-    if (options.hiddenLast) {
-      const hiddenA = isHiddenName(a.name)
-      const hiddenB = isHiddenName(b.name)
-      if (hiddenA !== hiddenB)
-        return hiddenA ? 1 : -1
-    }
     let order = 0
     if (sort.key === null)
-      return collator.compare(a.name, b.name)
+      return compareFileNames(a.name, b.name)
     if (sort.key === 'modifiedAt')
       order = (a.modifiedAt ?? '').localeCompare(b.modifiedAt ?? '')
     else if (sort.key === 'size')
       order = (a.size ?? -1) - (b.size ?? -1)
     if (order === 0)
-      order = collator.compare(a.name, b.name) * (sort.key === 'name' ? 1 : sign)
+      order = compareFileNames(a.name, b.name) * (sort.key === 'name' ? 1 : sign)
     return order * sign
   })
 }

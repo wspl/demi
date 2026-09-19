@@ -8,6 +8,8 @@ import Tooltip from './Tooltip.vue'
 /**
  * One of a few exclusive choices, all visible. Segments share one width so the
  * thumb is a single element that slides to the chosen one instead of re-appearing.
+ * With `iconOnly`, each segment shows its icon alone and its label as the
+ * tooltip and the accessible name.
  */
 export interface SegmentedOption<T extends string> {
   value: T
@@ -18,6 +20,8 @@ export interface SegmentedOption<T extends string> {
 const props = withDefaults(defineProps<{
   options: readonly SegmentedOption<T>[]
   size?: 'sm' | 'md'
+  /** Icons without labels; every option then needs an icon. */
+  iconOnly?: boolean
   disabled?: boolean
   /** Why it is disabled, as a tooltip; only read while `disabled`. */
   disabledReason?: string
@@ -62,16 +66,23 @@ function select(value: T) {
         transform: `translateX(${selectedIndex * 100}%)`,
       }"
       />
-      <span
+      <Tooltip
         v-for="option in options"
         :key="option.value"
+        tag="span"
+        :content="option.label"
+        :disabled="!iconOnly"
+        :open-delay-ms="80"
         role="radio"
         :aria-checked="model === option.value"
+        :aria-label="iconOnly ? option.label : undefined"
         class="relative z-10 inline-flex cursor-default select-none items-center justify-center gap-1 whitespace-nowrap rounded-[5px] transition-colors duration-200 ease-out"
         :class="[
-        size === 'sm' ? 'px-1.5 py-0.5 text-[11px] leading-4' : 'h-6 px-2 text-[12px]',
-        model === option.value ? 'text-fg-emphasis' : 'text-fg-subtle hover:text-fg',
-      ]"
+          iconOnly
+            ? (size === 'sm' ? 'h-5 px-1.5' : 'h-6 px-2')
+            : (size === 'sm' ? 'px-1.5 py-0.5 text-[11px] leading-4' : 'h-6 px-2 text-[12px]'),
+          model === option.value ? 'text-fg-emphasis' : 'text-fg-subtle hover:text-fg',
+        ]"
         @click="select(option.value)"
       >
         <component
@@ -79,8 +90,8 @@ function select(value: T) {
           v-if="option.icon"
           :size="ICON_PX.in24"
         />
-      {{ option.label }}
-      </span>
+        <template v-if="!iconOnly">{{ option.label }}</template>
+      </Tooltip>
     </div>
   </Tooltip>
 </template>

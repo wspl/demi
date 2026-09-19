@@ -297,6 +297,12 @@ svg.lucide {
     width: max-content;
     max-width: min(24rem, calc(100vw - 2rem));
   }
+
+  /* An entry drawn at half strength while it stays usable, as Finder draws a
+     hidden file: its icon and name, never the row's hover or selection. */
+  .faded {
+    opacity: 0.5;
+  }
 }
 
 /* Menu: hug content up to half the viewport, or the space left around

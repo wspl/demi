@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ArrowLeft, ArrowRight, FileOutput, FolderTree } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, Diff, Eye, FileOutput, FolderTree } from '@lucide/vue'
 import DiffEditor from '../editor/components/DiffEditor.vue'
 import { appEditorHost } from '../editor/host/appHost'
 import { toEditorUri } from '../editor/editorUri'
@@ -67,8 +67,8 @@ const modeOptions: readonly SegmentedOption<ChangeMode>[] = [
   { value: 'conversation', label: 'Conversation' },
 ]
 const presentationOptions: readonly SegmentedOption<'diff' | 'preview'>[] = [
-  { value: 'diff', label: 'Diff' },
-  { value: 'preview', label: 'Preview' },
+  { value: 'diff', label: 'Diff', icon: Diff },
+  { value: 'preview', label: 'Preview', icon: Eye },
 ]
 /** Git's copy is decoded whole, so the committed side stops at the runner's limit (`file-previews.md` § Changes). */
 const COMMITTED_TOO_LARGE = 'Over 8 MiB: too large to show.'
@@ -217,6 +217,7 @@ onBeforeUnmount(() => {
           v-model="presentation"
           :options="presentationOptions"
           size="sm"
+          icon-only
           class="shrink-0"
         />
         <Tooltip content="Open file" class="shrink-0">

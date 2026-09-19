@@ -5,8 +5,8 @@ import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import FileIcon from './FileIcon.vue'
 import { FileBrowserError, type FileBrowserEntry, type FileBrowserFailure, type FileBrowserSource } from './types'
-import { joinPath } from './paths'
-import { sortEntries, type FileBrowserSort } from './file-browser-state'
+import { isHiddenName, joinPath } from './paths'
+import { DEFAULT_SORT, sortEntries } from './file-browser-state'
 
 /**
  * One directory as a menu: its entries, directories first, each directory
@@ -32,9 +32,6 @@ const loading = ref(true)
 const failure = ref<FileBrowserFailure | null>(null)
 let controller: AbortController | null = null
 
-/** Directories first, hidden names last, then by name: a menu has no sort controls. */
-const listingOrder: FileBrowserSort = { key: null, direction: 'asc' }
-
 async function load(): Promise<void> {
   controller?.abort()
   const current = new AbortController()
@@ -44,7 +41,8 @@ async function load(): Promise<void> {
   try {
     const list = await props.source.list(props.path, current.signal)
     if (!current.signal.aborted) {
-      entries.value = sortEntries(list, listingOrder, { hiddenLast: true })
+      // A menu has no sort controls: folders first, then names.
+      entries.value = sortEntries(list, DEFAULT_SORT)
     }
   } catch (error) {
     if (current.signal.aborted) {
@@ -97,6 +95,7 @@ function isCurrent(entry: FileBrowserEntry): boolean {
         :key="entry.name"
         :icon="iconFor(entry)"
         :label="entry.name"
+        :faded="isHiddenName(entry.name)"
         :class="isCurrent(entry) ? 'text-fg-emphasis' : ''"
         @select="entry.isDirectory ? undefined : emit('pick', pathOf(entry))"
       >

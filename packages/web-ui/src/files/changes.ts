@@ -1,4 +1,5 @@
 import type { ShellEditedFile } from '@demicodes/agent/client'
+import { compareFileNames } from './file-browser-state'
 import { baseName } from './paths'
 import type { TreeRow } from './tree'
 import type { FileContents } from './types'
@@ -133,7 +134,7 @@ export function changeTreeRows(files: readonly ChangeFile[], folded: ReadonlySet
   }
   const rows: ChangeTreeRow[] = []
   const walk = (node: Node, prefix: string, depth: number, parent: string | null): void => {
-    for (const name of [...node.dirs.keys()].sort((a, b) => a.localeCompare(b))) {
+    for (const name of [...node.dirs.keys()].sort(compareFileNames)) {
       const path = prefix ? `${prefix}/${name}` : name
       const open = !folded.has(path)
       rows.push({ path, name, isDirectory: true, depth, parent, open, change: null })
@@ -141,7 +142,7 @@ export function changeTreeRows(files: readonly ChangeFile[], folded: ReadonlySet
         walk(node.dirs.get(name)!, path, depth + 1, path)
       }
     }
-    for (const change of [...node.files].sort((a, b) => baseName(a.path).localeCompare(baseName(b.path)))) {
+    for (const change of [...node.files].sort((a, b) => compareFileNames(baseName(a.path), baseName(b.path)))) {
       rows.push({ path: change.path, name: baseName(change.path), isDirectory: false, depth, parent, open: false, change })
     }
   }
