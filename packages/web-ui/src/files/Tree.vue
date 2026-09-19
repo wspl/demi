@@ -101,6 +101,28 @@ function scrollToRow(path: string): void {
 }
 
 /**
+ * Brings a row into view, leaving the tree still if it already is: a row
+ * above the view, or under its pinned ancestors, comes to rest just below
+ * them; one below the view comes up to its bottom edge.
+ */
+function revealRow(path: string): void {
+  const viewport = scrollArea.value?.el
+  const el = rowEls.get(path)
+  const row = props.rows.find((entry) => entry.path === path)
+  if (!viewport || !el || !row) {
+    return
+  }
+  // A row's ancestors are pinned above it once it reaches the top.
+  const belowAncestors = el.offsetTop - STACK_TOP_PX - row.depth * TREE_ROW_PITCH_PX
+  const atBottom = el.offsetTop + el.offsetHeight - viewport.clientHeight
+  if (viewport.scrollTop > belowAncestors) {
+    viewport.scrollTop = belowAncestors
+  } else if (viewport.scrollTop < atBottom) {
+    viewport.scrollTop = atBottom
+  }
+}
+
+/**
  * A click on a pinned row brings its directory to the top; one already there
  * (its pinned copy lying over the row itself) acts as the row would.
  */
@@ -128,7 +150,7 @@ watch([() => props.rows, () => props.selected], () => {
   void nextTick(updateSticky)
 })
 
-defineExpose({ scrollToRow, scrollBy })
+defineExpose({ scrollToRow, revealRow, scrollBy })
 </script>
 
 <template>

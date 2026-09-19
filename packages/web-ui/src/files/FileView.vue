@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { ArrowLeft, ArrowRight, Code, Download, Eye, FolderTree } from '@lucide/vue'
 import CodeEditor from '../editor/components/CodeEditor.vue'
+import { showToast } from '../infra/toast'
 import { renderable, type DocumentPlace } from '../markdown/document'
 import IconButton from '../ui/IconButton.vue'
 import RegionStatus from '../ui/RegionStatus.vue'
@@ -15,6 +16,7 @@ import FileTree from './FileTree.vue'
 import MarkdownDocument from './MarkdownDocument.vue'
 import { downloadUrl } from './download'
 import { TREE_WIDTH } from './file-view'
+import { baseName, normalizePath, parentPath } from './paths'
 import { hasSourceView, previewKind, TOO_LARGE_NOTE } from './preview'
 import { FileBrowserError, type FileBrowserSource } from './types'
 
@@ -32,7 +34,8 @@ import { FileBrowserError, type FileBrowserSource } from './types'
  * Source choice (v-model), so they hold across files. A click on another file
  * in the tree, a pick from a crumb's menu, or a link in a Markdown document
  * asks the host to show it here; Back and Forward before the crumbs ask for
- * the files shown before and after.
+ * the files shown before and after. A path typed into the crumb row opens
+ * that file, or finds that folder in the tree and selects it there.
  */
 const props = defineProps<{
   source: FileBrowserSource
@@ -132,6 +135,59 @@ async function read(): Promise<void> {
   }
 }
 
+// A directory typed into the crumb row: selected in the tree until another file opens.
+const located = ref<string | null>(null)
+const treeView = ref<InstanceType<typeof FileTree> | null>(null)
+let going: AbortController | null = null
+
+watch(() => props.path, () => {
+  located.value = null
+})
+
+/** Whether `path` names a directory, by its parent's listing. */
+async function isDirectory(path: string, signal: AbortSignal): Promise<boolean> {
+  // The filesystem root has no parent to list.
+  if (path === '/')
+    return true
+  if (!props.source.list)
+    return false
+  try {
+    const entries = await props.source.list(parentPath(path), signal)
+    return entries.some((entry) => entry.name === baseName(path) && entry.isDirectory)
+  } catch {
+    // Opened as a file instead, whose read says what is wrong.
+    return false
+  }
+}
+
+/**
+ * Where a path typed into the crumb row goes: a directory is found in the
+ * tree, unfolded to and selected; anything else opens as a file, and one that
+ * is not there says so the way any failed read does.
+ */
+async function go(target: string): Promise<void> {
+  going?.abort()
+  const current = new AbortController()
+  going = current
+  const directory = await isDirectory(target, current.signal)
+  // Another path was typed meanwhile, or the view went away.
+  if (current.signal.aborted)
+    return
+  if (!directory) {
+    emit('open', target)
+    return
+  }
+  const root = normalizePath(props.root)
+  if (target !== root && !target.startsWith(`${root}/`)) {
+    showToast({ title: 'Not in this workspace', message: `The tree shows ${props.rootName ?? root} only.` })
+    return
+  }
+  located.value = target
+  tree.value = true
+  await nextTick()
+  treeView.value?.reveal(target)
+}
+
 function download(): void {
   if (props.path !== null && props.source.contents)
     downloadUrl(props.source.contents.url(props.path, { download: true }))
@@ -141,6 +197,7 @@ watch(() => [props.source, props.path, media.value], read, { immediate: true })
 
 onBeforeUnmount(() => {
   controller?.abort()
+  going?.abort()
 })
 </script>
 
@@ -165,7 +222,7 @@ onBeforeUnmount(() => {
         :root-name="rootName"
         :source="source"
         :leaf="path ? 'file' : 'directory'"
-        :editable="false"
+        @navigate="go"
         @open="emit('open', $event)"
       />
       <Segmented
@@ -241,12 +298,13 @@ onBeforeUnmount(() => {
         />
         <!-- The tree's width is the divider's; flex must not grow or shrink it. -->
         <FileTree
+          ref="treeView"
           class="border-l border-line"
           :style="{ flex: `0 0 ${treeWidth}px`, width: `${treeWidth}px` }"
           :source="source"
           :root="root"
           :root-name="rootName"
-          :selected="path"
+          :selected="located ?? path"
           @open="emit('open', $event)"
         />
       </template>

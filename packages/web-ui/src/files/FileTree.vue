@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { RefreshCw } from '@lucide/vue'
 import CornerDot from '../ui/CornerDot.vue'
 import IconButton from '../ui/IconButton.vue'
@@ -15,9 +15,11 @@ import { DEFAULT_SORT, sortEntries } from './file-browser-state'
  * A directory tree over a `FileBrowserSource`, rooted at `root`, on a
  * `Tree`. Directories list when first opened and keep their listing; a
  * click on a directory folds or unfolds it, a click on a file asks the host
- * to open it. The selected file's ancestors unfold on their own so it is
- * always in view. A directory being listed spins at its row's end; one that
- * could not be listed wears a red dot on its icon and tells why on hover.
+ * to open it. The selected row's ancestors unfold on their own so it is
+ * always in view, and a row the host reveals is scrolled to as well, once
+ * its directory's listing has put it in. A directory being listed spins at
+ * its row's end; one that could not be listed wears a red dot on its icon
+ * and tells why on hover.
  * The control at the caption's end lists every open directory again, turning
  * while they load. Loads in flight are dropped when the tree goes away.
  */
@@ -26,7 +28,7 @@ const props = defineProps<{
   root: string
   /** What heads the tree in place of the root directory's name. */
   rootName?: string
-  /** The open file, by absolute path. */
+  /** The selected row, by absolute path: the open file, or a directory the host located. */
   selected: string | null
 }>()
 
@@ -112,15 +114,15 @@ function toggle(path: string): void {
   }
 }
 
-/** Unfolds every directory from the root down to the selected file. */
-function revealSelected(): void {
+/** Unfolds the root and every directory from it down to `path`'s own directory. */
+function unfoldTo(path: string | null): void {
   const root = normalizePath(props.root)
-  const selected = props.selected ? normalizePath(props.selected) : null
+  const target = path ? normalizePath(path) : null
   open(root)
-  if (!selected || !selected.startsWith(`${root}/`)) {
+  if (!target || !target.startsWith(`${root}/`)) {
     return
   }
-  let dir = parentPath(selected)
+  let dir = parentPath(target)
   const ancestors: string[] = []
   while (dir.startsWith(root) && dir !== root) {
     ancestors.push(dir)
@@ -131,7 +133,17 @@ function revealSelected(): void {
   }
 }
 
-watch(() => [props.root, props.selected], revealSelected, { immediate: true })
+watch(() => [props.root, props.selected], () => unfoldTo(props.selected), { immediate: true })
+
+// A row the host asked to see: scrolled to once the listings unfolding to it have put it in.
+const revealing = ref<string | null>(null)
+
+function reveal(path: string): void {
+  unfoldTo(path)
+  const target = normalizePath(path)
+  // The root heads the tree as its caption; it has no row to scroll to.
+  revealing.value = target === normalizePath(props.root) ? null : target
+}
 
 onBeforeUnmount(() => {
   controller.abort()
@@ -188,9 +200,19 @@ function activate(row: TreeRow): void {
 }
 
 // The generic `Tree` has no instance type to name; its exposed surface is spelled out.
-const tree = ref<{ scrollToRow(path: string): void; scrollBy(px: number): void } | null>(null)
+const tree = ref<{ scrollToRow(path: string): void; revealRow(path: string): void; scrollBy(px: number): void } | null>(null)
+
+watch([rows, revealing], () => {
+  const target = revealing.value
+  if (target === null || !rows.value.some((row) => row.path === target)) {
+    return
+  }
+  revealing.value = null
+  void nextTick(() => tree.value?.revealRow(target))
+})
 
 defineExpose({
+  reveal,
   scrollToRow: (path: string) => tree.value?.scrollToRow(path),
   scrollBy: (px: number) => tree.value?.scrollBy(px),
 })

@@ -12,18 +12,19 @@ import FileIcon from './FileIcon.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import { fitCrumbs, type CrumbFit } from './crumb-fit'
 import { landmarkIcon } from './file-icons'
-import { normalizePath, parentPath, pathSegments } from './paths'
+import { normalizePath, parentPath, pathSegments, resolveHostPath } from './paths'
 import type { FileBrowserSource } from './types'
 
 /**
  * The path as crumbs, each its folder glyph, in one of two modes. `navigate`
- * (a file dialog): a crumb jumps there, and a click on the bar's free space
- * turns it into a text field with the full path, the way the Windows address
- * bar edits. `browse` (a file view): a crumb opens a menu of what lies beside
- * it, directories unfolding into their own, so another file is a pick away;
- * nothing edits. A bar with a `root` starts its crumbs there, the way a file
- * view shows a path inside its workspace; `leaf` says what the last crumb is,
- * so a file shows its file glyph.
+ * (a file dialog): a crumb jumps there. `browse` (a file view): a crumb opens
+ * a menu of what lies beside it, directories unfolding into their own, so
+ * another file is a pick away. In both, a click anywhere on the bar but a
+ * crumb turns it into a text field with the full path, the way the Windows
+ * address bar edits, and Enter asks the host to go where it says; a relative
+ * path starts from `root`. A bar with a `root` starts its crumbs there, the
+ * way a file view shows a path inside its workspace; `leaf` says what the last
+ * crumb is, so a file shows its file glyph.
  *
  * A bar too narrow for every name turns crumbs into their glyphs, one at a
  * time from the left, the name kept in a tooltip; the last crumb keeps its
@@ -41,13 +42,12 @@ const props = withDefaults(
     /** What the root crumb says in place of its directory's name. */
     rootName?: string
     leaf?: 'directory' | 'file'
-    /** False for a bar that only shows: no text field on a click. */
-    editable?: boolean
   }>(),
-  { mode: 'navigate', root: undefined, rootName: undefined, leaf: 'directory', editable: true },
+  { mode: 'navigate', root: undefined, rootName: undefined, leaf: 'directory' },
 )
 
 const emit = defineEmits<{
+  /** A crumb picked in `navigate` mode, or a path typed into the field in either mode. */
   navigate: [path: string]
   /** `browse`: a file picked from a crumb's menu. */
   open: [path: string]
@@ -100,7 +100,6 @@ const editing = ref(false)
 const draft = ref('')
 const input = ref<InstanceType<typeof TextInput>>()
 const bar = ref<HTMLElement>()
-const spacer = ref<HTMLElement>()
 const ruler = ref<HTMLElement>()
 
 const crumbs = computed(() => {
@@ -122,9 +121,9 @@ function width(el: Element | null): number {
   return el ? el.getBoundingClientRect().width : 0
 }
 
-/** Reads every crumb's width from the ruler, and fits them to the bar's room less the spacer's minimum. */
+/** Reads every crumb's width from the ruler, and fits them to the bar's room. */
 function measure(): void {
-  if (!bar.value || !spacer.value || !ruler.value)
+  if (!bar.value || !ruler.value)
     return
   // Each crumb's ruler entry holds it with its name, then as its glyph alone.
   const widths = [...ruler.value.querySelectorAll('[data-crumb]')].map((entry) => ({
@@ -134,8 +133,7 @@ function measure(): void {
   const style = getComputedStyle(bar.value)
   const available = bar.value.clientWidth -
     Number.parseFloat(style.paddingLeft) -
-    Number.parseFloat(style.paddingRight) -
-    Number.parseFloat(getComputedStyle(spacer.value).minWidth)
+    Number.parseFloat(style.paddingRight)
   fit.value = fitCrumbs(widths, width(ruler.value.querySelector('[data-separator]')), available)
 }
 
@@ -145,8 +143,6 @@ const { width: rulerWidth } = useElementSize(ruler)
 watch([barWidth, rulerWidth, crumbs], measure, { flush: 'post', immediate: true })
 
 function startEdit() {
-  if (!props.editable)
-    return
   draft.value = props.path
   editing.value = true
   nextTick(() => {
@@ -157,7 +153,7 @@ function startEdit() {
 
 function commit() {
   editing.value = false
-  const next = normalizePath(draft.value)
+  const next = normalizePath(props.root === undefined ? draft.value : resolveHostPath(props.root, draft.value))
   if (next !== props.path)
     emit('navigate', next)
 }
@@ -195,7 +191,7 @@ watch(() => props.path, () => {
     class="relative flex h-7 min-w-0 cursor-default select-none items-center overflow-hidden rounded-md bg-surface-raised px-1 ring-1 ring-line"
     role="navigation"
     aria-label="Current path"
-    @click.self="startEdit"
+    @click="startEdit"
   >
     <!-- Clipped, the row ends at its right edge, so what overflows is the left. -->
     <div class="flex min-w-0 items-center overflow-hidden" :class="fit.clipped ? 'justify-end' : ''">
@@ -218,7 +214,7 @@ watch(() => props.path, () => {
               index === crumbs.length - 1 && mode === 'navigate' ? '' : 'hover:bg-hover hover:text-fg',
               menuCrumb?.path === crumb.path ? 'bg-hover text-fg' : '',
             ]"
-            @click="onCrumbClick(crumb.path)"
+            @click.stop="onCrumbClick(crumb.path)"
           >
             <!-- The root and the home wear their landmark glyphs; every crumb has the same shape. -->
             <FileIcon
@@ -231,7 +227,6 @@ watch(() => props.path, () => {
         </Tooltip>
       </template>
     </div>
-    <span ref="spacer" class="h-full min-w-4 flex-1" @click="startEdit" />
     <!-- Every crumb both ways and a separator, out of sight, so the bar knows what fits. -->
     <div ref="ruler" class="pointer-events-none invisible absolute left-0 top-0 flex w-max items-center" aria-hidden="true">
       <span data-separator class="flex shrink-0"><ChevronRight :size="ICON_PX.in24" /></span>
