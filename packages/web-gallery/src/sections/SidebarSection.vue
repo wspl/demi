@@ -41,11 +41,11 @@ const anatomy: [string, string][] = [
   ],
   [
     'Selection',
-    'One selection across plain rows and projects. Click selects and opens; ⌘-click toggles; Shift-click ranges. Drag rows to reorder within a group and pin partition. Project dragging temporarily folds all projects, restores their expansion on release, and smoothly centers the moved header. Right-click acts on the selection: open, rename and copy conversation ID for one row; pin, move to a project, archive, and delete for any count. Copy ID writes the identifier to the clipboard and confirms with a toast. Project headers have their own menu.'
+    'One selection across plain rows and projects. Click selects and opens; ⌘-click toggles; Shift-click ranges. Drag rows to reorder within a group and pin partition. Project dragging temporarily folds all projects, restores their expansion on release, and smoothly centers the moved header. Right-click acts on the selection: open, rename and copy conversation ID for one row; pin, move to a project and archive for any count; a conversation is archived, never deleted. Copy ID writes the identifier to the clipboard and confirms with a toast. Project headers have their own menu.'
   ],
   [
     'Keys',
-    'The list is one tab stop. ↑↓ move and select, Shift+↑↓ extend, ⌘↑↓ jump to the ends, Space toggles, Enter opens a row or folds a project, ← → fold and unfold, ⌘A selects all, Esc collapses to the open conversation, F2 renames, ⌫ deletes, ⌘⇧P pins; Alt+↑↓ reorders the focused entry.'
+    'The list is one tab stop. ↑↓ move and select, Shift+↑↓ extend, ⌘↑↓ jump to the ends, Space toggles, Enter opens a row or folds a project, ← → fold and unfold, ⌘A selects all, Esc collapses to the open conversation, F2 renames, ⌘⇧P pins; Alt+↑↓ reorders the focused entry.'
   ],
   [
     'Bottom',
@@ -230,7 +230,6 @@ onBeforeUnmount(() => listRestore.stop())
             @pin="(ids, pinned) => patchMany(ids, (c) => ({ ...c, pinned }))"
             @move-to-project="(ids, projectId) => patchMany(ids, (c) => ({ ...c, projectId }))"
             @archive="dropMany"
-            @remove="dropMany"
             @open-settings="(section) => (opened = section ?? 'account')"
           />
           </template>

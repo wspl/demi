@@ -199,8 +199,8 @@ const loginOpen = ref(false)
 let loginTimer = 0
 
 /**
- * Claude Code hands out a token from its own CLI; Codex confirms a device code in the
- * browser; Grok Build shows a code the user copies back. The mock walks each to done.
+ * Claude Code hands out a token from its own CLI; Codex and Grok Build confirm a
+ * device code in the browser. The mock walks each to done.
  */
 function beginLogin(p: SettingsProviderEntry) {
   window.clearTimeout(loginTimer)
@@ -229,17 +229,11 @@ function beginLogin(p: SettingsProviderEntry) {
     if (!login.value) {
       return
     }
-    if (mock.family === 'grok-build') {
-      login.value.phase = {
-        kind: 'code-input',
-        url: 'https://accounts.x.ai/device',
-      }
-      return
-    }
+    const grok = mock.family === 'grok-build'
     login.value.phase = {
       kind: 'device',
-      url: 'https://auth.openai.com/codex/device',
-      code: 'HXRV-7K2M',
+      url: grok ? 'https://accounts.x.ai/device' : 'https://auth.openai.com/codex/device',
+      code: grok ? 'QK4P-9TWD' : 'HXRV-7K2M',
       expiresIn: '10 min',
     }
     loginTimer = window.setTimeout(() => {
@@ -248,7 +242,7 @@ function beginLogin(p: SettingsProviderEntry) {
       }
       login.value.phase = {
         kind: 'done',
-        account: 'zan@example.com · Plus',
+        account: grok ? 'zan@example.com · SuperGrok' : 'zan@example.com · Plus',
       }
     }, 4000)
   }, 900)
@@ -335,7 +329,6 @@ function closeLogin() {
     @close="closeLogin"
     @open="openUrl"
     @retry="beginLogin(login.provider)"
-    @submit-code="finishLogin('zan@example.com · SuperGrok')"
     @submit-token="finishLogin('zan@example.com · Max 5×')"
   />
 </template>

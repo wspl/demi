@@ -2,7 +2,6 @@ import { onBeforeUnmount, reactive } from 'vue'
 import type { Block } from '@demicodes/core'
 import { ACTIVITY_HANDOFF_MS } from '@demicodes/web-ui/agent/activity-slot'
 import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
-import { conversationStatus } from '@demicodes/web-ui/agent/conversation-status'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import type { ChatSessionState, ConversationState } from '@demicodes/web-ui/agent/types'
@@ -18,7 +17,7 @@ import { demoModel, shellView } from './fixtures/blocks'
  */
 export type TurnFlowKind = 'turn' | 'resume' | 'retry' | 'connect' | 'stream'
 
-/** The state `ChatSession` reads, over the full conversation state `conversationStatus` derives from. */
+/** The state `ChatSession` reads, over the full live conversation state the runtime keeps. */
 export type TurnFlowState = ConversationState & ChatSessionState
 
 const THINK_1 = 'The cookie name changed from sid to session. The helper already writes the new header. The test is the one still looking for sid.'
@@ -50,7 +49,6 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     id: options.id ?? 'turn-flow',
     cwd: options.cwd ?? '/',
     title: options.title ?? 'Login test',
-    createdAt: new Date().toISOString(),
     blocks: options.blocks ?? [],
     phase: 'idle',
     queue: [],
@@ -61,18 +59,12 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       thinkingEffort: null,
       serviceTierId: null,
     },
-    draft: null,
-    isResultSeen: true,
-    hasContent: false,
     lastError: null,
     load: 'ready',
     pendingAction: null,
     retrying: false,
     failures: {},
     archived: false,
-    get status() {
-      return conversationStatus(state)
-    },
     scroll: null,
     subagents: options.subagents ?? [],
     terminals: options.terminals ?? [],

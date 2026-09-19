@@ -12,7 +12,6 @@ export interface SidebarListActions {
   toggleFold: (projectId: string) => void
   fold: (projectId: string, folded: boolean) => void
   rename: (id: string) => void
-  remove: (ids: string[]) => void
   togglePin: (ids: string[]) => void
 }
 
@@ -20,7 +19,7 @@ export interface SidebarListActions {
  * Selection, focus, and keys for the list: click selects and opens, ⌘/Ctrl-click toggles, Shift-click
  * ranges over rows; arrows move the focus and the selection with it, Shift+arrows extend, Space toggles,
  * Enter opens (or folds a project), ←/→ fold and unfold, ⌘A selects all, Esc collapses the selection to
- * the open conversation, F2 renames, ⌫ deletes, ⌘⇧P pins. Focus shows only after keyboard use.
+ * the open conversation, F2 renames, ⌘⇧P pins. Focus shows only after keyboard use.
  */
 export function useSidebarList(
   entries: Ref<ListEntry[]>,
@@ -184,11 +183,6 @@ export function useSidebarList(
           if (focused?.kind === 'conversation')
             actions.rename(focused.id)
           return focused?.kind === 'conversation'
-        case 'Backspace':
-        case 'Delete':
-          if (selected.value.size > 0)
-            actions.remove([...selected.value])
-          return selected.value.size > 0
         case 'a':
         case 'A':
           if (!meta)

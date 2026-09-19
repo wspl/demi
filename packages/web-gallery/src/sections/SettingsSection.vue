@@ -59,7 +59,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Sign-in',
-    'Each subscription signs in the way its vendor does. Claude Code prints a token from its own CLI, so the dialog walks through install, command and paste. Codex confirms a device code in the browser while the dialog waits. Grok Build shows a code the user copies back.'
+    'Each subscription signs in the way its vendor does. Claude Code prints a token from its own CLI, so the dialog walks through install, command and paste. Codex and Grok Build confirm a device code in the browser while the dialog waits.'
   ],
 ]
 
