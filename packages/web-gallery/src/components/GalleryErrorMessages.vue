@@ -2,6 +2,7 @@
 import AgentMessageVirtualBlock from '@demicodes/web-ui/agent/blocks/AgentMessageVirtualBlock.vue'
 import PendingSubmission from '@demicodes/web-ui/agent/PendingSubmission.vue'
 import type { PendingSubmissionState } from '@demicodes/web-ui/agent/types'
+import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
 import { composerAttachment } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { Block } from '@demicodes/core'
 import { demoModel, errorTool } from '../fixtures/blocks'
@@ -78,7 +79,7 @@ const records: { block: Block; tail: boolean }[] = [
 const toolFailure = errorTool as Block
 const pending: PendingSubmissionState = {
   id: 'failed-submission',
-  text: 'Please keep this exact message and the attached plan.',
+  text: `Please keep this exact message, the plan ${ATTACHMENT_MARK} and the capture ${ATTACHMENT_MARK}.`,
   attachments: [
     composerAttachment({ name: 'plan.pdf', phase: 'ready' }),
     composerAttachment({ name: 'reference.png', phase: 'ready' }),
