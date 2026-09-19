@@ -854,8 +854,11 @@ svg.lucide {
   text-decoration: line-through;
 }
 
+/* A message's image fits the message and 60% of the conversation's visible
+   height, which the transcript sets; outside one, the window's. */
 .markdown-body img {
   max-width: 100%;
+  max-height: calc(var(--conversation-visible-height, 100svh) * 0.6);
   border-radius: 0.375rem;
 }
 
@@ -933,6 +936,7 @@ svg.lucide {
 }
 
 .markdown-document img {
+  max-height: none;
   border-radius: 0;
 }
 
