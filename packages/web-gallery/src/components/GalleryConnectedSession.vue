@@ -174,7 +174,7 @@ function abortAgents(): void {
           <SessionToolsMenu
             :exposes="exposes"
             :pending-ids="exposePending"
-            @open="showToast({ title: `Open ${$event.address} in a work panel browser tab` })"
+            @open="showToast({ title: `Open ${$event.address} in a work panel browser tab`, tone: 'neutral' })"
             @renew="renewExpose"
             @remove="removeExpose"
           />

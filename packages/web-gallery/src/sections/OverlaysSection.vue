@@ -108,6 +108,7 @@ const dialogOpen = ref(false)
 const inlineDialogOpen = ref(true)
 const pinDangerToast = ref(true)
 const pinRejectedToast = ref(true)
+const pinNeutralToast = ref(true)
 const pinCopiedToast = ref(true)
 
 const paradigmSelected = ref('hairline')
@@ -358,8 +359,8 @@ function itemLabel(id: string, list: {
           <HostPicker
             :devices="hostDevices"
             :bound-ids="['build']"
-            @select="showToast({ title: `Selected ${$event}` })"
-            @connect="showToast({ title: 'Connect new device' })"
+            @select="showToast({ title: `Selected ${$event}`, tone: 'neutral' })"
+            @connect="showToast({ title: 'Connect new device', tone: 'neutral' })"
           />
         </GallerySpecimen>
         <GallerySpecimen variant="status dots · virtual list without icons">
@@ -370,17 +371,17 @@ function itemLabel(id: string, list: {
             :main-host="{ id: 'cloud', name: 'Cloud', kind: 'cloud', online: false }"
             :attached-hosts="[]"
             :devices="hostDevices"
-            @connect="showToast({ title: 'Connect new device' })"
+            @connect="showToast({ title: 'Connect new device', tone: 'neutral' })"
           />
         </GallerySpecimen>
         <GallerySpecimen variant="session tools · live exposes with a countdown; gone with the last one">
           <SessionToolsMenu
             :exposes="sessionExposes"
             :pending-ids="sessionExposePending"
-            @open="showToast({ title: `Open ${$event.address} in a work panel browser tab` })"
+            @open="showToast({ title: `Open ${$event.address} in a work panel browser tab`, tone: 'neutral' })"
             @renew="renewSessionExpose"
             @remove="removeSessionExpose"
-            @manage-devices="showToast({ title: 'Open devices settings' })"
+            @manage-devices="showToast({ title: 'Open devices settings', tone: 'neutral' })"
           />
         </GallerySpecimen>
         <GallerySpecimen variant="host menu · label/value and status">
@@ -391,7 +392,7 @@ function itemLabel(id: string, list: {
             @switch-main="switchMainHost"
             @attach="attachHost"
             @detach="detachHost"
-            @connect="showToast({ title: 'Connect new device' })"
+            @connect="showToast({ title: 'Connect new device', tone: 'neutral' })"
           />
         </GallerySpecimen>
         <div class="specimen-row specimen-row-wide items-start">
@@ -701,7 +702,7 @@ function itemLabel(id: string, list: {
     <template v-if="view === 'dialogs'">
       <GallerySection
         title="Toast"
-        note="Danger, a rejected action whose title wraps, Copied, and live host."
+        note="The mark follows what happened: a cross for a request that failed, an i for a fact about one that neither worked nor failed, a check for an action that worked where nothing else shows it. Danger, a rejected action whose title wraps, a fact, Copied, and live host."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="danger">
@@ -735,11 +736,29 @@ function itemLabel(id: string, list: {
               >Show</Button>
             </div>
           </GallerySpecimen>
+          <GallerySpecimen variant="neutral">
+            <div class="w-80">
+              <Toast
+                v-if="pinNeutralToast"
+                title="Not in this workspace"
+                message="The tree shows /Users/zan/.demi/acceptance-workspace only."
+                tone="neutral"
+                @dismiss="pinNeutralToast = false"
+              />
+              <Button
+                v-else
+                size="md"
+                variant="ghost"
+                @click="pinNeutralToast = true"
+              >Show</Button>
+            </div>
+          </GallerySpecimen>
           <GallerySpecimen variant="copied">
             <div class="w-80">
               <Toast
                 v-if="pinCopiedToast"
                 title="Copied"
+                tone="success"
                 @dismiss="pinCopiedToast = false"
               />
               <Button
@@ -759,7 +778,7 @@ function itemLabel(id: string, list: {
               <Button
                 size="md"
                 variant="ghost"
-                @click="showToast({ title: 'Copied' })"
+                @click="showToast({ title: 'Copied', tone: 'success' })"
               >Copy id</Button>
             </div>
           </GallerySpecimen>

@@ -1,16 +1,22 @@
 <script setup lang="ts">
-import { CircleCheck, CircleX, X } from '@lucide/vue'
+import type { Component } from 'vue'
+import { CircleCheck, CircleX, Info, X } from '@lucide/vue'
 import type { ToastTone } from '../infra/toast'
 import { ICON_PX } from './icon-metrics'
 import IconButton from './IconButton.vue'
 
-withDefaults(defineProps<{
+defineProps<{
   title: string
   message?: string
-  tone?: ToastTone
-}>(), {
-  tone: 'neutral',
-})
+  tone: ToastTone
+}>()
+
+/** Each tone's mark: a check for success, an i for a fact, a cross for a failure. */
+const MARKS: Record<ToastTone, { icon: Component; color: string }> = {
+  success: { icon: CircleCheck, color: 'text-on-success' },
+  neutral: { icon: Info, color: 'text-fg-muted' },
+  danger: { icon: CircleX, color: 'text-on-danger' },
+}
 
 const emit = defineEmits<{
   dismiss: []
@@ -24,10 +30,9 @@ const emit = defineEmits<{
   >
     <span
       class="flex size-5 shrink-0 items-center justify-center"
-      :class="tone === 'danger' ? 'text-on-danger' : 'text-on-success'"
+      :class="MARKS[tone].color"
     >
-      <CircleX v-if="tone === 'danger'" :size="ICON_PX.in28" />
-      <CircleCheck v-else :size="ICON_PX.in28" />
+      <component :is="MARKS[tone].icon" :size="ICON_PX.in28" />
     </span>
     <div class="min-w-0 flex-1">
       <!-- The title wraps; 20px lines keep a one-line title centred on the icon. -->
