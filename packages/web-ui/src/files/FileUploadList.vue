@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Check, RotateCw, X } from '@lucide/vue'
+import { Check, CircleX, RotateCw, X } from '@lucide/vue'
 import Button from '../ui/Button.vue'
 import IconButton from '../ui/IconButton.vue'
 import ProgressBar from '../ui/ProgressBar.vue'
@@ -86,8 +86,10 @@ function stop(upload: FileUpload): void {
             <Check :size="ICON_PX.in20" class="shrink-0 text-on-success" />
             <span class="truncate">Completed</span>
           </div>
-          <div v-else class="line-clamp-2 text-on-danger">
-            {{ upload.state.message }}
+          <!-- The mark sits on the reason's first line, however many it takes. -->
+          <div v-else class="flex min-w-0 items-start gap-1 text-on-danger">
+            <CircleX :size="ICON_PX.in20" class="mt-0.5 shrink-0" />
+            <span class="line-clamp-2">{{ upload.state.message }}</span>
           </div>
         </div>
       </li>
