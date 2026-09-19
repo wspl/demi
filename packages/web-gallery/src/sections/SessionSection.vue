@@ -18,6 +18,8 @@ import { callChangeSource, type CallEditSelection, type ChangeMode, type ChangeS
 import ChangeView from '@demicodes/web-ui/files/ChangeView.vue'
 import FileView from '@demicodes/web-ui/files/FileView.vue'
 import { createGalleryChangeSet, createGalleryWorkspace } from '../fixtures/workspace'
+import { galleryLiveSession } from '../fixtures/live-browser'
+import { withHostTabs } from '@demicodes/web-ui/agent/work-panel'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import { ASIDE_SHARE, SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
@@ -231,6 +233,9 @@ const sessionFiles: ConversationFiles = {
 }
 const exhibitWork = useWorkTabs('file')
 const editWork = useWorkTabs('change')
+// The gallery's own browser: a live view without a Host.
+const live = galleryLiveSession()
+onBeforeUnmount(() => live.close())
 provideEditSelection(editWork.selectEdit)
 async function readCallChange(commandId: string, path: string, edit: number) {
   return {
@@ -1243,7 +1248,8 @@ function abortTerminal(id: string) {
       </GallerySection>
       <div class="h-[480px] overflow-hidden rounded-lg border border-line">
         <WorkPanel
-          :tabs="editWork.tabs.value" :active-id="editWork.active.value"
+          :tabs="withHostTabs(editWork.tabs.value, live.state.tabs)" :active-id="editWork.active.value"
+          :live="live"
           :workspace="workspace" :read-call-change="readCallChange"
           @select="editWork.active.value = $event" @add-browser="editWork.addBrowser" @close-tabs="editWork.closeTabs" @update-browser="editWork.updateBrowser" @show-change="editWork.showChange" @open="editWork.open"
           @back="editWork.back" @forward="editWork.forward"

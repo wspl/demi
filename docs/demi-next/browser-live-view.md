@@ -338,7 +338,7 @@ checks read it there.
 | `packages/coding-agent` | Declaring the `browser` user stream and `viewport set --scale`. |
 | `packages/backend` | The user stream route, its admission and end, backpressure, and activity reports. It has no browser module. |
 | `packages/web-ui` | The live view: video, input, native control overlays, clipboard, dialogs, the viewport menu, stall display. It depends on `browser-protocol` for the protocol, as it depends on `agent` for agent frames. |
-| `packages/web`, `packages/web-gallery` | The product's stream source and activity reports; a gallery source replaying recorded frames and messages. |
+| `packages/web`, `packages/web-gallery` | The product's stream source and activity reports; a gallery source that encodes its own picture and speaks the protocol, so the view shows without a Host. |
 | `packages/guest-image` | Fonts for Chinese, Japanese and Korean text. |
 
 ## Rationale
@@ -367,8 +367,12 @@ on macOS and Linux arm64 cover watching a tab beside the agent, the viewport
 modes, dialogs, native controls, chosen files, the clipboard, held input and
 two viewers of one tab.
 
-Not implemented: the view in `web-ui`, the product's stream source and
-activity reports in `web`, the gallery's replay source, the CJK fonts in the
-guest image, and the acceptance runs above on a macOS paired device, a Linux
-paired device and Cloud. The prototype and its measurements live in the
-separate Tab Lab repository (`browser-remote-lab`).
+The page shows it: `web-ui` owns the view, its input, its native controls,
+its dialogs and its viewport menu; `web` opens the conversation's stream and
+reports activity; the gallery drives the same components with a browser it
+draws itself.
+
+Not implemented: the CJK fonts in the guest image, and the acceptance runs
+above on a macOS paired device, a Linux paired device and Cloud. The
+prototype and its measurements live in the separate Tab Lab repository
+(`browser-remote-lab`).

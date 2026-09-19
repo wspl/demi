@@ -38,6 +38,7 @@
     "@codemirror/state": "6.6.0",
     "@codemirror/view": "6.40.0",
     "@demicodes/agent": "workspace:^",
+    "@demicodes/browser-protocol": "workspace:^",
     "@demicodes/core": "workspace:^",
     "@demicodes/utils": "workspace:^",
     "@floating-ui/vue": "^2.0.0",

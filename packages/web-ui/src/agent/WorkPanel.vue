@@ -9,7 +9,7 @@ const changePresentation = ref<'diff' | 'preview'>('diff')
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { File, FileDiff, Globe, PanelRightClose, Plus, X } from '@lucide/vue'
+import { File, FileDiff, Globe, MonitorDot, PanelRightClose, Plus, X } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import { GlobePlus } from '../ui/GlobePlus'
 import { EXPOSE_ICON } from '../hosts/icons'
@@ -23,6 +23,8 @@ import { callChangeSource, emptyChangeSet, type ReadCallChange, type ChangeMode,
 import { joinPath, relativePath } from '../files/paths'
 import type { FileBrowserSource } from '../files/types'
 import BrowserPanel from './BrowserPanel.vue'
+import HostBrowserPanel from '../browser/HostBrowserPanel.vue'
+import type { LiveSession } from '../browser/session'
 import TabItem from './TabItem.vue'
 import TabStrip from './TabStrip.vue'
 import Menu from '../ui/Menu.vue'
@@ -39,6 +41,8 @@ const props = defineProps<{
   activeId: string | null
   readCallChange?: ReadCallChange
   historyRoot?: string
+  /** The conversation browser's live view, when the page has one. */
+  live?: LiveSession
   workspace?: { source: FileBrowserSource; root: string; name?: string; changes?: ChangeSetSource }
 }>()
 const emit = defineEmits<{
@@ -76,7 +80,15 @@ function select(tab: WorkTab): void {
   emit('select', tab.id)
 }
 
-const fixedViews = computed(() => props.tabs.filter((tab) => tab.kind !== 'browser'))
+const fixedViews = computed(() => props.tabs.filter((tab) => tab.kind === 'file' || tab.kind === 'change'))
+const hostTabs = computed(() => props.tabs.filter((tab) => tab.kind === 'host'))
+/** The live tab the active Host tab shows, as the view reports it now. */
+const hostTab = computed(() => {
+  const tab = active.value
+  return tab?.kind === 'host'
+    ? props.live?.state.tabs.find((live) => live.id === tab.tab.id) ?? null
+    : null
+})
 const browserTabs = computed(() => props.tabs.filter((tab) => tab.kind === 'browser'))
 const menuId = ref<string | null>(null)
 const menu = useContextMenuOwner(() => {
@@ -137,6 +149,25 @@ function openFromTree(path: string): void {
         </button>
       </div>
       <TabStrip class="min-w-0 flex-1" surface="raised">
+        <!-- The conversation browser's own tabs, shown live. -->
+        <TabItem
+          v-for="tab in hostTabs"
+          :key="tab.id"
+          :title="workTabTitle(tab)"
+          :is-active="tab.id === activeId"
+          tabindex="0"
+          @pointerdown="emit('select', tab.id)"
+          @keydown.enter="emit('select', tab.id)"
+          @keydown.space.prevent="emit('select', tab.id)"
+          @close="tab.kind === 'host' && live?.closeTab(tab.tab.id)"
+        >
+          <template #mark><MonitorDot :size="ICON_PX.markIn28" /></template>
+        </TabItem>
+        <span v-if="live" class="mr-1 flex shrink-0">
+          <Tooltip content="New tab in the conversation's browser">
+            <IconButton :icon="GlobePlus" size="sm" variant="ghost" aria-label="New Host browser tab" @click="live.openTab()" />
+          </Tooltip>
+        </span>
         <TabItem
           v-for="tab in browserTabs"
           :key="tab.id"
@@ -163,7 +194,12 @@ function openFromTree(path: string): void {
     </div>
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
       <slot :tab="active">
-        <BrowserPanel v-if="active?.kind === 'browser'" :tab="active" @update="emit('updateBrowser', $event)" />
+        <HostBrowserPanel
+          v-if="active?.kind === 'host' && live"
+          :session="live"
+          :tab="hostTab"
+        />
+        <BrowserPanel v-else-if="active?.kind === 'browser'" :tab="active" @update="emit('updateBrowser', $event)" />
         <!-- File navigation reuses the view and its unfolded tree. -->
         <FileView
           v-else-if="active?.kind === 'file' && workspace"

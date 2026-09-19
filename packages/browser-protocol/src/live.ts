@@ -91,12 +91,15 @@ export const liveTabSchema = z.strictObject({
   viewport: browserViewportSchema,
 })
 export type LiveTab = z.infer<typeof liveTabSchema>
+/** A watched tab's viewport: its CSS size, its pixel ratio and its mode. */
+export type LiveViewport = LiveTab['viewport']
 
 export const liveDialogSchema = z.strictObject({
   type: z.enum(['alert', 'confirm', 'prompt', 'beforeunload']),
   message: z.string(),
   defaultText: z.string(),
 })
+export type LiveDialog = z.infer<typeof liveDialogSchema>
 
 /** What the page sends. */
 export const liveViewerMessageSchema = z.union([
