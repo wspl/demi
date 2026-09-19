@@ -249,12 +249,6 @@ export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
   ]
 }
 
-export const cloudHost: FileBrowserHost = {
-  id: 'cloud',
-  label: 'Cloud',
-  online: true
-}
-
 /** A conversation can also browse an attached Cloud while it is stopped. */
 export function createGalleryRemoteFileHosts(latencyMs = 250): GalleryFileHost[] {
   return [

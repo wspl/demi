@@ -248,7 +248,6 @@ defineExpose({
             <MessageEditRegion :muted="mutedIds.has(renderBlocks[item.index]!.id)">
               <AgentMessageVirtualBlock
                 :block="renderBlocks[item.index]!"
-                :conversation-id="props.conversationId"
                 :is-thinking-streaming="isStreamingThinkingAt(item.index)"
                 :is-text-streaming="isStreamingTextAt(item.index)"
                 :show-assistant-footer="footerIds.has(renderBlocks[item.index]!.id)"

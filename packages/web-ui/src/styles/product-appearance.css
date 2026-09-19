@@ -22,7 +22,6 @@ html[data-theme="dark"][data-shadow="hairline"] {
   --th-shadow-sm: 0 0 0 0.5px rgba(255, 255, 255, 0.08);
   --th-shadow-md: 0 0 0 0.5px rgba(255, 255, 255, 0.1), 0 0.5px 1px 1px rgba(0, 0, 0, 0.3);
   --th-shadow-lg: 0 0 0 0.5px rgba(255, 255, 255, 0.1), 0 1px 2px rgba(0, 0, 0, 0.28);
-  --th-shadow-xl: 0 0 0 0.5px rgba(255, 255, 255, 0.1), 0 4px 16px rgba(0, 0, 0, 0.28);
   --th-shadow-2xl: 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 8px 28px rgba(0, 0, 0, 0.32);
   --shadow-float: 0 0 0 0.5px rgba(255, 255, 255, 0.1), 0 8px 20px rgba(0, 0, 0, 0.18);
   --shadow-overlay: var(--th-shadow-lg);
@@ -34,7 +33,6 @@ html[data-theme="light"][data-shadow="hairline"] {
   --th-shadow-sm: 0 0 0 0.5px rgba(0, 0, 0, 0.08);
   --th-shadow-md: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 0.5px 1px rgba(0, 0, 0, 0.04);
   --th-shadow-lg: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.04);
-  --th-shadow-xl: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 6px 18px rgba(0, 0, 0, 0.05);
   --th-shadow-2xl: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 12px 32px rgba(0, 0, 0, 0.06);
   --shadow-float: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 6px 16px rgba(0, 0, 0, 0.04);
   --shadow-overlay: var(--th-shadow-lg);

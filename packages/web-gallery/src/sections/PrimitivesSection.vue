@@ -586,7 +586,6 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
         <div class="specimen-row">
           <GallerySpecimen variant="idle · 34%">
             <ContextUsageIndicator
-              conversation-id="demo"
               :usage="demoUsage"
               :context-window="200000"
               :input-limit="180000"
@@ -597,7 +596,6 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
           </GallerySpecimen>
           <GallerySpecimen variant="warning · 75%">
             <ContextUsageIndicator
-              conversation-id="demo-warn"
               :usage="usageAt(0.75)"
               :context-window="200000"
               :input-limit="180000"
@@ -608,7 +606,6 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
           </GallerySpecimen>
           <GallerySpecimen variant="danger · 94%">
             <ContextUsageIndicator
-              conversation-id="demo-danger"
               :usage="usageAt(0.94)"
               :context-window="200000"
               :input-limit="180000"
@@ -619,7 +616,6 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
           </GallerySpecimen>
           <GallerySpecimen variant="compacting">
             <ContextUsageIndicator
-              conversation-id="demo-compact"
               :usage="demoUsage"
               :context-window="200000"
               :input-limit="180000"
@@ -627,7 +623,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger'): void {
             />
           </GallerySpecimen>
           <GallerySpecimen variant="unavailable">
-            <ContextUsageIndicator conversation-id="demo-none" />
+            <ContextUsageIndicator />
           </GallerySpecimen>
         </div>
       </GallerySection>

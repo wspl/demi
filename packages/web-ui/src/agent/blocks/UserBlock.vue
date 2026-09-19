@@ -21,7 +21,6 @@ const props = defineProps<{
   /** Files still on their way to the transcript (an unconfirmed message), shown among the media. */
   attachments?: readonly ComposerAttachment[]
   forceStuck?: boolean
-  variant?: 'user' | 'steer'
   pending?: boolean
   deletable?: boolean
   sendable?: boolean

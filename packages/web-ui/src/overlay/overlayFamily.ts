@@ -23,8 +23,3 @@ export function createOverlayFamily(): OverlayFamily {
     },
   }
 }
-
-export function isInsideOverlayFamily(family: OverlayFamily, event: Event): boolean {
-  const path = event.composedPath()
-  return family.panels.some((el) => path.includes(el))
-}

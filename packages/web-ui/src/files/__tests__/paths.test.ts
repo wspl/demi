@@ -1,7 +1,6 @@
 import { expect, test } from 'bun:test'
 import {
   baseName,
-  displayPath,
   isValidEntryName,
   joinPath,
   normalizePath,
@@ -44,9 +43,3 @@ test('entry names may not be empty, dots or contain a separator', () => {
   expect(isValidEntryName('a/b')).toBe(false)
 })
 
-test('displayPath shortens the home directory to a tilde', () => {
-  expect(displayPath('/Users/alex', '/Users/alex')).toBe('~')
-  expect(displayPath('/Users/alex/Projects', '/Users/alex')).toBe('~/Projects')
-  expect(displayPath('/Users/alexander', '/Users/alex')).toBe('/Users/alexander')
-  expect(displayPath('/srv', undefined)).toBe('/srv')
-})
