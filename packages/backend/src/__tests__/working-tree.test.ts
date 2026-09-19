@@ -1,4 +1,5 @@
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
+import { readdirSync } from 'node:fs'
+import { mkdir, mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
@@ -292,6 +293,106 @@ test(
     const after = await api(backend, url)
     expect(after.status).toBe(409)
     expect(((await after.json()) as { code: string }).code).toBe('conversation_archived')
+
+    await backend.close()
+  },
+  60_000
+)
+
+/** `size` bytes of `pattern`, streamed a MiB at a time without holding them. */
+function streamedPattern(size: number): ReadableStream<Uint8Array> {
+  const block = pattern(1024 * 1024)
+  let sent = 0
+  return new ReadableStream({
+    pull(controller) {
+      if (sent >= size) {
+        controller.close()
+        return
+      }
+      const chunk = block.subarray(0, Math.min(block.length, size - sent))
+      controller.enqueue(chunk)
+      sent += chunk.length
+    },
+  })
+}
+
+test(
+  'an upload streams into place whole, asks before it writes over a file, and never over a directory',
+  async () => {
+    const { backend, runnerDir, conversation } = await pairedConversation()
+    const put = (path: string, body: RequestInit['body'], query: Record<string, string> = {}) => api(
+      backend,
+      `/api/conversations/${conversation.id}/fs/raw?${new URLSearchParams({ path: join(runnerDir, path), ...query })}`,
+      { method: 'PUT', body, ...(body instanceof ReadableStream ? { duplex: 'half' } : {}) } as RequestInit,
+    )
+    const code = async (response: Response) => ((await response.json()) as { code: string }).code
+
+    expect((await put('notes.md', 'first')).status).toBe(204)
+    expect(await readFile(join(runnerDir, 'notes.md'), 'utf8')).toBe('first')
+    const taken = await put('notes.md', 'second')
+    expect(taken.status).toBe(409)
+    expect(await code(taken)).toBe('file_exists')
+    expect(await readFile(join(runnerDir, 'notes.md'), 'utf8')).toBe('first')
+    expect((await put('notes.md', 'second', { replace: 'true' })).status).toBe(204)
+    expect(await readFile(join(runnerDir, 'notes.md'), 'utf8')).toBe('second')
+    expect((await put('empty.txt', null)).status).toBe(204)
+    expect((await stat(join(runnerDir, 'empty.txt'))).size).toBe(0)
+
+    await mkdir(join(runnerDir, 'docs'))
+    const directory = await put('docs', 'x', { replace: 'true' })
+    expect(directory.status).toBe(409)
+    expect(await code(directory)).toBe('is_directory')
+    expect((await put('missing/file.txt', 'x')).status).toBe(404)
+    expect((await put('notes.md', 'x', { replace: 'yes' })).status).toBe(400)
+
+    // Past the 128 MiB a server caps a body at by default, streamed through
+    // the runner a chunk at a time.
+    const size = 130 * 1024 * 1024
+    expect((await put('large.bin', streamedPattern(size))).status).toBe(204)
+    expect((await stat(join(runnerDir, 'large.bin'))).size).toBe(size)
+    const tail = (await readFile(join(runnerDir, 'large.bin'))).subarray(size - 1024 * 1024)
+    expect(new Uint8Array(tail)).toEqual(pattern(1024 * 1024))
+
+    // A body cut short leaves the path as it was, with no partial copy beside it.
+    const broken = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(pattern(1024 * 1024))
+        setTimeout(() => controller.error(new Error('the browser went away')), 50)
+      },
+    })
+    await put('notes.md', broken, { replace: 'true' }).catch(() => null)
+    await waitFor(() => readdirSync(runnerDir).every((name) => !name.startsWith('.demi-write-')))
+    expect(await readFile(join(runnerDir, 'notes.md'), 'utf8')).toBe('second')
+
+    await backend.close()
+  },
+  120_000
+)
+
+test(
+  'a delete takes a file or a directory with what is in it, and refuses the directories the host needs',
+  async () => {
+    const { backend, runnerDir, conversation } = await pairedConversation()
+    const remove = (path: string) => api(
+      backend,
+      `/api/conversations/${conversation.id}/fs?${new URLSearchParams({ path })}`,
+      { method: 'DELETE' },
+    )
+    await mkdir(join(runnerDir, 'photos', '2024'), { recursive: true })
+    await writeFile(join(runnerDir, 'photos', '2024', 'a.jpg'), 'a')
+    await writeFile(join(runnerDir, 'notes.md'), 'n')
+
+    expect((await remove(join(runnerDir, 'notes.md'))).status).toBe(204)
+    expect((await remove(join(runnerDir, 'photos'))).status).toBe(204)
+    expect((await remove(join(runnerDir, 'nothing'))).status).toBe(204)
+    expect(await readdir(runnerDir)).toEqual([])
+
+    for (const path of [runnerDir, join(runnerDir, '..'), '/', runnerDir.toUpperCase()]) {
+      const refused = await remove(path)
+      expect(refused.status).toBe(409)
+      expect(((await refused.json()) as { code: string }).code).toBe('protected_path')
+    }
+    expect((await remove('photos')).status).toBe(400)
 
     await backend.close()
   },

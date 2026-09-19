@@ -539,21 +539,35 @@ export class RemoteHost implements Host {
 
   /**
    * `fs_writeFile`: this process fills the pipe while the runner writes it
-   * into place. The runner's reply says how the write went, and it comes
-   * only after the runner read the whole pipe.
+   * into place, taking the next chunk of `data` only once the pipe took the
+   * last. The runner's reply says how the write went, and it comes only
+   * after the runner read the whole pipe. A stream that fails, or `signal`,
+   * fails the pipe instead of ending it, so the runner drops what it has
+   * and the file stays as it was; that failure, not the runner's echo of
+   * it, is the one thrown.
    */
   private async sendFile(
     path: string,
-    data: Uint8Array,
-    options?: { cwd?: string; createParents?: boolean },
+    data: Uint8Array | AsyncIterable<Uint8Array>,
+    options?: { cwd?: string; createParents?: boolean; signal?: AbortSignal },
   ): Promise<void> {
+    const signal = options?.signal
+    signal?.throwIfAborted()
     const pipe = this.options.pipes.toRunner()
     pipe.done.catch(noop)
     const writer = pipe.writer()
-    // A refused write fails the pipe, which stops this upload; the reply
-    // carries the reason.
+    let cause: unknown = null
+    const stop = (reason: unknown) => {
+      cause ??= reason
+      pipe.fail(errorMessage(reason))
+    }
+    const abort = () => stop(signal?.reason)
+    signal?.addEventListener('abort', abort, { once: true })
+    // A write into a failed pipe rejects and returns the stream; whoever
+    // failed the pipe reported why, the stream itself through `stop`.
     const upload = (async () => {
-      await writer.write(data)
+      for await (const chunk of chunksOf(data, stop))
+        await writer.write(chunk)
       writer.end()
     })().catch(noop)
     try {
@@ -565,7 +579,9 @@ export class RemoteHost implements Host {
       })
     } catch (error) {
       pipe.fail(errorMessage(error))
-      throw error
+      throw cause ?? error
+    } finally {
+      signal?.removeEventListener('abort', abort)
     }
     await upload
   }
@@ -928,6 +944,27 @@ type RemoteCall = <Op extends FsOp>(
   op: Op,
   params: FsParams<Op>
 ) => Promise<FsResult<Op>>
+
+/**
+ * `data` as the chunks a write sends: bytes at once as one. A failure of the
+ * stream itself goes to `failed` before it ends the loop; a loop that stops
+ * early returns the stream.
+ */
+async function* chunksOf(
+  data: Uint8Array | AsyncIterable<Uint8Array>,
+  failed: (error: unknown) => void,
+): AsyncGenerator<Uint8Array> {
+  if (data instanceof Uint8Array) {
+    yield data
+    return
+  }
+  try {
+    yield* data
+  } catch (error) {
+    failed(error)
+    throw error
+  }
+}
 
 /**
  * The `fs` facet: metadata operations are one call each; `contents` moves a

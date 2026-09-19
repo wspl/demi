@@ -24,6 +24,7 @@ import type { ManagedHosts } from '../managed/lifecycle'
 import type { LoginLimiter } from '../auth/login-limiter'
 import type { WebSessions } from '../auth/sessions'
 import { authenticate } from './authenticate'
+import { requestBodyCaps } from './body-caps'
 import { setupRoutes } from './setup'
 import type { ProductState } from '../sync/product-state'
 import { stateRoutes } from './state'
@@ -129,6 +130,7 @@ export function createApp(options: {
     '/api/runner',
     '/api/pipes'
   ]))
+  app.use('/api/*', requestBodyCaps())
 
   app.route('/', runnerInstallRoutes(options.runnerInstallation))
   app.route('/api/setup', setupRoutes({

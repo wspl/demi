@@ -11,12 +11,14 @@ export interface FileDropOptions {
   enabled?: MaybeRefOrGetter<boolean>
   /** Each move of the drag over the target, for a target that picks a spot under the pointer. */
   over?: (event: DragEvent) => void
+  /** The drag is no longer over the target: it left, or it dropped, just before `drop`. */
+  leave?: () => void
   drop: (event: DragEvent) => void
 }
 
 /**
  * A drag carrying files over `target`: whether one is there, where it moves,
- * and its drop, taken as a copy. Every element under the pointer sends its
+ * when it goes, and its drop, taken as a copy. Every element under the pointer sends its
  * own enter and leave, so the drag is over while any element it entered is
  * still inside the target: an element removed under the pointer never sends
  * its leave. (VueUse's `useDropZone` counts enters against leaves instead,
@@ -59,8 +61,10 @@ export function useFileDrop(
       if (!root?.contains(node))
         entered.delete(node)
     }
-    if (entered.size === 0)
-      over.value = false
+    if (entered.size > 0 || !over.value)
+      return
+    over.value = false
+    options.leave?.()
   })
   useEventListener(target, 'drop', (event) => {
     if (!takes(event))
@@ -68,6 +72,7 @@ export function useFileDrop(
     event.preventDefault()
     entered.clear()
     over.value = false
+    options.leave?.()
     options.drop(event)
   })
 

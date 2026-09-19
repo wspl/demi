@@ -403,7 +403,7 @@ const dropTarget = computed<TreeDropTarget | null>(() => {
   return directory === normalizePath(props.root) ? { kind: 'tree' } : { kind: 'row', path: directory }
 })
 
-const { over: dragging } = useFileDrop(() => tree.value?.$el, {
+useFileDrop(() => tree.value?.$el, {
   enabled: () => props.source.upload !== undefined,
   over(event) {
     const row = tree.value?.rowAt(event.target) ?? null
@@ -415,6 +415,10 @@ const { over: dragging } = useFileDrop(() => tree.value?.$el, {
     if (row?.isDirectory && !row.open)
       holdTimer = setTimeout(() => open(row.path), OPEN_ON_HOLD_MS)
   },
+  leave() {
+    clearTimeout(holdTimer)
+    dragOver.value = null
+  },
   drop(event) {
     const row = tree.value?.rowAt(event.target) ?? null
     const directory = dropDirectory(row?.path ?? normalizePath(props.root))
@@ -422,13 +426,6 @@ const { over: dragging } = useFileDrop(() => tree.value?.$el, {
     const entries = event.dataTransfer ? droppedEntries(event.dataTransfer) : []
     void receive(directory, entries)
   },
-})
-
-watch(dragging, (now) => {
-  if (now)
-    return
-  clearTimeout(holdTimer)
-  dragOver.value = null
 })
 
 /** Reads what a drop carried and offers it to `directory`; a drop that cannot be read says why. */

@@ -24,13 +24,10 @@ export function createConversationUploads(
     const ready = await uploads.start(
       item.id,
       async (signal, report) => {
-        const result = await uploadBytes(
-          '/attachments',
-          item.file,
+        const result = await uploadBytes('/attachments', item.file, {
           signal,
-          report,
-          item.file.type || 'application/octet-stream',
-        )
+          progress: (sent) => report(sent / item.file.size),
+        })
         const attachment = z
           .object({ attachment: z.object({ id: z.string() }) })
           .parse(result).attachment

@@ -3,7 +3,7 @@ import type { ConversationHostAccess, ConversationTargets } from '../conversatio
 import { previewMediaType } from '@demicodes/core'
 import { RemoteGitError, type RemoteHost } from '@demicodes/host-remote'
 import type { HostFileStat } from '@demicodes/shell'
-import { basenamePath, deferred, errorCode, errorMessage } from '@demicodes/utils'
+import { basenamePath, deferred, dirnamePath, errorCode, errorMessage, isAbsolutePath, normalizePath } from '@demicodes/utils'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
 import type { AuthEnv } from '../auth/identity'
@@ -26,7 +26,7 @@ import { ManagedHostError } from '../managed/lifecycle'
 import { TextFileRefused, browseDirectory, readTextFile, textOf } from '../runner/file-browser'
 import { booleanQuerySchema } from './query'
 import { bunServerOf } from './bun-server'
-import { TRANSFER_STALL_MS, contentHeaders, pacedBody, rangeAnswer } from './file-transfer'
+import { TRANSFER_STALL_MS, TransferStalled, contentHeaders, pacedBody, rangeAnswer, requestChunks } from './file-transfer'
 
 const filePathSchema = z.object({ path: z.string().min(1) })
 const directoryQuerySchema = filePathSchema.partial()
@@ -35,6 +35,10 @@ const rawFileQuerySchema = filePathSchema.extend({
   version: z.string().min(1).optional(),
   download: booleanQuerySchema,
 })
+/** `?path=&replace=` of an upload. */
+const uploadQuerySchema = filePathSchema.extend({ replace: booleanQuerySchema })
+/** `?path=` of a delete: absolute, so what it would take with it can be told. */
+const removeQuerySchema = z.object({ path: z.string().refine(isAbsolutePath, 'Expected an absolute path') })
 
 /** `?path=` relative to the working tree: no leading slash, no `..` segment. */
 const relativePathQuerySchema = z.object({
@@ -73,6 +77,22 @@ function notModified(ifNoneMatch: string | undefined, etag: string): boolean {
   const strip = (tag: string) => tag.trim().replace(/^W\//, '')
   return ifNoneMatch !== undefined &&
     (ifNoneMatch.trim() === '*' || ifNoneMatch.split(',').some((tag) => strip(tag) === strip(etag)))
+}
+
+/**
+ * Whether deleting `path` would take with it a directory the Host needs:
+ * a filesystem root, or one of `kept` or a directory holding it (`web-api.md`
+ * § File text and working tree changes). Compared without case, since a
+ * Host's filesystem may ignore it.
+ */
+function protectedPath(path: string, kept: readonly string[]): boolean {
+  const top = normalizePath(path).toLowerCase()
+  if (dirnamePath(top) === top)
+    return true
+  return kept.some((directory) => {
+    const held = normalizePath(directory).toLowerCase()
+    return held === top || held.startsWith(`${top}/`)
+  })
 }
 
 /** `/api/conversations` REST surface (the live stream is `stream.ts`). */
@@ -539,6 +559,24 @@ export function conversationRoutes(options: {
     })
   })
 
+  app.delete('/:id/fs', async (c) => {
+    const query = removeQuerySchema.safeParse(c.req.query())
+    if (!query.success) {
+      return c.json({ code: 'invalid_query', message: 'Expected an absolute path' }, 400)
+    }
+    return withConversationHost(c, async (host, root) => {
+      const path = query.data.path
+      if (protectedPath(path, [host.identity.homeDir, root])) {
+        return c.json({
+          code: 'protected_path',
+          message: 'The root, the home directory and the execution directory stay, with every directory holding them',
+        }, 409)
+      }
+      await host.fs.rm(path, { recursive: true, force: true })
+      return c.body(null, 204)
+    })
+  })
+
   app.get('/:id/fs/file', async (c) => {
     const query = filePathSchema.safeParse(c.req.query())
     if (!query.success) {
@@ -611,6 +649,41 @@ export function conversationRoutes(options: {
     // short instead, and this resolve does nothing.
     transfer.catch((error: unknown) => answer.resolve(hostOperationError(c, error)))
     return answer.promise
+  })
+
+  // An upload: the request body streams into the file as the Host writes it,
+  // a file transfer like a download, whole or not at all.
+  app.put('/:id/fs/raw', async (c) => {
+    const query = uploadQuerySchema.safeParse(c.req.query())
+    if (!query.success) {
+      return c.json({ code: 'invalid_query', message: 'Expected a path, and replace as true or false' }, 400)
+    }
+    const conversation = await own(c)
+    if (!conversation) {
+      return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
+    }
+    const { path, replace } = query.data
+    try {
+      return await options.transfer(conversation.id, async (host, signal) => {
+        const taken = await host.fs.stat(path).catch((error: unknown) => {
+          if (errorCode(error) === 'ENOENT')
+            return null
+          throw error
+        })
+        if (taken?.isDirectory)
+          return c.json({ code: 'is_directory', message: 'A directory is at this path' }, 409)
+        if (taken && !replace)
+          return c.json({ code: 'file_exists', message: 'A file is already at this path' }, 409)
+        // From here a connection nothing moves on closes, a browser gone
+        // quiet among them; a Cloud waking above did not count.
+        bunServerOf(c)?.timeout(c.req.raw, TRANSFER_STALL_MS / 1000)
+        const body = requestChunks(c.req.raw.body, { stallMs: TRANSFER_STALL_MS, signal })
+        await host.fs.writeFile(path, body, { signal })
+        return c.body(null, 204)
+      }, { signal: c.req.raw.signal })
+    } catch (error) {
+      return hostOperationError(c, error)
+    }
   })
 
   app.get('/:id/changes', (c) =>
@@ -702,6 +775,8 @@ function hostOperationError(c: Context<AuthEnv>, error: unknown): Response {
     return c.json({ code: 'device_offline', message: 'The execution device is offline' }, 409)
   if (error instanceof ManagedHostError)
     return c.json({ code: error.code, message: error.message }, 503)
+  if (error instanceof TransferStalled)
+    return c.json({ code: 'transfer_stalled', message: error.message }, 408)
   if (error instanceof TextFileRefused)
     return c.json({ code: error.code, message: error.message }, error.code === 'file_too_large' ? 413 : 415)
   if (error instanceof RemoteGitError) {

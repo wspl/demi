@@ -1,15 +1,23 @@
-// Serving a file's bytes to the browser (`web-api.md` § File text and working
-// tree changes, `file-previews.md` § Getting the bytes): which headers say
-// how the page may treat them, which part a `Range` asks for, and a body the
-// browser paces.
+// Moving a file's bytes between the browser and a Host (`web-api.md` § File
+// text and working tree changes, `file-previews.md` § Getting the bytes):
+// which headers say how the page may treat them, which part a `Range` asks
+// for, a response body the browser paces, and a request body the Host paces.
 import { showsInPlace } from '@demicodes/core'
 import { IdleTimer, deferred, noop } from '@demicodes/utils'
 
 /**
- * How long a transfer waits for the browser to take more bytes before its
- * connection is reset (`sessions-and-targets.md` § Host operations).
+ * How long a transfer waits for the browser to take or send more bytes
+ * before it ends (`sessions-and-targets.md` § Host operations).
  */
 export const TRANSFER_STALL_MS = 60_000
+
+/** A browser sent nothing for `TRANSFER_STALL_MS` while its upload waited for bytes. */
+export class TransferStalled extends Error {
+  constructor() {
+    super('The browser sent nothing for too long')
+    this.name = 'TransferStalled'
+  }
+}
 
 /** An image served in place runs no script and fetches nothing, in an opaque origin. */
 const IMAGE_POLICY = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
@@ -186,4 +194,55 @@ export function pacedBody(
   if (signal.aborted)
     halt()
   return { body, finished: over.promise }
+}
+
+/**
+ * A request body read as the Host writes it: the next chunk is read only
+ * when the write asks for it, so a slow Host slows the browser and nothing
+ * piles up here. A browser that sends nothing for `stallMs` while a chunk is
+ * asked for fails the read with `TransferStalled`, and `signal` fails it
+ * with its reason; time the write spends waiting for the Host does not
+ * count. However the read ends, early included, the body is cancelled.
+ */
+export async function* requestChunks(
+  body: ReadableStream<Uint8Array> | null,
+  options: { stallMs: number; signal: AbortSignal },
+): AsyncGenerator<Uint8Array> {
+  const { signal } = options
+  signal.throwIfAborted()
+  if (!body)
+    return
+  const reader = body.getReader()
+  // A stall or the transfer's end cancels the body, which answers the read
+  // waiting on it as done; the reason then fails the read. (Racing each read
+  // against one promise for the end would keep every chunk read alive until
+  // that promise settles.)
+  const failure: { stopped: boolean; reason?: unknown } = { stopped: false }
+  const stop = (reason: unknown) => {
+    if (!failure.stopped) {
+      failure.stopped = true
+      failure.reason = reason
+    }
+    void reader.cancel().catch(noop)
+  }
+  const stall = new IdleTimer(options.stallMs, () => stop(new TransferStalled()))
+  const end = () => stop(signal.reason)
+  signal.addEventListener('abort', end, { once: true })
+  try {
+    for (;;) {
+      stall.touch()
+      const next = await reader.read()
+      stall.close()
+      if (failure.stopped)
+        throw failure.reason
+      if (next.done)
+        return
+      yield next.value
+    }
+  } finally {
+    stall.close()
+    signal.removeEventListener('abort', end)
+    // A body read to its end has nothing left to cancel.
+    void reader.cancel().catch(noop)
+  }
 }
