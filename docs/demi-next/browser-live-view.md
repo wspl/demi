@@ -359,20 +359,20 @@ checks read it there.
 
 ## Implementation status
 
-The protocol, the [user stream](native-runtime.md#user-streams) that carries
-it, and the Host's live view module are implemented: `browser.live` serves
-viewers, captures the tabs they watch, adapts to their paths, and delivers
-their input, with its capture extension and page observers. Real Chrome tests
-on macOS and Linux arm64 cover watching a tab beside the agent, the viewport
-modes, dialogs, native controls, chosen files, the clipboard, held input and
-two viewers of one tab.
+Implemented: the protocol, the [user stream](native-runtime.md#user-streams)
+that carries it, the Host's live view module with its capture extension and
+page observers, the view in `web-ui`, the product's stream source and
+activity reports, the gallery's own browser, and the guest image's fonts for
+Chinese, Japanese and Korean.
 
-The page shows it: `web-ui` owns the view, its input, its native controls,
-its dialogs and its viewport menu; `web` opens the conversation's stream and
-reports activity; the gallery drives the same components with a browser it
-draws itself.
+Verified against real Chrome on macOS and Linux arm64: watching a tab beside
+the agent, the viewport modes, the viewer's ratio in the picture it receives
+(half-CSS-pixel stripes, decoded from the capture), dialogs, native controls,
+chosen files, the clipboard, held input released with its viewer, and two
+viewers of one tab. An end-to-end test drives a page's stream through the
+backend and the runner to a paired device's Chrome
+(`DEMI_BROWSER_LIVE_E2E=1`).
 
-Not implemented: the CJK fonts in the guest image, and the acceptance runs
-above on a macOS paired device, a Linux paired device and Cloud. The
-prototype and its measurements live in the separate Tab Lab repository
-(`browser-remote-lab`).
+Not verified yet: the acceptance runs on Cloud, a Host that pauses in the
+middle of a view, and a page that stops reading. The prototype and its
+measurements live in the separate Tab Lab repository (`browser-remote-lab`).
