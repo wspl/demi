@@ -228,12 +228,62 @@ way [compaction](../compaction-context-cache.md) summarizes, keeps the agent's
 system prompt, tools and history out of a job that needs one message, and
 keeps the title independent of whether the first turn succeeds.
 
+## Writing a message
+
+The composer shows a message as it will look once sent. For example, a user
+types "Compare ", drops `before.png`, types " with ", pastes `after.png`, and
+ends with ". The **modal** `padding` is off." The composer reads
+
+```text
+Compare [▣ before.png] with [▣ after.png]. The modal padding is off.
+```
+
+with "modal" in bold, "padding" set as code, and each file a capsule where it
+was put ([Attachments](#attachments)). The conversation shows the sent message
+exactly so, the model receives its text and files in that order, and editing
+it opens it the same way ([Message editing](../message-editing.md)).
+
+A message is Markdown in the user dialect below. The composer formats a
+construct as it is typed, once its closing delimiter is; Backspace right after
+gives back the characters. Pasted text is read the same way.
+
+| Written | Shows as |
+| --- | --- |
+| `**bold**`, `*italic*`, `~~struck~~`, `` `code` `` | Formatted |
+| A fenced code block | A highlighted code block |
+| `[text](target)`, a bare `http` or `https` URL | A link, resolved as in [Files named in messages](file-previews.md#files-named-in-messages) |
+| `![alt](target)` | The image, resolved the same way |
+| A line break | A line break |
+| `_` and `__`, a single `~`, HTML, `<…>`, math, tables, and lines that start a list, heading, quote, rule or indented code | The characters as typed |
+
+The literal ones are what a conversation about code types as text:
+`snake_case`, `__init__`, `~/.zshrc`, `x < y`, `$PATH`, `- item`. The model
+receives the message's Markdown. Where the user typed literally a character
+the dialect would read as formatting, it carries a backslash (`\*args`);
+nothing else is escaped, so `snake_case` and `x < y` reach the model as typed.
+
+Enter sends and Shift+Enter breaks the line; in a code block Enter breaks the
+line and ⌘/Ctrl+Enter sends. An input method's Enter never sends. The
+composer and the conversation render a user message with one editor,
+read-only in the conversation, so a sent message cannot look different from
+what was written.
+
 ## Attachments
 
 Short pasted text stays in the composer and sends as message text. A paste of at
 least 2,000 characters or 40 lines becomes `pasted-text.txt`, using the shared
 composer's paste thresholds. Dropped, selected, and pasted files use the same
 staged attachment flow.
+
+Each attachment is a capsule in the message's text: a dropped file lands where
+it is dropped, a picked or pasted one at the cursor. A capsule shows an image's
+thumbnail or another file's icon, then the file's name; while the file uploads
+it shows how far along it is, and a failed upload offers Retry. Deleting a
+capsule removes its attachment. The message's content keeps text and
+attachments in the order the composer shows them: for the example in
+[Writing a message](#writing-a-message), `Compare `, then `before.png`, then
+` with `, then `after.png`, then the rest. Providers pass content in order, so
+the model meets each file where the user put it.
 
 Sending a file proceeds through three owners:
 
@@ -250,13 +300,14 @@ an existing name. It does not put attachment files in the project directory.
 A Cloud target may need to wake before this write.
 
 The agent message contains one `attachment` record with name, path, media type,
-size, and blob hash; text files can include a short opening preview. Providers
-render the record as an attachment tag so the model can read the file with tools.
-The complete text file is not duplicated into the message.
+size, and blob hash; text files can include a short opening preview, which the
+capsule shows when pointed at. Providers render the record as an attachment tag
+so the model can read the file with tools. The complete text file is not
+duplicated into the message.
 
 Native media adds the corresponding image, video, audio, or document input beside
 the attachment record when the selected model supports it. The attachment remains
-one visible tile. The model's accepted extensions govern selection; an adapter
+one capsule. The model's accepted extensions govern selection; an adapter
 must not replace supported media with a placeholder. Other files remain
 accessible by path. Attachment presence and model capability are separate facts.
 
@@ -267,9 +318,9 @@ missing-upload behavior, and browser blob delivery are defined in
 [Web API uploads](web-api.md#uploads-and-media).
 
 A remote-file selection is different from an upload: it names an existing file
-on a connected device. Its bytes are read when the model executes the supplied
-host command, so it is not a snapshot. Revocation, disconnect, or file changes
-can affect that later read.
+on a connected device, and its capsule names the device. Its bytes are read
+when the model executes the supplied host command, so it is not a snapshot.
+Revocation, disconnect, or file changes can affect that later read.
 
 ## Provider management
 
