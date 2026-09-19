@@ -1,14 +1,22 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
-import { RefreshCw } from '@lucide/vue'
+import { Download, RefreshCw, Upload } from '@lucide/vue'
+import { useContextMenuOwner } from '../composables/useContextMenuOwner'
+import { appOverlayStore } from '../overlay/appOverlay'
 import CornerDot from '../ui/CornerDot.vue'
 import IconButton from '../ui/IconButton.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
+import Menu from '../ui/Menu.vue'
+import MenuItem from '../ui/MenuItem.vue'
+import Popover from '../ui/Popover.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import Tree from './Tree.vue'
+import UploadConflictDialog from './UploadConflictDialog.vue'
+import { downloadUrl } from './download'
+import { uploadsOf } from './file-uploads'
 import type { TreeRow } from './tree'
 import { FileBrowserError, type FileBrowserEntry, type FileBrowserFailure, type FileBrowserSource } from './types'
-import { baseName, joinPath, normalizePath, parentPath } from './paths'
+import { baseName, joinPath, normalizePath, parentPath, relativePath } from './paths'
 import { DEFAULT_SORT, sortEntries } from './file-browser-state'
 
 /**
@@ -22,9 +30,17 @@ import { DEFAULT_SORT, sortEntries } from './file-browser-state'
  * and tells why on hover.
  * The control at the caption's end lists every open directory again, turning
  * while they load. Loads in flight are dropped when the tree goes away.
+ *
+ * A right-click offers what the source can do there: a file downloads, and a
+ * directory, or the empty space for the workspace itself, takes files
+ * uploaded into it. Picked names the directory already has wait on a
+ * question, Replace or Skip; the uploads themselves belong to the source
+ * (`uploadsOf`), and a directory an upload lands in is listed again.
  */
+defineOptions({ inheritAttrs: false })
+
 const props = defineProps<{
-  source: Pick<FileBrowserSource, 'list'>
+  source: Pick<FileBrowserSource, 'list' | 'contents' | 'upload'>
   root: string
   /** What heads the tree in place of the root directory's name. */
   rootName?: string
@@ -199,6 +215,97 @@ function activate(row: TreeRow): void {
   }
 }
 
+// What a right-click offers: a file to download, or a directory to upload into.
+interface MenuTarget {
+  kind: 'file' | 'directory'
+  path: string
+}
+
+const menuTarget = ref<MenuTarget | null>(null)
+const menu = useContextMenuOwner(() => {
+  menuTarget.value = null
+})
+
+function openMenu(row: TreeRow | null, event: MouseEvent): void {
+  const target: MenuTarget = row === null
+    ? { kind: 'directory', path: normalizePath(props.root) }
+    : { kind: row.isDirectory ? 'directory' : 'file', path: row.path }
+  // With nothing to offer, the browser's own menu stays.
+  if (target.kind === 'file' ? !props.source.contents : !props.source.upload)
+    return
+  menuTarget.value = target
+  menu.open(event)
+}
+
+function download(path: string): void {
+  menu.close()
+  if (props.source.contents)
+    downloadUrl(props.source.contents.url(path, { download: true }))
+}
+
+const uploads = computed(() => uploadsOf(props.source))
+
+// A file that lands in a listed directory shows there.
+watch(uploads, (list, _previous, onCleanup) => {
+  onCleanup(list.onLanded((directory) => {
+    if (listings.get(directory)?.open)
+      void load(directory, true)
+  }))
+}, { immediate: true })
+
+const picker = ref<HTMLInputElement | null>(null)
+// The directory the file picker is choosing for, from the menu until it closes.
+let pickingFor: string | null = null
+const conflict = ref<{ directory: string; files: File[]; taken: string[] } | null>(null)
+
+function chooseFiles(directory: string): void {
+  menu.close()
+  pickingFor = directory
+  picker.value?.click()
+}
+
+async function onPicked(): Promise<void> {
+  const input = picker.value
+  const directory = pickingFor
+  const files = [...(input?.files ?? [])]
+  pickingFor = null
+  // Picking the same file again must fire again.
+  if (input)
+    input.value = ''
+  if (!directory || files.length === 0)
+    return
+  const taken = await takenNames(directory, files)
+  if (taken.length === 0) {
+    uploads.value.add(directory, files, new Set())
+    return
+  }
+  conflict.value = { directory, files, taken }
+}
+
+/**
+ * The picked names the directory already has. A listing that fails asks
+ * nothing: the source still refuses to write over a file it was not told to.
+ */
+async function takenNames(directory: string, files: readonly File[]): Promise<string[]> {
+  try {
+    const names = new Set((await props.source.list(directory, controller.signal)).map((entry) => entry.name))
+    return files.filter((file) => names.has(file.name)).map((file) => file.name)
+  } catch {
+    return []
+  }
+}
+
+/** Replace uploads every picked file, writing over the taken names; Skip uploads the others. */
+function answerConflict(replace: boolean): void {
+  const pending = conflict.value
+  conflict.value = null
+  if (!pending)
+    return
+  const taken = new Set(pending.taken)
+  const files = replace ? pending.files : pending.files.filter((file) => !taken.has(file.name))
+  uploads.value.add(pending.directory, files, replace ? taken : new Set())
+}
+
 // The generic `Tree` has no instance type to name; its exposed surface is spelled out.
 const tree = ref<{ scrollToRow(path: string): void; revealRow(path: string): void; scrollBy(px: number): void } | null>(null)
 
@@ -221,12 +328,14 @@ defineExpose({
 <template>
   <Tree
     ref="tree"
+    v-bind="$attrs"
     :rows="rows"
     :caption="rootName"
     :caption-title="root"
     :selected="selectedPath"
     :tooltip="failureText"
     @activate="activate"
+    @menu="openMenu"
   >
     <template #captionTrailing>
       <Tooltip content="Refresh" class="ml-2 shrink-0">
@@ -268,4 +377,30 @@ defineExpose({
       </div>
     </template>
   </Tree>
+  <Popover
+    :key="menu.menuKey.value"
+    :overlay-store="appOverlayStore"
+    :is-open="menu.isOpen.value"
+    :anchor-x="menu.anchorX.value"
+    :anchor-y="menu.anchorY.value"
+    :anchor-context-el="menu.anchorContextEl.value"
+    :offset="0"
+    @close="menu.close()"
+  >
+    <Menu>
+      <MenuItem v-if="menuTarget?.kind === 'file'" :icon="Download" label="Download" @select="download(menuTarget.path)" />
+      <MenuItem v-else-if="menuTarget" :icon="Upload" label="Upload files…" @select="chooseFiles(menuTarget.path)" />
+    </Menu>
+  </Popover>
+  <input ref="picker" type="file" multiple class="hidden" @change="onPicked">
+  <UploadConflictDialog
+    :is-open="conflict !== null"
+    :overlay-store="appOverlayStore"
+    :names="conflict?.taken ?? []"
+    :directory="conflict ? relativePath(root, conflict.directory) || rootName : ''"
+    :others="conflict ? conflict.files.length - conflict.taken.length : 0"
+    @replace="answerConflict(true)"
+    @skip="answerConflict(false)"
+    @cancel="conflict = null"
+  />
 </template>
