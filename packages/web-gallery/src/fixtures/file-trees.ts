@@ -1,6 +1,8 @@
 import { FileBrowserError } from '@demicodes/web-ui/files/types'
 import type { FileBrowserSource } from '@demicodes/web-ui/files/types'
+import type { UploadItem } from '@demicodes/web-ui/files/file-uploads'
 import { createMemoryFileSource, dir, file, type MemoryDirectory } from '@demicodes/web-ui/files/memory-source'
+import { baseName } from '@demicodes/web-ui/files/paths'
 
 /**
  * Workspaces for the file tree specimens: one with every kind of row, and
@@ -107,6 +109,16 @@ export function sizedFile(name: string, size: number): File {
   if (size % MiB > 0)
     parts.push(block.slice(0, size % MiB))
   return new File(parts, name)
+}
+
+/** A folder as a drop hands it over: its folders, and its files by path at the sizes given, holding no bytes. */
+export function sizedFolder(name: string, directories: string[], files: [path: string, size: number][]): UploadItem {
+  return {
+    kind: 'folder',
+    name,
+    directories,
+    files: files.map(([path, size]) => ({ path, file: sizedFile(baseName(path), size) })),
+  }
 }
 
 /** A workspace that cannot be listed at all. */
