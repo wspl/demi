@@ -17,22 +17,40 @@ const katexExtension = markedKatex({
 // Parsing is synchronous, so the renderers read the options of the parse in flight instead of
 // building a Marked instance (and re-registering KaTeX) per call.
 let activeOptions: MarkdownRenderOptions | undefined
+/** Links open around the renderer: an image inside one follows it instead of opening itself. */
+let openLinks = 0
 
-/** The Host path a link names, when the message has a Host to resolve it on. */
-function linkPath(target: string): string | null {
+/** A link that leaves for the web, in a new tab. */
+function webLink(url: string): string {
+  return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">`
+}
+
+/** A link that opens a Host file in the File view. */
+function fileLink(path: string): string {
+  return `<a href="${escapeHtml(path)}" data-file-link>`
+}
+
+/** The Host path a target names, when the message has a Host to resolve it on. */
+function hostPath(target: string): string | null {
   const files = activeOptions?.files
   return files ? messageHostPath(target, files.cwd) : null
 }
 
-/** Where an image loads from: the web, a `data:` URL as it is, or the Host; null shows its alt text. */
-function imageSource(target: string): string | null {
-  if (isHttpUrl(target) || target.startsWith('data:'))
-    return target
+/**
+ * Where an image loads from, and the link a click on it follows to show it
+ * whole: the web in a new tab, a Host file in the File view, and none for a
+ * `data:` URL. Null shows its alt text.
+ */
+function imageSource(target: string): { src: string; link: string | null } | null {
+  if (isHttpUrl(target))
+    return { src: target, link: webLink(target) }
+  if (target.startsWith('data:'))
+    return { src: target, link: null }
   const files = activeOptions?.files
   if (!files)
     return null
   const path = messageHostPath(target, files.cwd)
-  return path === null ? null : files.imageUrl(path)
+  return path === null ? null : { src: files.imageUrl(path), link: fileLink(path) }
 }
 
 /**
@@ -51,19 +69,25 @@ const messageRenderer: RendererObject = {
     return codeToHtml(text, lang ?? '')
   },
   link(token) {
-    const body = this.parser.parseInline(token.tokens)
+    openLinks += 1
+    let body: string
+    try {
+      body = this.parser.parseInline(token.tokens)
+    } finally {
+      openLinks -= 1
+    }
     if (isHttpUrl(token.href))
-      return `<a href="${escapeHtml(token.href)}" target="_blank" rel="noopener noreferrer">${body}</a>`
-    const path = linkPath(token.href)
-    return path === null ? body : `<a href="${escapeHtml(path)}" data-file-link>${body}</a>`
+      return `${webLink(token.href)}${body}</a>`
+    const path = hostPath(token.href)
+    return path === null ? body : `${fileLink(path)}${body}</a>`
   },
   image(token) {
-    const alt = escapeHtml(token.text)
-    const src = imageSource(token.href)
-    if (src === null)
-      return alt
+    const source = imageSource(token.href)
+    if (source === null)
+      return escapeHtml(token.text)
     const title = token.title ? ` title="${escapeHtml(token.title)}"` : ''
-    return `<img src="${escapeHtml(src)}" alt="${alt}"${title} />`
+    const image = `<img src="${escapeHtml(source.src)}" alt="${escapeHtml(token.text)}"${title} />`
+    return openLinks > 0 || source.link === null ? image : `${source.link}${image}</a>`
   },
 }
 

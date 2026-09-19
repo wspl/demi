@@ -187,6 +187,7 @@ function tree(): MemoryDirectory {
     assets: dir({
       'logo.svg': textFile(logoSvg, at),
       'photo.png': assetFile('/fixtures/preview/photo.png', 15822, at),
+      'page-full.png': assetFile('/fixtures/preview/page-full.png', 8035, at),
       'demo.mp4': assetFile('/fixtures/preview/demo.mp4', 31814, at),
       'intro.mov': assetFile('/fixtures/preview/demo.mp4', 31814, at),
       'tone.m4a': assetFile('/fixtures/preview/tone.m4a', 10396, at),

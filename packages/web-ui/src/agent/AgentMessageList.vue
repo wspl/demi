@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ProviderFailureFacts } from '@demicodes/core'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { useScroll } from '@vueuse/core'
+import { useElementSize, useScroll } from '@vueuse/core'
 import type { Block, QueuedMessage, SessionPhase } from '@demicodes/core'
 import { BLOCK_GAP, useBlockVirtualizer, type PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import { getVisibleBlocks } from './visible-blocks'
@@ -185,6 +185,14 @@ onBeforeUnmount(() => {
 
 const { isScrolling } = useScroll(scrollContainer, { idle: 1500 })
 
+// The part of the transcript the composer leaves visible, which caps a
+// message's image height (`file-previews.md` § Files named in messages). Until
+// the first measurement the stylesheet falls back to the window's height.
+const { height: viewportHeight } = useElementSize(scrollContainer)
+const visibleHeightStyle = computed(() => viewportHeight.value > 0
+  ? { '--conversation-visible-height': `${Math.max(0, viewportHeight.value - props.bottomOffset)}px` }
+  : {})
+
 useFollowSentMessages(() => renderBlocks.value, scrollToBottom)
 
 // Composer or task-control growth covers the tail; a reader at the bottom stays there.
@@ -215,6 +223,7 @@ defineExpose({
       class="h-full overflow-y-auto"
       :class="[isScrolling ? 'scrollbar-active' : '', paneStatus ? 'flex flex-col' : '']"
       style="overflow-anchor: none; scrollbar-gutter: stable;"
+      :style="visibleHeightStyle"
       @scroll="onScroll"
     >
       <SessionStatus
