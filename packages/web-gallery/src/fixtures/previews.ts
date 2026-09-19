@@ -1,6 +1,6 @@
 export const previewMarkdown = `# Login test
 
-The session cookie was renamed from \`sid\` to \`session\`. The helper already writes the new header. The login test still expects the old name.
+The session cookie was renamed from \`sid\` to \`session\`. The helper already writes the new header. The login test still expects the old name. Cookie names follow [RFC 6265](https://httpwg.org/specs/rfc6265.html).
 
 ## What to change
 
@@ -26,25 +26,4 @@ expect(readSessionCookie(header)).toEqual({
 \`\`\`
 
 Open [auth.test.ts](packages/web/src/auth.test.ts) and fix the assertion.
-`
-
-export const previewCode = `import { describe, expect, test } from 'bun:test'
-import { readSessionCookie } from './cookie'
-
-describe('login session', () => {
-  test('reads the session cookie after rename', () => {
-    const header = 'session=abc; Path=/; HttpOnly'
-
-    expect(readSessionCookie(header)).toEqual({
-      name: 'session',
-      value: 'abc',
-    })
-  })
-
-  test('ignores an unrelated cookie', () => {
-    const header = 'other=1; Path=/'
-
-    expect(readSessionCookie(header)).toBeNull()
-  })
-})
 `

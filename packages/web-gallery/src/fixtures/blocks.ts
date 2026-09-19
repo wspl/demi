@@ -121,7 +121,9 @@ export const steerPrompt: UserContentBlock[] = [
 
 export const assistantMarkdown = `The cookie helper is fine. The test still expects \`sid\`.
 
-I updated the assertion in \`auth.test.ts\` and left \`cookie.ts\` alone.
+I updated the assertion in [auth.test.ts](tests/login/auth.test.ts) and left [cookie.ts](src/auth/cookie.ts) alone. The login page the test drives:
+
+![The login page](assets/photo.png)
 
 \`\`\`ts
 expect(readSessionCookie(header)).toEqual({

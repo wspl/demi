@@ -13,7 +13,6 @@ import SessionSection from './sections/SessionSection.vue'
 import SidebarSection from './sections/SidebarSection.vue'
 import SettingsSection from './sections/SettingsSection.vue'
 import MarkdownSection from './sections/MarkdownSection.vue'
-import CodeSection from './sections/CodeSection.vue'
 import RoadmapSection from './sections/RoadmapSection.vue'
 
 export type GalleryLayout = 'catalog' | 'session' | 'preview'
@@ -36,7 +35,6 @@ export const NAV: {
   { path: '/sidebar', label: 'Sidebar' },
   { path: '/settings', label: 'Settings' },
   { path: '/markdown', label: 'Markdown' },
-  { path: '/code', label: 'Code' },
   { path: '/roadmap', label: 'Roadmap' },
 ]
 
@@ -82,7 +80,6 @@ export const router = createRouter({
       component: MarkdownSection,
       meta: { layout: 'preview' }
     },
-    { path: '/code', component: CodeSection, meta: { layout: 'preview' } },
     { path: '/roadmap', component: RoadmapSection, meta: { layout: 'catalog' } },
     { path: '/:pathMatch(.*)*', redirect: '/overview' },
   ],

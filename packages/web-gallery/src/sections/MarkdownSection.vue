@@ -1,18 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import MarkdownPreview from '@demicodes/web-ui/ui/MarkdownPreview.vue'
-import { md } from '@demicodes/web-ui/markdown/md'
-import { galleryState } from '../gallery-state'
+import StreamedMarkdown from '@demicodes/web-ui/ui/StreamedMarkdown.vue'
 import { previewMarkdown } from '../fixtures/previews'
-
-const content = ref(previewMarkdown)
 </script>
 
 <template>
-  <MarkdownPreview
-    :key="galleryState.mode"
-    v-model:content="content"
-    class="min-h-0 flex-1"
-    :render-markdown="md.render"
-  />
+  <!-- One message at full width, rendered by the transcript's own component. -->
+  <div class="min-h-0 flex-1 overflow-y-auto bg-surface-editor p-4 text-conversation text-fg-body">
+    <StreamedMarkdown :content="previewMarkdown" />
+  </div>
 </template>

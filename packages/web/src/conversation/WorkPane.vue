@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
-import { fileSource } from '../api/files'
+import { conversationFileRoutes, fileSource } from '../api/files'
 import { useResources } from '../state/resources'
 import { executionFor } from '../targets/execution'
 import { useConversations } from './store'
@@ -35,11 +35,7 @@ const workspace = computed(() => {
     return undefined
   }
   return {
-    source: fileSource({
-      directory: `/conversations/${encodeURIComponent(props.conversationId)}/fs`,
-      text: `/conversations/${encodeURIComponent(props.conversationId)}/fs/file`,
-      raw: `/conversations/${encodeURIComponent(props.conversationId)}/fs/raw`,
-    }, device),
+    source: fileSource(conversationFileRoutes(props.conversationId), device),
     root: execution.path,
     // The Cloud's own session directory has no name worth showing; it is the workspace.
     name: execution.directory === null ? 'Workspace' : undefined,

@@ -38,6 +38,8 @@ const FEED_MS = 90
 export interface TurnFlowOptions {
   id?: string
   title?: string
+  /** The directory the conversation works in; its messages' relative paths resolve against it. */
+  cwd?: string
   blocks?: Block[]
   subagents?: SubagentRecord[]
   terminals?: TerminalRecord[]
@@ -46,7 +48,7 @@ export interface TurnFlowOptions {
 export function useTurnFlow(options: TurnFlowOptions = {}) {
   const state: TurnFlowState = reactive({
     id: options.id ?? 'turn-flow',
-    cwd: '/',
+    cwd: options.cwd ?? '/',
     title: options.title ?? 'Login test',
     createdAt: new Date().toISOString(),
     blocks: options.blocks ?? [],

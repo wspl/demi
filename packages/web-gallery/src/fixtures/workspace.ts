@@ -554,7 +554,11 @@ function createGalleryChanges(latencyMs: number): ChangeSetSource {
   }
 }
 
-export function createGalleryWorkspace(latencyMs = 200): { source: FileBrowserSource; root: string; changes: ChangeSetSource } {
+export function createGalleryWorkspace(latencyMs = 200): {
+  source: FileBrowserSource & { contents: FileContents }
+  root: string
+  changes: ChangeSetSource
+} {
   const root = tree()
   // The workspace sits under the home directory the laptop fixtures use.
   const home = dir({ Projects: dir({ demi: root }) })

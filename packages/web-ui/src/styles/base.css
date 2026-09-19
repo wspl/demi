@@ -707,26 +707,6 @@ svg.lucide {
   text-decoration-color: color-mix(in srgb, var(--color-overlay) 50%, transparent);
 }
 
-.markdown-body a.file-link {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.85em;
-  color: var(--on-accent);
-  background: var(--tint-accent);
-  padding: 0.15em 0.35em;
-  border-radius: 4px;
-  text-decoration: underline;
-  text-decoration-style: dotted;
-  text-decoration-color: transparent;
-}
-
-.markdown-body a.file-link:hover {
-  color: var(--on-accent);
-  background: color-mix(in srgb, var(--on-accent) 22%, transparent);
-  text-decoration: underline;
-  text-decoration-style: dotted;
-  text-decoration-color: color-mix(in srgb, var(--on-accent) 40%, transparent);
-}
-
 .markdown-body code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.85em;
@@ -860,8 +840,7 @@ svg.lucide {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14' fill='none'%3E%3Cpath d='M3.5 7H10.5' stroke='%23fff' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
 }
 
-.group:hover .checkbox-mark[data-state="unchecked"],
-.markdown-body li > input[type="checkbox"]:hover:not(:checked) {
+.group:hover .checkbox-mark[data-state="unchecked"] {
   border-color: var(--fg-subtle);
 }
 

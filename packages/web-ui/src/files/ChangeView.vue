@@ -16,9 +16,9 @@ import FileSummary from './FileSummary.vue'
 import ImagePreview from './ImagePreview.vue'
 import MarkdownDocument from './MarkdownDocument.vue'
 import PreviewPair from './PreviewPair.vue'
-import { changeAbsolutePath, changeDisplayPath, emptyChangeSetText, type ChangeMode, type ChangeSides, type ChangeSources } from './changes'
+import { changeDisplayPath, emptyChangeSetText, type ChangeMode, type ChangeSides, type ChangeSources } from './changes'
 import { TREE_WIDTH } from './file-view'
-import { baseName } from './paths'
+import { baseName, resolveHostPath } from './paths'
 import { hasSourceView, previewKind, svgImageUrl } from './preview'
 import { FileBrowserError, type FileContents } from './types'
 
@@ -80,7 +80,7 @@ const selectedChange = computed(() => mode.value === 'conversation'
   : workingTree.value.files.find((file) => file.path === selected.value) ?? null)
 const segments = computed(() => call.value?.file.edits ?? [])
 const displayPath = computed(() => changeDisplayPath(selectedChange.value?.path ?? '', props.root))
-const absolutePath = computed(() => changeAbsolutePath(selectedChange.value?.path ?? '', props.root))
+const absolutePath = computed(() => resolveHostPath(props.root, selectedChange.value?.path ?? ''))
 const treeAvailable = computed(() => mode.value === 'uncommitted' && workingTree.value.unavailable !== 'no-repository')
 const emptyText = computed(() => emptyChangeSetText(workingTree.value))
 const idleText = computed(() => mode.value === 'conversation'

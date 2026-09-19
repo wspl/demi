@@ -140,12 +140,6 @@ export const GALLERY_VIEWS: Record<string, readonly GalleryViewOption[]> = {
       label: 'Markdown',
     },
   ],
-  '/code': [
-    {
-      value: 'code',
-      label: 'Code',
-    },
-  ],
   '/roadmap': [
     {
       value: 'roadmap',

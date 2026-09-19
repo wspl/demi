@@ -485,7 +485,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Production deps: `@demicodes/web-ui`, `@demicodes/core`, `@demicodes/utils`, `zod`.
 - Owns: the Vite-only component catalog for `@demicodes/web-ui`. It remaps `web-ui` tokens so paradigms
   (tone, accent, density, radius, shadow, light/dark) can be compared against the catalog.
-  Pages are vue-router paths; Markdown and Code are full-pane preview routes. Roadmap
+  Pages are vue-router paths; Markdown is a full-pane message route. Roadmap
   lists shipped and next library work. It is not a product surface and does not
   ship multiple themes into runtime.
 - Public boundary: local `bun run web:gallery` entry (`packages/web-gallery`).

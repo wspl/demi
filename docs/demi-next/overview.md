@@ -133,6 +133,7 @@ implementation.
 | What does a device runner own? | [Runner](runner.md) |
 | What did a tool call edit? | [Edit tracking](edit-tracking.md) |
 | How does the work panel show images, media, PDF and Markdown? | [File previews](file-previews.md) |
+| How does a message show a file it names? | [Files named in messages](file-previews.md#files-named-in-messages) |
 | How do external programs call declared commands? | [External command clients](commands.md#external-command-clients) |
 | How is Cloud provisioned and reset? | [Managed hosts](managed-hosts.md) |
 | How does the web application fit together? | [Web application](web-application.md) |

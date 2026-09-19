@@ -63,6 +63,15 @@ export function rawFileContents(endpoint: string): FileContents {
   }
 }
 
+/**
+ * A conversation's Host file routes (`web-api.md` § File text and working
+ * tree changes): its directory listing, file text and raw bytes.
+ */
+export function conversationFileRoutes(conversationId: string): { directory: string; text: string; raw: string } {
+  const base = `/conversations/${encodeURIComponent(conversationId)}/fs`
+  return { directory: base, text: `${base}/file`, raw: `${base}/raw` }
+}
+
 const sources = new Map<string, FileBrowserSource>()
 
 /** The shared browser handles paths and selection; this adapter handles HTTP. */

@@ -4,7 +4,8 @@ The work panel's File view shows one file of the conversation's Host, and its
 Change view shows one changed file. Code and other text open in the code
 editor. This document owns what the two views show for everything else: which
 kinds of file they preview, how a view picks one, how the bytes reach the
-page, when a transfer ends, and what file content may do in the page. The
+page, when a transfer ends, and what file content may do in the page. It also
+owns how a message shows the files it names. The
 routes belong to [Web API](web-api.md#file-text-and-working-tree-changes), the
 runner's byte transport to [Runner](runner.md#file-contents), and Host access
 to [Sessions and targets](sessions-and-targets.md#host-operations). The gallery
@@ -93,6 +94,29 @@ Links and images resolve against the file:
 
 In the Change view's Preview, each side renders from its own text, and
 relative images load as the Host has them now.
+
+## Files named in messages
+
+A message, the agent's or the user's, can name files on the conversation's
+Host. For example, the agent's reply contains `![Weekly load](out/chart.png)`
+and `[plot.py](scripts/plot.py)`. The chart loads from the Host the way a
+document's image does, and a click on `plot.py` opens it in the File view.
+
+| Target | A link | An image |
+| --- | --- | --- |
+| Relative path | Resolved against the conversation's working directory, where the agent's commands run; the file opens in the File view | Resolved the same way and loaded from the Host |
+| Absolute path, or a `file://` URL | The file at that path, opened in the File view | Loaded from the Host |
+| `http` or `https` URL | Opens in a new browser tab | Loaded from that URL |
+| `data:` URL | Shown as text | Shown as it is |
+| Anything else | Shown as text | Its alt text |
+
+A `:line` suffix on a path is dropped, since the File view opens a whole file.
+Only a Markdown link or image names a file: a path in code or plain text stays
+text, because the page cannot tell which paths exist without asking the Host
+for each. Paths name files on the conversation's Host; a file on another Host
+the conversation reaches does not show. Loading an image is a Host operation,
+so it wakes a stopped Cloud like any other
+([Sessions and targets](sessions-and-targets.md#host-operations)).
 
 ## Changes
 
@@ -200,8 +224,8 @@ in the product's origin:
 | `packages/shell`, `packages/host-remote` | Streamed reads, whole or by range, and writes in the Host contract, over pipes. |
 | `packages/backend` | The raw routes, their headers and ranges, and ending transfers. |
 | `packages/core` | The extension table. |
-| `packages/web-ui` | Choosing and showing previews, Markdown rendering and sanitizing, the side-by-side comparison, releasing transfers. |
-| `packages/web`, `packages/web-gallery` | Raw URLs from the product's routes; a fixture file for every kind. |
+| `packages/web-ui` | Choosing and showing previews, Markdown rendering and sanitizing, the side-by-side comparison, releasing transfers, resolving the files a message names. |
+| `packages/web`, `packages/web-gallery` | Raw URLs from the product's routes and the working directory messages resolve against; a fixture file for every kind. |
 
 ## Rationale
 
