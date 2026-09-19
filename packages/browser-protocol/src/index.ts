@@ -58,7 +58,19 @@ export const browserQuerySchema = z.strictObject({
   nth: z.number().int().min(0).optional(),
 })
 
-const viewport = z.strictObject({ width: z.number().int().positive(), height: z.number().int().positive() })
+/**
+ * A tab's viewport (`browser-live-view.md` § Modes): its CSS size, the pixel
+ * ratio it renders at, and who decides them — the user's panel (`web`), a
+ * phone (`mobile`), or the agent (`custom`).
+ */
+export const browserViewportModeSchema = z.enum(['web', 'mobile', 'custom'])
+export const browserViewportSchema = z.strictObject({
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  devicePixelRatio: z.number().positive(),
+  mode: browserViewportModeSchema,
+})
+const viewport = browserViewportSchema
 const bounds = z.strictObject({ x: z.number(), y: z.number(), width: z.number(), height: z.number() })
 export const browserNodeSchema = z.strictObject({
   ref: reference.optional(),
@@ -74,6 +86,7 @@ export const browserCreatedBySchema = z.union([
   z.strictObject({ kind: z.literal('agent'), nodeId: z.string() }),
   z.strictObject({ kind: z.literal('page'), opener: z.string() }),
   z.strictObject({ kind: z.literal('temporary'), nodeId: z.string() }),
+  z.strictObject({ kind: z.literal('user') }),
 ])
 export const browserTabSchema = z.strictObject({
   id: z.string(), title: z.string(), url: z.string(), createdBy: browserCreatedBySchema,
@@ -151,8 +164,8 @@ export const browserOperations = {
   'clipboard.read': { input: z.strictObject({ tab, format: z.enum(['text']).optional(), 'output-dir': outputDir.optional(), overwrite: z.boolean().optional(), timeout }), result: z.union([z.strictObject({ text: z.string() }), z.strictObject({ items: z.array(z.strictObject({ mimeType: mime, path: z.string(), bytes: z.number().int().min(0) })) })]) },
   eval: { input: z.strictObject({ ...targeted, expression: text, all: z.boolean().optional() }), result: z.strictObject({ value: z.unknown() }) },
   logs: { input: z.strictObject({ tab, level: z.array(z.enum(['debug', 'info', 'log', 'warning', 'error'])).optional(), filter: text.optional(), after: cursor, limit: bounded, timeout }), result: z.strictObject({ entries: z.array(logEntry), cursor: z.string(), hasMore: z.boolean(), truncated: z.boolean() }) },
-  'viewport.set': { input: z.strictObject({ tab, width: z.number().int().min(1).max(4096), height: z.number().int().min(1).max(4096), timeout }), result: viewport },
-  'viewport.reset': { input: z.strictObject({ tab, timeout }), result: viewport },
+  'viewport.set': { input: z.strictObject({ tab, width: z.number().int().min(1).max(4096), height: z.number().int().min(1).max(4096), scale: z.number().min(0.5).max(4).optional().describe('Device pixel ratio, 1 by default'), timeout }), result: z.strictObject({ viewport }) },
+  'viewport.reset': { input: z.strictObject({ tab, timeout }), result: z.strictObject({ viewport }) },
   'dialog.inspect': { input: z.strictObject({ tab, timeout }), result: z.strictObject({ dialog: dialog.nullable() }) },
   'dialog.accept': { input: z.strictObject({ tab, text: text.optional(), timeout }), result: dialogOutcome },
   'dialog.dismiss': { input: z.strictObject({ tab, timeout }), result: dialogOutcome },

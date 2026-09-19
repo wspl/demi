@@ -18,6 +18,8 @@ pub struct BrowserFixture {
     pub conversation: String,
     pub env: BTreeMap<String, String>,
     pub caller: String,
+    /// The locale the invocations carry; the browser starts in the first one's.
+    pub locale: CommandLocale,
 }
 
 impl BrowserFixture {
@@ -52,10 +54,7 @@ impl BrowserFixture {
                 context: CommandContext {
                     conversation: self.conversation.clone(),
                     caller: CommandCaller::agent(self.caller.clone()),
-                    locale: CommandLocale {
-                        time_zone: "UTC".into(),
-                        languages: vec!["en-US".into()],
-                    },
+                    locale: self.locale.clone(),
                 },
                 json: Some(true),
                 edits: None,
@@ -155,6 +154,10 @@ where
         caller: "browser-family-test".into(),
         conversation: uuid::Uuid::new_v4().to_string(),
         env: BTreeMap::new(),
+        locale: CommandLocale {
+            time_zone: "UTC".into(),
+            languages: vec!["en-US".into()],
+        },
     };
     // Catch both construction and polling of the exercise, including the initial
     // service assertions, before joining retirement and resuming the same panic.

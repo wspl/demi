@@ -42,7 +42,9 @@ impl EmulationManager {
             .build()
             .unwrap();
 
-        let set_touch = SetTouchEmulationEnabledParams::new(true);
+        // A page that is not emulating touch must keep its mouse: enabled
+        // touch emulation makes it report a coarse pointer without hover.
+        let set_touch = SetTouchEmulationEnabledParams::new(viewport.has_touch);
 
         let chain = CommandChain::new(
             vec![
