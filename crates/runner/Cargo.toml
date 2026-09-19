@@ -82,6 +82,10 @@ uu_stat = "0.11"
 [target.'cfg(all(unix, target_arch = "aarch64"))'.dependencies]
 sha2 = { version = "0.10", features = ["asm"] }
 
+# The working-tree watch's FSEvents stream (`src/tree_watch.rs`).
+[target.'cfg(target_os = "macos")'.dependencies]
+fsevent-sys = "4.1"
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_Storage_FileSystem", "Win32_System_Pipes", "Win32_System_IO"] }
 
