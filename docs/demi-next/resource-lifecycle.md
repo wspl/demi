@@ -17,11 +17,17 @@ A conversation is active while any of these holds:
 - An agent turn is running or waiting for a provider, in the root or any child.
 - A shell job of the conversation is running on a Host.
 - A conversation Host operation admitted through `withHost` is in progress.
+- The user operates the conversation's Host through a
+  [user stream](native-runtime.md#user-streams), for example by clicking or
+  typing in the [live browser view](browser-live-view.md#input). Each operation
+  the page reports is admitted and ends at once, so it restarts the window; the
+  page reports at most every 30 seconds while the user operates.
 
 Everything else is retention, not activity: open browser tabs, cookies, a
 resident native service, a paired device that stays online, a sidebar entry, a
 connected chat, a metadata observer, a scheduled future turn that has not been
-admitted, a [Host expose](expose.md#lifetime) and its visitors' traffic. The backend's existing admission records are the only source of this
+admitted, an open user stream that the user only watches, a
+[Host expose](expose.md#lifetime) and its visitors' traffic. The backend's existing admission records are the only source of this
 fact; no module keeps a second busy flag.
 
 ## Idle window
@@ -74,5 +80,6 @@ Verify without real models, with an injected clock and scripted activity:
 | A conversation with open browser tabs idles for the window on a paired device | The device receives one release; its Chrome and profile are gone; the device and runner remain available |
 | A conversation idles for the window on Cloud | The machine stops; no release message is sent to it |
 | A running job or a waiting child turn exists at the deadline | Nothing is retired; the window restarts when the activity ends |
+| The user operates the live browser view with no agent activity | Each reported operation restarts the window; a view that is only watched does not |
 | Target switch or archive while a timer is pending | One release to the old device; a stale timer cannot release the new binding |
 | Connection loss or backend disposal | No orphan timers or listeners; no release attempt against a lost device |
