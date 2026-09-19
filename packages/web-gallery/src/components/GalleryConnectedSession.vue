@@ -13,6 +13,7 @@ import { transcriptDemoBlocks } from '../fixtures/blocks'
 import { gallerySubagents } from '../fixtures/subagents'
 import { galleryTerminals } from '../fixtures/terminals'
 import { createGalleryFileHosts } from '../fixtures/files'
+import { WORKSPACE_ROOT } from '../fixtures/workspace'
 import GalleryComposer from './GalleryComposer.vue'
 import { showToast } from '@demicodes/web-ui/infra/toast'
 import { demoExposes } from '../fixtures/settings'
@@ -20,6 +21,7 @@ import { demoExposes } from '../fixtures/settings'
 const props = withDefaults(defineProps<{ showActivity?: boolean }>(), { showActivity: true })
 const session = reactive<ChatSessionState>({
   id: 'shared-product-session',
+  cwd: WORKSPACE_ROOT,
   title: 'Shared session',
   blocks: transcriptDemoBlocks(),
   queue: [],

@@ -5,6 +5,7 @@ import type { ChatSessionState } from '@demicodes/web-ui/agent/types'
 import SessionStatus from '@demicodes/web-ui/agent/SessionStatus.vue'
 import type { Block } from '@demicodes/core'
 import { generationErrorBlock, shortTranscriptBlocks } from '../fixtures/blocks'
+import { WORKSPACE_ROOT } from '../fixtures/workspace'
 import GalleryComposer from './GalleryComposer.vue'
 import GallerySection from './GallerySection.vue'
 import GallerySpecimen from './GallerySpecimen.vue'
@@ -34,6 +35,7 @@ function state(
 ): ChatSessionState {
   return reactive<ChatSessionState>({
     id: `error-${id}`,
+    cwd: WORKSPACE_ROOT,
     title: 'Build a minesweeper game',
     blocks: [],
     queue: [],

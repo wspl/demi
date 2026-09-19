@@ -19,7 +19,7 @@ hard architectural rules, and how to extend it.
 ```sh
 bun install
 bun run typecheck      # type-check all packages (tsgo)
-bun run typecheck:web  # type-check the Vue UI packages
+bun run typecheck:web  # type-check the Vue UI packages, templates included
 bun run test           # run the suite (uses --conditions development -> src)
 bun run build          # build every library package to dist/ (tsdown)
 ```

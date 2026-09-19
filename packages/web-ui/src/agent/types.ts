@@ -70,6 +70,7 @@ export interface ChatSessionState
   extends Pick<
     ConversationState,
     | 'id'
+    | 'cwd'
     | 'title'
     | 'blocks'
     | 'queue'

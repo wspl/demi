@@ -8,7 +8,7 @@ const changePresentation = ref<'diff' | 'preview'>('diff')
 </script>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { File, FileDiff, Globe, PanelRightClose, Plus, X } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import { GlobePlus } from '../ui/GlobePlus'

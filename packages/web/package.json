@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "typecheck": "vue-tsc --noEmit -p tsconfig.app.json"
+    "typecheck": "bun ../../scripts/typecheck-vue.ts tsconfig.app.json"
   },
   "dependencies": {
     "@demicodes/core": "workspace:^",
@@ -24,8 +24,7 @@
     "@vue/tsconfig": "^0.9.1",
     "tailwindcss": "^4.3.1",
     "typescript": "^6.0.3",
-    "vite": "^8.0.16",
-    "vue-tsc": "^3.3.5"
+    "vite": "^8.0.16"
   },
   "license": "Apache-2.0"
 }
