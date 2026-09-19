@@ -151,10 +151,16 @@ Limits, defined once here:
 
 | Setting | Value |
 | --- | --- |
-| Concurrent relayed connections per expose | 64; beyond it 503 |
+| Concurrent relayed connections per expose | 16; beyond it 503 |
 | Connect timeout on the device | 10 seconds |
 | Connection with no bytes in either direction | Closed after 10 minutes |
 | Request header block | Bun's server default |
+
+Each relayed connection holds three of the device runner's open files, its
+socket and two pipes, and the runner keeps the system's limit, 256 by default
+on macOS ([Load](runner.md#load)). Sixteen connections keep one expose to less
+than a fifth of that. It is the only limit that refuses work for load: the
+relay faces the internet, so it sheds load instead of queuing it.
 
 A body on a `GET` request never reaches the relay: the server runtime drops
 it before the handler runs. No HTTP feature depends on one.
@@ -275,6 +281,11 @@ Traffic is not activity because anonymous traffic must not decide when a
 user's machine runs or costs money. A URL pinned in a monitoring bot would
 otherwise keep a Cloud alive indefinitely.
 
+## Implementation discrepancy
+
+The relay at this revision admits 64 concurrent connections per expose
+(`EXPOSE_CONNECTION_LIMIT` in `packages/backend/src/expose/records.ts`).
+
 ## Acceptance
 
 Scenario tests with a scripted provider and a real runner; a real Chrome for
@@ -297,7 +308,7 @@ model.
    itself works without any session.
 7. `remove` while a connection is open ends that connection; the runner
    leaves no socket behind.
-8. The concurrent-connection limit answers 503 for the 65th connection and
+8. The concurrent-connection limit answers 503 for the 17th connection and
    admits again after one closes.
 9. Without `DEMI_EXPOSE_DOMAIN`, `add` answers `expose_unavailable` and the
    product shows no expose controls.
