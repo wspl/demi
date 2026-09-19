@@ -7,7 +7,7 @@
 // drift is a compile error.
 import { z } from 'zod'
 import {
-  artifactDigestSchema, artifactLocationSchema, nativeTargetSchema,
+  artifactDigestSchema, artifactLocationSchema, nativeTargetSchema, nativePackageSchema,
   editFileSchema, EDIT_JOB_FILES, commandContextSchema
 } from '@demicodes/command-protocol'
 import type {
@@ -336,6 +336,18 @@ export const netErrorCodeSchema = z.enum([
 export type NetErrorCode = z.infer<typeof netErrorCodeSchema>
 
 /**
+ * Why a `service_open` stream never opened (`runner.md` § Service streams):
+ * the package lacks the operation, its service could not start, or the
+ * runner turned the stream away (it is draining for an upgrade).
+ */
+export const serviceErrorCodeSchema = z.enum([
+  'unknown_operation',
+  'service_failed',
+  'refused'
+])
+export type ServiceErrorCode = z.infer<typeof serviceErrorCodeSchema>
+
+/**
  * Where a job's full output lives on the target, and the last bytes of each
  * stream.
  */
@@ -357,8 +369,14 @@ export const runnerToBackendMessageSchema = z.union([
   z.strictObject({
     type: z.literal('artifact_resolve'),
     id: z.string(),
-    jobId: z.string(),
-    manifestHash: artifactDigestSchema,
+    /**
+     * The live work the artifact serves, which authorizes it: a job and the
+     * catalog it runs with, or a user stream (`runner.md` § Service streams).
+     */
+    owner: z.union([
+      z.strictObject({ jobId: z.string(), manifestHash: artifactDigestSchema }),
+      z.strictObject({ streamId: z.string() }),
+    ]),
     sha256: artifactDigestSchema,
     target: nativeTargetSchema,
   }).strict(),
@@ -502,6 +520,18 @@ export const runnerToBackendMessageSchema = z.union([
     code: netErrorCodeSchema,
     message: z.string()
   }),
+  /**
+   * The runner started a `service_open` stream's invocation; bytes now flow
+   * through the two named pipes (`runner.md` § Service streams).
+   */
+  z.strictObject({ type: z.literal('service_opened'), streamId: z.string() }),
+  /** A `service_open` stream never opened, and why. */
+  z.strictObject({
+    type: z.literal('service_error'),
+    streamId: z.string(),
+    code: serviceErrorCodeSchema,
+    message: z.string()
+  }),
 ])
 
 /**
@@ -636,6 +666,22 @@ export const backendToRunnerMessageSchema = z.union([
       streamId: z.string(),
       host: z.string(),
       port: z.number().int().min(1).max(65535),
+      input: pipeRefSchema,
+      output: pipeRefSchema,
+    }),
+    /**
+     * Open a user stream (`runner.md` § Service streams): invoke `operation`
+     * of `package` in the resident service, with `context` and `cwd`; `input`
+     * carries the page's bytes to the invocation, `output` its standard
+     * output to the page. The invocation's completion ends `output`.
+     */
+    z.strictObject({
+      type: z.literal('service_open'),
+      streamId: z.string(),
+      context: commandContextSchema,
+      package: nativePackageSchema,
+      operation: z.string().min(1),
+      cwd: z.string().min(1),
       input: pipeRefSchema,
       output: pipeRefSchema,
     }),

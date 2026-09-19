@@ -48,6 +48,7 @@ import { modelRoutes } from './models'
 import { runnerSocketRoutes } from './runner-socket'
 import { pipeRoutes } from './pipes'
 import { streamRoutes } from './stream'
+import { userStreamRoutes, type UserStreamDeclaration } from './user-streams'
 import type { ConversationTitles } from '../conversation/title'
 import { failureFactsReader } from '../conversation/failure-facts'
 import { usageRoutes } from './usage'
@@ -84,6 +85,10 @@ export function createApp(options: {
   blobs: UserBlobStores
   withHost: ConversationHostAccess
   transfer: ConversationTargets['transfer']
+  targets: Pick<ConversationTargets, 'stream' | 'withHost'>
+  userStreams: ReadonlyMap<string, UserStreamDeclaration>
+  /** The product's origin when it is served under another host name. */
+  publicOrigin?: string
   managedHosts: ManagedHosts | null
   createCloudWorkspace: ((
     userId: string,
@@ -200,7 +205,19 @@ export function createApp(options: {
     '/api/blobs',
     blobRoutes({ blobsFor: (id) => options.blobs.forUser(id) })
   )
-  // The stream route registers first so `/:id/stream` wins over the REST group's `/:id/*`.
+  // The stream routes register first so `/:id/stream` and `/:id/streams/:name`
+  // win over the REST group's `/:id/*`.
+  app.route(
+    '/api/conversations',
+    userStreamRoutes({
+      control: options.control,
+      targets: options.targets,
+      pipes: options.pipes,
+      upgradeWebSocket: options.upgradeWebSocket,
+      streams: options.userStreams,
+      ...(options.publicOrigin ? { publicOrigin: options.publicOrigin } : {}),
+    }),
+  )
   app.route(
     '/api/conversations',
     streamRoutes({

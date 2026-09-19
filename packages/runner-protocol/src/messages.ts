@@ -72,7 +72,8 @@ export type {
   GitParams,
   GitResult,
   NetErrorCode,
-  PipeRef
+  PipeRef,
+  ServiceErrorCode
 } from './schemas'
 export { FS_OPS, GIT_OPS } from './schemas'
 
