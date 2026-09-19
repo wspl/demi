@@ -12,9 +12,11 @@ import FileBrowserAddressBar from './FileBrowserAddressBar.vue'
 import FilePreview from './FilePreview.vue'
 import FileSummary from './FileSummary.vue'
 import FileTree from './FileTree.vue'
+import FileUploadList from './FileUploadList.vue'
 import MarkdownDocument from './MarkdownDocument.vue'
 import TreeFrame from './TreeFrame.vue'
 import { downloadUrl } from './download'
+import { uploadsOf } from './file-uploads'
 import { TREE_WIDTH } from './file-view'
 import { baseName, normalizePath, parentPath } from './paths'
 import { hasSourceView, previewKind, TOO_LARGE_NOTE } from './preview'
@@ -35,7 +37,8 @@ import { FileBrowserError, type FileBrowserSource } from './types'
  * in the tree, a pick from a crumb's menu, or a link in a Markdown document
  * asks the host to show it here; Back and Forward before the crumbs ask for
  * the files shown before and after. A path typed into the crumb row opens
- * that file, or finds that folder in the tree and selects it there.
+ * that file, or finds that folder in the tree and selects it there. Files
+ * uploaded from the tree's menu list under it until cleared.
  */
 const props = defineProps<{
   source: FileBrowserSource
@@ -189,6 +192,8 @@ async function go(target: string): Promise<void> {
   treeView.value?.reveal(target)
 }
 
+const uploads = computed(() => uploadsOf(props.source))
+
 function openFromTree(path: string): void {
   frame.value?.dismiss()
   emit('open', path)
@@ -282,14 +287,27 @@ onBeforeUnmount(() => {
       @action="read"
     />
     <template #tree>
-      <FileTree
-        ref="treeView"
-        :source="source"
-        :root="root"
-        :root-name="rootName"
-        :selected="located ?? path"
-        @open="openFromTree"
-      />
+      <div class="flex h-full min-h-0 flex-col">
+        <FileTree
+          ref="treeView"
+          class="flex-1"
+          :source="source"
+          :root="root"
+          :root-name="rootName"
+          :selected="located ?? path"
+          @open="openFromTree"
+        />
+        <FileUploadList
+          v-if="uploads.items.length > 0"
+          :uploads="uploads.items"
+          :root="root"
+          :root-name="rootName"
+          @cancel="uploads.cancel($event)"
+          @retry="uploads.retry($event)"
+          @dismiss="uploads.dismiss($event)"
+          @clear="uploads.clearFinished()"
+        />
+      </div>
     </template>
   </TreeFrame>
 </template>
