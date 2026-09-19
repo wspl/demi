@@ -158,7 +158,6 @@ useAppShortcuts(
         :active-id="activeId"
         :list-status="conversations.listStatus"
         :pending-ids="conversations.pendingChanges"
-        hide-delete
         @retry-list="conversations.reloadList"
         @reorder="reorder"
         @select="open"

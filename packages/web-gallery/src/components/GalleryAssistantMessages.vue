@@ -10,7 +10,7 @@ import { WORKSPACE_ROOT } from '../fixtures/workspace'
 
 const createdAt = new Date(Date.now() - 35_000).toISOString()
 const source = reactive<ChatSessionState>({
-  id: 'fork-source', cwd: WORKSPACE_ROOT, title: 'Planning', phase: 'running', status: 'active',
+  id: 'fork-source', cwd: WORKSPACE_ROOT, title: 'Planning', phase: 'running',
   load: 'ready', lastError: null, pendingAction: null, retrying: false, failures: {}, archived: false, queue: [], pendingSteers: [],
   scroll: null, subagents: [], terminals: [],
   blocks: [
@@ -49,7 +49,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
   }
   const cutoff = from.blocks.findIndex((block) => block.id === request.blockId)
   current.value = {
-    ...from, id: request.id, title: from.title + ' (Fork)', phase: 'idle', status: 'idle',
+    ...from, id: request.id, title: from.title + ' (Fork)', phase: 'idle',
     blocks: from.blocks.slice(0, cutoff + 1), scroll: null,
   }
 }

@@ -63,7 +63,10 @@ const codexPhases: { variant: string; phase: ProviderLoginPhase }[] = [
   { variant: 'Codex · done', phase: { kind: 'done', account: 'zan@example.com · Plus' } },
 ]
 const grokPhases: { variant: string; phase: ProviderLoginPhase }[] = [
-  { variant: 'Grok Build · paste code', phase: { kind: 'code-input', url: 'https://accounts.x.ai/device' } },
+  {
+    variant: 'Grok Build · device code',
+    phase: { kind: 'device', url: 'https://accounts.x.ai/device', code: 'QK4P-9TWD', expiresIn: '10 min' },
+  },
   { variant: 'Grok Build · done', phase: { kind: 'done', account: 'zan@example.com · SuperGrok' } },
 ]
 const model: SettingsModelDraft = {
@@ -168,7 +171,7 @@ const resetPhases: {
           </GallerySpecimen>
         </div>
       </GallerySection>
-      <GallerySection title="Sign in" note="Each subscription signs in the way its vendor does: a token from a CLI, a device code confirmed in the browser, or a code pasted back.">
+      <GallerySection title="Sign in" note="Each subscription signs in the way its vendor does: a token from a CLI, or a device code confirmed in the browser.">
         <div class="grid items-start gap-6 lg:grid-cols-2">
           <GallerySpecimen v-for="item in claudePhases" :key="item.variant" wide :variant="item.variant">
             <GalleryDialogFrame>

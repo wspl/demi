@@ -55,7 +55,7 @@ function closeTab(terminal: TerminalRecord): void {
       <TabItem
         v-for="terminal in tabs"
         :key="terminal.id"
-        :tab="{ id: terminal.id, title: terminal.name }"
+        :title="terminal.name"
         :is-active="terminal.id === active?.id"
         :status="terminalStatus(terminal.phase)"
         mark="terminal"
