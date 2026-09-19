@@ -31,7 +31,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Address',
-    'Crumbs from the root, each a jump. A bar too narrow for every name turns crumbs into their glyphs, one at a time from the left, each name kept in a tooltip, so the crumbs nearest the end keep their names longest; when even the glyphs overflow, the bar keeps its right end and clips its left. Clicking the free space turns the bar into a text field with the full path.'
+    'Crumbs from the root, each a jump. A bar too narrow for every name turns crumbs into their glyphs, one at a time from the left, each name kept in a tooltip, so the crumbs nearest the end keep their names longest; when even the glyphs overflow, the bar keeps its right end and clips its left. A click anywhere on the bar but a crumb turns it into a text field with the full path, and Enter goes there.'
   ],
   [
     'Icons',
@@ -504,7 +504,6 @@ onMounted(() => {
               :root="addressWorkspace.root"
               :source="addressWorkspace.source"
               leaf="file"
-              :editable="false"
             />
           </div>
         </GallerySpecimen>
@@ -517,7 +516,6 @@ onMounted(() => {
               :root="addressWorkspace.root"
               :source="addressWorkspace.source"
               leaf="file"
-              :editable="false"
             />
           </div>
         </GallerySpecimen>
