@@ -144,9 +144,12 @@ accepts local connections only from the current account:
 | Linux and macOS | Owner-restricted Unix domain socket |
 | Windows | Account-restricted byte-mode named pipe |
 
-Each client opens one HTTP/2 connection and one invocation stream. Raw CLI metadata
-has its own schema; framing, input demand, and completion use the
-[native protocol](native-runtime.md#invocation-protocol). The runner authenticates
+Each client opens one HTTP/2 connection and one invocation stream. The runner
+accepts every local connection ([Load](runner.md#load)). When the socket's
+queue of connections not yet accepted is full, a client waits and connects
+again; it gives up only after five seconds, which means the runner is gone.
+Raw CLI metadata has its own schema; framing, input demand, and completion use
+the [native protocol](native-runtime.md#invocation-protocol). The runner authenticates
 the context before dispatching. Connection processing continues through blocked
 output, and client loss cancels its invocation. Stdin EOF alone is not cancellation.
 

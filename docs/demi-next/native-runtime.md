@@ -422,6 +422,10 @@ The caller preserves the chunk boundary across HTTP/2 DATA frames. A short
 live-stdin read does not authorize another read. Receive-window capacity does
 not authorize reading stdin either.
 
+A handler may finish without reading all of its input. The service then ends
+the request with `RST_STREAM(NO_ERROR)`, and a caller's EOF after that is not
+an error.
+
 ### Response records and completion
 
 Responses contain records with a one-byte kind, four-byte big-endian payload
@@ -437,8 +441,9 @@ length, and payload. DATA frame boundaries are unrelated to record boundaries.
 A normally handled invocation ends with exactly one completion record. Missing
 completion is failure even after HTTP 200. Bytes after completion are invalid.
 
-HTTP status reports rejection before execution, such as invalid metadata or
-admission failure. After execution starts, command failure uses completion.
+HTTP status reports rejection before execution: invalid metadata, an unknown
+operation, or a service that is shutting down. It never reflects how many calls
+are in flight. After execution starts, command failure uses completion.
 Command output carries any partial-operation result.
 
 ### Validation and flow control
@@ -452,14 +457,18 @@ sizes while decoding, before allocating unbounded memory. These limits apply:
 | Invocation metadata JSON | 256 KiB |
 | Response record payload | 64 KiB |
 | HTTP/2 header list | 16 KiB |
-| Concurrent admitted service streams | 32 |
 | Queued output records per invocation | 4 |
 | HTTP/2 handshake, service info, and invocation metadata timeout | 10 seconds per phase |
 | Cooperative cancellation grace | 5 seconds |
 
-These are fixed SDK limits. Flow control and bounded queues, both per stream and
-across streams, prevent a slow consumer from blocking unrelated calls or growing
-memory without bound.
+These are fixed SDK limits. The number of invocations is not limited
+([Load](runner.md#load)). Each stream has its own flow-control window and
+output queue, and the connection's window is the largest HTTP/2 allows, so the
+connection never becomes the constraint: a slow consumer holds back only its
+own invocation, and memory grows with the invocations running. The service's
+only peer is the runner that started it, so HTTP/2's guard against a flood of
+cancelled requests is off; cancelling many just-sent invocations at once is
+ordinary.
 
 The SDK returns input receive capacity while assembling one requested, bounded
 chunk. It reserves output capacity before sending DATA. Connection processing

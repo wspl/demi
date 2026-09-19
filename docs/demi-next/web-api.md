@@ -417,9 +417,9 @@ host the way every conversation file operation does
 ([Sessions and targets](sessions-and-targets.md#host-operations)): a stopped
 Cloud wakes for it, a paired device without a live runner answers 409
 `device_offline`, and a Cloud that cannot wake answers 503 with the lifecycle's
-code. The runner's `busy` answers 503 `changes_busy` and its timeout 504
-`changes_timeout`; the browser then keeps its previous list and says the
-refresh failed.
+code. A request beyond the runner's working-tree capacity waits for a slot
+([Load](runner.md#load)); the runner's timeout answers 504 `changes_timeout`,
+and the browser then keeps its previous list and says the refresh failed.
 
 `GET /api/conversations/:id/changes/file?path=...` returns `{ original,
 modified }` for one changed file: `original` as the last commit has it (empty
