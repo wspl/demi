@@ -217,6 +217,14 @@ impl<SE: extensions::ShellExtensions> Shell<SE> {
         Ok(())
     }
 
+    /// Creates a pipe through the owner shared by this shell and its subshells.
+    pub(crate) fn pipe(&self) -> std::io::Result<(std::io::PipeReader, std::io::PipeWriter)> {
+        match &self.execution_host {
+            Some(host) => host.pipe(),
+            None => std::io::pipe(),
+        }
+    }
+
     /// Keeps an asynchronous interpreter task owned until it returns.
     pub fn execution_guard(&self) -> Option<Box<dyn Send + Sync>> {
         self.execution_host.as_ref().map(|host| host.task_guard())

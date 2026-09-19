@@ -217,9 +217,6 @@ impl Calls {
         let (events, receiver) = mpsc::channel(8);
         let connection = {
             let mut state = self.state.lock().unwrap();
-            if state.calls.len() >= 32 {
-                return Err(ServiceError::Handler("RPC invocation limit reached".into()));
-            }
             let connection = state
                 .connection
                 .as_ref()

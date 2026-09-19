@@ -34,6 +34,10 @@ pub trait ExecutionHost: Any + Send + Sync {
     fn file_control(&self) -> Arc<dyn FileControl>;
     /// Spawn and retain ownership of an external child.
     fn spawn(&self, command: Command) -> io::Result<ChildProcess>;
+    /// Create a pipe; the embedding owner decides how to meet a lack of descriptors.
+    fn pipe(&self) -> io::Result<(std::io::PipeReader, std::io::PipeWriter)> {
+        std::io::pipe()
+    }
     /// Resolve shell-specific path conventions against an explicit cwd.
     fn resolve_path(&self, path: &std::path::Path, cwd: &std::path::Path) -> std::path::PathBuf;
 }

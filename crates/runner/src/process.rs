@@ -83,9 +83,14 @@ impl ChildProcess {
             #[cfg(windows)]
             command.wrap(process_wrap::tokio::JobObject);
         }
-        let mut child = match command.spawn() {
-            Ok(child) => child,
-            Err(error) => return Err(classify_failure(error, &options).await),
+        // Out of open files, the process waits for one (`runner.md` § Load).
+        let mut backoff = demi_command_service::descriptors::Backoff::default();
+        let mut child = loop {
+            match command.spawn() {
+                Ok(child) => break child,
+                Err(error) if demi_command_service::descriptors::exhausted(&error) => backoff.wait().await,
+                Err(error) => return Err(classify_failure(error, &options).await),
+            }
         };
         let pid = child.id().expect("newly spawned process has an ID");
         let mut stdin = child.stdin().take().expect("piped stdin");

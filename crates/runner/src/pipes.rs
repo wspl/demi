@@ -42,10 +42,13 @@ impl PipeClient {
         path: &str,
         cancel: CancellationToken,
     ) -> io::Result<BoxStream<'static, io::Result<Bytes>>> {
-        let request = self.request(reqwest::Method::GET, path).await?;
+        // Out of open files, the connection waits for one (`runner.md` § Load).
         let response = tokio::select! {
             _ = cancel.cancelled() => return Err(cancelled()),
-            response = async { expect_ok(request.send().await.map_err(io::Error::other)?).await } => response?,
+            response = demi_command_service::descriptors::retry(&cancel, || async {
+                let request = self.request(reqwest::Method::GET, path).await?;
+                request.send().await.map_err(io::Error::other)
+            }) => expect_ok(response?).await?,
         };
         let stream = response
             .bytes_stream()
@@ -67,14 +70,25 @@ impl PipeClient {
     where
         S: Stream<Item = io::Result<Bytes>> + Send + 'static,
     {
-        let request = self
-            .request(reqwest::Method::PUT, path)
-            .await?
-            .body(reqwest::Body::wrap_stream(body));
+        let body = RetryableBody::new(body);
         tokio::select! {
             _ = cancel.cancelled() => Err(cancelled()),
             result = async {
-                let mut response = expect_ok(request.send().await.map_err(io::Error::other)?).await?;
+                let mut backoff = demi_command_service::descriptors::Backoff::default();
+                let response = loop {
+                    let request = self.request(reqwest::Method::PUT, path).await?;
+                    match request.body(reqwest::Body::wrap_stream(body.attempt())).send().await {
+                        Ok(response) => break response,
+                        // Out of open files, the connection waits for one
+                        // (`runner.md` § Load). Only an attempt that read none
+                        // of the body can be made again.
+                        Err(error) if body.unread() && demi_command_service::descriptors::exhausted(&error) => {
+                            backoff.wait().await;
+                        }
+                        Err(error) => return Err(io::Error::other(error)),
+                    }
+                };
+                let mut response = expect_ok(response).await?;
                 // Consume the confirmation with a bound; a pipe upload has no payload response.
                 let mut size = 0usize;
                 while let Some(chunk) = response.chunk().await.map_err(io::Error::other)? {
@@ -136,4 +150,44 @@ async fn expect_ok(mut response: reqwest::Response) -> io::Result<reqwest::Respo
 
 fn cancelled() -> io::Error {
     io::Error::new(io::ErrorKind::Interrupted, "pipe cancelled")
+}
+
+/// A request body that each connection attempt borrows. An attempt that fails
+/// before reading any of it leaves it whole for the next.
+struct RetryableBody<S>(Arc<Shared<S>>);
+
+struct BodyAttempt<S>(Arc<Shared<S>>);
+
+struct Shared<S> {
+    body: std::sync::Mutex<std::pin::Pin<Box<S>>>,
+    read: std::sync::atomic::AtomicBool,
+}
+
+impl<S> RetryableBody<S> {
+    fn new(body: S) -> Self {
+        Self(Arc::new(Shared {
+            body: std::sync::Mutex::new(Box::pin(body)),
+            read: std::sync::atomic::AtomicBool::new(false),
+        }))
+    }
+
+    fn attempt(&self) -> BodyAttempt<S> {
+        BodyAttempt(self.0.clone())
+    }
+
+    fn unread(&self) -> bool {
+        !self.0.read.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+impl<S: Stream<Item = io::Result<Bytes>>> Stream for BodyAttempt<S> {
+    type Item = io::Result<Bytes>;
+
+    fn poll_next(
+        self: std::pin::Pin<&mut Self>,
+        context: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        self.0.read.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.0.body.lock().unwrap().as_mut().poll_next(context)
+    }
 }

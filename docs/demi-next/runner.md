@@ -201,32 +201,18 @@ macOS shell. Every pipe, local command connection and open file holds one
 while it lasts, and a network stream holds three: its socket and two pipes.
 When none is left, whatever needs one waits until another closes, instead of
 failing: pipes, network streams, local command connections, filesystem and
-working-tree requests, file transfers, process and job starts, and native
-service starts. Nothing tells the runner when one closes, so it tries again,
-at most a tenth of a second apart. Running out is never an answer either: a
-working-tree request does not report a directory as outside a repository
-because it could not open the repository's files.
+working-tree requests, file transfers, process and job starts, a job's
+pipelines and redirections, and native service starts. Nothing tells the
+runner when one closes, so it tries again, at most a tenth of a second apart.
+Running out is never an answer either: a working-tree request does not report
+a directory as outside a repository because it could not open the
+repository's files.
 
 Two refusals remain. A browser command that conflicts with another command on
 the same tab answers `tab_busy`; that is about the page, not load
 ([Conversation browser](browser.md#one-tab-registry)). An expose answers 503
 beyond 64 concurrent connections: anyone on the internet can reach it, so it
 sheds load instead of queuing it ([Host expose](expose.md#the-public-relay)).
-
-### Implementation discrepancy
-
-The runner at this revision still refuses at each of these points. A native
-call past 32 in flight waits behind them, or fails with 503 while others end
-and start. A command the backend implements fails past 32. A filesystem
-request past 32 answers `EBUSY`, a working-tree request past 8 or a
-computation past 2 answers `busy`, and a sync past 4 fails. A local connection
-past 64 is dropped, and a local command client fails at once when the
-runner's queue of waiting connections is full. Cancelling a burst of just-sent
-native calls can close the service's connection. Out of open files, whatever
-needs one fails, a working-tree request answers that the directory is not a
-repository, and the local endpoint stops accepting connections for good. In the
-command-service SDK, a caller's EOF after a service finished early can still
-fail ([Request body and input demand](native-runtime.md#request-body-and-input-demand)).
 
 ## Shell jobs
 

@@ -706,8 +706,6 @@ function hostOperationError(c: Context<AuthEnv>, error: unknown): Response {
     return c.json({ code: error.code, message: error.message }, error.code === 'file_too_large' ? 413 : 415)
   if (error instanceof RemoteGitError) {
     switch (error.code) {
-      case 'busy':
-        return c.json({ code: 'changes_busy', message: error.message }, 503)
       case 'timeout':
         return c.json({ code: 'changes_timeout', message: error.message }, 504)
       case 'not_repository':
