@@ -653,6 +653,12 @@ svg.lucide {
   }
 }
 
+/* Rendered Markdown never widens what holds it: a word or an address longer than
+   the line breaks, and a table or an equation wider than the text scrolls on its own. */
+.markdown-body {
+  overflow-wrap: break-word;
+}
+
 .markdown-body > *:first-child {
   margin-top: 0;
 }
@@ -758,9 +764,17 @@ svg.lucide {
 }
 
 .markdown-body table {
-  width: 100%;
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow: auto;
   border-collapse: collapse;
   margin: 0.75em 0;
+}
+
+.markdown-body .katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .markdown-body th,
@@ -840,8 +854,8 @@ svg.lucide {
 }
 
 /* A Markdown file shown as a document: a repository file's layout, not a
-   message's. Headings step down from a ruled title, a finished task stays
-   readable, and wide tables and math scroll on their own. */
+   message's. Headings step down from a ruled title, and a finished task stays
+   readable. */
 .markdown-document p,
 .markdown-document blockquote,
 .markdown-document details,
@@ -905,13 +919,6 @@ svg.lucide {
   text-decoration: none;
 }
 
-.markdown-document table {
-  display: block;
-  width: max-content;
-  max-width: 100%;
-  overflow: auto;
-}
-
 .markdown-document img {
   max-height: none;
   border-radius: 0;
@@ -928,11 +935,6 @@ svg.lucide {
   border: 1px solid color-mix(in srgb, var(--color-overlay) 18%, transparent);
   border-bottom-width: 2px;
   border-radius: 4px;
-}
-
-.markdown-document .katex-display {
-  overflow-x: auto;
-  overflow-y: hidden;
 }
 
 /* Interface controls are not document text; editable fields keep native selection. */
