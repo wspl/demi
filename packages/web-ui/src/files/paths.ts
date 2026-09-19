@@ -44,6 +44,16 @@ export function baseName(path: string): string {
   return normalized.slice(normalized.lastIndexOf('/') + 1)
 }
 
+/** `path` as it reads from `root`: `a/b` under it, `''` for `root` itself, any other path whole. */
+export function relativePath(root: string, path: string): string {
+  const base = normalizePath(root)
+  const target = normalizePath(path)
+  if (target === base)
+    return ''
+  const prefix = base === '/' ? '/' : `${base}/`
+  return target.startsWith(prefix) ? target.slice(prefix.length) : target
+}
+
 /** Every ancestor from the root down to the path itself, for a breadcrumb. */
 export function pathSegments(path: string): {
   name: string;
