@@ -11,7 +11,9 @@ import SessionTools from '../targets/SessionTools.vue'
 import { useConversations } from './store'
 import { useResources } from '../state/resources'
 import { useWorkPanel } from './work'
+import { conversationFileRoutes, rawFileContents } from '../api/files'
 import type { EditSelectionHandler } from '@demicodes/web-ui/agent/edit-selection'
+import type { ConversationFiles } from '@demicodes/web-ui/markdown/types'
 import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
 
 const store = useConversations()
@@ -73,6 +75,20 @@ const selectEdit: EditSelectionHandler = (selection) => {
   }
 }
 
+/** The Host files the conversation's messages name: images from its raw route, files opened in its work panel. */
+const files = computed<ConversationFiles | undefined>(() => {
+  const current = conversation.value
+  if (!current) {
+    return undefined
+  }
+  const contents = rawFileContents(conversationFileRoutes(current.id).raw)
+  const state = work.stateFor(current.id)
+  return {
+    imageUrl: (path) => contents.url(path),
+    open: (path) => work.open(state, path),
+  }
+})
+
 async function fork(request: MessageForkRequest): Promise<void> {
   const sourceId = conversation.value?.id
   if (!sourceId) {
@@ -92,6 +108,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :has-provider="hasProvider"
     :fork="fork"
     :select-edit="selectEdit"
+    :files="files"
     :pending-submission="
       conversation.pendingSend
         ? {

@@ -85,11 +85,12 @@ export const useWorkPanel = defineStore('work-panel', () => {
     state.tabs = state.tabs.map((current) => current.id === tab.id ? tab : current)
   }
 
-  /** A file by workspace path, shown in the active tab in place. */
+  /** A file by Host path, shown in the File section, with the panel opened for it. */
   function open(state: WorkState, path: string): void {
     const next = showFileInTab(state.tabs, path)
     state.tabs = next.tabs
     state.activeId = next.activeId
+    state.open = true
   }
 
   function showChange(state: WorkState, id: string, mode: ChangeMode, path: string | null, selection?: { call: ChangeWorkTab['call']; edit: number }): void {

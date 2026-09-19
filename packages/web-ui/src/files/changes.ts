@@ -1,5 +1,5 @@
 import type { ShellEditedFile } from '@demicodes/agent/client'
-import { baseName, joinPath } from './paths'
+import { baseName } from './paths'
 import type { TreeRow } from './tree'
 import type { FileContents } from './types'
 
@@ -63,14 +63,6 @@ export function callChangeSource(selection: CallEditSelection, read: ReadCallCha
     ...selection,
     read: (edit, signal) => read(selection.commandId, selection.file.path, edit, signal),
   }
-}
-
-/** Recorded paths can be absolute on either supported path syntax. */
-export function changeAbsolutePath(path: string, root: string): string {
-  const normalized = path.replaceAll('\\', '/')
-  return normalized.startsWith('/') || /^[A-Za-z]:\//.test(normalized)
-    ? normalized
-    : joinPath(root, normalized)
 }
 
 /** Display under-root paths relatively without changing their lookup identity. */

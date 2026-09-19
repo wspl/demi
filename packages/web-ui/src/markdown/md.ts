@@ -1,62 +1,19 @@
-import { Marked } from 'marked'
 import DOMPurify from 'dompurify'
-import { renderMarkdown } from './render'
-import { liveCheckboxHtml } from './gfm-task'
-import { isHttpUrl } from './filePath'
-import { codeToHtml } from './highlight'
+import { renderMarkdown, renderUserMarkdown } from './render'
 import type { MarkdownRenderOptions } from './types'
-import { escapeHtml } from './html'
 
-const userMarked = new Marked({
-  gfm: true,
-  breaks: true,
-  renderer: {
-    checkbox({ checked }) {
-      return liveCheckboxHtml(!!checked)
-    },
-    html({ text }) {
-      return escapeHtml(text)
-    },
-    code({ text, lang }) {
-      return codeToHtml(text, lang ?? '')
-    },
-    codespan({ text }) {
-      return `<code>${escapeHtml(text)}</code>`
-    },
-    link(token) {
-      const href = token.href
-      const body = this.parser.parseInline(token.tokens)
-      if (isHttpUrl(href)) {
-        return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${body}</a>`
-      }
-      return body
-    },
-  },
-})
-// Deliberately no KaTeX on user content: people type `$` for shell vars ($PATH), prices,
-// and when discussing LaTeX itself, so rendering math here causes far more false positives
-// than it's worth. Math rendering applies to assistant output only (see render.ts).
+// A web link opens in a new tab: the renderer gives it `target="_blank"` with
+// `rel="noopener noreferrer"`, and `target` is the one attribute that needs
+// adding to DOMPurify's defaults. KaTeX's inline styles and `data-file-link`
+// pass them as they are.
+const SANITIZE = { ADD_ATTR: ['target'] }
 
-function escapeBlockSyntax(src: string): string {
-  return src
-    .replace(/^(\d+)([.)]) /gm, '$1\\$2 ')
-    .replace(/^([-*+]) /gm, '\\$1 ')
-    .replace(/^(#{1,6}) /gm, '\\$1 ')
-    .replace(/^(>)/gm, '\\$1')
-}
-
+/** Messages as the page shows them: rendered, then sanitized. */
 export const md = {
   render(src: string, options?: MarkdownRenderOptions): string {
-    return DOMPurify.sanitize(
-      renderMarkdown(src, options),
-      {
-        ADD_ATTR: ['style', 'data-file-link']
-      }
-    )
+    return DOMPurify.sanitize(renderMarkdown(src, options), SANITIZE)
   },
-  renderUser(src: string): string {
-    return DOMPurify.sanitize(
-      userMarked.parse(escapeBlockSyntax(src), { async: false }) as string
-    )
+  renderUser(src: string, options?: MarkdownRenderOptions): string {
+    return DOMPurify.sanitize(renderUserMarkdown(src, options), SANITIZE)
   },
 }

@@ -19,6 +19,18 @@ export function joinPath(base: string, name: string): string {
   return normalizePath(`${base}/${name}`)
 }
 
+/**
+ * A path as a Host names it: absolute on either path syntax (`/…` or
+ * `C:/…`) as it is, relative resolved against `base`. Backslashes count as
+ * slashes.
+ */
+export function resolveHostPath(base: string, path: string): string {
+  const normalized = path.replaceAll('\\', '/')
+  return normalized.startsWith('/') || /^[A-Za-z]:\//.test(normalized)
+    ? normalized
+    : joinPath(base, normalized)
+}
+
 /** The root is its own parent. */
 export function parentPath(path: string): string {
   const normalized = normalizePath(path)
