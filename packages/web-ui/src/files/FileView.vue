@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { ArrowLeft, ArrowRight, Code, Download, Eye, FolderTree } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, Code, Download, Eye } from '@lucide/vue'
 import CodeEditor from '../editor/components/CodeEditor.vue'
 import { showToast } from '../infra/toast'
 import { renderable, type DocumentPlace } from '../markdown/document'
 import IconButton from '../ui/IconButton.vue'
 import RegionStatus from '../ui/RegionStatus.vue'
-import ResizeHandle from '../ui/ResizeHandle.vue'
 import Segmented, { type SegmentedOption } from '../ui/Segmented.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import FileBrowserAddressBar from './FileBrowserAddressBar.vue'
@@ -14,6 +13,7 @@ import FilePreview from './FilePreview.vue'
 import FileSummary from './FileSummary.vue'
 import FileTree from './FileTree.vue'
 import MarkdownDocument from './MarkdownDocument.vue'
+import TreeFrame from './TreeFrame.vue'
 import { downloadUrl } from './download'
 import { TREE_WIDTH } from './file-view'
 import { baseName, normalizePath, parentPath } from './paths'
@@ -29,8 +29,8 @@ import { FileBrowserError, type FileBrowserSource } from './types'
  * (`file-previews.md`). Markdown and SVG offer Preview and Source, and every
  * file can be downloaded.
  *
- * The control at the end of the crumb row shows and hides the tree, and the
- * divider before the tree sizes it; the host keeps both, and the Preview or
+ * The tree docks, hides and shows over the file as its frame (`TreeFrame`)
+ * decides; the host keeps whether it is open, its width, and the Preview or
  * Source choice (v-model), so they hold across files. A click on another file
  * in the tree, a pick from a crumb's menu, or a link in a Markdown document
  * asks the host to show it here; Back and Forward before the crumbs ask for
@@ -137,6 +137,7 @@ async function read(): Promise<void> {
 
 // A directory typed into the crumb row: selected in the tree until another file opens.
 const located = ref<string | null>(null)
+const frame = ref<InstanceType<typeof TreeFrame> | null>(null)
 const treeView = ref<InstanceType<typeof FileTree> | null>(null)
 let going: AbortController | null = null
 
@@ -183,9 +184,14 @@ async function go(target: string): Promise<void> {
     return
   }
   located.value = target
-  tree.value = true
+  frame.value?.show()
   await nextTick()
   treeView.value?.reveal(target)
+}
+
+function openFromTree(path: string): void {
+  frame.value?.dismiss()
+  emit('open', path)
 }
 
 function download(): void {
@@ -202,8 +208,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 flex-col">
-    <div class="flex h-11 shrink-0 items-center gap-1 px-2">
+  <TreeFrame ref="frame" v-model:open="tree" v-model:width="treeWidth" name="file tree">
+    <template #header>
       <!-- Back and Forward move through the files this view has shown. -->
       <div class="flex shrink-0 items-center">
         <Tooltip content="Back">
@@ -238,76 +244,52 @@ onBeforeUnmount(() => {
       <Tooltip v-if="source.contents" content="Download" class="shrink-0">
         <IconButton :icon="Download" variant="ghost" aria-label="Download" :disabled="path === null" @click="download" />
       </Tooltip>
-      <Tooltip :content="tree ? 'Hide file tree' : 'Show file tree'" class="shrink-0">
-        <IconButton
-          :icon="FolderTree"
-          variant="ghost"
-          :pressed="tree"
-          :aria-label="tree ? 'Hide file tree' : 'Show file tree'"
-          @click="tree = !tree"
-        />
-      </Tooltip>
-    </div>
-    <div class="flex min-h-0 flex-1 border-t border-line">
-      <div class="relative min-w-0 flex-1">
-        <FilePreview
-          v-if="media && path && source.contents"
-          :key="path"
-          :path="path"
-          :kind="media"
-          :contents="source.contents"
-        />
-        <MarkdownDocument
-          v-else-if="markdown && state.phase === 'ready' && place"
-          :text="state.text"
-          :place="place"
-          @open="emit('open', $event)"
-        />
-        <!-- Every read passes through loading, so each text gets an editor of its own. -->
-        <CodeEditor
-          v-else-if="state.phase === 'ready' && path"
-          class="h-full"
-          :path="path"
-          :text="state.text"
-        />
-        <FileSummary
-          v-else-if="state.phase === 'card' && path"
-          :path="path"
-          :contents="source.contents"
-          :note="state.note"
-        />
-        <RegionStatus
-          v-else
-          class="h-full"
-          :busy="state.phase === 'loading'"
-          :failed="state.phase === 'failed'"
-          :label="state.phase === 'idle' ? 'Select a file.' : state.phase === 'loading' ? 'Reading…' : 'Could not read this file.'"
-          :detail="state.phase === 'failed' ? state.message : null"
-          :action="state.phase === 'failed' ? 'Retry' : undefined"
-          @action="read"
-        />
-      </div>
-      <template v-if="tree">
-        <ResizeHandle
-          v-model="treeWidth"
-          side="end"
-          :min="TREE_WIDTH.min"
-          :max="TREE_WIDTH.max"
-          :default-value="TREE_WIDTH.default"
-          label="File tree width"
-        />
-        <!-- The tree's width is the divider's; flex must not grow or shrink it. -->
-        <FileTree
-          ref="treeView"
-          class="border-l border-line"
-          :style="{ flex: `0 0 ${treeWidth}px`, width: `${treeWidth}px` }"
-          :source="source"
-          :root="root"
-          :root-name="rootName"
-          :selected="located ?? path"
-          @open="emit('open', $event)"
-        />
-      </template>
-    </div>
-  </div>
+    </template>
+    <FilePreview
+      v-if="media && path && source.contents"
+      :key="path"
+      :path="path"
+      :kind="media"
+      :contents="source.contents"
+    />
+    <MarkdownDocument
+      v-else-if="markdown && state.phase === 'ready' && place"
+      :text="state.text"
+      :place="place"
+      @open="emit('open', $event)"
+    />
+    <!-- Every read passes through loading, so each text gets an editor of its own. -->
+    <CodeEditor
+      v-else-if="state.phase === 'ready' && path"
+      class="h-full"
+      :path="path"
+      :text="state.text"
+    />
+    <FileSummary
+      v-else-if="state.phase === 'card' && path"
+      :path="path"
+      :contents="source.contents"
+      :note="state.note"
+    />
+    <RegionStatus
+      v-else
+      class="h-full"
+      :busy="state.phase === 'loading'"
+      :failed="state.phase === 'failed'"
+      :label="state.phase === 'idle' ? 'Select a file.' : state.phase === 'loading' ? 'Reading…' : 'Could not read this file.'"
+      :detail="state.phase === 'failed' ? state.message : null"
+      :action="state.phase === 'failed' ? 'Retry' : undefined"
+      @action="read"
+    />
+    <template #tree>
+      <FileTree
+        ref="treeView"
+        :source="source"
+        :root="root"
+        :root-name="rootName"
+        :selected="located ?? path"
+        @open="openFromTree"
+      />
+    </template>
+  </TreeFrame>
 </template>
