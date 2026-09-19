@@ -1,7 +1,9 @@
 import { StateEffect, StateField, type Extension } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 
-const INTERACTED_CLASS = 'cm-user-interacted'
+/** On the editor once the user has pointed or typed in it; the theme shows the active line only then. */
+export const INTERACTED_CLASS = 'cm-user-interacted'
+
 const EMPTY_ATTRS: Record<string, string> = {}
 
 const markInteractedEffect = StateEffect.define<boolean>()
@@ -23,6 +25,7 @@ function dispatchMarkInteracted(view: EditorView) {
   view.dispatch({ effects: markInteractedEffect.of(true) })
 }
 
+/** A file opens without a highlighted line; the first click, touch or key shows where the user is. */
 export function activeLineVisibilityExtension(): Extension {
   return [
     interactedField,
@@ -49,9 +52,3 @@ export function activeLineVisibilityExtension(): Extension {
     }),
   ]
 }
-
-export function markActiveLineInteracted(view: EditorView) {
-  dispatchMarkInteracted(view)
-}
-
-export { INTERACTED_CLASS as activeLineInteractedClass }

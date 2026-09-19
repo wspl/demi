@@ -5,7 +5,6 @@ export interface StickyStructureItem {
   from: number
   to: number
   headerLineNumber: number
-  depth: number
 }
 
 export function getStickyStructureStack(state: EditorState, topPos: number): StickyStructureItem[] {
@@ -31,12 +30,11 @@ export function getStickyStructureStack(state: EditorState, topPos: number): Sti
         from: node.from,
         to: node.to,
         headerLineNumber: fromLine.number,
-        depth: 0,
       })
     }
 
     node = node.parent
   }
 
-  return items.reverse().map((item, index) => ({ ...item, depth: index }))
+  return items.reverse()
 }

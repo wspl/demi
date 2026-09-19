@@ -262,7 +262,7 @@ function tree(): MemoryDirectory {
             'icon-metrics.ts', 'resize-handle.ts',
           ])),
           styles: dir(files('packages/web-ui/src/styles', ['base.css', 'product-appearance.css'])),
-          theme: dir(files('packages/web-ui/src/theme', ['appTheme.ts', 'codeThemes.ts', 'themeStore.ts'])),
+          theme: dir(files('packages/web-ui/src/theme', ['appTheme.ts', 'codeTheme.ts', 'themeStore.ts'])),
         }),
         'package.json': stub('packages/web-ui/package.json'),
       }),

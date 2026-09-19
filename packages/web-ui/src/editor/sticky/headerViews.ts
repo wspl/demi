@@ -2,12 +2,10 @@ import { Compartment, EditorState, type Extension } from '@codemirror/state'
 import { EditorView, GutterMarker, gutter } from '@codemirror/view'
 import { foldGutter, language } from '@codemirror/language'
 import { javascript } from '@codemirror/lang-javascript'
-import { trackEditorView, untrackEditorView, wynkTheme } from '../theme/cmTheme'
-import type { EditorHost } from '../host/types'
+import { editorTheme, trackEditorView, untrackEditorView } from '../theme/cmTheme'
 
 export interface StickyHeaderRenderItem {
   text: string
-  depth: number
   lineNumber: number
 }
 
@@ -24,7 +22,6 @@ interface StickyHeaderGutterWidths {
   lineNumbers: number
   fold: number
 }
-
 
 class StickyLineNumberMarker extends GutterMarker {
   lineNumber: number
@@ -56,9 +53,6 @@ function createStickyLineNumberGutter(lineNumber: number) {
 }
 
 const stickyHeaderMiniTheme = EditorView.theme({
-  '&': {
-    backgroundColor: 'transparent',
-  },
   '.cm-content': {
     padding: '0 !important',
   },
@@ -71,7 +65,7 @@ const stickyHeaderMiniTheme = EditorView.theme({
   },
 })
 
-export function createStickyHeaderViews(mainView: EditorView, host: HTMLElement, editorHost: EditorHost) {
+export function createStickyHeaderViews(mainView: EditorView, host: HTMLElement) {
   const rows: StickyHeaderRow[] = []
 
   function getDefaultLanguageConfig(): { key: string; extensions: Extension[] } {
@@ -126,9 +120,6 @@ export function createStickyHeaderViews(mainView: EditorView, host: HTMLElement,
   function createRow(item: StickyHeaderRenderItem) {
     const rowHost = document.createElement('div')
     rowHost.className = 'cm-stickyHeaderRow'
-    rowHost.style.pointerEvents = 'none'
-    rowHost.style.backgroundColor = 'var(--color-surface-editor)'
-    rowHost.style.borderBottom = '1px solid var(--color-line)'
     rowHost.style.display = 'none'
     rowHost.style.contain = 'layout paint style'
     host.append(rowHost)
@@ -146,13 +137,13 @@ export function createStickyHeaderViews(mainView: EditorView, host: HTMLElement,
           foldGutter(),
           EditorState.readOnly.of(true),
           EditorView.editable.of(false),
-          wynkTheme(editorHost),
+          editorTheme(),
           stickyHeaderMiniTheme,
         ],
       }),
     })
 
-    trackEditorView(view, editorHost)
+    trackEditorView(view)
 
     return {
       host: rowHost,
@@ -166,7 +157,7 @@ export function createStickyHeaderViews(mainView: EditorView, host: HTMLElement,
 
   function ensureRowPool(minSize: number) {
     while (rows.length < minSize) {
-      rows.push(createRow({ text: '', depth: rows.length, lineNumber: 1 }))
+      rows.push(createRow({ text: '', lineNumber: 1 }))
     }
   }
 
