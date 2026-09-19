@@ -156,14 +156,24 @@ The pinned Chrome labels the BT.601 samples of Linux software capture as
 BT.709. The extension corrects the label for exactly that case, and every
 Chrome upgrade re-verifies the colors against the page's own pixels.
 
+On Linux arm64, a CPU that reports SME without SVE cannot capture: Apple M4
+and later have no SVE, and a Linux VM that passes their SME through, such as
+OrbStack from 2.2.3, runs Chrome's SME code into an SVE instruction before it
+enters streaming mode. The GPU process then dies on every capture until Chrome
+gives up and exits, taking the agent's tabs with it. The module checks the
+CPU's capabilities before capturing: on such a Host the view keeps its tabs,
+input and dialogs, shows no picture and says why, and the agent's browser
+keeps running. Booting the VM's kernel with `arm64.nosme` restores capture.
+Lima's `vz` VMs do not pass SME through.
+
 ### Delivery
 
 - The module sends a key frame when a viewer connects, when the watched tab or
   its viewport changes, and when the page asks after a decode error.
 - Shortly after a picture stops changing, it is encoded once more at higher
   quality; a still page then sends nothing further.
-- The module sends a heartbeat every 250 ms. The page tells a still page from
-  a stalled connection by it: after one second without any byte, the page
+- The module sends a heartbeat whenever it has sent nothing else for 250 ms.
+  The page tells a still page from a stalled connection by it: after one second without any byte, the page
   shows the connection as stalled and stops sending input, discarding it rather
   than queueing it. For example, a Cloud pauses while it copies its disks for a
   checkpoint, with the browser still running
@@ -249,9 +259,9 @@ command. A source's end releases only what it holds.
 | A Mac viewer on a Linux or Windows Host | Command becomes Control; Command and Option editing keys become their Home, End and Control equivalents. |
 | A macOS Host | Editing shortcuts also carry Blink editing commands, which CDP key events cannot reach through menus. |
 | Pointer | CSS coordinates of the tab. Command-click becomes Control-click on a Linux or Windows Host. |
-| Wheel | Deltas in CSS pixels, scaled by the tab's pixel ratio before dispatch. |
+| Wheel | Deltas in CSS pixels, dispatched as they are: with the screen at the viewer's ratio, Chrome scrolls a CDP wheel delta by that many CSS pixels at every ratio, including a tab whose ratio differs from the screen's (measured on macOS and Linux at 1, 1.5, 2 and 3). |
 | Mobile mode | The viewer's pointer press, move and release become touch events. Chrome's mouse-to-touch conversion is not used: with it, CDP mouse calls never return. |
-| Copy on the Host | The copied text reaches the local clipboard when it comes from the watched tab within 5 seconds of the viewer's input; password fields are never read. |
+| Copy on the Host | Text the watched tab copies within 5 seconds of the viewer's input reaches the local clipboard: what a copy or cut takes from the page, and, where the Host's browser clipboard is isolated from the Host user's ([Upload, download, and clipboard](browser.md#upload-download-and-clipboard)), what the page writes with the Clipboard API. Password fields are never read. |
 | Paste | The text and HTML go to the Host browser's isolated clipboard, then the Host's paste shortcut, so the page receives a real `paste` event. A Host without a browser clipboard receives inserted text. |
 | Native form controls | See below. |
 | Dialogs | Shown in a panel that does not block the page; the first answer wins, whether the user's or the agent's. |
