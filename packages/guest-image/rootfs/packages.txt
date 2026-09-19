@@ -76,3 +76,6 @@ libxrandr2
 gsettings-desktop-schemas
 fonts-liberation
 fonts-noto-color-emoji
+# Chinese, Japanese and Korean text, for pages the user watches live
+# (`browser-live-view.md` § Responsibilities).
+fonts-noto-cjk
