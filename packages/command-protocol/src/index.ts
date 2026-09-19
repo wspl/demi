@@ -74,7 +74,6 @@ export async function contentDigest(value: unknown): Promise<string> {
 
 export const MAX_METADATA_BYTES = 256 * 1024
 export const MAX_RECORD_BYTES = 64 * 1024
-export const MAX_INVOCATIONS = 32
 export const INFO_PATH = '/v1/info'
 export const INVOKE_PATH = '/v1/invoke'
 export const CONVERSATION_PATH = '/v1/conversation'

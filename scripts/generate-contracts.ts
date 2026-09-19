@@ -4,7 +4,7 @@ import type { z } from 'zod'
 import {
   commandArgsSchema, commandErrorSchema, completionSchema, invocationSchema,
   serviceInfoSchema, nativePackageSchema, NATIVE_TARGETS, NATIVE_PROTOCOL_VERSION,
-  MAX_METADATA_BYTES, MAX_RECORD_BYTES, MAX_INVOCATIONS, INFO_PATH, INVOKE_PATH, CONVERSATION_PATH, SHUTDOWN_PATH,
+  MAX_METADATA_BYTES, MAX_RECORD_BYTES, INFO_PATH, INVOKE_PATH, CONVERSATION_PATH, SHUTDOWN_PATH,
   conversationRequestSchema, conversationStatusSchema,
   artifactLocationSchema,
   editContextSchema, editCopiesSchema, editFileSchema, editJournalSchema,
@@ -125,7 +125,6 @@ function commandProtocol(): string {
     pub const TARGETS: &[&str] = &[${NATIVE_TARGETS.map(rustString).join(', ')}];
     pub const MAX_METADATA_BYTES: usize = ${MAX_METADATA_BYTES};
     pub const MAX_RECORD_BYTES: usize = ${MAX_RECORD_BYTES};
-    pub const MAX_INVOCATIONS: usize = ${MAX_INVOCATIONS};
     pub const EDIT_FILE_BYTES: usize = ${EDIT_FILE_BYTES};
     pub const EDIT_JOB_BYTES: u64 = ${EDIT_JOB_BYTES};
     pub const EDIT_JOB_FILES: usize = ${EDIT_JOB_FILES};

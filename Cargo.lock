@@ -1057,6 +1057,7 @@ dependencies = [
  "futures-util",
  "h2",
  "http",
+ "libc",
  "regex",
  "serde",
  "serde_json",
@@ -1067,6 +1068,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "url",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

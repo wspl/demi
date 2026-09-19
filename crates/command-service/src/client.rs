@@ -3,11 +3,14 @@ use http::{Method, Request};
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::protocol::{
-    CONVERSATION_PATH, ConversationRequest, INFO_PATH, INVOKE_PATH, Invocation, MAX_INVOCATIONS,
+    CONVERSATION_PATH, ConversationRequest, INFO_PATH, INVOKE_PATH, Invocation,
     MAX_METADATA_BYTES, MAX_RECORD_BYTES, ProtocolError, Record, RecordDecoder, SHUTDOWN_PATH,
     ServiceInfo, VERSION,
 };
-use crate::{ServiceError, stream::send_bytes};
+use crate::{
+    ServiceError,
+    stream::{CONNECTION_WINDOW, send_bytes},
+};
 
 /// The owner continuously drives the returned connection and closes it on teardown.
 #[derive(Clone)]
@@ -23,7 +26,7 @@ impl Client {
         let (sender, connection) = h2::client::Builder::new()
             .max_header_list_size(16 * 1024)
             .initial_window_size(MAX_RECORD_BYTES as u32)
-            .initial_connection_window_size((MAX_RECORD_BYTES * MAX_INVOCATIONS) as u32)
+            .initial_connection_window_size(CONNECTION_WINDOW)
             .handshake(io)
             .await?;
         Ok((Self { sender }, connection))
@@ -127,9 +130,20 @@ impl CommandInput {
     pub async fn write(&mut self, bytes: Bytes) -> Result<(), ServiceError> {
         send_bytes(&mut self.stream, crate::protocol::encode_input(bytes)?).await
     }
+    /// A service that finished without reading all input resets the request
+    /// with NO_ERROR; ending input after that is not a failure
+    /// (`native-runtime.md` § Request body and input demand).
     pub fn end(&mut self) -> Result<(), ServiceError> {
-        self.stream.send_data(Bytes::new(), true)?;
-        Ok(())
+        match self.stream.send_data(Bytes::new(), true) {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+                match self.stream.poll_reset(&mut context) {
+                    std::task::Poll::Ready(Ok(h2::Reason::NO_ERROR)) => Ok(()),
+                    _ => Err(error.into()),
+                }
+            }
+        }
     }
     pub fn cancel(&mut self) {
         self.stream.send_reset(h2::Reason::CANCEL);
