@@ -1,40 +1,66 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
-import GalleryTabBar from './GalleryTabBar.vue'
+import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
+import { addBrowserTab, closeBrowserTabs, workPanelTabs, type WorkTab } from '@demicodes/web-ui/agent/work-panel'
 
 /**
- * A tab bar in a frame of the given width, with every motion the strip has
- * to get right on buttons under it: select (first, middle, last, a cut-off
- * one), open (one, five), close (first, active, middle, last, all but the
- * active), and a scripted run through them. The bar is the same
- * `GalleryTabBar`; this only drives it.
+ * The work panel's tab strip in a frame of the given width, with every motion
+ * the strip has to get right on buttons under it: select (first, middle, last,
+ * a cut-off one), open (one, five), close (first, active, middle, last, all
+ * but the active), and a scripted run through them. The panel is the
+ * product's; this holds its tabs the way the product does and drives them.
  */
 const props = withDefaults(defineProps<{ width?: string }>(), { width: '100%' })
 
-interface Bar {
-  selectTab: (id: string) => void
-  addTab: () => void
-  closeTab: (id: string) => void
-  tabIds: () => string[]
-  activeId: () => string | null
-  reset: () => void
+const TITLES = [
+  '127.0.0.1:5173', 'Pull request #42', 'Build log', 'API reference', 'Staging',
+  'Design review', 'Error dashboard', 'Release notes', 'Issue tracker',
+]
+
+const tabs = ref<WorkTab[]>([])
+const activeId = ref<string | null>(null)
+let opened = 0
+
+function openPage(): void {
+  const title = TITLES[opened % TITLES.length]!
+  opened += 1
+  // The body never shows here, so the page is never loaded.
+  const next = addBrowserTab(tabs.value, { url: 'about:blank', title, expose: false })
+  tabs.value = next.tabs
+  activeId.value = next.activeId
 }
-const bar = ref<Bar | null>(null)
+
+function closeTabs(ids: string[]): void {
+  const next = closeBrowserTabs(tabs.value, activeId.value, ids)
+  tabs.value = next.tabs
+  activeId.value = next.activeId
+}
+
+/** Change and File, then six pages, the first selected. */
+function reset(): void {
+  tabs.value = workPanelTabs()
+  opened = 0
+  for (let i = 0; i < 6; i++)
+    openPage()
+  activeId.value = ids()[0] ?? null
+}
+reset()
+
 const frame = ref<HTMLElement | null>(null)
 const playing = ref(false)
 const step = ref('')
 let stopped = false
 
+/** The browser tabs in strip order: the only tabs the strip moves. */
 function ids(): string[] {
-  return bar.value?.tabIds() ?? []
+  return tabs.value.filter((tab) => tab.kind === 'browser').map((tab) => tab.id)
 }
 
 function selectAt(index: number): void {
   const id = ids().at(index)
-  if (id) {
-    bar.value?.selectTab(id)
-  }
+  if (id)
+    activeId.value = id
 }
 
 function selectMiddle(): void {
@@ -44,46 +70,35 @@ function selectMiddle(): void {
 /** The first tab the frame cuts off, else the last one. */
 function selectCutOff(): void {
   const strip = frame.value?.querySelector('[role="tablist"]')
-  if (!strip) {
+  if (!strip)
     return
-  }
   const view = strip.getBoundingClientRect()
-  const tabs = [...strip.querySelectorAll<HTMLElement>('[role="tab"]')]
-  const cut = tabs.find((tab) => {
+  const shown = [...strip.querySelectorAll<HTMLElement>('[role="tab"]')]
+  const cut = shown.find((tab) => {
     const rect = tab.getBoundingClientRect()
     return rect.left < view.left || rect.right > view.right
   })
-  const index = cut ? tabs.indexOf(cut) : tabs.length - 1
-  selectAt(index)
+  selectAt(cut ? shown.indexOf(cut) : shown.length - 1)
 }
 
 function open(count: number): void {
-  for (let i = 0; i < count; i++) {
-    bar.value?.addTab()
-  }
+  for (let i = 0; i < count; i++)
+    openPage()
 }
 
 function closeAt(index: number): void {
   const id = ids().at(index)
-  if (id) {
-    bar.value?.closeTab(id)
-  }
+  if (id)
+    closeTabs([id])
 }
 
 function closeActive(): void {
-  const id = bar.value?.activeId()
-  if (id) {
-    bar.value?.closeTab(id)
-  }
+  if (activeId.value)
+    closeTabs([activeId.value])
 }
 
 function closeOthers(): void {
-  const active = bar.value?.activeId()
-  for (const id of ids()) {
-    if (id !== active) {
-      bar.value?.closeTab(id)
-    }
-  }
+  closeTabs(ids().filter((id) => id !== activeId.value))
 }
 
 const STEPS: [string, () => void][] = [
@@ -98,7 +113,7 @@ const STEPS: [string, () => void][] = [
   ['select last', () => selectAt(-1)],
   ['close first', () => closeAt(0)],
   ['close others', closeOthers],
-  ['reset', () => bar.value?.reset()],
+  ['reset', reset],
 ]
 
 function wait(ms: number): Promise<void> {
@@ -106,14 +121,12 @@ function wait(ms: number): Promise<void> {
 }
 
 async function play(): Promise<void> {
-  if (playing.value) {
+  if (playing.value)
     return
-  }
   playing.value = true
   for (const [name, run] of STEPS) {
-    if (stopped) {
+    if (stopped)
       break
-    }
     step.value = name
     run()
     await wait(900)
@@ -133,10 +146,20 @@ const count = computed(() => ids().length)
   <div class="flex flex-col gap-3">
     <div
       ref="frame"
-      class="gallery-frame gallery-frame-base max-w-full overflow-hidden"
+      class="gallery-frame gallery-frame-base h-11 max-w-full overflow-hidden"
       :style="{ width: props.width }"
     >
-      <GalleryTabBar ref="bar" />
+      <WorkPanel
+        :tabs="tabs"
+        :active-id="activeId"
+        @select="activeId = $event"
+        @add-browser="openPage"
+        @close-tabs="closeTabs"
+        @close="reset"
+      >
+        <!-- Only the header takes part; the body stays empty. -->
+        <template #default><span /></template>
+      </WorkPanel>
     </div>
     <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-[12px] text-fg-muted">
       <span class="flex flex-wrap items-center gap-1">
@@ -161,7 +184,7 @@ const count = computed(() => ids().length)
       </span>
       <span class="flex flex-wrap items-center gap-1">
         <Button size="sm" :disabled="playing" @click="play">Play all</Button>
-        <Button size="sm" :disabled="playing" @click="bar?.reset()">Reset</Button>
+        <Button size="sm" :disabled="playing" @click="reset">Reset</Button>
         <span v-if="step" class="ml-1 font-mono text-[11px] text-fg-faint">{{ step }}</span>
       </span>
     </div>

@@ -17,7 +17,7 @@ import { WORKSPACE_ROOT } from '../fixtures/workspace'
 const session = reactive<ChatSessionState>({
   id: 'editing-example', cwd: WORKSPACE_ROOT, title: 'Edit and resend', blocks: [], queue: [],
   pendingSteers: [], phase: 'idle', load: 'ready', lastError: null, pendingAction: null, retrying: false, failures: {},
-  archived: false, status: 'idle', scroll: null, subagents: [], terminals: [],
+  archived: false, scroll: null, subagents: [], terminals: [],
 })
 const revision = ref(0)
 const messageEdit = ref<MessageEditState | null>(null)
