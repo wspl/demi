@@ -244,7 +244,7 @@ function selectDevice(id: string, close: () => void): void {
                     :overlay-store="overlayStore"
                     :disabled="pending"
                     variant="field"
-                    fill
+                    width="fill"
                     trigger-label="Device"
                     class="flex-1"
                   >

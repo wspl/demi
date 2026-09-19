@@ -354,7 +354,7 @@ onBeforeUnmount(() => pending?.abort())
         <Dropdown
           :overlay-store="appOverlayStore"
           variant="field"
-          fill
+          width="fill"
           trigger-label="Device"
         >
           <template #trigger>

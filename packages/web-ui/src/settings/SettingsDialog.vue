@@ -194,7 +194,7 @@ const initials = computed(() =>
           <div v-else class="px-2 pb-2 @md:hidden">
             <Dropdown
               :overlay-store="overlayStore"
-              class="w-full [&>div]:w-full"
+              width="fill"
             >
               <template #trigger="{ isOpen: pickerOpen }">
                 <span

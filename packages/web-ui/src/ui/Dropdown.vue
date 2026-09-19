@@ -8,6 +8,23 @@ import type { DropdownSize, DropdownVariant } from './DropdownTrigger.vue'
 import { menuRootKey } from './menu-context'
 import Tooltip from './Tooltip.vue'
 
+/**
+ * How wide a dropdown is. `content`: as wide as its trigger, whatever the
+ * row. `shrink`: as wide as its trigger while the row has room, and narrower
+ * when it has not. `fill`: the row's full width, and narrower as the row
+ * narrows. A dropdown that gives way does so at every wrapper around the
+ * trigger alike; the trigger keeps within it (`max-w-full`, or `w-full` to
+ * fill) and truncates what it holds.
+ */
+export type DropdownWidth = 'content' | 'shrink' | 'fill'
+
+/** Each width's classes: for both wrappers, and for the element that holds the trigger. */
+const WIDTH_CLASSES: Record<DropdownWidth, { wrapper: string; trigger: string }> = {
+  content: { wrapper: 'inline-flex', trigger: '' },
+  shrink: { wrapper: 'inline-flex min-w-0', trigger: 'min-w-0' },
+  fill: { wrapper: 'flex w-full min-w-0', trigger: 'w-full min-w-0' },
+}
+
 const props = withDefaults(defineProps<{
   overlayStore: OverlayStore
   placement?: 'top' | 'top-start' | 'top-end' | 'bottom' | 'bottom-start' | 'bottom-end'
@@ -21,16 +38,16 @@ const props = withDefaults(defineProps<{
   disabled?: boolean
   /** Why it is disabled, as a tooltip; only read while `disabled`. */
   disabledReason?: string
-  /**
-   * Take the row's full width, the trigger with it, and give way as the row
-   * narrows, so what the trigger holds can truncate; a `field` trigger wants this.
-   */
-  fill?: boolean
+  /** A `field` trigger wants `fill`. */
+  width?: DropdownWidth
 }>(), {
   placement: 'bottom-start',
   offset: 4,
   size: 'md',
+  width: 'content',
 })
+
+const widthClasses = computed(() => WIDTH_CLASSES[props.width])
 
 const tooltipContent = computed(() => disabledTooltip(props.disabled, props.disabledReason))
 
@@ -79,14 +96,14 @@ defineExpose({ open, close })
     :disabled="!tooltipContent"
     tag="div"
     class="relative"
-    :class="props.fill ? 'flex w-full min-w-0' : 'inline-flex'"
+    :class="widthClasses.wrapper"
     :open-delay-ms="80"
   >
-    <div class="relative" :class="props.fill ? 'flex w-full min-w-0' : 'inline-flex'">
+    <div class="relative" :class="widthClasses.wrapper">
       <div
         ref="triggerRef"
         class="cursor-default"
-        :class="props.fill ? 'w-full min-w-0' : ''"
+        :class="widthClasses.trigger"
         @click="handleClick"
       >
         <DropdownTrigger

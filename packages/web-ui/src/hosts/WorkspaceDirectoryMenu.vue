@@ -90,10 +90,10 @@ defineExpose({ browse })
       <Dropdown
         v-model:open="directoryOpen"
         :overlay-store="overlayStore"
-        class="min-w-0 [&>div]:min-w-0"
+        width="shrink"
       >
         <template #trigger>
-          <Tooltip class="min-w-0" :content="path">
+          <Tooltip :content="path">
             <Button
               class="max-w-full"
               variant="ghost"

@@ -38,7 +38,7 @@ const initials = computed(() =>
     :overlay-store="appOverlayStore"
     placement="top-start"
     :offset="8"
-    fill
+    width="fill"
   >
     <template #trigger="{ isOpen }">
       <!-- A name too long for the row wraps onto a second line, which the row's
