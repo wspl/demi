@@ -284,9 +284,14 @@ the user test how real sites and applications behave for real visitors:
   outer size is never smaller than its viewport.
 - Time zone and languages are the ones the user's browser last reported,
   which arrive in the starting invocation's
-  [command context](native-runtime.md#command-context),
-  applied through CDP when the environment starts; the Host's own settings
-  differ between devices and do not count. They do not change while the
+  [command context](native-runtime.md#command-context); the Host's own
+  settings differ between devices and do not count. They apply to the whole
+  browser as it starts, so every page, popup, worker and request has them from
+  its first byte: the time zone in Chrome's environment, the languages as the
+  profile's language preference, and the first language as the application
+  language, which sets a page's default formats (the launch argument on macOS,
+  the locale environment variable on Linux). Chrome itself tells pages only the
+  first language, as it does for any user. They do not change while the
   environment lives.
 - The Cloud guest ships fonts for Chinese, Japanese and Korean.
 
