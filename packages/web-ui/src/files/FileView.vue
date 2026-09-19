@@ -1,9 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ArrowLeft, ArrowRight, Code, Download, Eye, FolderTree } from '@lucide/vue'
 import CodeEditor from '../editor/components/CodeEditor.vue'
-import { appEditorHost } from '../editor/host/appHost'
-import { toEditorUri } from '../editor/editorUri'
 import { renderable, type DocumentPlace } from '../markdown/document'
 import IconButton from '../ui/IconButton.vue'
 import RegionStatus from '../ui/RegionStatus.vue'
@@ -23,10 +21,9 @@ import { FileBrowserError, type FileBrowserSource } from './types'
 /**
  * One file of a workspace, read through its source: the path as crumbs from
  * the workspace root, the file itself, and beside it the workspace tree with
- * the file selected. Text opens in the code editor (read-only for now: the
- * editor can edit, the product does not yet save). An image, a video, an
- * audio file or a PDF shows in the browser's own viewer, Markdown renders as
- * a document, and a file the page cannot show is a card
+ * the file selected. Text opens read-only in the code editor. An image, a
+ * video, an audio file or a PDF shows in the browser's own viewer, Markdown
+ * renders as a document, and a file the page cannot show is a card
  * (`file-previews.md`). Markdown and SVG offer Preview and Source, and every
  * file can be downloaded.
  *
@@ -85,7 +82,6 @@ type TextState =
   | { phase: 'card'; note: string | null }
   | { phase: 'failed'; message: string }
 
-const editor = ref<InstanceType<typeof CodeEditor> | null>(null)
 const state = ref<TextState>({ phase: 'loading' })
 let controller: AbortController | null = null
 
@@ -124,7 +120,6 @@ async function read(): Promise<void> {
     if (current.signal.aborted)
       return
     state.value = { phase: 'ready', text }
-    await showInEditor()
   } catch (error) {
     if (current.signal.aborted)
       return
@@ -137,23 +132,12 @@ async function read(): Promise<void> {
   }
 }
 
-async function showInEditor(): Promise<void> {
-  if (state.value.phase !== 'ready' || markdown.value || props.path === null)
-    return
-  const content = state.value.text
-  const path = props.path
-  await nextTick()
-  editor.value?.setFile({ resourceUri: toEditorUri('workspace', path), content })
-}
-
 function download(): void {
   if (props.path !== null && props.source.contents)
     downloadUrl(props.source.contents.url(props.path, { download: true }))
 }
 
 watch(() => [props.source, props.path, media.value], read, { immediate: true })
-// Markdown switches between its document and the editor without a new read.
-watch(markdown, showInEditor)
 
 onBeforeUnmount(() => {
   controller?.abort()
@@ -222,12 +206,12 @@ onBeforeUnmount(() => {
           :place="place"
           @open="emit('open', $event)"
         />
+        <!-- Every read passes through loading, so each text gets an editor of its own. -->
         <CodeEditor
-          v-else-if="state.phase === 'ready'"
-          ref="editor"
+          v-else-if="state.phase === 'ready' && path"
           class="h-full"
-          :host="appEditorHost"
-          read-only
+          :path="path"
+          :text="state.text"
         />
         <FileSummary
           v-else-if="state.phase === 'card' && path"

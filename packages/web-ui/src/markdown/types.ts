@@ -1,8 +1,3 @@
-export interface MarkdownThemeSnapshot {
-  mode: 'light' | 'dark'
-  codeThemeId: string
-}
-
 /**
  * What the host offers for the files a conversation's messages name on its
  * Host (`file-previews.md` § Files named in messages).
@@ -23,5 +18,3 @@ export interface MarkdownRenderOptions {
   /** Absent, a message's paths stay text and its Host images show their alt text. */
   files?: MessageFiles
 }
-
-export type MarkdownRenderer = (src: string, options?: MarkdownRenderOptions) => string
