@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { Paperclip } from '@lucide/vue'
+import { useElementSize } from '@vueuse/core'
 import { ICON_PX } from '../ui/icon-metrics'
 import { dataTransferFiles, transferHasFiles } from './message-input/attachments'
 
@@ -9,6 +10,11 @@ import { dataTransferFiles, transferHasFiles } from './message-input/attachments
  * the frame lights its focus line and a dashed overlay names the action, so
  * the target is the whole composer and not one control. Drag depth is counted
  * because every child fires its own enter and leave.
+ *
+ * The editor comes first: the model slot hears how much wider than
+ * `EDITOR_MIN_PX` the editor is (`room`, negative when narrower), so the
+ * control there can drop its label to its icon before the editor narrows past
+ * that.
  */
 
 const props = defineProps<{
@@ -20,6 +26,13 @@ const props = defineProps<{
 const emit = defineEmits<{
   dropFiles: [files: File[]]
 }>()
+
+/** The least the editor keeps: the placeholder whole, and room to type after it. */
+const EDITOR_MIN_PX = 128
+
+const editor = ref<HTMLElement | null>(null)
+const { width: editorWidth } = useElementSize(editor)
+const room = computed(() => editorWidth.value - EDITOR_MIN_PX)
 
 const dragDepth = ref(0)
 const showDrop = computed(() => props.dropping === true || dragDepth.value > 0)
@@ -78,11 +91,11 @@ function onDrop(event: DragEvent): void {
     <div class="composer-attach">
       <slot name="attach" />
     </div>
-    <div class="composer-editor">
+    <div ref="editor" class="composer-editor">
       <slot name="editor" />
     </div>
     <div class="composer-model">
-      <slot name="model" />
+      <slot name="model" :room="room" />
     </div>
     <div class="composer-actions flex items-center gap-1">
       <slot name="actions" />
