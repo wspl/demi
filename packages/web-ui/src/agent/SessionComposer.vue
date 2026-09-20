@@ -50,6 +50,11 @@ const props = withDefaults(
     canConfigure?: boolean
     /** Replaces the input with the archive bar. */
     archived?: boolean
+    /**
+     * Why nothing can be sent for now, such as `Cloud is resetting.`: the input
+     * gives way to that line and returns, draft kept, when the caller clears it.
+     */
+    hold?: string | null
   }>(),
   {
     attachments: () => [],
@@ -240,6 +245,12 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
       label="This conversation is archived."
       action="Restore conversation"
       @action="emit('restore')"
+    />
+    <SessionNoticeBar
+      v-else-if="hold"
+      key="hold"
+      :label="hold"
+      busy
     />
     <SessionNoticeBar
       v-else-if="

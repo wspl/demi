@@ -554,6 +554,15 @@ function compact(): void {
 
 const sessionRestore = new RestoreSweep()
 const composerArchived = ref(true)
+// The product clears a hold when the Cloud status it polls says the reset ended.
+const composerHeld = ref(false)
+let composerHoldTimer: ReturnType<typeof setTimeout> | undefined
+function holdComposer(): void {
+  composerHeld.value = true
+  clearTimeout(composerHoldTimer)
+  composerHoldTimer = setTimeout(() => { composerHeld.value = false }, 4000)
+}
+onBeforeUnmount(() => clearTimeout(composerHoldTimer))
 // The model catalog failed to load; Retry reloads it the way the product revalidates.
 const composerModelLoad = ref<'loading' | 'ready' | 'failed'>('failed')
 const composerModelRestore = new RestoreSweep()
@@ -633,7 +642,7 @@ function abortTerminal(id: string) {
     <template v-if="view === 'composer'">
       <GallerySection
         title="Composer"
-        note="Idle through Fast Mode; text formatted as it is typed; each file a capsule where it was put, through its upload phases, a failed upload with Retry, and a remote host file naming its device; and queue. Enter on a message that cannot go shows the send button's reason where the pointer would. A message opens the composer as soon as it needs more than the line it is on, whether it holds lines of its own or its text outgrows the width, and closes it again when it fits; nothing is ever cut off at the line's end. One send; a running turn queues. An unavailable last model keeps the chip, warns, and blocks send. No usable model and an archived conversation both replace the input with the same snackbar: a line on the left, Configure models or Restore conversation on the right. The input keeps at least 128px: where the model chip's name and level would leave it less, the chip is its sparkle alone, the name and level in its tooltip, and it names the model again once there is room; loading and a failed load give way the same. The narrow composer resizes from its corner."
+        note="Idle through Fast Mode; text formatted as it is typed; each file a capsule where it was put, through its upload phases, a failed upload with Retry, and a remote host file naming its device; and queue. Enter on a message that cannot go shows the send button's reason where the pointer would. A message opens the composer as soon as it needs more than the line it is on, whether it holds lines of its own or its text outgrows the width, and closes it again when it fits; nothing is ever cut off at the line's end. One send; a running turn queues. An unavailable last model keeps the chip, warns, and blocks send. No usable model and an archived conversation both replace the input with the same snackbar: a line on the left, Configure models or Restore conversation on the right. A conversation its Cloud holds during a reset uses that snackbar with a spinner and no action, and the input returns with its draft when the reset ends. The input keeps at least 128px: where the model chip's name and level would leave it less, the chip is its sparkle alone, the name and level in its tooltip, and it names the model again once there is room; loading and a failed load give way the same. The narrow composer resizes from its corner."
       >
         <div class="specimen-stack specimen-stack-loose">
           <GallerySpecimen
@@ -891,6 +900,34 @@ function abortTerminal(id: string) {
               placeholder="Ask Demi…"
               :model-load="composerModelLoad"
               @retry-models="retryModels"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen
+            variant="held · Cloud is resetting"
+            wide
+          >
+            <GalleryComposer
+              placeholder="Ask Demi…"
+              hold="Cloud is resetting."
+            />
+          </GallerySpecimen>
+          <GallerySpecimen
+            variant="held · live · the draft returns when the reset ends"
+            wide
+          >
+            <div class="mb-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                :disabled="composerHeld"
+                @click="holdComposer"
+                >Reset Cloud</Button
+              >
+            </div>
+            <GalleryComposer
+              placeholder="Ask Demi…"
+              draft="Run the login test again."
+              :hold="composerHeld ? 'Cloud is resetting.' : null"
             />
           </GallerySpecimen>
           <GallerySpecimen

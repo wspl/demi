@@ -63,6 +63,13 @@ function send() {
 }
 
 const execution = computed(() => executionFor(props.conversation))
+// A reset holds the conversations whose target is the Cloud; the account
+// snapshot the page polls says when it ends, and the input returns by itself.
+const hold = computed(() =>
+  execution.value.kind === 'cloud' && product.snapshot?.cloud?.state === 'resetting'
+    ? 'Cloud is resetting.'
+    : null,
+)
 const remoteHosts = computed(() => {
   const main = execution.value
   const hosts = [
@@ -152,6 +159,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       :usage="usage"
       :remote-files="remoteHosts.length > 0"
       :archived="conversation.archived"
+      :hold="hold"
       @submit="send"
       @configure="openProviders"
       @restore="store.archive([conversation.id], false)"
