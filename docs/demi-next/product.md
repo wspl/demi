@@ -278,6 +278,12 @@ composer and the conversation render a user message with one editor,
 read-only in the conversation, so a sent message cannot look different from
 what was written.
 
+The composer stands one line high while the message fits that line. As soon
+as the message needs more — a line break, a code block, an image, or text
+wider than the line — the composer opens into a box that wraps the text,
+grows to six lines and scrolls beyond them; it closes again once the message
+fits one line. No part of a message is ever cut off at the line's end.
+
 ## Attachments
 
 Short pasted text stays in the composer and sends as message text. A paste of at

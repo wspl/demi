@@ -222,7 +222,7 @@ function changeDraft(markdown: string, ids: string[]): void {
         :dropping="dropping"
         @drop-files="dropFiles"
       >
-        <template #editor>
+        <template #editor="{ line }">
           <MessageEditor
             v-if="messageEdit"
             :key="messageEdit.request.operationId"
@@ -231,6 +231,7 @@ function changeDraft(markdown: string, ids: string[]): void {
             composer
             cancelable
             autofocus
+            :line-width="line"
             :disabled="!edit.editable.value"
             :markdown="edit.markdown.value"
             :capsules="edit.capsules.value"
@@ -248,6 +249,7 @@ function changeDraft(markdown: string, ids: string[]): void {
             ref="editor"
             v-model:multiline="multiline"
             composer
+            :line-width="line"
             :markdown="draft"
             :capsules="capsules"
             :placeholder="placeholder"

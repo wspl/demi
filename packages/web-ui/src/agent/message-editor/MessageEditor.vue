@@ -35,6 +35,11 @@ const props = withDefaults(
     placeholder?: string
     /** What assistive technology calls the field. */
     label?: string
+    /**
+     * How much width one line of the composer offers the text (`ComposerShell`
+     * measures it): a message wider than that needs more than one line.
+     */
+    lineWidth?: number
     /** Takes the focus once it shows, the cursor at the end. */
     autofocus?: boolean
   }>(),
@@ -56,7 +61,10 @@ const emit = defineEmits<{
   blur: []
 }>()
 
-/** The message holds more than one line of text: a line break, a code block or an image. */
+/**
+ * The message needs more than one line: it holds lines of its own (a line
+ * break, a code block or an image), or its text is wider than a line.
+ */
 const multiline = defineModel<boolean>('multiline', { default: false })
 
 const files = useMessageFiles()
@@ -117,11 +125,13 @@ const editor = new Editor({
 })
 // The cursor starts at the end, where files picked before a click land.
 editor.view.dispatch(editor.state.tr.setSelection(Selection.atEnd(editor.state.doc)))
-multiline.value = holdsLines(editor.state.doc)
+measure()
 
 /** The focus waits for tiptap to move the editor's page into place, which happens after mounting. */
 let focusing: ReturnType<typeof setTimeout> | undefined
 onMounted(() => {
+  // On the page at last: how wide the text is can be measured.
+  measure()
   if (props.autofocus) {
     focusing = setTimeout(() => autofocus({ focus: () => editor.commands.focus('end') }))
   }
@@ -132,6 +142,8 @@ onBeforeUnmount(() => {
 })
 
 watch(editable, (value) => editor.setEditable(value, false))
+// A wider or narrower composer holds more or less of the message on its line.
+watch(() => props.lineWidth, measure)
 // Code's colors arrive with the highlighter and follow the page's mode.
 watch(useMarkdownRenderVersion(), () => redrawDecorations(editor))
 // The text and which files it holds, not the files' progress, which their capsules show on their own.
@@ -155,6 +167,38 @@ function holdsLines(doc: ProseMirrorNode): boolean {
   return lines
 }
 
+/** A line's last pixel is its own: rounding must not take a message off it. */
+const LINE_SLACK_PX = 1
+
+/** Tells the owner whether the message still fits one line of the composer. */
+function measure(): void {
+  if (holdsLines(editor.state.doc)) {
+    multiline.value = true
+    return
+  }
+  // A sent message has no line to fit, and a composer's is unknown until it is laid out.
+  const line = props.lineWidth ?? 0
+  multiline.value = line > 0 && textWidth() > line + LINE_SLACK_PX
+}
+
+/**
+ * How wide the message is written out on one line. The editor's box is laid
+ * out unwrapped to be measured and put back in the same frame, so nothing of
+ * it is drawn; its scroll offsets are kept, since the shorter box drops them.
+ */
+function textWidth(): number {
+  const dom = editor.view.dom as HTMLElement
+  const { scrollLeft, scrollTop } = dom
+  dom.style.width = 'max-content'
+  dom.style.whiteSpace = 'pre'
+  const width = dom.scrollWidth
+  dom.style.width = ''
+  dom.style.whiteSpace = ''
+  dom.scrollLeft = scrollLeft
+  dom.scrollTop = scrollTop
+  return width
+}
+
 /** Tells the owner what the message now is. */
 function write(): void {
   // Undo can bring back a capsule whose file was removed with it: it goes again, and that change is written instead.
@@ -166,7 +210,7 @@ function write(): void {
   }
   const { markdown, attachmentIds } = serializeUserMarkdown(editor.getJSON())
   shown = markdown
-  multiline.value = holdsLines(editor.state.doc)
+  measure()
   emit('change', markdown, attachmentIds)
 }
 
@@ -182,7 +226,7 @@ function show(): void {
   landing = null
   const written = serializeUserMarkdown(editor.getJSON())
   shown = written.markdown
-  multiline.value = holdsLines(editor.state.doc)
+  measure()
   // A mark without a file is dropped and a file without a mark lands at the end: the owner hears the result.
   if (written.markdown !== props.markdown || written.attachmentIds.join('\n') !== ids.join('\n')) {
     emit('change', written.markdown, written.attachmentIds)
