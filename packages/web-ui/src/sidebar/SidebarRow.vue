@@ -41,14 +41,17 @@ const emit = defineEmits<{
 }>()
 
 // One quiet mark: a breathing dot while running, blue for a result waiting to be read, orange
-// when the conversation needs the user (it failed or was stopped). Nothing when settled.
+// when the conversation needs the user (it failed or was stopped). A settled row keeps a faint
+// ring in the dot's place, so the column under a project's icon is never empty.
+const SETTLED_DOT = 'border border-fg-faint/60'
+
 const dotClass = computed(() => {
   const { status, unread } = props.conversation
   if (status === 'active') {
     return 'sidebar-breath bg-fg'
   }
   if (props.open || !unread) {
-    return null
+    return SETTLED_DOT
   }
   if (status === 'error' || status === 'aborted') {
     return 'bg-on-warning'
@@ -56,7 +59,7 @@ const dotClass = computed(() => {
   if (status === 'done' && unread) {
     return 'bg-on-info'
   }
-  return null
+  return SETTLED_DOT
 })
 
 // Selected rows are lit; the open one is also emphasized, so it stays visible inside a wider selection.
@@ -112,7 +115,7 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
     @mouseleave="stopMarquee"
   >
     <span class="flex size-3.5 shrink-0 items-center justify-center">
-      <span v-if="dotClass" class="size-1.5 rounded-full" :class="dotClass" />
+      <span class="size-1.5 rounded-full" :class="dotClass" />
     </span>
     <TitleInput
       v-if="renaming"
