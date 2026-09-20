@@ -109,13 +109,6 @@ export class ClaudeCliTransportFactory implements ClaudeTransportFactory {
   async start(request: InferenceRequest): Promise<ClaudeTransport> {
     const args = buildClaudeArgsForRequest(request)
     const wireLog = createClaudeWireLog(request.sessionId)
-    wireLog.record('spawn', {
-      requestId: request.requestId,
-      turnId: request.turnId,
-      model: request.modelId,
-      cwd: request.cwd,
-      args,
-    })
     const oauthAccessToken = this.resolveOAuthAccessToken
       ? await this.resolveOAuthAccessToken()
       : null
@@ -128,6 +121,14 @@ export class ClaudeCliTransportFactory implements ClaudeTransportFactory {
         cwd: request.cwd,
         configDir: `${request.cwd}/.demi-artifacts/claude-config`,
       }
+    wireLog.record('spawn', {
+      requestId: request.requestId,
+      turnId: request.turnId,
+      model: request.modelId,
+      // Where the process runs, which a product may place away from the request's directory.
+      cwd: place.cwd,
+      args,
+    })
     const handle = this.spawnFn
       ? await this.spawnFn({
           command: place.command,
