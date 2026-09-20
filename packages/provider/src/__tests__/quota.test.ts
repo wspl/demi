@@ -179,3 +179,29 @@ test('percent helpers', () => {
   expect(unixSecondsToIso('2026-07-09T09:00:00.000Z'))
     .toBe('2026-07-09T09:00:00.000Z')
 })
+
+test('a probe and an observation keep each other\'s windows, and a probe says the plan', async () => {
+  const quota = createProviderQuota({
+    providerId: 'vendor',
+    canProbe: true,
+    canObserve: true,
+    probeCost: 'free',
+    probe: async () => ({
+      plan: { id: 'pro', label: 'Pro' },
+      windows: [{ id: 'weekly', label: 'Weekly', usedPercent: 40, unit: 'percent', resetsAt: null }],
+    }),
+    observe: () => ({
+      windows: [{ id: 'requests', label: 'Requests', usedPercent: 5, unit: 'requests', resetsAt: null }],
+    }),
+  })
+  quota.observeResponse?.({ headers: new Headers() })
+  const probed = await quota.probe({ force: true })
+  // The probe knows nothing of the request window; it stays.
+  expect(probed.windows.map(window => window.id).sort()).toEqual(['requests', 'weekly'])
+  expect(probed.plan?.label).toBe('Pro')
+  const observed = quota.observeResponse?.({ headers: new Headers() })
+  expect(observed?.windows.map(window => window.id).sort()).toEqual(['requests', 'weekly'])
+  expect(observed?.plan?.label).toBe('Pro')
+  quota.clearLatest?.()
+  expect(quota.latest()).toBeNull()
+})

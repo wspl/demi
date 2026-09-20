@@ -143,8 +143,10 @@ export function mapGrokQuotaProbe(
   const usedPercent = clampUsedPercent(config?.creditUsagePercent)
     ?? usedPercentFromRatio(used, monthlyLimit)
 
-  const windows: ProviderQuotaWindow[] = [
-    {
+  const windows: ProviderQuotaWindow[] = []
+  // A plan that meters no credits names none of these; a window with nothing to show is not one.
+  if (usedPercent !== null || used !== null || monthlyLimit !== null) {
+    windows.push({
       id: isWeekly ? 'weekly' : 'monthly',
       label: isWeekly ? 'Weekly credits' : 'Monthly credits',
       usedPercent,
@@ -153,8 +155,8 @@ export function mapGrokQuotaProbe(
       unit: 'credits',
       resetsAt,
       severity: severityFromUsedPercent(usedPercent),
-    },
-  ]
+    })
+  }
 
   if (onDemandCap != null && onDemandCap > 0) {
     windows.push({

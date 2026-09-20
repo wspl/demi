@@ -226,15 +226,20 @@ export function createProviderQuota(
     partial: ProviderQuotaProbeResult,
     source: Exclude<ProviderQuotaSource, 'cache'>,
   ): ProviderQuotaSnapshot => {
-    const previous = source === 'observation' ? latest : null
+    // A probe and an observation can report different windows (a plan's
+    // credits, a request rate), so each replaces its own and keeps the other's.
+    // Plan and account are the probe's to say; an observation keeps them.
+    const previous = latest
     const snapshot: ProviderQuotaSnapshot = {
       providerId: options.providerId,
       observedAt: new Date().toISOString(),
       source,
-      plan: partial.plan === undefined ? previous?.plan ?? null : partial.plan,
-      accountLabel: partial.accountLabel === undefined
+      plan: partial.plan === undefined && source === 'observation'
+        ? previous?.plan ?? null
+        : partial.plan ?? null,
+      accountLabel: partial.accountLabel === undefined && source === 'observation'
         ? previous?.accountLabel ?? null
-        : partial.accountLabel,
+        : partial.accountLabel ?? null,
       windows: previous
         ? mergeQuotaWindows(previous.windows, partial.windows)
         : partial.windows,
