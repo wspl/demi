@@ -110,7 +110,7 @@ const { copy: copyLink, copied: linkCopied } = useClipboard({ copiedDuring: 1500
             <ExternalLink :size="ICON_PX.in24" />
           </Button>
           <!-- For a browser on another machine, or another profile: the link alone. -->
-          <Tooltip :content="linkCopied ? 'Copied' : 'Copy link'">
+          <Tooltip :content="linkCopied ? 'Copied' : 'Copy the link to sign in from another browser or device'">
             <IconButton
               :icon="linkCopied ? Check : Link"
               variant="ghost"
