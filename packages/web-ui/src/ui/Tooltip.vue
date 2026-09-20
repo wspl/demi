@@ -84,8 +84,12 @@ const { floatingStyles } = useFloating(triggerRef, floatingRef, {
   transform: false,
 })
 
+/** How long a tip that was asked for, rather than pointed at, stays. */
+const ASKED_MS = 3000
+
 let openTimer: ReturnType<typeof setTimeout> | null = null
 let closeTimer: ReturnType<typeof setTimeout> | null = null
+let askedTimer: ReturnType<typeof setTimeout> | null = null
 let scrollTargets: EventTarget[] = []
 let stopClickOutside: (() => void) | undefined
 
@@ -133,9 +137,17 @@ function clearCloseTimer() {
   closeTimer = null
 }
 
+function clearAskedTimer() {
+  if (!askedTimer)
+    return
+  clearTimeout(askedTimer)
+  askedTimer = null
+}
+
 function clearTimers() {
   clearOpenTimer()
   clearCloseTimer()
+  clearAskedTimer()
 }
 
 function openNow() {
@@ -192,6 +204,24 @@ watch(canShow, (nextCanShow) => {
 })
 
 useOverlay(overlayStore.value, isOpen, closeNow, 'hint')
+
+defineExpose({
+  /**
+   * Shows the tip without the pointer, to answer something the user just
+   * tried — Enter on a send that cannot send. It goes by itself, and sooner
+   * if anything that dismisses a tip happens first.
+   */
+  show(): void {
+    clearTimers()
+    openNow()
+    if (isOpen.value) {
+      askedTimer = setTimeout(() => {
+        askedTimer = null
+        closeNow()
+      }, ASKED_MS)
+    }
+  },
+})
 
 onBeforeUnmount(() => {
   clearTimers()
