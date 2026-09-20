@@ -132,6 +132,47 @@ not set it generates one into its data directory.
 Because a credential is a record, any worker reads the same accounts, the same
 selection and the same usage; there is no pool directory to distribute.
 
+### Scope
+
+A credential has no owner of its own. It belongs to a provider entry, and the
+entry carries the scope: instance-owned in shared mode, user-owned in isolated
+mode ([Instance mode](product.md#instance-mode-shared-vs-isolated)). Every
+credential operation resolves the entry first, under the same two rules as the
+entry itself, so no route or store call can name an account without passing the
+entry's scope check:
+
+| | Instance-owned entry | User-owned entry |
+|---|---|---|
+| Who adds, tests, refreshes, selects and removes accounts | Master and admins | The owner |
+| Who infers with the active account | Every user | The owner |
+| Who sees account labels, plan and usage | Master and admins | The owner |
+| What a user who only infers sees | The entry and its models; no account, plan or usage | — |
+| Lifetime | Until an admin removes the account or the entry; the admin who added it leaving changes nothing | Removed with the entry, and with the user |
+
+The store the backend hands a provider package is bound to one entry. A package
+cannot list or read another entry's accounts, whatever the scope.
+
+An instance-owned account is a shared resource, which sharpens three rules:
+
+- **Refresh.** Many users on many workers use the same account at once, so the
+  versioned `replace` below is what keeps one user's refresh from invalidating
+  everyone else's tokens. A user-owned account normally has one user on one
+  worker; the rule is the same and rarely contended.
+- **Usage.** The vendor's windows are consumed by all users together. The
+  snapshot describes the account, not a user; per-user consumption is the usage
+  ledger's, not the vendor's.
+- **Disclosure.** A process provider sends the active account's token to the
+  execution target ([Claude Code execution boundary](#claude-code-execution-boundary)).
+  For a user-owned entry that is the owner's token on the owner's machine. For
+  an instance-owned entry it is the instance's token on a machine the user
+  controls: every user who may infer with it can read it. An instance-owned
+  Claude Code entry is therefore off unless the deployment sets
+  `DEMI_SHARED_PROCESS_PROVIDERS=1`, which states that its users are trusted
+  with that token. Network providers never send a token off the backend.
+
+A row whose entry does not fit the running mode is kept and unused, as the entry
+is. Nothing moves a credential between scopes.
+
 ### The credential store contract
 
 A provider package does not know where credentials live. It receives a
