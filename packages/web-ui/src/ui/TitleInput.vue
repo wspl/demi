@@ -1,14 +1,18 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import TextInput from './TextInput.vue'
 
 /**
- * A title edited where it stands. It takes the look of the text it replaces
- * from its class, arrives focused with the title selected, and ends once:
- * Enter or leaving it submits the trimmed title, Escape cancels. An empty or
- * unchanged title cancels too, so a caller only hears a real rename.
+ * A title edited where it stands, in the framed field every text input is.
+ * It arrives focused with the title selected and shown from its start, and
+ * ends once: Enter or leaving it submits the trimmed title, Escape cancels.
+ * An empty or unchanged title cancels too, so a caller only hears a real rename.
  */
 const props = defineProps<{
   title: string
+  /** Height family of the surface's other controls. */
+  size?: 'sm' | 'md'
+  label?: string
 }>()
 
 const emit = defineEmits<{
@@ -16,7 +20,7 @@ const emit = defineEmits<{
   cancel: []
 }>()
 
-const input = ref<HTMLInputElement>()
+const field = ref<InstanceType<typeof TextInput>>()
 const value = ref(props.title)
 // Enter ends the edit and the input then loses focus; the blur must not end it again.
 let settled = false
@@ -43,19 +47,26 @@ function cancel(): void {
 }
 
 onMounted(() => {
-  input.value?.focus()
-  input.value?.select()
+  const input = field.value?.el
+  if (!input) {
+    return
+  }
+  input.focus()
+  // Selected backward, the caret is at the start, and a title longer than the
+  // field shows its beginning instead of its end.
+  input.setSelectionRange(0, input.value.length, 'backward')
+  input.scrollLeft = 0
 })
 </script>
 
 <template>
-  <input
-    ref="input"
+  <TextInput
+    ref="field"
     v-model="value"
-    class="min-w-0 bg-transparent outline-none"
-    aria-label="Title"
-    @keydown.enter.stop="submit"
-    @keydown.escape.stop="cancel"
+    :size="size"
+    :aria-label="label ?? 'Title'"
+    @keydown.enter.stop.prevent="submit"
+    @keydown.escape.stop.prevent="cancel"
     @keydown.stop
     @blur="submit"
     @click.stop

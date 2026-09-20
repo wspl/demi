@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import {
   Brain,
   Check,
@@ -29,6 +29,7 @@ import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import Switch from '@demicodes/web-ui/ui/Switch.vue'
 import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import CommitTextInput from '../ui/CommitTextInput.vue'
+import TitleInput from '../ui/TitleInput.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import VendorMark from '@demicodes/web-ui/ui/VendorMark.vue'
@@ -184,30 +185,12 @@ function select(id: string) {
 // Adding happens in its own dialog; the host appends the entry and selects it.
 const addOpen = ref(false)
 
-// The name edits in place: Enter or blur commits, Escape cancels.
+// The name edits in place (`TitleInput`).
 const renaming = ref(false)
-const renameDraft = ref('')
-const renameInput = ref<InstanceType<typeof TextInput>>()
 
-function beginRename() {
-  if (!selected.value) {
-    return
-  }
-  renameDraft.value = selected.value.name
-  renaming.value = true
-  void nextTick(() => {
-    renameInput.value?.focus()
-    renameInput.value?.select()
-  })
-}
-
-function commitRename() {
-  if (!renaming.value) {
-    return
-  }
+function rename(name: string) {
   renaming.value = false
-  const name = renameDraft.value.trim()
-  if (name && selected.value) {
+  if (selected.value) {
     emit('change', selected.value, { name })
   }
 }
@@ -390,15 +373,13 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                   <div
                     class="flex h-8 flex-wrap items-center gap-x-1.5 gap-y-2"
                   >
-                    <TextInput
+                    <TitleInput
                       v-if="renaming"
-                      ref="renameInput"
-                      v-model="renameDraft"
                       class="w-56 max-w-full"
-                      aria-label="Provider name"
-                      @keydown.enter.prevent="commitRename"
-                      @keydown.escape.prevent="renaming = false"
-                      @blur="commitRename"
+                      label="Provider name"
+                      :title="selected.name"
+                      @submit="rename"
+                      @cancel="renaming = false"
                     />
                     <template v-else>
                       <h3
@@ -413,7 +394,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                           size="sm"
                           :icon="TextCursorInput"
                           aria-label="Rename"
-                          @click="beginRename"
+                          @click="renaming = true"
                       /></Tooltip>
                     </template>
                     <div class="ml-auto flex items-center gap-1.5">
