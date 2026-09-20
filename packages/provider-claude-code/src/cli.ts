@@ -39,6 +39,8 @@ export function buildClaudeEnv(
   const env: NodeJS.ProcessEnv = {
     ...base,
     DISABLE_AUTO_COMPACT: '1',
+    // Whoever installed this CLI chose its version; a request must not change it.
+    DISABLE_AUTOUPDATER: '1',
     MAX_MCP_OUTPUT_TOKENS: '1000000',
   }
   delete env.CLAUDECODE

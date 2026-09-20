@@ -278,6 +278,19 @@ inference for a probe returns `quota_requires_inference`; no data returns null,
 not a fabricated percentage. Reading status never invokes inference.
 `POST /api/providers/:id/test` takes `{ modelId, credentialId? }` and tests
 with that account, in use or not.
+A provider whose transport is a process is tested on the acting user's Cloud
+([The Claude Code CLI](claude-cli.md#where-it-runs)), which the test wakes.
+
+A subscription entry's CLI is read and managed under `/api/providers/:id/cli`:
+
+| Route | Meaning |
+|---|---|
+| `GET …/cli?refresh=` | `{ newest, held, install, machines }`: the vendor's newest version (`{ version }`, or `{ error }` when the vendor cannot be read; `refresh=true` asks it at once), the version the entry is held at or null, the last Cloud install (`installing`, `installed` with its path, `failed` with its message, or null), and for each of the user's machines connected now its installed versions, or null when it did not answer. It wakes nothing. |
+| `PUT …/cli` | `{ held }`: hold the entry at a version the vendor publishes (`unknown_version` otherwise), or null to follow the newest. |
+| `POST …/cli/install` | Starts the Cloud install again; 202 with its state. |
+
+Adding an account to such an entry starts the same install; its failure is this
+state and never the failure of adding the account.
 
 On a shared instance every user reads provider state, but only the master sees
 accounts, plan and usage: for everyone else `accounts` is empty, `active` names
