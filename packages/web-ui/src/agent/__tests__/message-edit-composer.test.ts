@@ -37,7 +37,7 @@ test('an edit opens as its text with a capsule where each file is, and a change 
     expect(f.editor.capsules.value.map((capsule) => capsule.name)).toEqual(['same.pdf', 'same.pdf'])
     const second = f.editor.capsules.value[1]!.id
     // The first capsule is deleted, and the text around it joined and changed.
-    f.editor.change(`first\nparagraph, then the second${MARK}`, [second])
+    f.editor.change(`first\nparagraph, then the second${MARK}`, [f.editor.capsules.value[1]!])
     expect(f.state.value!.request.content).toEqual([
       { type: 'text', text: 'first\nparagraph, then the second' },
       pdf(2),
@@ -67,14 +67,13 @@ test('sending and uncertain requests cannot be modified or discarded from the co
 test('a file read into an edit becomes a capsule for the editor to place, and text typed meanwhile stays', async () => {
   const f = fixture()
   try {
-    const ids = f.editor.capsules.value.map((capsule) => capsule.id)
+    const shown = [...f.editor.capsules.value]
     const pending = f.editor.addFiles([new File(['%PDF-new'], 'new.pdf', { type: 'application/pdf' })])
-    f.editor.change(`typed during read${MARK}${MARK}`, ids)
-    await pending
-    const added = f.editor.capsules.value.at(-1)!
+    f.editor.change(`typed during read${MARK}${MARK}`, shown)
+    const added = (await pending)[0]!
     expect(added.name).toBe('new.pdf')
     expect(f.state.value!.request.content[0]).toEqual({ type: 'text', text: 'typed during read' })
-    f.editor.change(`typed during read${MARK}${MARK}${MARK}`, [...ids, added.id])
+    f.editor.change(`typed during read${MARK}${MARK}${MARK}`, [...shown, added])
     expect(f.state.value!.request.content.at(-1)).toEqual({
       type: 'document', source: { fileName: 'new.pdf', mediaType: 'application/pdf', data: new TextEncoder().encode('%PDF-new') },
     })

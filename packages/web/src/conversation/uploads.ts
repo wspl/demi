@@ -1,9 +1,9 @@
 import { z } from 'zod'
 import {
   applyAttachmentUpdate,
+  arrangeCapsuleFiles,
   attachmentFileError,
   AttachmentUploadQueue,
-  arrangeCapsuleFiles,
   attachTextSnippet,
   composerAttachmentFromFile,
   composerFileNames,
@@ -18,8 +18,6 @@ export function createConversationUploads(
   onError: (error: unknown) => void,
 ) {
   const uploads = new AttachmentUploadQueue()
-  /** Files whose capsule was deleted, by conversation: they wait there for an undo. */
-  const aside = new Map<string, ProductAttachment[]>()
   async function uploadFile(
     item: Extract<ProductAttachment, { kind: 'file' }>,
   ): Promise<void> {
@@ -54,7 +52,13 @@ export function createConversationUploads(
     }
   }
 
-  function addFiles(conversation: Conversation, files: File[]): void {
+  /**
+   * Takes files for a conversation's message and answers with what it took,
+   * for the composer to put their capsules where they belong in the text. A
+   * text file's opening is read first, since its capsule carries it.
+   */
+  async function addFiles(conversation: Conversation, files: File[]): Promise<ProductAttachment[]> {
+    const taken: ProductAttachment[] = []
     for (const file of files) {
       const error = attachmentFileError(file, composerFileNames(conversation.files))
       if (error) {
@@ -66,15 +70,18 @@ export function createConversationUploads(
         file,
         upload: null,
       }
+      await attachTextSnippet(item, file)
       conversation.files.push(item)
       const reactiveItem = conversation.files.find(
         (attachment) => attachment.id === item.id,
       )!
       if (isComposerFile(reactiveItem)) {
-        void attachTextSnippet(reactiveItem, file)
         void uploadFile(reactiveItem).catch(onError)
       }
+      taken.push(reactiveItem)
     }
+    onChange()
+    return taken
   }
 
   /** Lets a file go for good: its transfer stops and its picture is freed. */
@@ -91,66 +98,64 @@ export function createConversationUploads(
       releaseFile(item)
     }
     conversation.files = conversation.files.filter((item) => item.id !== id)
+    conversation.attachmentIds = conversation.attachmentIds.filter((each) => each !== id)
     onChange()
   }
 
-  /** Drops what a conversation set aside; from here nothing can bring those files back. */
-  function releaseAside(conversation: Conversation): void {
-    for (const item of aside.get(conversation.id) ?? []) {
-      releaseFile(item)
-    }
-    aside.delete(conversation.id)
-  }
-
   /**
-   * Keeps the draft's files to its capsules, in their order. A file whose
-   * capsule left the text is set aside, so undoing the deletion brings both
-   * back, and a capsule that comes back takes its file from there. The files
-   * of a message still being sent are not the draft's.
+   * The files the message now has, in the order of its capsules; the rest the
+   * composer goes on carrying, in case an undo brings their capsules back
+   * (`arrangeCapsuleFiles`). The files of a message being sent are not its.
    */
   function arrangeFiles(conversation: Conversation, ids: readonly string[]): void {
     const sending = new Set(conversation.pendingSend?.fileIds ?? [])
     const next = arrangeCapsuleFiles(
       conversation.files,
-      aside.get(conversation.id) ?? [],
+      conversation.attachmentIds,
       ids,
       (item) => sending.has(item.id),
     )
-    // A file set aside stops uploading; coming back, it uploads again from the start.
-    for (const item of next.detached) {
+    conversation.attachmentIds = [...ids]
+    conversation.files = next.carried
+    for (const item of next.stopped) {
       uploads.cancel(item.id)
     }
-    conversation.files = next.files
-    if (next.aside.length) {
-      aside.set(conversation.id, next.aside)
-    } else {
-      aside.delete(conversation.id)
-    }
-    for (const item of next.restored) {
-      if (isComposerFile(item) && item.phase !== 'ready') {
+    for (const item of next.resumed) {
+      if (item.kind === 'file' && item.phase !== 'ready') {
         void uploadFile(item).catch(onError)
       }
     }
     onChange()
   }
 
+  /** Lets go of the files no capsule stands for: nothing can bring them back now. */
+  function releaseSpare(conversation: Conversation): void {
+    const has = new Set(conversation.attachmentIds)
+    for (const file of conversation.files) {
+      if (!has.has(file.id)) {
+        releaseFile(file)
+      }
+    }
+    conversation.files = conversation.files.filter((file) => has.has(file.id))
+    onChange()
+  }
+
   function dispose(conversations: Conversation[]): void {
     uploads.cancelAll()
     for (const conversation of conversations) {
-      for (const item of [...conversation.files, ...aside.get(conversation.id) ?? []]) {
+      for (const item of conversation.files) {
         if (isComposerFile(item) && item.src) {
           URL.revokeObjectURL(item.src)
         }
       }
     }
-    aside.clear()
   }
   return {
     uploadFile,
     addFiles,
     retryFile,
     removeFile,
-    releaseAside,
+    releaseSpare,
     arrangeFiles,
     dispose,
   }

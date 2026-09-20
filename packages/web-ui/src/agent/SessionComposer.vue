@@ -11,7 +11,7 @@ import {
 } from './message-input/attachments'
 import { useMessageEditComposer } from './message-input/useMessageEditComposer'
 import { editHasContent, type MessageEditState } from './message-editing'
-import { composerCapsule } from './message-editor/capsules'
+import { composerCapsule, composerTransfer, provideTransfers, type MessageCapsule } from './message-editor/capsules'
 import MessageEditor from './message-editor/MessageEditor.vue'
 import { showToast } from '../infra/toast'
 import ComposerShell from './ComposerShell.vue'
@@ -66,7 +66,7 @@ const emit = defineEmits<{
   addFiles: [files: File[]]
   /** Open the host's file browser; the caller attaches what it returns, and its capsule lands at the cursor. */
   attachRemote: []
-  /** The capsules now in the text, in order: an attachment left out was removed from it. */
+  /** The files the message now carries, in the order of their capsules. */
   arrangeAttachments: [ids: string[]]
   /** Try a failed upload again. */
   retryAttachment: [id: string]
@@ -92,10 +92,27 @@ watch(() => props.messageEdit?.request.operationId, () => {
 /** The message holds more than one line, so the composer grows to hold it. */
 const multiline = ref(false)
 const fileInput = ref<HTMLInputElement>()
-const capsules = computed(() => props.attachments.map(composerCapsule))
+/** What the composer carries, as the editor builds its document from it. */
+const carried = computed(() => props.attachments.map(composerCapsule))
+/** The files the message has, in the order of their capsules: the document says so. */
+const capsules = ref<MessageCapsule[]>(carried.value)
+/** Their transfers, which the capsules in the editor read. */
+provideTransfers({
+  transfer: (id) => {
+    const item = props.attachments.find((each) => each.id === id)
+    return item ? composerTransfer(item) : undefined
+  },
+  carries: (id) => props.attachments.some((each) => each.id === id),
+  retry: (id) => emit('retryAttachment', id),
+})
+/** The files of the message, not the ones the composer still holds for an undo. */
+const carrying = computed(() => {
+  const ids = new Set(capsules.value.map((capsule) => capsule.id))
+  return props.attachments.filter((item) => ids.has(item.id))
+})
 const hasDraft = computed(
   () => props.messageEdit ? editHasContent(props.messageEdit)
-    : !!draft.value.trim() || !!props.attachments.length,
+    : !!draft.value.trim() || !!capsules.value.length,
 )
 const modelState = computed(() =>
   composerModel(
@@ -111,7 +128,7 @@ const sendDisabled = computed(
     modelState.value.kind !== 'ready' ||
     (props.messageEdit
       ? props.messageEdit.phase === 'sending' || !!edit.reading.value
-      : !attachmentsReady(props.attachments)),
+      : !attachmentsReady(carrying.value)),
 )
 const sendBlockReason = computed(() => {
   if (modelState.value.kind === 'unavailable') {
@@ -120,7 +137,7 @@ const sendBlockReason = computed(() => {
   if (props.disabled) {
     return undefined
   }
-  return props.messageEdit ? undefined : attachmentSendBlockReason(props.attachments)
+  return props.messageEdit ? undefined : attachmentSendBlockReason(carrying.value)
 })
 // The composer shows no failure text of its own: a file that could not be
 // read for an edit is a toast, a failed upload is its capsule's Retry, and a
@@ -172,17 +189,36 @@ function attachRemote() {
   emit('attachRemote')
 }
 
-function addFiles(files: File[]): void {
-  if (props.messageEdit) {
-    void edit.addFiles(files)
-  } else {
+async function addFiles(files: File[]): Promise<void> {
+  if (!props.messageEdit) {
     emit('addFiles', files)
+    return
   }
+  // An edit reads its files itself; their capsules go in where they were told to land.
+  insertCapsules(await edit.addFiles(files))
 }
 
-function changeDraft(markdown: string, ids: string[]): void {
+/** Puts files the host took into the message, where the composer said they would land. */
+function insertCapsules(added: readonly MessageCapsule[]): void {
+  editor.value?.insertCapsules(added)
+}
+
+defineExpose({
+  /** Files the host has taken: their capsules go into the message where they were told to land. */
+  insertCapsules,
+  /** Files are on their way: the next capsules land at the cursor. */
+  placeNextFiles(event?: DragEvent): void {
+    editor.value?.placeNextFiles(event)
+  },
+})
+
+function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
   draft.value = markdown
-  if (ids.join('\n') !== props.attachments.map((item) => item.id).join('\n')) {
+  const had = capsules.value.map((capsule) => capsule.id).join('\n')
+  capsules.value = attachments
+  const ids = attachments.map((capsule) => capsule.id)
+  // The host hears which files the message has only when that changes; its text it hears every time.
+  if (ids.join('\n') !== had) {
     emit('arrangeAttachments', ids)
   }
 }
@@ -234,7 +270,7 @@ function changeDraft(markdown: string, ids: string[]): void {
             :line-width="line"
             :disabled="!edit.editable.value"
             :markdown="edit.markdown.value"
-            :capsules="edit.capsules.value"
+            :attachments="edit.capsules.value"
             :placeholder="placeholder"
             label="Message"
             @change="edit.change"
@@ -251,13 +287,12 @@ function changeDraft(markdown: string, ids: string[]): void {
             composer
             :line-width="line"
             :markdown="draft"
-            :capsules="capsules"
+            :attachments="carried"
             :placeholder="placeholder"
             label="Message"
             @change="changeDraft"
             @submit="submit"
             @files="addFiles"
-            @retry="emit('retryAttachment', $event)"
             @focus="focused = true"
             @blur="focused = false"
           />

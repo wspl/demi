@@ -4,7 +4,7 @@ import { CircleAlert, RotateCw } from '@lucide/vue'
 import FileIcon from '../../files/FileIcon.vue'
 import Tooltip from '../../ui/Tooltip.vue'
 import { useMediaUrl } from '../media-source'
-import type { MessageCapsule } from './capsules'
+import type { MessageCapsule, MessageTransfer } from './capsules'
 
 /**
  * One file in a message's text: its picture or its kind's icon, then its
@@ -21,6 +21,8 @@ import type { MessageCapsule } from './capsules'
  */
 const props = defineProps<{
   capsule: MessageCapsule
+  /** How far the file is on its way, while the composer still carries it. */
+  transfer?: MessageTransfer
   /** The editor holds it as its selection. */
   selected?: boolean
 }>()
@@ -36,8 +38,8 @@ const circumference = 2 * Math.PI * radius
 
 const loaded = useMediaUrl(() => typeof props.capsule.image === 'object' ? props.capsule.image : undefined)
 const image = computed(() => typeof props.capsule.image === 'string' ? props.capsule.image : loaded.value)
-const uploading = computed(() => props.capsule.upload?.phase === 'uploading' ? props.capsule.upload : null)
-const failed = computed(() => props.capsule.upload?.phase === 'failed')
+const uploading = computed(() => props.transfer?.phase === 'uploading' ? props.transfer : null)
+const failed = computed(() => props.transfer?.phase === 'failed')
 const caption = computed(() => {
   const { host, path, name } = props.capsule
   if (failed.value) {
@@ -75,7 +77,7 @@ const preview = computed<
         failed ? 'bg-tint-danger text-on-danger' : 'bg-[var(--btn-bg)] text-fg-body',
         selected ? 'outline outline-2 outline-line-focus' : '',
       ]"
-      :data-phase="capsule.upload?.phase"
+      :data-phase="transfer?.phase"
       :aria-label="caption"
       :aria-busy="uploading ? true : undefined"
     >
