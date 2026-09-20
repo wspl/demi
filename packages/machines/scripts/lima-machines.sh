@@ -9,6 +9,7 @@
 #
 #   scripts/lima-machines.sh [--backend-port 3271] [--slots 16]
 #                            [--kernel <path>] [--rootfs <path>]
+#                            [--data-size 100GiB]
 #
 # The kernel and rootfs paths are as seen inside the instance; they default to
 # the checkout's `packages/guest-image/out/<arch>/` on the home mount.
@@ -20,6 +21,11 @@ backend_port=3271
 slots=16
 kernel=""
 rootfs=""
+# The manager's state lives on its own XFS disk so image copies are clones
+# (`docs/demi-next/managed-hosts.md` § Lifecycle and capacity). It is sparse:
+# this is the size it may grow into, not what it takes.
+data_disk=demi-machines-data
+data_size=100GiB
 while [ $# -gt 0 ]; do
   case "$1" in
     --backend-port)
@@ -36,6 +42,10 @@ while [ $# -gt 0 ]; do
       ;;
     --rootfs)
       rootfs=$2
+      shift 2
+      ;;
+    --data-size)
+      data_size=$2
       shift 2
       ;;
     *)
@@ -56,6 +66,11 @@ case "$(limactl list --format '{{.Status}}' "$instance" 2>/dev/null)" in
     limactl start "$instance"
     ;;
   *)
+    # The template claims this disk, so it has to exist before the instance.
+    # An instance made before the disk keeps its state on the instance disk,
+    # where copies are copies; the manager says so as it starts.
+    limactl disk ls --format '{{.Name}}' 2>/dev/null | grep -qx "$data_disk" ||
+      limactl disk create "$data_disk" --size "$data_size"
     limactl start --name "$instance" "$here/lima/demi-machines.yaml"
     ;;
 esac

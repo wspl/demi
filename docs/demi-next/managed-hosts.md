@@ -190,11 +190,26 @@ Initial disk capacity is not quota; growth applies separately to each volume.
 Archiving conversations and deleting project metadata do not delete Cloud.
 Account-data destruction requires a separate explicit retention/deletion policy.
 
-Image copying requests filesystem cloning where supported. The design does not
-guarantee sparse or constant-cost copies. Host capacity must account for working
-disks and retained generations; actual allocation depends on the filesystem.
-Measure disk allocation, command-ready latency, and host memory on the deployment
-rather than inferring them from guest RAM or nominal disk sizes.
+Image copying requests filesystem cloning, so the manager's state belongs on a
+filesystem that clones: XFS with `reflink=1`, or btrfs. A clone costs nothing
+until something writes, and a machine then pays for what its guest changed
+rather than for a whole image on every wake and every published generation. On
+one 2 GiB guest disk, cloning took 6 ms and no space on XFS against 1.5 s and
+2 GiB on ext4, and 256 MiB of small guest writes into the clone cost 258 MiB.
+XFS also needs its copy-on-write extent hint set to the block size on that
+directory: left at its default the hint rounds each small write up until
+nothing is shared, which turned the same 256 MiB of writes into 2 GiB.
+[Setting up managed hosts](../managed-hosts-setup.md) carries the commands.
+
+The design does not guarantee sparse or constant-cost copies, and a filesystem
+without clones is slower and larger rather than wrong. Host capacity must
+account for working disks and retained generations; actual allocation depends on
+the filesystem. Cloning trades contiguity for sharing: a guest disk written at
+random ends up in about 120,000 extents on either filesystem, and neither
+defragments shared extents, so a disk rewritten many times is tidied by
+publishing a generation, not by a defragmenter. Measure disk allocation,
+command-ready latency, and host memory on the deployment rather than inferring
+them from guest RAM or nominal disk sizes.
 
 ## System reset
 
