@@ -1503,7 +1503,7 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="Product session"
-        note="The shared product page, with local fixture state and handlers. The header gives its title up to 260px and cuts it short last: a longer title is cut to that and the buttons keep their names, and as the frame narrows, the directory button and then the host button become their icons, their names in tooltips, and they name themselves again once the title fits whole. Resize the frame from its corner. The Rename button beside the title renames it in place: Enter or clicking away keeps the new title, Escape or an empty one keeps the old."
+        note="The shared product page, with local fixture state and handlers. The header gives its title up to 260px and cuts it short last: a longer title is cut to that and the buttons keep their names, and as the frame narrows, the directory button and then the host button become their icons, their names in tooltips, and they name themselves again once the title fits whole. Resize the frame from its corner. The Rename button beside the title renames it in place: Enter or clicking away keeps the new title, Escape or an empty one keeps the old. The button after it asks the model for a new title from the user's messages: it spins while the title is written, the title changes, and the button goes away until the next message, which this specimen stands in for with a pause."
       >
         <div class="max-w-full resize-x overflow-hidden pb-3" style="min-width: 20rem">
           <GalleryConnectedSession />

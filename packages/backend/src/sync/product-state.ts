@@ -1,3 +1,4 @@
+import type { ConversationTitles } from '../conversation/title'
 import type { AgentServer } from '@demicodes/agent'
 import type { User, InstanceMode } from '../auth/identity'
 import type { ControlService } from '../storage/control'
@@ -28,10 +29,11 @@ export class ProductState {
     managed: ManagedHosts | null;
     mode: InstanceMode;
     exposes: Exposes;
+    titles: ConversationTitles;
   }) {}
 
   async read(user: User) {
-    const { control, stores, server, registry, vault, assembly, managed, mode, exposes } = this.deps
+    const { control, stores, server, registry, vault, assembly, managed, mode, exposes, titles } = this.deps
     const [active, archived, workspaces, paired, managedDevice, preferences, entries, cloud, exposeRecords] = await Promise.all(
       [
         control.listConversations(user.id),
@@ -73,7 +75,7 @@ export class ProductState {
       workspaces,
       providers,
       conversations: await Promise.all([...active, ...archived].map(
-        conversation => conversationSummary(conversation, { stores, server, control, registry })
+        conversation => conversationSummary(conversation, { stores, server, control, registry, titles })
       )),
       devices: devices.map(device => ({
         ...device,
