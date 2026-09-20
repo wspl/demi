@@ -4,7 +4,7 @@ import { provideMessageFiles } from '../markdown/message-files'
 import type { ConversationFiles } from '../markdown/types'
 import { computed, ref, watch } from 'vue'
 import { useElementSize } from '@vueuse/core'
-import { PanelRight, Pencil, Play } from '@lucide/vue'
+import { PanelRight, Play, TextCursorInput } from '@lucide/vue'
 import type { TranscriptVersion } from '@demicodes/agent/client'
 import { beginMessageEdit, lastEditableUserMessageId, type MessageEditState } from './message-editing'
 import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
@@ -163,7 +163,7 @@ watch(() => props.conversation.id, close)
           </h1>
           <Tooltip content="Rename" class="shrink-0">
             <IconButton
-              :icon="Pencil"
+              :icon="TextCursorInput"
               variant="ghost"
               aria-label="Rename"
               :disabled="conversation.archived"

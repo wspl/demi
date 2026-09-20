@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Archive, ArrowRight, Copy, FolderInput, Pencil, Pin, PinOff } from '@lucide/vue'
+import { Archive, ArrowRight, Copy, FolderInput, Pin, PinOff, TextCursorInput } from '@lucide/vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
@@ -51,7 +51,7 @@ const many = computed(
         @select="emit('open', single.id)"
       />
       <MenuItem
-        :icon="Pencil"
+        :icon="TextCursorInput"
         label="Rename"
         shortcut="F2"
         @select="emit('rename', single.id)"
