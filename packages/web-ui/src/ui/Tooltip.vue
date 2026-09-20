@@ -1,5 +1,12 @@
+<script lang="ts">
+import type { InjectionKey } from 'vue'
+
+/** How a tip tells the tip around it that something inside is showing. One key for every instance. */
+const tooltipNestKey: InjectionKey<{ showing(delta: 1 | -1): void }> = Symbol('tooltip-nest')
+</script>
+
 <script setup lang="ts">
-import { computed, inject, onBeforeUnmount, ref, useAttrs, useSlots, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, provide, ref, useAttrs, useSlots, watch } from 'vue'
 import {
   useFloating,
   offset as offsetMiddleware,
@@ -70,7 +77,27 @@ const blockedByExclusive = computed(() => family == null && overlayStore.value.h
 const hasOverlay = computed(() => !!slots.overlay)
 const hasContent = computed(() => !!props.content?.trim() || hasOverlay.value)
 const canShow = computed(() => hasContent.value && !props.disabled && !blockedByExclusive.value)
-const visible = computed(() => isOpen.value && canShow.value && !hiddenByScroll.value)
+// One thing under the pointer gets one tip. A tip inside this one says the more
+// specific thing (why a control is disabled, under the tip that names it), so
+// while an inner one shows, this one gives way.
+const innerShowing = ref(0)
+const outer = inject(tooltipNestKey, null)
+provide(tooltipNestKey, {
+  showing(delta) {
+    innerShowing.value += delta
+  },
+})
+const visible = computed(
+  () => isOpen.value && canShow.value && !hiddenByScroll.value && innerShowing.value === 0,
+)
+// To the tip around this one, a tip showing anywhere inside counts the same.
+const occupied = computed(() => visible.value || innerShowing.value > 0)
+watch(occupied, (now) => outer?.showing(now ? 1 : -1))
+onBeforeUnmount(() => {
+  if (occupied.value) {
+    outer?.showing(-1)
+  }
+})
 
 const { floatingStyles } = useFloating(triggerRef, floatingRef, {
   placement: computed(() => props.placement),
@@ -249,10 +276,13 @@ onBeforeUnmount(() => {
       enter-from-class="opacity-0 scale-95"
       leave-to-class="opacity-0 scale-95"
     >
+      <!-- A hint describes whatever is under the pointer, so it sits above every other
+           layer: dialogs, popovers and toasts are z-50, and a tip inside one of them
+           would otherwise open behind it. -->
       <div
         v-if="visible"
         ref="floatingRef"
-        class="overlay-shell select-none pointer-events-none z-40 w-max min-w-max rounded-md text-fg"
+        class="overlay-shell select-none pointer-events-none z-[60] w-max min-w-max rounded-md text-fg"
         :class="hasOverlay
           ? picture
             ? 'max-w-xs p-2'
