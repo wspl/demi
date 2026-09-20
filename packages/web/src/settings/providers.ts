@@ -479,18 +479,22 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   }
 
   /**
-   * Usage for the providers that can report it for free and have none yet
-   * (`provider-quota.md` § Guidance: probe when the dashboard opens). The
-   * backend keeps the latest snapshot in memory, so after it restarts there is
-   * none until a request or a probe brings one.
+   * Usage for the providers that can report it for free and whose snapshot is
+   * missing or older than the provider calls fresh (`provider-quota.md`
+   * § Guidance: probe when the dashboard opens). A snapshot that only requests
+   * filled has no plan, and a kept one can be days old.
    */
-  async function probeMissingQuota(): Promise<void> {
+  async function probeStaleQuota(): Promise<void> {
     const signal = lifetime.signal
-    const missing = (product.snapshot?.providers ?? []).filter((entry) =>
-      entry.details?.quota == null &&
-      entry.details?.quotaCapability.canProbe === true &&
-      entry.details.quotaCapability.probeCost === 'free',
-    )
+    const missing = (product.snapshot?.providers ?? []).filter((entry) => {
+      const capability = entry.details?.quotaCapability
+      if (capability?.canProbe !== true || capability.probeCost !== 'free') {
+        return false
+      }
+      const observedAt = entry.details?.quota?.observedAt
+      const age = observedAt ? Date.now() - Date.parse(observedAt) : Number.POSITIVE_INFINITY
+      return !(age < (capability.staleAfterMs ?? 60_000))
+    })
     if (missing.length === 0) {
       return
     }
@@ -801,6 +805,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     saveModel,
     saveModels,
     submitToken,
-    probeMissingQuota,
+    probeStaleQuota,
   }
 })
