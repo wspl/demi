@@ -343,7 +343,7 @@ export function mockProviders(): MockProvider[] {
     ),
     provider({
       id: 'anthropic', name: 'Anthropic', kind: 'api_key', family: 'anthropic', vendorId: 'anthropic', logo: '/logos/anthropic.svg',
-      baseUrl: 'https://api.anthropic.com', wireApi: 'anthropic-messages', apiKey: 'sk-ant-api03-3f2a9c1d7e5b4a6f8c2d1e9b', testedIn: '412 ms',
+      baseUrl: 'https://api.anthropic.com', wireApi: 'anthropic-messages', apiKey: '', keyConfigured: true, testedIn: '412 ms',
       catalogFetched: '14 min ago',
       models: [
         model(
