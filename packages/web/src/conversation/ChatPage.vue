@@ -123,7 +123,6 @@ async function fork(request: MessageForkRequest): Promise<void> {
         : null
     "
     @retry-submission="store.send(conversation)"
-    @archive="store.archive([conversation.id])"
     @retry="store.start(conversation)"
     @retry-load="store.reloadSession(conversation.id)"
     @abort-subagents="store.abortSubagents(conversation)"

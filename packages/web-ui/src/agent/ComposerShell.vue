@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { useElementSize } from '@vueuse/core'
 import { useFileDrop } from '../composables/useFileDrop'
 import DropOutline from '../ui/DropOutline.vue'
+import { provideLabelRoom } from '../ui/label-room'
 import { dataTransferFiles } from './message-input/attachments'
 
 /**
@@ -39,7 +40,7 @@ const EDITOR_MIN_PX = 128
 
 const ruler = ref<HTMLElement | null>(null)
 const { width: line } = useElementSize(ruler)
-const room = computed(() => line.value - EDITOR_MIN_PX)
+provideLabelRoom(() => line.value - EDITOR_MIN_PX)
 
 const shell = ref<HTMLElement | null>(null)
 const { over: dragOver } = useFileDrop(shell, {
@@ -69,7 +70,7 @@ const showDrop = computed(() => props.dropping === true || dragOver.value)
       <slot name="editor" :line="line" />
     </div>
     <div class="composer-model">
-      <slot name="model" :room="room" />
+      <slot name="model" />
     </div>
     <div
       ref="ruler"

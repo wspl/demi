@@ -10,6 +10,8 @@ import Button from '../ui/Button.vue'
 import CornerDot from '../ui/CornerDot.vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import { ICON_PX } from '../ui/icon-metrics'
+import { COMPACT_LABEL_CLASS, useRoomLabel } from '../ui/label-room'
+import Tooltip from '../ui/Tooltip.vue'
 import HostPicker from './HostPicker.vue'
 import type { HostDeviceOption, HostMenuHost } from './types'
 
@@ -29,6 +31,9 @@ const emit = defineEmits<{
 }>()
 
 const open = ref(false)
+// Where the header's title needs the width, the host is its icon and its name a tooltip.
+const hostLabel = ref<HTMLElement | null>(null)
+const hostCompact = useRoomLabel(hostLabel, () => props.mainHost.name, 0)
 const boundIds = computed(() => [
   props.mainHost.id,
   ...props.attachedHosts.map((host) => host.id),
@@ -66,29 +71,35 @@ function connect() {
     width="shrink"
   >
     <template #trigger>
-      <Button
-        variant="ghost"
-        class="max-w-full"
-        aria-label="Manage conversation hosts"
-        :loading="pending"
-      >
-        <span class="relative flex shrink-0">
-          <component
-            :is="mainHost.kind === 'cloud' ? Cloud : Monitor"
-            :size="ICON_PX.in28"
-          />
-          <CornerDot
-            v-if="mainHost.kind === 'device'"
-            :tone="mainHost.online ? 'success' : 'muted'"
-            ring="button"
-            :label="mainHost.online ? 'Online' : 'Offline'"
-          />
-        </span>
-        <span class="max-w-28 truncate">{{ mainHost.name }}</span>
-        <span v-if="attachedHosts.length" class="text-[11px] text-fg-subtle">
-          +{{ attachedHosts.length }}
-        </span>
-      </Button>
+      <Tooltip :content="mainHost.name" :disabled="!hostCompact">
+        <Button
+          variant="ghost"
+          class="max-w-full"
+          aria-label="Manage conversation hosts"
+          :loading="pending"
+        >
+          <span class="relative flex shrink-0">
+            <component
+              :is="mainHost.kind === 'cloud' ? Cloud : Monitor"
+              :size="ICON_PX.in28"
+            />
+            <CornerDot
+              v-if="mainHost.kind === 'device'"
+              :tone="mainHost.online ? 'success' : 'muted'"
+              ring="button"
+              :label="mainHost.online ? 'Online' : 'Offline'"
+            />
+          </span>
+          <span
+            ref="hostLabel"
+            class="max-w-28 truncate"
+            :class="hostCompact ? COMPACT_LABEL_CLASS : ''"
+          >{{ mainHost.name }}</span>
+          <span v-if="attachedHosts.length" class="text-[11px] text-fg-subtle">
+            +{{ attachedHosts.length }}
+          </span>
+        </Button>
+      </Tooltip>
     </template>
     <template #content>
       <Menu>

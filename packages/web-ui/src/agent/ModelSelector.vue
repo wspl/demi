@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import type { ThinkingConfig } from '@demicodes/core'
 import { CircleX, Sparkles, TriangleAlert, Zap } from '@lucide/vue'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import { COMPACT_LABEL_CLASS, useRoomLabel } from '../ui/label-room'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import Button from '../ui/Button.vue'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
@@ -22,11 +23,6 @@ const props = defineProps<{
   selectedModelId?: string | null
   thinkingConfig?: ThinkingConfig
   serviceTierId?: string | null
-  /**
-   * How much wider than its least the editor beside the selector is, in px,
-   * negative when narrower; absent, there is room for the label.
-   */
-  room?: number
 }>()
 
 const emit = defineEmits<{
@@ -68,18 +64,7 @@ const labelText = computed(() => {
   return reasoningLabel.value ? `${state.value.label} · ${reasoningLabel.value}` : state.value.label
 })
 const label = ref<HTMLElement | null>(null)
-const compact = ref(false)
-
-// A hidden label stays laid out, out of the flow, so its width is known either way.
-watch([() => props.room, labelText, label], () => {
-  if (props.room === undefined || !label.value) {
-    compact.value = false
-    return
-  }
-  // Hidden, the label leaves the editor its whole width more than shown.
-  const roomWithLabel = props.room - (compact.value ? label.value.offsetWidth : 0)
-  compact.value = roomWithLabel < 0
-}, { flush: 'post' })
+const compact = useRoomLabel(label, () => labelText.value)
 </script>
 
 <template>
@@ -91,7 +76,7 @@ watch([() => props.room, labelText, label], () => {
       :aria-label="labelText"
     >
       <IndeterminateSpinner :size="14" />
-      <span ref="label" class="whitespace-nowrap pl-1.5" :class="compact ? 'invisible absolute left-0 top-0' : ''">{{ labelText }}</span>
+      <span ref="label" class="whitespace-nowrap pl-1.5" :class="compact ? COMPACT_LABEL_CLASS : ''">{{ labelText }}</span>
     </span>
     <span
       v-else-if="load === 'failed'"
@@ -100,7 +85,7 @@ watch([() => props.room, labelText, label], () => {
       :aria-label="labelText"
     >
       <CircleX :size="14" class="shrink-0" />
-      <span ref="label" class="whitespace-nowrap pl-1.5" :class="compact ? 'invisible absolute left-0 top-0' : ''">{{ labelText }}</span>
+      <span ref="label" class="whitespace-nowrap pl-1.5" :class="compact ? COMPACT_LABEL_CLASS : ''">{{ labelText }}</span>
       <Button size="sm" class="ml-1.5" @click="emit('retry')">Retry</Button>
     </span>
     <Dropdown
@@ -123,7 +108,7 @@ watch([() => props.room, labelText, label], () => {
           <span
             ref="label"
             class="inline-flex items-center gap-1 whitespace-nowrap"
-            :class="compact ? 'invisible absolute left-0 top-0' : ''"
+            :class="compact ? COMPACT_LABEL_CLASS : ''"
           >
             <span :class="isOpen ? 'text-fg-body' : 'text-fg-muted'">{{ state.label }}</span>
             <span

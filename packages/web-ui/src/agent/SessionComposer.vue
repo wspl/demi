@@ -351,11 +351,10 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             </template>
           </Dropdown>
         </template>
-        <template #model="{ room }">
+        <template #model>
           <div :inert="!!messageEdit && !edit.editable.value">
             <ModelSelector
               :load="modelLoad"
-              :room="room"
               @retry="emit('retryModels')"
               :providers="providers"
               :models="models"
