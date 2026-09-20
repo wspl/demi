@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { showToast } from '../infra/toast'
 import {
   Brain,
   Check,
@@ -194,6 +195,30 @@ function rename(name: string) {
     emit('change', selected.value, { name })
   }
 }
+
+function isTesting(provider: SettingsProviderEntry): boolean {
+  return props.testing === provider.id || props.operations?.[provider.id]?.kind === 'testing'
+}
+
+// A subscription's test ends in a toast: its button has no row to show the answer in.
+const testingSubscriptions = computed(() =>
+  props.providers.filter((provider) => provider.kind === 'subscription' && isTesting(provider)).map((provider) => provider.id),
+)
+watch(testingSubscriptions, (now, before) => {
+  for (const id of before.filter((candidate) => !now.includes(candidate))) {
+    const provider = props.providers.find((candidate) => candidate.id === id)
+    if (!provider) {
+      continue
+    }
+    const model = provider.testedWith ? ` · ${provider.testedWith}` : ''
+    // A test that failed left the provider's own words; one that passed left none.
+    if (!provider.detail) {
+      showToast({ title: `${provider.name} connected${model}`, tone: 'success' })
+    } else {
+      showToast({ title: `${provider.name} test failed${model}`, message: provider.detail, tone: 'danger' })
+    }
+  }
+})
 
 // Why the selected provider cannot be tested right now, for the button's tooltip.
 const testBlockReason = computed(() => {
@@ -414,6 +439,13 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                         role="status"
                         ><IndeterminateSpinner :size="12" /> Saving…</span
                       >
+                      <!-- A subscription grows by accounts; adding one is the header's action. -->
+                      <Button
+                        v-if="selected.kind === 'subscription'"
+                        size="sm"
+                        @click="emit('signIn', selected)"
+                        ><Plus :size="ICON_PX.in24" /> Add account</Button
+                      >
                       <Switch
                         :model-value="selected.enabled"
                         @update:model-value="
@@ -485,6 +517,27 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                     @click="emit('activateAccount', selected, account.id)"
                     >Activate</Button
                   >
+                  <!-- The test asks with the account requests go out on; its answer is a toast,
+                       since the row has no room to keep it. -->
+                  <Tooltip content="Test connection"
+                    ><IconButton
+                      size="sm"
+                      :icon="Plug"
+                      aria-label="Test connection"
+                      :loading="account.active && isTesting(selected)"
+                      :disabled="
+                        !account.active ||
+                        selected.runsOnHost === true ||
+                        (!!operations?.[selected.id] && !isTesting(selected)) ||
+                        !selected.models.some((model) => model.enabled)
+                      "
+                      :disabled-reason="
+                        account.active
+                          ? testBlockReason
+                          : 'Requests use the active account; activate this one to test it'
+                      "
+                      @click="emit('test', selected)"
+                  /></Tooltip>
                   <Tooltip content="Remove"
                     ><IconButton
                       size="sm"
@@ -505,16 +558,8 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                   v-if="!selected.accounts.length"
                   class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle"
                 >
-                  No account yet. Sign in to use this provider.
+                  No account yet. Add one to use this provider.
                 </div>
-                <SettingsRow label="Add account">
-                  <Button
-                    size="sm"
-                    variant="primary"
-                    @click="emit('signIn', selected)"
-                    >Sign in</Button
-                  >
-                </SettingsRow>
               </template>
 
               <!-- Connection (API key) -->
@@ -573,8 +618,9 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                   />
                 </SettingsRow>
               </template>
-              <!-- Every provider can be tried, a subscription as much as a key. -->
+              <!-- A key's test has a row of its own; a subscription's sits on its active account. -->
               <SettingsRow
+                v-if="selected.kind === 'api_key'"
                 label="Test connection"
                 description="Sends one short request to the first enabled model."
               >
