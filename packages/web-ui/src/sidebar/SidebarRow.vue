@@ -120,11 +120,13 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
       @cancel="emit('renameCancel')"
     />
     <!-- The title has the row until hover; then it yields the end to the actions and, if cut, plays.
-         A cut title fades out at the edge instead of ending in an ellipsis. -->
+         A cut title fades out at the edge instead of ending in an ellipsis. It is clipped, not
+         hidden: a hidden overflow still scrolls when focus or a scroll-into-view lands inside it,
+         and the row would be left showing the title's tail. -->
     <span
       v-else
       ref="titleClip"
-      class="sidebar-title min-w-0 flex-1 overflow-hidden whitespace-nowrap transition-[margin] duration-[80ms] ease-out"
+      class="sidebar-title min-w-0 flex-1 overflow-clip whitespace-nowrap transition-[margin] duration-[80ms] ease-out"
       :class="[
         marquee ? 'is-playing' : '',
         conversation.unread && !open ? 'text-fg-emphasis' : '',
