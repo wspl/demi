@@ -291,23 +291,44 @@ least 2,000 characters or 40 lines becomes `pasted-text.txt`, using the shared
 composer's paste thresholds. Dropped, selected, and pasted files use the same
 staged attachment flow.
 
-Each attachment is a capsule in the message's text: a dropped file lands where
-it is dropped, a picked or pasted one at the cursor, and one added from a
-file browser at the cursor. A capsule shows an image's thumbnail or another
-file's icon, then the file's name; pointed at, it shows the picture larger.
-While the file uploads it shows how far along it is, and a failed upload
-offers Retry. A capsule is a character of the message and is edited as one:
-Backspace deletes it and its attachment with it, undo brings the two back
-together, and it can be dragged to another place in the text; it carries no
-control of its own for any of that. A file waits aside from the moment its
-capsule is deleted until the message is sent or the composer is left, so an
-undo in between always finds it; an upload that was running starts over. In
-the conversation, a click on a capsule opens its file in the File view. The
-message's content keeps text and attachments in the order the composer shows
-them: for the example in
-[Writing a message](#writing-a-message), `Compare `, then `before.png`, then
-` with `, then `after.png`, then the rest. Providers pass content in order, so
-the model meets each file where the user put it.
+Each attachment is a capsule in the message's text, and that text is the
+editor's document. The document is the message: it says which files the
+message carries, in what order, and what each one is. Nothing outside it adds
+a file to a message or takes one away.
+
+A capsule carries what it shows and what the message sends: the file's name
+and kind, its picture when it has one, the device and path of a file that
+lives on another device, and the opening lines of a text file. Bytes on their
+way to the Host cannot be in a document, so they wait beside it under the
+capsule's id: the file itself, how far its upload has come, whether it
+failed. That is a transfer, not a fact of the message, and a capsule with no
+transfer beside it is a file that needs none — a restored draft, or a sent
+message.
+
+What follows from that split:
+
+- A capsule is a character of the message and is edited as one. Backspace
+  deletes it, undo brings it back, and it can be dragged to another place in
+  the text; it carries no control of its own for any of that.
+- A dropped file lands where it is dropped, a picked or pasted one at the
+  cursor, and one added from a file browser at the cursor. A file joins the
+  message as one change to its document, so there is never a file without a
+  capsule or a capsule without a file.
+- Deleting a capsule takes its file out of the message and stops its upload.
+  The transfer waits, so undo brings the file back with the capsule and the
+  upload starts over. What is still waiting goes when the message is sent or
+  the composer is left.
+- While a file uploads its capsule shows how far along it is, and a failed
+  upload offers Retry. Pointed at, a capsule shows the picture larger or a
+  text file's opening lines. In the conversation, a click on a capsule opens
+  its file in the File view.
+- The message's content is read off the document: for the example in
+  [Writing a message](#writing-a-message), `Compare `, then `before.png`,
+  then ` with `, then `after.png`, then the rest. Providers pass content in
+  order, so the model meets each file where the user put it.
+- A saved draft keeps the message's text with a mark where each capsule
+  stands and each file beside it under its id, so opening the draft builds
+  the same document again.
 
 Sending a file proceeds through three owners:
 
