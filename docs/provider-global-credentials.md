@@ -249,15 +249,16 @@ export interface Provider {
 
 ## 5. Storage
 
-### 5.1 The pool is injected
+### 5.1 One contract, three keepers
 
 A provider kit reads and writes accounts through a `CredentialPool`
-(`@demicodes/provider/credentials-pool`) and never assumes where they live:
+(`@demicodes/provider/credentials-pool`) and never assumes where they live. The
+kit has **one** code path: it asks the pool for an account's document, reads it,
+and refreshes it. Where accounts are kept changes which pool it is given, never
+what the kit does.
 
 ```ts
 interface CredentialPool {
-  /** Whether an empty pool stands for the vendor's own login on this machine. */
-  readonly vendorDefault: boolean
   list(): Promise<ProviderCredentialInfo[]>
   listMeta(): Promise<CredentialEntryMeta[]>
   readMeta(id: string): Promise<CredentialEntryMeta | null>
@@ -272,19 +273,43 @@ interface CredentialPool {
 }
 
 interface CredentialDocument {
-  readonly key: string   // identifies the document across handles; never secret
   readonly name: string  // names it in messages; never secret
   read(): Promise<{ text: string; version: string } | null>
   /** Stores `text` if the document is still at `version`. */
   replace(text: string, version: string): Promise<boolean>
+  /** Runs `fn` while nobody else this keeper can see refreshes the document. */
+  exclusive<T>(fn: () => Promise<T>): Promise<T>
 }
 ```
 
-The document's text is the kit's own format (Codex `auth.json`, a Grok entry,
-Claude OAuth tokens), validated by the kit on every read. **Refresh** runs under
-`exclusiveCredentialRefresh(document, …)`, which makes refreshes of one account
-in a process take turns, and ends in `replace`. A refresh token is spent once,
-so a refresher that loses — `replace` answers false, or the vendor refuses while
+| Keeper | Pool | Accounts | `exclusive` |
+|---|---|---|---|
+| A product's own storage | The product's (Demi Next: `provider_credentials` records) | Whatever the product stores | A queue per account in the process |
+| The framework's files | `FileCredentialPool`, §5.2 | Entries under `$DEMI_HOME` | A queue per account in the process |
+| The vendor's own login | The kit's vendor pool (`codexVendorPool`, `grokVendorPool`, `claudeCodeVendorPool`) | What the vendor's CLI left on this machine: `~/.codex/auth.json`, the entries of `~/.grok/auth.json`, `CLAUDE_CODE_OAUTH_TOKEN`, the Claude Code keychain item | The vendor CLI's own lock file, so the CLI and Demi do not refresh at once |
+
+A vendor pool is a pool like the others, of accounts it does not own: it lists
+and reads the vendor's login, keeps a refresh in the vendor's file where the
+vendor's CLI expects it, and refuses `writeEntry` and `remove`. An environment
+token and a keychain item are documents that are never replaced.
+
+`fallbackCredentialPool(primary, fallback)` is the one place two keepers meet:
+it is `primary` while `primary` holds an account and `fallback` while it holds
+none; writes always go to `primary`. A kit's default, for a caller that passes
+no pool, is `fallbackCredentialPool(filePool, vendorPool)`: a machine whose user
+ran `codex login` works with no configuration, and the first account Demi
+stores takes over. A product that serves other users passes its own pool and so
+has no fallback by construction; its entry without an account is
+unauthenticated. There is no flag for this, only which pool was given.
+
+`importDefault` copies the vendor pool's account into the pool being written
+to. It exists when the provider was given a vendor pool to import from, which
+the default composition does and a product's pool does not.
+
+The document's text is the kit's own format (Codex `auth.json`, a Grok auth map,
+Claude OAuth tokens), validated by the kit on every read. **Refresh** runs inside
+`document.exclusive(…)` and ends in `replace`. A refresh token is spent once, so
+a refresher that loses — `replace` answers false, or the vendor refuses while
 the version moved — reads the document again and uses the winner's tokens. It
 fails only when the document did not change.
 
@@ -294,13 +319,6 @@ the provider follows the pool's active pointer, as local consumers do. With it,
 the provider stands for that account whichever is active, so a product can test
 or probe an account it is not using, and another account being added, selected
 or removed does not clear this one's usage.
-
-A pool with `vendorDefault: false` has no vendor fallback: §6's read-through of
-`~/.codex`, `~/.grok`, the environment token and the keychain, and
-`importDefault`, exist only for the framework's file pool. A product that serves
-other users (Demi Next keeps accounts as encrypted control records) must not
-lend them the login of whoever operates the machine; its entry without an
-account is unauthenticated.
 
 ### 5.2 The file store
 
@@ -352,7 +370,7 @@ Each of the three packages owns:
 Bootstrap (final-state default):
 
 1. If pool has entries → use `active` (or first entry if `active` invalid, and repair `active`).
-2. If pool empty → **read-through** vendor default (today’s path). Do **not** silently invent pool entries unless the product calls `importDefault` / `importFromPath` / explicit add.
+2. If pool empty → the default composition (§5.1) stands for the vendor pool: its account is listed and used as it is, in the vendor's own file. Nothing is copied into the Demi pool unless the product calls `importDefault` / explicit add.
 3. Product that wants multi-cred: import A, import B, `setActive`.
 
 Optional public helpers per package (root or documented internal used by products):
@@ -371,7 +389,7 @@ ignored extra, so a misspelled setting is reported instead of silently doing not
 |---|---|
 | Active resolve | Read `credentials/codex/entries/<active>/auth.json` via `FileCodexAuthStore`-like logic with `authFile` override; or pool-backed store implementing `CodexAuthStore` |
 | Refresh | Write back to **that entry’s** `auth.json`, not necessarily `~/.codex/auth.json` |
-| Vendor default | If pool empty: existing `FileCodexAuthStore({ codexHome })` |
+| Vendor login | `codexVendorPool({ codexHome })`: one account, `~/.codex/auth.json`, under the Codex CLI's lock |
 | Import | Snapshot `auth.json` (+ derive label from email / accountId) |
 | Multi-entry native | N/A — vendor file is single session; pool holds N snapshots |
 
@@ -383,7 +401,7 @@ ignored extra, so a misspelled setting is reported instead of silently doing not
 |---|---|
 | Active resolve | Pool entry secret is either a full `auth.json` map with one preferred key, or a single entry payload + `entryKey` |
 | Refresh | Update that entry in the pool secret file |
-| Vendor default | If pool empty: today’s `FileGrokAuthStore` + `selectAuthEntry` |
+| Vendor login | `grokVendorPool({ grokHome })`: one account per OIDC entry of `~/.grok/auth.json`, under the Grok CLI's lock; active is the entry `selectAuthEntry` picks |
 | Import | For each OIDC entry in `~/.grok/auth.json`, or import selected entry only — product chooses; recommended **import-all-entries** as separate pool credentials |
 | Native multi-entry | Vendor file can feed the pool; **runtime no longer auto-picks for multi-cred mode** — active pointer wins |
 
@@ -396,7 +414,7 @@ When pool is empty, keep current auto-pick for backward compatibility.
 | Active resolve | Pool entry `oauth.json` → access token |
 | Inference | CLI child env: set `CLAUDE_CODE_OAUTH_TOKEN` from active entry (override process env for that spawn). Extend `buildClaudeEnv` / transport factory to accept token or env overlay from the active resolver |
 | Quota probe | `resolveClaudeCodeOAuthAccess` becomes pool-aware (active entry first; else env; else keychain) |
-| Vendor default | If pool empty: today’s env / keychain |
+| Vendor login | `claudeCodeVendorPool()`: the environment token, then the keychain item, as documents that are never replaced |
 | Import | Snapshot token from env or Keychain into pool |
 | CLI constraint | Claude Code CLI still must accept token via env; if a future CLI ignores env, this path needs a different transport — out of scope until proven |
 
