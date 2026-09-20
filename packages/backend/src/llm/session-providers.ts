@@ -9,10 +9,9 @@ import {
   type ProviderSelection
 } from '@demicodes/provider'
 import type { Host } from '@demicodes/shell'
-import type { InstanceMode } from '../auth/identity'
+import type { ProviderVault } from '../vault/providers'
 import type { ControlService } from '../storage/control'
 import type { ProviderRateLimiter } from '../usage/rate-limit'
-import { providerOwner } from '../vault/scope'
 import {
   type ProviderAssembly,
   type SessionProviderContext,
@@ -23,7 +22,7 @@ import { meterRuntime, type MeterOptions } from './metering'
 interface SessionProvidersOptions {
   assembly: ProviderAssembly
   control: ControlService
-  mode: InstanceMode
+  vault: ProviderVault
   hostFor: (conversationId: string) => Promise<Host>
   rateLimiter: ProviderRateLimiter
 }
@@ -39,7 +38,7 @@ export function createSessionProviderResolver(
     const conversation = await options.control.getConversation(agentSessionId)
     if (!conversation)
       throw new Error(`no conversation ${agentSessionId} behind this session`)
-    const ownerUserId = providerOwner(options.mode, conversation.userId)
+    const ownerUserId = await options.vault.ownerFor(conversation.userId)
     const resolve = async () => {
       if ((await options.control.getConversation(agentSessionId))?.archived)
         throw new Error('Conversation is archived')

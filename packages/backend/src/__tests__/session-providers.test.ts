@@ -34,7 +34,8 @@ test(
     const conversation = await control.createConversation(owner.id)
     const vault = new ProviderVault(
       control,
-      crypto.getRandomValues(new Uint8Array(32))
+      crypto.getRandomValues(new Uint8Array(32)),
+      'isolated'
     )
     const entry = await vault.create({
       ownerUserId: owner.id,
@@ -85,7 +86,7 @@ test(
     const resolve = createSessionProviderResolver({
       assembly,
       control,
-      mode: 'isolated',
+      vault,
       rateLimiter: new ProviderRateLimiter(),
       hostFor: async () => {
         throw new Error('HTTP providers must not resolve an execution target')
@@ -216,7 +217,8 @@ test(
     }
     const vault = new PausedVault(
       control,
-      crypto.getRandomValues(new Uint8Array(32))
+      crypto.getRandomValues(new Uint8Array(32)),
+      'isolated'
     )
     const entry = await vault.create({
       ownerUserId: owner.id,

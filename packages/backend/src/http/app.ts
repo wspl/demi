@@ -1,4 +1,3 @@
-import { visibleProvider } from '../vault/scope'
 import type { FrameAdmission } from './stream'
 import type { ConversationHostAccess, ConversationTargets } from '../conversation/target'
 import { webAssetRoutes } from './web-assets'
@@ -161,7 +160,7 @@ export function createApp(options: {
   )
   app.route('/api/models', modelRoutes({
     assembly: options.assembly,
-    mode: options.mode
+    vault: options.vault
   }))
   app.route('/api/providers', providerRoutes({
     accounts: options.providerAccounts,
@@ -233,7 +232,6 @@ export function createApp(options: {
       blobsFor: (id) => options.blobs.forUser(id),
       withHost: options.withHost,
       vault: options.vault,
-      mode: options.mode,
       titles: options.titles,
       readFailures,
     }),
@@ -254,7 +252,7 @@ export function createApp(options: {
       readFailures,
       titles: options.titles,
       selectProvider: async (userId, provider) => {
-        if (await visibleProvider(options.vault, options.mode, userId, provider.providerId) === null)
+        if (await options.vault.visible(userId, provider.providerId) === null)
           return null
         return {
           providerId: provider.providerId,

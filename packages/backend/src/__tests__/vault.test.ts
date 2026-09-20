@@ -70,7 +70,8 @@ test(
     ))!
     const vault = new ProviderVault(
       control,
-      crypto.getRandomValues(new Uint8Array(32))
+      crypto.getRandomValues(new Uint8Array(32)),
+      'isolated'
     )
 
     const created = await vault.create({
@@ -118,10 +119,14 @@ test(
     ))!
     const vault = new ProviderVault(
       control,
-      crypto.getRandomValues(new Uint8Array(32))
+      crypto.getRandomValues(new Uint8Array(32)),
+      'isolated'
     )
     try {
-      for (const ownerUserId of [null, user.id]) {
+      const other = (await control.createUser(
+        { email: 'other@example.test', passwordHash: '!', role: 'user' }
+      ))!
+      for (const ownerUserId of [other.id, user.id]) {
         const options = {
           ownerUserId,
           label: 'Subscription',
@@ -159,3 +164,19 @@ test(
     }
   }
 )
+
+test('an ownerless provider of an older shared instance becomes the master\'s', async () => {
+  const db = openSqliteDatabase(':memory:')
+  migrate(db, CONTROL_MIGRATIONS.filter((migration) => migration.id < 6))
+  const control = new LocalControlService(db)
+  const master = (await control.createMaster(
+    { email: 'owner@example.test', passwordHash: '!' }
+  ))!
+  db.run(
+    "INSERT INTO providers (id, owner_user_id, provider_type, credential_kind, label, config, created_at) VALUES ('p', NULL, 'codex', 'subscription', 'Codex', 'opaque', '2026-01-01T00:00:00.000Z')"
+  )
+  migrate(db, CONTROL_MIGRATIONS)
+  expect((await control.getProvider('p'))?.ownerUserId).toBe(master.id)
+  expect(await control.listProviders({ ownerUserId: master.id })).toHaveLength(1)
+  db.close()
+})

@@ -12,7 +12,7 @@ import { configuredModelsSchema } from '../llm/model-config'
 import type { AuthEnv, InstanceMode } from '../auth/identity'
 import type { ProviderAssembly } from '../llm/assembly'
 import type { VendorCatalog } from '../llm/vendors'
-import { canConfigureProviders, providerOwner } from '../vault/scope'
+import { canConfigureProviders } from '../vault/scope'
 import type {
   ApiKeyProviderConfig,
   ProviderEntry,
@@ -84,11 +84,11 @@ export function providerRoutes(options: {
     throw error
   })
 
-  const ownerOf = (c: Context<AuthEnv>) => providerOwner(mode, c.get('user').id)
+  const ownerOf = (c: Context<AuthEnv>) => vault.ownerFor(c.get('user').id)
   // A provider outside the caller's scope answers like a missing one.
   const scoped = async (c: Context<AuthEnv>) => {
     const provider = await vault.get(c.req.param('id') ?? '')
-    return provider && provider.ownerUserId === ownerOf(c) ? provider : null
+    return provider && provider.ownerUserId === await ownerOf(c) ? provider : null
   }
   const invalidBody = (c: Context<AuthEnv>, error: z.ZodError) => {
     const issue = error.issues[0]
@@ -102,7 +102,7 @@ export function providerRoutes(options: {
   }
 
   // Configuring providers — creating, editing, logging in, testing, deleting —
-  // is the admin's in shared mode and everyone's own in isolated mode.
+  // is the master's in shared mode and everyone's own in isolated mode.
   app.use('*', async (c, next) => {
     const refreshingQuota = c.req.method === 'POST' &&
       /^\/api\/providers\/[^/]+\/quota$/.test(c.req.path)
@@ -111,7 +111,7 @@ export function providerRoutes(options: {
       !canConfigureProviders(mode, c.get('user').role)) {
       return c.json({
         code: 'forbidden',
-        message: 'Providers are configured by administrators on this instance'
+        message: 'Providers are configured by the instance owner'
       }, 403)
     }
     const id = c.req.path.split('/')[3]
@@ -141,7 +141,7 @@ export function providerRoutes(options: {
    * each subscription family with whether the scope holds it.
    */
   app.get('/catalog', async (c) => {
-    const entries = await vault.list({ ownerUserId: ownerOf(c) })
+    const entries = await vault.list({ ownerUserId: await ownerOf(c) })
     const subscriptions = assembly.typesOf('subscription').map(
       (providerType) => ({
         providerType,
@@ -179,7 +179,7 @@ export function providerRoutes(options: {
     const started = await logins.start(
       providerType,
       parsed.data.label ?? `${providerType} subscription`,
-      ownerOf(c)
+      await ownerOf(c)
     )
     if ('refused' in started) {
       if (started.refused === 'busy')
@@ -201,7 +201,7 @@ export function providerRoutes(options: {
   })
 
   app.get('/subscription-login/:id', async (c) => {
-    const state = logins.status(c.req.param('id') ?? '', ownerOf(c))
+    const state = logins.status(c.req.param('id') ?? '', await ownerOf(c))
     if (!state)
       return c.json({
         code: 'login_not_found',
@@ -211,7 +211,7 @@ export function providerRoutes(options: {
   })
 
   app.delete('/subscription-login/:id', async (c) => {
-    if (!(await logins.cancel(c.req.param('id'), ownerOf(c))))
+    if (!(await logins.cancel(c.req.param('id'), await ownerOf(c))))
       return c.json({
         code: 'login_not_found',
         message: 'No such login flow'
@@ -230,7 +230,7 @@ export function providerRoutes(options: {
         message: 'Expected { token, label }'
       }, 400)
     const entry = await options.accounts.importClaude(
-      ownerOf(c),
+      await ownerOf(c),
       parsed.data.label,
       parsed.data.token
     )
@@ -252,7 +252,7 @@ export function providerRoutes(options: {
     const started = await logins.start(
       entry.config.providerType,
       entry.label,
-      ownerOf(c),
+      await ownerOf(c),
       entry
     )
     if ('refused' in started)
@@ -324,7 +324,7 @@ export function providerRoutes(options: {
   })
 
   app.get('/', async (c) => {
-    const providers = await vault.list({ ownerUserId: ownerOf(c) })
+    const providers = await vault.list({ ownerUserId: await ownerOf(c) })
     return c.json({ providers: providers.map(publicProvider) })
   })
 
@@ -377,7 +377,7 @@ export function providerRoutes(options: {
       }
     }
     const provider = await vault.create({
-      ownerUserId: ownerOf(c),
+      ownerUserId: await ownerOf(c),
       label: body.label,
       config
     })

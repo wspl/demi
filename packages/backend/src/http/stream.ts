@@ -17,9 +17,8 @@ import { conversationScopedTransport } from '../conversation/scoped-transport'
 import type { ConversationTitles } from '../conversation/title'
 import type { FailureFactsReader } from '../conversation/failure-facts'
 import type { ControlService } from '../storage/control'
-import type { AuthEnv, InstanceMode } from '../auth/identity'
+import type { AuthEnv } from '../auth/identity'
 import type { ProviderVault } from '../vault/providers'
-import { visibleProvider } from '../vault/scope'
 import { writeAttachmentToHost } from '../conversation/attachment-refs'
 
 /**
@@ -38,11 +37,10 @@ export function streamRoutes(options: {
   blobsFor: (userId: string) => BlobStore
   withHost: ConversationHostAccess
   vault: ProviderVault
-  mode: InstanceMode
   titles: ConversationTitles
   readFailures: FailureFactsReader
 }): Hono<AuthEnv> {
-  const { control, agentServer, upgradeWebSocket, blobsFor, vault, mode } = options
+  const { control, agentServer, upgradeWebSocket, blobsFor, vault } = options
   const app = new Hono<AuthEnv>()
 
   app.get('/:id/stream', async (c, next) => {
@@ -95,9 +93,7 @@ export function streamRoutes(options: {
                 provider,
                 request
               ),
-              providerAllowed: async (providerId) => (await visibleProvider(
-                vault,
-                mode,
+              providerAllowed: async (providerId) => (await vault.visible(
                 conversation.userId,
                 providerId
               )) !== null,

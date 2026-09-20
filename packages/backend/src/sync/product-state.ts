@@ -8,7 +8,6 @@ import type { ProviderVault } from '../vault/providers'
 import type { ProviderAssembly } from '../llm/assembly'
 import type { ManagedHosts } from '../managed/lifecycle'
 import type { Exposes } from '../expose/records'
-import { providerOwner } from '../vault/scope'
 import { publicProvider } from '../vault/public-provider'
 import { providerDetails } from '../llm/provider-details'
 import { conversationSummary } from '../conversation/summary'
@@ -42,7 +41,7 @@ export class ProductState {
         control.listDevices(user.id),
         control.getManagedDevice(user.id),
         control.getUserPreferences(user.id),
-        vault.list({ ownerUserId: providerOwner(mode, user.id) }),
+        vault.ownerFor(user.id).then(ownerUserId => vault.list({ ownerUserId })),
         managed?.status(user.id) ?? null,
         exposes.list(user.id),
       ]

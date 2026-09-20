@@ -27,7 +27,7 @@ export type SubscriptionLoginState =
 }
 
 interface LoginFlow {
-  ownerUserId: string | null
+  ownerUserId: string
   state: SubscriptionLoginState
   abort: AbortController
   done: Promise<void>
@@ -54,7 +54,7 @@ export class SubscriptionLoginFlows {
   async start(
     providerType: string,
     label: string,
-    ownerUserId: string | null,
+    ownerUserId: string,
     existing?: ProviderEntry
   ): Promise<{ id: string } | { refused: 'no_login_flow' | 'exists' | 'busy' }> {
     if (this.closed)
@@ -183,14 +183,14 @@ export class SubscriptionLoginFlows {
 
   status(
     id: string,
-    ownerUserId: string | null
+    ownerUserId: string
   ): SubscriptionLoginState | null {
     this.prune()
     const flow = this.flows.get(id)
     return flow && flow.ownerUserId === ownerUserId ? flow.state : null
   }
 
-  async cancel(id: string, ownerUserId: string | null): Promise<boolean> {
+  async cancel(id: string, ownerUserId: string): Promise<boolean> {
     const flow = this.flows.get(id)
     if (!flow || flow.ownerUserId !== ownerUserId)
       return false

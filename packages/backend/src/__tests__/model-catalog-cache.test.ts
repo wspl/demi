@@ -23,8 +23,11 @@ async function fixture(path = ':memory:') {
   migrate(db, CONTROL_MIGRATIONS)
   const control = new LocalControlService(db)
   if (!await control.getProvider('provider')) {
+    const owner = (await control.createMaster(
+      { email: 'owner@example.test', passwordHash: '!' }
+    ))!
     await control.createProvider({
-      id: 'provider', ownerUserId: null, providerType: 'fake', credentialKind: 'api_key',
+      id: 'provider', ownerUserId: owner.id, providerType: 'fake', credentialKind: 'api_key',
       label: 'Test', config: 'opaque',
     })
   }

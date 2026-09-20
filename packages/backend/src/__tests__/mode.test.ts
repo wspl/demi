@@ -1,4 +1,3 @@
-import { nativePackageFixture } from '@demicodes/host-remote/testing'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -8,7 +7,6 @@ import { AgentClient, createWebSocketClientTransport } from '@demicodes/agent'
 import { defineProvider } from '@demicodes/provider'
 import { StubProvider, events } from '@demicodes/provider/testing'
 import { delay } from '@demicodes/utils'
-import { createBackend } from '../index'
 import {
   login,
   openBackend,
@@ -18,7 +16,7 @@ import {
 
 // M12 checkpoint 3: the instance mode — who configures providers, whose
 // providers a caller sees and may select, the shared-mode instance
-// ledger, and the mode fixed once providers exist.
+// ledger, and entries staying their owner's under the other mode.
 
 const json = (body: unknown, method = 'POST'): RequestInit => ({
   method,
@@ -137,7 +135,7 @@ async function turn(
 }
 
 test(
-  'shared mode: admins configure the instance providers, everyone uses them, the admin reads the ledger by user',
+  'shared mode: the master configures the providers, everyone uses them, the admin reads the ledger by user',
   async () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'demi-mode-shared-'))
     const backend = await openBackend(stubOptions(dataDir, 'shared'))
@@ -145,6 +143,14 @@ test(
     const bob = await createUser(backend, 'bob@example.test')
 
     expect((await createProvider(bob, 'mine')).status).toBe(403)
+    const adminCreated = await master.fetch('/api/users', json({
+      email: 'ann@example.test',
+      password: 'ann-pass-1',
+      role: 'admin'
+    }))
+    expect(adminCreated.status).toBe(201)
+    const ann = await login(backend, 'ann@example.test', 'ann-pass-1')
+    expect((await createProvider(ann, 'mine')).status).toBe(403)
     const shared = await createProvider(master, 'Instance stub')
     expect(shared.status).toBe(201)
     expect(await listIds(bob, '/api/providers')).toEqual([shared.id!])
@@ -177,18 +183,20 @@ test(
     ).toEqual(
       [
         'master@example.test:1',
-        'bob@example.test:1'
+        'bob@example.test:1',
+        'ann@example.test:0'
       ]
     )
 
     await backend.close()
 
-    // The mode is fixed once providers are configured.
-    await expect(createBackend({
-      nativeCommands: await nativePackageFixture(),
-      ...stubOptions(dataDir, 'isolated'),
-      mode: 'isolated'
-    })).rejects.toThrow('configured under the other instance mode')
+    // The entries are the master's: under the other mode they remain the
+    // master's own, and nobody else's.
+    const isolated = await openBackend(stubOptions(dataDir, 'isolated'))
+    expect(await listIds(isolated.session, '/api/providers')).toEqual([shared.id!])
+    const bobAgain = await login(isolated, 'bob@example.test', 'bob-pass-1')
+    expect(await listIds(bobAgain, '/api/providers')).toEqual([])
+    await isolated.close()
   },
   20_000
 )

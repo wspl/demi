@@ -25,7 +25,7 @@ export class ProviderAccounts {
   ) {}
 
   async importClaude(
-    ownerUserId: string | null,
+    ownerUserId: string,
     label: string,
     token: string
   ): Promise<ProviderEntry> {

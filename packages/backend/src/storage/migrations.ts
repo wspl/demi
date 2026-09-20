@@ -205,6 +205,20 @@ ALTER TABLE conversations ADD COLUMN user_messages INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE conversations ADD COLUMN titled_messages INTEGER NOT NULL DEFAULT 0;
 `,
   },
+  {
+    id: 6,
+    name: 'providers_belong_to_users',
+    // Every provider has an owner (product.md § Instance mode): a shared
+    // instance's entries, once ownerless, are the master's. SQLite cannot add
+    // NOT NULL to a column in place; the control service writes no other value.
+    sql: `
+UPDATE providers SET owner_user_id = (SELECT id FROM users WHERE role = 'master')
+  WHERE owner_user_id IS NULL;
+DROP INDEX idx_providers_subscription_scope;
+CREATE UNIQUE INDEX idx_providers_subscription_owner ON providers(owner_user_id, provider_type)
+  WHERE credential_kind = 'subscription';
+`,
+  },
 ]
 
 /**
