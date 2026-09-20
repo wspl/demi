@@ -5,6 +5,7 @@ import type { ToolResultContentBlock } from '@demicodes/core'
 import {
   applyModelPolicy,
   defineProvider,
+  quotaSnapshotFile,
   type AgentProvider,
   type InferenceItem,
   type InferenceRequest,
@@ -786,6 +787,7 @@ export function createClaudeCodeProvider(
 
   const quota = createClaudeCodeQuota({
     providerId: id,
+    snapshotFile: quotaSnapshotFile(options.stateDir),
     resolveAccess: async () => {
       try {
         return await authStore.resolveAccess()

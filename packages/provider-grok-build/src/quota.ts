@@ -67,6 +67,8 @@ export interface GrokBuildQuotaOptions {
   clientVersion?: string
   authStore?: GrokAuthStore
   fetch?: GrokBuildFetch
+  /** Where the latest snapshot is kept across rebuilds and restarts (`createProviderQuota`). */
+  snapshotFile?: string
 }
 
 /**
@@ -98,6 +100,7 @@ export function createGrokBuildQuota(
 
   return createProviderQuota({
     providerId,
+    snapshotFile: options.snapshotFile,
     canProbe: true,
     canObserve: true,
     probeCost: 'free',
