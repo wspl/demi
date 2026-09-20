@@ -23,7 +23,10 @@ vendor-specific UI branches for every header name.
 
 - Shared types: `ProviderQuota`, `ProviderQuotaSnapshot`, `ProviderQuotaWindow`.
 - Two fill paths: **active** `probe()` and **passive** `observeResponse()`.
-- In-memory `latest()` cache with optional `clearLatest()` (required after credential switch).
+- `latest()`, the last snapshot, with `clearLatest()` (required after credential switch). A provider given a
+  snapshot file keeps the snapshot there as well, without the vendor's raw payload, and starts from it: what is
+  known about an account's usage survives the provider being rebuilt (an account added, an entry edited) and the
+  backend restarting. `clearLatest()` removes the file, since it says nothing about another account.
 - Helper `ensureQuota()` for “cache if fresh, else probe”.
 - Wire observation into live inference so quota stays warm without extra probes when possible.
 
