@@ -278,14 +278,15 @@ inference for a probe returns `quota_requires_inference`; no data returns null,
 not a fabricated percentage. Reading status never invokes inference.
 `POST /api/providers/:id/test` takes `{ modelId, credentialId? }` and tests
 with that account, in use or not.
-A provider whose transport is a process is tested on the acting user's Cloud
-([The Claude Code CLI](claude-cli.md#where-it-runs)), which the test wakes.
+A provider whose transport is a process is tested on the acting user's Cloud,
+where its requests run too ([The Claude Code CLI](claude-cli.md#where-it-runs));
+the test wakes it.
 
 A subscription entry's CLI is read and managed under `/api/providers/:id/cli`:
 
 | Route | Meaning |
 |---|---|
-| `GET …/cli?refresh=` | `{ newest, held, install, machines }`: the vendor's newest version (`{ version }`, or `{ error }` when the vendor cannot be read; `refresh=true` asks it at once), the version the entry is held at or null, the last Cloud install (`installing`, `installed` with its path, `failed` with its message, or null), and for each of the user's machines connected now its installed versions, or null when it did not answer. It wakes nothing. |
+| `GET …/cli?refresh=` | `{ newest, held, install, machines }`: the vendor's newest version (`{ version }`, or `{ error }` when the vendor cannot be read; `refresh=true` asks it at once), the version the entry is held at or null, the last Cloud install (`installing`, `installed` with its path, `failed` with its message, or null), and the user's Cloud with its installed versions when it is running now (null when it did not answer). It wakes nothing: a stopped Cloud is simply absent. |
 | `PUT …/cli` | `{ held }`: hold the entry at a version the vendor publishes (`unknown_version` otherwise), or null to follow the newest. |
 | `POST …/cli/install` | Starts the Cloud install again; 202 with its state. |
 

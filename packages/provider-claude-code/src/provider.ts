@@ -49,6 +49,7 @@ import {
   ClaudeCliTransportFactory,
   type ClaudeStdoutLine,
   type ClaudeTransport,
+  type ClaudeProcessPlace,
   type ClaudeTransportFactory
 } from './transport'
 
@@ -57,10 +58,12 @@ export interface ClaudeCodeProviderOptions {
   displayName?: string
   claudePath?: string
   /**
-   * Names the CLI executable for each process, instead of `claudePath`: a
-   * product that installs its own CLI on the machine the process runs on.
+   * Where each process runs, instead of `claudePath` in the request's
+   * directory: a product that installs its own CLI on a machine of its choosing
+   * names the executable, the working directory and the CLI's configuration
+   * home there.
    */
-  resolveClaudePath?: () => Promise<string>
+  resolveProcess?: () => Promise<ClaudeProcessPlace>
   models?: ModelPolicy
   /** Demi state root for credential pool (`$DEMI_HOME` / `~/.demi`). */
   stateDir?: string
@@ -91,10 +94,12 @@ export interface ClaudeCodeRuntimeOptions {
   transportFactory?: ClaudeTransportFactory
   claudePath?: string
   /**
-   * Names the CLI executable for each process, instead of `claudePath`: a
-   * product that installs its own CLI on the machine the process runs on.
+   * Where each process runs, instead of `claudePath` in the request's
+   * directory: a product that installs its own CLI on a machine of its choosing
+   * names the executable, the working directory and the CLI's configuration
+   * home there.
    */
-  resolveClaudePath?: () => Promise<string>
+  resolveProcess?: () => Promise<ClaudeProcessPlace>
   /**
    * Shared with the public Provider shell so stream messages can update quota.
    */
@@ -172,7 +177,7 @@ export class ClaudeCodeProvider implements AgentProvider {
       options.transportFactory ??
       new ClaudeCliTransportFactory({
         claudePath: options.claudePath,
-        resolveClaudePath: options.resolveClaudePath,
+        resolveProcess: options.resolveProcess,
         spawn: options.spawn,
         env: options.env,
         resolveOAuthAccessToken: options.authStore
@@ -832,7 +837,7 @@ export function createClaudeCodeProvider(
 
   const runtimeOptions: ClaudeCodeRuntimeOptions = {
     claudePath: options.claudePath,
-    resolveClaudePath: options.resolveClaudePath,
+    resolveProcess: options.resolveProcess,
     quota,
     authStore,
     // The retained CLI process belongs to the account the provider resolves:

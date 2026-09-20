@@ -286,6 +286,36 @@ test(
 
 
 test(
+  'a retained process holds no admission and is not counted, so its machine can go idle with it running',
+  async () => {
+    let active = 0
+    const host = new RemoteHost({
+      defaultCwd: '/work',
+      identity: { uid: 1000, gid: 1000, hostname: 'cloud', homeDir: '/home/demi' },
+      store: memoryHostStore(),
+      pipes: devicePipes(new PipeBroker(), 'unused'),
+      admit: () => {
+        active++
+        return () => {
+          active--
+        }
+      },
+    })
+    host.attach(() => {})
+    const retained = await host.process.spawn({ command: 'provider', retained: true })
+    expect(active).toBe(0)
+    expect(host.activeSpawnCount).toBe(0)
+    const work = await host.process.spawn({ command: 'sleep', args: ['10'] })
+    expect(active).toBe(1)
+    expect(host.activeSpawnCount).toBe(1)
+    host.detach()
+    await Promise.all([retained.wait(), work.wait()])
+    expect(active).toBe(0)
+    expect(host.activeSpawnCount).toBe(0)
+  }
+)
+
+test(
   'process and shell stdin writes use bounded frames and preserve bytes before EOF',
   async () => {
     const remote = new RemoteHost({

@@ -295,11 +295,17 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     assembly,
     control,
     vault,
-    hostFor: (id) => targets.hostFor(id),
-    claudeCli: async (conversationId, held) => {
+    processHost: async (conversationId) => {
+      // The turn that asks keeps the Cloud awake from here on: the
+      // conversation uses it as `provider`.
+      const placed = await placement.place({ kind: 'inference', conversationId })
+      placed.release()
+      return placed.host
+    },
+    claudeProcess: async (conversationId, held) => {
       const placed = await placement.place({ kind: 'inference', conversationId })
       try {
-        return await claudeCli().executable(placed, { held })
+        return await claudeCli().place(placed, { held })
       } finally {
         placed.release()
       }
@@ -311,6 +317,14 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     control,
     targets: () => targets,
     agents: () => agentServer,
+    providerOnCloud: async (conversationId) => {
+      if (!placement.onCloud('inference'))
+        return false
+      const providerId = (await control.getConversation(conversationId))?.providerId
+      return providerId
+        ? (await assembly.providerFor(providerId))?.provider.requiresProcessCapableHost === true
+        : false
+    },
   })
   // The expose records (`expose.md`): one-hour public URLs over the relay.
   // Without a domain the service still answers — `add` and the product
@@ -380,7 +394,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
       session: {
         spawn: (params: Parameters<SessionProviderContext['spawn']>[0]) =>
           placed.host.process.spawn({ ...params, inheritEnv: true }),
-        claudeCli: () => claudeCli().executable(placed, {
+        claudeProcess: () => claudeCli().place(placed, {
           held: entry.config.kind === 'subscription'
             ? entry.config.cliVersion
             : undefined,

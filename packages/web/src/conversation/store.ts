@@ -456,7 +456,7 @@ export const useConversations = defineStore('conversations', () => {
     conversation: Conversation,
   ): Promise<ProviderSelection> {
     const pick = composerModel(
-      resources.providerInfosFor(conversation.id),
+      resources.providerInfos,
       resources.modelsFor(),
       conversation.model.providerId,
       conversation.model.modelId,
@@ -576,7 +576,7 @@ export const useConversations = defineStore('conversations', () => {
       await modelsLoaded
       controller.signal.throwIfAborted()
       const pick = composerModel(
-        resources.providerInfosFor(conversation.id),
+        resources.providerInfos,
         resources.modelsFor(),
         conversation.model.providerId,
         conversation.model.modelId,
@@ -1165,7 +1165,7 @@ export const useConversations = defineStore('conversations', () => {
 
   function rememberModel(conversation: Conversation): void {
     const pick = composerModel(
-      resources.providerInfosFor(conversation.id),
+      resources.providerInfos,
       resources.modelsFor(),
       conversation.model.providerId,
       conversation.model.modelId,

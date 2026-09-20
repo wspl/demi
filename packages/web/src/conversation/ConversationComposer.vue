@@ -63,10 +63,16 @@ function send() {
 }
 
 const execution = computed(() => executionFor(props.conversation))
-// A reset holds the conversations whose target is the Cloud; the account
-// snapshot the page polls says when it ends, and the input returns by itself.
+// A reset holds the conversations that cannot work without the Cloud: it is
+// their target, or where their provider's process runs. The account snapshot
+// the page polls says when it ends, and the input returns by itself.
+const usesCloud = computed(() =>
+  execution.value.kind === 'cloud' ||
+  product.catalog.find((provider) => provider.providerId === props.conversation.model.providerId)
+    ?.requiresProcessCapableHost === true,
+)
 const hold = computed(() =>
-  execution.value.kind === 'cloud' && product.snapshot?.cloud?.state === 'resetting'
+  usesCloud.value && product.snapshot?.cloud.state === 'resetting'
     ? 'Cloud is resetting.'
     : null,
 )
