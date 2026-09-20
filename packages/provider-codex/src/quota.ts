@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto'
-import { isRecord } from '@demicodes/utils'
 import {
   clampUsedPercent,
   numberHeader,
@@ -11,17 +10,14 @@ import {
   type ProviderQuotaWindow,
 } from '@demicodes/provider'
 import { FileCodexAuthStore, type CodexAuthStore } from './auth'
-import { buildCodexHeaders, responsesUrlForAuth } from './provider'
+import { z } from 'zod'
+import { buildCodexHeaders } from './provider'
 
 export interface CodexQuotaOptions {
   providerId?: string
   codexHome?: string
   baseUrl?: string
   authStore?: CodexAuthStore
-  /**
-   * Model id for the minimal probe request (must be accepted by the backend).
-   */
-  probeModelId?: string
   fetch?: (
     input: string | URL | Request,
     init?: RequestInit
@@ -29,15 +25,30 @@ export interface CodexQuotaOptions {
   userAgent?: string
 }
 
-const DEFAULT_PROBE_MODEL = 'gpt-5.4'
+const DEFAULT_CHATGPT_BASE_URL = 'https://chatgpt.com/backend-api'
+
+/** The account's usage status, as the ChatGPT backend answers `GET /wham/usage`. */
+const usageWindowSchema = z.object({
+  used_percent: z.number(),
+  limit_window_seconds: z.number(),
+  reset_at: z.number(),
+}).loose()
+const usageStatusSchema = z.object({
+  plan_type: z.string().optional(),
+  rate_limit: z.object({
+    primary_window: usageWindowSchema.nullish(),
+    secondary_window: usageWindowSchema.nullish(),
+  }).loose().nullish(),
+}).loose()
 
 /**
- * Codex consumer rate windows come from Responses headers:
- * x-codex-{primary,secondary}-used-percent / -window-minutes / -reset-at
- *
- * probe() issues a minimal streamed Responses request and cancels the body
- * (probeCost: minimal_request). observeResponse can parse the same headers
- * from any live Responses call without an extra request.
+ * Codex consumer rate windows, from two places that agree:
+ * - probe(): the account's usage status, `GET …/wham/usage`, which the
+ *   open-source Codex CLI reads for its own status. It spends nothing and
+ *   answers while the limit is reached, when a request would be refused.
+ * - observeResponse: `x-codex-{primary,secondary}-used-percent` /
+ *   `-window-minutes` / `-reset-at` on any live Responses call.
+ * The usage status belongs to a ChatGPT sign-in; an API key has none.
  */
 export function createCodexQuota(options: CodexQuotaOptions = {}): ProviderQuota {
   const providerId = options.providerId ?? 'codex'
@@ -45,16 +56,17 @@ export function createCodexQuota(options: CodexQuotaOptions = {}): ProviderQuota
     codexHome: options.codexHome
   })
   const fetchImpl = options.fetch ?? fetch
-  const probeModelId = options.probeModelId ?? DEFAULT_PROBE_MODEL
 
   return createProviderQuota({
     providerId,
     canProbe: true,
     canObserve: true,
-    probeCost: 'minimal_request',
+    probeCost: 'free',
     staleAfterMs: 5 * 60_000,
     probe: async ({ signal } = {}) => {
       const auth = await authStore.resolveAuth()
+      if (auth.kind === 'apiKey')
+        throw new Error('An OpenAI API key has no Codex usage status; its windows come from responses')
       const status = await authStore.status()
       const accountLabel = status.status === 'authenticated'
         ? status.accountLabel ?? null
@@ -64,51 +76,64 @@ export function createCodexQuota(options: CodexQuotaOptions = {}): ProviderQuota
         { sessionId: 'demi-codex-quota-probe', requestId: randomUUID() },
         { userAgent: options.userAgent },
       )
-      const body = {
-        model: probeModelId,
-        instructions: 'Reply with pong.',
-        input: [{
-          type: 'message',
-          role: 'user',
-          content: [{ type: 'input_text', text: 'ping' }]
-        }],
-        tools: [],
-        tool_choice: 'auto',
-        parallel_tool_calls: true,
-        store: false,
-        stream: true,
-        include: [],
-        prompt_cache_key: 'demi-codex-quota-probe',
-        text: { verbosity: 'low' },
+      const base = (options.baseUrl ?? DEFAULT_CHATGPT_BASE_URL).replace(/\/+$/, '')
+      const response = await fetchImpl(`${base}/wham/usage`, { method: 'GET', headers, signal })
+      if (!response.ok) {
+        await response.body?.cancel().catch(() => {})
+        throw new Error(`Codex usage request failed (HTTP ${response.status})`)
       }
-      const response = await fetchImpl(responsesUrlForAuth(
-        auth,
-        options.baseUrl
-      ), {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-        signal,
-      })
-      const partial = mapCodexRateLimitHeaders(response.headers)
-      await response.body?.cancel().catch(() => {})
-      if (!partial || partial.windows.length === 0) {
-        throw new Error(
-          `Codex quota probe got no rate-limit headers (HTTP ${response.status})`
-        )
-      }
+      const usage = usageStatusSchema.parse(await response.json())
       return {
-        ...partial,
+        ...mapCodexUsageStatus(usage),
         accountLabel,
-        raw: {
-          ...(isRecord(partial.raw) ? partial.raw : {}),
-          httpStatus: response.status,
-          authKind: auth.kind
-        },
+        raw: usage,
       }
     },
     observe: ({ headers }) => mapCodexRateLimitHeaders(headers),
   })
+}
+
+/** The plan and the two windows of a usage status. */
+export function mapCodexUsageStatus(usage: z.infer<typeof usageStatusSchema>): ProviderQuotaProbeResult {
+  const windows = (['primary', 'secondary'] as const).flatMap((kind) => {
+    const window = usage.rate_limit?.[`${kind}_window`]
+    if (!window)
+      return []
+    const usedPercent = clampUsedPercent(window.used_percent)
+    return [{
+      id: kind,
+      label: windowLabel(kind, window.limit_window_seconds / 60),
+      usedPercent,
+      unit: 'percent' as const,
+      resetsAt: unixSecondsToIso(window.reset_at),
+      severity: severityFromUsedPercent(usedPercent),
+    }]
+  })
+  const plan = usage.plan_type
+  return {
+    windows,
+    plan: plan ? { id: plan, label: planLabel(plan), raw: plan } : null,
+  }
+}
+
+/** `plus` reads Plus; `self_serve_business_usage_based` reads Self serve business usage based. */
+function planLabel(plan: string): string {
+  const words = plan.replaceAll('_', ' ')
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
+/** A window is named by its length, which is what the user knows it by; the vendor's own word for it otherwise. */
+function windowLabel(kind: 'primary' | 'secondary', minutes: number | null): string {
+  const name = kind === 'primary' ? 'Primary' : 'Secondary'
+  if (minutes === null || !(minutes > 0))
+    return name
+  if (minutes % (7 * 24 * 60) === 0)
+    return minutes === 7 * 24 * 60 ? 'Weekly' : `${minutes / (7 * 24 * 60)}-week`
+  if (minutes % (24 * 60) === 0)
+    return minutes === 24 * 60 ? 'Daily' : `${minutes / (24 * 60)}-day`
+  if (minutes % 60 === 0)
+    return `${minutes / 60}-hour`
+  return `${minutes}-minute`
 }
 
 export function mapCodexRateLimitHeaders(
@@ -145,14 +170,8 @@ function parseCodexWindow(
     headers,
     `x-codex-${kind}-reset-at`
   ))
-  const label =
-    kind === 'primary'
-      ? windowMinutes != null
-        ? `Primary (${windowMinutes}m)`
-        : 'Primary'
-      : windowMinutes != null
-        ? `Secondary (${windowMinutes}m)`
-        : 'Secondary'
+  // The same names the usage status gives, so a window keeps its name whichever source saw it last.
+  const label = windowLabel(kind, windowMinutes)
   return {
     id: kind,
     label,

@@ -333,8 +333,8 @@ export function mockProviders(): MockProvider[] {
         logo: '/logos/xai.svg',
         // Signed in and reachable from the backend: its active account can be tested.
         accounts: [
-          { id: 'g1', label: 'zan@example.com', plan: 'oidc', active: true, quota: [] },
-          { id: 'g2', label: 'zan@work.example', plan: 'oidc', active: false, quota: [] },
+          { id: 'g1', label: 'zan@example.com', plan: 'XPremium', active: true, quota: [] },
+          { id: 'g2', label: 'zan@work.example', plan: '', active: false, quota: [] },
         ],
         models: [
           model({ id: 'grok-4-6', name: 'Grok 4.6', contextWindow: 256_000, outputLimit: 64_000, tools: true }),
