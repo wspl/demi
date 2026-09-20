@@ -304,7 +304,7 @@ test(
     const scoped = conversationScopedTransport(pair.server, f.conversation, {
       control: f.control,
       providerAllowed: async () => true,
-      admitFrame: async () => gate.tryEnter(),
+      admitFrame: signal => gate.enter(signal),
     })
     const replies: ServerFrame[] = []
     pair.client.onFrame(frame => {

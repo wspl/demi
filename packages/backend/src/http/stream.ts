@@ -148,4 +148,5 @@ class WsContextAdapter {
 }
 
 /** Immediate admission refuses frames while a conversation transition owns the gate. */
-export type FrameAdmission = (id: string, signal: AbortSignal) => Promise<(() => void) | null>
+/** Admits a frame once no transition holds the conversation; the signal ends the wait. */
+export type FrameAdmission = (id: string, signal: AbortSignal) => Promise<() => void>

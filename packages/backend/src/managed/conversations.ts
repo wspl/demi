@@ -6,7 +6,10 @@ export interface CloudConversationReservation {
   release(): void
 }
 
-/** Reserves the conversations that depend on Cloud before its generation retires. */
+/**
+ * The conversations a Cloud's lifecycle reaches: those that use it keep it
+ * awake, and those whose target it is are held while its generation retires.
+ */
 export class CloudConversations {
   constructor(private readonly options: {
     control: ControlService
@@ -41,7 +44,7 @@ export class CloudConversations {
     using reservations = new DisposableStack()
     const targets = this.options.targets()
     const agents = this.options.agents()
-    for (const id of await this.selected(userId)) {
+    for (const id of await this.targeted(userId)) {
       const tree = reason === 'reset'
         ? await agents.interruptTree(id)
         : agents.reserveTreeMutation(id)
@@ -63,15 +66,25 @@ export class CloudConversations {
     }
   }
 
-  private async selected(userId: string): Promise<string[]> {
+  /** A conversation with the Cloud only attached runs on its own target and is left alone. */
+  private targeted(userId: string): Promise<string[]> {
+    return this.selected(userId, 'target')
+  }
+
+  private async selected(userId: string, binding: 'any' | 'target' = 'any'): Promise<string[]> {
     const ids = await this.options.control.listUserConversationIds(userId)
     const device = await this.options.control.getManagedDevice(userId)
     const selected: string[] = []
     for (const id of ids) {
       const target = await this.options.targets().resolve(id)
-      const attached = device ? await this.options.control.listAttachedHosts(id) : []
-      if (target.kind === 'cloud' || target.deviceId === device?.id ||
-        attached.some(host => host.deviceId === device?.id))
+      if (target.kind === 'cloud' || target.deviceId === device?.id) {
+        selected.push(id)
+        continue
+      }
+      if (binding === 'target' || !device)
+        continue
+      const attached = await this.options.control.listAttachedHosts(id)
+      if (attached.some(host => host.deviceId === device.id))
         selected.push(id)
     }
     return selected

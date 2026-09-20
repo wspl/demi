@@ -41,7 +41,7 @@ export interface ConversationTransportOptions {
     conversation: ConversationRecord,
     content: unknown[]
   ) => Promise<unknown[]>
-  admitFrame?: (signal: AbortSignal) => Promise<(() => void) | null>
+  admitFrame?: (signal: AbortSignal) => Promise<() => void>
   modelSelection?: (
     providerId: string,
     selection: ModelSelection
@@ -134,11 +134,6 @@ export function conversationScopedTransport(
             return
           }
           const release = options.admitFrame ? await options.admitFrame(signal) : () => {}
-          if (!release)
-            throw new FrameRefused(
-              'conversation_busy',
-              'A conversation operation is still running'
-            )
           try {
             if (signal.aborted)
               return
