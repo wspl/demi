@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { Archive, Pin, PinOff } from '@lucide/vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
+import TitleInput from '@demicodes/web-ui/ui/TitleInput.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import type { SidebarConversation } from './types'
 
@@ -36,39 +37,6 @@ const emit = defineEmits<{
   renameCancel: []
   togglePin: []
 }>()
-
-const renameInputRef = ref<HTMLInputElement>()
-const renameValue = ref(props.conversation.title)
-// Enter submits and the input then loses focus; the blur must not submit again.
-let renameSettled = false
-
-function submitRename(): void {
-  if (renameSettled) {
-    return
-  }
-  renameSettled = true
-  emit('renameSubmit', renameValue.value)
-}
-
-function cancelRename(): void {
-  renameSettled = true
-  emit('renameCancel')
-}
-
-watch(
-  () => props.renaming,
-  (renaming) => {
-    if (!renaming) {
-      return
-    }
-    renameSettled = false
-    renameValue.value = props.conversation.title
-    nextTick(() => {
-      renameInputRef.value?.focus()
-      renameInputRef.value?.select()
-    })
-  },
-)
 
 // One quiet mark: a breathing dot while running, green for a result waiting to be read, orange
 // when the conversation needs the user (it failed or was stopped). Nothing when settled.
@@ -144,16 +112,12 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
     <span class="flex size-3.5 shrink-0 items-center justify-center">
       <span v-if="dotClass" class="size-1.5 rounded-full" :class="dotClass" />
     </span>
-    <input
+    <TitleInput
       v-if="renaming"
-      ref="renameInputRef"
-      v-model="renameValue"
-      class="min-w-0 flex-1 bg-transparent font-normal outline-none"
-      @keydown.enter.stop="submitRename"
-      @keydown.escape.stop="cancelRename"
-      @keydown.stop
-      @blur="submitRename"
-      @click.stop
+      class="flex-1 font-normal"
+      :title="conversation.title"
+      @submit="emit('renameSubmit', $event)"
+      @cancel="emit('renameCancel')"
     />
     <!-- The title has the row until hover; then it yields the end to the actions and, if cut, plays.
          A cut title fades out at the edge instead of ending in an ellipsis. -->

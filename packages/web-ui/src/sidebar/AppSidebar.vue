@@ -294,9 +294,7 @@ function rowMenuOpenFor(id: string): boolean {
 
 function submitRename(id: string, title: string): void {
   renamingId.value = null
-  const trimmed = title.trim()
-  if (trimmed)
-    emit('rename', id, trimmed)
+  emit('rename', id, title)
   listRef.value?.focus()
 }
 
