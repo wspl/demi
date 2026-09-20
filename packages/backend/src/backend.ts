@@ -470,10 +470,9 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
       agentServer,
       titles
     }),
-    admitFrame: async (id, signal) => {
-      signal.throwIfAborted()
-      return targets.files(id).tryEnter()
-    },
+    // A transition holding the conversation is waited for, never refused
+    // (`sessions-and-targets.md` § Coordinate shared Cloud activity).
+    admitFrame: (id, signal) => targets.files(id).enter(signal),
     vault,
     assembly,
     vendors,

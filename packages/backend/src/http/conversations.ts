@@ -343,15 +343,6 @@ export function conversationRoutes(options: {
       return next()
     }
     const release = await options.admitFrame(c.req.param('id') ?? '', c.req.raw.signal)
-    if (!release) {
-      return c.json(
-        {
-          code: 'conversation_busy',
-          message: 'A conversation operation is still running',
-        },
-        409,
-      )
-    }
     try {
       const conversation = await own(c)
       if (conversation?.archived) {

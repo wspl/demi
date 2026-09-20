@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { delay } from '@demicodes/utils'
+import { deferred, delay } from '@demicodes/utils'
 import { World } from './world'
 import { model } from './driver'
 import { FakeProvisioner } from './fake-provisioner'
@@ -110,4 +110,60 @@ test(
     }
   },
   45_000
+)
+
+test(
+  'a reset leaves a conversation that only has Cloud attached running, and holds a Cloud conversation until it ends',
+  async () => {
+    const rebuilding = deferred<void>()
+    const proceed = deferred<void>()
+    class HeldReset extends FakeProvisioner {
+      override async reset(
+        ...args: Parameters<FakeProvisioner['reset']>
+      ): Promise<void> {
+        rebuilding.resolve()
+        await proceed.promise
+        await super.reset(...args)
+      }
+    }
+    const world = await World.create(
+      { managedHosts: { provisioner: new HeldReset(), config: { sweepMs: 60_000 } } }
+    )
+    try {
+      await world.pair('alpha')
+      const cloud = await world.conversation('cloud')
+      await cloud.turn({ model: [model.shell('write', 'echo kept > note'), model.say('written')] })
+      // Leaving Cloud for the paired device keeps Cloud attached.
+      const local = await world.conversation('cloud')
+      await local.turn({ model: [model.shell('touch', 'true'), model.say('touched')] })
+      await local.switchTo('runner:alpha')
+      const cloudDevice = await world.api<{ device: { id: string } }>('/api/cloud')
+      const attached = await world.api<{ hosts: Array<{ deviceId: string }> }>(`/api/conversations/${local.id}/hosts`)
+      expect(attached.hosts.map(host => host.deviceId)).toEqual([cloudDevice.device.id])
+
+      await world.api('/api/cloud/reset', { operationId: crypto.randomUUID() })
+      await rebuilding.promise
+
+      // The local conversation is opened, written to and answered mid-reset.
+      await local.detach()
+      await local.attach()
+      const during = await local.turn({ model: [model.shell('local', 'echo on-alpha'), model.say('done')] })
+      expect(during.received[0]).toContain('on-alpha')
+
+      // The Cloud conversation waits instead of failing, and opens by itself.
+      await cloud.detach()
+      let opened = false
+      const opening = cloud.attach().then(() => { opened = true })
+      await delay(300)
+      expect(opened).toBe(false)
+      proceed.resolve()
+      await opening
+      const after = await cloud.turn({ model: [model.shell('read', 'cat note'), model.say('read')] })
+      expect(after.received[0]).toContain('kept')
+    } finally {
+      proceed.resolve()
+      await world.close()
+    }
+  },
+  60_000
 )
