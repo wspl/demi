@@ -478,6 +478,32 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     })
   }
 
+  /**
+   * Usage for the providers that can report it for free and have none yet
+   * (`provider-quota.md` § Guidance: probe when the dashboard opens). The
+   * backend keeps the latest snapshot in memory, so after it restarts there is
+   * none until a request or a probe brings one.
+   */
+  async function probeMissingQuota(): Promise<void> {
+    const signal = lifetime.signal
+    const missing = (product.snapshot?.providers ?? []).filter((entry) =>
+      entry.details?.quota == null &&
+      entry.details?.quotaCapability.canProbe === true &&
+      entry.details.quotaCapability.probeCost === 'free',
+    )
+    if (missing.length === 0) {
+      return
+    }
+    // A provider that cannot answer now is not an error of opening the page.
+    await Promise.allSettled(missing.map((entry) => apiRequest(
+      `/providers/${encodeURIComponent(entry.id)}/quota`,
+      { method: 'POST', signal },
+    )))
+    if (!signal.aborted) {
+      await product.refresh()
+    }
+  }
+
   function refresh(provider: SettingsProviderEntry): void {
     perform(provider.id, { kind: 'refreshing' }, async (signal) => {
       await product.loadModels(true)
@@ -772,5 +798,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     saveModel,
     saveModels,
     submitToken,
+    probeMissingQuota,
   }
 })
