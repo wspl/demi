@@ -29,6 +29,9 @@ export interface Conversation extends SidebarConversation {
   revision: number
   readRevision: number
   archived: boolean
+  /** No message is newer than the last generated title, and whether a title request is running. */
+  titleCurrent: boolean
+  titleGenerating: boolean
   createdAt: string
   cwd: string
   blocks: Block[]

@@ -1,4 +1,7 @@
 import type { FrameAdmission } from './stream'
+import type { ProviderSelection } from '@demicodes/provider'
+import { modelSelectionSchema } from '@demicodes/agent'
+import type { ConversationTitles } from '../conversation/title'
 import type { ConversationHostAccess, ConversationTargets } from '../conversation/target'
 import { previewMediaType } from '@demicodes/core'
 import { RemoteGitError, type RemoteHost } from '@demicodes/host-remote'
@@ -95,6 +98,15 @@ function protectedPath(path: string, kept: readonly string[]): boolean {
   })
 }
 
+const titleRequestSchema = z.object({
+  provider: z.object({ providerId: z.string().min(1), model: modelSelectionSchema }),
+}).strict()
+
+/** The words of a user message: its text blocks, without attachments or file references. */
+function textOfUserContent(content: ReadonlyArray<{ type: string, text?: string }>): string {
+  return content.flatMap(block => block.type === 'text' && block.text ? [block.text] : []).join('\n')
+}
+
 /** `/api/conversations` REST surface (the live stream is `stream.ts`). */
 export function conversationRoutes(options: {
   admitFrame: FrameAdmission
@@ -111,9 +123,12 @@ export function conversationRoutes(options: {
   registry: RunnerRegistry
   /** The failure facts sent beside the root blocks and each subagent history. */
   readFailures: FailureFactsReader
+  titles: ConversationTitles
+  /** The selection as the provider runs it, or null when the user may not use that provider. */
+  selectProvider: (userId: string, provider: z.infer<typeof titleRequestSchema>['provider']) => Promise<ProviderSelection | null>
 }): Hono<AuthEnv> {
   const { control, conversationStores, withHost, registry } = options
-  const summaryDeps = { stores: conversationStores, server: options.agentServer, control, registry }
+  const summaryDeps = { stores: conversationStores, server: options.agentServer, control, registry, titles: options.titles }
   const app = new Hono<AuthEnv>()
 
   // The caller's conversation, or null: another user's answers like a missing one.
@@ -725,6 +740,37 @@ export function conversationRoutes(options: {
         return new Response(null, { status: part.status, headers })
       return new Response(bytes.subarray(part.start, part.start + part.length), { status: part.status, headers })
     })
+  })
+
+  // A title on request (`product.md` § Conversation titles): every message the
+  // user has sent, to the model the conversation uses now.
+  app.post('/:id/title', async (c) => {
+    const conversation = await own(c)
+    if (!conversation) {
+      return c.json({ code: 'conversation_not_found', message: 'No such conversation' }, 404)
+    }
+    const parsed = titleRequestSchema.safeParse(await c.req.json().catch(() => null))
+    if (!parsed.success) {
+      return c.json({ code: 'invalid_request', message: 'A title request names the provider and model' }, 400)
+    }
+    const provider = await options.selectProvider(conversation.userId, parsed.data.provider)
+    if (!provider) {
+      return c.json({ code: 'provider_not_found', message: 'No such provider' }, 404)
+    }
+    const messages = conversationStores.transcriptBlocks(conversation.id)
+      .flatMap(block => (block.type === 'user' || block.type === 'steer') && !block.hidden
+        ? [textOfUserContent(block.content)]
+        : [])
+      .filter(text => text.trim().length > 0)
+    if (messages.length === 0) {
+      return c.json({ code: 'no_messages', message: 'The conversation has no message to title' }, 409)
+    }
+    options.titles.start(conversation.id, provider, {
+      messages,
+      from: conversation.title,
+      seen: conversation.userMessages,
+    })
+    return c.body(null, 202)
   })
 
   app.get('/:id/transcript', async (c) => {

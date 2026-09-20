@@ -112,6 +112,9 @@ export const conversationSummarySchema = conversationRecordSchema.extend({
   ]),
   revision: z.number().int().nonnegative(),
   unread: z.boolean(),
+  /** No message is newer than the last generated title, and whether a title request is running. */
+  titleCurrent: z.boolean(),
+  titleGenerating: z.boolean(),
 })
 export const hostsSchema = z.object({
   hosts: z.array(
