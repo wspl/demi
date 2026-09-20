@@ -408,6 +408,7 @@ const composerDrafts = {
   uploading: `Wait for ${ATTACHMENT_MARK} and ${ATTACHMENT_MARK} to arrive.`,
   failed: `The capture ${ATTACHMENT_MARK} did not upload; the log ${ATTACHMENT_MARK} did.`,
   pasted: `Summarize ${ATTACHMENT_MARK}, then check it against ${ATTACHMENT_MARK}.`,
+  long: 'The login test in packages/web/src/auth.test.ts is failing after the session cookie rename, and the fixture it reads has the old name.',
   formatted: [
     'The **modal** `padding` is off by *one* column, ~~not two~~. See [the layout notes](docs/layout.md) and https://example.com/issues/42.',
     '```ts',
@@ -627,7 +628,7 @@ function abortTerminal(id: string) {
     <template v-if="view === 'composer'">
       <GallerySection
         title="Composer"
-        note="Idle through Fast Mode; text formatted as it is typed; each file a capsule where it was put, through its upload phases, a failed upload with Retry, and a remote host file naming its device; and queue. One send; a running turn queues. An unavailable last model keeps the chip, warns, and blocks send. No usable model and an archived conversation both replace the input with the same snackbar: a line on the left, Configure models or Restore conversation on the right. The input keeps at least 128px: where the model chip's name and level would leave it less, the chip is its sparkle alone, the name and level in its tooltip, and it names the model again once there is room; loading and a failed load give way the same. The narrow composer resizes from its corner."
+        note="Idle through Fast Mode; text formatted as it is typed; each file a capsule where it was put, through its upload phases, a failed upload with Retry, and a remote host file naming its device; and queue. A message opens the composer as soon as it needs more than the line it is on, whether it holds lines of its own or its text outgrows the width, and closes it again when it fits; nothing is ever cut off at the line's end. One send; a running turn queues. An unavailable last model keeps the chip, warns, and blocks send. No usable model and an archived conversation both replace the input with the same snackbar: a line on the left, Configure models or Restore conversation on the right. The input keeps at least 128px: where the model chip's name and level would leave it less, the chip is its sparkle alone, the name and level in its tooltip, and it names the model again once there is room; loading and a failed load give way the same. The narrow composer resizes from its corner."
       >
         <div class="specimen-stack specimen-stack-loose">
           <GallerySpecimen
@@ -669,6 +670,15 @@ function abortTerminal(id: string) {
             <GalleryComposer
               placeholder="Ask Demi…"
               draft="The login test in packages/web/src/auth.test.ts is failing after the session cookie rename.&#10;Keep the fix in that file."
+            />
+          </GallerySpecimen>
+          <GallerySpecimen
+            variant="longer than its line"
+            wide
+          >
+            <GalleryComposer
+              placeholder="Ask Demi…"
+              :draft="composerDrafts.long"
             />
           </GallerySpecimen>
           <GallerySpecimen
