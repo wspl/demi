@@ -186,6 +186,11 @@ export interface HostSpawnParams {
   /** Extend the target process environment; undefined entries remove inherited names. */
   inheritEnv?: boolean
   killProcessGroup?: boolean
+  /**
+   * The process is kept between pieces of work and is not itself work: a Host
+   * that counts activity leaves it out, and may stop with it running.
+   */
+  retained?: boolean
 }
 
 export interface HostSpawnHandle {

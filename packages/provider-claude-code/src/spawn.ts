@@ -10,6 +10,8 @@ export interface ClaudeSpawnParams {
   args?: string[]
   cwd?: string
   env?: Record<string, string | undefined>
+  /** The process is kept between turns and is not itself work (`Host.process`). */
+  retained?: boolean
 }
 
 export interface ClaudeSpawnHandle {
