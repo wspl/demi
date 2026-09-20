@@ -33,11 +33,9 @@ function open(): void {
       v-if="capsule"
       :capsule="capsule"
       :selected="selected"
-      :removable="capsules.editable()"
       :class="opens ? 'cursor-pointer' : ''"
       data-drag-handle
       @click="open"
-      @remove="deleteNode()"
       @retry="capsules.retry(capsule.id)"
     />
   </NodeViewWrapper>
