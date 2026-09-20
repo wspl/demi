@@ -3,6 +3,7 @@ import { onBeforeUnmount, ref } from 'vue'
 import type { ThinkingConfig, TokenUsage, UserContentBlock } from '@demicodes/core'
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
 import { joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
+import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
 import type { MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import RemoteFilePicker from '@demicodes/web-ui/files/RemoteFilePicker.vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
@@ -74,8 +75,9 @@ const emit = defineEmits<{
 }>()
 const draft = ref(props.draft)
 const attached = ref(props.attachments.map((item) => composerAttachment(item)))
-/** Files whose capsule was deleted: they wait here for an undo. */
-const aside = ref<ComposerAttachment[]>([])
+/** The files the message has, in the order of its capsules; the rest wait for an undo. */
+const carried = ref<string[]>(attached.value.map((item) => item.id))
+const composer = ref<InstanceType<typeof SessionComposer>>()
 const uploads = new AttachmentUploadQueue()
 const providerId = ref(props.selectedProviderId)
 const modelId = ref(props.selectedModelId)
@@ -110,32 +112,21 @@ function forget(id: string, release: boolean) {
 }
 
 /**
- * The capsules in the text, in their order. A file whose capsule was deleted
- * waits aside for an undo to bring both back, as the product's does.
+ * The files the message now has, in the order of its capsules; the rest wait
+ * for an undo, as the product's do.
  */
 function arrange(ids: string[]) {
-  const next = arrangeCapsuleFiles(attached.value, aside.value, ids)
-  for (const item of next.detached) {
+  const next = arrangeCapsuleFiles(attached.value, carried.value, ids)
+  carried.value = [...ids]
+  attached.value = next.carried
+  for (const item of next.stopped) {
     uploads.cancel(item.id)
   }
-  attached.value = next.files
-  aside.value = next.aside
-  for (const item of next.restored) {
+  for (const item of next.resumed) {
     if (isComposerFile(item) && item.phase !== 'ready') {
       upload(item.id)
     }
   }
-}
-
-/** Lets the files set aside go: they are in no message, and no undo can reach them now. */
-function releaseAside() {
-  for (const item of aside.value) {
-    uploads.cancel(item.id)
-    if (isComposerFile(item) && item.src?.startsWith('blob:')) {
-      URL.revokeObjectURL(item.src)
-    }
-  }
-  aside.value = []
 }
 
 /** A sent file as the transcript records it: a record at a made-up Host path, a picture before it, or a device's file. */
@@ -156,15 +147,16 @@ function sentBlocks(item: ComposerAttachment): UserContentBlock[] {
 }
 
 function submit() {
-  const content = joinMessageContent(draft.value, attached.value.map(sentBlocks))
+  const sent = carried.value.flatMap((id) => attached.value.filter((item) => item.id === id))
+  const content = joinMessageContent(draft.value, sent.map(sentBlocks))
   if (!content.length) {
     return
   }
   draft.value = ''
+  carried.value = []
   while (attached.value.length) {
     forget(attached.value[0]!.id, false)
   }
-  releaseAside()
   if (props.running) {
     emit('queue', content)
   } else {
@@ -177,20 +169,22 @@ function upload(id: string) {
   uploads.start(id, sweepUpload, (update) => applyUpdate(id, update)).catch(() => applyUpdate(id, { phase: 'failed' }))
 }
 
-function addFiles(files: File[]) {
+/** Takes files and puts their capsules in the message, where the composer said they would land. */
+async function addFiles(files: File[]) {
+  const taken: ComposerAttachment[] = []
   for (const file of files) {
     if (attachmentFileError(file, composerFileNames(attached.value))) {
       continue
     }
     const item = composerAttachmentFromFile(file)
+    // A text file's opening belongs to its capsule, so it is read before the capsule goes in.
+    await attachTextSnippet(item, file)
     attached.value.push(item)
-    // The snippet lands on the reactive item, so the capsule shows it.
-    const held = attached.value.find((each) => each.id === item.id)
-    if (held && isComposerFile(held)) {
-      void attachTextSnippet(held, file)
-    }
+    const held = attached.value.find((each) => each.id === item.id)!
+    taken.push(held)
     upload(item.id)
   }
+  composer.value?.insertCapsules(taken.map(composerCapsule))
 }
 
 function retry(id: string) {
@@ -205,7 +199,9 @@ const remotePicker = ref<InstanceType<typeof RemoteFilePicker>>()
 function attachRemote(file: { host: string; path: string }) {
   const error = remoteAttachmentError(file.path, file.host, attached.value)
   if (!error) {
-    attached.value.push(composerRemoteAttachment(file))
+    const item = composerRemoteAttachment(file)
+    attached.value.push(item)
+    composer.value?.insertCapsules([composerCapsule(item)])
   }
 }
 function selectModel(provider: string, model: string) {
@@ -214,7 +210,6 @@ function selectModel(provider: string, model: string) {
 }
 onBeforeUnmount(() => {
   uploads.cancelAll()
-  releaseAside()
   while (attached.value.length) {
     forget(attached.value[0]!.id, true)
   }
@@ -226,6 +221,7 @@ onBeforeUnmount(() => {
 
 <template>
   <SessionComposer
+    ref="composer"
     v-bind="props"
     v-model:draft="draft"
     @update:message-edit="emit('update:messageEdit', $event)"

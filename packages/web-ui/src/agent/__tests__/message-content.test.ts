@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import type { UserContentBlock } from '@demicodes/core'
 import { ATTACHMENT_MARK as MARK } from '../../markdown/user-markdown'
-import { composerCapsule, contentCapsule } from '../message-editor/capsules'
+import { composerCapsule, composerTransfer, contentCapsule } from '../message-editor/capsules'
 import {
   composerAttachment,
   composerRemoteAttachment,
@@ -75,9 +75,14 @@ test('a capsule names its file, shows its picture or opening lines, and its uplo
     reference: encodeRemoteReference('zan-mbp', '/Users/zan/Projects/demi/package.json'),
   }])).toMatchObject({ name: 'package.json', host: 'zan-mbp', path: '/Users/zan/Projects/demi/package.json' })
   expect(composerCapsule(composerAttachment({ id: 'u', name: 'shot.png', phase: 'uploading', progress: 0.42 })))
-    .toMatchObject({ id: 'u', name: 'shot.png', upload: { phase: 'uploading', progress: 0.42 } })
-  expect(composerCapsule(composerAttachment({ id: 'f', name: 'shot.png', phase: 'failed' })).upload)
+    .toEqual({ id: 'u', name: 'shot.png' })
+  // How far a file has come is not a fact of the message: it travels beside the capsule.
+  expect(composerTransfer(composerAttachment({ id: 'u', name: 'shot.png', phase: 'uploading', progress: 0.42 })))
+    .toEqual({ phase: 'uploading', progress: 0.42 })
+  expect(composerTransfer(composerAttachment({ id: 'f', name: 'shot.png', phase: 'failed' })))
     .toEqual({ phase: 'failed' })
+  expect(composerTransfer(composerAttachment({ id: 'r', name: 'shot.png', phase: 'ready' })))
+    .toBeUndefined()
   expect(composerCapsule(composerRemoteAttachment({ id: 'r', host: 'zan-mbp', path: '/a/b.txt' })))
     .toEqual({ id: 'r', name: 'b.txt', host: 'zan-mbp', path: '/a/b.txt' })
 })

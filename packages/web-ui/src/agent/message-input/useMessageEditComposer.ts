@@ -4,7 +4,7 @@ import {
   type MessageEditContent,
   type MessageEditState,
 } from '../message-editing'
-import { contentCapsule } from '../message-editor/capsules'
+import { contentCapsule, type MessageCapsule } from '../message-editor/capsules'
 import { attachmentFileError, fileToUserContent } from './attachments'
 import { joinMessageContent, splitMessageContent } from './message-content'
 
@@ -28,11 +28,18 @@ export function useMessageEditComposer(options: {
   /** The names of files added to the edit: their media blocks carry none. */
   const addedNames = shallowRef(new Map<string, string>())
   const editable = computed(() => options.state()?.phase === 'editing')
-  const capsules = computed(() => order.value.map((id) => {
-    const capsule = contentCapsule(id, files.value.get(id) ?? [])
-    const name = addedNames.value.get(id)
+  const capsules = computed(() => order.value.map((id) => capsuleOf(id, files.value, addedNames.value)))
+
+  /** A file of the edit as its capsule shows it; a file added to the edit carries the name it was read from. */
+  function capsuleOf(
+    id: string,
+    blocks: ReadonlyMap<string, MessageEditContent[]>,
+    names: ReadonlyMap<string, string>,
+  ): MessageCapsule {
+    const capsule = contentCapsule(id, blocks.get(id) ?? [])
+    const name = names.get(id)
     return name ? { ...capsule, name } : capsule
-  }))
+  }
 
   function stopReading(): void {
     reading.value?.abort()
@@ -53,8 +60,9 @@ export function useMessageEditComposer(options: {
   }, { immediate: true })
   onScopeDispose(stopReading)
 
-  function change(nextMarkdown: string, ids: string[]): void {
+  function change(nextMarkdown: string, attachments: MessageCapsule[]): void {
     markdown.value = nextMarkdown
+    const ids = attachments.map((capsule) => capsule.id)
     order.value = ids
     const state = options.state()
     if (state) {
@@ -71,11 +79,11 @@ export function useMessageEditComposer(options: {
     }
   }
 
-  /** Reads files into the edit; their capsules land where the editor was told they would. */
-  async function addFiles(added: File[]): Promise<void> {
+  /** Reads files into the edit and answers with their capsules, for the editor to put in the message. */
+  async function addFiles(added: File[]): Promise<MessageCapsule[]> {
     const state = options.state()
     if (!state || !editable.value || reading.value || added.length === 0) {
-      return
+      return []
     }
     attachmentError.value = null
     const controller = new AbortController()
@@ -95,7 +103,7 @@ export function useMessageEditComposer(options: {
         throw new Error(`${unreadable.source.fileName}: an edit can add images, videos and PDFs; attach other files to a new message.`)
       }
       if (options.state()?.request.operationId !== state.request.operationId) {
-        return
+        return []
       }
       const nextFiles = new Map(files.value)
       const nextNames = new Map(addedNames.value)
@@ -107,11 +115,12 @@ export function useMessageEditComposer(options: {
       })
       files.value = nextFiles
       addedNames.value = nextNames
-      order.value = [...order.value, ...ids]
+      return ids.map((id) => capsuleOf(id, nextFiles, nextNames))
     } catch (error) {
       if (!controller.signal.aborted) {
         attachmentError.value = error instanceof Error ? error.message : String(error)
       }
+      return []
     } finally {
       controller.abort()
       if (reading.value === controller) {

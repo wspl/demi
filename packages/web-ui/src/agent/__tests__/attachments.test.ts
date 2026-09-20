@@ -173,23 +173,19 @@ test('unknown bytes become a document block', async () => {
   expect(block.source.data).toEqual(bytes)
 })
 
-test('a file whose capsule was deleted waits aside until the capsule comes back', () => {
+test('the message keeps the files of its capsules, and the composer carries the rest for an undo', () => {
   const before = { id: 'before' }
   const after = { id: 'after' }
-  const files = [before, after]
 
-  // The capsule of `after` is deleted: its file leaves the message but is kept.
-  const deleted = arrangeCapsuleFiles(files, [], ['before'])
-  expect(deleted).toEqual({ files: [before], aside: [after], detached: [after], restored: [] })
+  // The capsule of `after` is deleted: its file leaves the message and stops travelling.
+  const deleted = arrangeCapsuleFiles([before, after], ['before', 'after'], ['before'])
+  expect(deleted).toEqual({ carried: [before, after], stopped: [after], resumed: [] })
 
-  // Undo brings the capsule back, and the file with it, where it stood.
-  const undone = arrangeCapsuleFiles(deleted.files, deleted.aside, ['after', 'before'])
-  expect(undone).toEqual({ files: [after, before], aside: [], detached: [], restored: [after] })
+  // Undo brings the capsule back, and its file travels again, in its place.
+  const undone = arrangeCapsuleFiles(deleted.carried, ['before'], ['after', 'before'])
+  expect(undone).toEqual({ carried: [after, before], stopped: [], resumed: [after] })
 
   // A file of a message being sent is not the draft's to arrange.
-  const sending = arrangeCapsuleFiles([before, after], [], ['after'], (item) => item.id === 'before')
-  expect(sending).toEqual({ files: [before, after], aside: [], detached: [], restored: [] })
-
-  // A capsule with no file anywhere leaves the files as they are.
-  expect(arrangeCapsuleFiles([before], [], ['before', 'stray']).files).toEqual([before])
+  const sending = arrangeCapsuleFiles([before, after], ['before', 'after'], ['after'], (item) => item.id === 'before')
+  expect(sending).toEqual({ carried: [after, before], stopped: [], resumed: [] })
 })

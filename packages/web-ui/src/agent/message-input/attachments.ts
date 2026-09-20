@@ -266,34 +266,27 @@ export function composerFileNames(items: readonly ComposerAttachment[]): string[
 }
 
 /**
- * Keeps a message's files to the capsules in its text, in their order.
- *
- * A file whose capsule was deleted is set aside rather than dropped, since
- * undo brings the capsule back and its file belongs with it; a capsule that
- * comes back takes its file from there. What stays aside is released when the
- * message goes or the composer is taken away. A file that is not the message's
- * to arrange, such as one of a message already being sent, is left where it is.
+ * The files a message now has, in the order of its capsules, told apart from
+ * the ones the composer goes on carrying: a file whose capsule was deleted
+ * stops travelling and waits, since an undo can bring the capsule back, and
+ * then it travels again. A file that is not this message's to arrange, such
+ * as one of a message already being sent, is left where it is.
  */
 export function arrangeCapsuleFiles<T extends { id: string }>(
-  files: readonly T[],
-  aside: readonly T[],
+  carried: readonly T[],
+  had: readonly string[],
   ids: readonly string[],
   isSending: (item: T) => boolean = () => false,
-): { files: T[]; aside: T[]; detached: T[]; restored: T[] } {
-  const marked = new Set(ids)
-  const sending = files.filter((item) => isSending(item))
-  const detached = files.filter((item) => !marked.has(item.id) && !isSending(item))
-  const restored = aside.filter((item) => marked.has(item.id))
-  const byId = new Map([...files, ...restored].map((item) => [item.id, item]))
-  const placed = ids.flatMap((id) => {
-    const item = byId.get(id)
-    return item && !isSending(item) ? [item] : []
-  })
+): { carried: T[]; stopped: T[]; resumed: T[] } {
+  const before = new Set(had)
+  const now = new Set(ids)
+  const message = ids.flatMap((id) => carried.filter((item) => item.id === id))
+  const waiting = carried.filter((item) => !now.has(item.id))
+  const moving = (item: T) => !isSending(item)
   return {
-    files: [...sending, ...placed],
-    aside: [...aside.filter((item) => !marked.has(item.id)), ...detached],
-    detached,
-    restored,
+    carried: [...message, ...waiting],
+    stopped: waiting.filter((item) => before.has(item.id) && moving(item)),
+    resumed: message.filter((item) => !before.has(item.id) && moving(item)),
   }
 }
 

@@ -17,6 +17,7 @@ import { isHttpUrl, isLikelyFilePath } from '../../markdown/filePath'
 import { codeStyles } from '../../markdown/highlight'
 import { bareUrls, closesFence, closingFormat, fenceInfo } from '../../markdown/user-markdown'
 import AttachmentNodeView from './AttachmentNodeView.vue'
+import { readCapsule } from './capsules'
 import ImageNodeView from './ImageNodeView.vue'
 
 // The editor a user message is written and shown in (`product.md` § Writing
@@ -24,7 +25,11 @@ import ImageNodeView from './ImageNodeView.vue'
 // construct is typed, the composer's keys, and what the page draws over the
 // text (links for bare URLs, colors for code).
 
-/** A file's capsule, standing where the file is in the text. */
+/**
+ * A file's capsule, standing where the file is in the text. The node carries
+ * the file itself (`capsules.ts` § `MessageCapsule`), so the document says
+ * what the message's files are without asking anyone.
+ */
 const AttachmentNode = Node.create({
   name: 'attachment',
   group: 'inline',
@@ -33,10 +38,10 @@ const AttachmentNode = Node.create({
   draggable: true,
   addAttributes() {
     return {
-      id: {
-        default: '',
-        parseHTML: (element) => element.getAttribute('data-attachment') ?? '',
-        renderHTML: (attributes) => ({ 'data-attachment': String(attributes['id']) }),
+      capsule: {
+        default: null,
+        parseHTML: (element) => readCapsule(element.getAttribute('data-attachment')),
+        renderHTML: (attributes) => ({ 'data-attachment': JSON.stringify(attributes['capsule'] ?? null) }),
       },
     }
   },

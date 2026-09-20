@@ -25,8 +25,8 @@ function doc(...content: JSONContent[]): JSONContent {
   return { type: 'doc', content }
 }
 
-function expectRoundTrip(markdown: string, attachmentIds: string[] = []): void {
-  expect(serializeUserMarkdown(parseUserMarkdown(markdown, attachmentIds))).toEqual({ markdown, attachmentIds })
+function expectRoundTrip(markdown: string, attachments: string[] = []): void {
+  expect(serializeUserMarkdown(parseUserMarkdown(markdown, attachments))).toEqual({ markdown, attachments })
 }
 
 test('text a conversation about code types stays as typed, both ways', () => {
@@ -101,9 +101,9 @@ test('each file is a capsule where its mark is, in mark order', () => {
   const markdown = `Compare ${MARK} with ${MARK}. The **modal** \`padding\` is off.`
   expect(parseUserMarkdown(markdown, ['before', 'after'])).toEqual(doc(paragraph(
     text('Compare '),
-    { type: 'attachment', attrs: { id: 'before' } },
+    { type: 'attachment', attrs: { capsule: 'before' } },
     text(' with '),
-    { type: 'attachment', attrs: { id: 'after' } },
+    { type: 'attachment', attrs: { capsule: 'after' } },
     text('. The '),
     text('modal', 'bold'),
     text(' '),
@@ -114,21 +114,21 @@ test('each file is a capsule where its mark is, in mark order', () => {
   expectRoundTrip(`${MARK}${MARK} two files, then\n${MARK} one more`, ['a', 'b', 'c'])
 })
 
-test('a file without a mark lands at the end, and a mark without a file is dropped', () => {
+test('the marks say which files the message has: a mark without a file is dropped, a file without a mark is not in it', () => {
   expect(serializeUserMarkdown(parseUserMarkdown('Look', ['a', 'b']))).toEqual({
-    markdown: `Look${MARK}${MARK}`,
-    attachmentIds: ['a', 'b'],
+    markdown: 'Look',
+    attachments: [],
   })
   expect(serializeUserMarkdown(parseUserMarkdown(`a${MARK}b${MARK}c`, ['one']))).toEqual({
     markdown: `a${MARK}bc`,
-    attachmentIds: ['one'],
+    attachments: ['one'],
   })
 })
 
 test('formatting does not reach across a capsule or a line break', () => {
   expect(parseUserMarkdown(`**a ${MARK} b**`, ['x'])).toEqual(doc(paragraph(
     text('**a '),
-    { type: 'attachment', attrs: { id: 'x' } },
+    { type: 'attachment', attrs: { capsule: 'x' } },
     text(' b**'),
   )))
   expect(serializeUserMarkdown(doc(paragraph(
@@ -163,7 +163,7 @@ test('a fenced code block keeps its language and its text', () => {
 test('a mark inside a code block moves its capsule after the block', () => {
   expect(parseUserMarkdown(`\`\`\`\na${MARK}b\n\`\`\``, ['x'])).toEqual(doc(
     { type: 'codeBlock', attrs: { language: null }, content: [text('ab')] },
-    paragraph({ type: 'attachment', attrs: { id: 'x' } }),
+    paragraph({ type: 'attachment', attrs: { capsule: 'x' } }),
   ))
 })
 

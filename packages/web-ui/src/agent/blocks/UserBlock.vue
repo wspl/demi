@@ -219,7 +219,7 @@ useResizeObserver([contentRef, bodyRef], measure)
         >
           <MessageEditor
             :markdown="message.markdown"
-            :capsules="message.capsules"
+            :attachments="message.capsules"
           />
         </div>
       </div>

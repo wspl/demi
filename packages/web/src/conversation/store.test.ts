@@ -394,7 +394,9 @@ test('a draft keeps its files; the conversation itself is created on first send'
   const store = useConversations()
   store.create()
   const conversation = store.items[0]!
-  store.addFiles(conversation, [new File(['Local notes'], 'notes.txt', { type: 'text/plain' })])
+  const taken = await store.addFiles(conversation, [new File(['Local notes'], 'notes.txt', { type: 'text/plain' })])
+  // The composer puts their capsules in the message and says what it now carries.
+  store.arrangeFiles(conversation, taken.map((file) => file.id))
   await new Promise((resolve) => setTimeout(resolve, 0))
   expect(conversation.files[0]).toMatchObject({ kind: 'file', name: 'notes.txt', phase: 'ready', upload: { id: 'att-1' } })
   expect(requests.some((request) => request.path === '/api/conversations')).toBe(false)
@@ -407,19 +409,21 @@ test('a file whose capsule was deleted comes back when undo brings the capsule b
   const store = useConversations()
   store.create()
   const conversation = store.items[0]!
-  store.addFiles(conversation, [new File(['before'], 'before.png', { type: 'image/png' })])
+  const taken = await store.addFiles(conversation, [new File(['before'], 'before.png', { type: 'image/png' })])
+  store.arrangeFiles(conversation, taken.map((file) => file.id))
   await new Promise((resolve) => setTimeout(resolve, 0))
   const file = conversation.files[0]!
   expect(file).toMatchObject({ name: 'before.png', phase: 'ready' })
   const uploaded = file.kind === 'file' ? file.upload?.id : undefined
 
-  // The capsule was deleted: the message has no file, and neither has the draft.
+  // The capsule was deleted: the message has no file, though the composer still carries it.
   store.arrangeFiles(conversation, [])
-  expect(conversation.files).toEqual([])
-
-  // Undo brought the capsule back, and its file stands where it does.
-  store.arrangeFiles(conversation, [file.id])
+  expect(conversation.attachmentIds).toEqual([])
   expect(conversation.files).toEqual([file])
+
+  // Undo brought the capsule back, and its file is the message's again.
+  store.arrangeFiles(conversation, [file.id])
+  expect(conversation.attachmentIds).toEqual([file.id])
   // It kept the upload it had: coming back is not uploading again.
   const back = conversation.files[0]!
   expect(back.kind === 'file' ? back.upload?.id : undefined).toBe(uploaded)
@@ -464,10 +468,11 @@ test('a message sends its text and files in the order the composer shows them', 
   })
   try {
     await useProduct().loadModels(true)
-    store.addFiles(current, [
+    const taken = await store.addFiles(current, [
       new File(['before'], 'before.png', { type: 'image/png' }),
       new File(['after'], 'after.png', { type: 'image/png' }),
     ])
+    store.arrangeFiles(current, taken.map((file) => file.id))
     await new Promise((resolve) => setTimeout(resolve, 0))
     current.draft = `Compare ${ATTACHMENT_MARK} with ${ATTACHMENT_MARK}. The **modal** padding is off.`
     // The capsules were dragged into the other order.
