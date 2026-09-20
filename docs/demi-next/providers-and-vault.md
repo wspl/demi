@@ -247,8 +247,10 @@ configuration metadata, account metadata and usage, never token material.
 ## Claude Code execution boundary
 
 The Claude Code provider remains a backend component. It uses the Host process
-interface to start the CLI on the conversation's runner and exchanges stream-json
-on stdin and stdout. The provider resolves the selected vault account and sends
+interface to start the CLI on a runner and exchanges stream-json on stdin and
+stdout. Which CLI that is, and which machine, are defined in
+[The Claude Code CLI](claude-cli.md): Demi's own verified copy, on the
+conversation's execution target for inference. The provider resolves the selected vault account and sends
 its token as `CLAUDE_CODE_OAUTH_TOKEN` in the spawn environment. The runner and CLI
 therefore receive this credential. A device selected for this transport must be
 trusted with that account's token; on a shared instance that means every user
@@ -261,9 +263,7 @@ backend's credential pool.
 
 The provider supplies transcript replay and disables CLI session persistence.
 Switching targets starts the next transport on the new target with the
-backend-owned transcript. This removes dependence on a previous CLI session;
-it does not promise identical behavior across different CLI installations or
-inherited machine environments.
+backend-owned transcript. This removes dependence on a previous CLI session.
 
 ## Usage and quota
 
