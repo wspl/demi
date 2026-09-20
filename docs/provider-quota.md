@@ -146,7 +146,13 @@ Token resolution follows the same auth path as inference (credential pool active
 |---|---|
 | **probe** | Active session → `GET /v1/user?include=subscription` + `GET /v1/billing?format=credits`. `probeCost: 'free'`. |
 | **observe** | Short-window `x-ratelimit-*` style headers on chat responses (separate from monthly subscription windows). |
-| **Windows** | e.g. `monthly` (billing) plus optional short RPM/TPM-style windows from headers. |
+| **Windows** | `weekly` or `monthly` credits from billing, when the plan meters them, plus short request and token windows from headers. A plan whose billing names no used amount, limit or percentage has no credits window: a window with nothing to show is not reported. |
+
+The two sources report different windows, so one never stands for the other. A
+snapshot keeps each window until its own source reports it again: a probe
+replaces the windows it names and leaves the observed ones, as an observation
+leaves the probed ones. Only `clearLatest()` drops a window, since the account
+changed.
 
 ## 5. Relationship to credentials
 
