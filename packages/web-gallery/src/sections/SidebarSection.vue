@@ -153,7 +153,6 @@ const activeTitle = computed(
 const listRestore = new RestoreSweep()
 const recoveredStatus = ref<ListLoad>('failed')
 const recoveredConversations = ref<SidebarConversation[]>([])
-const recoveredActive = ref<string | null>(null)
 
 function recoveredRows(): SidebarConversation[] {
   return demoConversations().filter(
@@ -164,17 +163,14 @@ function recoveredRows(): SidebarConversation[] {
   )
 }
 
+// Open all along, as a page load opens the conversation its address names
+// whether or not the list has come.
+const recoveredActive = ref<string | null>(recoveredRows()[1]?.id ?? null)
+
 function retrySidebar(): void {
   listRestore.start((phase) => {
     recoveredStatus.value = phase
-    if (phase === 'loading') {
-      recoveredConversations.value = []
-      recoveredActive.value = null
-      return
-    }
-    const rows = recoveredRows()
-    recoveredConversations.value = rows
-    recoveredActive.value = rows[0]?.id ?? null
+    recoveredConversations.value = phase === 'ready' ? recoveredRows() : []
   })
 }
 
@@ -182,7 +178,6 @@ function breakSidebar(): void {
   listRestore.stop()
   recoveredStatus.value = 'failed'
   recoveredConversations.value = []
-  recoveredActive.value = null
 }
 
 onBeforeUnmount(() => listRestore.stop())
@@ -245,7 +240,7 @@ onBeforeUnmount(() => listRestore.stop())
 
     <GallerySection
       title="States"
-      note="Loading the list is a spinner, not a first run. Retry on failed sweeps the spinner, then the rows — not a first-run empty. Break returns to failed. Empty is only after the list is ready."
+      note="Loading the list is a spinner, not a first run. Retry on failed sweeps the spinner, then the rows — not a first-run empty. The conversation open all along, as a page load opens the one its address names, is lit as soon as its row is listed. Break returns to failed. Empty is only after the list is ready."
     >
       <div class="specimen-row specimen-row-wide items-start">
         <GallerySpecimen variant="loading">

@@ -2,8 +2,8 @@ import { expect, test } from 'bun:test'
 import { delay } from '@demicodes/utils'
 import {
   applyAttachmentUpdate,
+  arrangeCapsuleFiles,
   AttachmentUploadQueue,
-  attachmentCaption,
   attachmentFileError,
   attachmentProgress,
   attachmentsReady,
@@ -12,7 +12,6 @@ import {
   composerAttachment,
   composerAttachmentFromFile,
   composerRemoteAttachment,
-  contentBlockCaption,
   decodeRemoteReference,
   encodeRemoteReference,
   fileNameFromPath,
@@ -20,9 +19,9 @@ import {
   dataTransferFiles,
   filePreviewUrl,
   fileToUserContent,
-  transferHasFiles,
   type AttachmentUploadUpdate,
 } from '../message-input/attachments'
+import { transferHasFiles } from '../../composables/useFileDrop'
 
 test('image files get an object-url preview', () => {
   const png = filePreviewUrl(new File(['x'], 'shot.png', { type: 'image/png' }))
@@ -103,17 +102,7 @@ test('progress is a 0–1 unit only while uploading', () => {
   expect(item.progress).toBeUndefined()
 })
 
-test('caption is the file name, or the upload progress, never a path', () => {
-  expect(attachmentCaption(composerAttachment({ name: 'shot.png', phase: 'ready' }))).toBe('shot.png')
-  expect(attachmentCaption(composerAttachment({ name: 'shot.png', phase: 'uploading' }))).toBe(
-    'Uploading 0% · shot.png',
-  )
-  expect(
-    attachmentCaption(composerAttachment({ name: 'spec.pdf', phase: 'uploading', progress: 0.42 })),
-  ).toBe('Uploading 42% · spec.pdf')
-})
-
-test('a remote file is a ready tile whose tooltip identifies its host and full path', () => {
+test('a remote file is ready at once, and its reference names its host and full path', () => {
   const remote = composerRemoteAttachment(
     {
       host: 'zan-mbp',
@@ -123,8 +112,6 @@ test('a remote file is a ready tile whose tooltip identifies its host and full p
   expect(fileNameFromPath(remote.path)).toBe('package.json')
   expect(remote.name).toBe('package.json')
   expect(remote.kind).toBe('reference')
-  expect(attachmentCaption(remote)).toBe('zan-mbp · /Users/zan/Projects/demi/package.json')
-  expect(attachmentCaption(remote)).toContain(remote.path)
   expect(attachmentsReady([remote])).toBe(true)
   expect(attachmentSendBlockReason([remote])).toBeUndefined()
   expect(remoteAttachmentError(remote.path, remote.host, [remote])).toBeDefined()
@@ -136,17 +123,6 @@ test('a remote file is a ready tile whose tooltip identifies its host and full p
     path: remote.path,
     name: 'package.json',
   })
-  expect(contentBlockCaption({ type: 'reference', reference: encoded })).toBe(
-    'zan-mbp · /Users/zan/Projects/demi/package.json'
-  )
-  expect(contentBlockCaption({
-    type: 'document',
-    source: {
-      data: new Uint8Array(),
-      mediaType: 'application/pdf',
-      fileName: 'login-failure.pdf'
-    },
-  })).toBe('login-failure.pdf')
 })
 
 test('empty, oversized, and duplicate files are refused', () => {
@@ -195,4 +171,21 @@ test('unknown bytes become a document block', async () => {
   expect(block.source.fileName).toBe('note.txt')
   expect(block.source.mediaType.startsWith('text/plain')).toBe(true)
   expect(block.source.data).toEqual(bytes)
+})
+
+test('the message keeps the files of its capsules, and the composer carries the rest for an undo', () => {
+  const before = { id: 'before' }
+  const after = { id: 'after' }
+
+  // The capsule of `after` is deleted: its file leaves the message and stops travelling.
+  const deleted = arrangeCapsuleFiles([before, after], ['before', 'after'], ['before'])
+  expect(deleted).toEqual({ carried: [before, after], stopped: [after], resumed: [] })
+
+  // Undo brings the capsule back, and its file travels again, in its place.
+  const undone = arrangeCapsuleFiles(deleted.carried, ['before'], ['after', 'before'])
+  expect(undone).toEqual({ carried: [after, before], stopped: [], resumed: [after] })
+
+  // A file of a message being sent is not the draft's to arrange.
+  const sending = arrangeCapsuleFiles([before, after], ['before', 'after'], ['after'], (item) => item.id === 'before')
+  expect(sending).toEqual({ carried: [after, before], stopped: [], resumed: [] })
 })

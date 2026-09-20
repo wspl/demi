@@ -2,7 +2,7 @@ import { Marked, type RendererObject } from 'marked'
 import markedKatex from 'marked-katex-extension'
 import type { MarkdownRenderOptions } from './types'
 import { codeToHtml } from './highlight'
-import { isHttpUrl, messageHostPath } from './filePath'
+import { isHttpUrl, messageHostPath, messageImage } from './filePath'
 import { escapeHtml } from './html'
 
 // `$...$` inline / `$$...$$` block LaTeX, rendered to self-contained HTML (KaTeX CSS is loaded
@@ -38,25 +38,21 @@ function hostPath(target: string): string | null {
 
 /**
  * Where an image loads from, and the link a click on it follows to show it
- * whole: the web in a new tab, a Host file in the File view, and none for a
- * `data:` URL. Null shows its alt text.
+ * whole. Null shows its alt text.
  */
 function imageSource(target: string): { src: string; link: string | null } | null {
-  if (isHttpUrl(target))
-    return { src: target, link: webLink(target) }
-  if (target.startsWith('data:'))
-    return { src: target, link: null }
-  const files = activeOptions?.files
-  if (!files)
+  const image = messageImage(target, activeOptions?.files)
+  if (!image)
     return null
-  const path = messageHostPath(target, files.cwd)
-  return path === null ? null : { src: files.imageUrl(path), link: fileLink(path) }
+  if (!image.opens)
+    return { src: image.src, link: null }
+  return { src: image.src, link: 'web' in image.opens ? webLink(image.opens.web) : fileLink(image.opens.file) }
 }
 
 /**
- * What the agent's and the user's messages share: read-only task boxes, HTML
- * shown as text, highlighted code, and links and images that reach the web or
- * the conversation's Host (`file-previews.md` § Files named in messages).
+ * An agent's message: read-only task boxes, HTML shown as text, highlighted
+ * code, and links and images that reach the web or the conversation's Host
+ * (`file-previews.md` § Files named in messages).
  */
 const messageRenderer: RendererObject = {
   checkbox({ checked }) {
@@ -94,35 +90,12 @@ const messageRenderer: RendererObject = {
 const agentMarked = new Marked({ gfm: true, breaks: true, renderer: messageRenderer })
 agentMarked.use(katexExtension)
 
-// Deliberately no KaTeX on user content: people type `$` for shell vars ($PATH), prices,
-// and when discussing LaTeX itself, so rendering math here causes far more false positives
-// than it's worth.
-const userMarked = new Marked({ gfm: true, breaks: true, renderer: messageRenderer })
-
-/** A user types lists, headings and quotes as plain lines; only inline Markdown applies. */
-function escapeBlockSyntax(src: string): string {
-  return src
-    .replace(/^(\d+)([.)]) /gm, '$1\\$2 ')
-    .replace(/^([-*+]) /gm, '\\$1 ')
-    .replace(/^(#{1,6}) /gm, '\\$1 ')
-    .replace(/^(>)/gm, '\\$1')
-}
-
-function parseWith(marked: Marked, src: string, options: MarkdownRenderOptions | undefined): string {
+/** An agent's message: GitHub Flavored Markdown with math. */
+export function renderMarkdown(src: string, options?: MarkdownRenderOptions): string {
   activeOptions = options
   try {
-    return marked.parse(src, { async: false })
+    return agentMarked.parse(src, { async: false })
   } finally {
     activeOptions = undefined
   }
-}
-
-/** An agent's message: GitHub Flavored Markdown with math. */
-export function renderMarkdown(src: string, options?: MarkdownRenderOptions): string {
-  return parseWith(agentMarked, src, options)
-}
-
-/** A user's message: the same, without math or block syntax. */
-export function renderUserMarkdown(src: string, options?: MarkdownRenderOptions): string {
-  return parseWith(userMarked, escapeBlockSyntax(src), options)
 }

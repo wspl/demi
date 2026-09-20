@@ -38,7 +38,10 @@ export interface Conversation extends SidebarConversation {
   model: ModelIntent
   lastError: string | null
   draft: string
+  /** Every file the composer carries, those of the message first, in its order. */
   files: ProductAttachment[]
+  /** The files the message has, in the order of its capsules; the composer's document says so. */
+  attachmentIds: string[]
   submission: 'idle' | 'sending'
   pendingSend: SavedDraft['pendingSend']
   messageEdit: MessageEditState | null

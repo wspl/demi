@@ -49,15 +49,10 @@ export function attachmentRoutes(options: {
       }, 400)
     }
     const mediaType = parsed.data
+    // Its size is capped before it is read (`body-caps.ts`).
     const bytes = new Uint8Array(await c.req.arrayBuffer())
     if (bytes.length === 0)
       return c.json({ code: 'invalid_body', message: 'Empty upload' }, 400)
-    if (bytes.length > ATTACHMENT_MAX_BYTES) {
-      return c.json({
-        code: 'too_large',
-        message: `Attachment exceeds the ${ATTACHMENT_MAX_BYTES}-byte limit`
-      }, 413)
-    }
     const sha256 = await blobsFor(c.get('user').id).put(bytes)
     const attachment = await control.createAttachment({
       userId: c.get('user').id,

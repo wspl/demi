@@ -1,8 +1,8 @@
 import type { UserContentBlock } from '@demicodes/core'
 import { ATTACHMENT_SNIPPET_MAX_CHARS, attachmentSnippet, isTextAttachment, sniffModelMediaType } from '@demicodes/core'
 
-/** An upload that fails leaves the composer with a toast; there is no failed phase to show. */
-export type AttachmentPhase = 'uploading' | 'ready'
+/** A failed upload keeps its capsule, which offers Retry; the toast says why it failed. */
+export type AttachmentPhase = 'uploading' | 'ready' | 'failed'
 
 /**
  * A local file on its way to the message. Every file reaches the host's
@@ -203,17 +203,6 @@ export function attachmentsReady(items: readonly ComposerAttachment[]): boolean 
   return items.every((item) => item.kind === 'reference' || item.phase === 'ready')
 }
 
-/** The tile's tooltip: a host file by host and path, an upload by its progress, a file by name. */
-export function attachmentCaption(item: ComposerAttachment): string {
-  if (item.kind === 'reference') {
-    return `${item.host} · ${item.path}`
-  }
-  if (item.phase === 'uploading') {
-    return `Uploading ${Math.round(attachmentProgress(item) * 100)}% · ${item.name}`
-  }
-  return item.name
-}
-
 export function encodeRemoteReference(host: string, path: string): string {
   const url = new URL('file:///')
   url.pathname = path.startsWith('/') ? path : `/${path}`
@@ -246,35 +235,12 @@ export function decodeRemoteReference(reference: string): {
   }
 }
 
-export function contentBlockCaption(block: UserContentBlock): string | undefined {
-  if (block.type === 'image') {
-    return imageNameFromSource(block.source)
-  }
-  if (block.type === 'document') {
-    return block.source.fileName
-  }
-  if (block.type === 'attachment') {
-    return `${block.name} · ${block.path}`
-  }
-  if (block.type === 'reference') {
-    const { host, path } = decodeRemoteReference(block.reference)
-    return host ? `${host} · ${path}` : path
-  }
-}
-
-function imageNameFromSource(
-  source: Extract<UserContentBlock, { type: 'image' }>['source'],
-): string {
-  if (source.type === 'url') {
-    const leaf = source.url.split('/').pop()
-    return leaf ? decodeURIComponent(leaf) : 'image'
-  }
-  return 'image'
-}
-
 export function attachmentSendBlockReason(
   items: readonly ComposerAttachment[],
 ): string | undefined {
+  if (items.some((item) => item.kind === 'file' && item.phase === 'failed')) {
+    return 'Retry or remove the attachments that did not upload'
+  }
   if (items.some((item) => item.kind === 'file' && item.phase === 'uploading')) {
     return 'Wait for attachments to finish uploading'
   }
@@ -297,6 +263,31 @@ export function remoteAttachmentError(
 
 export function composerFileNames(items: readonly ComposerAttachment[]): string[] {
   return items.filter(isComposerFile).map((item) => item.name)
+}
+
+/**
+ * The files a message now has, in the order of its capsules, told apart from
+ * the ones the composer goes on carrying: a file whose capsule was deleted
+ * stops travelling and waits, since an undo can bring the capsule back, and
+ * then it travels again. A file that is not this message's to arrange, such
+ * as one of a message already being sent, is left where it is.
+ */
+export function arrangeCapsuleFiles<T extends { id: string }>(
+  carried: readonly T[],
+  had: readonly string[],
+  ids: readonly string[],
+  isSending: (item: T) => boolean = () => false,
+): { carried: T[]; stopped: T[]; resumed: T[] } {
+  const before = new Set(had)
+  const now = new Set(ids)
+  const message = ids.flatMap((id) => carried.filter((item) => item.id === id))
+  const waiting = carried.filter((item) => !now.has(item.id))
+  const moving = (item: T) => !isSending(item)
+  return {
+    carried: [...message, ...waiting],
+    stopped: waiting.filter((item) => before.has(item.id) && moving(item)),
+    resumed: message.filter((item) => !before.has(item.id) && moving(item)),
+  }
 }
 
 /** In-flight uploads by attachment id. Removing an attachment cancels its upload, which then reports nothing. */
@@ -450,10 +441,4 @@ export function filePreviewUrl(file: File): string | undefined {
 
 export function dataTransferFiles(transfer: DataTransfer): File[] {
   return [...transfer.files]
-}
-
-export function transferHasFiles(
-  transfer: DataTransfer | null | undefined,
-): boolean {
-  return transfer?.types.includes('Files') === true
 }

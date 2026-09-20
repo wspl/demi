@@ -1442,6 +1442,72 @@ test('ClaudeCodeProvider abort kills the active transport', async () => {
   expect(transport.waitCalls).toBe(1)
 })
 
+/**
+ * A CLI that streams `count` text deltas and then goes quiet with the turn
+ * still open. It keeps none of the lines it hands over, only a weak hold on
+ * each, to tell which of them something still keeps alive.
+ */
+class StreamingTransport implements ClaudeTransport {
+  readonly handedOver: WeakRef<ClaudeStdoutLine>[] = []
+  private sent = 0
+
+  constructor(private readonly count: number) {}
+
+  async writeJson(): Promise<void> {}
+
+  messages(): AsyncIterable<ClaudeStdoutLine> {
+    return { [Symbol.asyncIterator]: () => ({ next: () => this.next() }) }
+  }
+
+  private async next(): Promise<IteratorResult<ClaudeStdoutLine>> {
+    if (this.sent >= this.count)
+      return new Promise<IteratorResult<ClaudeStdoutLine>>(() => {})
+    this.sent += 1
+    const value = {
+      type: 'stream_event',
+      event: { type: 'content_block_delta', delta: { type: 'text_delta', text: `delta ${this.sent}` } },
+    }
+    const line = { text: JSON.stringify(value), value }
+    this.handedOver.push(new WeakRef(line))
+    return { done: false, value: line }
+  }
+
+  async kill(): Promise<void> {}
+
+  async wait(): Promise<{ exitCode: number | null }> {
+    return { exitCode: 0 }
+  }
+
+  stderrText(): string {
+    return ''
+  }
+}
+
+test('a long turn keeps none of the stream lines it has handled, and an abort still ends it', async () => {
+  const transport = new StreamingTransport(200)
+  const provider = new ClaudeCodeProvider({ transportFactory: { start: async () => transport } })
+  const controller = new AbortController()
+  const events = provider
+    .run({
+      ...makeRequestWithoutTools([{ type: 'user_message', content: [{ type: 'text', text: 'hi' }] }]),
+      cancel: controller.signal,
+    })
+    [Symbol.asyncIterator]()
+  for (let index = 0; index < 200; index += 1)
+    await events.next()
+
+  // A weak reference holds its target until the job that made it is over.
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  Bun.gc(true)
+  const kept = transport.handedOver.filter((line) => line.deref() !== undefined).length
+  // The line being handled may still be held; the ones before it are not.
+  expect(kept).toBeLessThan(5)
+
+  const ended = events.next()
+  controller.abort()
+  await expect(ended).resolves.toEqual({ done: true, value: undefined })
+})
+
 test(
   'ClaudeCodeProvider integrates with AgentSession and shell tools for control_request tool calls',
   async () => {

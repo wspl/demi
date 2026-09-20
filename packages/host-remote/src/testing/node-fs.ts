@@ -70,12 +70,15 @@ class NodeFileSystem implements HostFileSystem {
   /** The same whole-or-nothing replacement as the runner's. */
   async writeFile(
     path: string,
-    data: Uint8Array,
+    data: Uint8Array | AsyncIterable<Uint8Array>,
     options?: {
       cwd?: string;
-      createParents?: boolean
+      createParents?: boolean;
+      signal?: AbortSignal
     }
   ): Promise<void> {
+    const signal = options?.signal
+    signal?.throwIfAborted()
     const target = this.resolvePath(path, options?.cwd)
     if (options?.createParents)
       await mkdir(
@@ -84,11 +87,12 @@ class NodeFileSystem implements HostFileSystem {
       )
     const temporary = join(dirname(target), `.demi-write-${createId()}`)
     try {
-      await writeFile(temporary, data, { flag: 'wx' })
+      await writeFile(temporary, data, { flag: 'wx', ...(signal ? { signal } : {}) })
       await rename(temporary, target)
     } catch (error) {
       await rm(temporary, { force: true })
-      throw error
+      // Node's abort wraps the reason; the contract throws the reason itself.
+      throw signal?.aborted ? signal.reason : error
     }
   }
 

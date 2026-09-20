@@ -105,27 +105,55 @@ The `git_changes` reply:
 | --- | --- |
 | `repository` | False when the directory is not inside a git repository; the other fields are then empty. |
 | `head` | The commit the changes are against; null before the first commit. |
-| `files` | One entry per changed file under the directory, path relative to it: `added`, `modified`, `deleted`, or `renamed` (with the old path in `from`), plus the lines added and removed against `head`. |
+| `files` | One entry per path `git status` lists under the directory, path relative to it: its `status`, git's two status letters for it; its `kind`, how the working tree differs from `head`: `added`, `modified`, `deleted`, or `renamed` (with the old path in `from`); and the lines added and removed against `head`. |
 | `truncated` | True when the list stopped at 5,000 files. |
 | `watched` | True when the runner answered from a watched baseline, described below. |
 
-Staged and unstaged changes form one list: what a commit of everything would
-contain. Untracked files count as added; ignored files are absent. Line counts
-skip binary files and files over 8 MiB, which report 0 and 0. `git_show` refuses
-a blob over 8 MiB with `too_large`, answers `ENOENT` for a path the last commit
-does not have, and `not_repository` outside a repository.
+The list holds the paths `git status --porcelain --untracked-files=all` lists,
+ignored files being absent, and `status` is the two letters it prints before
+each: the index against `head`, then the working tree against the index. For
+example, a new file nobody staged is `??`, a staged new file edited again is
+`AM`, a file edited without staging is ` M`, a conflicted one is `UU` or
+another conflict pair. A rename staged in the index is one entry at its new
+path, with `R` first; a file moved in the working tree without staging is a
+deletion (` D`) and an untracked file (`??`), as git reports it. Two cases
+differ from git's list: a path git lists twice, a deletion staged in the
+index and an untracked file on the disk, is one entry, `??`; and a path in
+neither `head` nor the working tree, added to the index and then deleted from
+the disk, is left out, having no side to compare. The browser marks each file
+from its `status` the way VS Code's Git does.
+
+`kind`, `from` and the line counts compare `head` with the working tree,
+whatever the index holds: a path whose status git lists but whose content
+matches `head`, such as an executable bit changed or a staged edit undone on
+the disk, is `modified` with 0 and 0. Line counts skip binary files and files
+over 8 MiB, which report 0 and 0. `git_show` refuses a blob over 8 MiB with
+`too_large`, answers `ENOENT` for a path the last commit does not have, and
+`not_repository` outside a repository.
 
 The first request for a directory walks its whole tree. It also starts a
 filesystem watch of the directory, and of the repository's `.git` when that
-lies outside it, which only records the paths changed since. The next request
-re-examines those paths and merges them into the previous result; a change
-under `.git` (a commit, a checkout, a staging) recomputes the whole. Anything
-that makes the watch unreliable turns it off for that directory, and the runner
-walks again: the watch cannot be created (an inotify limit, permissions, an
-unsupported filesystem), events overflowed, the platform asks for a rescan, or
-more than 10,000 paths accumulated. `watched` reports the outcome. A rename
-between two walks can show as a deletion and an addition until the next whole
-walk.
+lies outside it, which records only the paths changed since: reading a file
+changes nothing, and neither does metadata alone under `.git`. On macOS the
+watch is an FSEvents stream, which covers a tree of any size with one
+subscription; notify's kqueue backend there would hold a file descriptor for
+every file, more than a repository and the usual limit of 256 allow.
+
+The next request re-examines the recorded paths, with the other path of any staged
+rename among them so that the two still pair, and merges them into the
+previous result. It walks the whole tree again instead when a path under
+`.git` changed (a commit, a checkout, a staging), when a `.gitignore` or
+`.gitattributes` changed, since those decide what git lists for other paths,
+or when more than 100 paths changed: a walk over some paths checks every index
+entry against each of them, so past about a hundred it costs more than a whole
+walk. The watch covers only the directory, so each request also compares the
+`.gitignore` and `.gitattributes` files in the directories above it, up to the
+work tree, with what the last walk found. Settings outside the repository, such
+as the user's global ignore file, apply from the next whole walk. When the
+watch cannot be created (an inotify limit, permissions, an unsupported
+filesystem) or fails, the runner walks the whole tree for every request; when
+it lost events or the platform asks for a rescan, the next request walks the
+whole tree. `watched` reports whether a watch is running.
 
 The runner keeps at most eight watched directories per connection and drops one
 after fifteen minutes without a request; closing the connection drops them all.

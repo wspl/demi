@@ -65,13 +65,17 @@ The UI offers editing only on the last explicit user submission. Assistant
 output, hidden inputs, completion messages and steers do not change that target.
 This is a browser presentation rule; the agent API retains its general
 targeted-edit contract.
-`SessionComposer` displays the original content and attachments in the existing
-composer. The target message and subsequent transcript blocks remain visible at
-reduced opacity and cannot receive pointer or keyboard interaction. The × to the
-left of the send button or Escape exits an unsubmitted edit and restores the unrelated
-composer draft. Each text part remains independently editable, preserving its
-position relative to attachments in the submitted content. Enter submits;
-Shift+Enter inserts a newline and active IME composition does not submit.
+`SessionComposer` opens the original content as it was sent: its formatted
+text, with each attachment a capsule in its place
+([Writing a message](demi-next/product.md#writing-a-message)). The target
+message and subsequent transcript blocks remain visible at reduced opacity and
+cannot receive pointer or keyboard interaction. The × to the left of the send
+button or Escape exits an unsubmitted edit and restores the unrelated composer
+draft. Text and capsules edit as one text, and the submitted content keeps them
+in the order shown. Deleting a capsule drops its attachment; an added image,
+video or PDF becomes a capsule where it is dropped or pasted. Keys are those of
+the composer: Enter submits, Shift+Enter inserts a newline, and active IME
+composition does not submit.
 Entering or canceling editing does not modify the transcript. Save and resend
 submits one operation. The draft and attachments remain recoverable until the
 client confirms acceptance. An uncertain result is reconciled by operation ID

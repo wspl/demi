@@ -1,5 +1,5 @@
 import { onBeforeUnmount, reactive } from 'vue'
-import type { Block } from '@demicodes/core'
+import type { Block, UserContentBlock } from '@demicodes/core'
 import { ACTIVITY_HANDOFF_MS } from '@demicodes/web-ui/agent/activity-slot'
 import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
@@ -107,14 +107,14 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     state.blocks = [...state.blocks, block]
   }
 
-  function userBlock(text: string): Block {
+  function userBlock(content: UserContentBlock[]): Block {
     return {
       type: 'user',
       id: nextId('user'),
       turnId: nextId('turn'),
       createdAt: now(),
       model: demoModel,
-      content: [{ type: 'text', text }],
+      content,
       preamble: null,
     }
   }
@@ -268,10 +268,10 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   }
 
   /** Send a message on the current transcript. */
-  function turn(text: string): void {
+  function turn(content: UserContentBlock[]): void {
     cancel()
     const run = token
-    append(userBlock(text.trim() || USER_TEXT))
+    append(userBlock(content.length ? content : [{ type: 'text', text: USER_TEXT }]))
     runTurn(run)
   }
 
@@ -325,7 +325,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
 
     if (kind === 'connect') {
       // The socket dropped while a turn was running: Connecting wins until it is back.
-      state.blocks = [userBlock(USER_TEXT)]
+      state.blocks = [userBlock([{ type: 'text', text: USER_TEXT }])]
       state.phase = 'running'
       state.load = 'reconnecting'
       at(run, ACK_MS, () => {
@@ -337,7 +337,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
 
     if (kind === 'resume') {
       state.blocks = [
-        userBlock(USER_TEXT),
+        userBlock([{ type: 'text', text: USER_TEXT }]),
         {
           type: 'abort',
           id: nextId('abort'),
@@ -352,7 +352,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
 
     if (kind === 'retry') {
       state.blocks = [
-        userBlock(USER_TEXT),
+        userBlock([{ type: 'text', text: USER_TEXT }]),
         {
           type: 'error',
           id: nextId('error'),
@@ -373,7 +373,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     }
 
     state.blocks = []
-    turn(USER_TEXT)
+    turn([{ type: 'text', text: USER_TEXT }])
   }
 
   onBeforeUnmount(cancel)

@@ -1,6 +1,5 @@
 import { reactive } from 'vue'
-import type { ChangeFile } from '@demicodes/web-ui/files/changes'
-import type { ChangeSetSource } from '@demicodes/web-ui/files/changes'
+import type { ChangeFile, ChangeSetSource, WorkingTreeChange } from '@demicodes/web-ui/files/changes'
 import { assetFile, createMemoryFileSource, dir, textFile, type MemoryDirectory } from '@demicodes/web-ui/files/memory-source'
 import { FileBrowserError, type FileBrowserSource, type FileContents } from '@demicodes/web-ui/files/types'
 
@@ -416,27 +415,33 @@ const authTestBefore = authTest
 const readmeBefore = readme.replace('bun run dev\n', 'bun run dev\nbun run typecheck\n')
 
 interface ChangedSides {
+  /** git's two status letters: every mark VS Code gives a file shows among the fixtures. */
+  status: string
   kind: ChangeFile['kind']
   from?: string
   original: string
   modified: string
 }
 
+/** A file edited and not staged. */
 function generatedChange(path: string, lines: number, seed: number): ChangedSides {
   const original = generated(path, lines, seed)
-  return { kind: 'modified', original, modified: edited(original, seed) }
+  return { status: ' M', kind: 'modified', original, modified: edited(original, seed) }
 }
 
+const launcherScript = '#!/bin/sh\nexec bun packages/cli/src/main.ts "$@"\n'
+
 const changeSides: Record<string, ChangedSides> = {
-  'src/auth/cookie.ts': { kind: 'modified', original: cookieBefore, modified: cookieTs },
-  'src/auth/session.ts': { kind: 'added', original: '', modified: sessionTs },
-  'src/auth/sid.ts': { kind: 'deleted', original: sidTs, modified: '' },
+  'src/auth/cookie.ts': { status: ' M', kind: 'modified', original: cookieBefore, modified: cookieTs },
+  'src/auth/session.ts': { status: '??', kind: 'added', original: '', modified: sessionTs },
+  'src/auth/sid.ts': { status: ' D', kind: 'deleted', original: sidTs, modified: '' },
   'src/http/middleware.ts': generatedChange('src/http/middleware.ts', 72, 3),
-  'tests/login/auth.test.ts': { kind: 'modified', original: authTestBefore, modified: authTest },
-  'tests/login/session.test.ts': { kind: 'added', original: '', modified: generated('tests/login/session.test.ts', 30, 4) },
+  'tests/login/auth.test.ts': { status: 'M ', kind: 'modified', original: authTestBefore, modified: authTest },
+  'tests/login/session.test.ts': { status: 'A ', kind: 'added', original: '', modified: generated('tests/login/session.test.ts', 30, 4) },
   'tests/http/router.test.ts': generatedChange('tests/http/router.test.ts', 48, 5),
-  'README.md': { kind: 'modified', original: readmeBefore, modified: readme },
+  'README.md': { status: 'MM', kind: 'modified', original: readmeBefore, modified: readme },
   'docs/guides/getting-started.md': {
+    status: 'R ',
     kind: 'renamed',
     from: 'docs/getting-started.md',
     original: '# getting-started\n\nInstall bun, then run the dev server.\n',
@@ -447,38 +452,41 @@ const changeSides: Record<string, ChangedSides> = {
   'packages/web-ui/src/agent/work-panel.ts': generatedChange('packages/web-ui/src/agent/work-panel.ts', 60, 8),
   'packages/web-ui/src/agent/blocks/FileChangePills.vue': generatedChange('packages/web-ui/src/agent/blocks/FileChangePills.vue', 84, 9),
   'packages/web-ui/src/files/FileTree.vue': generatedChange('packages/web-ui/src/files/FileTree.vue', 120, 10),
-  'packages/web-ui/src/files/changes.ts': { kind: 'added', original: '', modified: generated('packages/web-ui/src/files/changes.ts', 64, 11) },
+  // Staged new, then edited: VS Code marks it with the working tree's M.
+  'packages/web-ui/src/files/changes.ts': { status: 'AM', kind: 'added', original: '', modified: generated('packages/web-ui/src/files/changes.ts', 64, 11) },
   'packages/web/src/state/resources.ts': generatedChange('packages/web/src/state/resources.ts', 110, 12),
   'packages/agent/src/tools.ts': generatedChange('packages/agent/src/tools.ts', 90, 13),
-  'scripts/release.ts': { kind: 'deleted', original: generated('scripts/release.ts', 36, 14), modified: '' },
+  'scripts/release.ts': { status: 'D ', kind: 'deleted', original: generated('scripts/release.ts', 36, 14), modified: '' },
+  // A script become a symlink: its content on each side is the script, then the link's target.
+  'bin/demi': { status: ' T', kind: 'modified', original: launcherScript, modified: '../packages/cli/dist/demi' },
   '.github/workflows/ci.yml': generatedChange('.github/workflows/ci.yml', 24, 15),
-  'package.json': { kind: 'modified', original: packageJson.replace('"typecheck": "tsgo --noEmit"', '"typecheck": "tsc --noEmit"'), modified: packageJson },
-  'assets/logo.svg': { kind: 'modified', original: logoSvgBefore, modified: logoSvg },
+  'package.json': { status: 'UU', kind: 'modified', original: packageJson.replace('"typecheck": "tsgo --noEmit"', '"typecheck": "tsc --noEmit"'), modified: packageJson },
+  'assets/logo.svg': { status: ' M', kind: 'modified', original: logoSvgBefore, modified: logoSvg },
 }
 
 /**
  * Changed files that are not text: the committed version's asset, or that
  * it is over the 8 MiB git's copy is served up to; none for an added file.
  */
-const binaryChanges: Record<string, { kind: ChangeFile['kind']; committed: { url: string; size: number } | 'too-large' | null }> = {
-  'assets/photo.png': { kind: 'modified', committed: { url: '/fixtures/preview/photo-before.png', size: 16078 } },
-  'assets/demo.mp4': { kind: 'added', committed: null },
-  'assets/intro.mov': { kind: 'modified', committed: 'too-large' },
-  'dist/app.zip': { kind: 'modified', committed: { url: '/fixtures/preview/app-before.zip', size: 124 } },
-  'dist/cache.db': { kind: 'modified', committed: 'too-large' },
+const binaryChanges: Record<string, { status: string; kind: ChangeFile['kind']; committed: { url: string; size: number } | 'too-large' | null }> = {
+  'assets/photo.png': { status: ' M', kind: 'modified', committed: { url: '/fixtures/preview/photo-before.png', size: 16078 } },
+  'assets/demo.mp4': { status: '??', kind: 'added', committed: null },
+  'assets/intro.mov': { status: ' M', kind: 'modified', committed: 'too-large' },
+  'dist/app.zip': { status: ' M', kind: 'modified', committed: { url: '/fixtures/preview/app-before.zip', size: 124 } },
+  'dist/cache.db': { status: ' M', kind: 'modified', committed: 'too-large' },
 }
 
-const changedFiles: ChangeFile[] = [
+const changedFiles: WorkingTreeChange[] = [
   ...Object.entries(changeSides).map(([path, sides]) => {
     const counts = lineCounts(sides.original, sides.modified)
-    const change: ChangeFile = { path, kind: sides.kind, ...counts }
+    const change: WorkingTreeChange = { path, status: sides.status, kind: sides.kind, ...counts }
     if (sides.from) {
       change.from = sides.from
     }
     return change
   }),
   // Binary files count no lines, as the runner reports them.
-  ...Object.entries(binaryChanges).map(([path, change]) => ({ path, kind: change.kind, added: 0, removed: 0 })),
+  ...Object.entries(binaryChanges).map(([path, change]) => ({ path, status: change.status, kind: change.kind, added: 0, removed: 0 })),
 ]
 
 /** The committed side of the binary changes, the way the raw committed route serves it. */

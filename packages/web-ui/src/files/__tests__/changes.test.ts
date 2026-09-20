@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'bun:test'
-import { changeTreeRows, type ChangeFile } from '../changes'
+import { changeTreeRows, type WorkingTreeChange } from '../changes'
 
-const files: ChangeFile[] = [
-  { path: 'src/auth/cookie.ts', kind: 'modified', added: 12, removed: 3 },
-  { path: 'src/auth/session.ts', kind: 'added', added: 20, removed: 0 },
-  { path: 'README.md', kind: 'modified', added: 1, removed: 1 },
-  { path: 'src/auth/sid.ts', kind: 'deleted', added: 0, removed: 15 },
+const files: WorkingTreeChange[] = [
+  { path: 'src/auth/cookie.ts', status: ' M', kind: 'modified', added: 12, removed: 3 },
+  { path: 'src/auth/session.ts', status: '??', kind: 'added', added: 20, removed: 0 },
+  { path: 'README.md', status: 'M ', kind: 'modified', added: 1, removed: 1 },
+  { path: 'src/auth/sid.ts', status: ' D', kind: 'deleted', added: 0, removed: 15 },
 ]
 
 describe('change set', () => {

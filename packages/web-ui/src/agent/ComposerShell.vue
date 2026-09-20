@@ -1,20 +1,26 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Paperclip } from '@lucide/vue'
 import { useElementSize } from '@vueuse/core'
-import { ICON_PX } from '../ui/icon-metrics'
-import { dataTransferFiles, transferHasFiles } from './message-input/attachments'
+import { useFileDrop } from '../composables/useFileDrop'
+import DropOutline from '../ui/DropOutline.vue'
+import { dataTransferFiles } from './message-input/attachments'
 
 /**
  * The composer's frame. Files dragged over it can be dropped anywhere on it:
- * the frame lights its focus line and a dashed overlay names the action, so
- * the target is the whole composer and not one control. Drag depth is counted
- * because every child fires its own enter and leave.
+ * a dashed line runs inside its edge, so the target is the whole composer
+ * and not one control, and the editor marks where in the text they will land.
  *
- * The editor comes first: the model slot hears how much wider than
- * `EDITOR_MIN_PX` the editor is (`room`, negative when narrower), so the
- * control there can drop its label to its icon before the editor narrows past
- * that.
+ * The message's line comes first. The editor slot hears what the line offers
+ * its text (`line`), so a message that outgrows it opens the shell instead of
+ * running off its end; the model slot hears how much wider than
+ * `EDITOR_MIN_PX` that is (`room`, negative when narrower), so the control
+ * there can drop its label to its icon before the line narrows past that.
+ *
+ * A ruler measures the line in both shapes: on one line it lies in the
+ * editor's own cell, and in the open shell it takes the editor's column in
+ * the row of controls below, which is the same width. So the two slots hear
+ * one width that does not change with the shape, and the controls neither
+ * jump nor drive each other when the shell opens and closes.
  */
 
 const props = defineProps<{
@@ -24,111 +30,59 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  dropFiles: [files: File[]]
+  /** Files dropped, with the drop that places them. */
+  dropFiles: [files: File[], event: DragEvent]
 }>()
 
 /** The least the editor keeps: the placeholder whole, and room to type after it. */
 const EDITOR_MIN_PX = 128
 
-const editor = ref<HTMLElement | null>(null)
-const { width: editorWidth } = useElementSize(editor)
-const room = computed(() => editorWidth.value - EDITOR_MIN_PX)
+const ruler = ref<HTMLElement | null>(null)
+const { width: line } = useElementSize(ruler)
+const room = computed(() => line.value - EDITOR_MIN_PX)
 
-const dragDepth = ref(0)
-const showDrop = computed(() => props.dropping === true || dragDepth.value > 0)
-
-function onDragEnter(event: DragEvent): void {
-  if (!transferHasFiles(event.dataTransfer))
-    return
-  event.preventDefault()
-  dragDepth.value += 1
-}
-
-function onDragOver(event: DragEvent): void {
-  if (!transferHasFiles(event.dataTransfer))
-    return
-  event.preventDefault()
-  if (event.dataTransfer)
-    event.dataTransfer.dropEffect = 'copy'
-}
-
-function onDragLeave(event: DragEvent): void {
-  if (!transferHasFiles(event.dataTransfer))
-    return
-  dragDepth.value = Math.max(0, dragDepth.value - 1)
-}
-
-function onDrop(event: DragEvent): void {
-  if (!transferHasFiles(event.dataTransfer))
-    return
-  event.preventDefault()
-  dragDepth.value = 0
-  const files = event.dataTransfer ? dataTransferFiles(event.dataTransfer) : []
-  if (files.length > 0)
-    emit('dropFiles', files)
-}
+const shell = ref<HTMLElement | null>(null)
+const { over: dragOver } = useFileDrop(shell, {
+  drop(event) {
+    const files = event.dataTransfer ? dataTransferFiles(event.dataTransfer) : []
+    if (files.length > 0)
+      emit('dropFiles', files, event)
+  },
+})
+const showDrop = computed(() => props.dropping === true || dragOver.value)
 </script>
 
 <template>
   <div
+    ref="shell"
     class="input-float composer-shell relative bg-surface-raised outline outline-1 transition-[outline-color] duration-200"
     :class="[
       showDrop ? 'outline-transparent' : focused ? 'outline-line-focus' : 'outline-line',
       expanded ? 'composer-shell-expanded' : 'composer-shell-capsule',
     ]"
     :data-dropping="showDrop ? '' : undefined"
-    @dragenter="onDragEnter"
-    @dragover="onDragOver"
-    @dragleave="onDragLeave"
-    @drop="onDrop"
   >
-    <div
-      v-if="$slots.chips"
-      class="composer-chips flex flex-wrap gap-1.5 px-3 pt-2"
-    >
-      <slot name="chips" />
-    </div>
     <div class="composer-attach">
       <slot name="attach" />
     </div>
-    <div ref="editor" class="composer-editor">
-      <slot name="editor" />
+    <div class="composer-editor">
+      <slot name="editor" :line="line" />
     </div>
     <div class="composer-model">
       <slot name="model" :room="room" />
     </div>
+    <div
+      ref="ruler"
+      class="composer-line-ruler"
+      aria-hidden="true"
+    />
     <div class="composer-actions flex items-center gap-1">
       <slot name="actions" />
     </div>
-    <!-- The drop state draws its own dashed line: an SVG stroke with a set dash, since a
-         CSS dashed outline's segments are too short to read as a line. -->
-    <template v-if="showDrop">
-      <div
-        class="pointer-events-none absolute inset-0 z-10 flex items-center justify-center gap-2 rounded-[var(--composer-shell-radius)] bg-surface-raised/90 text-chrome text-fg-body"
-        aria-hidden="true"
-      >
-        <Paperclip :size="ICON_PX.in28" />
-        Drop to attach
-      </div>
-      <svg class="pointer-events-none absolute inset-0 z-20 h-full w-full text-line-focus" aria-hidden="true">
-        <rect
-          class="composer-drop-line"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-          stroke-dasharray="8 6"
-        />
-      </svg>
-    </template>
+    <DropOutline
+      v-if="showDrop"
+      class="z-20"
+      radius="var(--composer-shell-radius)"
+    />
   </div>
 </template>
-
-<style scoped>
-.composer-drop-line {
-  x: 0.75px;
-  y: 0.75px;
-  width: calc(100% - 1.5px);
-  height: calc(100% - 1.5px);
-  rx: var(--composer-shell-radius);
-}
-</style>

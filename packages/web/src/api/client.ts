@@ -79,7 +79,15 @@ export async function apiRequest(
     return response
   }
 
-  const text = await response.text()
+  throw apiError(response.status, await response.text())
+}
+
+/**
+ * The error a failed answer stands for: the backend's `{ code, message }`,
+ * or its status alone when something in front of the backend answered. An
+ * expired session is noticed on the way.
+ */
+export function apiError(status: number, text: string): ApiError {
   let body: unknown
   try {
     body = JSON.parse(text)
@@ -91,10 +99,10 @@ export async function apiRequest(
   if (parsed.success) {
     notifySessionExpired(parsed.data.code)
   }
-  throw new ApiError(
-    response.status,
+  return new ApiError(
+    status,
     parsed.success ? parsed.data.code : 'http_error',
-    parsed.success ? parsed.data.message : `Request failed (${response.status})`,
+    parsed.success ? parsed.data.message : `Request failed (${status})`,
   )
 }
 

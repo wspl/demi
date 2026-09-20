@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { renderMarkdown, renderUserMarkdown } from '../render'
+import { renderMarkdown } from '../render'
 import type { MessageFiles } from '../types'
 
 // The files a message names (`file-previews.md` § Files named in messages).
@@ -68,12 +68,4 @@ test('task boxes are read-only, and HTML shows as text', () => {
   expect(html).toContain('<input type="checkbox" disabled checked>')
   expect(html).toContain('<input type="checkbox" disabled>')
   expect(html).toContain('&lt;b&gt;bold&lt;/b&gt;')
-})
-
-test("a user's message resolves files the same way, without block syntax or math", () => {
-  const html = renderUserMarkdown('- not a list\n$x$ and [plot](scripts/plot.py)', { files })
-  expect(html).not.toContain('<ul>')
-  expect(html).not.toContain('katex')
-  expect(html).toContain('- not a list')
-  expect(html).toContain('<a href="/work/scripts/plot.py" data-file-link>plot</a>')
 })

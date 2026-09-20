@@ -23,7 +23,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Settings | `GET /settings` returns fixed instance mode; `GET/PATCH /settings/preferences` |
 | Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id }`, `PATCH /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }` |
 | Conversation history | `GET /conversations/:id/transcript` returns root blocks and subagent histories, each with the [failure facts](backend.md#failure-facts) of its error blocks; `WS /conversations/:id/stream` carries agent frames |
-| Conversation files | `GET/POST /conversations/:id/fs`, `GET /conversations/:id/fs/file?path=...`, `GET /conversations/:id/fs/raw?path=...&version=...&download=true\|false`, `GET/POST /conversations/:id/hosts/:deviceId/fs` |
+| Conversation files | `GET/POST /conversations/:id/fs`, `DELETE /conversations/:id/fs?path=...`, `GET /conversations/:id/fs/file?path=...`, `GET /conversations/:id/fs/raw?path=...&version=...&download=true\|false`, `PUT /conversations/:id/fs/raw?path=...&replace=true\|false` with raw bytes, `GET/POST /conversations/:id/hosts/:deviceId/fs` |
 | Working tree | `GET /conversations/:id/changes`, `GET /conversations/:id/changes/file?path=...`, `GET /conversations/:id/changes/raw?path=...&download=true\|false` |
 | User streams | `WS /conversations/:id/streams/:name` opens a declared [user stream](#user-streams); `POST /conversations/:id/activity` reports a user operation |
 | Sidebar | `POST /sidebar/reorder { kind, id, beforeId }` |
@@ -38,6 +38,15 @@ Partial conversation mutations use the explicit outcomes described below.
 | Attached hosts | `GET /conversations/:id/hosts`, `POST .../hosts { deviceId }`, `PATCH .../hosts/:deviceId { name }`, `DELETE .../hosts/:deviceId` |
 | Runner transport | `WS /runner`; device-authenticated `PUT/GET /pipes/:id` for source/sink streams |
 | Public installation | `GET /install.sh`, `GET /install.ps1`, `GET /runner-artifacts/:release/:target/:file` (root paths, outside `/api`) |
+
+### Request bodies
+
+The backend reads a JSON body whole, up to 1 MiB, and an attachment's bytes up
+to 25 MiB ([Uploads and media](#uploads-and-media)); a larger body answers 413
+`too_large` before the rest of it is read, so no request holds more memory
+than that. A body the backend streams to a Host, a file upload or a runner's
+pipe, has no size limit: it moves as fast as the Host writes it, and only what
+is in flight is held.
 
 ### Query parameters
 
@@ -407,6 +416,24 @@ the headers alone. How long a transfer may last, and what ends it, follows
 [Host operations](sessions-and-targets.md#host-operations); while an archive,
 a target change or a detach is ending the conversation's transfers, a new one
 answers 409 `conversation_busy`.
+
+`PUT /api/conversations/:id/fs/raw?path=...&replace=true|false` writes the
+request body, a file's raw bytes, to `path`, streaming it to the Host as the
+Host takes it. The file appears whole or not at all: an upload cut short leaves
+the path as it was ([Runner](runner.md#file-contents)). When the upload starts,
+a directory at the path answers 409 `is_directory`, and a file there answers
+409 `file_exists` unless `replace=true`. A missing directory above the path
+answers 404; the browser makes directories first with `POST`. Success answers
+204. An upload is a file transfer whose pace the browser sets, under the same
+Host access, stall rule and ending as a download
+([Host operations](sessions-and-targets.md#host-operations)).
+
+`DELETE /api/conversations/:id/fs?path=...` deletes a file, or a directory
+with everything in it, and answers 204; nothing at the path answers 204 too.
+It refuses, with 409 `protected_path`, the filesystem root, the Host's home
+directory, the conversation's execution directory, and any directory that
+holds one of them: the file tree deletes only what an upload replaces inside
+the workspace.
 
 The remote attachment picker lists and creates directories through
 `GET/POST /api/conversations/:id/hosts/:deviceId/fs`, with the same directory

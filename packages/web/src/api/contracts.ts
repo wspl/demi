@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { modelSelectionSchema } from '@demicodes/web-ui/transport/protocol'
 import { themeChoiceSchema } from '@demicodes/web-ui/theme/appTheme'
 import { modelIntentSchema } from '@demicodes/web-ui/agent/model-selection'
-import type { ChangeFile } from '@demicodes/web-ui/files/changes'
+import type { WorkingTreeChange } from '@demicodes/web-ui/files/changes'
 
 export const userSchema = z.object({
   id: z.string().min(1),
@@ -372,8 +372,11 @@ export const fileHeadersSchema = z.object({
 /** One text file of the conversation Host, as `GET /conversations/:id/fs/file` returns it. */
 export const fileTextSchema = z.object({ path: z.string(), text: z.string() })
 
-const changeFileSchema: z.ZodType<ChangeFile> = z.object({
+const changeFileSchema: z.ZodType<WorkingTreeChange> = z.object({
   path: z.string().min(1),
+  // git's two letters; the runner's wire says which pairs occur, and a pair
+  // VS Code does not mark shows no letter.
+  status: z.string().length(2),
   kind: z.enum(['added', 'modified', 'deleted', 'renamed']),
   from: z.string().optional(),
   added: z.number().int().nonnegative(),
