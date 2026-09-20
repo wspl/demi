@@ -171,7 +171,7 @@ const resetPhases: {
           </GallerySpecimen>
         </div>
       </GallerySection>
-      <GallerySection title="Sign in" note="Each subscription signs in the way its vendor does: a token from a CLI, or a device code confirmed in the browser.">
+      <GallerySection title="Sign in" note="Each subscription signs in the way its vendor does: a token from a CLI, or a device code confirmed in the browser. The code and the link copy separately, each with its own tick, so the link can go to a browser on another machine.">
         <div class="grid items-start gap-6 lg:grid-cols-2">
           <GallerySpecimen v-for="item in claudePhases" :key="item.variant" wide :variant="item.variant">
             <GalleryDialogFrame>
