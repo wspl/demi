@@ -77,7 +77,8 @@ meaning and atomicity rather than duplicating every SQL column.
   key (unique within the entry), label and detail, the encrypted secret document,
   a version that every secret write advances, the account's usage snapshot, and
   timestamps. Rows are removed with their entry. A partial unique index enforces one subscription
-  entry per owner scope and family, including the shared scope.
+  entry per owner and family. The owner is always a user: a shared instance's
+  entries are the master's.
   `model_catalogs` stores one validated cache record per provider entry, removed
   with that entry. See [Providers](providers-and-vault.md) and
   [Model catalog caching](../model-catalog-cache.md).

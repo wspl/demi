@@ -7,12 +7,15 @@ changes where subsequent work runs without moving its history or copying files.
 
 ## Instance mode: shared vs isolated
 
-`DEMI_INSTANCE_MODE` selects provider ownership at startup. The product cannot
-change this deployment setting.
+`DEMI_INSTANCE_MODE` selects whose provider entries a user infers with. The
+product cannot change this deployment setting. Every entry belongs to a user;
+a shared instance has no separate instance-owned kind of entry. Its providers
+are the master's, and only the master configures them. Entries a user made
+under the other mode stay theirs and are simply not the ones the mode selects.
 
 | Mode | Provider configuration | Model use | Usage visibility |
 |---|---|---|---|
-| Shared | Master and admins manage instance-owned entries | All users use the instance's entries | Each user sees their own usage; admins can see instance usage by user |
+| Shared | The master manages their own entries | All users use the master's entries | Each user sees their own usage; admins can see instance usage by user |
 | Isolated | Each user manages their own entries | Each user uses their own entries | Each user sees their own usage |
 
 Conversation, device, workspace, and attachment ownership remains per user in

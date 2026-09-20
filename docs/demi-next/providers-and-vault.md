@@ -78,7 +78,7 @@ that the selected execution target can run a process provider.
 ## Inference admission and runtime ownership
 
 [Instance mode](product.md#instance-mode-shared-vs-isolated) determines provider scope: shared
-instances use instance-owned entries; isolated instances use user-owned entries.
+instances use the master's entries; isolated instances use each user's own.
 The backend checks scope and resolves the current provider entry at each
 inference boundary. A missing, deleted, or inaccessible entry refuses the request
 before taking a rate-limit slot. A subscription provider also requires a
@@ -134,44 +134,44 @@ selection and the same usage; there is no pool directory to distribute.
 
 ### Scope
 
-A credential has no owner of its own. It belongs to a provider entry, and the
-entry carries the scope: instance-owned in shared mode, user-owned in isolated
-mode ([Instance mode](product.md#instance-mode-shared-vs-isolated)). Every
-credential operation resolves the entry first, under the same two rules as the
-entry itself, so no route or store call can name an account without passing the
-entry's scope check:
+A credential has no owner of its own. It belongs to a provider entry, and every
+entry belongs to a user. [Instance mode](product.md#instance-mode-shared-vs-isolated)
+only decides whose entries a user infers with: the master's on a shared
+instance, their own on an isolated one. There is no ownerless entry and no
+second kind of credential.
 
-| | Instance-owned entry | User-owned entry |
+| | Shared instance | Isolated instance |
 |---|---|---|
-| Who adds, tests, refreshes, selects and removes accounts | Master and admins | The owner |
+| Entries and accounts belong to | The master | Each user |
+| Who adds, tests, refreshes, selects and removes accounts | The master | The owner |
 | Who infers with the active account | Every user | The owner |
-| Who sees account labels, plan and usage | Master and admins | The owner |
+| Who sees account labels, plan and usage | The master | The owner |
 | What a user who only infers sees | The entry and its models; no account, plan or usage | — |
-| Lifetime | Until an admin removes the account or the entry; the admin who added it leaving changes nothing | Removed with the entry, and with the user |
 
-The store the backend hands a provider package is bound to one entry. A package
-cannot list or read another entry's accounts, whatever the scope.
+Every credential operation resolves the entry first: management requires being
+its owner, inference requires the entry to be the one the mode assigns to the
+user. The store the backend hands a provider package is bound to one entry, so a
+package cannot list or read another entry's accounts.
 
-An instance-owned account is a shared resource, which sharpens three rules:
+On a shared instance the master's accounts are a shared resource, which sharpens
+three rules:
 
 - **Refresh.** Many users on many workers use the same account at once, so the
   versioned `replace` below is what keeps one user's refresh from invalidating
-  everyone else's tokens. A user-owned account normally has one user on one
-  worker; the rule is the same and rarely contended.
+  everyone else's tokens. On an isolated instance the rule is the same and
+  rarely contended.
 - **Usage.** The vendor's windows are consumed by all users together. The
   snapshot describes the account, not a user; per-user consumption is the usage
   ledger's, not the vendor's.
 - **Disclosure.** A process provider sends the active account's token to the
   execution target ([Claude Code execution boundary](#claude-code-execution-boundary)).
-  For a user-owned entry that is the owner's token on the owner's machine. For
-  an instance-owned entry it is the instance's token on a machine the user
-  controls: every user who may infer with it can read it. An instance-owned
-  Claude Code entry is therefore off unless the deployment sets
-  `DEMI_SHARED_PROCESS_PROVIDERS=1`, which states that its users are trusted
-  with that token. Network providers never send a token off the backend.
-
-A row whose entry does not fit the running mode is kept and unused, as the entry
-is. Nothing moves a credential between scopes.
+  On an isolated instance that is the owner's token on the owner's machine. On a
+  shared instance it is the master's token on a machine another user controls,
+  Cloud included: every user who can infer with a Claude Code entry can read its
+  token. Demi allows this and does not hide it; a master who adds a Claude Code
+  account to a shared instance is trusting every user with that account.
+  Network providers (Codex, Grok Build, API keys) never send a credential off
+  the backend.
 
 ### The credential store contract
 
@@ -246,7 +246,8 @@ interface to start the CLI on the conversation's runner and exchanges stream-jso
 on stdin and stdout. The provider resolves the selected vault account and sends
 its token as `CLAUDE_CODE_OAUTH_TOKEN` in the spawn environment. The runner and CLI
 therefore receive this credential. A device selected for this transport must be
-trusted with that account's token.
+trusted with that account's token; on a shared instance that means every user
+([Scope](#scope)).
 
 The CLI sends its inference traffic directly to the vendor. Demi does not add
 an inference proxy or remote-inference RPC. OAuth refresh and quota probes remain
