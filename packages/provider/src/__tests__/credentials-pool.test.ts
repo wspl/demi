@@ -95,3 +95,32 @@ describe('FileCredentialPool.readMeta', () => {
     expect(await pool.getActiveId()).toBeNull()
   })
 })
+
+it('a file pool document stores a refreshed secret only over the revision it was read at', async () => {
+  const { mkdtemp, readFile, rm, stat } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const { FileCredentialPool } = await import('../credentials-pool')
+  const stateDir = await mkdtemp(join(tmpdir(), 'demi-pool-document-'))
+  try {
+    const pool = new FileCredentialPool({
+      stateDir,
+      providerKey: 'vendor',
+      secretFileName: 'auth.json'
+    })
+    expect(await pool.document('absent').read()).toBeNull()
+    await pool.writeEntry(
+      { id: 'a', label: 'a@example.com', updatedAt: new Date().toISOString() },
+      '{"refresh":"one"}'
+    )
+    const first = await pool.document('a').read()
+    const second = await pool.document('a').read()
+    expect(first?.text).toBe('{"refresh":"one"}')
+    expect(await pool.document('a').replace('{"refresh":"two"}', first!.version)).toBe(true)
+    expect(await pool.document('a').replace('{"refresh":"lost"}', second!.version)).toBe(false)
+    expect(await readFile(pool.secretPath('a'), 'utf8')).toBe('{"refresh":"two"}')
+    expect((await stat(pool.secretPath('a'))).mode & 0o777).toBe(0o600)
+  } finally {
+    await rm(stateDir, { recursive: true, force: true })
+  }
+})
