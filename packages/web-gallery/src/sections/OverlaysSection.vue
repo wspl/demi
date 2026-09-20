@@ -22,6 +22,7 @@ import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
 import SessionToolsMenu from '@demicodes/web-ui/hosts/SessionToolsMenu.vue'
 import type { ExposeMenuEntry, HostMenuHost } from '@demicodes/web-ui/hosts/types'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
+import { demoImageUrl } from '../fixtures/blocks'
 import { demoExposes } from '../fixtures/settings'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
@@ -155,7 +156,7 @@ function itemLabel(id: string, list: {
     <template v-if="view === 'menus'">
       <GallerySection
         title="Tooltip"
-        note="Hover, placement, rich overlay, and suppressed. Copy: the verb alone for a control on the thing it acts on (Archive, Pin, Copy, Edit); the object only away from it (Add project, New folder); a reason is a full sentence."
+        note="Hover, placement, rich overlay, a picture framed evenly, and suppressed. Copy: the verb alone for a control on the thing it acts on (Archive, Pin, Copy, Edit); the object only away from it (Add project, New folder); a reason is a full sentence."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="hover">
@@ -181,6 +182,18 @@ function itemLabel(id: string, list: {
                   <div class="text-fg">34% used <span class="text-fg-subtle">(61.2K / 180K)</span></div>
                   <div class="mt-1 text-fg-subtle">Click to compact</div>
                 </div>
+              </template>
+            </Tooltip>
+          </GallerySpecimen>
+          <GallerySpecimen variant="picture">
+            <Tooltip placement="right" picture>
+              <Button size="md">Picture</Button>
+              <template #overlay>
+                <img
+                  :src="demoImageUrl"
+                  alt="before.png"
+                  class="block max-h-48 max-w-full rounded object-contain"
+                />
               </template>
             </Tooltip>
           </GallerySpecimen>
