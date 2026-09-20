@@ -831,6 +831,25 @@ svg.lucide {
   border-radius: 0.375rem;
 }
 
+/* One file in a message's text (`AttachmentCapsule`). What the pill holds is
+   the control's own, not a picture in the message, so the corner above is not
+   its corner: the thumbnail's is concentric with the pill's, the pill's
+   radius less the space it sits inside, and an icon is a drawing that keeps
+   the shape it was drawn with. */
+.message-capsule {
+  --capsule-radius: 0.375rem;
+  --capsule-inset: 2px;
+  border-radius: var(--capsule-radius);
+}
+
+.message-capsule img {
+  border-radius: 0;
+}
+
+.message-capsule .message-capsule-thumb {
+  border-radius: calc(var(--capsule-radius) - var(--capsule-inset));
+}
+
 /* A user message in its editor (`MessageEditor`): lines, not paragraphs, so a
    run of text around a code block keeps only the lines typed. */
 .message-editor-text {
