@@ -43,7 +43,7 @@ function openUrl(url: string): void {
 }
 onMounted(() => {
   loadVendors()
-  void settings.probeMissingQuota()
+  void settings.probeStaleQuota()
 })
 onUnmounted(closeLogin)
 </script>

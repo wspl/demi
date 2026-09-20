@@ -7,6 +7,7 @@ import {
   mapResponsesEvents,
   httpFailureRecord,
   normalizeErrorCode,
+  quotaSnapshotFile,
   withRetryWait,
   type AgentProvider,
   type InferenceRequest,
@@ -234,6 +235,7 @@ export function createCodexProvider(
     baseUrl: options.baseUrl,
     authStore,
     userAgent: options.userAgent,
+    snapshotFile: quotaSnapshotFile(options.stateDir),
   })
   runtimeOptions.quota = quota
 

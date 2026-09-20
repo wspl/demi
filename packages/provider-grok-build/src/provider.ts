@@ -5,6 +5,7 @@ import {
   httpRequestFailedEvent,
   mapChatCompletionsStream,
   providerErrorFromUnknown,
+  quotaSnapshotFile,
   readHttpFailure,
   readServerSentEvents,
   type AgentProvider,
@@ -201,6 +202,7 @@ export function createGrokBuildProvider(
     clientVersion: options.clientVersion,
     authStore,
     fetch: fetchImpl as GrokBuildFetch,
+    snapshotFile: quotaSnapshotFile(options.stateDir),
   })
   const credentialsApi = pool
     ? createGrokBuildCredentials(

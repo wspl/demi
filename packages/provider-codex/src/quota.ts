@@ -23,6 +23,8 @@ export interface CodexQuotaOptions {
     init?: RequestInit
   ) => Promise<Response>
   userAgent?: string
+  /** Where the latest snapshot is kept across rebuilds and restarts (`createProviderQuota`). */
+  snapshotFile?: string
 }
 
 const DEFAULT_CHATGPT_BASE_URL = 'https://chatgpt.com/backend-api'
@@ -59,6 +61,7 @@ export function createCodexQuota(options: CodexQuotaOptions = {}): ProviderQuota
 
   return createProviderQuota({
     providerId,
+    snapshotFile: options.snapshotFile,
     canProbe: true,
     canObserve: true,
     probeCost: 'free',
