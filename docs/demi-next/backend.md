@@ -187,8 +187,8 @@ The old frontend milestone labels are not API boundaries; the current route
 contract is [Web API](web-api.md).
 
 Multi-worker routing, ownership fencing, the remote control service, and S3
-recovery are not implemented. Shared-mode subscription credentials also need an
-explicit multi-worker distribution and refresh policy before that deployment can
-be implemented. Routing an authenticated claim to an unclaimed runner on another
+recovery are not implemented. Subscription accounts must first become control
+records with versioned refresh
+([Credential vault](providers-and-vault.md#credential-vault)). Routing an authenticated claim to an unclaimed runner on another
 worker is also an open deployment decision, as is routing an
-[expose hostname](expose.md#deployment) to the worker owning its user. User affinity alone does not solve instance-shared credentials.
+[expose hostname](expose.md#deployment) to the worker owning its user.
