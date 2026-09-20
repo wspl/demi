@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { waitFor } from '@demicodes/utils'
-import { FakeProvisioner } from './fake-provisioner'
+import { FakeProvisioner } from '../../testing/fake-provisioner'
 import { World } from './world'
 import { model } from './driver'
 

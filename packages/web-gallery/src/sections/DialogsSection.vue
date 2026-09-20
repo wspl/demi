@@ -234,7 +234,7 @@ const resetPhases: {
         <div class="grid items-start gap-6 lg:grid-cols-2">
           <GallerySpecimen wide variant="device or Cloud">
             <GalleryDialogFrame>
-              <WorkspaceDialog is-open :overlay-store="appOverlayStore" :devices="devices" cloud :source-for="sourceFor" :places-for="placesFor" />
+              <WorkspaceDialog is-open :overlay-store="appOverlayStore" :devices="devices" :source-for="sourceFor" :places-for="placesFor" />
             </GalleryDialogFrame>
           </GallerySpecimen>
           <GallerySpecimen wide variant="devices only">
@@ -244,7 +244,7 @@ const resetPhases: {
           </GallerySpecimen>
           <GallerySpecimen wide variant="creating">
             <GalleryDialogFrame>
-              <WorkspaceDialog is-open :overlay-store="appOverlayStore" :devices="devices" cloud pending :source-for="sourceFor" :places-for="placesFor" />
+              <WorkspaceDialog is-open :overlay-store="appOverlayStore" :devices="devices" pending :source-for="sourceFor" :places-for="placesFor" />
             </GalleryDialogFrame>
           </GallerySpecimen>
           <GallerySpecimen wide variant="devices loading">

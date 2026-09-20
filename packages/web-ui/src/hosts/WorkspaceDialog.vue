@@ -37,8 +37,6 @@ const props = defineProps<{
   pending?: boolean
   load?: 'loading' | 'ready' | 'failed'
   devices: WorkspaceDevice[]
-  /** Offer the managed Cloud workspace; it is the default. */
-  cloud?: boolean
   /** What went wrong with the last Create, shown under the form. */
   message?: string
   /** The browser's tree for a device. */
@@ -221,7 +219,7 @@ function selectDevice(id: string, close: () => void): void {
       >
         <div class="flex flex-col gap-4 p-4">
           <form class="flex flex-col gap-4" @submit.prevent="create">
-            <ChoiceCards v-if="cloud" v-model="kind" :options="kindOptions" />
+            <ChoiceCards v-model="kind" :options="kindOptions" />
             <label
               v-if="kind === 'cloud'"
               class="flex flex-col gap-1.5 text-chrome text-fg-muted"

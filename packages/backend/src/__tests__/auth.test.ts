@@ -3,6 +3,7 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
+import { FakeProvisioner } from '../testing/fake-provisioner'
 import { createBackend } from '../index'
 import { SESSION_COOKIE } from '../http/cookies'
 import { LoginLimiter } from '../auth/login-limiter'
@@ -21,7 +22,13 @@ test(
   'setup creates the master once and signs it in; every other route wants the cookie',
   async () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'demi-auth-setup-'))
-    const backend = await createBackend({ dataDir, port: 0, mode: 'shared', nativeCommands: await nativePackageFixture() })
+    const backend = await createBackend({
+      dataDir,
+      port: 0,
+      mode: 'shared',
+      nativeCommands: await nativePackageFixture(),
+      managedHosts: { provisioner: new FakeProvisioner() }
+    })
 
     expect(await (await fetch(`${backend.url}/api/setup`)).json())
       .toEqual({ needed: true })

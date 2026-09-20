@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { login } from '../session'
 import { model } from './driver'
 import { World } from './world'
-import { FakeProvisioner } from './fake-provisioner'
+import { FakeProvisioner } from '../../testing/fake-provisioner'
 import { waitFor } from '@demicodes/utils'
 
 /**

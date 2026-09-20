@@ -1,4 +1,4 @@
-import { FakeProvisioner } from './scenarios/fake-provisioner'
+import { FakeProvisioner } from '../testing/fake-provisioner'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

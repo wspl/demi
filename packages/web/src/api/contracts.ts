@@ -310,7 +310,7 @@ export const productStateSchema = z.object({
   devices: z.array(deviceSchema),
   providers: z.array(providerStateSchema),
   conversations: z.array(conversationSummarySchema),
-  cloud: cloudSchema.nullable(),
+  cloud: cloudSchema,
   exposes: z.array(exposeSchema),
   /** Null when the instance has no expose domain and the feature is off. */
   exposeDomain: z.string().nullable(),
