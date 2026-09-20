@@ -178,6 +178,8 @@ const providerDetailsSchema = z.object({
     mode: z.enum(['none', 'supported']),
     canProbe: z.boolean().optional(),
     probeCost: z.enum(['free', 'minimal_request']).optional(),
+    /** How long the provider calls a snapshot fresh. */
+    staleAfterMs: z.number().optional(),
   }),
   requiresProcessCapableHost: z.boolean(),
 })

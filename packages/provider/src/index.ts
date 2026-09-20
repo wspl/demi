@@ -106,6 +106,7 @@ export {
   severityFromUsedPercent,
   unixSecondsToIso,
   usedPercentFromRatio,
+  quotaSnapshotFile,
   ProviderQuotaUnsupportedError,
   ProviderQuotaInvalidatedError,
   type CreateProviderQuotaOptions,

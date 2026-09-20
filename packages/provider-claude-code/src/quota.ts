@@ -23,6 +23,8 @@ export interface ClaudeCodeQuotaOptions {
     init?: RequestInit
   ) => Promise<Response>
   usageUrl?: string
+  /** Where the latest snapshot is kept across rebuilds and restarts (`createProviderQuota`). */
+  snapshotFile?: string
 }
 
 const DEFAULT_USAGE_URL = 'https://api.anthropic.com/api/oauth/usage'
@@ -83,6 +85,7 @@ export function createClaudeCodeQuota(
 
   return createProviderQuota({
     providerId,
+    snapshotFile: options.snapshotFile,
     canProbe: true,
     canObserve: true,
     probeCost: 'free',

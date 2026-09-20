@@ -205,3 +205,38 @@ test('a probe and an observation keep each other\'s windows, and a probe says th
   quota.clearLatest?.()
   expect(quota.latest()).toBeNull()
 })
+
+test('a snapshot file carries the latest snapshot to the next provider, without the raw payload, until the account changes', async () => {
+  const { mkdtemp, readFile, rm, writeFile } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const directory = await mkdtemp(join(tmpdir(), 'demi-quota-'))
+  const snapshotFile = join(directory, 'state', 'quota.json')
+  const make = (providerId = 'vendor') => createProviderQuota({
+    providerId,
+    snapshotFile,
+    canProbe: true,
+    probeCost: 'free',
+    probe: async () => ({
+      plan: { id: 'pro', label: 'Pro' },
+      windows: [{ id: 'weekly', label: 'Weekly', usedPercent: 40, unit: 'percent', resetsAt: null }],
+      raw: { secret: 'vendor payload' },
+    }),
+  })
+  try {
+    expect(make().latest()).toBeNull()
+    await make().probe({ force: true })
+    expect(await readFile(snapshotFile, 'utf8')).not.toContain('vendor payload')
+    // A rebuilt provider, or a restarted process, starts from what was known.
+    const rebuilt = make()
+    expect(rebuilt.latest()).toMatchObject({ plan: { label: 'Pro' }, windows: [{ id: 'weekly', usedPercent: 40 }] })
+    // Another provider's file, and one that does not parse, hold nothing.
+    expect(make('other').latest()).toBeNull()
+    rebuilt.clearLatest?.()
+    expect(make().latest()).toBeNull()
+    await writeFile(snapshotFile, '{not json')
+    expect(make().latest()).toBeNull()
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})

@@ -7,6 +7,10 @@
  * - Products read {@link ProviderQuota.latest} or call {@link ensureQuota}.
  */
 
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { z } from 'zod'
+
 export type ProviderQuotaWindowUnit =
   | 'percent'
   | 'credits'
@@ -193,6 +197,59 @@ export interface CreateProviderQuotaOptions {
   observe?: (
     input: ProviderQuotaObserveInput
   ) => ProviderQuotaProbeResult | null
+  /**
+   * Where the latest snapshot is kept, without its raw payload, so that what is
+   * known about the account survives this object: a rebuilt provider and a
+   * restarted process start from it. Absent, the snapshot lives in memory only.
+   */
+  snapshotFile?: string
+}
+
+/** The snapshot file of a provider that keeps its state in `stateDir`; none without one. */
+export function quotaSnapshotFile(stateDir: string | undefined): string | undefined {
+  return stateDir ? join(stateDir, 'quota.json') : undefined
+}
+
+/** A snapshot as the file holds it: everything but the vendor's raw payload. */
+const storedSnapshotSchema = z.object({
+  providerId: z.string(),
+  observedAt: z.string(),
+  source: z.enum(['probe', 'observation', 'cache']),
+  plan: z.object({
+    id: z.string().nullable(),
+    label: z.string().nullish(),
+    raw: z.string().nullish(),
+  }).nullish(),
+  accountLabel: z.string().nullish(),
+  windows: z.array(z.object({
+    id: z.string(),
+    label: z.string().optional(),
+    usedPercent: z.number().nullable(),
+    used: z.number().nullish(),
+    limit: z.number().nullish(),
+    unit: z.enum(['percent', 'credits', 'usd_minor', 'requests', 'tokens', 'unknown']).optional(),
+    resetsAt: z.string().nullable(),
+    severity: z.enum(['normal', 'warning', 'critical']).nullish(),
+    scope: z.object({ kind: z.string(), label: z.string().optional() }).nullish(),
+  })),
+})
+
+/** The stored snapshot of this provider, or null: a missing, foreign or unreadable file holds nothing. */
+function readStoredSnapshot(file: string, providerId: string): ProviderQuotaSnapshot | null {
+  let text: string
+  try {
+    text = readFileSync(file, 'utf8')
+  } catch {
+    // No snapshot was stored yet.
+    return null
+  }
+  try {
+    const stored = storedSnapshotSchema.parse(JSON.parse(text))
+    return stored.providerId === providerId ? stored : null
+  } catch {
+    // A file this version cannot read is replaced by the next snapshot.
+    return null
+  }
 }
 
 export interface ProviderQuotaProbeResult {
@@ -206,8 +263,28 @@ export interface ProviderQuotaProbeResult {
 export function createProviderQuota(
   options: CreateProviderQuotaOptions
 ): ProviderQuota {
-  let latest: ProviderQuotaSnapshot | null = null
+  const snapshotFile = options.snapshotFile
+  let latest: ProviderQuotaSnapshot | null = snapshotFile
+    ? readStoredSnapshot(snapshotFile, options.providerId)
+    : null
   let generation = 0
+  // Storing is best effort: the snapshot in memory is the one that is served,
+  // and a file that could not be written only costs a probe after a restart.
+  const store = (snapshot: ProviderQuotaSnapshot | null): void => {
+    if (!snapshotFile)
+      return
+    try {
+      if (snapshot === null) {
+        rmSync(snapshotFile, { force: true })
+        return
+      }
+      const { raw: _raw, ...stored } = snapshot
+      mkdirSync(dirname(snapshotFile), { recursive: true })
+      writeFileSync(snapshotFile, `${JSON.stringify(stored)}\n`, { mode: 0o600 })
+    } catch {
+      // See above.
+    }
+  }
   const canObserve = options.canObserve ?? Boolean(options.observe)
 
   const capability = (): ProviderQuotaCapability => {
@@ -246,6 +323,7 @@ export function createProviderQuota(
       raw: partial.raw,
     }
     latest = snapshot
+    store(snapshot)
     return snapshot
   }
 
@@ -261,6 +339,7 @@ export function createProviderQuota(
     clearLatest: () => {
       generation += 1
       latest = null
+      store(null)
     },
     async probe(probeOptions = {}) {
       if (!options.canProbe)
