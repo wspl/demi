@@ -10,7 +10,9 @@ import { z } from 'zod'
 import { publicQuota } from '../llm/provider-details'
 import { configuredModelsSchema } from '../llm/model-config'
 import type { AuthEnv, InstanceMode } from '../auth/identity'
-import type { ProviderAssembly } from '../llm/assembly'
+import type { ProviderAssembly, SessionProviderContext } from '../llm/assembly'
+import type { CliInstalls } from '../llm/cli-installs'
+import { booleanQuerySchema } from './query'
 import type { VendorCatalog } from '../llm/vendors'
 import { canConfigureProviders } from '../vault/scope'
 import type {
@@ -75,6 +77,30 @@ export function providerRoutes(options: {
   vendors: VendorCatalog
   logins: SubscriptionLoginFlows
   mode: InstanceMode
+  /** A process provider's CLI: its versions and where it is installed (`claude-cli.md`). */
+  cli: {
+    installs: CliInstalls
+    /** The vendor's newest version; `refresh` asks the vendor at once. */
+    newest(refresh: boolean): Promise<string>
+    /** Refuses a version the vendor does not publish. */
+    verify(version: string): Promise<void>
+    /** What each machine that can be asked now has installed. */
+    machines(userId: string, signal: AbortSignal): Promise<Array<{
+      deviceId: string
+      name: string
+      versions: string[] | null
+    }>>
+  }
+  /** The machine for a process provider's work that belongs to no conversation. */
+  placeAccountProcess: (
+    userId: string,
+    entry: ProviderEntry,
+    signal: AbortSignal
+  ) => Promise<{
+    session: SessionProviderContext
+    cwd: string
+    release(): void
+  }>
 }): Hono<AuthEnv> {
   const { vault, assembly, vendors, logins, mode } = options
   const app = new Hono<AuthEnv>()
@@ -89,6 +115,13 @@ export function providerRoutes(options: {
   const scoped = async (c: Context<AuthEnv>) => {
     const provider = await vault.get(c.req.param('id') ?? '')
     return provider && provider.ownerUserId === await ownerOf(c) ? provider : null
+  }
+  // An account of a process provider is no use without its CLI, so adding
+  // one starts the install where account work runs; nobody waits for it.
+  const installCli = async (c: Context<AuthEnv>, entry: ProviderEntry) => {
+    const provider = (await assembly.providerFor(entry.id))?.provider
+    if (provider?.requiresProcessCapableHost)
+      options.cli.installs.start(c.get('user').id, entry)
   }
   const accountBodySchema = z.object({
     credentialId: z.string().min(1).optional()
@@ -236,6 +269,7 @@ export function providerRoutes(options: {
       parsed.data.label,
       parsed.data.token
     )
+    await installCli(c, entry)
     return c.json({ provider: publicProvider(entry) }, 201)
   })
 
@@ -289,10 +323,9 @@ export function providerRoutes(options: {
         code: 'invalid_body',
         message: 'Expected { token }'
       }, 400)
-    return c.json(
-      await options.accounts.addToken(entry, parsed.data.token),
-      201
-    )
+    const added = await options.accounts.addToken(entry, parsed.data.token)
+    await installCli(c, entry)
+    return c.json(added, 201)
   })
 
   app.put('/:id/accounts/active', async (c) => {
@@ -445,6 +478,7 @@ export function providerRoutes(options: {
       }, 404)
     await vault.delete(provider.id)
     await assembly.deleteProviderState(provider.id)
+    options.cli.installs.forget(provider.id)
     return c.body(null, 204)
   })
 
@@ -518,6 +552,71 @@ export function providerRoutes(options: {
     }
   })
 
+  app.get('/:id/cli', async (c) => {
+    const entry = await scoped(c)
+    if (!entry || entry.config.kind !== 'subscription')
+      return c.json({
+        code: 'provider_not_found',
+        message: 'No such provider'
+      }, 404)
+    const refresh = booleanQuerySchema.safeParse(c.req.query('refresh'))
+    if (!refresh.success)
+      return c.json({
+        code: 'invalid_query',
+        message: 'refresh must be true or false'
+      }, 400)
+    const [newest, machines] = await Promise.all([
+      options.cli.newest(refresh.data ?? false).then(
+        version => ({ version }),
+        error => ({ error: errorMessage(error) })
+      ),
+      options.cli.machines(c.get('user').id, c.req.raw.signal),
+    ])
+    return c.json({
+      newest,
+      held: entry.config.cliVersion ?? null,
+      install: options.cli.installs.state(c.get('user').id, entry.id),
+      machines,
+    })
+  })
+
+  app.put('/:id/cli', async (c) => {
+    const entry = await scoped(c)
+    if (!entry || entry.config.kind !== 'subscription')
+      return c.json({
+        code: 'provider_not_found',
+        message: 'No such provider'
+      }, 404)
+    const parsed = z.strictObject({ held: z.string().min(1).max(64).nullable() })
+      .safeParse(await c.req.json().catch(() => null))
+    if (!parsed.success)
+      return invalidBody(c, parsed.error)
+    if (parsed.data.held) {
+      try {
+        await options.cli.verify(parsed.data.held)
+      } catch (error) {
+        return c.json({ code: 'unknown_version', message: errorMessage(error) }, 400)
+      }
+    }
+    const { cliVersion: _held, ...config } = entry.config
+    await vault.update(entry.id, {
+      config: parsed.data.held ? { ...config, cliVersion: parsed.data.held } : config
+    })
+    await assembly.invalidate(entry.id)
+    return c.json({ held: parsed.data.held })
+  })
+
+  app.post('/:id/cli/install', async (c) => {
+    const entry = await scoped(c)
+    if (!entry || entry.config.kind !== 'subscription')
+      return c.json({
+        code: 'provider_not_found',
+        message: 'No such provider'
+      }, 404)
+    options.cli.installs.start(c.get('user').id, entry)
+    return c.json({ install: options.cli.installs.state(c.get('user').id, entry.id) }, 202)
+  })
+
   app.post('/:id/test', async (c) => {
     const provider = await scoped(c)
     if (!provider)
@@ -539,11 +638,14 @@ export function providerRoutes(options: {
     // The test ran either way: a provider that refused is the answer, with
     // its reason, not a failure of this request.
     try {
-      return c.json(await assembly.testProvider(
-        provider.id,
-        parsed.data.modelId,
-        parsed.data.credentialId
-      ))
+      return c.json(await assembly.testProvider(provider.id, parsed.data.modelId, {
+        ...(parsed.data.credentialId ? { credentialId: parsed.data.credentialId } : {}),
+        placeProcess: entry => options.placeAccountProcess(
+          c.get('user').id,
+          entry,
+          c.req.raw.signal
+        ),
+      }))
     } catch (error) {
       return c.json({ ok: false, message: errorMessage(error) })
     }

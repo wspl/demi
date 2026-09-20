@@ -75,6 +75,11 @@ export type ProviderTypeFactory = (options: {
  */
 export interface SessionProviderContext {
   spawn: ClaudeSpawn
+  /**
+   * The path of Demi's own Claude Code CLI on that target (`claude-cli.md`),
+   * installed first when the target has none.
+   */
+  claudeCli: () => Promise<string>
 }
 
 function apiKey(config: ProviderConfig): ApiKeyProviderConfig {
@@ -145,7 +150,10 @@ export function builtinProviderTypes(): Record<string, ProviderType> {
     createClaudeCodeProvider({
       ...common(options),
       ...accountOf(options),
-      ...(options.session ? { spawn: options.session.spawn } : {}),
+      ...(options.session ? {
+        spawn: options.session.spawn,
+        resolveClaudePath: options.session.claudeCli,
+      } : {}),
     }),
     ),
     codex: subscription(
@@ -275,11 +283,11 @@ export class ProviderAssembly {
    */
   async forAccount(
     entry: ProviderEntry,
-    credentialId: string
+    credentialId: string | null
   ): Promise<Provider | null> {
     if (credentialId === entry.activeCredentialId)
       return (await this.providerFor(entry.id))?.provider ?? null
-    return await this.vault.account(entry.id, credentialId)
+    return credentialId && await this.vault.account(entry.id, credentialId)
       ? this.build(entry, credentialId)
       : null
   }
@@ -345,8 +353,19 @@ export class ProviderAssembly {
   async testProvider(
     providerId: string,
     modelId: string,
-    /** The account to test, instead of the one the entry infers with. */
-    credentialId?: string
+    options: {
+      /** The account to test, instead of the one the entry infers with. */
+      credentialId?: string
+      /**
+       * The machine a process provider's test runs on (`claude-cli.md`
+       * § Where it runs), held until `release`.
+       */
+      placeProcess?: (entry: ProviderEntry) => Promise<{
+        session: SessionProviderContext
+        cwd: string
+        release(): void
+      }>
+    } = {}
   ): Promise<{
     ok: boolean;
     message?: string
@@ -356,18 +375,50 @@ export class ProviderAssembly {
     if (!resolved)
       return { ok: false, message: 'Unknown provider' }
     const { entry } = resolved
-    const provider = credentialId
-      ? await this.forAccount(entry, credentialId)
-      : resolved.provider
-    if (!provider)
+    const credentialId = options.credentialId ?? entry.activeCredentialId
+    if (options.credentialId && !await this.vault.account(entry.id, options.credentialId))
       return { ok: false, message: 'Unknown account' }
-    // A CLI transport runs on the conversation's execution target, never on this machine.
-    if (provider.requiresProcessCapableHost) {
-      return {
-        ok: false,
-        message: "This provider runs on a conversation's execution target; start a conversation to try it"
-      }
+    if (!resolved.provider.requiresProcessCapableHost)
+      return this.runTest(
+        entry,
+        await this.forAccount(entry, credentialId) ?? resolved.provider,
+        modelId,
+        '/'
+      )
+    if (!options.placeProcess)
+      return { ok: false, message: 'This provider has no machine to be tested on' }
+    let placed: Awaited<ReturnType<NonNullable<typeof options.placeProcess>>>
+    try {
+      placed = await options.placeProcess(entry)
+    } catch (error) {
+      return { ok: false, message: errorMessage(error) }
     }
+    try {
+      return await this.runTest(
+        entry,
+        await this.build(entry, credentialId, placed.session),
+        modelId,
+        placed.cwd
+      )
+    } finally {
+      placed.release()
+    }
+  }
+
+  /**
+   * One minimal request to the model the caller names, in `cwd` for a provider
+   * whose process runs somewhere.
+   */
+  private async runTest(
+    entry: ProviderEntry,
+    provider: Provider,
+    modelId: string,
+    cwd: string
+  ): Promise<{
+    ok: boolean;
+    message?: string
+    model?: string
+  }> {
     const model = (await this.modelsOf(entry, provider)).find(
       candidate => candidate.id === modelId
     )
@@ -391,7 +442,7 @@ export class ProviderAssembly {
         outputLimit: selection.model.outputLimit,
         modelId: model.id,
         systemPrompt: 'Reply with the word ok.',
-        cwd: '/',
+        cwd,
         items: [{
             type: 'user_message',
             content: [{ type: 'text', text: 'ping' }]

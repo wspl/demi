@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 exclude = ["vendor/*", "vendor/chromiumoxide", "vendor/chromiumoxide_cdp"]
-members = ["crates/runner", "crates/command-service", "crates/demi-commands"]
+members = ["crates/runner", "crates/command-service", "crates/demi-commands", "crates/demi-claude"]
 
 [workspace.package]
 version = "0.1.3"

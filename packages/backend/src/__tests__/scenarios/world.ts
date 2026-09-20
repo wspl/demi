@@ -14,6 +14,7 @@ import type { BackendOptions } from '../../index'
 import { openBackend, type TestBackend } from '../session'
 import { DirBlobStore } from '../../storage/blob-store'
 import { openSqliteDatabase } from '../../storage/database'
+import { fakeClaudeReleases } from '../../testing/fake-claude-releases'
 import { FakeProvisioner } from '../../testing/fake-provisioner'
 import { ScriptedModel } from './model'
 import { Driver, type Target } from './driver'
@@ -173,6 +174,7 @@ export class World {
       },
       // The scripted model answers title requests on their own lane (model.ts).
       conversationTitles: true,
+      claudeReleases: fakeClaudeReleases(),
       managedHosts: options.managedHosts!,
       ...(options.publicUrl ? { publicUrl: options.publicUrl } : {}),
       ...(options.providerRequestsPerMinute

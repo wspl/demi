@@ -90,6 +90,8 @@ export function createApp(options: {
   userStreams: ReadonlyMap<string, UserStreamDeclaration>
   /** The product's origin when it is served under another host name. */
   publicOrigin?: string
+  placeAccountProcess: Parameters<typeof providerRoutes>[0]['placeAccountProcess']
+  providerCli: Parameters<typeof providerRoutes>[0]['cli']
   managedHosts: ManagedHosts
   createCloudWorkspace: (
     userId: string,
@@ -169,7 +171,9 @@ export function createApp(options: {
     assembly: options.assembly,
     vendors: options.vendors,
     logins: options.logins,
-    mode: options.mode
+    mode: options.mode,
+    placeAccountProcess: options.placeAccountProcess,
+    cli: options.providerCli
   }))
   app.route(
     '/api/usage',

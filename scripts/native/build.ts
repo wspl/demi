@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { z } from 'zod'
 import { selectedTargets } from './release-files'
+import { NATIVE_PACKAGE_CRATES } from './package-info'
 
 const APPLE_SDK_VERSION = '15.4'
 const WINDOWS_SDK_VERSION = '10.0.26100'
@@ -14,12 +15,16 @@ const MACOS_MINIMUM = '13.0'
 const { values } = parseArgs({ options: {
   artifacts: { type: 'string', default: '.cache/native-target' },
   target: { type: 'string', multiple: true },
+  package: { type: 'string', multiple: true },
   container: { type: 'string' },
   sdk: { type: 'string' },
 } })
 const root = resolve(import.meta.dir, '../..')
 const artifacts = resolve(root, values.artifacts)
 const targets = selectedTargets(values.target)
+// The crates named by repeated `--package` options, or the runner and every command package.
+const crates = z.array(z.enum(['demi-runner', ...NATIVE_PACKAGE_CRATES]))
+  .parse(values.package ?? ['demi-runner', ...NATIVE_PACKAGE_CRATES])
 const sdk = values.sdk ? resolve(values.sdk) : process.env.SDKROOT
 const cache = join(root, '.cache')
 const xwinCache = join(cache, `native-xwin-${WINDOWS_CRT_VERSION}-${WINDOWS_SDK_VERSION}`)
@@ -41,7 +46,7 @@ for (const target of targets) {
   const macos = target.includes('apple')
   const args = [windows ? 'xwin' : 'zigbuild', ...(windows ? ['build'] : []),
     '--release', '--locked', '--target', target,
-    '-p', 'demi-runner', '-p', 'demi-commands']
+    ...crates.flatMap(crate => ['-p', crate])]
   const commonEnv: Record<string, string> = {
     XWIN_SDK_VERSION: WINDOWS_SDK_VERSION,
     XWIN_CRT_VERSION: WINDOWS_CRT_VERSION,
