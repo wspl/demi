@@ -21,6 +21,10 @@ import type { ChatSessionState, PendingSubmissionState } from './types'
 import type { MessageForkHandler } from './message-fork'
 
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
+import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
+import Menu from '@demicodes/web-ui/ui/Menu.vue'
+import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
+import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import TitleInput from '@demicodes/web-ui/ui/TitleInput.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { provideLabelRoom } from '../ui/label-room'
@@ -37,9 +41,9 @@ const props = defineProps<{
   selectEdit?: EditSelectionHandler
   fork?: MessageForkHandler
   /**
-   * A title on request: `available` while a message is newer than the last
-   * generated title, `running` while the model writes one. Absent, the title
-   * is current and there is nothing to ask for.
+   * Detecting a title, from the Rename menu: `available` while a message is
+   * newer than the last generated title, `running` while the model writes
+   * one. Absent, the title is current and there is nothing to detect.
    */
   retitle?: 'available' | 'running' | null
   /** Whether the app frame's work panel is open; absent when the host has none. */
@@ -72,35 +76,26 @@ const surface = ref<{ dockHeight: number }>()
 // greatest width: the controls beside it give up their labels before a title
 // narrower than that is cut, and keep them while a longer one is cut to it.
 const TITLE_MAX_PX = 260
-/** One button beside the title, and the gap before it. */
+/** The Rename button beside the title, and the gap before it. */
 const TITLE_ACTION_PX = 28 + 4
 const renaming = ref(false)
-// The button's revolution is under way; it outlives the state that started it.
-const retitleTurning = ref(false)
-watch(() => props.retitle, (state) => {
-  if (state === 'running') {
-    retitleTurning.value = true
-  }
-}, { immediate: true })
 
-function requestTitle(): void {
-  if (props.retitle !== 'available') {
-    return
+/** A double-click on the title names it in place, as the menu's Rename does. */
+function beginRename(): void {
+  if (!props.conversation.archived && props.retitle !== 'running') {
+    renaming.value = true
   }
-  retitleTurning.value = true
-  emit('retitle')
 }
 const titleCell = ref<HTMLElement | null>(null)
 const title = ref<HTMLElement | null>(null)
 const { width: titleCellWidth } = useElementSize(titleCell)
 const titleRoom = ref<number>()
 watch(
-  [titleCellWidth, () => props.conversation.title, title, renaming, () => props.retitle, retitleTurning],
+  [titleCellWidth, () => props.conversation.title, title, renaming],
   () => {
     // The input a rename swaps in is as wide as a title gets, and leaves no button beside it.
-    const actions = props.retitle || retitleTurning.value ? 2 : 1
     const need = title.value
-      ? Math.min(title.value.scrollWidth, TITLE_MAX_PX) + actions * TITLE_ACTION_PX
+      ? Math.min(title.value.scrollWidth, TITLE_MAX_PX) + TITLE_ACTION_PX
       : TITLE_MAX_PX
     titleRoom.value = titleCellWidth.value - need
   },
@@ -180,35 +175,46 @@ watch(() => props.conversation.id, close)
             class="min-w-0 select-none truncate text-chrome font-normal text-fg"
             :style="{ maxWidth: `${TITLE_MAX_PX}px` }"
             :title="conversation.title"
+            @dblclick="beginRename"
           >
             {{ conversation.title }}
           </h1>
-          <Tooltip content="Rename" class="shrink-0">
-            <IconButton
-              :icon="TextCursorInput"
-              variant="ghost"
-              aria-label="Rename"
-              :disabled="conversation.archived"
-              @click="renaming = true"
-            />
-          </Tooltip>
-          <!-- It turns where it stands, as every button that refreshes does, and stays for
-               the turn it is in even when the title arrives, or fails, before that ends. -->
-          <Tooltip
-            v-if="retitle || retitleTurning"
-            :content="retitle === 'available' ? 'Update title' : 'Updating title…'"
-            class="shrink-0"
+          <!-- Two ways to name the conversation behind one button; while the model
+               writes a title the button itself is busy, and its menu waits. -->
+          <Dropdown
+            :overlay-store="appOverlayStore"
+            placement="bottom-start"
+            :disabled="conversation.archived || retitle === 'running'"
           >
-            <IconButton
-              :icon="Radar"
-              variant="ghost"
-              aria-label="Update title"
-              spin-on-click
-              :spinning="retitle === 'running'"
-              @click="requestTitle"
-              @spin-end="retitleTurning = false"
-            />
-          </Tooltip>
+            <template #trigger="{ isOpen }">
+              <Tooltip :content="retitle === 'running' ? 'Detecting title…' : 'Rename'" class="shrink-0">
+                <IconButton
+                  :icon="TextCursorInput"
+                  variant="ghost"
+                  aria-label="Rename"
+                  :pressed="isOpen"
+                  :disabled="conversation.archived"
+                  :loading="retitle === 'running'"
+                />
+              </Tooltip>
+            </template>
+            <template #content="{ close }">
+              <Menu>
+                <MenuItem
+                  :icon="Radar"
+                  label="Detect title"
+                  :disabled="retitle !== 'available'"
+                  disabled-reason="No new message since the last detected title"
+                  @select="close(); emit('retitle')"
+                />
+                <MenuItem
+                  :icon="TextCursorInput"
+                  label="Rename"
+                  @select="close(); renaming = true"
+                />
+              </Menu>
+            </template>
+          </Dropdown>
         </template>
       </div>
       <div
