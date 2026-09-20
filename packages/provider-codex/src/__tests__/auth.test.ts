@@ -5,12 +5,12 @@ import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
-  FileCodexAuthStore,
   parseChatGptClaims,
   parseJwtExpiration,
   resolvedAuthMode,
   StaticCodexAuthStore,
 } from '../auth'
+import { FileCodexAuthStore } from '../vendor'
 
 test(
   'FileCodexAuthStore resolves ChatGPT auth from official auth.json shape',

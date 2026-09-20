@@ -20,9 +20,15 @@ import {
   stat,
   writeFile
 } from 'node:fs/promises'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { z } from 'zod'
+import {
+  storedQuotaSnapshotSchema,
+  type ProviderQuotaSnapshot,
+  type ProviderQuotaSnapshots,
+} from './quota'
 import type { ProviderCredentialInfo } from './types'
 
 /**
@@ -54,8 +60,6 @@ export interface CredentialDocumentRevision {
  * (an `auth.json`, OAuth tokens); the keeper never looks inside.
  */
 export interface CredentialDocument {
-  /** Identifies the document across every handle to it. Never secret. */
-  readonly key: string
   /** Names the document in messages. Never secret. */
   readonly name: string
   read(): Promise<CredentialDocumentRevision | null>
@@ -64,19 +68,19 @@ export interface CredentialDocument {
    * else wrote first: the caller reads again and uses what it finds.
    */
   replace(text: string, version: string): Promise<boolean>
+  /**
+   * Runs `fn` while nobody else this keeper can see refreshes the document: a
+   * refresh token is spent once, so refreshes of one account take turns and
+   * the later one finds the earlier one's tokens.
+   */
+  exclusive<T>(fn: () => Promise<T>): Promise<T>
 }
 
 /**
  * The accounts of one provider entry and which of them is in use. A kit reads
- * and writes accounts only through this.
+ * and writes accounts only through this, whoever keeps them.
  */
 export interface CredentialPool {
-  /**
-   * Whether an empty pool stands for the vendor's own login on this machine.
-   * True only where the machine is the user's: a product serving other users
-   * must not lend them the login of whoever operates it.
-   */
-  readonly vendorDefault: boolean
   list(): Promise<ProviderCredentialInfo[]>
   listMeta(): Promise<CredentialEntryMeta[]>
   readMeta(id: string): Promise<CredentialEntryMeta | null>
@@ -93,23 +97,55 @@ export interface CredentialPool {
 const refreshes = new Map<string, Promise<unknown>>()
 
 /**
- * Runs `fn` after every earlier refresh of the same document in this process:
- * a refresh token is spent once, so refreshes of one account take turns and
- * the later one finds the earlier one's tokens.
+ * A document's `exclusive` for a keeper with no lock of its own: work under the
+ * same `key` takes turns in this process.
  */
-export function exclusiveCredentialRefresh<T>(
-  document: CredentialDocument,
-  fn: () => Promise<T>
-): Promise<T> {
-  const previous = refreshes.get(document.key) ?? Promise.resolve()
-  const run = previous.then(fn, fn)
-  const settled = run.catch(() => undefined)
-  refreshes.set(document.key, settled)
-  void settled.then(() => {
-    if (refreshes.get(document.key) === settled)
-      refreshes.delete(document.key)
-  })
-  return run
+export function queuedExclusive(
+  key: string
+): <T>(fn: () => Promise<T>) => Promise<T> {
+  return (fn) => {
+    const previous = refreshes.get(key) ?? Promise.resolve()
+    const run = previous.then(fn, fn)
+    const settled = run.catch(() => undefined)
+    refreshes.set(key, settled)
+    void settled.then(() => {
+      if (refreshes.get(key) === settled)
+        refreshes.delete(key)
+    })
+    return run
+  }
+}
+
+/**
+ * `primary` while it holds an account, `fallback` while it holds none. Writes
+ * go to `primary`: the first account stored there takes over.
+ */
+export function fallbackCredentialPool(
+  primary: CredentialPool,
+  fallback: CredentialPool
+): CredentialPool {
+  const current = async (): Promise<CredentialPool> =>
+    (await primary.listMeta()).length > 0 ? primary : fallback
+  const holder = async (id: string): Promise<CredentialPool> =>
+    (await primary.readMeta(id)) ? primary : fallback
+  return {
+    list: async () => (await current()).list(),
+    listMeta: async () => (await current()).listMeta(),
+    readMeta: async (id) => (await holder(id)).readMeta(id),
+    findByIdentityKey: (identityKey) => primary.findByIdentityKey(identityKey),
+    getActiveId: async () => (await current()).getActiveId(),
+    setActiveId: async (id) => (await holder(id)).setActiveId(id),
+    ensureActivePointer: async () => (await current()).ensureActivePointer(),
+    writeEntry: (meta, secretText) => primary.writeEntry(meta, secretText),
+    document: (id) => ({
+      name: `account ${id}`,
+      read: async () => (await holder(id)).document(id).read(),
+      replace: async (text, version) =>
+        (await holder(id)).document(id).replace(text, version),
+      exclusive: async (fn) => (await holder(id)).document(id).exclusive(fn),
+    }),
+    remove: async (id) => (await holder(id)).remove(id),
+  }
 }
 
 function textVersion(text: string): string {
@@ -161,7 +197,6 @@ function isMissingEntryError(error: unknown): boolean {
 }
 
 export class FileCredentialPool implements CredentialPool {
-  readonly vendorDefault = true
   readonly root: string
   readonly secretFileName: string
 
@@ -334,8 +369,8 @@ export class FileCredentialPool implements CredentialPool {
       }
     }
     return {
-      key: path,
       name: path,
+      exclusive: queuedExclusive(path),
       read,
       replace: (text, version) => this.withWriteLock(async () => {
         if ((await read())?.version !== version)
@@ -427,6 +462,8 @@ export class FileCredentialPool implements CredentialPool {
  * A pool held in memory: the accounts of something that is not stored yet (a
  * login before it completes), and the pool of tests.
  */
+let memoryPools = 0
+
 export class MemoryCredentialPool implements CredentialPool {
   private readonly held = new Map<string, {
     meta: CredentialEntryMeta
@@ -434,8 +471,7 @@ export class MemoryCredentialPool implements CredentialPool {
     version: number
   }>()
   private activeId: string | null = null
-
-  constructor(readonly vendorDefault = false) {}
+  private readonly serial = memoryPools += 1
 
   /** Every account with its secret text, for whoever stores the pool. */
   entries(): Array<{ meta: CredentialEntryMeta; secretText: string }> {
@@ -502,8 +538,8 @@ export class MemoryCredentialPool implements CredentialPool {
 
   document(id: string): CredentialDocument {
     return {
-      key: `memory/${id}`,
       name: `account ${id}`,
+      exclusive: queuedExclusive(`memory/${this.serial}/${id}`),
       read: async () => {
         const entry = this.held.get(id)
         return entry
@@ -552,4 +588,54 @@ export async function writeJsonFileAtomic(
   await writeFile(temp, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 })
   await chmod(temp, 0o600)
   await rename(temp, path)
+}
+
+/** The snapshot file of a provider that keeps its state in `stateDir`; none without one. */
+export function quotaSnapshotFile(stateDir: string | undefined): string | undefined {
+  return stateDir ? join(stateDir, 'quota.json') : undefined
+}
+
+/** Snapshots kept in `file`; none without one. */
+export function fileQuotaSnapshots(
+  file: string | undefined,
+  providerId: string
+): ProviderQuotaSnapshots | undefined {
+  if (!file)
+    return undefined
+  let held: ProviderQuotaSnapshot | null = readStoredSnapshot(file, providerId)
+  return {
+    read: () => held,
+    save: (snapshot) => {
+      held = snapshot
+      try {
+        if (snapshot === null) {
+          rmSync(file, { force: true })
+          return
+        }
+        const { raw: _raw, ...stored } = snapshot
+        mkdirSync(dirname(file), { recursive: true })
+        writeFileSync(file, `${JSON.stringify(stored)}\n`, { mode: 0o600 })
+      } catch {
+        // Best effort, as the contract says.
+      }
+    },
+  }
+}
+
+/** The stored snapshot of this provider, or null: a missing, foreign or unreadable file holds nothing. */
+function readStoredSnapshot(file: string, providerId: string): ProviderQuotaSnapshot | null {
+  let text: string
+  try {
+    text = readFileSync(file, 'utf8')
+  } catch {
+    // No snapshot was stored yet.
+    return null
+  }
+  try {
+    const stored = storedQuotaSnapshotSchema.parse(JSON.parse(text))
+    return stored.providerId === providerId ? stored : null
+  } catch {
+    // A file this version cannot read is replaced by the next snapshot.
+    return null
+  }
 }

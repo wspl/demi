@@ -109,13 +109,18 @@ test(
   'Claude Code public provider reports auth via credential store and defers runtime state',
   async () => {
     const stateDir = await mkdtemp(join(tmpdir(), 'demi-claude-auth-'))
-    const provider = createClaudeCodeProvider({ stateDir })
+    const provider = createClaudeCodeProvider({
+      stateDir,
+      vendor: {
+        env: { CLAUDE_CODE_OAUTH_TOKEN: 'own-token' },
+        readKeychain: async () => null,
+      },
+    })
 
-    const status = await provider.auth?.status()
-    // Pool empty → vendor default; may be unauthenticated or authenticated depending on host.
-    expect(status?.status === 'authenticated'
-      || status?.status === 'unauthenticated'
-      || status?.status === 'error').toBe(true)
+    // The pool is empty, so the vendor login stands for the account.
+    expect(await provider.auth?.status()).toMatchObject({
+      status: 'authenticated'
+    })
     expect(await provider.state?.()).toEqual({
       status: 'unknown',
       message: 'Runtime is checked when a Claude Code request runs',

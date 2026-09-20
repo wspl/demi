@@ -1,6 +1,7 @@
 import {
   CredentialPoolError,
   MemoryCredentialPool,
+  queuedExclusive,
   type CredentialDocument,
   type CredentialEntryMeta,
   type CredentialPool,
@@ -57,11 +58,10 @@ function writeOf(
  * One subscription entry's accounts as control records
  * (providers-and-vault.md § Credential vault). Bound to the entry: a provider
  * package given this pool cannot name another entry's accounts, and an entry
- * without an account never stands for a vendor login of this machine.
+ * without an account is unauthenticated: nothing falls back to a vendor login
+ * of this machine.
  */
 export class VaultCredentialPool implements CredentialPool {
-  readonly vendorDefault = false
-
   constructor(
     private readonly control: ControlService,
     private readonly secret: Uint8Array,
@@ -125,8 +125,8 @@ export class VaultCredentialPool implements CredentialPool {
 
   document(id: string): CredentialDocument {
     return {
-      key: `provider_credentials/${this.providerId}/${id}`,
       name: `account ${id}`,
+      exclusive: queuedExclusive(`provider_credentials/${this.providerId}/${id}`),
       read: async () => {
         const record = await this.control.getProviderCredential(
           this.providerId,
@@ -159,7 +159,7 @@ export class VaultCredentialPool implements CredentialPool {
  */
 export class StagedCredentialPool extends MemoryCredentialPool {
   constructor(private readonly secret: Uint8Array) {
-    super(false)
+    super()
   }
 
   /** What the completed login publishes with the provider row. */

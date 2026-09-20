@@ -106,8 +106,6 @@ export {
   severityFromUsedPercent,
   unixSecondsToIso,
   usedPercentFromRatio,
-  quotaSnapshotFile,
-  fileQuotaSnapshots,
   storedQuotaSnapshotSchema,
   type ProviderQuotaSnapshots,
   type StoredQuotaSnapshot,

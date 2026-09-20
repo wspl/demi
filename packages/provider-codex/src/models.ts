@@ -7,11 +7,11 @@ import type {
 } from '@demicodes/provider'
 import {
   CodexAuthError,
-  FileCodexAuthStore,
   redactCodexSecretText,
   type CodexAuthStore,
   type CodexResolvedAuth,
 } from './auth'
+import { FileCodexAuthStore } from './vendor'
 
 export interface CodexModelCatalogOptions extends ProviderModelListOptions {
   authStore?: CodexAuthStore

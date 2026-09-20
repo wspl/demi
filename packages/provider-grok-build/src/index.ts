@@ -4,7 +4,7 @@ export {
   type GrokBuildProviderOptions,
   type GrokBuildFetch,
 } from './provider'
-export { grokBuildAuthStatus } from './auth'
+export { grokBuildAuthStatus, grokVendorPool } from './vendor'
 export { listGrokBuildModels, grokBuildFallbackModels } from './models'
 export {
   createGrokBuildQuota,

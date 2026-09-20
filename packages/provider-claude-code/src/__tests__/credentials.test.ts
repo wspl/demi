@@ -1,6 +1,10 @@
 import { expect, test } from 'bun:test'
 import { createProviderQuota } from '@demicodes/provider'
-import { MemoryCredentialPool } from '@demicodes/provider/credentials-pool'
+import {
+  CredentialPoolError,
+  fallbackCredentialPool,
+  MemoryCredentialPool,
+} from '@demicodes/provider/credentials-pool'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -13,6 +17,17 @@ import {
 import { StaticClaudeCodeAuthStore } from '../auth'
 import { buildClaudeEnv } from '../cli'
 import { injectableCliToken } from '../oauth'
+import type { ClaudeCodeOAuthSecret } from '../secret'
+import { claudeCodeVendorPool } from '../vendor'
+
+const NO_KEYCHAIN = async () => null
+const KEYCHAIN_ITEM = async () => JSON.stringify({
+  claudeAiOauth: {
+    accessToken: 'keychain-token',
+    subscriptionType: 'max',
+    rateLimitTier: 'tier-20x',
+  },
+})
 
 test('claude credentials add/setActive and pool-aware resolve', async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-claude-cred-'))
@@ -122,11 +137,11 @@ test('a pinned credential resolves whichever account is active', async () => {
   expect(await pool.getActiveId()).toBe(a.id)
 })
 
-test('an empty pool without a vendor default never reads the machine login', async () => {
+test('an empty pool is unauthenticated whatever the machine login is', async () => {
   const previous = process.env.CLAUDE_CODE_OAUTH_TOKEN
   process.env.CLAUDE_CODE_OAUTH_TOKEN = 'operator-token'
   try {
-    const pool = new MemoryCredentialPool(false)
+    const pool = new MemoryCredentialPool()
     const authStore = new PoolAwareClaudeCodeAuthStore(pool)
     // The message is the pool's own: neither the environment nor the keychain
     // lookup produced it.
@@ -140,7 +155,7 @@ test('an empty pool without a vendor default never reads the machine login', asy
 
     const credentials = createClaudeCodeCredentials(pool, authStore)
     expect(credentials.capability()).toMatchObject({ canImportDefault: false })
-    await expect(credentials.importDefault!()).rejects.toThrow(/vendor login/)
+    expect(credentials.importDefault).toBeUndefined()
     expect(await credentials.list()).toEqual([])
   } finally {
     if (previous === undefined)
@@ -150,21 +165,191 @@ test('an empty pool without a vendor default never reads the machine login', asy
   }
 })
 
-test('an empty pool with a vendor default reads the environment token', async () => {
-  const previous = process.env.CLAUDE_CODE_OAUTH_TOKEN
-  process.env.CLAUDE_CODE_OAUTH_TOKEN = 'own-token'
+test('an empty pool with the vendor pool behind it stands for the environment token', async () => {
+  const pool = fallbackCredentialPool(
+    new MemoryCredentialPool(),
+    claudeCodeVendorPool({
+      env: { CLAUDE_CODE_OAUTH_TOKEN: 'own-token' },
+      readKeychain: NO_KEYCHAIN,
+    }),
+  )
+  const authStore = new PoolAwareClaudeCodeAuthStore(pool)
+  const access = await authStore.resolveAccess()
+  expect(access).toEqual({
+    accessToken: 'own-token',
+    source: 'env',
+    subscriptionType: null,
+    rateLimitTier: null,
+  })
+  expect(injectableCliToken(access)).toBe('own-token')
+  expect(await pool.getActiveId()).toBe('env')
+})
+
+test('the keychain account is never injected into the CLI', async () => {
+  const pool = claudeCodeVendorPool({ env: {}, readKeychain: KEYCHAIN_ITEM })
+  expect(await pool.listMeta()).toMatchObject([
+    { id: 'keychain', label: 'max', detail: 'tier-20x', source: 'vendor:keychain' },
+  ])
+  const access = await new PoolAwareClaudeCodeAuthStore(pool).resolveAccess()
+  expect(access).toEqual({
+    accessToken: 'keychain-token',
+    source: 'keychain',
+    subscriptionType: 'max',
+    rateLimitTier: 'tier-20x',
+  })
+  expect(injectableCliToken(access)).toBeNull()
+})
+
+test('the environment token stands before the keychain item', async () => {
+  const pool = claudeCodeVendorPool({
+    env: { CLAUDE_CODE_OAUTH_TOKEN: 'own-token' },
+    readKeychain: KEYCHAIN_ITEM,
+  })
+  expect((await pool.listMeta()).map((m) => m.id)).toEqual(['env', 'keychain'])
+  expect(await pool.ensureActivePointer()).toBe('env')
+  const pinned = new PoolAwareClaudeCodeAuthStore(pool, {
+    credentialId: 'keychain'
+  })
+  expect((await pinned.resolveAccess()).source).toBe('keychain')
+})
+
+test('a malformed keychain item is an error, never a missing login', async () => {
+  const pool = claudeCodeVendorPool({
+    env: {},
+    readKeychain: async () => JSON.stringify({ claudeAiOauth: {} }),
+  })
+  const authStore = new PoolAwareClaudeCodeAuthStore(pool)
+  await expect(authStore.resolveAccess()).rejects.toThrow(/keychain credential is invalid/)
+})
+
+test('a machine without a vendor login has an empty vendor pool', async () => {
+  const pool = claudeCodeVendorPool({ env: {}, readKeychain: NO_KEYCHAIN })
+  expect(await pool.list()).toEqual([])
+  expect(await pool.getActiveId()).toBeNull()
+  expect(await pool.document('env').read()).toBeNull()
+  expect(await new PoolAwareClaudeCodeAuthStore(pool).status()).toMatchObject({
+    status: 'unauthenticated',
+  })
+})
+
+test('the vendor pool refuses to be written to', async () => {
+  const pool = claudeCodeVendorPool({
+    env: { CLAUDE_CODE_OAUTH_TOKEN: 'own-token' },
+    readKeychain: NO_KEYCHAIN,
+  })
+  const meta = (await pool.readMeta('env'))!
+  await expect(pool.writeEntry(meta, '{}')).rejects.toThrow(CredentialPoolError)
+  await expect(pool.remove('env')).rejects.toThrow(CredentialPoolError)
+  await expect(pool.setActiveId('keychain')).rejects.toThrow(/not found/)
+  await pool.setActiveId('env')
+  expect(await pool.document('env').replace('{}', 'any')).toBe(false)
+  expect(await pool.list()).toHaveLength(1)
+})
+
+test('a read-only document is never renewed, even when it has expired', async () => {
+  const expired = JSON.stringify({
+    accessToken: 'at-expired',
+    refreshToken: 'rt-1',
+    expiresAt: new Date(Date.now() - 60_000).toISOString(),
+  })
+  let refreshes = 0
+  const refresh = async (secret: ClaudeCodeOAuthSecret) => {
+    refreshes += 1
+    return { ...secret, accessToken: 'at-renewed' }
+  }
+  // The same secret in a pool that stores it is due for renewal.
+  const stored = new MemoryCredentialPool()
+  await stored.writeEntry(
+    { id: 'a', label: 'a', updatedAt: '2026-01-01T00:00:00.000Z' },
+    expired
+  )
+  const renewing = new PoolAwareClaudeCodeAuthStore(stored, { refresh })
+  expect((await renewing.resolveAccess()).accessToken).toBe('at-renewed')
+  expect(refreshes).toBe(1)
+
+  // The keychain item carries the CLI's refresh token and expiry; the vendor
+  // document leaves them to the CLI.
+  const vendor = claudeCodeVendorPool({
+    env: {},
+    readKeychain: async () => JSON.stringify({
+      claudeAiOauth: {
+        accessToken: 'at-expired',
+        refreshToken: 'rt-1',
+        expiresAt: Date.now() - 60_000,
+      },
+    }),
+  })
+  const authStore = new PoolAwareClaudeCodeAuthStore(vendor, { refresh })
+  expect((await authStore.resolveAccess()).accessToken).toBe('at-expired')
+  expect(refreshes).toBe(1)
+  const text = (await vendor.document('keychain').read())!.text
+  expect(text).not.toContain('rt-1')
+})
+
+test('importDefault copies the vendor login into the pool as a stored secret', async () => {
+  const pool = new MemoryCredentialPool()
+  const authStore = new PoolAwareClaudeCodeAuthStore(pool)
+  const credentials = createClaudeCodeCredentials(pool, authStore, {
+    importFrom: claudeCodeVendorPool({ env: {}, readKeychain: KEYCHAIN_ITEM }),
+  })
+  expect(credentials.capability()).toMatchObject({ canImportDefault: true })
+  const info = await credentials.importDefault!()
+  expect(info).toMatchObject({ label: 'max', detail: 'tier-20x' })
+  expect(await pool.readMeta(info.id)).toMatchObject({ source: 'vendor:default' })
+  expect(JSON.parse(pool.entries()[0]!.secretText)).toEqual({
+    accessToken: 'keychain-token',
+    subscriptionType: 'max',
+    rateLimitTier: 'tier-20x',
+  })
+  expect(await authStore.resolveAccess()).toMatchObject({
+    accessToken: 'keychain-token',
+    source: 'file',
+  })
+
+  const none = createClaudeCodeCredentials(pool, authStore, {
+    importFrom: claudeCodeVendorPool({ env: {}, readKeychain: NO_KEYCHAIN }),
+  })
+  await expect(none.importDefault!()).rejects.toThrow(/No Claude Code OAuth to import/)
+})
+
+test('the default provider stands for the vendor login until an account is stored', async () => {
+  const stateDir = await mkdtemp(join(tmpdir(), 'demi-claude-vendor-'))
   try {
-    const pool = new MemoryCredentialPool(true)
-    const authStore = new PoolAwareClaudeCodeAuthStore(pool)
-    expect(await authStore.resolveAccess()).toEqual({
-      accessToken: 'own-token',
-      source: 'env',
+    const provider = createClaudeCodeProvider({
+      stateDir,
+      vendor: {
+        env: { CLAUDE_CODE_OAUTH_TOKEN: 'own-token' },
+        readKeychain: NO_KEYCHAIN,
+      },
+    })
+    expect(provider.credentials!.capability()).toMatchObject({
+      canImportDefault: true
+    })
+    expect((await provider.credentials!.getActive()).credentialId).toBe('env')
+    const added = await provider.credentials!.add!({
+      accessToken: 'tok',
+      subscriptionType: 'pro'
+    })
+    expect(await provider.credentials!.getActive()).toMatchObject({
+      credentialId: added.id,
+      status: { status: 'authenticated', accountLabel: 'pro' },
+    })
+
+    const owned = createClaudeCodeProvider({
+      credentialPool: new MemoryCredentialPool(),
+      vendor: {
+        env: { CLAUDE_CODE_OAUTH_TOKEN: 'own-token' },
+        readKeychain: NO_KEYCHAIN,
+      },
+    })
+    expect(owned.credentials!.capability()).toMatchObject({
+      canImportDefault: false
+    })
+    expect(await owned.auth!.status()).toMatchObject({
+      status: 'unauthenticated'
     })
   } finally {
-    if (previous === undefined)
-      delete process.env.CLAUDE_CODE_OAUTH_TOKEN
-    else
-      process.env.CLAUDE_CODE_OAUTH_TOKEN = previous
+    await rm(stateDir, { recursive: true, force: true })
   }
 })
 

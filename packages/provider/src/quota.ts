@@ -7,8 +7,6 @@
  * - Products read {@link ProviderQuota.latest} or call {@link ensureQuota}.
  */
 
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
 import { z } from 'zod'
 
 export type ProviderQuotaWindowUnit =
@@ -219,38 +217,6 @@ export interface ProviderQuotaSnapshots {
   save(snapshot: ProviderQuotaSnapshot | null): void
 }
 
-/** The snapshot file of a provider that keeps its state in `stateDir`; none without one. */
-export function quotaSnapshotFile(stateDir: string | undefined): string | undefined {
-  return stateDir ? join(stateDir, 'quota.json') : undefined
-}
-
-/** Snapshots kept in `file`; none without one. */
-export function fileQuotaSnapshots(
-  file: string | undefined,
-  providerId: string
-): ProviderQuotaSnapshots | undefined {
-  if (!file)
-    return undefined
-  let held: ProviderQuotaSnapshot | null = readStoredSnapshot(file, providerId)
-  return {
-    read: () => held,
-    save: (snapshot) => {
-      held = snapshot
-      try {
-        if (snapshot === null) {
-          rmSync(file, { force: true })
-          return
-        }
-        const { raw: _raw, ...stored } = snapshot
-        mkdirSync(dirname(file), { recursive: true })
-        writeFileSync(file, `${JSON.stringify(stored)}\n`, { mode: 0o600 })
-      } catch {
-        // Best effort, as the contract says.
-      }
-    },
-  }
-}
-
 /** A snapshot as it is kept: everything but the vendor's raw payload. */
 export const storedQuotaSnapshotSchema = z.object({
   providerId: z.string(),
@@ -274,24 +240,6 @@ export const storedQuotaSnapshotSchema = z.object({
     scope: z.object({ kind: z.string(), label: z.string().optional() }).nullish(),
   })),
 })
-
-/** The stored snapshot of this provider, or null: a missing, foreign or unreadable file holds nothing. */
-function readStoredSnapshot(file: string, providerId: string): ProviderQuotaSnapshot | null {
-  let text: string
-  try {
-    text = readFileSync(file, 'utf8')
-  } catch {
-    // No snapshot was stored yet.
-    return null
-  }
-  try {
-    const stored = storedQuotaSnapshotSchema.parse(JSON.parse(text))
-    return stored.providerId === providerId ? stored : null
-  } catch {
-    // A file this version cannot read is replaced by the next snapshot.
-    return null
-  }
-}
 
 export type StoredQuotaSnapshot = z.infer<typeof storedQuotaSnapshotSchema>
 

@@ -2,7 +2,7 @@ import { normalizeBaseUrl } from '@demicodes/utils'
 import { z } from 'zod'
 import type { ProviderModel, ProviderModelList } from '@demicodes/provider'
 import type { GrokAuthStore } from './auth'
-import { FileGrokAuthStore } from './auth'
+import { FileGrokAuthStore } from './vendor'
 import { DEFAULT_GROK_BUILD_BASE_URL, buildGrokBuildHeaders } from './headers'
 
 export interface GrokBuildModelCatalogOptions {

@@ -1,32 +1,14 @@
-import {
-  decodeJwtPayload,
-  delay,
-  errorCode,
-  errorMessage,
-  nonEmptyString
-} from '@demicodes/utils'
+import { decodeJwtPayload, nonEmptyString } from '@demicodes/utils'
 import { z } from 'zod'
-import {
-  open,
-  readFile,
-  rm,
-  writeFile,
-  mkdir,
-  stat
-} from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import process from 'node:process'
 import {
   redactCredentialText,
   reportedStringSchema,
   type ProviderAuthState
 } from '@demicodes/provider'
-import {
-  exclusiveCredentialRefresh,
-  writeJsonFileAtomic,
-  type CredentialDocument,
-} from '@demicodes/provider/credentials-pool'
+import type { CredentialDocument } from '@demicodes/provider/credentials-pool'
 
 /**
  * One credential entry as written by the Grok CLI (`~/.grok/auth.json`).
@@ -81,21 +63,16 @@ export interface GrokAuthStore {
   resolveAuth(options?: { forceRefresh?: boolean }): Promise<GrokResolvedAuth>
 }
 
-export interface FileGrokAuthStoreOptions {
-  grokHome?: string
-  /** Override auth.json path. */
-  authFile?: string
-  /** The account's document in a credential pool, instead of a file. */
-  document?: CredentialDocument
+export interface GrokDocumentAuthStoreOptions {
+  /** The account's auth map, whoever keeps it. */
+  document: CredentialDocument
   /**
-   * Prefer this map key when the auth file has multiple OIDC entries.
+   * The map key of the account when the document holds several entries.
    * When unset, uses {@link selectAuthEntry} scoring.
    */
   entryKey?: string
   refresh?: GrokTokenRefresh
   now?: () => Date
-  lockRetryDelayMs?: number
-  lockTimeoutMs?: number
 }
 
 /**
@@ -129,44 +106,32 @@ export type GrokTokenRefresh = (
  */
 const SECRET_FIELD_PATTERNS = ['\\bkey\\b']
 
-function redactGrokSecretText(text: string): string {
+export function redactGrokSecretText(text: string): string {
   return redactCredentialText(text, SECRET_FIELD_PATTERNS)
 }
 
 const DEFAULT_TOKEN_ENDPOINT = 'https://auth.x.ai/oauth2/token'
 const REFRESH_EXPIRY_SKEW_MS = 5 * 60 * 1000
 
-export async function grokBuildAuthStatus(
-  options: FileGrokAuthStoreOptions = {}
-): Promise<ProviderAuthState> {
-  return new FileGrokAuthStore(options).status()
-}
-
-export class FileGrokAuthStore implements GrokAuthStore {
-  readonly grokHome: string
-  /** The file, or the name of the pool document that stands in for it. */
+/**
+ * The auth store of one account document. Every read, refresh and write goes
+ * through the document, so the store is the same whoever keeps the account.
+ */
+export class GrokDocumentAuthStore implements GrokAuthStore {
+  /** The document's name, which a resolved auth reports as where it came from. */
   readonly authFile: string
   readonly entryKey: string | null
 
-  private readonly document: CredentialDocument | null
+  private readonly document: CredentialDocument
   private readonly refreshImpl: GrokTokenRefresh
   private readonly now: () => Date
-  private readonly lockRetryDelayMs: number
-  private readonly lockTimeoutMs: number
 
-  constructor(options: FileGrokAuthStoreOptions = {}) {
-    this.grokHome = options.grokHome ?? defaultGrokHome()
-    this.document = options.document ?? null
-    this.authFile = this.document?.name
-      ?? options.authFile
-      ?? join(this.grokHome, 'auth.json')
+  constructor(options: GrokDocumentAuthStoreOptions) {
+    this.document = options.document
+    this.authFile = options.document.name
     this.entryKey = nonEmptyString(options.entryKey) ?? null
     this.refreshImpl = options.refresh ?? refreshGrokOidcToken
     this.now = options.now ?? (() => new Date())
-    this.lockRetryDelayMs = options.lockRetryDelayMs ?? 25
-    // Must cover the lock holder's full token refresh (a network round-trip),
-    // not just a file write — contenders wait for the result instead of failing.
-    this.lockTimeoutMs = options.lockTimeoutMs ?? 30_000
   }
 
   async status(): Promise<ProviderAuthState> {
@@ -303,10 +268,6 @@ export class FileGrokAuthStore implements GrokAuthStore {
         ),
         expiresAt,
       }
-      if (!this.document) {
-        await writeJsonFileAtomic(this.authFile, nextFile)
-        return nextAuth
-      }
       const kept = await this.document.replace(
         `${JSON.stringify(nextFile, null, 2)}\n`,
         latest.version
@@ -315,9 +276,7 @@ export class FileGrokAuthStore implements GrokAuthStore {
         ? nextAuth
         : this.storedAuth((await this.readRevision()).file, entryKey)
     }
-    return this.document
-      ? exclusiveCredentialRefresh(this.document, refresh)
-      : this.withAuthFileLock(refresh)
+    return this.document.exclusive(refresh)
   }
 
   /** The auth the stored entry holds, as whoever wrote it last left it. */
@@ -339,94 +298,15 @@ export class FileGrokAuthStore implements GrokAuthStore {
     file: GrokAuthDotJson
     version: string
   }> {
-    if (this.document) {
-      const revision = await this.document.read()
-      if (!revision)
-        throw new GrokAuthError(
-          'auth_missing',
-          `Grok auth not found: ${this.authFile}`
-        )
-      return {
-        file: parseGrokAuthDotJson(revision.text, `Grok auth ${this.authFile}`),
-        version: revision.version,
-      }
-    }
-    let text: string
-    try {
-      text = await readFile(this.authFile, 'utf8')
-    } catch (error) {
-      if (errorCode(error) === 'ENOENT') {
-        throw new GrokAuthError(
-          'auth_missing',
-          `Grok auth file not found: ${this.authFile}. Run \`grok login\` first.`
-        )
-      }
+    const revision = await this.document.read()
+    if (!revision)
       throw new GrokAuthError(
-        'auth_invalid',
-        `Failed to read Grok auth file ${this.authFile}: ${redactGrokSecretText(errorMessage(error))}`,
+        'auth_missing',
+        `Grok auth not found: ${this.authFile}`
       )
-    }
     return {
-      file: parseGrokAuthDotJson(text, `Grok auth file ${this.authFile}`),
-      // The file lock keeps other writers out; the text itself tells revisions apart.
-      version: text,
-    }
-  }
-
-  private async withAuthFileLock<T>(fn: () => Promise<T>): Promise<T> {
-    const lockFile = `${this.authFile}.lock`
-    await mkdir(dirname(this.authFile), { recursive: true })
-    const started = Date.now()
-    let handle: Awaited<ReturnType<typeof open>> | null = null
-    let brokeStaleLock = false
-    while (!handle) {
-      try {
-        handle = await open(lockFile, 'wx', 0o600)
-      } catch (error) {
-        if (errorCode(error) !== 'EEXIST') {
-          throw new GrokAuthError(
-            'auth_lock_failed',
-            `Failed to lock Grok auth file: ${redactGrokSecretText(errorMessage(error))}`
-          )
-        }
-        // Grok CLI writes `auth.json.lock` as `pid:unix_ts` and may leave it behind
-        // after a crash. Steal only abandoned locks; wait if another live process holds it.
-        const staleIdentity = brokeStaleLock
-          ? null
-          : await fileIdentity(lockFile)
-        if (staleIdentity && (await isAbandonedGrokAuthLock(
-          lockFile,
-          this.now()
-        ))) {
-          if (await removeLockFileIfSame(lockFile, staleIdentity)) {
-            brokeStaleLock = true
-          }
-          continue
-        }
-        if (Date.now() - started > this.lockTimeoutMs) {
-          throw new GrokAuthError(
-            'auth_lock_failed',
-            `Timed out waiting for Grok auth lock ${lockFile}. If no other Grok process is running, delete the lock file and retry.`,
-          )
-        }
-        await delay(this.lockRetryDelayMs)
-      }
-    }
-
-    try {
-      // Match Grok CLI lock payload shape so concurrent tools can detect ownership.
-      await writeFile(
-        lockFile,
-        `${process.pid}:${Math.floor(this.now().getTime() / 1000)}`,
-        { mode: 0o600 }
-      )
-      return await fn()
-    } finally {
-      const ownedIdentity = await handle.stat().then(toFileIdentity)
-        .catch(() => null)
-      await handle.close().catch(() => undefined)
-      if (ownedIdentity)
-        await removeLockFileIfSame(lockFile, ownedIdentity)
+      file: parseGrokAuthDotJson(revision.text, `Grok auth ${this.authFile}`),
+      version: revision.version,
     }
   }
 }
@@ -705,71 +585,5 @@ function resolvedAuthFromSelected(
       ?? parseClientIdFromEntryKey(entryKey),
     entryKey,
     authFile,
-  }
-}
-
-/**
- * Grok CLI lock format is `pid:unix_seconds`. A valid live PID always owns its
- * lock.
- */
-export async function isAbandonedGrokAuthLock(
-  lockFile: string,
-  now: Date,
-  maxAgeMs = 30_000
-): Promise<boolean> {
-  try {
-    const raw = (await readFile(lockFile, 'utf8')).trim()
-    const match = /^(\d+):(\d+)$/.exec(raw)
-    if (match) {
-      const pid = Number(match[1])
-      const tsSec = Number(match[2])
-      if (Number.isFinite(pid) && pid > 0)
-        return !isProcessAlive(pid)
-      if (Number.isFinite(tsSec) && now.getTime() - tsSec * 1000 > maxAgeMs)
-        return true
-      return false
-    }
-    // Unknown lock payload: fall back to mtime age (covers empty/corrupt leftovers).
-    const info = await stat(lockFile)
-    return now.getTime() - info.mtimeMs > maxAgeMs
-  } catch {
-    return true
-  }
-}
-
-interface FileIdentity {
-  dev: number | bigint
-  ino: number | bigint
-}
-
-function toFileIdentity(info: {
-  dev: number | bigint;
-  ino: number | bigint
-}): FileIdentity {
-  return { dev: info.dev, ino: info.ino }
-}
-
-async function fileIdentity(path: string): Promise<FileIdentity | null> {
-  return stat(path).then(toFileIdentity).catch(() => null)
-}
-
-async function removeLockFileIfSame(
-  lockFile: string,
-  expected: FileIdentity
-): Promise<boolean> {
-  const current = await fileIdentity(lockFile)
-  if (!current || current.dev !== expected.dev || current.ino !== expected.ino)
-    return false
-  return rm(lockFile).then(() => true).catch(() => false)
-}
-
-function isProcessAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (error) {
-    if (errorCode(error) === 'EPERM')
-      return true
-    return false
   }
 }

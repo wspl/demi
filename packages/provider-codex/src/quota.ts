@@ -10,7 +10,8 @@ import {
   type ProviderQuotaSnapshots,
   type ProviderQuotaWindow,
 } from '@demicodes/provider'
-import { FileCodexAuthStore, type CodexAuthStore } from './auth'
+import type { CodexAuthStore } from './auth'
+import { FileCodexAuthStore } from './vendor'
 import { z } from 'zod'
 import { buildCodexHeaders } from './provider'
 

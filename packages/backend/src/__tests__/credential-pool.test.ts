@@ -38,7 +38,6 @@ const meta = (id: string, identityKey = id) => ({
 test('an account is an encrypted record whose refreshed secret is stored only over the version it was read at', async () => {
   const { db, vault, entry } = await fixture()
   const pool = vault.credentialPool(entry.id)
-  expect(pool.vendorDefault).toBe(false)
   expect(await pool.ensureActivePointer()).toBeNull()
   await pool.writeEntry(meta('a'), '{"refresh":"one"}')
   expect(await pool.ensureActivePointer()).toBe('a')

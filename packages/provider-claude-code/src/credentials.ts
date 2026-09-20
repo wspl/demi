@@ -1,4 +1,5 @@
 import type {
+  ProviderAuthState,
   ProviderCredentialActive,
   ProviderCredentialAddInput,
   ProviderCredentialInfo,
@@ -13,11 +14,20 @@ import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import {
   ClaudeCodeAuthError,
-  FileClaudeCodeAuthStore,
+  ClaudeCodeDocumentAuthStore,
+  parseClaudeCodeOAuthSecret,
   type ClaudeCodeAuthStore,
+  type ClaudeCodeSecretRefresh,
 } from './auth'
 import { refreshClaudeCodeSecret, runClaudeCodeLogin } from './login'
 import type { ClaudeCodeOAuthSecret } from './secret'
+import {
+  claudeCodeAccessSource,
+  claudeCodeVendorPool,
+  labelFromClaudeCodeToken,
+  type ClaudeCodeTokenSecret,
+  type ClaudeCodeVendorOptions,
+} from './vendor'
 import {
   FileCredentialPool,
   type CredentialPool,
@@ -27,26 +37,27 @@ import {
 import type { ClaudeCodeOAuthAccess } from './oauth'
 
 /**
- * Auth store that prefers the demi pool active entry; falls back to the vendor
- * login of this machine where the pool allows it.
+ * The auth store of a pool: the account it was built for, or the one the pool
+ * has active. Which keeper the pool is makes no difference here; the account's
+ * meta says what its access reports as its source.
  */
 export class PoolAwareClaudeCodeAuthStore implements ClaudeCodeAuthStore {
-  private readonly pool: CredentialPool
-  private readonly credentialId: string | null
-
   constructor(
-    pool: CredentialPool,
-    options: {
+    private readonly pool: CredentialPool,
+    private readonly options: {
       /** The account this store stands for, instead of the pool's active one. */
       credentialId?: string
+      refresh?: ClaudeCodeSecretRefresh
     } = {},
-  ) {
-    this.pool = pool
-    this.credentialId = options.credentialId ?? null
-  }
+  ) {}
 
-  async status() {
-    return this.currentStore().then((s) => s.status())
+  async status(): Promise<ProviderAuthState> {
+    try {
+      return await (await this.currentStore()).status()
+    } catch (error) {
+      // A pool that cannot be read is a state to report, like a store's own.
+      return { status: 'error', message: errorMessage(error) }
+    }
   }
 
   async resolveAccess() {
@@ -54,22 +65,19 @@ export class PoolAwareClaudeCodeAuthStore implements ClaudeCodeAuthStore {
   }
 
   private async currentStore(): Promise<ClaudeCodeAuthStore> {
-    const id = this.credentialId ?? await this.pool.ensureActivePointer()
-    if (id) {
-      return new FileClaudeCodeAuthStore({
-        document: this.pool.document(id),
-        refresh: refreshClaudeCodeSecret,
-      })
-    }
-    // The environment token and the keychain are the login of whoever runs
-    // this machine: only a pool that stands for that user may read them.
-    if (!this.pool.vendorDefault)
+    const id = this.options.credentialId
+      ?? await this.pool.ensureActivePointer()
+    if (!id)
       return new MissingClaudeCodeAuthStore()
-    return new FileClaudeCodeAuthStore()
+    return new ClaudeCodeDocumentAuthStore({
+      document: this.pool.document(id),
+      source: claudeCodeAccessSource((await this.pool.readMeta(id))?.source),
+      refresh: this.options.refresh ?? refreshClaudeCodeSecret,
+    })
   }
 }
 
-/** An entry without an account, where no vendor login may stand in for one. */
+/** A pool without an account. */
 class MissingClaudeCodeAuthStore implements ClaudeCodeAuthStore {
   async status() {
     return {
@@ -83,6 +91,18 @@ class MissingClaudeCodeAuthStore implements ClaudeCodeAuthStore {
       'auth_missing',
       'No Claude Code account is signed in'
     )
+  }
+}
+
+/** The access of this machine's vendor login; null when there is none. */
+export async function resolveClaudeCodeOAuthAccess(
+  vendor: ClaudeCodeVendorOptions = {}
+): Promise<ClaudeCodeOAuthAccess | null> {
+  try {
+    return await new PoolAwareClaudeCodeAuthStore(claudeCodeVendorPool(vendor))
+      .resolveAccess()
+  } catch {
+    return null
   }
 }
 
@@ -104,27 +124,17 @@ const credentialMaterialSchema = z.looseObject({
   subscriptionType: z.string().min(1).optional(),
   rateLimitTier: z.string().min(1).optional(),
 })
-type CredentialMaterial = z.infer<typeof credentialMaterialSchema>
 
 const nestedCredentialMaterialSchema = z.looseObject({
   oauth: credentialMaterialSchema,
 })
 
-function accessFromMaterial(
-  material: CredentialMaterial
-): ClaudeCodeOAuthAccess {
-  return {
-    accessToken: material.accessToken,
-    source: 'static',
-    subscriptionType: material.subscriptionType ?? null,
-    rateLimitTier: material.rateLimitTier ?? null,
-  }
-}
-
 export function createClaudeCodeCredentials(
   pool: CredentialPool,
   authStore: ClaudeCodeAuthStore,
   options: {
+    /** The vendor login `importDefault` copies from; none, no import. */
+    importFrom?: CredentialPool
     quota?: ProviderQuota | null
     /**
      * The provider stands for one named account: another account becoming
@@ -139,7 +149,7 @@ export function createClaudeCodeCredentials(
   const capability = (): ProviderCredentialsCapability => ({
     mode: 'supported',
     canBeginLogin: true,
-    canImportDefault: pool.vendorDefault,
+    canImportDefault: options.importFrom !== undefined,
     canAdd: true,
     multi: true,
   })
@@ -165,36 +175,25 @@ export function createClaudeCodeCredentials(
     return getActive()
   }
 
-  const importAccess = async (
-    access: ClaudeCodeOAuthAccess,
+  const importToken = async (
+    material: ClaudeCodeTokenSecret,
     source: string
   ): Promise<ProviderCredentialInfo> => {
-    const token = nonEmptyString(access.accessToken)
-    if (!token)
-      throw new ClaudeCodeAuthError(
-        'auth_missing',
-        'No Claude access token to import'
-      )
-    const identityKey =
-      nonEmptyString(access.subscriptionType) != null
-        ? `token:${createHash('sha256').update(token).digest('hex').slice(0, 16)}:${access.subscriptionType}`
-        : `token:${createHash('sha256').update(token).digest('hex').slice(0, 16)}`
-    const label = nonEmptyString(access.subscriptionType)
-      ?? `claude-${identityKey.slice(-8)}`
+    const { label, identityKey, detail } = labelFromClaudeCodeToken(material)
     const existing = await pool.findByIdentityKey(identityKey)
     const id = existing?.id ?? credentialIdFromIdentity(identityKey, label)
     const meta: CredentialEntryMeta = {
       id,
       label,
-      detail: nonEmptyString(access.rateLimitTier) ?? null,
+      detail,
       updatedAt: new Date().toISOString(),
       source,
       identityKey,
     }
     const secret = {
-      accessToken: token,
-      subscriptionType: access.subscriptionType ?? null,
-      rateLimitTier: access.rateLimitTier ?? null,
+      accessToken: material.accessToken,
+      subscriptionType: material.subscriptionType ?? null,
+      rateLimitTier: material.rateLimitTier ?? null,
     }
     await pool.writeEntry(meta, `${JSON.stringify(secret, null, 2)}\n`)
     const active = await pool.getActiveId()
@@ -276,35 +275,32 @@ export function createClaudeCodeCredentials(
         return { status: 'failed', message: errorMessage(error) }
       }
     },
-    importDefault: async () => {
-      if (!pool.vendorDefault)
-        throw new ClaudeCodeAuthError(
-          'auth_unsupported',
-          'This pool does not take the vendor login of the machine'
+    ...(options.importFrom ? {
+      importDefault: async () => {
+        const from = options.importFrom!
+        const id = await from.ensureActivePointer()
+        const revision = id ? await from.document(id).read() : null
+        if (!id || !revision)
+          throw new ClaudeCodeAuthError(
+            'auth_missing',
+            'No Claude Code OAuth to import. Run claude auth login or beginLogin first.',
+          )
+        // A copied token is a stored secret: its source names the import, not
+        // the keeper it came from.
+        return importToken(
+          parseClaudeCodeOAuthSecret(revision.text, from.document(id).name),
+          'vendor:default'
         )
-      const vendor = new FileClaudeCodeAuthStore()
-      let access: ClaudeCodeOAuthAccess
-      try {
-        access = await vendor.resolveAccess()
-      } catch {
-        throw new ClaudeCodeAuthError(
-          'auth_missing',
-          'No Claude Code OAuth to import. Run claude auth login or beginLogin first.',
-        )
-      }
-      return importAccess(access, 'vendor:default')
-    },
+      },
+    } : {}),
     add: async (input: ProviderCredentialAddInput) => {
       const direct = credentialMaterialSchema.safeParse(input)
       if (direct.success) {
-        return importAccess(
-          accessFromMaterial(direct.data),
-          'add:accessToken'
-        )
+        return importToken(direct.data, 'add:accessToken')
       }
       const nested = nestedCredentialMaterialSchema.safeParse(input)
       if (nested.success) {
-        return importAccess(accessFromMaterial(nested.data.oauth), 'add:oauth')
+        return importToken(nested.data.oauth, 'add:oauth')
       }
       throw new Error(
         'Claude credentials.add expects accessToken or oauth.accessToken'

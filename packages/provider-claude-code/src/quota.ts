@@ -10,10 +10,8 @@ import {
   type ProviderQuotaSnapshots,
   type ProviderQuotaWindow,
 } from '@demicodes/provider'
-import {
-  resolveClaudeCodeOAuthAccess,
-  type ClaudeCodeOAuthAccess
-} from './oauth'
+import { resolveClaudeCodeOAuthAccess } from './credentials'
+import type { ClaudeCodeOAuthAccess } from './oauth'
 
 export interface ClaudeCodeQuotaOptions {
   providerId?: string

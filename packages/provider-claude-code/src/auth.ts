@@ -1,20 +1,12 @@
 import type { ProviderAuthState } from '@demicodes/provider'
 import { errorMessage } from '@demicodes/utils'
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
-import process from 'node:process'
 import { z } from 'zod'
-import {
-  exclusiveCredentialRefresh,
-  type CredentialDocument,
-} from '@demicodes/provider/credentials-pool'
-import type { ClaudeCodeOAuthAccess } from './oauth'
+import type { CredentialDocument } from '@demicodes/provider/credentials-pool'
+import type { ClaudeCodeOAuthAccess, ClaudeCodeOAuthSource } from './oauth'
 import {
   claudeCodeOAuthSecretSchema,
   type ClaudeCodeOAuthSecret
 } from './secret'
-
-const execFileAsync = promisify(execFile)
 
 export interface ClaudeCodeAuthStore {
   status(): Promise<ProviderAuthState>
@@ -33,45 +25,32 @@ export type ClaudeCodeSecretRefresh = (
 
 const OAUTH_EXPIRY_SKEW_MS = 5 * 60 * 1000
 
-/** The credentials the Claude Code CLI keeps in the macOS keychain. */
-const keychainCredentialsSchema = z.looseObject({
-  claudeAiOauth: z.looseObject({
-    accessToken: z.string().min(1),
-    subscriptionType: z.string().min(1).optional(),
-    rateLimitTier: z.string().min(1).optional(),
-  }),
-})
-
-export interface FileClaudeCodeAuthStoreOptions {
-  /**
-   * The account's document in a credential pool. A store with a document
-   * stands for that account only: it never reads the environment or the
-   * keychain.
-   */
-  document?: CredentialDocument
-  /** Prefer this token over every other source when set (tests / static). */
-  accessToken?: string | null
-  /** Renews the document when its access token nears expiry. */
-  refresh?: ClaudeCodeSecretRefresh
+export interface ClaudeCodeDocumentAuthStoreOptions {
+  /** The account's oauth secret, wherever it is kept. */
+  document: CredentialDocument
+  /** What the resolved access reports as its source; the account's keeper knows. */
+  source: ClaudeCodeOAuthSource
+  /** Renews the secret when its access token nears expiry. */
+  refresh: ClaudeCodeSecretRefresh
 }
 
 /**
- * Resolves Claude OAuth: explicit token → pool document, or without a document
- * the vendor login of this machine: CLAUDE_CODE_OAUTH_TOKEN → keychain.
+ * Resolves and renews one account from its document. The document's keeper
+ * decides where the secret lives and who else may renew it; this store never
+ * does. A secret without a refresh token is used as it is.
  *
- * A vendor source that is absent moves on to the next one; a credential that
- * is present but malformed is an `auth_invalid` error, never a silently
- * repaired value.
+ * A document that is absent is `auth_missing`; one that is present but
+ * malformed is an `auth_invalid` error, never a silently repaired value.
  */
-export class FileClaudeCodeAuthStore implements ClaudeCodeAuthStore {
-  private readonly document: CredentialDocument | null
-  private readonly accessToken: string | null
-  private readonly refresh: ClaudeCodeSecretRefresh | null
+export class ClaudeCodeDocumentAuthStore implements ClaudeCodeAuthStore {
+  private readonly document: CredentialDocument
+  private readonly source: ClaudeCodeOAuthSource
+  private readonly refresh: ClaudeCodeSecretRefresh
 
-  constructor(options: FileClaudeCodeAuthStoreOptions = {}) {
-    this.document = options.document ?? null
-    this.accessToken = options.accessToken || null
-    this.refresh = options.refresh ?? null
+  constructor(options: ClaudeCodeDocumentAuthStoreOptions) {
+    this.document = options.document
+    this.source = options.source
+    this.refresh = options.refresh
   }
 
   async status(): Promise<ProviderAuthState> {
@@ -91,49 +70,14 @@ export class FileClaudeCodeAuthStore implements ClaudeCodeAuthStore {
   }
 
   async resolveAccess(): Promise<ClaudeCodeOAuthAccess> {
-    if (this.accessToken)
-      return { accessToken: this.accessToken, source: 'static' }
-
-    if (this.document)
-      return this.accessFromDocument(this.document)
-
-    const fromEnv = process.env.CLAUDE_CODE_OAUTH_TOKEN
-    if (fromEnv)
-      return { accessToken: fromEnv, source: 'env' }
-
-    if (process.platform === 'darwin') {
-      const fromKeychain = await accessFromKeychain()
-      if (fromKeychain)
-        return fromKeychain
-    }
-
-    throw new ClaudeCodeAuthError(
-      'auth_missing',
-      'Claude Code OAuth access token not found (set CLAUDE_CODE_OAUTH_TOKEN or log in with Claude Code)',
-    )
-  }
-
-  private async accessFromDocument(
-    document: CredentialDocument
-  ): Promise<ClaudeCodeOAuthAccess> {
-    const stored = (await readRevision(document)).secret
-    const secret = this.isExpiring(stored)
-      ? await this.renew(document)
-      : stored
+    const stored = (await this.readRevision()).secret
+    const secret = isExpiring(stored) ? await this.renew() : stored
     return {
       accessToken: secret.accessToken,
-      source: 'file',
+      source: this.source,
       subscriptionType: secret.subscriptionType ?? null,
       rateLimitTier: secret.rateLimitTier ?? null,
     }
-  }
-
-  /** Whether the secret can be renewed and its access token is about to expire. */
-  private isExpiring(secret: ClaudeCodeOAuthSecret): boolean {
-    if (!this.refresh || !secret.refreshToken || !secret.expiresAt)
-      return false
-    const remainingMs = Date.parse(secret.expiresAt) - Date.now()
-    return !Number.isNaN(remainingMs) && remainingMs < OAUTH_EXPIRY_SKEW_MS
   }
 
   /**
@@ -141,11 +85,11 @@ export class FileClaudeCodeAuthStore implements ClaudeCodeAuthStore {
    * validated before it replaces the document, so a bad response cannot
    * corrupt the account.
    */
-  private renew(document: CredentialDocument): Promise<ClaudeCodeOAuthSecret> {
-    return exclusiveCredentialRefresh(document, async () => {
-      const latest = await readRevision(document)
+  private renew(): Promise<ClaudeCodeOAuthSecret> {
+    return this.document.exclusive(async () => {
+      const latest = await this.readRevision()
       // An earlier renewal in line has already stored fresh tokens.
-      if (!this.refresh || !this.isExpiring(latest.secret))
+      if (!isExpiring(latest.secret))
         return latest.secret
       let renewed: ClaudeCodeOAuthSecret
       try {
@@ -156,18 +100,45 @@ export class FileClaudeCodeAuthStore implements ClaudeCodeAuthStore {
       } catch (error) {
         // A refresh token is spent once: whoever renewed first has stored
         // the tokens this one was refused for.
-        const stored = await readRevision(document)
+        const stored = await this.readRevision()
         if (stored.version !== latest.version)
           return stored.secret
         throw error
       }
-      const kept = await document.replace(
+      const kept = await this.document.replace(
         `${JSON.stringify(renewed, null, 2)}\n`,
         latest.version
       )
-      return kept ? renewed : (await readRevision(document)).secret
+      return kept ? renewed : (await this.readRevision()).secret
     })
   }
+
+  private async readRevision(): Promise<{
+    secret: ClaudeCodeOAuthSecret
+    version: string
+  }> {
+    const revision = await this.document.read()
+    if (!revision)
+      throw new ClaudeCodeAuthError(
+        'auth_missing',
+        `Claude OAuth credential not found: ${this.document.name}`,
+      )
+    return {
+      secret: parseClaudeCodeOAuthSecret(
+        revision.text,
+        `Claude OAuth credential ${this.document.name}`
+      ),
+      version: revision.version,
+    }
+  }
+}
+
+/** Whether the secret can be renewed and its access token is about to expire. */
+function isExpiring(secret: ClaudeCodeOAuthSecret): boolean {
+  if (!secret.refreshToken || !secret.expiresAt)
+    return false
+  const remainingMs = Date.parse(secret.expiresAt) - Date.now()
+  return !Number.isNaN(remainingMs) && remainingMs < OAUTH_EXPIRY_SKEW_MS
 }
 
 export class StaticClaudeCodeAuthStore implements ClaudeCodeAuthStore {
@@ -187,7 +158,7 @@ export class StaticClaudeCodeAuthStore implements ClaudeCodeAuthStore {
 
 export class ClaudeCodeAuthError extends Error {
   constructor(
-    readonly code: 'auth_missing' | 'auth_invalid' | 'auth_unsupported',
+    readonly code: 'auth_missing' | 'auth_invalid',
     message: string,
   ) {
     super(message)
@@ -195,61 +166,8 @@ export class ClaudeCodeAuthError extends Error {
   }
 }
 
-async function readRevision(
-  document: CredentialDocument
-): Promise<{ secret: ClaudeCodeOAuthSecret; version: string }> {
-  const revision = await document.read()
-  if (!revision)
-    throw new ClaudeCodeAuthError(
-      'auth_missing',
-      `Claude OAuth credential not found: ${document.name}`,
-    )
-  const source = `Claude OAuth credential ${document.name}`
-  return {
-    secret: validateOAuthSecret(
-      parseCredentialJson(revision.text, source),
-      source
-    ),
-    version: revision.version,
-  }
-}
-
-/** Reads the CLI's own keychain item; null when the CLI is not logged in. */
-async function accessFromKeychain(): Promise<ClaudeCodeOAuthAccess | null> {
-  let stdout: string
-  try {
-    const result = await execFileAsync(
-      'security',
-      ['find-generic-password', '-s', 'Claude Code-credentials', '-w'],
-      { encoding: 'utf8', timeout: 5_000 },
-    )
-    stdout = result.stdout
-  } catch {
-    // No such keychain item, or `security` is unavailable: the caller reports
-    // the credential as missing.
-    return null
-  }
-
-  const source = 'The Claude Code keychain credential'
-  const parsed = keychainCredentialsSchema.safeParse(
-    parseCredentialJson(stdout.trim(), source)
-  )
-  if (!parsed.success) {
-    throw new ClaudeCodeAuthError(
-      'auth_invalid',
-      `${source} is invalid: ${z.prettifyError(parsed.error)}`,
-    )
-  }
-  const oauth = parsed.data.claudeAiOauth
-  return {
-    accessToken: oauth.accessToken,
-    source: 'keychain',
-    subscriptionType: oauth.subscriptionType ?? null,
-    rateLimitTier: oauth.rateLimitTier ?? null,
-  }
-}
-
-function parseCredentialJson(text: string, source: string): unknown {
+/** Parses JSON a credential keeper holds; `source` names it in the error. */
+export function parseCredentialJson(text: string, source: string): unknown {
   try {
     return JSON.parse(text)
   } catch (error) {
@@ -258,6 +176,14 @@ function parseCredentialJson(text: string, source: string): unknown {
       `${source} is not valid JSON: ${errorMessage(error)}`,
     )
   }
+}
+
+/** The kit's oauth secret held in `text`; `source` names it in the error. */
+export function parseClaudeCodeOAuthSecret(
+  text: string,
+  source: string
+): ClaudeCodeOAuthSecret {
+  return validateOAuthSecret(parseCredentialJson(text, source), source)
 }
 
 function validateOAuthSecret(

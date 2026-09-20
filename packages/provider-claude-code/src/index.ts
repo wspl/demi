@@ -20,21 +20,23 @@ export {
   observeClaudeStreamBody,
   type ClaudeCodeQuotaOptions,
 } from './quota'
+export type { ClaudeCodeOAuthAccess } from './oauth'
 export {
-  resolveClaudeCodeOAuthAccess,
-  type ClaudeCodeOAuthAccess
-} from './oauth'
-export {
-  FileClaudeCodeAuthStore,
+  ClaudeCodeDocumentAuthStore,
   StaticClaudeCodeAuthStore,
   type ClaudeCodeAuthStore,
-  type FileClaudeCodeAuthStoreOptions,
+  type ClaudeCodeDocumentAuthStoreOptions,
 } from './auth'
 export {
   createClaudeCodeCredentials,
   openClaudeCodeCredentialPool,
   PoolAwareClaudeCodeAuthStore,
+  resolveClaudeCodeOAuthAccess,
 } from './credentials'
+export {
+  claudeCodeVendorPool,
+  type ClaudeCodeVendorOptions,
+} from './vendor'
 export {
   runClaudeCodeLogin,
   refreshClaudeCodeSecret,
