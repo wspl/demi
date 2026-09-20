@@ -427,6 +427,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                         content="Rename"
                         ><IconButton
                           size="sm"
+                          variant="ghost"
                           :icon="TextCursorInput"
                           aria-label="Rename"
                           @click="renaming = true"
@@ -600,11 +601,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                 </SettingsRow>
                 <SettingsRow
                   label="API key"
-                  :description="
-                    selected.keyConfigured
-                      ? 'A key is saved. It is never shown again; enter a new one to replace it.'
-                      : 'Stored encrypted on the server.'
-                  "
+                  description="Stored encrypted on the server."
                 >
                   <CommitTextInput
                     :disabled="!!operations?.[selected.id]"
@@ -613,6 +610,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                     @commit="emit('change', selected, { apiKey: $event })"
                     secret
                     trim
+                    :stored="selected.keyConfigured"
                     :placeholder="selected.keyConfigured ? 'Enter a new key to replace' : 'Paste your API key'"
                     class="w-72 max-w-full"
                   />
