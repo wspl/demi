@@ -70,9 +70,13 @@ const { copy: copyLink, copied: linkCopied } = useClipboard({ copiedDuring: 1500
             >Sign in with the vendor's own tool, then paste the token it
             prints.</template
           >
-          <template v-else-if="phase.kind === 'done'"
+          <template v-else-if="phase.kind === 'done' && phase.active"
             >Signed in. This account is now active for
             {{ vendorName }}.</template
+          >
+          <template v-else-if="phase.kind === 'done'"
+            >Signed in. {{ vendorName }} keeps using its active account;
+            activate this one to switch.</template
           >
           <template v-else-if="phase.kind === 'failed'"
             >The sign-in did not complete.</template

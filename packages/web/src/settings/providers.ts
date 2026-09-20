@@ -560,6 +560,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       z.object({
         status: z.literal('completed'),
         providerId: z.string(),
+        credentialId: z.string(),
       }),
       z.object({
         status: z.literal('failed'),
@@ -617,11 +618,12 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         const provider = resources.providers.find(
           (entry) => entry.id === result.providerId,
         )
+        // The account this login added, which is not the active one when another already was.
+        const added = provider?.accounts.find((account) => account.id === result.credentialId)
         login.value.phase = {
           kind: 'done',
-          account:
-            provider?.accounts.find((account) => account.active)?.label ??
-            'Account connected',
+          account: added?.label ?? 'Account connected',
+          active: added?.active ?? false,
         }
         select(result.providerId)
       } else if (result.status === 'failed') {
@@ -747,6 +749,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       current.phase = {
         kind: 'done',
         account: 'Account connected',
+        active: true,
       }
     } catch (error) {
       if (!controller.signal.aborted) {

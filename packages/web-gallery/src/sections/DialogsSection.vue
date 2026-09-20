@@ -52,7 +52,7 @@ const claudePhases: { variant: string; phase: ProviderLoginPhase }[] = [
       prefix: 'sk-ant-oat01-',
     },
   },
-  { variant: 'Claude Code · done', phase: { kind: 'done', account: 'zan@example.com · Max 5×' } },
+  { variant: 'Claude Code · done', phase: { kind: 'done', account: 'zan@example.com · Max 5×', active: true } },
 ]
 const codexPhases: { variant: string; phase: ProviderLoginPhase }[] = [
   { variant: 'Codex · starting', phase: { kind: 'starting' } },
@@ -60,14 +60,15 @@ const codexPhases: { variant: string; phase: ProviderLoginPhase }[] = [
     variant: 'Codex · device code',
     phase: { kind: 'device', url: 'https://auth.openai.com/codex/device', code: 'HXRV-7K2M', expiresIn: '10 min' },
   },
-  { variant: 'Codex · done', phase: { kind: 'done', account: 'zan@example.com · Plus' } },
+  { variant: 'Codex · done · the first account', phase: { kind: 'done', account: 'zan@example.com · Plus', active: true } },
+  { variant: 'Codex · done · added beside another', phase: { kind: 'done', account: 'zan@work.example · Pro', active: false } },
 ]
 const grokPhases: { variant: string; phase: ProviderLoginPhase }[] = [
   {
     variant: 'Grok Build · device code',
     phase: { kind: 'device', url: 'https://accounts.x.ai/device', code: 'QK4P-9TWD', expiresIn: '10 min' },
   },
-  { variant: 'Grok Build · done', phase: { kind: 'done', account: 'zan@example.com · SuperGrok' } },
+  { variant: 'Grok Build · done', phase: { kind: 'done', account: 'zan@example.com · SuperGrok', active: true } },
 ]
 const model: SettingsModelDraft = {
   id: 'claude-sonnet-4-5',
