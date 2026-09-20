@@ -129,6 +129,26 @@ acceptance('a viewer watches the conversation\'s browser, types into it and ends
   await waitFor(() => view.frames.slice(held + whileHeld).some((frame) => frame.key),
     () => 'no key frame after the page caught up', { timeoutMs: 20_000 })
 
+  // 7. A Host that pauses stops the stream where it is: nothing arrives, not
+  // even a heartbeat, and the view resumes from a key frame when it returns.
+  const before = { frames: view.frames.length, beats: view.heartbeats }
+  process.kill(world.device('alpha').runner.pid, 'SIGSTOP')
+  await new Promise((resolve) => setTimeout(resolve, 2000))
+  const during = {
+    frames: view.frames.length - before.frames,
+    beats: view.heartbeats - before.beats,
+  }
+  process.kill(world.device('alpha').runner.pid, 'SIGCONT')
+  // Two seconds of a moving page are twenty-odd frames; a paused Host sends
+  // only what was already in flight, which is the silence the view shows.
+  expect(during.frames + during.beats).toBeLessThan(5)
+  view.send({ type: 'keyframe', generation })
+  await waitFor(() => view.frames.slice(before.frames + during.frames).some((frame) => frame.key),
+    () => 'no key frame after the Host returned', { timeoutMs: 30_000 })
+  await waitFor(() => view.frames.length > before.frames + during.frames + 8,
+    () => 'the pictures never resumed', { timeoutMs: 30_000 })
+  expect(view.closed).toBe(null)
+
   // 7. Closing the last tab ends the browser, and the view says so.
   view.send({ type: 'close', tab })
   const ended = await view.message('ended')

@@ -368,11 +368,25 @@ Chinese, Japanese and Korean.
 Verified against real Chrome on macOS and Linux arm64: watching a tab beside
 the agent, the viewport modes, the viewer's ratio in the picture it receives
 (half-CSS-pixel stripes, decoded from the capture), dialogs, native controls,
-chosen files, the clipboard, held input released with its viewer, and two
-viewers of one tab. An end-to-end test drives a page's stream through the
-backend and the runner to a paired device's Chrome
-(`DEMI_BROWSER_LIVE_E2E=1`).
+chosen files, the clipboard, held input released with its viewer, a tab the
+viewer opens while it watches another, and two viewers of one tab. An
+end-to-end test drives a page's stream through the backend and the runner to a
+paired device's Chrome (`DEMI_BROWSER_LIVE_E2E=1`), including a page that stops
+showing frames and a Host that pauses in the middle of a view. The same pages
+and viewer run against a real Cloud guest
+(`DEMI_BROWSER_LIVE_CLOUD_E2E=1`): its pictures at the viewer's size and ratio,
+the viewer's input, the agent's commands on the same tab, the view ending with
+the browser, and the guest image drawing Chinese, Japanese and Korean text.
 
-Not verified yet: the acceptance runs on Cloud, a Host that pauses in the
-middle of a view, and a page that stops reading. The prototype and its
-measurements live in the separate Tab Lab repository (`browser-remote-lab`).
+A Cloud guest of the default size has two processors, and it composites and
+encodes its pictures in software in the same Chrome that serves the agent's
+commands. Watching such a guest leaves its browser little for anything else:
+its commands take far longer than on a paired device, and the short deadlines
+the module keeps for the steps around a command — releasing a mouse button
+after a click, closing a tab — expire, so a command whose work succeeded
+reports a cleanup timeout. The Cloud acceptance therefore watches at the ratio
+of an ordinary screen and stops watching while the agent works. Serving a view
+and an agent from one small guest at once is the open question here.
+
+Not verified yet: a Windows Host. The prototype and its measurements live in
+the separate Tab Lab repository (`browser-remote-lab`).

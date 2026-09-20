@@ -7,7 +7,7 @@
 import { waitFor } from '@demicodes/utils'
 
 /** Stripes half a CSS pixel wide: flat grey at ratio 1, black and white above. */
-const PAGE = `<!doctype html>
+const page = (paintMs: number) => `<!doctype html>
 <meta name="viewport" content="width=device-width">
 <style>
   body { margin: 0; height: 2000px; font: 16px system-ui, sans-serif }
@@ -46,13 +46,13 @@ const density = () => {
 }
 density()
 let x = 0
-setInterval(() => { x = x > 300 ? 0 : x + 6; spin.style.left = x + 'px' }, 16)
+setInterval(() => { x = x > 300 ? 0 : x + 6; spin.style.left = x + 'px' }, ${paintMs})
 </script>`
 
 /**
- * Chinese, Japanese and Korean text: each sample is drawn and compared with an
- * unassigned character, which every font misses. A sample that draws the same
- * ink as that one has no font behind it.
+ * Chinese, Japanese and Korean text: the samples are pairs of distinct
+ * characters. A font that has them draws each one differently; a font that
+ * lacks them draws every one as the same missing-character box.
  */
 const FONTS_PAGE = `<!doctype html>
 <meta charset="utf-8">
@@ -74,11 +74,13 @@ const draw = character => {
   }
   return { ink, signature }
 }
-const missing = draw('\\ue000')
 navigator.sendBeacon('/record', JSON.stringify({
   type: 'fonts',
-  missing,
-  samples: ['中', 'あ', '한'].map(character => ({ character, ...draw(character) })),
+  samples: ['中国', 'あい', '한국'].map(pair => ({
+    pair,
+    first: draw(pair[0]),
+    second: draw(pair[1]),
+  })),
 }))
 </script>`
 
@@ -91,8 +93,11 @@ export interface LiveRecord {
   text?: string | null
   devicePixelRatio?: number
   inner?: [number, number]
-  missing?: { ink: number; signature: number }
-  samples?: Array<{ character: string; ink: number; signature: number }>
+  samples?: Array<{
+    pair: string
+    first: { ink: number; signature: number }
+    second: { ink: number; signature: number }
+  }>
 }
 
 export interface LiveSite {
@@ -112,6 +117,12 @@ export interface LiveSiteOptions {
   host?: string
   /** A file served at `/artifact`, for a guest that seeds its own commands. */
   artifact?: string
+  /**
+   * How often the page moves its mark. A Host with two processors composites
+   * and encodes in software, so a page that moves sixty times a second leaves
+   * it nothing for its own commands.
+   */
+  paintMs?: number
 }
 
 /** The fixture website, on a port the system picks. */
@@ -130,8 +141,8 @@ export function liveSite(options: LiveSiteOptions = {}): LiveSite {
       if (pathname === '/artifact' && options.artifact) {
         return new Response(Bun.file(options.artifact))
       }
-      const page = pathname === '/fonts' ? FONTS_PAGE : PAGE
-      return new Response(page, { headers: { 'content-type': 'text/html; charset=utf-8' } })
+      const body = pathname === '/fonts' ? FONTS_PAGE : page(options.paintMs ?? 16)
+      return new Response(body, { headers: { 'content-type': 'text/html; charset=utf-8' } })
     },
   })
   const origin = `http://${host}:${server.port}`
@@ -169,6 +180,8 @@ export class LiveView {
   private pending = new Uint8Array(0)
   readonly messages: LiveMessage[] = []
   readonly frames: LiveFrame[] = []
+  /** Heartbeats are not messages the view acts on; a stall is their absence. */
+  heartbeats = 0
   closed: { code: number; reason: string } | null = null
   /** Frames are acknowledged as a page that shows them does. */
   acknowledge = true
@@ -238,7 +251,9 @@ export class LiveView {
       this.pending = this.pending.subarray(4 + length)
       if (kind === 1) {
         const message = JSON.parse(decoder.decode(payload)) as { type: string }
-        if (message.type !== 'heartbeat') {
+        if (message.type === 'heartbeat') {
+          this.heartbeats += 1
+        } else {
           this.messages.push(message as LiveMessage)
         }
       } else if (kind === 2) {
@@ -278,7 +293,11 @@ export class LiveView {
         found = this.messages.slice(since).find((message) => message.type === type)
         return Boolean(found)
       },
-      () => `no ${type}; saw ${this.messages.map((message) => message.type).join(', ')}`,
+      () => `no ${type}; saw ${this.messages
+        .map((message) => message.type === 'notice'
+          ? `notice(${String(message.code)}: ${String(message.message)})`
+          : message.type)
+        .join(', ')}`,
       { timeoutMs: 30_000 },
     )
     return found!

@@ -563,17 +563,53 @@ async fn a_view_starts_a_browser_and_ends_with_its_last_tab() {
             json!({"type": "state", "running": false, "tabs": [], "watched": null})
         );
         view.send(json!({"type": "open", "url": site.base}));
-        let state = view
-            .until("a running browser", |message| {
-                message["type"] == "state"
-                    && message["running"] == true
-                    && !message["watched"].is_null()
+        // The tab a viewer opens is the one it watches: its pictures start
+        // without the viewer asking for them. The running browser and its
+        // first stream are announced by different tasks, in either order.
+        let running = |message: &Value| {
+            message["type"] == "state"
+                && message["running"] == true
+                && !message["watched"].is_null()
+        };
+        let streaming = |message: &Value| message["type"] == "stream" && message["width"] == 1600;
+        let first = view
+            .until("a running browser or its stream", |message| {
+                running(message) || streaming(message)
             })
             .await;
+        let second = if first["type"] == "state" {
+            view.until("the stream of the tab it opened", streaming)
+                .await
+        } else {
+            view.until("the state naming the tab it opened", running)
+                .await
+        };
+        let (state, stream) = if first["type"] == "state" {
+            (first, second)
+        } else {
+            (second, first)
+        };
+        let tab = stream["tab"].as_str().unwrap().to_owned();
+        let (pictured, ..) = view.picture(stream["generation"].as_u64().unwrap()).await;
+        assert_eq!(pictured, tab, "the tab it opened is the one it sees");
         assert_eq!(state["tabs"][0]["createdBy"], json!({"kind": "user"}));
-        let tab = state["watched"].as_str().unwrap().to_owned();
+        assert_eq!(state["watched"].as_str(), Some(tab.as_str()));
         let tabs = fixture.call("browser.tabs", json!({})).await;
         assert_eq!(tabs["tabs"][0]["id"], tab);
+        // Another tab while the first is watched: its capture is running, and
+        // the new tab arrives and takes the view over.
+        view.send(json!({"type": "open", "url": site.base}));
+        let stream = view
+            .until("a stream of the second tab", |message| {
+                message["type"] == "stream"
+                    && message["tab"] != json!(tab)
+                    && message["width"] == 1600
+            })
+            .await;
+        let opened = stream["tab"].as_str().unwrap().to_owned();
+        let (pictured, ..) = view.picture(stream["generation"].as_u64().unwrap()).await;
+        assert_eq!(pictured, opened, "the second tab is the one it sees");
+        view.send(json!({"type": "close", "tab": opened}));
         view.send(json!({"type": "close", "tab": tab}));
         let ended = view.message("ended").await;
         assert_eq!(ended["reason"], "browser_ended");
@@ -775,7 +811,7 @@ async fn a_watched_tab_arrives_with_the_detail_of_the_viewers_ratio() {
         // own pixel, as sharp as the gradient's own antialiasing allows.
         assert!(flat < 40, "stripes at ratio 1 are flat grey, not {flat}");
         assert!(
-            sharp > 100 && sharp > u8::from(flat) * 3,
+            sharp > 100 && u16::from(sharp) > u16::from(flat) * 3,
             "stripes at ratio 2 are sharp, not {sharp} against {flat}",
         );
 
