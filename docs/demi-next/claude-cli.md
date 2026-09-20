@@ -85,16 +85,14 @@ Host and does not know why it got that one.
 A placement answers with candidates in order, and the work takes the first that
 is available. Today each list has one entry. The shape is what lets this
 change without touching the callers: inference that falls back to Cloud when
-its target has no usable CLI, account work on a paired device for a deployment
-without Cloud, or everything on Cloud, are each a different list.
+its target has no usable CLI, or everything on Cloud, are each a different
+list. Cloud is always there to be a candidate.
 
-Account work prefers Cloud because it is the machine Demi owns: waking it for a
+Account work runs on Cloud because it is the machine Demi owns, and every
+deployment has one ([Managed Cloud hosts](managed-hosts.md)): waking it for a
 test surprises nobody, and a CLI installed there right after the account is
-added is already warm when the first Cloud conversation asks. A deployment
-without Cloud has no machine for account work: the account is added all the
-same, **Test connection** says it needs a conversation, and inference installs
-the CLI on the execution target when first asked, as below. Usage and plan need
-no CLI and no machine at all: the backend asks the vendor itself
+added is already warm when the first Cloud conversation asks. Usage and plan
+need no CLI and no machine at all: the backend asks the vendor itself
 ([Provider quota](../provider-quota.md)).
 
 On a shared instance the acting user is the master, so account work runs on the

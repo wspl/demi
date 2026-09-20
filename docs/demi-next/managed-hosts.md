@@ -1,9 +1,25 @@
 # Managed Cloud hosts
 
-Cloud is one persistent logical device per user, backed by at most one active
-Firecracker microVM. Conversations and workspaces reference that device. They
+Cloud is one persistent logical device per user that Demi owns: Demi can
+obtain it whenever it needs a machine, wake it without asking anyone, install
+on it, and reset it. Conversations and workspaces reference that device. They
 share its files, installed packages, ports, and resource budget. Isolation is
 between users; a workspace path is a starting directory, not a permission boundary.
+
+**Every deployment has Cloud.** Parts of the product have no other machine to
+run on: work that belongs to no conversation, such as installing and testing a
+provider's CLI ([The Claude Code CLI](claude-cli.md#where-it-runs)), and
+conversations of a user who has paired nothing. A backend without Cloud is not
+a supported deployment, and no feature is designed for one.
+
+What Cloud must be is that contract, not a kind of machine. A
+`ManagedHostProvisioner` supplies it, and the one that exists backs each user's
+Cloud with at most one active Firecracker microVM; the rest of this document
+describes that provisioner. Another could supply Cloud differently — an
+environment on the backend's own machine, for a deployment that cannot run
+VMs — and nothing outside a provisioner may assume a VM, a guest image or a
+hypervisor: it sees a device with a runner. No second provisioner is planned
+now; the boundary is kept so that one can be.
 
 This document defines provisioning, disk persistence, and reset. Target selection
 and shared-device admission follow the
