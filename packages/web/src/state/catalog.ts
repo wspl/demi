@@ -129,29 +129,24 @@ export function providerView(
       details?.accounts.map((account) => ({
         id: account.id,
         label: account.label,
-        // The plan the vendor reports with the usage, which it does for the account in
-        // use. How an account signed in (`chatgpt`, `oidc`) is not a plan and is not shown.
-        plan: account.id === details.active?.credentialId
-          ? (details.quota?.plan?.label ?? details.quota?.plan?.id ?? '')
-          : '',
+        // The plan the vendor reports with the account's usage. How an account signed
+        // in (`chatgpt`, `oidc`) is not a plan and is not shown.
+        plan: account.quota?.plan?.label ?? account.quota?.plan?.id ?? '',
         active: account.id === details.active?.credentialId,
-        quota:
-          account.id === details.active?.credentialId
-            ? (details.quota?.windows.flatMap((window) => {
-                if (window.usedPercent === null) {
-                  return []
-                }
-                return [
-                  {
-                    id: window.id,
-                    label: window.label ?? window.id.replaceAll('_', ' '),
-                    used: window.usedPercent,
-                    max: 100,
-                    resets: window.resetsAt ? formatRelativeTime(window.resetsAt) : null,
-                  },
-                ]
-              }) ?? [])
-            : [],
+        quota: account.quota?.windows.flatMap((window) => {
+          if (window.usedPercent === null) {
+            return []
+          }
+          return [
+            {
+              id: window.id,
+              label: window.label ?? window.id.replaceAll('_', ' '),
+              used: window.usedPercent,
+              max: 100,
+              resets: window.resetsAt ? formatRelativeTime(window.resetsAt) : null,
+            },
+          ]
+        }) ?? [],
       })) ?? [],
     logo: null,
   }

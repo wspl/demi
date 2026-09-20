@@ -8,6 +8,7 @@ import {
   usedPercentFromRatio,
   type ProviderQuota,
   type ProviderQuotaProbeResult,
+  type ProviderQuotaSnapshots,
   type ProviderQuotaWindow,
 } from '@demicodes/provider'
 import type { GrokAuthStore, GrokResolvedAuth } from './auth'
@@ -68,7 +69,7 @@ export interface GrokBuildQuotaOptions {
   authStore?: GrokAuthStore
   fetch?: GrokBuildFetch
   /** Where the latest snapshot is kept across rebuilds and restarts (`createProviderQuota`). */
-  snapshotFile?: string
+  snapshots?: ProviderQuotaSnapshots
 }
 
 /**
@@ -100,7 +101,7 @@ export function createGrokBuildQuota(
 
   return createProviderQuota({
     providerId,
-    snapshotFile: options.snapshotFile,
+    snapshots: options.snapshots,
     canProbe: true,
     canObserve: true,
     probeCost: 'free',
