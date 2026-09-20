@@ -11,6 +11,10 @@ import type { MessageCapsule } from './capsules'
  * name, and the device a file on another device is on. Pointed at, it shows
  * the picture larger or a text file's opening lines. An upload in progress
  * shows how far it has come; a failed one offers Retry.
+ *
+ * The capsule stands on the line by its name, which keeps the baseline of the
+ * text around it; the icon and Retry are centred in the pill. Hanging the
+ * pill on its own middle instead would set the name a little below that line.
  */
 const props = defineProps<{
   capsule: MessageCapsule
@@ -62,11 +66,11 @@ const preview = computed<
 <template>
   <Tooltip
     tag="span"
-    class="inline-flex max-w-full align-middle"
+    class="inline-flex max-w-full items-baseline align-baseline"
     :picture="preview.kind === 'picture'"
   >
     <span
-      class="group/capsule relative mx-px inline-flex h-5 min-w-0 max-w-full select-none items-center gap-1 rounded-md pl-0.5 pr-1.5 align-middle text-[13px] font-normal not-italic leading-5 no-underline shadow-[var(--shadow-btn)]"
+      class="group/capsule relative mx-px inline-flex h-5 min-w-0 max-w-full select-none items-baseline gap-1 rounded-md pl-0.5 pr-1.5 align-baseline text-[13px] font-normal not-italic leading-5 no-underline shadow-[var(--shadow-btn)]"
       :class="[
         failed ? 'bg-tint-danger text-on-danger' : 'bg-[var(--btn-bg)] text-fg-body',
         selected ? 'outline outline-2 outline-line-focus' : '',
@@ -82,7 +86,7 @@ const preview = computed<
         :aria-valuemax="100"
         :aria-valuenow="Math.round(uploading.progress * 100)"
         :aria-label="capsule.name"
-        class="mx-px shrink-0 -rotate-90"
+        class="mx-px shrink-0 -rotate-90 self-center"
         :width="RING"
         :height="RING"
         :viewBox="`0 0 ${RING} ${RING}`"
@@ -112,20 +116,20 @@ const preview = computed<
       <CircleAlert
         v-else-if="failed"
         :size="14"
-        class="mx-px shrink-0"
+        class="mx-px shrink-0 self-center"
       />
       <img
         v-else-if="image"
         :src="image"
         alt=""
-        class="size-4 shrink-0 rounded-[3px] object-cover"
+        class="size-4 shrink-0 self-center rounded-[3px] object-cover"
       />
       <FileIcon
         v-else
         :name="capsule.name"
         :is-directory="false"
         :size="14"
-        class="mx-px shrink-0"
+        class="mx-px shrink-0 self-center"
       />
       <span
         class="min-w-0 truncate"
@@ -138,7 +142,7 @@ const preview = computed<
       <button
         v-if="failed"
         type="button"
-        class="-mr-1 flex size-4 shrink-0 items-center justify-center rounded text-on-danger hover:bg-tint-danger-strong"
+        class="-mr-1 flex size-4 shrink-0 self-center items-center justify-center rounded text-on-danger hover:bg-tint-danger-strong"
         aria-label="Retry"
         @click.stop="emit('retry')"
       >
