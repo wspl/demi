@@ -1,9 +1,10 @@
 export { listCodexModels, type CodexModelCatalogOptions } from './models'
+export { type CodexResolvedAuth } from './auth'
 export {
   codexAuthStatus,
-  type CodexResolvedAuth,
+  codexVendorPool,
   type FileCodexAuthStoreOptions,
-} from './auth'
+} from './vendor'
 export { createCodexProvider, type CodexProviderOptions } from './provider'
 export type { CodexTransportMode } from './types'
 export {

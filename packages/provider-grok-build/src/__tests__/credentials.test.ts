@@ -9,6 +9,7 @@ import {
   openGrokCredentialPool,
   PoolAwareGrokAuthStore,
 } from '../credentials'
+import { grokVendorPool } from '../vendor'
 
 function sampleEntry(email: string, key: string) {
   return {
@@ -35,7 +36,7 @@ test('grok credentials import entries and switch active', async () => {
     )
 
     const pool = openGrokCredentialPool({ stateDir })
-    const authStore = new PoolAwareGrokAuthStore(pool, { grokHome })
+    const authStore = new PoolAwareGrokAuthStore(pool)
     const quota = createProviderQuota({
       providerId: 'grok-build',
       canProbe: true,
@@ -45,7 +46,7 @@ test('grok credentials import entries and switch active', async () => {
     const credentials = createGrokBuildCredentials(
       pool,
       authStore,
-      { grokHome, quota }
+      { importFrom: grokVendorPool({ grokHome }), quota }
     )
 
     await credentials.importDefault!()
@@ -76,11 +77,18 @@ test('grok credentials import entries and switch active', async () => {
 
 test('createGrokBuildProvider exposes credentials by default', async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-grok-prov-'))
+  const grokHome = await mkdtemp(join(tmpdir(), 'demi-grok-home-'))
   try {
-    const provider = createGrokBuildProvider({ stateDir })
+    const provider = createGrokBuildProvider({ stateDir, grokHome })
     expect(provider.credentials).toBeDefined()
-    expect(provider.credentials!.capability().mode).toBe('supported')
+    expect(provider.credentials!.capability()).toMatchObject({
+      mode: 'supported',
+      canImportDefault: true,
+    })
+    expect(await provider.credentials!.list()).toEqual([])
+    expect((await provider.auth!.status()).status).toBe('unauthenticated')
   } finally {
     await rm(stateDir, { recursive: true, force: true })
+    await rm(grokHome, { recursive: true, force: true })
   }
 })

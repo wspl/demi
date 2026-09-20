@@ -1,4 +1,5 @@
 import type {
+  ProviderAuthState,
   ProviderCredentialActive,
   ProviderCredentialAddInput,
   ProviderCredentialInfo,
@@ -8,20 +9,17 @@ import type {
   ProviderCredentialsCapability,
   ProviderQuota,
 } from '@demicodes/provider'
-import { errorMessage, isRecord, nonEmptyString } from '@demicodes/utils'
+import { errorMessage, isRecord } from '@demicodes/utils'
 import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
 import {
   CodexAuthError,
-  FileCodexAuthStore,
-  defaultCodexHome,
-  parseChatGptClaims,
+  redactCodexSecretText,
+  CodexDocumentAuthStore,
   parseCodexAuthDotJson,
-  parseIdTokenClaims,
-  type CodexAuthDotJson,
   type CodexAuthStore,
-  type FileCodexAuthStoreOptions,
+  type CodexTokenRefresh,
 } from './auth'
+import { labelFromCodexAuth } from './vendor'
 import { runCodexDeviceLogin } from './device-login'
 import {
   FileCredentialPool,
@@ -30,43 +28,28 @@ import {
   type CredentialEntryMeta,
 } from '@demicodes/provider/credentials-pool'
 
-export interface CodexCredentialsOptions {
-  stateDir?: string
-  codexHome?: string
-  /** Shared with createCodexProvider for auth resolution. */
-  fileAuthOptions?: Omit<FileCodexAuthStoreOptions, 'codexHome' | 'authFile'>
-  onActiveChange?: () => void
-}
-
 /**
- * Auth store that prefers the demi pool active entry; falls back to vendor
- * ~/.codex.
+ * The auth store of a pool: the account it was built for, or the one the pool
+ * has active. Which keeper the pool is makes no difference here.
  */
 export class PoolAwareCodexAuthStore implements CodexAuthStore {
-  private readonly pool: CredentialPool
-  private readonly vendorHome: string
-  private readonly credentialId: string | null
-  private readonly fileAuthOptions: Omit<FileCodexAuthStoreOptions, 'codexHome'
-    | 'authFile'
-    | 'document'>
-
   constructor(
-    pool: CredentialPool,
-    options: {
-      codexHome?: string;
+    private readonly pool: CredentialPool,
+    private readonly options: {
       /** The account this store stands for, instead of the pool's active one. */
       credentialId?: string;
-      fileAuthOptions?: Omit<FileCodexAuthStoreOptions, 'codexHome' | 'authFile' | 'document'>
+      refresh?: CodexTokenRefresh;
+      now?: () => Date
     } = {},
-  ) {
-    this.pool = pool
-    this.vendorHome = options.codexHome ?? defaultCodexHome()
-    this.credentialId = options.credentialId ?? null
-    this.fileAuthOptions = options.fileAuthOptions ?? {}
-  }
+  ) {}
 
-  async status() {
-    return this.currentStore().then((s) => s.status())
+  async status(): Promise<ProviderAuthState> {
+    try {
+      return await (await this.currentStore()).status()
+    } catch (error) {
+      // A pool that cannot be read is a state to report, like a store's own.
+      return { status: 'error', message: redactCodexSecretText(errorMessage(error)) }
+    }
   }
 
   async resolveAuth(options?: { forceRefresh?: boolean }) {
@@ -74,23 +57,19 @@ export class PoolAwareCodexAuthStore implements CodexAuthStore {
   }
 
   private async currentStore(): Promise<CodexAuthStore> {
-    const id = this.credentialId ?? await this.pool.ensureActivePointer()
-    if (id) {
-      return new FileCodexAuthStore({
-        ...this.fileAuthOptions,
+    const id = this.options.credentialId
+      ?? await this.pool.ensureActivePointer()
+    return id
+      ? new CodexDocumentAuthStore({
         document: this.pool.document(id),
+        refresh: this.options.refresh,
+        now: this.options.now,
       })
-    }
-    if (!this.pool.vendorDefault)
-      return new MissingCodexAuthStore()
-    return new FileCodexAuthStore({
-      ...this.fileAuthOptions,
-      codexHome: this.vendorHome,
-    })
+      : new MissingCodexAuthStore()
   }
 }
 
-/** An entry without an account, where no vendor login may stand in for one. */
+/** A pool without an account. */
 class MissingCodexAuthStore implements CodexAuthStore {
   async status() {
     return {
@@ -108,7 +87,8 @@ export function createCodexCredentials(
   pool: CredentialPool,
   authStore: CodexAuthStore,
   options: {
-    codexHome?: string
+    /** The vendor login `importDefault` copies from; none, no import. */
+    importFrom?: CredentialPool
     quota?: ProviderQuota | null
     /**
      * The provider stands for one named account: another account becoming
@@ -120,12 +100,10 @@ export function createCodexCredentials(
     loginFetch?: typeof fetch
   } = {},
 ): ProviderCredentials {
-  const vendorHome = options.codexHome ?? defaultCodexHome()
-
   const capability = (): ProviderCredentialsCapability => ({
     mode: 'supported',
     canBeginLogin: true,
-    canImportDefault: pool.vendorDefault,
+    canImportDefault: options.importFrom !== undefined,
     canAdd: true,
     multi: true,
   })
@@ -213,24 +191,20 @@ export function createCodexCredentials(
         return { status: 'failed', message: errorMessage(error) }
       }
     },
-    importDefault: async () => {
-      if (!pool.vendorDefault)
-        throw new CodexAuthError(
-          'auth_unsupported',
-          'This pool does not take the vendor login of the machine'
-        )
-      const authFile = join(vendorHome, 'auth.json')
-      let text: string
-      try {
-        text = await readFile(authFile, 'utf8')
-      } catch {
-        throw new CodexAuthError(
-          'auth_missing',
-          `No Codex auth at ${authFile}. Run codex login or beginLogin first.`
-        )
-      }
-      return importFromAuthJson(text, `vendor:${authFile}`)
-    },
+    ...(options.importFrom ? {
+      importDefault: async () => {
+        const from = options.importFrom!
+        const id = await from.ensureActivePointer()
+        const revision = id ? await from.document(id).read() : null
+        if (!id || !revision)
+          throw new CodexAuthError(
+            'auth_missing',
+            'No Codex login on this machine. Run codex login or beginLogin first.'
+          )
+        const source = (await from.readMeta(id))?.source ?? 'vendor'
+        return importFromAuthJson(revision.text, source)
+      },
+    } : {}),
     add: async (input: ProviderCredentialAddInput) => {
       if (typeof input.authJsonText === 'string') {
         return importFromAuthJson(input.authJsonText, 'add:authJsonText')
@@ -265,42 +239,4 @@ export function openCodexCredentialPool(
     providerKey: 'codex',
     secretFileName: 'auth.json',
   })
-}
-
-function labelFromCodexAuth(
-  auth: CodexAuthDotJson
-): {
-  label: string;
-  identityKey: string | null;
-  detail: string | null
-} {
-  if (nonEmptyString(auth.OPENAI_API_KEY)) {
-    return { label: 'OPENAI_API_KEY', identityKey: 'apiKey', detail: 'apiKey' }
-  }
-  const pat = nonEmptyString(auth.personal_access_token)
-  if (pat) {
-    const claims = parseChatGptClaims(pat)
-    const label = claims.email ?? claims.accountId ?? 'personal access token'
-    return {
-      label,
-      identityKey: claims.accountId ?? label,
-      detail: 'personalAccessToken'
-    }
-  }
-  const tokens = auth.tokens
-  if (tokens) {
-    const access = nonEmptyString(tokens.access_token)
-    const idClaims = parseIdTokenClaims(tokens.id_token)
-    const accessClaims = access ? parseChatGptClaims(access) : {
-      accountId: null,
-      email: null,
-      isFedrampAccount: false
-    }
-    const accountId = nonEmptyString(tokens.account_id) ?? idClaims.accountId
-      ?? accessClaims.accountId
-    const email = idClaims.email ?? accessClaims.email
-    const label = email ?? accountId ?? 'chatgpt'
-    return { label, identityKey: accountId ?? email, detail: 'chatgpt' }
-  }
-  return { label: 'codex', identityKey: null, detail: null }
 }

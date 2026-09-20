@@ -12,7 +12,7 @@ import {
   type ProviderQuotaWindow,
 } from '@demicodes/provider'
 import type { GrokAuthStore, GrokResolvedAuth } from './auth'
-import { FileGrokAuthStore } from './auth'
+import { FileGrokAuthStore } from './vendor'
 import {
   DEFAULT_GROK_BUILD_BASE_URL,
   buildGrokBuildHeaders,

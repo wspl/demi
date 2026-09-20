@@ -13,7 +13,7 @@ import type { InferenceRequest, ProviderEvent } from '@demicodes/provider'
 import { runnerShell } from '@demicodes/backend/testing'
 
 import { LocalHost } from '@demicodes/host-remote/testing'
-import { FileCodexAuthStore } from '../auth'
+import { FileCodexAuthStore } from '../vendor'
 import { CodexProvider } from '../provider'
 
 const e2e = process.env.DEMI_CODEX_E2E === '1' ? test : test.skip

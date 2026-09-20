@@ -124,3 +124,58 @@ it('a file pool document stores a refreshed secret only over the revision it was
     await rm(stateDir, { recursive: true, force: true })
   }
 })
+
+it('a composed pool is the fallback while the primary holds no account, and the primary once it does', async () => {
+  const {
+    fallbackCredentialPool,
+    MemoryCredentialPool
+  } = await import('../credentials-pool')
+  const meta = (id: string) => ({
+    id,
+    label: `${id}@example.com`,
+    identityKey: id,
+    updatedAt: new Date().toISOString()
+  })
+  const primary = new MemoryCredentialPool()
+  const fallback = new MemoryCredentialPool()
+  await fallback.writeEntry(meta('vendor'), 'vendor-secret')
+  const pool = fallbackCredentialPool(primary, fallback)
+
+  expect((await pool.list()).map(account => account.id)).toEqual(['vendor'])
+  expect(await pool.ensureActivePointer()).toBe('vendor')
+  expect((await pool.document('vendor').read())?.text).toBe('vendor-secret')
+  // A refresh of the fallback's account is kept by the fallback.
+  const revision = (await pool.document('vendor').read())!
+  expect(await pool.document('vendor').replace('vendor-renewed', revision.version)).toBe(true)
+  expect((await fallback.document('vendor').read())?.text).toBe('vendor-renewed')
+
+  // Writes go to the primary, whose first account takes over.
+  await pool.writeEntry(meta('own'), 'own-secret')
+  expect(primary.entries().map(entry => entry.meta.id)).toEqual(['own'])
+  expect((await pool.list()).map(account => account.id)).toEqual(['own'])
+  expect(await pool.ensureActivePointer()).toBe('own')
+  expect((await pool.document('own').read())?.text).toBe('own-secret')
+  await pool.remove('own')
+  expect((await pool.list()).map(account => account.id)).toEqual(['vendor'])
+})
+
+it('work queued under one key takes turns, and a failure does not stop the next', async () => {
+  const { queuedExclusive } = await import('../credentials-pool')
+  const order: string[] = []
+  const step = (name: string, fail = false) => async () => {
+    order.push(`${name}:start`)
+    await new Promise(resolve => setTimeout(resolve, 5))
+    order.push(`${name}:end`)
+    if (fail)
+      throw new Error(name)
+    return name
+  }
+  const results = await Promise.allSettled([
+    queuedExclusive('k')(step('a', true)),
+    queuedExclusive('k')(step('b')),
+    queuedExclusive('other')(step('c')),
+  ])
+  expect(results.map(result => result.status)).toEqual(['rejected', 'fulfilled', 'fulfilled'])
+  expect(order.indexOf('a:end')).toBeLessThan(order.indexOf('b:start'))
+  expect(order.indexOf('c:start')).toBeLessThan(order.indexOf('a:end'))
+})

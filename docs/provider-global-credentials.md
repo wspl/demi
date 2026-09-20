@@ -387,8 +387,8 @@ ignored extra, so a misspelled setting is reported instead of silently doing not
 
 | Concern | Behavior |
 |---|---|
-| Active resolve | Read `credentials/codex/entries/<active>/auth.json` via `FileCodexAuthStore`-like logic with `authFile` override; or pool-backed store implementing `CodexAuthStore` |
-| Refresh | Write back to **that entry’s** `auth.json`, not necessarily `~/.codex/auth.json` |
+| Active resolve | `CodexDocumentAuthStore` over `pool.document(id)`: the text is Codex's `auth.json`, whichever pool keeps it |
+| Refresh | `document.replace` over the version read: the entry's own document, never another keeper's |
 | Vendor login | `codexVendorPool({ codexHome })`: one account, `~/.codex/auth.json`, under the Codex CLI's lock |
 | Import | Snapshot `auth.json` (+ derive label from email / accountId) |
 | Multi-entry native | N/A — vendor file is single session; pool holds N snapshots |
@@ -399,29 +399,22 @@ ignored extra, so a misspelled setting is reported instead of silently doing not
 
 | Concern | Behavior |
 |---|---|
-| Active resolve | Pool entry secret is either a full `auth.json` map with one preferred key, or a single entry payload + `entryKey` |
-| Refresh | Update that entry in the pool secret file |
+| Active resolve | `GrokDocumentAuthStore` over `pool.document(id)` with the account's entry key (`meta.identityKey`): the text is a Grok auth map |
+| Refresh | `document.replace` over the version read, updating that entry in the map |
 | Vendor login | `grokVendorPool({ grokHome })`: one account per OIDC entry of `~/.grok/auth.json`, under the Grok CLI's lock; active is the entry `selectAuthEntry` picks |
 | Import | For each OIDC entry in `~/.grok/auth.json`, or import selected entry only — product chooses; recommended **import-all-entries** as separate pool credentials |
-| Native multi-entry | Vendor file can feed the pool; **runtime no longer auto-picks for multi-cred mode** — active pointer wins |
-
-When pool is empty, keep current auto-pick for backward compatibility.
+| Native multi-entry | The vendor pool lists every entry and has the one `selectAuthEntry` picks active; a Demi pool's own active pointer wins once it holds an account |
 
 ### 6.4 Claude Code
 
 | Concern | Behavior |
 |---|---|
-| Active resolve | Pool entry `oauth.json` → access token |
+| Active resolve | `ClaudeCodeDocumentAuthStore` over `pool.document(id)`: the text is the kit's OAuth secret; the access `source` (`file`, `env`, `keychain`) comes from the account's `meta.source`, so a keychain token is never injected into the CLI |
 | Inference | CLI child env: set `CLAUDE_CODE_OAUTH_TOKEN` from active entry (override process env for that spawn). Extend `buildClaudeEnv` / transport factory to accept token or env overlay from the active resolver |
-| Quota probe | `resolveClaudeCodeOAuthAccess` becomes pool-aware (active entry first; else env; else keychain) |
+| Quota probe | Resolves through the same pool-aware store as inference |
 | Vendor login | `claudeCodeVendorPool()`: the environment token, then the keychain item, as documents that are never replaced |
 | Import | Snapshot token from env or Keychain into pool |
 | CLI constraint | Claude Code CLI still must accept token via env; if a future CLI ignores env, this path needs a different transport — out of scope until proven |
-
-Claude is the weakest link today (no AuthStore abstraction). Final-state requires:
-
-- `ClaudeCodeAuthStore` (or `resolveAccess(): Promise<ClaudeCodeOAuthAccess>`) injectable into provider + quota + transport.
-- Transport **must not** only call bare `buildClaudeEnv()` without active token overlay when a store is configured.
 
 ## 7. Switch semantics
 
