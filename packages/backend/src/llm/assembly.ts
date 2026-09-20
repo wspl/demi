@@ -377,7 +377,7 @@ export class ProviderAssembly {
    * cached vendor/provider metadata, combined with current provider health.
    */
   async catalog(
-    ownerUserId: string | null,
+    ownerUserId: string,
     refresh = false
   ): Promise<CatalogProvider[]> {
     const entries = await this.vault.list({ ownerUserId })

@@ -150,10 +150,12 @@ chain(
     const control = new LocalControlService(controlDb)
     const vault = new ProviderVault(
       control,
-      loadOrCreateInstanceSecret(dataDir)
+      loadOrCreateInstanceSecret(dataDir),
+      'shared'
     )
     const provider = await vault.create({
-      ownerUserId: null, // shared mode: the instance's provider
+      // Shared mode: the instance's providers are the master's.
+      ownerUserId: (await control.getMaster())!.id,
       label: 'Claude subscription',
       config: { kind: 'subscription', providerType: 'claude-code' },
     })

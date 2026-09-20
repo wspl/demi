@@ -2,13 +2,11 @@ import type { ConversationTitles } from './title'
 import { z } from 'zod'
 import { errorMessage } from '@demicodes/utils'
 import type { AgentServer } from '@demicodes/agent'
-import type { InstanceMode } from '../auth/identity'
 import {
   conversationTargetSchema,
   type ControlService
 } from '../storage/control'
 import type { ProviderVault } from '../vault/providers'
-import { visibleProvider } from '../vault/scope'
 import type { ConversationTargets } from './target'
 
 export const conversationPatchSchema = z.strictObject({
@@ -36,7 +34,6 @@ export class ConversationUpdates {
   constructor(private readonly deps: {
     control: ControlService;
     vault: ProviderVault;
-    mode: InstanceMode;
     targets: ConversationTargets;
     agentServer: AgentServer
     titles: ConversationTitles
@@ -119,12 +116,7 @@ export class ConversationUpdates {
             ? current.modelId
             : patch.modelId
           if (providerId &&
-            !(await visibleProvider(
-              this.deps.vault,
-              this.deps.mode,
-              userId,
-              providerId
-            )))
+            !(await this.deps.vault.visible(userId, providerId)))
             return refused('provider_not_found', 'No such provider', 404)
           if ((providerId === null) !== (modelId === null))
             return refused(
