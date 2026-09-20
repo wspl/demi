@@ -508,6 +508,9 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   const server = Bun.serve({
     port: options.port ?? 0,
     idleTimeout: 0,
+    // Bun's own cap would cut a streamed body short too, a download's pipe
+    // or an upload; the routes cap what they read whole (`body-caps.ts`).
+    maxRequestBodySize: Number.MAX_SAFE_INTEGER,
     fetch: app.fetch,
     websocket: withDrain(websocket),
   })

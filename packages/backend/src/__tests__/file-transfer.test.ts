@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { collectBytes, delay } from '@demicodes/utils'
-import { contentHeaders, pacedBody, rangeAnswer } from '../http/file-transfer'
+import { TransferStalled, contentHeaders, pacedBody, rangeAnswer, requestChunks } from '../http/file-transfer'
 
 // How a file's bytes are served (`web-api.md` § File text and working tree
 // changes): the part a Range asks for, the headers that keep file content
@@ -142,4 +142,43 @@ test('ending the transfer cuts the body short at once, even while the browser is
   const after = reader.read()
   expect(await Promise.race([after.then(() => 'answered'), delay(100).then(() => 'waiting')])).toBe('waiting')
   await reader.cancel()
+})
+
+/** A request body that sends `chunks` and then, unless `close`, nothing more. */
+function sentBody(chunks: number[][], close: boolean): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      for (const chunk of chunks)
+        controller.enqueue(new Uint8Array(chunk))
+      if (close)
+        controller.close()
+    },
+  })
+}
+
+test('an upload body is read as the write asks, and time the write takes does not count against the browser', async () => {
+  const signal = new AbortController().signal
+  expect(await collectBytes(requestChunks(sentBody([[1, 2], [3]], true), { stallMs: 1_000, signal })))
+    .toEqual(new Uint8Array([1, 2, 3]))
+  const chunks = requestChunks(sentBody([[1], [2]], true), { stallMs: 30, signal })
+  expect((await chunks.next()).value).toEqual(new Uint8Array([1]))
+  // The Host is slow to take the first chunk: longer than the stall time.
+  await delay(60)
+  expect((await chunks.next()).value).toEqual(new Uint8Array([2]))
+  expect((await chunks.next()).done).toBe(true)
+  expect(await collectBytes(requestChunks(null, { stallMs: 30, signal }))).toEqual(new Uint8Array(0))
+})
+
+test('a browser that sends nothing while a chunk is asked for stalls the upload; ending the transfer fails it with its reason', async () => {
+  const quiet = requestChunks(sentBody([[1]], false), { stallMs: 30, signal: new AbortController().signal })
+  await quiet.next()
+  await expect(quiet.next()).rejects.toBeInstanceOf(TransferStalled)
+
+  const transfer = new AbortController()
+  const ended = requestChunks(sentBody([[1]], false), { stallMs: 1_000, signal: transfer.signal })
+  await ended.next()
+  const reason = new Error('the conversation changed')
+  const waiting = ended.next()
+  transfer.abort(reason)
+  await expect(waiting).rejects.toBe(reason)
 })

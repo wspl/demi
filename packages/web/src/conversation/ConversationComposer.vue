@@ -11,6 +11,7 @@ import {
   composerRemoteAttachment,
   remoteAttachmentError,
 } from '@demicodes/web-ui/agent/message-input/attachments'
+import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
 import { executionFor } from '../targets/execution'
 import { composerModel, intentThinkingConfig } from '@demicodes/web-ui/agent/model-selection'
 import { useConversations } from './store'
@@ -36,12 +37,11 @@ const modelState = computed(() =>
 const selectedModel = computed(() => modelState.value.selected?.model)
 const canSend = computed(() => modelState.value.kind === 'ready')
 
-function addFiles(files: File[]) {
-  store.addFiles(props.conversation, files)
-}
+const composer = ref<InstanceType<typeof SessionComposer>>()
 
-function removeFile(id: string) {
-  store.removeFile(props.conversation, id)
+/** The store takes the files; their capsules go into the message where the composer said they would land. */
+async function addFiles(files: File[]) {
+  composer.value?.insertCapsules((await store.addFiles(props.conversation, files)).map(composerCapsule))
 }
 
 const thinking = computed(() => intentThinkingConfig(props.conversation.model))
@@ -116,16 +116,16 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
     reportError("Couldn't attach", error, { userVisible: true, expected: true })
     return
   }
-  props.conversation.files.push({
-    ...composerRemoteAttachment(file),
-    deviceId: file.deviceId,
-  })
+  const item = { ...composerRemoteAttachment(file), deviceId: file.deviceId }
+  props.conversation.files.push(item)
+  composer.value?.insertCapsules([composerCapsule(item)])
 }
 </script>
 
 <template>
   <div>
     <SessionComposer
+      ref="composer"
       :model-load="product.catalogLoad"
       @retry-models="product.revalidate"
       v-model:draft="conversation.draft"
@@ -157,7 +157,8 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       @restore="store.archive([conversation.id], false)"
       @add-files="addFiles"
       @attach-remote="remotePicker?.open()"
-      @remove-attachment="removeFile"
+      @arrange-attachments="store.arrangeFiles(conversation, $event)"
+      @retry-attachment="store.retryFile(conversation, $event)"
       @select-model="selectModel"
       @change-thinking="store.setThinking(conversation, $event)"
       @change-service-tier="store.setTier(conversation, $event)"

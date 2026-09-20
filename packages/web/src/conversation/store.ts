@@ -34,6 +34,7 @@ import {
   encodeClientFrame,
   transcriptSchema,
 } from '../api/transcript'
+import { joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { createConversationUploads } from './uploads'
 import { useResources } from '../state/resources'
 import { useProduct } from '../state/product'
@@ -63,7 +64,7 @@ export const useConversations = defineStore('conversations', () => {
   const uploads = createConversationUploads(saveDrafts, (error) =>
     report('Could not upload the attachment', error),
   )
-  const { uploadFile, addFiles, removeFile } = uploads
+  const { uploadFile, addFiles, removeFile, releaseSpare, arrangeFiles, retryFile } = uploads
   let lifetime = new AbortController()
   const cache = new ConversationCache()
   let storageErrorReported = false
@@ -163,6 +164,7 @@ export const useConversations = defineStore('conversations', () => {
       lastError: null,
       draft: '',
       files: [],
+      attachmentIds: [],
       submission: 'idle',
       pendingSend: null,
       messageEdit: null,
@@ -265,7 +267,7 @@ export const useConversations = defineStore('conversations', () => {
             },
       text: conversation.draft,
       model: { ...conversation.model },
-      files: conversation.files.map((file) =>
+      files: messageFiles(conversation).map((file) =>
         isComposerFile(file)
           ? {
               kind: 'file',
@@ -417,6 +419,8 @@ export const useConversations = defineStore('conversations', () => {
                 phase: file.upload ? 'ready' : 'uploading',
               },
         )
+        // A saved draft keeps the files its message has, in the order of its capsules.
+        conversation.attachmentIds = conversation.files.map((file) => file.id)
       }
     } catch (error) {
       signal.throwIfAborted()
@@ -428,7 +432,7 @@ export const useConversations = defineStore('conversations', () => {
         void attachTextSnippet(file, file.file)
       }
       if (isComposerFile(file) && !file.upload) {
-        void uploadFile(conversation, file).catch((error) => report('Could not upload the attachment', error))
+        void uploadFile(file).catch((error) => report('Could not upload the attachment', error))
       }
     }
   }
@@ -491,7 +495,7 @@ export const useConversations = defineStore('conversations', () => {
       previous.id !== id &&
       previous.persistence === 'draft' &&
       !previous.draft.trim() &&
-      !previous.files.length
+      !previous.attachmentIds.length
     ) {
       saveDrafts()
       items.value = items.value.filter((item) => item !== previous)
@@ -769,7 +773,7 @@ export const useConversations = defineStore('conversations', () => {
         !item.archived &&
         item.projectId === projectId &&
         !item.draft.trim() &&
-        !item.files.length,
+        !item.attachmentIds.length,
     )
     if (empty) {
       return empty.id
@@ -1139,10 +1143,10 @@ export const useConversations = defineStore('conversations', () => {
     if (
       conversation.archived ||
       conversation.submission === 'sending' ||
-      (!conversation.pendingSend && !attachmentsReady(conversation.files)) ||
+      (!conversation.pendingSend && !attachmentsReady(messageFiles(conversation))) ||
       (!conversation.pendingSend &&
         !conversation.draft.trim() &&
-        !conversation.files.length)
+        !conversation.attachmentIds.length)
     ) {
       return
     }
@@ -1153,51 +1157,42 @@ export const useConversations = defineStore('conversations', () => {
       conversation.pendingSend = {
         id: crypto.randomUUID(),
         text: conversation.draft,
-        fileIds: conversation.files.map((file) => file.id),
+        fileIds: messageFiles(conversation).map((file) => file.id),
         error: null,
       }
       conversation.draft = ''
+      conversation.attachmentIds = []
     }
     const pending = conversation.pendingSend
     const signal = lifetime.signal
     pending.error = null
-    const draft = pending.text
-    const files = conversation.files.filter((file) =>
-      pending.fileIds.includes(file.id),
+    // The files in the order of their marks in the text.
+    const files = pending.fileIds.flatMap((id) =>
+      conversation.files.filter((file) => file.id === id),
     )
     conversation.submission = 'sending'
     saveDrafts()
     try {
       await persistConversation(conversation)
-      const content: UserContentBlock[] = draft.trim()
-        ? [
-            {
-              type: 'text',
-              text: draft.trim(),
-            },
-          ]
-        : []
-      for (const file of files) {
+      const references = files.map((file): UserContentBlock => {
         if (!isComposerFile(file)) {
-          content.push(
-            contentReference({
-              type: 'remote_file',
-              deviceId: file.deviceId,
-              path: file.path,
-            }),
-          )
-        } else if (file.upload) {
-          content.push(
-            contentReference({
-              type: 'upload',
-              ref: file.upload.id,
-              fileName: file.name,
-            }),
-          )
-        } else {
+          return contentReference({
+            type: 'remote_file',
+            deviceId: file.deviceId,
+            path: file.path,
+          })
+        }
+        if (!file.upload) {
           throw new Error(`${file.name} has not finished uploading.`)
         }
-      }
+        return contentReference({
+          type: 'upload',
+          ref: file.upload.id,
+          fileName: file.name,
+        })
+      })
+      // Each file where its capsule stands in the text.
+      const content = joinMessageContent(pending.text, references.map((reference) => [reference]))
       await (await runtimeFor(conversation)).submit(content, pending.id)
       clearSubmission(conversation, pending.id)
     } catch (error) {
@@ -1212,6 +1207,13 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
+  /** The files the message has, in the order of its capsules; the rest wait for an undo. */
+  function messageFiles(conversation: Conversation): Conversation['files'] {
+    return conversation.attachmentIds.flatMap((id) =>
+      conversation.files.filter((file) => file.id === id),
+    )
+  }
+
   function clearSubmission(conversation: Conversation, id: string): void {
     const pending = conversation.pendingSend
     if (pending?.id !== id) {
@@ -1221,6 +1223,8 @@ export const useConversations = defineStore('conversations', () => {
     for (const fileId of pending.fileIds) {
       removeFile(conversation, fileId)
     }
+    // The message is gone: what its composer still held for an undo goes with it.
+    releaseSpare(conversation)
     saveDrafts()
   }
 
@@ -1317,7 +1321,8 @@ export const useConversations = defineStore('conversations', () => {
       },
     }),
     addFiles,
-    removeFile,
+    arrangeFiles,
+    retryFile,
     saveDrafts,
     initialize,
     stopAll,

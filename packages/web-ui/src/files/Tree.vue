@@ -1,8 +1,9 @@
 <script setup lang="ts" generic="R extends Row">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import DropOutline from '../ui/DropOutline.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
 import TreeRow from './TreeRow.vue'
-import { TREE_ROW_PITCH_PX, TREE_ROW_PX, stickyTreeRows, type TreeRow as Row } from './tree'
+import { TREE_ROW_PITCH_PX, TREE_ROW_PX, stickyTreeRows, treeBlock, type TreeDropTarget, type TreeRow as Row } from './tree'
 
 /**
  * A tree of rows laid out by its host: a caption, then the rows, on the
@@ -17,6 +18,11 @@ import { TREE_ROW_PITCH_PX, TREE_ROW_PX, stickyTreeRows, type TreeRow as Row } f
  * row with a hint; `empty` fills the tree while it has no rows. A right-click
  * asks the host for a menu (`menu`), on a row or, given no row, on the tree's
  * empty space; a host with nothing to offer leaves the browser's own.
+ *
+ * Where a drag would drop (`dropTarget`) lights under a dashed line: a
+ * directory row with the rows it holds, its pinned copies too, or the whole
+ * tree. The host follows the drag itself and asks which row an event
+ * happened in (`rowAt`).
  */
 const props = defineProps<{
   rows: readonly R[]
@@ -28,6 +34,8 @@ const props = defineProps<{
   selected: string | null
   /** The row whose menu is open, by path; it keeps its hover look until the menu closes. */
   menuRow?: string | null
+  /** What a drag over the tree would drop into, lit while it is there. */
+  dropTarget?: TreeDropTarget | null
   tooltip?: (row: R) => string
 }>()
 
@@ -53,6 +61,8 @@ defineSlots<{
 const STACK_TOP_PX = 4 + TREE_ROW_PX + 1
 const scrollArea = ref<InstanceType<typeof ScrollArea> | null>(null)
 const rowEls = new Map<string, HTMLElement>()
+// The row each element stands for, pinned copies too, to tell where an event happened.
+const pathOfEl = new WeakMap<Node, string>()
 const stickyPaths = ref<string[]>([])
 const stickyOffset = ref(0)
 const scrolled = ref(false)
@@ -67,14 +77,39 @@ const stickyRows = computed(() => {
   })
 })
 
+/** A template ref's element: the element itself, or a component's root. */
+function elementOf(el: unknown): HTMLElement | null {
+  if (el instanceof HTMLElement)
+    return el
+  if (el && typeof el === 'object' && '$el' in el && el.$el instanceof HTMLElement)
+    return el.$el
+  return null
+}
+
 function bindRow(path: string, el: unknown): void {
-  if (el instanceof HTMLElement) {
-    rowEls.set(path, el)
-  } else if (el && typeof el === 'object' && '$el' in el && el.$el instanceof HTMLElement) {
-    rowEls.set(path, el.$el)
+  const element = elementOf(el)
+  if (element) {
+    rowEls.set(path, element)
+    pathOfEl.set(element, path)
   } else {
     rowEls.delete(path)
   }
+}
+
+function bindPinned(path: string, el: unknown): void {
+  const element = elementOf(el)
+  if (element)
+    pathOfEl.set(element, path)
+}
+
+/** The row an event happened in, listed or pinned; null for the tree's empty space. */
+function rowAt(target: EventTarget | null): R | null {
+  for (let node = target instanceof Node ? target : null; node; node = node.parentNode) {
+    const path = pathOfEl.get(node)
+    if (path !== undefined)
+      return props.rows.find((row) => row.path === path) ?? null
+  }
+  return null
 }
 
 function updateSticky(): void {
@@ -94,6 +129,32 @@ function updateSticky(): void {
   const stackBottom = viewport.scrollTop + STACK_TOP_PX + stack.paths.length * TREE_ROW_PITCH_PX + stack.offset
   const selectedTop = props.selected === null ? undefined : rowEls.get(props.selected)?.offsetTop
   selectedUnderStack.value = selectedTop !== undefined && selectedTop < stackBottom
+}
+
+// A drop into a row lights the row and the rows it holds: one box over the
+// listed ones, placed from their positions like the stack, and each pinned copy.
+const dropBlock = computed(() =>
+  props.dropTarget?.kind === 'row' ? treeBlock(props.rows, props.dropTarget.path) : null)
+const dropPaths = computed(() => {
+  const block = dropBlock.value
+  return new Set(block ? props.rows.slice(block.first, block.last + 1).map((row) => row.path) : [])
+})
+const dropBox = ref<{ top: number; height: number } | null>(null)
+
+function measureDrop(): void {
+  const viewport = scrollArea.value?.el
+  const block = dropBlock.value
+  const first = block ? rowEls.get(props.rows[block.first]!.path) : undefined
+  const last = block ? rowEls.get(props.rows[block.last]!.path) : undefined
+  dropBox.value = viewport && first && last
+    ? { top: first.offsetTop - viewport.scrollTop, height: last.offsetTop + last.offsetHeight - first.offsetTop }
+    : null
+}
+
+/** Everything placed from the rows' positions: the pinned stack, and where a drop would go. */
+function layout(): void {
+  updateSticky()
+  measureDrop()
 }
 
 /** A pinned directory takes the top of the view, under the caption. */
@@ -146,16 +207,16 @@ function scrollBy(px: number): void {
   const viewport = scrollArea.value?.el
   if (viewport) {
     viewport.scrollTop += px
-    updateSticky()
+    layout()
   }
 }
 
-onMounted(updateSticky)
-watch([() => props.rows, () => props.selected], () => {
-  void nextTick(updateSticky)
+onMounted(layout)
+watch([() => props.rows, () => props.selected, () => props.dropTarget], () => {
+  void nextTick(layout)
 })
 
-defineExpose({ scrollToRow, revealRow, scrollBy })
+defineExpose({ scrollToRow, revealRow, scrollBy, rowAt })
 </script>
 
 <template>
@@ -164,7 +225,7 @@ defineExpose({ scrollToRow, revealRow, scrollBy })
     ref="scrollArea"
     class="h-full min-h-0 bg-surface-editor"
     viewport-class="p-1"
-    @scroll="updateSticky"
+    @scroll="layout"
     @contextmenu="emit('menu', null, $event)"
   >
     <!-- The pinned stack: the caption stays put; the directories under it
@@ -187,10 +248,11 @@ defineExpose({ scrollToRow, revealRow, scrollBy })
         <div
           v-for="(row, index) in stickyRows"
           :key="row.path"
-          class="overflow-hidden"
+          class="relative overflow-hidden"
           :style="{ height: `${index === stickyRows.length - 1 ? Math.max(0, TREE_ROW_PX + stickyOffset) : TREE_ROW_PX}px` }"
         >
           <TreeRow
+            :ref="(el) => bindPinned(row.path, el)"
             :style="index === stickyRows.length - 1 ? { transform: `translateY(${stickyOffset}px)` } : undefined"
             :row="row"
             :selected="row.path === selected"
@@ -203,6 +265,7 @@ defineExpose({ scrollToRow, revealRow, scrollBy })
             <template #name><slot name="name" :row="row" /></template>
             <template #trailing><slot name="trailing" :row="row" /></template>
           </TreeRow>
+          <div v-if="dropPaths.has(row.path)" class="pointer-events-none absolute inset-0 bg-tint-accent/50" />
         </div>
       </div>
       <!-- Only scrolled rows need a fall-off below the stack that covers them. -->
@@ -228,6 +291,18 @@ defineExpose({ scrollToRow, revealRow, scrollBy })
       </TreeRow>
       <slot v-if="rows.length === 0" name="empty" />
       <slot v-else name="after" />
+    </div>
+    <!-- Over the listed rows and under the stack, so a block whose row has scrolled
+         under it runs on beneath the pinned copies. -->
+    <div
+      v-if="dropBox"
+      class="pointer-events-none absolute inset-x-1 rounded-md bg-tint-accent/50"
+      :style="{ top: `${dropBox.top}px`, height: `${dropBox.height}px` }"
+    >
+      <DropOutline radius="6px" />
+    </div>
+    <div v-if="dropTarget?.kind === 'tree'" class="pointer-events-none absolute inset-1 z-[1] rounded-md bg-tint-accent/50">
+      <DropOutline radius="6px" />
     </div>
   </ScrollArea>
 </template>

@@ -19,9 +19,18 @@ export interface ChangeFile {
   removed: number
 }
 
+/**
+ * A path of the working tree that `git status` lists: how it differs from
+ * the last commit, and git's two status letters for it (`runner.md`
+ * § Working tree), which mark it the way VS Code's Git does (`gitMark`).
+ */
+export interface WorkingTreeChange extends ChangeFile {
+  status: string
+}
+
 /** The workspace's uncommitted files and their current differences from HEAD. */
 export interface ChangeSetSource {
-  files: readonly ChangeFile[]
+  files: readonly WorkingTreeChange[]
   /** The list stopped at the host's limit; there are more changed files than it holds. */
   truncated?: boolean
   /** Why there is nothing to list, when the reason is not that nothing changed. */
@@ -98,7 +107,7 @@ export const emptyChangeSet: ChangeSetSource = {
 
 /** One row of the change tree: a directory on the way to changed files (no change), or a changed file. */
 export interface ChangeTreeRow extends TreeRow {
-  change: ChangeFile | null
+  change: WorkingTreeChange | null
 }
 
 /**
@@ -106,10 +115,10 @@ export interface ChangeTreeRow extends TreeRow {
  * by name, with the directories in `folded` closed: their rows stay, what is
  * under them does not.
  */
-export function changeTreeRows(files: readonly ChangeFile[], folded: ReadonlySet<string>): ChangeTreeRow[] {
+export function changeTreeRows(files: readonly WorkingTreeChange[], folded: ReadonlySet<string>): ChangeTreeRow[] {
   interface Node {
     dirs: Map<string, Node>
-    files: ChangeFile[]
+    files: WorkingTreeChange[]
   }
   const root: Node = { dirs: new Map(), files: [] }
   for (const file of files) {

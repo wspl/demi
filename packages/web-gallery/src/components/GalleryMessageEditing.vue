@@ -10,8 +10,8 @@ import {
   submitMessageEdit,
   type MessageEditState,
 } from '@demicodes/web-ui/agent/message-editing'
-import type { Block } from '@demicodes/core'
-import { demoModel } from '../fixtures/blocks'
+import type { Block, UserContentBlock } from '@demicodes/core'
+import { demoImageUrl, demoModel } from '../fixtures/blocks'
 import { WORKSPACE_ROOT } from '../fixtures/workspace'
 
 const session = reactive<ChatSessionState>({
@@ -30,11 +30,25 @@ function reset(): void {
     return
   }
   messageEdit.value = null
-  session.blocks = ['Describe the change.', 'Add a test.', 'Review the result.'].flatMap<Block>((text, index) => [
+  const messages: UserContentBlock[][] = [
+    [{ type: 'text', text: 'Describe the change.' }],
+    [{ type: 'text', text: 'Add a test.' }],
+    // The message an edit opens: its file a capsule where it was put.
+    [
+      { type: 'text', text: 'Review the result against ' },
+      { type: 'image', source: { type: 'url', url: demoImageUrl } },
+      {
+        type: 'attachment', name: 'before.png', path: '/home/demi/.demi/attachments/editing/before.png',
+        mediaType: 'image/png', sizeBytes: 48211, sha256: 'editing-png',
+      },
+      { type: 'text', text: ', and keep the **padding** as it is.' },
+    ],
+  ]
+  session.blocks = messages.flatMap<Block>((content, index) => [
     {
       type: 'user', id: `user-${revision.value}-${index}`, turnId: `turn-${index}`,
       createdAt: new Date().toISOString(), model: demoModel,
-      content: [{ type: 'text', text }], preamble: null,
+      content, preamble: null,
     },
     {
       type: 'text', id: `reply-${revision.value}-${index}`,

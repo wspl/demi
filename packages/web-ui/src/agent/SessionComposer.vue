@@ -4,22 +4,15 @@ import type { ThinkingConfig, TokenUsage } from '@demicodes/core'
 import { ArrowUp, File as FileIcon, HardDrive, Plus, RotateCcw, Square, X } from '@lucide/vue'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import { appOverlayStore } from '../overlay/appOverlay'
-import AttachmentTile from './AttachmentTile.vue'
 import {
   attachmentsReady,
-  attachmentCaption,
   attachmentSendBlockReason,
-  composerFileNames,
-  dataTransferFiles,
-  pastedTextFile,
-  pastedTextIsLong,
   type ComposerAttachment,
-  decodeRemoteReference,
 } from './message-input/attachments'
 import { useMessageEditComposer } from './message-input/useMessageEditComposer'
-import { shouldSubmitFromEditorKeydown } from './message-input/composer-keyboard'
 import { editHasContent, type MessageEditState } from './message-editing'
-import ContentMedia from './ContentMedia.vue'
+import { composerCapsule, composerTransfer, provideTransfers, type MessageCapsule } from './message-editor/capsules'
+import MessageEditor from './message-editor/MessageEditor.vue'
 import { showToast } from '../infra/toast'
 import ComposerShell from './ComposerShell.vue'
 import ContextUsageIndicator from './ContextUsageIndicator.vue'
@@ -69,10 +62,14 @@ const emit = defineEmits<{
   submit: []
   stop: []
   compact: []
+  /** Files to attach; their capsules land where they were dropped, pasted or picked. */
   addFiles: [files: File[]]
-  /** Open the host's file browser; the caller attaches what it returns. */
+  /** Open the host's file browser; the caller attaches what it returns, and its capsule lands at the cursor. */
   attachRemote: []
-  removeAttachment: [id: string]
+  /** The files the message now carries, in the order of their capsules. */
+  arrangeAttachments: [ids: string[]]
+  /** Try a failed upload again. */
+  retryAttachment: [id: string]
   selectModel: [providerId: string, modelId: string]
   changeThinking: [config: ThinkingConfig]
   changeServiceTier: [id: string | null]
@@ -81,17 +78,43 @@ const emit = defineEmits<{
   'update:messageEdit': [state: MessageEditState | null]
   submitEdit: []
 }>()
-const root = ref<HTMLElement>()
 const edit = useMessageEditComposer({
   state: () => props.messageEdit,
   update: (state) => emit('update:messageEdit', state),
-  root,
 })
+/** The editor shown: the edit's, or the draft's. */
+const editor = ref<InstanceType<typeof MessageEditor>>()
 const focused = ref(false)
+// An editor taken away while it has the focus tells no blur; the one in its place starts unfocused.
+watch(() => props.messageEdit?.request.operationId, () => {
+  focused.value = false
+})
+/** The message holds more than one line, so the composer grows to hold it. */
+const multiline = ref(false)
 const fileInput = ref<HTMLInputElement>()
+/** The send button, which says why it cannot send when the message is given to it anyway. */
+const sendButton = ref<InstanceType<typeof IconButton>>()
+/** What the composer carries, as the editor builds its document from it. */
+const carried = computed(() => props.attachments.map(composerCapsule))
+/** The files the message has, in the order of their capsules: the document says so. */
+const capsules = ref<MessageCapsule[]>(carried.value)
+/** Their transfers, which the capsules in the editor read. */
+provideTransfers({
+  transfer: (id) => {
+    const item = props.attachments.find((each) => each.id === id)
+    return item ? composerTransfer(item) : undefined
+  },
+  carries: (id) => props.attachments.some((each) => each.id === id),
+  retry: (id) => emit('retryAttachment', id),
+})
+/** The files of the message, not the ones the composer still holds for an undo. */
+const carrying = computed(() => {
+  const ids = new Set(capsules.value.map((capsule) => capsule.id))
+  return props.attachments.filter((item) => ids.has(item.id))
+})
 const hasDraft = computed(
   () => props.messageEdit ? editHasContent(props.messageEdit)
-    : !!draft.value.trim() || !!props.attachments.length,
+    : !!draft.value.trim() || !!capsules.value.length,
 )
 const modelState = computed(() =>
   composerModel(
@@ -107,7 +130,7 @@ const sendDisabled = computed(
     modelState.value.kind !== 'ready' ||
     (props.messageEdit
       ? props.messageEdit.phase === 'sending' || !!edit.reading.value
-      : !attachmentsReady(props.attachments)),
+      : !attachmentsReady(carrying.value)),
 )
 const sendBlockReason = computed(() => {
   if (modelState.value.kind === 'unavailable') {
@@ -116,22 +139,16 @@ const sendBlockReason = computed(() => {
   if (props.disabled) {
     return undefined
   }
-  return props.messageEdit ? undefined : attachmentSendBlockReason(props.attachments)
+  return props.messageEdit ? undefined : attachmentSendBlockReason(carrying.value)
 })
 // The composer shows no failure text of its own: a file that could not be
-// read for an edit is a toast, a failed upload is the tile's Retry, and a
+// read for an edit is a toast, a failed upload is its capsule's Retry, and a
 // refused edit is the product's toast.
 watch(edit.attachmentError, (message) => {
   if (message) {
     showToast({ title: "Couldn't attach", message, tone: 'danger' })
   }
 })
-const expanded = computed(
-  () =>
-    props.messageEdit
-      ? edit.textParts.value.length > 1 || edit.textParts.value.some(({ part }) => part.type === 'text' && part.text.includes('\n')) || !!edit.attachments.value.length
-      : draft.value.includes('\n') || !!props.attachments.length,
-)
 const selected = computed(() =>
   props.models[props.selectedProviderId ?? '']?.find(
     (model) => model.id === props.selectedModelId,
@@ -143,17 +160,24 @@ const submitLabel = computed(() => props.messageEdit
 )
 
 function submit() {
-  if (!sendDisabled.value && hasDraft.value) {
-    if (props.messageEdit) {
-      emit('submitEdit')
-    } else {
-      emit('submit')
-    }
+  if (sendDisabled.value) {
+    // Enter on a message that cannot go: the send button says why, unpointed.
+    sendButton.value?.showReason()
+    return
+  }
+  if (!hasDraft.value) {
+    return
+  }
+  if (props.messageEdit) {
+    emit('submitEdit')
+  } else {
+    emit('submit')
   }
 }
 
 function pickFiles(close: () => void) {
   close()
+  editor.value?.placeNextFiles()
   fileInput.value?.click()
 }
 
@@ -163,48 +187,47 @@ function fileChange(event: Event) {
   input.value = ''
 }
 
-// Files on the clipboard attach; a long text pastes as a file. A short text
-// stays the editor's own paste.
-function paste(event: ClipboardEvent) {
-  const transfer = event.clipboardData
-  if (!transfer) {
-    return
-  }
-  const files = dataTransferFiles(transfer)
-  if (files.length > 0) {
-    event.preventDefault()
-    addFiles(files)
-    return
-  }
-  const text = transfer.getData('text/plain')
-  if (!pastedTextIsLong(text)) {
-    return
-  }
-  event.preventDefault()
-  const names = props.messageEdit
-    ? edit.attachments.value.flatMap(({ part }) => (part.type === 'document' && part.source.fileName ? [part.source.fileName] : []))
-    : composerFileNames(props.attachments)
-  addFiles([pastedTextFile(text, names)])
+function dropFiles(files: File[], event: DragEvent) {
+  editor.value?.placeNextFiles(event)
+  addFiles(files)
 }
 
-function keydown(event: KeyboardEvent) {
-  if (event.key === 'Escape' && props.messageEdit && !event.isComposing) {
-    event.preventDefault()
-    edit.cancel()
-    return
-  }
-  if (!shouldSubmitFromEditorKeydown(event)) {
-    return
-  }
-  event.preventDefault()
-  submit()
+function attachRemote() {
+  editor.value?.placeNextFiles()
+  emit('attachRemote')
 }
 
-function addFiles(files: File[]): void {
-  if (props.messageEdit) {
-    void edit.addFiles(files)
-  } else {
+async function addFiles(files: File[]): Promise<void> {
+  if (!props.messageEdit) {
     emit('addFiles', files)
+    return
+  }
+  // An edit reads its files itself; their capsules go in where they were told to land.
+  insertCapsules(await edit.addFiles(files))
+}
+
+/** Puts files the host took into the message, where the composer said they would land. */
+function insertCapsules(added: readonly MessageCapsule[]): void {
+  editor.value?.insertCapsules(added)
+}
+
+defineExpose({
+  /** Files the host has taken: their capsules go into the message where they were told to land. */
+  insertCapsules,
+  /** Files are on their way: the next capsules land at the cursor. */
+  placeNextFiles(event?: DragEvent): void {
+    editor.value?.placeNextFiles(event)
+  },
+})
+
+function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
+  draft.value = markdown
+  const had = capsules.value.map((capsule) => capsule.id).join('\n')
+  capsules.value = attachments
+  const ids = attachments.map((capsule) => capsule.id)
+  // The host hears which files the message has only when that changes; its text it hears every time.
+  if (ids.join('\n') !== had) {
+    emit('arrangeAttachments', ids)
   }
 }
 </script>
@@ -229,7 +252,7 @@ function addFiles(files: File[]): void {
       "
       @action="emit('configure')"
     />
-    <div v-else key="composer" ref="root" class="w-full">
+    <div v-else key="composer" class="w-full">
       <input
         ref="fileInput"
         type="file"
@@ -239,85 +262,47 @@ function addFiles(files: File[]): void {
       />
       <ComposerShell
         :focused="focused || props.focused"
-        :expanded="expanded"
+        :expanded="multiline"
         :dropping="dropping"
-        @drop-files="addFiles"
+        @drop-files="dropFiles"
       >
-        <template v-if="messageEdit ? edit.attachments.value.length : attachments.length" #chips>
-          <template v-if="messageEdit">
-            <template v-for="{ part, index } in edit.attachments.value" :key="index">
-              <AttachmentTile
-                v-if="part.type === 'reference'"
-                :name="decodeRemoteReference(part.reference).name"
-                :removable="edit.editable.value"
-                @remove="edit.removeAttachment(index)"
-              />
-              <AttachmentTile
-                v-else-if="part.type === 'attachment'"
-                :name="part.name"
-                :snippet="part.snippet"
-                :removable="edit.editable.value"
-                @remove="edit.removeAttachment(index)"
-              />
-              <ContentMedia
-                v-else-if="part.type !== 'text'"
-                :kind="part.type"
-                :source="part.source"
-                :name="'fileName' in part.source ? part.source.fileName ?? part.type : part.type"
-                as-attachment
-                :removable="edit.editable.value"
-                @remove="edit.removeAttachment(index)"
-              />
-            </template>
-          </template>
-          <template v-else>
-            <Tooltip
-              v-for="item in attachments"
-              :key="item.id"
-              :content="attachmentCaption(item)"
-            >
-              <AttachmentTile
-                :name="item.name"
-                :src="item.kind === 'file' ? item.src : undefined"
-                :snippet="item.kind === 'file' ? item.snippet : undefined"
-                :phase="item.kind === 'file' ? item.phase : undefined"
-                :progress="item.kind === 'file' ? item.progress : undefined"
-                removable
-                @remove="emit('removeAttachment', item.id)"
-              />
-            </Tooltip>
-          </template>
-        </template>
-        <template #editor>
-          <div v-if="messageEdit" class="message-edit-texts flex w-full flex-col gap-2">
-            <template v-for="{ part, index } in edit.textParts.value" :key="index">
-              <textarea
-                v-if="part.type === 'text'"
-                :value="part.text"
-                :disabled="!edit.editable.value"
-                :aria-label="edit.textParts.value.length === 1 ? 'Message' : `Message text ${index + 1}`"
-                :placeholder="placeholder"
-                rows="1"
-                class="w-full resize-none bg-transparent text-conversation text-fg outline-none placeholder:text-fg-subtle"
-                @input="edit.changeText(index, ($event.target as HTMLTextAreaElement).value)"
-                @focus="focused = true"
-                @blur="focused = false"
-                @keydown="keydown"
-                @paste="paste"
-              />
-            </template>
-          </div>
-          <textarea
-            v-else
-            v-model="draft"
-            rows="1"
-            aria-label="Message"
+        <template #editor="{ line }">
+          <MessageEditor
+            v-if="messageEdit"
+            :key="messageEdit.request.operationId"
+            ref="editor"
+            v-model:multiline="multiline"
+            composer
+            cancelable
+            autofocus
+            :line-width="line"
+            :disabled="!edit.editable.value"
+            :markdown="edit.markdown.value"
+            :attachments="edit.capsules.value"
             :placeholder="placeholder"
-            class="w-full resize-none bg-transparent text-conversation text-fg outline-none placeholder:text-fg-subtle"
+            label="Message"
+            @change="edit.change"
+            @submit="submit"
+            @cancel="edit.cancel"
+            @files="addFiles"
             @focus="focused = true"
             @blur="focused = false"
-            @keydown="keydown"
-            @paste="paste"
+          />
+          <MessageEditor
+            v-else
+            ref="editor"
+            v-model:multiline="multiline"
+            composer
+            :line-width="line"
+            :markdown="draft"
+            :attachments="carried"
+            :placeholder="placeholder"
+            label="Message"
+            @change="changeDraft"
+            @submit="submit"
+            @files="addFiles"
+            @focus="focused = true"
+            @blur="focused = false"
           />
         </template>
         <template #attach>
@@ -349,7 +334,7 @@ function addFiles(files: File[]): void {
                   v-if="remoteFiles && !messageEdit"
                   :icon="HardDrive"
                   label="Attach remote file…"
-                  @select="emit('attachRemote')"
+                  @select="attachRemote"
                 />
               </Menu>
             </template>
@@ -402,6 +387,7 @@ function addFiles(files: File[]): void {
             :disabled="sendDisabled"
           >
             <IconButton
+              ref="sendButton"
               :icon="messageEdit?.phase === 'uncertain' ? RotateCcw : ArrowUp"
               variant="accent"
               circle
@@ -436,15 +422,6 @@ function addFiles(files: File[]): void {
 </template>
 
 <style scoped>
-:deep(.composer-editor:has(.message-edit-texts)) {
-  overflow-y: auto;
-}
-
-.message-edit-texts textarea {
-  min-height: var(--composer-line);
-  max-height: none;
-}
-
 .composer-archive-enter-active,
 .composer-archive-leave-active {
   transition:
