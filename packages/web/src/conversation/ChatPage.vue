@@ -61,6 +61,19 @@ const hasProvider = computed(() =>
   ),
 )
 
+// The title button (`product.md` § Conversation titles): up while a message is
+// newer than the last generated title, spinning while the model writes one.
+const retitle = computed(() => {
+  const current = conversation.value
+  if (!current || current.archived) {
+    return null
+  }
+  if (current.titleGenerating) {
+    return 'running'
+  }
+  return !current.titleCurrent && hasProvider.value ? 'available' : null
+})
+
 function saveScroll(id: string, state: PersistedScrollState | null): void {
   const item = store.items.find((item) => item.id === id)
   if (item) {
@@ -125,6 +138,8 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @retry-submission="store.send(conversation)"
     @retry="store.start(conversation)"
     @rename="store.rename(conversation.id, $event)"
+    :retitle="retitle"
+    @retitle="store.retitle(conversation)"
     @retry-load="store.reloadSession(conversation.id)"
     @abort-subagents="store.abortSubagents(conversation)"
     @abort-subagent="store.abortSubagent(conversation, $event)"

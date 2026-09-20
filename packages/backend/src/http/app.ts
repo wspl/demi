@@ -1,3 +1,4 @@
+import { visibleProvider } from '../vault/scope'
 import type { FrameAdmission } from './stream'
 import type { ConversationHostAccess, ConversationTargets } from '../conversation/target'
 import { webAssetRoutes } from './web-assets'
@@ -251,6 +252,15 @@ export function createApp(options: {
       transfer: options.transfer,
       registry: options.runnerRegistry,
       readFailures,
+      titles: options.titles,
+      selectProvider: async (userId, provider) => {
+        if (await visibleProvider(options.vault, options.mode, userId, provider.providerId) === null)
+          return null
+        return {
+          providerId: provider.providerId,
+          model: await options.assembly.selection(provider.providerId, provider.model),
+        }
+      },
     }),
   )
 

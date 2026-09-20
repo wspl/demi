@@ -44,7 +44,8 @@ test('the first send titles from the message, then from the model; later sends a
     systemPrompt: TITLE_INSTRUCTION,
     tools: [],
     serviceTierId: null,
-    items: [{ type: 'user_message', content: [{ type: 'text', text: message }] }],
+    // The message on one line, numbered: the one the user has sent so far.
+    items: [{ type: 'user_message', content: [{ type: 'text', text: '1. why does pnpm build fail with TS2307 after I moved auth into its own package' }] }],
   })
   // The turn's own request carried the agent's prompt, not the title's.
   expect(world.model.requests.every(request => request.systemPrompt !== TITLE_INSTRUCTION)).toBe(true)
@@ -80,4 +81,59 @@ test('a rename that lands while the request is in flight wins', async () => {
   answer.resolve('Release pipeline setup')
   await Bun.sleep(100)
   expect(await titleOf(driver.id)).toBe('Release work')
+})
+
+test('the user asks for a new title: every message, each cut short, and the button only while a message is newer than the title', async () => {
+  const driver = await world.conversation('cloud')
+  const summary = async () => {
+    const state = await world.api<{ conversations: Array<{ id: string, title: string, titleCurrent: boolean, titleGenerating: boolean }> }>('/api/state')
+    return state.conversations.find(conversation => conversation.id === driver.id)!
+  }
+  world.model.scriptTitle(driver.id, 'Release pipeline')
+  await driver.turn({ text: 'set up the release pipeline', model: [model.say('ok')] })
+  await waitForTitle(driver.id, 'Release pipeline')
+  // The first title saw the only message: nothing to ask for.
+  expect(await summary()).toMatchObject({ titleCurrent: true, titleGenerating: false })
+
+  await driver.turn({ text: `now fix the login test ${'x'.repeat(600)}`, model: [model.say('ok')] })
+  expect(await summary()).toMatchObject({ title: 'Release pipeline', titleCurrent: false })
+
+  const answer = Promise.withResolvers<string>()
+  world.model.scriptTitle(driver.id, () => answer.promise)
+  await world.api(`/api/conversations/${driver.id}/title`, { provider: world.selection })
+  expect(await summary()).toMatchObject({ titleCurrent: false, titleGenerating: true })
+  // Asking again while it runs joins the request.
+  await world.api(`/api/conversations/${driver.id}/title`, { provider: world.selection })
+  answer.resolve('Login test fix')
+  await waitForTitle(driver.id, 'Login test fix')
+  expect(await summary()).toMatchObject({ titleCurrent: true, titleGenerating: false })
+
+  const requests = world.model.titleRequests.filter(request => request.sessionId === driver.id)
+  expect(requests).toHaveLength(2)
+  const input = requests[1]!.items[0]
+  expect(input).toMatchObject({ type: 'user_message' })
+  const text = input?.type === 'user_message' && input.content[0]?.type === 'text' ? input.content[0].text : ''
+  const lines = text.split('\n')
+  expect(lines[0]).toBe('1. set up the release pipeline')
+  expect(lines[1]).toStartWith('2. now fix the login test xxx')
+  expect(lines[1]!.length).toBe('2. '.length + 400)
+  expect(requests[1]!.tools).toEqual([])
+
+  // A title that fails leaves the button up: pressing it again is the retry.
+  await driver.turn({ text: 'and the docs', model: [model.say('ok')] })
+  world.model.scriptTitle(driver.id, '')
+  await world.api(`/api/conversations/${driver.id}/title`, { provider: world.selection })
+  await Bun.sleep(100)
+  expect(await summary()).toMatchObject({ title: 'Login test fix', titleCurrent: false, titleGenerating: false })
+})
+
+test('a conversation with no message has no title to ask for', async () => {
+  const driver = await world.conversation('cloud')
+  const response = await world.backend.session.fetch(`/api/conversations/${driver.id}/title`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ provider: world.selection }),
+  })
+  expect(response.status).toBe(409)
+  expect(await response.json()).toMatchObject({ code: 'no_messages' })
 })

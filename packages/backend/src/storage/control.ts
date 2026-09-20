@@ -275,10 +275,13 @@ export interface ControlService {
    */
   defaultConversationTitle(id: string, title: string): Promise<boolean>
   /**
-   * The generated title replaces the message-derived one, and nothing else: a
-   * rename that landed meanwhile stays. Returns whether it was written.
+   * A generated title replaces the title its request started from, and nothing
+   * else: a rename that landed meanwhile stays. Either way the title is now
+   * current for the `seen` messages the request read. Returns whether it was written.
    */
-  generatedConversationTitle(id: string, title: string): Promise<boolean>
+  generatedConversationTitle(id: string, title: string, from: string, seen: number): Promise<boolean>
+  /** One more message from the user; returns how many there are now. */
+  countUserMessage(id: string): Promise<number>
   touchConversation(id: string): Promise<void>
   /**
    * Host exposes (`expose.md` § The expose record). The id, owner, device,
@@ -536,6 +539,9 @@ export interface ConversationRecord {
   contextVersion: number
   providerId: string | null
   modelId: string | null
+  /** Messages the user has sent, and how many of them the last generated title had seen. */
+  userMessages: number
+  titledMessages: number
   createdAt: string
   updatedAt: string
 }
@@ -553,12 +559,14 @@ interface ConversationRow {
   context_version: number
   provider_id: string | null
   model_id: string | null
+  user_messages: number
+  titled_messages: number
   created_at: string
   updated_at: string
 }
 
 const SELECT =
-  'SELECT id, user_id, title, archived, pinned, read_revision, target_json, last_switch_json, cloud_reset_id, context_version, provider_id, model_id, created_at, updated_at FROM conversations'
+  'SELECT id, user_id, title, archived, pinned, read_revision, target_json, last_switch_json, cloud_reset_id, context_version, provider_id, model_id, user_messages, titled_messages, created_at, updated_at FROM conversations'
 
 interface UserRow {
   id: string
@@ -1480,6 +1488,8 @@ export class LocalControlService implements ControlService {
       contextVersion: 0,
       providerId: null,
       modelId: null,
+      userMessages: 0,
+      titledMessages: 0,
       createdAt: now,
       updatedAt: now,
     }
@@ -1699,26 +1709,35 @@ export class LocalControlService implements ControlService {
   }
 
   async defaultConversationTitle(id: string, title: string): Promise<boolean> {
-    return this.retitle(id, title, 'placeholder', 'message')
-  }
-
-  async generatedConversationTitle(id: string, title: string): Promise<boolean> {
-    return this.retitle(id, title, 'message', 'generated')
-  }
-
-  /** Writes a title only while its origin is `from`, in the statement that checks it. */
-  private retitle(
-    id: string,
-    title: string,
-    from: 'placeholder' | 'message',
-    to: 'message' | 'generated'
-  ): boolean {
+    // Checked in the statement that writes, so a rename in between is kept.
     return this.db.transaction(() => {
       this.db.run(
-        'UPDATE conversations SET title = ?, title_origin = ?, updated_at = ? WHERE id = ? AND title_origin = ?',
-        [title, to, new Date().toISOString(), id, from]
+        "UPDATE conversations SET title = ?, title_origin = 'message', updated_at = ? WHERE id = ? AND title_origin = 'placeholder'",
+        [title, new Date().toISOString(), id]
       )
       return (this.db.get<{ n: number }>('SELECT changes() AS n')?.n ?? 0) > 0
+    })
+  }
+
+  async generatedConversationTitle(id: string, title: string, from: string, seen: number): Promise<boolean> {
+    return this.db.transaction(() => {
+      this.db.run(
+        "UPDATE conversations SET title = ?, title_origin = 'generated', updated_at = ? WHERE id = ? AND title = ?",
+        [title, new Date().toISOString(), id, from]
+      )
+      const written = (this.db.get<{ n: number }>('SELECT changes() AS n')?.n ?? 0) > 0
+      this.db.run(
+        'UPDATE conversations SET titled_messages = MAX(titled_messages, ?) WHERE id = ?',
+        [seen, id]
+      )
+      return written
+    })
+  }
+
+  async countUserMessage(id: string): Promise<number> {
+    return this.db.transaction(() => {
+      this.db.run('UPDATE conversations SET user_messages = user_messages + 1 WHERE id = ?', [id])
+      return this.db.get<{ n: number }>('SELECT user_messages AS n FROM conversations WHERE id = ?', [id])?.n ?? 0
     })
   }
 
@@ -1967,6 +1986,8 @@ function fromRow(row: ConversationRow): ConversationRecord {
     contextVersion: row.context_version,
     providerId: row.provider_id,
     modelId: row.model_id,
+    userMessages: row.user_messages,
+    titledMessages: row.titled_messages,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }

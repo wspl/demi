@@ -4,7 +4,7 @@ import { provideMessageFiles } from '../markdown/message-files'
 import type { ConversationFiles } from '../markdown/types'
 import { computed, ref, watch } from 'vue'
 import { useElementSize } from '@vueuse/core'
-import { PanelRight, Play, TextCursorInput } from '@lucide/vue'
+import { PanelRight, Play, RefreshCw, TextCursorInput } from '@lucide/vue'
 import type { TranscriptVersion } from '@demicodes/agent/client'
 import { beginMessageEdit, lastEditableUserMessageId, type MessageEditState } from './message-editing'
 import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
@@ -36,6 +36,12 @@ const props = defineProps<{
   messageEdit?: MessageEditState | null
   selectEdit?: EditSelectionHandler
   fork?: MessageForkHandler
+  /**
+   * A title on request: `available` while a message is newer than the last
+   * generated title, `running` while the model writes one. Absent, the title
+   * is current and there is nothing to ask for.
+   */
+  retitle?: 'available' | 'running' | null
   /** Whether the app frame's work panel is open; absent when the host has none. */
   asideOpen?: boolean
   /** The conversation's Host files its messages name; absent, their paths stay text. */
@@ -44,6 +50,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   openAside: []
   rename: [title: string]
+  retitle: []
   retry: []
   retryLoad: []
   retrySubmission: []
@@ -65,7 +72,7 @@ const surface = ref<{ dockHeight: number }>()
 // greatest width: the controls beside it give up their labels before a title
 // narrower than that is cut, and keep them while a longer one is cut to it.
 const TITLE_MAX_PX = 260
-/** The rename button beside the title, and the gap before it. */
+/** One button beside the title, and the gap before it. */
 const TITLE_ACTION_PX = 28 + 4
 const renaming = ref(false)
 const titleCell = ref<HTMLElement | null>(null)
@@ -73,11 +80,12 @@ const title = ref<HTMLElement | null>(null)
 const { width: titleCellWidth } = useElementSize(titleCell)
 const titleRoom = ref<number>()
 watch(
-  [titleCellWidth, () => props.conversation.title, title, renaming],
+  [titleCellWidth, () => props.conversation.title, title, renaming, () => props.retitle],
   () => {
     // The input a rename swaps in is as wide as a title gets, and leaves no button beside it.
+    const actions = props.retitle ? 2 : 1
     const need = title.value
-      ? Math.min(title.value.scrollWidth, TITLE_MAX_PX) + TITLE_ACTION_PX
+      ? Math.min(title.value.scrollWidth, TITLE_MAX_PX) + actions * TITLE_ACTION_PX
       : TITLE_MAX_PX
     titleRoom.value = titleCellWidth.value - need
   },
@@ -167,6 +175,19 @@ watch(() => props.conversation.id, close)
               aria-label="Rename"
               :disabled="conversation.archived"
               @click="renaming = true"
+            />
+          </Tooltip>
+          <Tooltip
+            v-if="retitle"
+            :content="retitle === 'running' ? 'Updating title…' : 'Update title'"
+            class="shrink-0"
+          >
+            <IconButton
+              :icon="RefreshCw"
+              variant="ghost"
+              aria-label="Update title"
+              :loading="retitle === 'running'"
+              @click="emit('retitle')"
             />
           </Tooltip>
         </template>

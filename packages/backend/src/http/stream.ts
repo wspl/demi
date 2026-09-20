@@ -90,10 +90,10 @@ export function streamRoutes(options: {
                 (host) => writeAttachmentToHost(host, conversation.id, fileName, data)
               ),
               readFailures: options.readFailures,
-              startTitle: (provider, text) => options.titles.start(
+              startTitle: (provider, request) => options.titles.start(
                 conversation.id,
                 provider,
-                text
+                request
               ),
               providerAllowed: async (providerId) => (await visibleProvider(
                 vault,

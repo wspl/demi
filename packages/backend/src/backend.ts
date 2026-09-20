@@ -460,6 +460,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
       managed: managedHosts,
       mode: options.mode,
       exposes,
+      titles,
     }),
     conversationForks,
     conversationUpdates: new ConversationUpdates({

@@ -194,6 +194,17 @@ ALTER TABLE conversations ADD COLUMN title_origin TEXT NOT NULL DEFAULT 'user'
 UPDATE conversations SET title_origin = 'placeholder' WHERE title = 'New conversation';
 `,
   },
+  {
+    id: 5,
+    name: 'conversation_title_currency',
+    // How many messages the user has sent, and how many the last generated
+    // title had seen (product.md § Conversation titles). Equal on every
+    // existing row: its title stands until the next message.
+    sql: `
+ALTER TABLE conversations ADD COLUMN user_messages INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE conversations ADD COLUMN titled_messages INTEGER NOT NULL DEFAULT 0;
+`,
+  },
 ]
 
 /**

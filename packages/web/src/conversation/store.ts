@@ -112,6 +112,8 @@ export const useConversations = defineStore('conversations', () => {
 
   /** Titles the user has set that the backend has not confirmed yet, by conversation. */
   const pendingTitles = new Map<string, string>()
+  /** Conversations whose title request the backend has not acknowledged yet. */
+  const pendingRetitles = new Set<string>()
 
   function metadata(
     record: Pick<
@@ -126,6 +128,8 @@ export const useConversations = defineStore('conversations', () => {
       | 'readRevision'
       | 'unread'
       | 'cwd'
+      | 'titleCurrent'
+      | 'titleGenerating'
       | 'createdAt'
       | 'updatedAt'
     >,
@@ -143,6 +147,8 @@ export const useConversations = defineStore('conversations', () => {
       revision: record.revision,
       readRevision: record.readRevision,
       unread: record.unread,
+      titleCurrent: record.titleCurrent,
+      titleGenerating: record.titleGenerating,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     }
@@ -208,6 +214,8 @@ export const useConversations = defineStore('conversations', () => {
         Object.assign(current, metadata(record))
         // A snapshot read before the rename reached the backend must not show the old title again.
         current.title = pendingTitles.get(current.id) ?? current.title
+        // Nor may one read before the title request arrived stop its button spinning.
+        current.titleGenerating ||= pendingRetitles.has(current.id)
         const cached = cache.get(current.id)
         if (!cached?.runtime?.connected) {
           current.status = summaryStatus(record.status)
@@ -349,6 +357,9 @@ export const useConversations = defineStore('conversations', () => {
           ...draft.local.conversation,
           providerId: draft.model.providerId || null,
           modelId: draft.model.modelId || null,
+          // A conversation the backend has not seen has no message to title.
+          titleCurrent: true,
+          titleGenerating: false,
           status: 'idle',
           contextVersion: 0,
           revision: 0,
@@ -796,6 +807,8 @@ export const useConversations = defineStore('conversations', () => {
       revision: 0,
       readRevision: 0,
       unread: false,
+      titleCurrent: true,
+      titleGenerating: false,
       createdAt: now,
       updatedAt: now,
       providerId: null,
@@ -929,6 +942,29 @@ export const useConversations = defineStore('conversations', () => {
           conversation.title = stored.title
         }
       })
+  }
+
+  /** Asks for a title from the conversation as it stands (`product.md` § Conversation titles). */
+  async function retitle(conversation: Conversation): Promise<void> {
+    if (conversation.titleGenerating || conversation.persistence !== 'synced') {
+      return
+    }
+    conversation.titleGenerating = true
+    pendingRetitles.add(conversation.id)
+    try {
+      const provider = await prepareModel(conversation)
+      await apiRequest(
+        `/conversations/${encodeURIComponent(conversation.id)}/title`,
+        { method: 'POST', signal: lifetime.signal, ...jsonBody({ provider }) },
+      )
+      // From here the snapshot says whether the request is still running.
+      pendingRetitles.delete(conversation.id)
+      await product.revalidate()
+    } catch (error) {
+      pendingRetitles.delete(conversation.id)
+      conversation.titleGenerating = false
+      report('Could not update the title', error)
+    }
   }
 
   async function reorder(id: string, beforeId: string | null): Promise<void> {
@@ -1292,6 +1328,7 @@ export const useConversations = defineStore('conversations', () => {
     fork,
     reorder,
     rename,
+    retitle,
     markRead,
     reloadList: refreshSnapshot,
     reloadSession,
