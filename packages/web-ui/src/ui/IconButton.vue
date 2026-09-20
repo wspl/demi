@@ -61,6 +61,15 @@ const { rotating, onClick } = useButtonIconSpin(
   () => emit('spinEnd'),
 )
 
+/** The tip that says why it cannot act, for a control the user just tried. */
+const tip = ref<InstanceType<typeof Tooltip> | null>(null)
+defineExpose({
+  /** Says why it is disabled, as though its tip were pointed at. */
+  showReason(): void {
+    tip.value?.show()
+  },
+})
+
 const glyphPx = computed(() => {
   if (props.iconSize != null) {
     return props.iconSize
@@ -77,6 +86,7 @@ const glyphPx = computed(() => {
 
 <template>
   <Tooltip
+    ref="tip"
     :content="tooltipContent"
     :disabled="!tooltipContent"
     tag="span"
