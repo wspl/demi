@@ -123,6 +123,7 @@ implementation.
 | How is the backend assembled and exposed? | [Backend](backend.md), [Web API](web-api.md) |
 | Where is data stored? | [Storage](storage.md) |
 | How are providers, credentials, and usage managed? | [Providers and vault](providers-and-vault.md) |
+| Which Claude Code CLI runs, and where? | [The Claude Code CLI](claude-cli.md) |
 | Where does a conversation execute? | [Sessions and targets](sessions-and-targets.md) |
 | When does an idle conversation release what it uses on a Host? | [Conversation idle and Host resource release](resource-lifecycle.md) |
 | How are concurrent operations admitted? | [Execution coordination](sessions-and-targets.md#coordinate-shared-cloud-activity) |
