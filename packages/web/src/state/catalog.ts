@@ -105,6 +105,7 @@ export function providerView(
     kind: entry.kind,
     providerType: entry.providerType,
     configured: true,
+    runsOnHost: details?.requiresProcessCapableHost ?? catalog?.requiresProcessCapableHost ?? false,
     keyConfigured: entry.keyConfigured,
     vendorId: entry.vendorId,
     baseUrl: entry.baseUrl ?? '',

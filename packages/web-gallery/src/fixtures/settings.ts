@@ -189,6 +189,8 @@ export function mockProviders(): MockProvider[] {
   return [
     provider({
       id: 'claude-code', name: 'Claude Code', kind: 'subscription', family: 'claude-code', logo: '/logos/claude.svg',
+      // The CLI runs on a conversation's Host: the backend cannot try it by itself.
+      runsOnHost: true,
       accounts: [
         {
           id: 'a1',
@@ -221,6 +223,14 @@ export function mockProviders(): MockProvider[] {
               resets: 'Thursday'
              },
 ]
+        },
+        // Signed in with a token: the vendor names no plan, so the row shows none.
+        {
+          id: 'a3',
+          label: 'claude-c3bd1c21',
+          plan: '',
+          active: false,
+          quota: [],
         },
       ],
       catalogFetched: '2 min ago',

@@ -128,6 +128,8 @@ export interface SettingsProviderEntry {
   apiKey: string
   keyConfigured?: boolean
   configured?: boolean
+  /** Its requests run as a process on a conversation's Host, so the backend cannot try it by itself. */
+  runsOnHost?: boolean
   /** Where the model list comes from: the vendor catalog, or ids the user typed. */
   modelSource: 'catalog' | 'manual'
   catalogFetched: string | null
