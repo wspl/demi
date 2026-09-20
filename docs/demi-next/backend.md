@@ -148,7 +148,8 @@ carries no `failures`.
 ## Deployment and user ownership
 
 The local deployment runs one backend with in-process `ControlService`, local
-conversation databases, blob storage, and optional managed machines. It can serve
+conversation databases, blob storage, and the machine manager that supplies
+[Cloud](managed-hosts.md), which every deployment has. It can serve
 the built browser directory alongside the API, and with `DEMI_EXPOSE_DOMAIN`
 configured it answers expose hostnames with the public relay. Cloud setup is described in
 [Managed-host setup](../managed-hosts-setup.md).
@@ -185,6 +186,11 @@ The executable implements the single-backend deployment. The browser is connecte
 to REST, conditional state polling, preferences, and conversation WebSockets.
 The old frontend milestone labels are not API boundaries; the current route
 contract is [Web API](web-api.md).
+
+The executable still starts without a machine manager (`DEMI_MACHINES_SOCKET`
+unset) and then serves no Cloud. That is how the test suite and an unfinished
+setup run; it is not a deployment ([Managed Cloud hosts](managed-hosts.md)),
+and the product does not yet refuse it or say so.
 
 Multi-worker routing, ownership fencing, the remote control service, and S3
 recovery are not implemented. Subscription accounts must first become control
