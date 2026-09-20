@@ -30,9 +30,9 @@ class MemoryStore implements ArtifactStore {
   close(): void {}
 }
 
-async function release(directory: string): Promise<PackageRelease> {
+async function release(directory: string, carried: readonly string[] = NATIVE_TARGETS): Promise<PackageRelease> {
   const targets: Record<string, { sha256: string; size: number }> = {}
-  for (const target of NATIVE_TARGETS) {
+  for (const target of carried) {
     const body = Buffer.from(`test-only artifact ${target}`)
     targets[target] = { sha256: createHash('sha256').update(body).digest('hex'), size: body.length }
     await mkdir(join(directory, target), { recursive: true })
@@ -52,7 +52,7 @@ test('all six blobs precede immutable descriptors and locations are freshly sign
     expect(store.writes.slice(0, 6).every(key => key.startsWith('native/blobs/'))).toBe(true)
     expect(store.writes[6]).toStartWith('native/descriptors/')
     expect(store.writes[7]).toBe('native/packages/example.commands/1.json')
-    const artifact = published.packages[0]!.targets[NATIVE_TARGETS[0]]
+    const artifact = published.packages[0]!.targets[NATIVE_TARGETS[0]]!
     const signal = new AbortController().signal
     const first = await published.resolveArtifact(artifact, signal)
     const second = await published.resolveArtifact(artifact, signal)
@@ -79,6 +79,17 @@ test('a missing or corrupt target prevents every upload', async () => {
     expect(store.writes).toEqual([])
     await rm(path)
     await expect(publishPackages([fixture], store, 'native', new AbortController().signal)).rejects.toThrow()
+    expect(store.writes).toEqual([])
+  } finally { await rm(directory, { recursive: true, force: true }) }
+})
+
+test('a development release of fewer targets is not published', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'demi-publish-'))
+  try {
+    const fixture = await release(directory, NATIVE_TARGETS.slice(0, 2))
+    const store = new MemoryStore()
+    await expect(publishPackages([fixture], store, 'native', new AbortController().signal))
+      .rejects.toThrow(`lacks a target and cannot be published: ${NATIVE_TARGETS[2]}`)
     expect(store.writes).toEqual([])
   } finally { await rm(directory, { recursive: true, force: true }) }
 })

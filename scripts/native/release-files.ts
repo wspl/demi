@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { copyFile, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
-import { NATIVE_TARGETS, type NativeArtifact } from '@demicodes/command-protocol'
+import { NATIVE_TARGETS, nativeTargetSchema, type NativeArtifact, type NativeTarget } from '@demicodes/command-protocol'
 
 interface ReleaseFile {
   source: string
@@ -9,10 +9,15 @@ interface ReleaseFile {
   artifact: NativeArtifact
 }
 
-export async function collectReleaseFiles(directory: string, executable: string) {
+/** The targets named by repeated `--target` options, or all of them. */
+export function selectedTargets(named: readonly string[] | undefined): NativeTarget[] {
+  return named?.map(target => nativeTargetSchema.parse(target)) ?? [...NATIVE_TARGETS]
+}
+
+export async function collectReleaseFiles(directory: string, executable: string, selected: readonly NativeTarget[]) {
   const files: ReleaseFile[] = []
-  const targets: Record<string, NativeArtifact> = {}
-  for (const target of NATIVE_TARGETS) {
+  const targets: Partial<Record<NativeTarget, NativeArtifact>> = {}
+  for (const target of selected) {
     const name = `${executable}${target.includes('windows') ? '.exe' : ''}`
     const source = join(directory, target, 'release', name)
     const artifact = await fileArtifact(source)

@@ -28,6 +28,8 @@ acceptance('a viewer watches a Cloud browser, types into it and ends it', async 
   // the Cloud browser acceptance's subject, not this one's.
   const catalog = await nativePackageFixture()
   const artifact = catalog.packages[0]!.targets[configuration.DEMI_BROWSER_CLOUD_TARGET]
+  if (!artifact)
+    throw new Error(`The native fixture lacks ${configuration.DEMI_BROWSER_CLOUD_TARGET}`)
   const path = `/opt/demi/artifacts/${artifact.sha256}/demi-commands`
   const publicUrl = new URL(configuration.DEMI_BROWSER_CLOUD_PUBLIC)
   const site = liveSite({
