@@ -10,6 +10,7 @@ import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
 import FileBrowserDialog from '@demicodes/web-ui/files/FileBrowserDialog.vue'
 import type { OverlayStore } from '@demicodes/web-ui/overlay/overlayStore'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import { COMPACT_LABEL_CLASS, useRoomLabel } from '../ui/label-room'
 import type {
   FileBrowserHost,
   FileBrowserSource,
@@ -38,6 +39,12 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ selectRecent: [id: string] }>()
 const directoryOpen = ref(false)
+const directoryName = computed(
+  () => props.workspaceName ?? props.path?.split('/').filter(Boolean).at(-1) ?? '/',
+)
+// The directory gives up its name before the host does: its tooltip already says the whole path.
+const directoryLabel = ref<HTMLElement | null>(null)
+const directoryCompact = useRoomLabel(directoryLabel, () => directoryName.value, 1)
 const browsingDevice = ref<string | null>(null)
 const browserOpen = ref(false)
 const browserPath = ref<string | undefined>()
@@ -99,10 +106,12 @@ defineExpose({ browse })
               variant="ghost"
               aria-label="Switch directory"
             >
-              <Folder :size="ICON_PX.in28" />
-              <span class="max-w-32 truncate">{{
-                workspaceName ?? path.split('/').filter(Boolean).at(-1) ?? '/'
-              }}</span>
+              <Folder :size="ICON_PX.in28" class="shrink-0" />
+              <span
+                ref="directoryLabel"
+                class="max-w-32 truncate"
+                :class="directoryCompact ? COMPACT_LABEL_CLASS : ''"
+              >{{ directoryName }}</span>
             </Button>
           </Tooltip>
         </template>

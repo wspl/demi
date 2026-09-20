@@ -141,7 +141,6 @@ function abortAgents(): void {
       <ChatSession
         :conversation="session"
         has-provider
-        @archive="session.archived = true"
         @save-scroll="(_id, state) => (session.scroll = state)"
         @abort-subagents="abortAgents"
       >
