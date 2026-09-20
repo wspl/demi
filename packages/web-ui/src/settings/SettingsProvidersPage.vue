@@ -150,25 +150,17 @@ onMounted(() => {
 })
 
 /**
- * Rail dots. A subscription is always listed, so its dot says whether it is set up:
- * none until an account exists, green once one works, red when it stopped working.
- * An API key is listed because it was added, so it is dotted only when it needs
- * attention: yellow until configured, red when its test failed.
+ * Rail dots say what needs attention, for every kind of provider alike: none
+ * while it works, yellow while it is not set up (no account, no key, signed
+ * out), red when it failed or cannot be reached. A working provider is the
+ * normal case and carries no mark.
  */
-const subscriptionBadge = {
-  ready: 'success',
-  unconfigured: undefined,
-  error: 'danger',
-  unreachable: 'danger',
-  'signed-out': undefined,
-  disabled: undefined,
-} as const
-const apiKeyBadge = {
+const providerBadge = {
   ready: undefined,
   unconfigured: 'warning',
+  'signed-out': 'warning',
   error: 'danger',
   unreachable: 'danger',
-  'signed-out': 'warning',
   disabled: undefined,
 } as const
 const wireOptions = (Object.keys(WIRE_API_LABELS) as SettingsWireApi[]).map(
@@ -361,7 +353,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
             :key="p.id"
             :label="p.name"
             :selected="p.id === selectedId"
-            :badge="subscriptionBadge[p.state]"
+            :badge="providerBadge[p.state]"
             :muted="!p.enabled"
             @select="select(p.id)"
           >
@@ -384,7 +376,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
             :key="p.id"
             :label="p.name"
             :selected="p.id === selectedId"
-            :badge="apiKeyBadge[p.state]"
+            :badge="providerBadge[p.state]"
             :muted="!p.enabled"
             removable
             :removing="operations?.[p.id]?.kind === 'removing'"
