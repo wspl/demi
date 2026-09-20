@@ -56,6 +56,11 @@ export interface ClaudeCodeProviderOptions {
   id?: string
   displayName?: string
   claudePath?: string
+  /**
+   * Names the CLI executable for each process, instead of `claudePath`: a
+   * product that installs its own CLI on the machine the process runs on.
+   */
+  resolveClaudePath?: () => Promise<string>
   models?: ModelPolicy
   /** Demi state root for credential pool (`$DEMI_HOME` / `~/.demi`). */
   stateDir?: string
@@ -85,6 +90,11 @@ export interface ClaudeCodeProviderOptions {
 export interface ClaudeCodeRuntimeOptions {
   transportFactory?: ClaudeTransportFactory
   claudePath?: string
+  /**
+   * Names the CLI executable for each process, instead of `claudePath`: a
+   * product that installs its own CLI on the machine the process runs on.
+   */
+  resolveClaudePath?: () => Promise<string>
   /**
    * Shared with the public Provider shell so stream messages can update quota.
    */
@@ -162,6 +172,7 @@ export class ClaudeCodeProvider implements AgentProvider {
       options.transportFactory ??
       new ClaudeCliTransportFactory({
         claudePath: options.claudePath,
+        resolveClaudePath: options.resolveClaudePath,
         spawn: options.spawn,
         env: options.env,
         resolveOAuthAccessToken: options.authStore
@@ -821,6 +832,7 @@ export function createClaudeCodeProvider(
 
   const runtimeOptions: ClaudeCodeRuntimeOptions = {
     claudePath: options.claudePath,
+    resolveClaudePath: options.resolveClaudePath,
     quota,
     authStore,
     // The retained CLI process belongs to the account the provider resolves:

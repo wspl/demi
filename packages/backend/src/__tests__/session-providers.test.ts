@@ -88,6 +88,9 @@ test(
       assembly,
       control,
       vault,
+      claudeCli: async () => {
+        throw new Error('HTTP providers start no CLI')
+      },
       rateLimiter: new ProviderRateLimiter(),
       hostFor: async () => {
         throw new Error('HTTP providers must not resolve an execution target')

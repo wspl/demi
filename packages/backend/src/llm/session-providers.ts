@@ -24,6 +24,11 @@ interface SessionProvidersOptions {
   control: ControlService
   vault: ProviderVault
   hostFor: (conversationId: string) => Promise<Host>
+  /**
+   * Demi's Claude Code CLI on the conversation's execution target
+   * (`claude-cli.md`): its path, installed first when the target has none.
+   */
+  claudeCli: (conversationId: string, held: string | undefined) => Promise<string>
   rateLimiter: ProviderRateLimiter
 }
 
@@ -53,6 +58,13 @@ export function createSessionProviderResolver(
       spawn: async (params) => {
         const target = await host()
         return target.process.spawn({ ...params, inheritEnv: true })
+      },
+      claudeCli: async () => {
+        const entry = (await resolve())?.entry
+        return options.claudeCli(
+          agentSessionId,
+          entry?.config.kind === 'subscription' ? entry.config.cliVersion : undefined
+        )
       },
     }
     const meter: MeterOptions = {

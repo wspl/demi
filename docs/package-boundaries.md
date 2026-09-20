@@ -402,7 +402,8 @@ Test code may depend upward for integration coverage. Production code must not.
 - Owns: the independently released `demi-commands` resident program and all native
   Demi command implementations, including file read/create/edit/patch.
   `coding-agent` owns the TypeScript declarations; backend supplies the runtime
-  release catalog. `scripts/native/release-package.ts` packages six target binaries.
+  release catalog. `scripts/native/release-package.ts --package demi-commands`
+  packages its six target binaries.
 - Uses command-service for transport and invocation context. File operations use
   invocation-local cwd and cancellation. Mutations serialize planning and
   application; each replacement publishes atomically, and multi-file patches
@@ -411,6 +412,18 @@ Test code may depend upward for integration coverage. Production code must not.
 - Must not: host a runner connection, define the agent's command tree, store
   conversations or be linked into runner. Standard shell utilities belong to
   runner's shell module.
+
+### `crates/demi-claude` (Rust executable)
+
+- Owns: the independently released `demi.claude` package, which installs and
+  verifies Demi's copy of the Claude Code CLI on the machine that runs it
+  ([The Claude Code CLI](demi-next/claude-cli.md#the-package)). Its operations
+  are `claude.ensure` and `claude.status`.
+  `scripts/native/release-package.ts --package demi-claude` packages its six
+  target binaries.
+- First-party production dependency: command-service only.
+- Must not: read release pointers or choose a version, start the CLI, or be
+  linked into runner or `demi-commands`.
 
 ### `crates/runner` (Rust executable)
 
@@ -546,6 +559,7 @@ First-party Rust production dependencies are:
 ```text
 runner -> command-service
 demi-commands -> command-service
+demi-claude -> command-service
 command-service -> none
 ```
 
