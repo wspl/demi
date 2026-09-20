@@ -30,6 +30,8 @@ async function verify(release: PackageRelease, signal: AbortSignal): Promise<Ver
     signal.throwIfAborted()
     const path = join(directory, target, `${release.executable}${target.includes('windows') ? '.exe' : ''}`)
     const expected = descriptor.targets[target]
+    if (!expected)
+      throw new Error(`Native release lacks a target and cannot be published: ${target}`)
     const hash = createHash('sha256')
     const md5 = createHash('md5')
     let size = 0

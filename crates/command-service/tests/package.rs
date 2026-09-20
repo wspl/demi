@@ -14,12 +14,16 @@ fn validates_and_hashes_typescript_package_fixture() {
     let mut invalid = fixture["descriptor"].clone();
     invalid["operations"] = serde_json::json!(["same", "same"]);
     assert!(PackageDescriptor::parse(invalid).is_err());
-    let mut invalid = fixture["descriptor"].clone();
-    invalid["targets"]
+    // A development release carries fewer targets, but never an unknown one.
+    let mut development = fixture["descriptor"].clone();
+    let removed = development["targets"]
         .as_object_mut()
         .unwrap()
-        .remove("aarch64-apple-darwin");
-    assert!(PackageDescriptor::parse(invalid).is_err());
+        .remove("aarch64-apple-darwin")
+        .unwrap();
+    assert!(PackageDescriptor::parse(development.clone()).is_ok());
+    development["targets"]["riscv64-unknown-linux-musl"] = removed;
+    assert!(PackageDescriptor::parse(development).is_err());
 }
 
 #[test]
