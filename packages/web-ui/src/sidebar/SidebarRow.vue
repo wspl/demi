@@ -33,6 +33,8 @@ const emit = defineEmits<{
   click: [event: MouseEvent]
   contextmenu: [event: MouseEvent]
   archive: []
+  /** A double-click on the title: the row names itself in place, as Rename in its menu does. */
+  renameStart: []
   renameSubmit: [title: string]
   renameCancel: []
   togglePin: []
@@ -127,6 +129,7 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
     <span
       v-else
       ref="titleClip"
+      @dblclick="emit('renameStart')"
       class="sidebar-title min-w-0 flex-1 overflow-clip whitespace-nowrap transition-[margin] duration-[80ms] ease-out"
       :class="[
         marquee ? 'is-playing' : '',

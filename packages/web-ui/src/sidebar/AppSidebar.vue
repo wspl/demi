@@ -454,6 +454,7 @@ function selectProjectConversations(project: SidebarProject): void {
             @click="(event) => list.onRowClick(entry.id, event)"
             @contextmenu="(event) => openRowMenu(entry.id, event)"
             @archive="emit('archive', [entry.id])"
+            @rename-start="renamingId = entry.id"
             @rename-submit="(title) => submitRename(entry.id, title)"
             @rename-cancel="renamingId = null"
             @toggle-pin="togglePin([entry.id])"
