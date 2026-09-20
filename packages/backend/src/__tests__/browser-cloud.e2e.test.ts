@@ -24,6 +24,8 @@ acceptance('Agent browser runs in real Cloud, ends with reset/idle shutdown, and
   }).parse(process.env)
   const descriptor = nativePackageSchema.parse(await Bun.file(join(configuration.DEMI_BROWSER_PACKAGE, 'descriptor.json')).json())
   const artifact = descriptor.targets[configuration.DEMI_BROWSER_CLOUD_TARGET]
+  if (!artifact)
+    throw new Error(`The native release lacks ${configuration.DEMI_BROWSER_CLOUD_TARGET}`)
   const runnerHash = createHash('sha256')
     .update(await readFile(configuration.DEMI_BROWSER_RUNNER))
     .digest('hex')
