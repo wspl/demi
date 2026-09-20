@@ -449,8 +449,10 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                     >
                   </template>
                   <template v-if="account.quota.length" #description>
+                    <!-- The label column is as wide as the vendor's longest window name, which
+                         is "Weekly" for one and "Requests (short window)" for another. -->
                     <div
-                      class="mt-1 grid max-w-72 grid-cols-[3.25rem_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 text-[11px] tabular-nums"
+                      class="mt-1 grid max-w-96 grid-cols-[auto_minmax(4rem,1fr)_auto] items-center gap-x-2 gap-y-1 whitespace-nowrap text-[11px] tabular-nums"
                     >
                       <template
                         v-for="window in account.quota"

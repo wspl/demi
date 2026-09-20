@@ -230,7 +230,11 @@ export function mockProviders(): MockProvider[] {
           label: 'claude-c3bd1c21',
           plan: '',
           active: false,
-          quota: [],
+          // A vendor names its windows as it likes; the label column fits the longest.
+          quota: [
+            { id: 'requests', label: 'Requests (short window)', used: 12, max: 100, resets: 'in 40 s' },
+            { id: 'tokens', label: 'Tokens (short window)', used: 3, max: 100, resets: 'in 40 s' },
+          ],
         },
       ],
       catalogFetched: '2 min ago',

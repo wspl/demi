@@ -41,7 +41,10 @@ function retry(): void {
 function openUrl(url: string): void {
   window.open(url, '_blank', 'noopener,noreferrer')
 }
-onMounted(loadVendors)
+onMounted(() => {
+  loadVendors()
+  void settings.probeMissingQuota()
+})
 onUnmounted(closeLogin)
 </script>
 
