@@ -157,12 +157,13 @@ While a turn waits for the provider, the transcript's tail row says
 **Requesting**, with how long it has waited. The word says whose the wait is:
 a slow model must never read as something broken in Demi. Recovery shows the
 same row from the moment the control is used; there is no separate resuming
-state. While the agent retries a failed request on its own (a rate limit or an
-overload, within the retry policy of
-[Provider errors and retries](../provider-errors-and-retries.md)), the row says
-**Retrying** instead, from the failed attempt until the retry produces output
-or the turn ends. Retrying has no control; the Resume control appears only
-after the automatic retries give up.
+state. The row says Requesting, and nothing else, for as long as the provider
+is being asked: while the agent retries a failed request on its own (a rate
+limit or an overload, within the retry policy of
+[Provider errors and retries](../provider-errors-and-retries.md)) the row and
+its clock stay as they are. Each attempt is a request, and a row that changed
+its word with every attempt would flicker between two names for one wait. The
+retries have no control; the Resume control appears only after they give up.
 
 Two other retries are not this and keep their own places: reloading a history
 that failed to load, and resending a message whose delivery is unconfirmed.
