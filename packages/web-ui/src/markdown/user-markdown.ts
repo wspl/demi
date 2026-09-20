@@ -161,17 +161,21 @@ function linkMark(href: string, title: string | null): Mark {
 
 /**
  * A message's Markdown as the editor document that shows it. The i-th
- * attachment mark becomes a capsule for `attachmentIds[i]`; a mark with no id
- * left is dropped, and ids with no mark land at the end. A mark inside a code
- * block cannot stay there: its capsule follows the block.
+ * attachment mark becomes the capsule of `attachments[i]`, which the node
+ * keeps whole. A mark with no attachment left is dropped, and an attachment
+ * with no mark is not in this message: the marks say which files it has. A
+ * mark inside a code block cannot stay there: its capsule follows the block.
  */
-export function parseUserMarkdown(markdown: string, attachmentIds: readonly string[]): JSONContent {
-  const ids = [...attachmentIds].reverse()
+export function parseUserMarkdown<Attachment>(
+  markdown: string,
+  attachments: readonly Attachment[],
+): JSONContent {
+  const rest = [...attachments].reverse()
   const content: JSONContent[] = []
   for (const block of splitBlocks(markdown)) {
     if (block.kind === 'code') {
       const text = block.lines.join('\n')
-      const moved = text.split(ATTACHMENT_MARK).slice(1).flatMap(() => capsule(ids.pop()))
+      const moved = text.split(ATTACHMENT_MARK).slice(1).flatMap(() => capsule(rest.pop()))
       content.push({
         type: 'codeBlock',
         attrs: { language: block.info || null },
@@ -185,40 +189,34 @@ export function parseUserMarkdown(markdown: string, attachmentIds: readonly stri
     const inline = block.lines.flatMap((line, index) => [
       ...(index > 0 ? [{ type: 'hardBreak' }] : []),
       ...line.split(ATTACHMENT_MARK).flatMap((segment, position) => [
-        ...(position > 0 ? capsule(ids.pop()) : []),
+        ...(position > 0 ? capsule(rest.pop()) : []),
         ...readRun(segment),
       ]),
     ])
     content.push(inline.length ? { type: 'paragraph', content: inline } : { type: 'paragraph' })
   }
-  const rest = ids.reverse().flatMap((id) => capsule(id))
-  if (rest.length) {
-    const last = content.at(-1)
-    if (last?.type === 'paragraph') {
-      last.content = [...(last.content ?? []), ...rest]
-    } else {
-      content.push({ type: 'paragraph', content: rest })
-    }
-  }
   return { type: 'doc', content }
 }
 
-function capsule(id: string | undefined): JSONContent[] {
-  return id === undefined ? [] : [{ type: 'attachment', attrs: { id } }]
+function capsule<Attachment>(attachment: Attachment | undefined): JSONContent[] {
+  return attachment === undefined ? [] : [{ type: 'attachment', attrs: { capsule: attachment } }]
 }
 
 /**
- * The Markdown that reads back as the editor document, and the ids of its
- * capsules in the order of their marks.
+ * The Markdown that reads back as the editor document, and what its capsules
+ * carry, in the order of their marks. Those are the attachments the document
+ * was built with: the editor puts nothing else in a capsule.
  */
-export function serializeUserMarkdown(doc: JSONContent): { markdown: string; attachmentIds: string[] } {
-  const attachmentIds: string[] = []
+export function serializeUserMarkdown<Attachment>(
+  doc: JSONContent,
+): { markdown: string; attachments: Attachment[] } {
+  const attachments: Attachment[] = []
   const blocks = (doc.content ?? []).map((block) =>
     block.type === 'codeBlock'
       ? codeBlockMarkdown(block)
-      : paragraphMarkdown(block.content ?? [], attachmentIds),
+      : paragraphMarkdown(block.content ?? [], attachments),
   )
-  return { markdown: blocks.join('\n'), attachmentIds }
+  return { markdown: blocks.join('\n'), attachments }
 }
 
 function codeBlockMarkdown(block: JSONContent): string {
@@ -240,7 +238,7 @@ function longestRun(text: string, char: string): number {
   return longest
 }
 
-function paragraphMarkdown(content: readonly JSONContent[], attachmentIds: string[]): string {
+function paragraphMarkdown<Attachment>(content: readonly JSONContent[], attachments: Attachment[]): string {
   const lines: string[] = []
   let line = ''
   let segment: JSONContent[] = []
@@ -259,7 +257,7 @@ function paragraphMarkdown(content: readonly JSONContent[], attachmentIds: strin
     } else if (node.type === 'attachment') {
       endSegment()
       line += ATTACHMENT_MARK
-      attachmentIds.push(String(node.attrs?.['id']))
+      attachments.push(node.attrs?.['capsule'])
     } else if (node.type === 'text' && node.text?.includes('\n')) {
       // A line break inside text is a line break all the same.
       node.text.split('\n').forEach((part, index) => {

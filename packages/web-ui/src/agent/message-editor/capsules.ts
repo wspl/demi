@@ -1,12 +1,15 @@
 import { inject, provide, type InjectionKey } from 'vue'
+import { z } from 'zod'
 import { decodedTarget } from '../../markdown/filePath'
 import type { MessageEditContent } from '../message-editing'
 import type { MediaSource } from '../media-source'
 import { attachmentProgress, decodeRemoteReference, type ComposerAttachment } from '../message-input/attachments'
 
 /**
- * A file as its capsule in a message shows it (`product.md` § Attachments):
- * a picture or its kind's icon, then its name.
+ * A file as its capsule in a message shows it, and as the message carries it
+ * (`product.md` § Attachments). The capsule's node keeps these, so the
+ * document alone says which files a message has, in what order, and what each
+ * one is.
  */
 export interface MessageCapsule {
   id: string
@@ -19,29 +22,64 @@ export interface MessageCapsule {
   host?: string
   /** Where the file is: on the Host, or on `host`. */
   path?: string
-  /** An upload on its way, 0 to 1, or one that failed and can be tried again. */
-  upload?: { phase: 'uploading'; progress: number } | { phase: 'failed' }
 }
 
-/** What the capsules in one editor read: their files, and whether a capsule can be removed or retried. */
-export interface CapsuleContext {
-  capsule(id: string): MessageCapsule | undefined
-  editable(): boolean
+/** What is happening to a file the composer is still carrying to the Host. */
+export type MessageTransfer =
+  | { phase: 'uploading'; progress: number }
+  | { phase: 'failed' }
+
+/**
+ * The files one composer is carrying, under their capsules' ids: how far each
+ * is on its way, and whether the composer can carry a capsule at all, which
+ * is what a paste asks. A capsule with no transfer is a file that needs none:
+ * a restored draft, or a message already sent.
+ */
+export interface TransferContext {
+  transfer(id: string): MessageTransfer | undefined
+  carries(id: string): boolean
   retry(id: string): void
 }
 
-const capsuleContextKey: InjectionKey<CapsuleContext> = Symbol('message-capsules')
+/**
+ * A capsule as it travels on the clipboard. A picture is its address there,
+ * never the bytes of a sent message's media, which copy as the file's name.
+ */
+const capsuleSchema = z.object({
+  id: z.string().min(1),
+  name: z.string(),
+  image: z.string().optional(),
+  snippet: z.string().optional(),
+  host: z.string().optional(),
+  path: z.string().optional(),
+})
 
-export function provideCapsules(context: CapsuleContext): void {
-  provide(capsuleContextKey, context)
+/** The capsule a pasted node carries, or nothing when it comes from outside the app. */
+export function readCapsule(value: string | null): MessageCapsule | null {
+  if (!value) {
+    return null
+  }
+  const read = capsuleSchema.safeParse(jsonOrNull(value))
+  return read.success ? read.data : null
 }
 
-export function useCapsules(): CapsuleContext {
-  const context = inject(capsuleContextKey)
-  if (!context) {
-    throw new Error('A capsule renders inside a message editor')
+function jsonOrNull(value: string): unknown {
+  try {
+    return JSON.parse(value)
+  } catch {
+    return null
   }
-  return context
+}
+
+const transferContextKey: InjectionKey<TransferContext> = Symbol('message-transfers')
+
+export function provideTransfers(context: TransferContext): void {
+  provide(transferContextKey, context)
+}
+
+/** The transfers beside this editor's capsules; none in a conversation, where every file has arrived. */
+export function useTransfers(): TransferContext | null {
+  return inject(transferContextKey, null)
 }
 
 /** A file on its way to a message, as its capsule shows it: an upload, or a file on another device. */
@@ -52,12 +90,20 @@ export function composerCapsule(item: ComposerAttachment): MessageCapsule {
   return {
     id: item.id,
     name: item.name,
-    image: item.src,
-    snippet: item.snippet,
-    upload: item.phase === 'uploading'
-      ? { phase: 'uploading', progress: attachmentProgress(item) }
-      : item.phase === 'failed' ? { phase: 'failed' } : undefined,
+    ...(item.src ? { image: item.src } : {}),
+    ...(item.snippet ? { snippet: item.snippet } : {}),
   }
+}
+
+/** How far a file has come, while it is still on its way; nothing once it has arrived. */
+export function composerTransfer(item: ComposerAttachment): MessageTransfer | undefined {
+  if (item.kind !== 'file') {
+    return undefined
+  }
+  if (item.phase === 'uploading') {
+    return { phase: 'uploading', progress: attachmentProgress(item) }
+  }
+  return item.phase === 'failed' ? { phase: 'failed' } : undefined
 }
 
 /**
