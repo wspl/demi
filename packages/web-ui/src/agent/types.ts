@@ -37,12 +37,6 @@ export interface ConversationState {
   /** A recovery sent and not yet acknowledged by a `phase` event; the tail row says Requesting meanwhile. */
   pendingAction: PendingAction
   /**
-   * The agent is retrying a failed provider request on its own: set by
-   * `retry_scheduled`, ended by the next transcript change (the retry's
-   * output) or the turn's end. The tail row says Retrying meanwhile.
-   */
-  retrying: boolean
-  /**
    * What the providers read out of the error blocks' failure records, by block
    * id, as the backend sends them beside the transcript.
    */
@@ -63,7 +57,6 @@ export interface ChatSessionState
     | 'load'
     | 'lastError'
     | 'pendingAction'
-    | 'retrying'
     | 'failures'
   > {
   archived: boolean

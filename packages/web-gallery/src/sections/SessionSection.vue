@@ -451,8 +451,8 @@ const functionalThinkingStartedAt = new Date().toISOString()
 const functionalThinkingEndedAt = new Date(
   Date.parse(functionalThinkingStartedAt) + 8_000,
 ).toISOString()
-// Requesting also covers a recovery in flight; Retrying is only the agent's automatic retry.
-const activityKinds: ActivityKind[] = ['requesting', 'retrying', 'connecting']
+// Requesting covers a recovery in flight and the agent's own retries: one wait, one word.
+const activityKinds: ActivityKind[] = ['requesting', 'connecting']
 const incomingThinking: HandoffBlock = {
   type: 'thinking',
   id: 'incoming-thinking',
@@ -1261,7 +1261,7 @@ function abortTerminal(id: string) {
 
       <GallerySection
         title="ActivitySlot"
-        note="Requesting while the provider is asked, a Resume or Continue included, so a slow model reads as the provider's wait. Retrying while the agent asks again on its own after a failed attempt. Both show elapsed time after one second, on one clock; incoming blocks roll into the same row."
+        note="Requesting while the provider is asked, a Resume or Continue included, so a slow model reads as the provider's wait. The word and its clock stay through the agent's own retries after a failed attempt: they are the same wait, and a row that changed its word with each attempt would flicker. Elapsed time shows after one second; incoming blocks roll into the same row."
       >
         <div class="specimen-stack">
           <GallerySpecimen

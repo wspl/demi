@@ -6,11 +6,11 @@ import type { SessionLoad } from './session-status'
 
 /**
  * Why the transcript's tail row is waiting. `connecting` is the socket;
- * `requesting` is the provider being asked, including a recovery the server
- * has not acknowledged yet; `retrying` is the agent asking again on its own
- * after a failed attempt (`product.md` § Recovering an unfinished turn).
+ * `requesting` is the provider being asked: a recovery the server has not
+ * acknowledged yet and the agent's own retries included, which are the same
+ * wait and keep the same word (`product.md` § Recovering an unfinished turn).
  */
-export type ActivityKind = 'connecting' | 'retrying' | 'requesting'
+export type ActivityKind = 'connecting' | 'requesting'
 
 /**
  * An action the client sent whose acknowledgement (the next `phase` event)
@@ -38,8 +38,6 @@ export interface ActivitySlotInput {
   load: SessionLoad
   phase: SessionPhase
   pendingAction: PendingAction
-  /** The agent is retrying a failed provider request on its own. */
-  retrying: boolean
   /** The visible transcript, including a record a pending recovery hides from the list. */
   transcriptBlocks: readonly MessageListBlock[]
   /** What the list renders: the transcript with pending steers and the queue after it. */
@@ -58,10 +56,7 @@ export function activitySlotKind(input: ActivitySlotInput): ActivityKind | null 
   if (input.pendingAction === 'resume') {
     return 'requesting'
   }
-  if (!isWaitingForProvider(input)) {
-    return null
-  }
-  return input.retrying ? 'retrying' : 'requesting'
+  return isWaitingForProvider(input) ? 'requesting' : null
 }
 
 /** A running turn with nothing streaming and a tail that waits for the model's next output. */
