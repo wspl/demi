@@ -64,7 +64,7 @@ export const useConversations = defineStore('conversations', () => {
   const uploads = createConversationUploads(saveDrafts, (error) =>
     report('Could not upload the attachment', error),
   )
-  const { uploadFile, addFiles, removeFile, arrangeFiles, retryFile } = uploads
+  const { uploadFile, addFiles, removeFile, releaseAside, arrangeFiles, retryFile } = uploads
   let lifetime = new AbortController()
   const cache = new ConversationCache()
   let storageErrorReported = false
@@ -1212,6 +1212,8 @@ export const useConversations = defineStore('conversations', () => {
     for (const fileId of pending.fileIds) {
       removeFile(conversation, fileId)
     }
+    // The message is gone: what its composer set aside for an undo goes with it.
+    releaseAside(conversation)
     saveDrafts()
   }
 
