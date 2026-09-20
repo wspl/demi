@@ -2186,6 +2186,42 @@ test(
   }
 )
 
+test('a tree runs while a child waits on its yield, not while a command outlives the turn', async () => {
+  const waiting = await openHarness({
+    scripts: {
+      root: [
+        [spawnCall('spawn', "demi agent spawn <<< 'waiter'", 30)],
+        [events.text('parent idle'), events.response()],
+        [events.text('final'), events.response()],
+      ],
+      waiter: [
+        [events.toolCall('wait', 'yield', { durationMs: 400 })],
+        [events.text('child done'), events.response()],
+      ],
+    },
+  })
+  await waiting.client.send([{ type: 'text', text: 'go' }])
+  // The child holds no action while its wakeup is pending.
+  await waitFor(() => !waiting.server.treeActive(waiting.sessionId))
+  expect(waiting.seen.some(event => event.type === 'subagent'
+    && event.event === 'closed')).toBe(false)
+  expect(waiting.server.treeRunning(waiting.sessionId)).toBe(true)
+  await waitClosed(waiting.seen)
+  await waitFor(() => !waiting.server.treeRunning(waiting.sessionId))
+
+  const command = await openHarness({
+    turns: [
+      [events.toolCall('run', 'shell_exec', { script: 'probe hold 2000', timeoutMs: 100 })],
+      [events.text('started'), events.response()],
+    ],
+  })
+  await command.client.send([{ type: 'text', text: 'go' }])
+  await waitFor(() => !command.server.treeActive(command.sessionId))
+  expect(command.seen.some(event => event.type === 'shell_output'
+    && event.status.status !== 'running')).toBe(false)
+  expect(command.server.treeRunning(command.sessionId)).toBe(false)
+})
+
 test('spawn succeeds while the child runs; cancelling the invoking shell does not abort the child', async () => {
   let spawnResult = ''
   let closedBeforeParentContinued = true
