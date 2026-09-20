@@ -132,7 +132,8 @@ and command storage. Each invocation retains its authorized context even when
 several environments share a catalog. Core agent initialization has no
 object-store dependency; package selection does not belong in model settings.
 
-A release consists of its descriptor and the six executables in the
+A release consists of its descriptor and one executable for each target it
+carries; a published release carries all six of the
 [release target matrix](#publish-a-complete-release). The descriptor contains:
 
 | Descriptor field | Meaning |
@@ -141,12 +142,12 @@ A release consists of its descriptor and the six executables in the
 | `version` | Human-readable release version, immutable within its publisher. |
 | `protocolVersion` | Command-service wire major version. |
 | `operations` | Unique operation IDs supplied by the package. |
-| `targets` | All required target triples, each with executable SHA-256 and byte size. |
+| `targets` | The target triples the release carries, each with executable SHA-256 and byte size. |
 
 The descriptor hash is the SHA-256 of its canonical JSON. Paths, object keys,
 and URLs locate artifacts but do not participate in package identity.
 
-The runner independently validates descriptors and references. Release validation
+The runner independently validates descriptors and references. Publication
 rejects reused id/version pairs with different content, unsupported wire versions,
 and missing targets. An input-schema change affecting native behavior requires a
 matching release. The runtime does not repair arguments or fall back to another
@@ -488,9 +489,9 @@ A published version supplies the same operations on all supported targets.
 Requiring a complete release lets jobs select their execution host without
 encountering a platform-specific gap in that version.
 
-Both command packages and runner releases cover the following targets. Linux is
-the build environment for all six. Cross-compilation and native execution are
-separate acceptance checks.
+Both command packages and runner releases cover the following targets. One
+machine cross-compiles all six with the tools below, on Linux or macOS.
+Cross-compilation and native execution are separate acceptance checks.
 
 | Platform | Target triples | Release toolchain |
 | --- | --- | --- |
@@ -505,6 +506,16 @@ Release validation requires all of the following:
   musl alone does not establish a self-contained executable.
 - Run the same protocol and command conformance cases on every target.
 - Supply native artifacts. Emulation or source-only support is insufficient.
+
+Completeness is a rule of publication, not of the descriptor. A descriptor and
+a runner manifest name the targets they carry. The packagers
+write all six unless told otherwise, and the backend artifact module refuses to
+publish a release that lacks one. A development release, which a developer
+hands to a backend on their own machine, carries only the targets of the Hosts
+in use: on an Apple silicon Mac with the Cloud in Lima that is
+`aarch64-apple-darwin` and `aarch64-unknown-linux-musl`. A Host whose target a
+release lacks fails the command with a catalog mismatch, and its runner cannot
+be installed from that release; nothing falls back to another target.
 
 The [build guide](../native-builds.md) defines commands and toolchain setup.
 Managed guest images consume the Linux runner. Their image lifecycle and

@@ -1,8 +1,8 @@
 # Native builds and releases
 
 `scripts/native/build.ts` builds `demi-runner` and `demi-commands` for the six
-triples in `command-protocol`. The release environment is Linux, including Apple
-and Windows cross-compilation. Host platform execution is a separate CI gate.
+triples in `command-protocol`, or for the ones named with `--target`. The same
+cross tools run on Linux and macOS. Host platform execution is a separate gate.
 
 The first-party Cargo workspace contains `crates/runner`,
 `crates/command-service` and `crates/demi-commands`. Runner and Demi commands
@@ -11,7 +11,8 @@ packages are build inputs, not additional Cargo workspace members.
 
 ## Toolchain
 
-`rust-toolchain.toml` and `scripts/native/Dockerfile` pin the build tools.
+`rust-toolchain.toml` pins the Rust toolchain and lists the six targets, which
+rustup installs with it. `scripts/native/Dockerfile` pins the cross tools.
 
 Cargo runs contract generation through each consuming crate's `build.rs`.
 Generated Rust types and validation code go into `OUT_DIR` and are included by
@@ -23,21 +24,58 @@ JS/TS generation tooling in `scripts/`. See
 [the runtime design](demi-next/native-runtime.md#contract-generation-and-validation)
 for direct Rust validation requirements.
 
-The Dockerfile installs the Linux build tools. Supply an Apple SDK directory;
-the script validates its SDK metadata before building. `ring` chooses `clang`
-on Windows arm64, so the build explicitly selects the MSVC driver dialect and
-release optimization to match cargo-xwin's SDK flags. The container target path
-is `/build`, avoiding clang-cl's interpretation of `/output` as an output flag.
+The tools are cargo-zigbuild with Zig for the Apple and Linux targets, and
+cargo-xwin with LLVM for the Windows targets. Install them on the build machine
+at the versions the Dockerfile pins; on macOS:
 
 ```sh
-docker build -t demi-native-tools -f scripts/native/Dockerfile .
+brew install zig@0.15 llvm lld
+cargo install --locked cargo-zigbuild --version 0.23.4
+cargo install --locked cargo-xwin --version 0.23.1
+```
+
+Homebrew does not link these formulae. `build.ts` takes Zig from
+`CARGO_ZIGBUILD_ZIG_PATH` and the LLVM tools from `PATH`:
+
+```sh
+export CARGO_ZIGBUILD_ZIG_PATH="$(brew --prefix zig@0.15)/bin/zig"
+export PATH="$(brew --prefix llvm)/bin:$(brew --prefix lld)/bin:$PATH"
+```
+
+Build on the machine itself. Supply an Apple SDK directory for the Apple
+targets; the script validates its SDK metadata before building. `ring` chooses
+`clang` on Windows arm64, so the build explicitly selects the MSVC driver
+dialect and release optimization to match cargo-xwin's SDK flags.
+
+```sh
 bun --conditions development scripts/native/build.ts \
-  --container demi-native-tools \
-  --sdk /path/to/MacOSX15.4.sdk
+  --sdk /Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk
 ```
 
 Use repeated `--target <triple>` options for a subset. `--artifacts` selects the
 Cargo target directory; its default is `.cache/native-target`.
+
+Development builds only the targets of the Hosts in use, and packages a release
+of the same targets (see [Packaging](#packaging)). Building six targets to try
+a change on one machine is wasted time:
+
+```sh
+bun --conditions development scripts/native/build.ts \
+  --sdk /Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk \
+  --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
+```
+
+`--container <image>` runs the same build inside the image the Dockerfile
+describes, for a machine without the tools. A bind-mounted checkout is slow
+there, and the container and the machine do not share a Cargo target directory,
+so prefer the machine's own tools. The container target path is `/build`,
+avoiding clang-cl's interpretation of `/output` as an output flag.
+
+```sh
+docker build -t demi-native-tools -f scripts/native/Dockerfile .
+bun --conditions development scripts/native/build.ts \
+  --container demi-native-tools --sdk /path/to/MacOSX15.4.sdk
+```
 
 ## Packaging
 
@@ -48,14 +86,20 @@ bun --conditions development scripts/native/release-runner.ts \
   --artifacts .cache/native-target --output .cache/releases/runners
 ```
 
-The command package directory contains its runtime release descriptor and six
-target subdirectories. The backend loads deployed releases and supplies the
+Both packagers take the same repeated `--target <triple>` options as the build
+and package exactly those targets; without them they require all six. A release
+of fewer targets is a development release: the backend artifact module refuses
+to publish it
+([Publish a complete release](demi-next/native-runtime.md#publish-a-complete-release)).
+
+The command package directory contains its runtime release descriptor and one
+subdirectory per target. The backend loads deployed releases and supplies the
 selected descriptors and artifact locations to runners. Publishing does not
 write a release catalog into application source. A version is immutable: choose
 a new package version when publishing different artifacts.
 
 Runner packaging creates a hash-named directory containing `manifest.json` and
-six executables, then atomically advances the top-level manifest. Both packagers
+one executable per target, then atomically advances the top-level manifest. Both packagers
 use `scripts/native/release-files.ts`: stage every artifact, verify copied size
 and SHA-256, publish once, and refuse conflicting metadata or corrupted existing
 bytes. Failed publication removes its temporary files and leaves the pointer.
