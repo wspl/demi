@@ -28,7 +28,7 @@ beforeEach(async () => {
     devices: [],
     workspaces: [],
     conversations: [],
-    cloud: null,
+    cloud: { device: null, state: 'unallocated', operation: null, error: null, limits: { systemBytes: 0, homeBytes: 0 } },
     exposes: [],
     exposeDomain: null,
     providers: [

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { JOB_VIEW_BYTES } from '@demicodes/runner-protocol'
-import { FakeProvisioner } from './fake-provisioner'
+import { FakeProvisioner } from '../../testing/fake-provisioner'
 import { World } from './world'
 import { expected, model, type Target } from './driver'
 

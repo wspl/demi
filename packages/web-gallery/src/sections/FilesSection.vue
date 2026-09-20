@@ -654,7 +654,6 @@ onMounted(() => {
             :is-open="true"
             :overlay-store="appOverlayStore"
             :devices="workspaceDevices"
-            cloud
             :message="workspaceMessage"
             :source-for="sourceFor"
             :places-for="placesFor"

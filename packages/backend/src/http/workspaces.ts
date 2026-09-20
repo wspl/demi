@@ -27,12 +27,12 @@ const patchWorkspaceBodySchema = z.object({ name: z.string().min(1) })
  */
 export function workspaceRoutes(options: {
   control: ControlService
-  managedHosts: ManagedHosts | null
-  /** The Cloud choice; null when this backend provisions no machines. */
-  createCloudWorkspace: ((
+  managedHosts: ManagedHosts
+  /** The Cloud choice. */
+  createCloudWorkspace: (
     userId: string,
     name: string
-  ) => Promise<WorkspaceRecord>) | null
+  ) => Promise<WorkspaceRecord>
 }): Hono<AuthEnv> {
   const { control, managedHosts, createCloudWorkspace } = options
   const app = new Hono<AuthEnv>()
@@ -55,11 +55,6 @@ export function workspaceRoutes(options: {
       }, 400)
     }
     if ('cloud' in parsed.data) {
-      if (!createCloudWorkspace)
-        return c.json({
-          code: 'no_cloud',
-          message: 'This backend provisions no machines'
-        }, 409)
       try {
         return c.json(
           { workspace: await createCloudWorkspace(

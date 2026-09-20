@@ -187,10 +187,12 @@ to REST, conditional state polling, preferences, and conversation WebSockets.
 The old frontend milestone labels are not API boundaries; the current route
 contract is [Web API](web-api.md).
 
-The executable still starts without a machine manager (`DEMI_MACHINES_SOCKET`
-unset) and then serves no Cloud. That is how the test suite and an unfinished
-setup run; it is not a deployment ([Managed Cloud hosts](managed-hosts.md)),
-and the product does not yet refuse it or say so.
+The executable refuses to start without a machine manager: `DEMI_MACHINES_SOCKET`
+and `DEMI_BACKEND_PUBLIC_URL` are required. The development backend
+(`backend/src/dev.ts`) and the test suite supply Cloud through a provisioner
+whose guest is a runner process on the same machine
+(`backend/src/testing/fake-provisioner.ts`), the second implementation of the
+[provisioner contract](managed-hosts.md).
 
 Multi-worker routing, ownership fencing, the remote control service, and S3
 recovery are not implemented. Subscription accounts must first become control

@@ -14,7 +14,7 @@ import { StubProvider, events } from '@demicodes/provider/testing'
 import type { RunnerProtocolMessage } from '@demicodes/runner-protocol'
 import { startRunner } from '@demicodes/host-remote/testing'
 import { waitFor } from '@demicodes/utils'
-import { FakeProvisioner } from './scenarios/fake-provisioner'
+import { FakeProvisioner } from '../testing/fake-provisioner'
 import { openBackend, type TestBackend } from './session'
 
 // `demi host shell --host` between two devices (`runner.md` § Pipes). The

@@ -19,7 +19,7 @@ import {
 export interface ConversationTargetsDeps {
   control: ControlService
   registry: RunnerRegistry
-  managedHosts: ManagedHosts | null
+  managedHosts: ManagedHosts
   stores: ConversationStores
   reserveTree: (conversationId: string) => (() => void) | null
   lifecycle?: ConversationLifecycle
@@ -197,7 +197,7 @@ export class ConversationTargets {
         // Recheck archive, ownership and target selection after admission succeeds.
         machine?.release()
         machine = undefined
-        const release = await this.deps.managedHosts!.enter(selected.device, signal)
+        const release = await this.deps.managedHosts.enter(selected.device, signal)
         machine = { deviceId: selected.device.id, release }
       }
     } finally {
@@ -378,8 +378,6 @@ export class ConversationTargets {
       throw new HostAccessRefused('host_stopped', 'The Cloud is stopped')
     if (!device || device.userId !== conversation.userId)
       throw new Error('Device not owned by this user')
-    if (device.kind === 'managed' && !managedHosts)
-      throw new Error('Cloud is not configured')
     const path = selected?.role === 'attached'
       ? selected.path || registry.deviceIdentity(device.id)?.homeDir || ''
       : target.kind === 'cloud'

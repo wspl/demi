@@ -137,10 +137,10 @@ export interface BackendOptions {
   /** Session lifetime and login lockout tuning — tests only. */
   auth?: WebSessionsOptions & LoginLimiterOptions
   /**
-   * Managed hosts (`managed-hosts.md`): the provisioner and the lifecycle
-   * sizes. Cloud operations require it; paired devices remain independently usable.
+   * What supplies Cloud, which every deployment has (`managed-hosts.md`): the
+   * provisioner and the lifecycle sizes.
    */
-  managedHosts?: {
+  managedHosts: {
     provisioner: ManagedHostProvisioner;
     config?: Partial<ManagedHostsConfig>
   }
@@ -149,11 +149,8 @@ export interface BackendOptions {
 export interface Backend {
   port: number
   url: string
-  /**
-   * The lifecycle, when configured. Cloud operations allocate and wake machines
-   * on demand.
-   */
-  managedHosts: ManagedHosts | null
+  /** The Cloud lifecycle: machines are allocated and woken on demand. */
+  managedHosts: ManagedHosts
   close(): Promise<void>
 }
 
@@ -205,13 +202,11 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   }>()
   const pipes = new PipeBroker()
   const runnerRegistry = new RunnerRegistry({
-    admit: deviceId => managedHosts?.admit(deviceId) ?? (() => {}),
+    admit: deviceId => managedHosts.admit(deviceId),
     control,
     pipes,
     // Bound late: the lifecycle is built over the registry below.
     volumeGrow: async (deviceId, volume, bytes) => {
-      if (!managedHosts)
-        throw new Error('this backend provisions no machines')
       await managedHosts.growVolume(deviceId, volume, bytes)
     },
     rpc: async (call, io, execution) => {
@@ -299,24 +294,22 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     sweepMs: options.expose?.sweepMs,
     origin: () => options.publicUrl ?? url,
   })
-  const managedHosts = options.managedHosts
-    ? new ManagedHosts({
-      lifecycle,
-      idleMs,
-      now: options.lifecycle?.now,
-      onLeftRunning: deviceId => exposes.destroyForDevice(deviceId),
-      control,
-      registry: runnerRegistry,
-      provisioner: options.managedHosts.provisioner,
-      config: options.managedHosts.config,
-      backendUrl: () => options.publicUrl ?? url,
-      turnInFlight: userId => cloudConversations.active(userId),
-      observeActivity: (userId, changed) => cloudConversations.observe(userId, changed),
-      reserveConversations: (userId, reason) => cloudConversations.reserve(userId, reason),
-    })
-    : null
+  const managedHosts = new ManagedHosts({
+    lifecycle,
+    idleMs,
+    now: options.lifecycle?.now,
+    onLeftRunning: deviceId => exposes.destroyForDevice(deviceId),
+    control,
+    registry: runnerRegistry,
+    provisioner: options.managedHosts.provisioner,
+    config: options.managedHosts.config,
+    backendUrl: () => options.publicUrl ?? url,
+    turnInFlight: userId => cloudConversations.active(userId),
+    observeActivity: (userId, changed) => cloudConversations.observe(userId, changed),
+    reserveConversations: (userId, reason) => cloudConversations.reserve(userId, reason),
+  })
   // Whatever a previous process left running or unsaved is settled before the first need can boot anything.
-  await managedHosts?.reconcile()
+  await managedHosts.reconcile()
 
   const conversations = new ConversationLifecycle({
     lifecycle,
@@ -485,13 +478,11 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     userStreams,
     ...(options.publicUrl ? { publicOrigin: new URL(options.publicUrl).origin } : {}),
     managedHosts,
-    createCloudWorkspace: managedHosts
-      ? (userId, name) => createCloudWorkspace({
-        control,
-        managedHosts,
-        registry: runnerRegistry
-      }, userId, name)
-      : null,
+    createCloudWorkspace: (userId, name) => createCloudWorkspace({
+      control,
+      managedHosts,
+      registry: runnerRegistry
+    }, userId, name),
     sessions,
     loginLimiter,
     emailChanges,
@@ -521,7 +512,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
       cleanup.defer(() => { server.stop(true) })
       cleanup.defer(() => runnerRegistry.close())
       cleanup.defer(() => pipes.close())
-      cleanup.defer(() => managedHosts?.close())
+      cleanup.defer(() => managedHosts.close())
       cleanup.defer(() => targets.close())
       cleanup.defer(() => conversations.close())
       cleanup.defer(() => agentServer.close())

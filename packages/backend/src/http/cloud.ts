@@ -5,14 +5,9 @@ import { ManagedHostError, type ManagedHosts } from '../managed/lifecycle'
 
 const resetSchema = z.object({ operationId: z.string().min(1).max(128) }).strict()
 
-export function cloudRoutes(managed: ManagedHosts | null): Hono<AuthEnv> {
+export function cloudRoutes(managed: ManagedHosts): Hono<AuthEnv> {
   const app = new Hono<AuthEnv>()
   app.get('/', async c => {
-    if (!managed)
-      return c.json({
-        code: 'no_cloud',
-        message: 'Cloud is not configured'
-      }, 409)
     const status = await managed.status(c.get('user').id)
     return c.json({
       ...status,
@@ -22,11 +17,6 @@ export function cloudRoutes(managed: ManagedHosts | null): Hono<AuthEnv> {
     })
   })
   app.post('/reset', async c => {
-    if (!managed)
-      return c.json({
-        code: 'no_cloud',
-        message: 'Cloud is not configured'
-      }, 409)
     const body = resetSchema.safeParse(await c.req.json().catch(() => null))
     if (!body.success)
       return c.json({
