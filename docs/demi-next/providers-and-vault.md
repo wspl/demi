@@ -104,41 +104,99 @@ Target ownership and switching are defined in
 
 ## Credential vault
 
-`backend/vault` owns product scope, encrypted provider configuration, account
-operations, and login lifetime. Provider packages own authentication protocols,
-refresh, and credential-pool formats. The backend invokes those packages; it
+`backend/vault` owns product scope, credential records, account operations, and
+login lifetime. Provider packages own authentication protocols, token refresh,
+and the shape of the secret document. The backend invokes those packages; it
 necessarily handles plaintext credentials in memory to make authenticated
 requests.
 
-API-key configuration in the control store is encrypted with the instance
-secret. Subscription credentials live in private per-provider pool directories;
-these files have filesystem access protection and are not covered by the
-configuration column's encryption. The storage boundary is described in
-[Storage](storage.md). Public provider responses expose configuration metadata
-and account status, not token material.
+### Where credentials live
 
-Codex and Grok Build use cancellable device-login flows. Claude Code uses setup-token
-import through the provider account API. Creating a subscription entry
-publishes credentials in this order:
+Every credential of the product is a record in the control store, encrypted with
+the instance secret. Nothing the product authenticates with is a file:
 
-1. Authenticate or import into a private temporary pool.
-2. Move the completed pool to the final provider directory.
-3. Insert the provider row, subject to the owner-and-family uniqueness rule.
-4. Expose the completed provider to callers.
+| Record | Holds |
+|---|---|
+| `providers.config` | An API-key entry's key and endpoint settings |
+| `provider_credentials` | One subscription account: public metadata, the encrypted secret document, its usage snapshot, and a version |
+| `providers.active_credential_id` | Which account the entry uses for inference |
 
-A concurrent login that loses the uniqueness check removes only its own
-unpublished pool. Readers never observe a newly inserted row pointing to the
-pending directory. Failed or cancelled flows remove unpublished credentials.
-Device login expires after ten minutes; backend shutdown cancels and drains
-active flows. Logging into an existing entry reserves that provider operation
-until completion or failure.
+The backend never reads a vendor's own login from the machine it runs on: not
+`~/.codex`, `~/.grok`, the Claude Code keychain item, nor a vendor token in its
+environment. Those belong to whoever operates the machine, and a multi-user
+product must not lend them to a user whose entry has no account. An entry
+without an account is unauthenticated. The instance secret is deployment
+configuration (`DEMI_INSTANCE_SECRET`); a single-backend deployment that does
+not set it generates one into its data directory.
+
+Because a credential is a record, any worker reads the same accounts, the same
+selection and the same usage; there is no pool directory to distribute.
+
+### The credential store contract
+
+A provider package does not know where credentials live. It receives a
+**credential store** and keeps the vendor-specific secret document opaque to it:
+
+| Operation | Meaning |
+|---|---|
+| `list()` | Public metadata of every account of this entry |
+| `read(id)` | `{ meta, secret, version }`, or nothing |
+| `put(meta, secret)` | Insert, or replace the account with the same identity key |
+| `replace(id, secret, version)` | Write a refreshed secret only if `version` is still current |
+| `remove(id)` | Delete the account |
+
+The backend's store is the `provider_credentials` table. The framework keeps a
+file store under `$DEMI_HOME` for local consumers, and only that store may fall
+back to the vendor's own login. See
+[Provider credentials](../provider-global-credentials.md).
+
+**Refresh** goes through `replace`. OAuth refresh tokens are single-use, so two
+refreshers of one account race: the one whose `replace` finds a newer version,
+or whose vendor call is refused, reads the record again and uses the tokens the
+winner stored. It reports a failure only when the record did not change. Within
+one backend, refreshes of one account are a single flight.
+
+### An account is the unit
+
+The provider runtime is built for **one account**, named by credential id. The
+entry's active account is only the default the backend passes for inference.
+Everything else names the account it means:
+
+| Operation | Account |
+|---|---|
+| Inference, model discovery | The active account |
+| Connection test | The account the user chose |
+| Usage probe, plan | The account the user chose |
+| Token refresh | The account being used |
+
+Usage is therefore known per account and stored with it. Selecting another
+account changes which record inference reads; it clears nothing, and the account
+left behind keeps its usage until someone refreshes it. Removing an account
+removes its usage with it. Response-derived usage is written to the account that
+made the request, so a request that outlives a switch cannot credit the wrong
+account.
+
+### Login and publication
+
+Codex and Grok Build use cancellable device-login flows. Claude Code uses
+setup-token import through the provider account API. A flow authenticates
+against a staged store held in memory; nothing is stored until it completes.
+Completion is one control-store transaction:
+
+- for a new entry: insert the provider row, subject to the owner-and-family
+  uniqueness rule, its first account, and the active selection;
+- for an existing entry: insert or replace the account, and select it only when
+  the entry had no active account.
+
+A flow that loses the uniqueness check, fails or is cancelled has stored
+nothing, so there is nothing to clean up. Device login expires after ten
+minutes; backend shutdown cancels and drains active flows. Logging into an
+existing entry reserves that provider operation until completion or failure.
 
 Selecting an account is explicit. Removing the active account is refused: select
-another account first, or delete the provider. Account changes invalidate the
-provider's model and quota snapshots. Framework file stores remain available to
-local framework consumers; they are not a second product configuration source.
-See [Provider credentials](../provider-global-credentials.md) for the shared
-credential contract.
+another account first, or delete the provider. Deleting a provider deletes its
+accounts in the same transaction. Public provider responses expose
+configuration metadata, account metadata and usage, never token material.
 
 ## Claude Code execution boundary
 
@@ -177,6 +235,16 @@ account invalidation rules are defined in [Provider quota](../provider-quota.md)
 A displayed quota snapshot is not itself a product token-budget enforcement rule.
 
 ## Implementation limits
+
+Subscription accounts are not yet control-store records. The current
+implementation keeps each entry's accounts in a pool directory
+(`vault/<providerId>/`) written by the provider package's file store, with the
+active pointer and a `quota.json` usage snapshot beside them. That pool is
+unencrypted, exists on one backend only, builds the runtime for the active
+account alone (so only that account can be tested or probed), clears usage on
+every switch, and falls back to the backend machine's vendor login when the pool
+is empty. [Credential vault](#credential-vault) replaces all of it; the first
+start on the new store imports each pool directory and then removes it.
 
 The current request limiter is an in-memory, per-backend sliding window with a
 default of 120 requests per user per minute. It is not a distributed limiter or

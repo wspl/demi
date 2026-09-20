@@ -247,9 +247,42 @@ export interface Provider {
 - Agent runtime does not know about credential ids.
 - Switching accounts is a **control-plane** concern (REPL flag, web control method, embedding host API), not a transcript/frame concern.
 
-## 5. Storage layout (demi pool)
+## 5. Storage
 
-Authoritative multi-credential pool lives under the demi state root:
+### 5.1 The store is injected
+
+A provider kit reads and writes accounts through a `ProviderCredentialStore` and
+never assumes where they live:
+
+```ts
+interface ProviderCredentialStore {
+  list(): Promise<CredentialEntryMeta[]>
+  read(id: string): Promise<{ meta: CredentialEntryMeta; secret: unknown; version: string } | null>
+  /** Insert, or replace the entry with the same identityKey. */
+  put(meta: CredentialEntryDraft, secret: unknown): Promise<CredentialEntryMeta>
+  /** Write a refreshed secret; false when `version` is no longer current. */
+  replace(id: string, secret: unknown, version: string): Promise<boolean>
+  remove(id: string): Promise<void>
+}
+```
+
+`secret` is the kit's own document (Codex `auth.json` shape, Grok entry, Claude
+OAuth tokens), validated by the kit on every read. A refresh that loses `replace`
+reads the entry again and uses what it finds.
+
+The runtime, auth status, quota and model discovery are built **for one entry**:
+`create*Provider({ store, credentialId })`. The active pointer is the caller's
+choice of `credentialId`, not state inside the kit, so a product can test or
+probe an account it is not using. `credentials.setActive` remains for the file
+store, where the pointer is a file.
+
+A product with its own storage (Demi Next keeps accounts as encrypted control
+records) supplies its store and gets no vendor-default fallback: §6's read-through
+of `~/.codex`, `~/.grok`, env and keychain applies to the file store alone.
+
+### 5.2 The file store
+
+The framework's store for local consumers lives under the demi state root:
 
 ```text
 $DEMI_HOME|~/.demi/

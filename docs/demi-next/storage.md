@@ -15,14 +15,13 @@ Backend data directory
 +-- blobs/<userId>/<sha256>        user-owned attachment and media bytes
 +-- changes/<conversationId>/     a conversation's edited-file contents per command
 +-- machines/<deviceId>/          managed-machine disk generations
-+-- vault/<providerId>/           subscription credential pools
-+-- instance secret              encrypts provider configuration
++-- instance secret              encrypts credentials, unless configured
 ```
 
 The names identify storage responsibilities; deployment options supply the actual
 roots. `backend/storage` owns SQLite and attachment stores.
 `backend/managed` owns the machine-image store. `backend/vault` owns credential
-storage and access. Working project files belong to execution devices and are
+records and access; credentials are control records, never files. Working project files belong to execution devices and are
 accessed through `Host.fs`; they are not conversation database content.
 
 | Store | Owns | Writer |
@@ -32,7 +31,6 @@ accessed through `Host.fs`; they are not conversation database content.
 | User blob namespace | Uploaded bytes and transcript media addressed by content hash | Backend upload and media persistence paths |
 | Change store | Both sides of every file a command edited, bound to the conversation ([Edit tracking](edit-tracking.md#the-change-store)) | Backend command completion |
 | Machine-image store | Published system/home disk generations and their manifests | Managed-host lifecycle |
-| Credential pool | Subscription account secrets and active-account selection | Provider credential implementation invoked by the vault |
 
 Handwritten SQL sits behind a thin database interface. Numbered schema changes
 run in order, each in a transaction. SQLite uses WAL and foreign keys. Product
@@ -74,7 +72,11 @@ meaning and atomicity rather than duplicating every SQL column.
   under device and operation IDs. These records make interrupted multi-step work
   discoverable; they are not cross-database transactions.
 - **Providers:** `providers` stores owner scope, family, credential kind, label,
-  and encrypted configuration. A partial unique index enforces one subscription
+  encrypted configuration, and the active account of a subscription entry.
+  `provider_credentials` stores one subscription account per row: entry, identity
+  key (unique within the entry), label and detail, the encrypted secret document,
+  a version that every secret write advances, the account's usage snapshot, and
+  timestamps. Rows are removed with their entry. A partial unique index enforces one subscription
   entry per owner scope and family, including the shared scope.
   `model_catalogs` stores one validated cache record per provider entry, removed
   with that entry. See [Providers](providers-and-vault.md) and
@@ -251,13 +253,13 @@ not implement `RemoteControlService`, `demi-controld`, S3 store adapters, routin
 ownership/fencing, or Litestream provisioning and restore orchestration. The
 multi-worker section defines required behavior, not an available deployment mode.
 
-Subscription pool files are not encrypted by the database configuration cipher.
-The directory blob store uses rename publication but does not explicitly fsync
+Subscription accounts are still pool files under `vault/<providerId>/`, not yet
+`provider_credentials` rows; see
+[Providers](providers-and-vault.md#implementation-limits). The directory blob store uses rename publication but does not explicitly fsync
 file and directory data; its power-loss durability must be defined before
 claiming the same durability guarantee as committed machine generations.
 
 Before implementing multi-worker recovery, define ownership fencing, replicated
-checkpoint readiness during user movement, credential-pool distribution and
-recovery, and retention for deleted accounts and unreferenced blobs. These are
+checkpoint readiness during user movement, and retention for deleted accounts and unreferenced blobs. These are
 necessary parts of that deployment's correctness; the local file layout alone
 does not resolve them.
