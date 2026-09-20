@@ -417,8 +417,10 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                       @cancel="renaming = false"
                     />
                     <template v-else>
+                      <!-- A name that can be changed is also changed by a double-click on it. -->
                       <h3
                         class="min-w-0 truncate text-[15px] font-medium text-fg-emphasis"
+                        @dblclick="selected.kind === 'api_key' && (renaming = true)"
                       >
                         {{ selected.name }}
                       </h3>
