@@ -49,6 +49,8 @@ export interface Runner {
   details: string[]
   log: string[]
   exited: Promise<void>
+  /** The process, for a test that pauses the Host or watches it die. */
+  pid: number
   stop(): Promise<void>
 }
 
@@ -115,7 +117,7 @@ export async function startRunner(options: RunnerOptions): Promise<Runner> {
       ready.reject(new Error(`Runner exited before registration: ${log.join('\n')}`))
   }, ready.reject)
   const runner: Runner = {
-    codes, statuses, details, log, exited,
+    codes, statuses, details, log, exited, pid: child.pid,
     stop: async () => {
       if (child.exitCode !== null) {
         await exited
