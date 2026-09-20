@@ -245,6 +245,8 @@ function beginLogin(p: SettingsProviderEntry) {
       login.value.phase = {
         kind: 'done',
         account: grok ? 'zan@example.com · SuperGrok' : 'zan@example.com · Plus',
+        // As in the product: an account added beside another is not switched to.
+        active: login.value.provider.accounts.length === 0,
       }
     }, 4000)
   }, 900)
@@ -258,6 +260,7 @@ function finishLogin(account: string) {
   login.value.phase = {
     kind: 'done',
     account,
+    active: login.value.provider.accounts.length === 0,
   }
 }
 
