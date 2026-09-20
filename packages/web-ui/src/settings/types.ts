@@ -272,5 +272,5 @@ export type ProviderLoginPhase =
     }
 
 export type SettingsProviderOperation =
-  | { kind: 'saving' | 'testing' | 'refreshing' | 'usage' | 'removing' }
-  | { kind: 'account'; accountId: string; action: 'activate' | 'remove' }
+  | { kind: 'saving' | 'testing' | 'refreshing' | 'removing' }
+  | { kind: 'account'; accountId: string; action: 'activate' | 'remove' | 'test' | 'usage' }

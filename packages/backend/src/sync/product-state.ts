@@ -9,7 +9,8 @@ import type { ProviderAssembly } from '../llm/assembly'
 import type { ManagedHosts } from '../managed/lifecycle'
 import type { Exposes } from '../expose/records'
 import { publicProvider } from '../vault/public-provider'
-import { providerDetails } from '../llm/provider-details'
+import { inferenceOnlyDetails } from '../llm/provider-details'
+import { canConfigureProviders } from '../vault/scope'
 import { conversationSummary } from '../conversation/summary'
 import { errorMessage } from '@demicodes/utils'
 
@@ -49,15 +50,19 @@ export class ProductState {
     // The user's Cloud is a device like the paired ones for everything that
     // reads files or the working tree; only pairing and revocation tell them apart.
     const devices = managedDevice ? [...paired, managedDevice] : paired
+    const configures = canConfigureProviders(mode, user.role)
     const providers = await Promise.all(entries.map(async entry => {
       try {
         const resolved = await assembly.providerFor(entry.id)
         return {
           ...publicProvider(entry),
-          details: resolved ? await providerDetails(
-            resolved.provider,
-            entry.config.kind === 'subscription'
-          ) : null
+          details: resolved
+            ? configures
+              ? await assembly.details(entry, resolved.provider)
+              : inferenceOnlyDetails(
+                await assembly.details(entry, resolved.provider)
+              )
+            : null
         }
       } catch (error) {
         return {

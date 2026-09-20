@@ -202,7 +202,21 @@ export interface CreateProviderQuotaOptions {
    * known about the account survives this object: a rebuilt provider and a
    * restarted process start from it. Absent, the snapshot lives in memory only.
    */
-  snapshotFile?: string
+  snapshots?: ProviderQuotaSnapshots
+}
+
+/**
+ * The keeper of one account's latest snapshot, wherever it is kept. Every
+ * quota of the same account given the same keeper serves the same snapshot.
+ */
+export interface ProviderQuotaSnapshots {
+  read(): ProviderQuotaSnapshot | null
+  /**
+   * Holds the snapshot, or forgets it. Keeping it beyond this process (without
+   * the vendor's raw payload) is best effort: one that could not be kept only
+   * costs a probe.
+   */
+  save(snapshot: ProviderQuotaSnapshot | null): void
 }
 
 /** The snapshot file of a provider that keeps its state in `stateDir`; none without one. */
@@ -210,8 +224,35 @@ export function quotaSnapshotFile(stateDir: string | undefined): string | undefi
   return stateDir ? join(stateDir, 'quota.json') : undefined
 }
 
-/** A snapshot as the file holds it: everything but the vendor's raw payload. */
-const storedSnapshotSchema = z.object({
+/** Snapshots kept in `file`; none without one. */
+export function fileQuotaSnapshots(
+  file: string | undefined,
+  providerId: string
+): ProviderQuotaSnapshots | undefined {
+  if (!file)
+    return undefined
+  let held: ProviderQuotaSnapshot | null = readStoredSnapshot(file, providerId)
+  return {
+    read: () => held,
+    save: (snapshot) => {
+      held = snapshot
+      try {
+        if (snapshot === null) {
+          rmSync(file, { force: true })
+          return
+        }
+        const { raw: _raw, ...stored } = snapshot
+        mkdirSync(dirname(file), { recursive: true })
+        writeFileSync(file, `${JSON.stringify(stored)}\n`, { mode: 0o600 })
+      } catch {
+        // Best effort, as the contract says.
+      }
+    },
+  }
+}
+
+/** A snapshot as it is kept: everything but the vendor's raw payload. */
+export const storedQuotaSnapshotSchema = z.object({
   providerId: z.string(),
   observedAt: z.string(),
   source: z.enum(['probe', 'observation', 'cache']),
@@ -244,13 +285,15 @@ function readStoredSnapshot(file: string, providerId: string): ProviderQuotaSnap
     return null
   }
   try {
-    const stored = storedSnapshotSchema.parse(JSON.parse(text))
+    const stored = storedQuotaSnapshotSchema.parse(JSON.parse(text))
     return stored.providerId === providerId ? stored : null
   } catch {
     // A file this version cannot read is replaced by the next snapshot.
     return null
   }
 }
+
+export type StoredQuotaSnapshot = z.infer<typeof storedQuotaSnapshotSchema>
 
 export interface ProviderQuotaProbeResult {
   plan?: ProviderQuotaPlan | null
@@ -263,28 +306,14 @@ export interface ProviderQuotaProbeResult {
 export function createProviderQuota(
   options: CreateProviderQuotaOptions
 ): ProviderQuota {
-  const snapshotFile = options.snapshotFile
-  let latest: ProviderQuotaSnapshot | null = snapshotFile
-    ? readStoredSnapshot(snapshotFile, options.providerId)
-    : null
-  let generation = 0
-  // Storing is best effort: the snapshot in memory is the one that is served,
-  // and a file that could not be written only costs a probe after a restart.
-  const store = (snapshot: ProviderQuotaSnapshot | null): void => {
-    if (!snapshotFile)
-      return
-    try {
-      if (snapshot === null) {
-        rmSync(snapshotFile, { force: true })
-        return
-      }
-      const { raw: _raw, ...stored } = snapshot
-      mkdirSync(dirname(snapshotFile), { recursive: true })
-      writeFileSync(snapshotFile, `${JSON.stringify(stored)}\n`, { mode: 0o600 })
-    } catch {
-      // See above.
-    }
+  let memory: ProviderQuotaSnapshot | null = null
+  const snapshots: ProviderQuotaSnapshots = options.snapshots ?? {
+    read: () => memory,
+    save: (snapshot) => {
+      memory = snapshot
+    },
   }
+  let generation = 0
   const canObserve = options.canObserve ?? Boolean(options.observe)
 
   const capability = (): ProviderQuotaCapability => {
@@ -306,7 +335,7 @@ export function createProviderQuota(
     // A probe and an observation can report different windows (a plan's
     // credits, a request rate), so each replaces its own and keeps the other's.
     // Plan and account are the probe's to say; an observation keeps them.
-    const previous = latest
+    const previous = snapshots.read()
     const snapshot: ProviderQuotaSnapshot = {
       providerId: options.providerId,
       observedAt: new Date().toISOString(),
@@ -322,14 +351,13 @@ export function createProviderQuota(
         : partial.windows,
       raw: partial.raw,
     }
-    latest = snapshot
-    store(snapshot)
+    snapshots.save(snapshot)
     return snapshot
   }
 
   const quota: ProviderQuota = {
     capability,
-    latest: () => latest,
+    latest: () => snapshots.read(),
     captureObserver: () => {
       const captured = generation
       return (input) => captured === generation
@@ -338,8 +366,7 @@ export function createProviderQuota(
     },
     clearLatest: () => {
       generation += 1
-      latest = null
-      store(null)
+      snapshots.save(null)
     },
     async probe(probeOptions = {}) {
       if (!options.canProbe)

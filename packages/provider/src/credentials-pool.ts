@@ -1,5 +1,6 @@
 /**
- * Demi multi-credential pool on disk:
+ * The accounts of one provider entry, wherever they are kept. The framework's
+ * own pool is on disk:
  * <stateDir>/credentials/<providerKey>/{active,entries/<id>/{meta.json,secret}}
  */
 import {
@@ -40,6 +41,80 @@ export const credentialEntryMetaSchema = z.looseObject({
   identityKey: z.string().min(1).nullable().optional(),
 })
 export type CredentialEntryMeta = z.infer<typeof credentialEntryMetaSchema>
+
+/** One revision of an account's secret document. */
+export interface CredentialDocumentRevision {
+  text: string
+  /** Changes whenever the text does; only ever compared for equality. */
+  version: string
+}
+
+/**
+ * One account's secret document. Its text is the provider kit's own format
+ * (an `auth.json`, OAuth tokens); the keeper never looks inside.
+ */
+export interface CredentialDocument {
+  /** Identifies the document across every handle to it. Never secret. */
+  readonly key: string
+  /** Names the document in messages. Never secret. */
+  readonly name: string
+  read(): Promise<CredentialDocumentRevision | null>
+  /**
+   * Stores `text` if the document is still at `version`. False when someone
+   * else wrote first: the caller reads again and uses what it finds.
+   */
+  replace(text: string, version: string): Promise<boolean>
+}
+
+/**
+ * The accounts of one provider entry and which of them is in use. A kit reads
+ * and writes accounts only through this.
+ */
+export interface CredentialPool {
+  /**
+   * Whether an empty pool stands for the vendor's own login on this machine.
+   * True only where the machine is the user's: a product serving other users
+   * must not lend them the login of whoever operates it.
+   */
+  readonly vendorDefault: boolean
+  list(): Promise<ProviderCredentialInfo[]>
+  listMeta(): Promise<CredentialEntryMeta[]>
+  readMeta(id: string): Promise<CredentialEntryMeta | null>
+  findByIdentityKey(identityKey: string): Promise<CredentialEntryMeta | null>
+  getActiveId(): Promise<string | null>
+  setActiveId(id: string): Promise<void>
+  /** The active id, choosing the first account when none is chosen. */
+  ensureActivePointer(): Promise<string | null>
+  writeEntry(meta: CredentialEntryMeta, secretText: string): Promise<CredentialEntryMeta>
+  document(id: string): CredentialDocument
+  remove(id: string): Promise<void>
+}
+
+const refreshes = new Map<string, Promise<unknown>>()
+
+/**
+ * Runs `fn` after every earlier refresh of the same document in this process:
+ * a refresh token is spent once, so refreshes of one account take turns and
+ * the later one finds the earlier one's tokens.
+ */
+export function exclusiveCredentialRefresh<T>(
+  document: CredentialDocument,
+  fn: () => Promise<T>
+): Promise<T> {
+  const previous = refreshes.get(document.key) ?? Promise.resolve()
+  const run = previous.then(fn, fn)
+  const settled = run.catch(() => undefined)
+  refreshes.set(document.key, settled)
+  void settled.then(() => {
+    if (refreshes.get(document.key) === settled)
+      refreshes.delete(document.key)
+  })
+  return run
+}
+
+function textVersion(text: string): string {
+  return createHash('sha256').update(text).digest('hex')
+}
 
 export interface FileCredentialPoolOptions {
   /** Demi state root ($DEMI_HOME / ~/.demi). */
@@ -85,7 +160,8 @@ function isMissingEntryError(error: unknown): boolean {
   return isFileNotFoundError(error) || errorCode(error) === 'ENOTDIR'
 }
 
-export class FileCredentialPool {
+export class FileCredentialPool implements CredentialPool {
+  readonly vendorDefault = true
   readonly root: string
   readonly secretFileName: string
 
@@ -245,6 +321,33 @@ export class FileCredentialPool {
     return readFile(this.secretPath(id), 'utf8')
   }
 
+  document(id: string): CredentialDocument {
+    const path = this.secretPath(id)
+    const read = async (): Promise<CredentialDocumentRevision | null> => {
+      try {
+        const text = await readFile(path, 'utf8')
+        return { text, version: textVersion(text) }
+      } catch (error) {
+        if (!isMissingEntryError(error))
+          throw error
+        return null
+      }
+    }
+    return {
+      key: path,
+      name: path,
+      read,
+      replace: (text, version) => this.withWriteLock(async () => {
+        if ((await read())?.version !== version)
+          return false
+        const tmp = this.tmpPath(path)
+        await writeFile(tmp, text, { mode: 0o600 })
+        await rename(tmp, path)
+        return true
+      }),
+    }
+  }
+
   async remove(id: string): Promise<void> {
     await this.withWriteLock(async () => {
       const active = await this.getActiveId()
@@ -317,6 +420,110 @@ export class FileCredentialPool {
       return null
     await this.setActiveId(all[0]!.id)
     return all[0]!.id
+  }
+}
+
+/**
+ * A pool held in memory: the accounts of something that is not stored yet (a
+ * login before it completes), and the pool of tests.
+ */
+export class MemoryCredentialPool implements CredentialPool {
+  private readonly held = new Map<string, {
+    meta: CredentialEntryMeta
+    text: string
+    version: number
+  }>()
+  private activeId: string | null = null
+
+  constructor(readonly vendorDefault = false) {}
+
+  /** Every account with its secret text, for whoever stores the pool. */
+  entries(): Array<{ meta: CredentialEntryMeta; secretText: string }> {
+    return [...this.held.values()].map(
+      (entry) => ({ meta: entry.meta, secretText: entry.text })
+    )
+  }
+
+  async list(): Promise<ProviderCredentialInfo[]> {
+    return (await this.listMeta()).map((m) => ({
+      id: m.id,
+      label: m.label,
+      detail: m.detail ?? null,
+      updatedAt: m.updatedAt,
+    }))
+  }
+
+  async listMeta(): Promise<CredentialEntryMeta[]> {
+    return [...this.held.values()]
+      .map((entry) => entry.meta)
+      .sort((a, b) => a.id.localeCompare(b.id))
+  }
+
+  async readMeta(id: string): Promise<CredentialEntryMeta | null> {
+    return this.held.get(id)?.meta ?? null
+  }
+
+  async findByIdentityKey(
+    identityKey: string
+  ): Promise<CredentialEntryMeta | null> {
+    return (await this.listMeta())
+      .find((m) => m.identityKey === identityKey) ?? null
+  }
+
+  async getActiveId(): Promise<string | null> {
+    return this.activeId
+  }
+
+  async setActiveId(id: string): Promise<void> {
+    if (!this.held.has(id))
+      throw new CredentialPoolError(
+        'credential_not_found',
+        `Credential "${id}" not found`
+      )
+    this.activeId = id
+  }
+
+  async ensureActivePointer(): Promise<string | null> {
+    this.activeId ??= (await this.listMeta())[0]?.id ?? null
+    return this.activeId
+  }
+
+  async writeEntry(
+    meta: CredentialEntryMeta,
+    secretText: string
+  ): Promise<CredentialEntryMeta> {
+    this.held.set(meta.id, {
+      meta,
+      text: secretText,
+      version: (this.held.get(meta.id)?.version ?? 0) + 1,
+    })
+    return meta
+  }
+
+  document(id: string): CredentialDocument {
+    return {
+      key: `memory/${id}`,
+      name: `account ${id}`,
+      read: async () => {
+        const entry = this.held.get(id)
+        return entry
+          ? { text: entry.text, version: String(entry.version) }
+          : null
+      },
+      replace: async (text, version) => {
+        const entry = this.held.get(id)
+        if (!entry || String(entry.version) !== version)
+          return false
+        this.held.set(id, { ...entry, text, version: entry.version + 1 })
+        return true
+      },
+    }
+  }
+
+  async remove(id: string): Promise<void> {
+    this.held.delete(id)
+    if (this.activeId === id)
+      this.activeId = null
   }
 }
 

@@ -1,10 +1,13 @@
 import type { ProviderAuthState } from '@demicodes/provider'
 import { errorMessage } from '@demicodes/utils'
 import { execFile } from 'node:child_process'
-import { readFile, writeFile } from 'node:fs/promises'
 import { promisify } from 'node:util'
 import process from 'node:process'
 import { z } from 'zod'
+import {
+  exclusiveCredentialRefresh,
+  type CredentialDocument,
+} from '@demicodes/provider/credentials-pool'
 import type { ClaudeCodeOAuthAccess } from './oauth'
 import {
   claudeCodeOAuthSecretSchema,
@@ -21,7 +24,7 @@ export interface ClaudeCodeAuthStore {
 }
 
 /**
- * Renews a pool oauth secret (wired to `refreshClaudeCodeSecret`; injectable in
+ * Renews an account's oauth secret (wired to `refreshClaudeCodeSecret`; injectable in
  * tests).
  */
 export type ClaudeCodeSecretRefresh = (
@@ -40,28 +43,33 @@ const keychainCredentialsSchema = z.looseObject({
 })
 
 export interface FileClaudeCodeAuthStoreOptions {
-  /** Optional path to oauth.json (pool entry). */
-  oauthFile?: string
-  /** Prefer this token over env/keychain when set (tests / static). */
+  /**
+   * The account's document in a credential pool. A store with a document
+   * stands for that account only: it never reads the environment or the
+   * keychain.
+   */
+  document?: CredentialDocument
+  /** Prefer this token over every other source when set (tests / static). */
   accessToken?: string | null
-  /** Renews the oauth file when its access token nears expiry. */
+  /** Renews the document when its access token nears expiry. */
   refresh?: ClaudeCodeSecretRefresh
 }
 
 /**
- * Resolves Claude OAuth: explicit token → oauth file → CLAUDE_CODE_OAUTH_TOKEN
- * → keychain.
+ * Resolves Claude OAuth: explicit token → pool document, or without a document
+ * the vendor login of this machine: CLAUDE_CODE_OAUTH_TOKEN → keychain.
  *
- * A credential that is absent moves on to the next source; one that is present
- * but malformed is an `auth_invalid` error, never a silently repaired value.
+ * A vendor source that is absent moves on to the next one; a credential that
+ * is present but malformed is an `auth_invalid` error, never a silently
+ * repaired value.
  */
 export class FileClaudeCodeAuthStore implements ClaudeCodeAuthStore {
-  private readonly oauthFile: string | null
+  private readonly document: CredentialDocument | null
   private readonly accessToken: string | null
   private readonly refresh: ClaudeCodeSecretRefresh | null
 
   constructor(options: FileClaudeCodeAuthStoreOptions = {}) {
-    this.oauthFile = options.oauthFile ?? null
+    this.document = options.document ?? null
     this.accessToken = options.accessToken || null
     this.refresh = options.refresh ?? null
   }
@@ -86,8 +94,8 @@ export class FileClaudeCodeAuthStore implements ClaudeCodeAuthStore {
     if (this.accessToken)
       return { accessToken: this.accessToken, source: 'static' }
 
-    if (this.oauthFile)
-      return this.accessFromFile(this.oauthFile)
+    if (this.document)
+      return this.accessFromDocument(this.document)
 
     const fromEnv = process.env.CLAUDE_CODE_OAUTH_TOKEN
     if (fromEnv)
@@ -105,11 +113,13 @@ export class FileClaudeCodeAuthStore implements ClaudeCodeAuthStore {
     )
   }
 
-  private async accessFromFile(
-    path: string
+  private async accessFromDocument(
+    document: CredentialDocument
   ): Promise<ClaudeCodeOAuthAccess> {
-    const stored = await readOAuthSecret(path)
-    const secret = await this.renewIfExpiring(path, stored)
+    const stored = (await readRevision(document)).secret
+    const secret = this.isExpiring(stored)
+      ? await this.renew(document)
+      : stored
     return {
       accessToken: secret.accessToken,
       source: 'file',
@@ -118,26 +128,45 @@ export class FileClaudeCodeAuthStore implements ClaudeCodeAuthStore {
     }
   }
 
-  /**
-   * Renews the secret when its access token is about to expire, and writes the
-   * renewed one back. The renewal is validated before it replaces the file, so
-   * a bad response cannot corrupt the pool entry.
-   */
-  private async renewIfExpiring(
-    path: string,
-    secret: ClaudeCodeOAuthSecret,
-  ): Promise<ClaudeCodeOAuthSecret> {
+  /** Whether the secret can be renewed and its access token is about to expire. */
+  private isExpiring(secret: ClaudeCodeOAuthSecret): boolean {
     if (!this.refresh || !secret.refreshToken || !secret.expiresAt)
-      return secret
+      return false
     const remainingMs = Date.parse(secret.expiresAt) - Date.now()
-    if (Number.isNaN(remainingMs) || remainingMs >= OAUTH_EXPIRY_SKEW_MS)
-      return secret
-    const renewed = validateOAuthSecret(
-      await this.refresh(secret),
-      'Claude OAuth renewal',
-    )
-    await writeFile(path, `${JSON.stringify(renewed, null, 2)}\n`)
-    return renewed
+    return !Number.isNaN(remainingMs) && remainingMs < OAUTH_EXPIRY_SKEW_MS
+  }
+
+  /**
+   * Renews the document's secret and stores the renewed one. The renewal is
+   * validated before it replaces the document, so a bad response cannot
+   * corrupt the account.
+   */
+  private renew(document: CredentialDocument): Promise<ClaudeCodeOAuthSecret> {
+    return exclusiveCredentialRefresh(document, async () => {
+      const latest = await readRevision(document)
+      // An earlier renewal in line has already stored fresh tokens.
+      if (!this.refresh || !this.isExpiring(latest.secret))
+        return latest.secret
+      let renewed: ClaudeCodeOAuthSecret
+      try {
+        renewed = validateOAuthSecret(
+          await this.refresh(latest.secret),
+          'Claude OAuth renewal',
+        )
+      } catch (error) {
+        // A refresh token is spent once: whoever renewed first has stored
+        // the tokens this one was refused for.
+        const stored = await readRevision(document)
+        if (stored.version !== latest.version)
+          return stored.secret
+        throw error
+      }
+      const kept = await document.replace(
+        `${JSON.stringify(renewed, null, 2)}\n`,
+        latest.version
+      )
+      return kept ? renewed : (await readRevision(document)).secret
+    })
   }
 }
 
@@ -158,7 +187,7 @@ export class StaticClaudeCodeAuthStore implements ClaudeCodeAuthStore {
 
 export class ClaudeCodeAuthError extends Error {
   constructor(
-    readonly code: 'auth_missing' | 'auth_invalid',
+    readonly code: 'auth_missing' | 'auth_invalid' | 'auth_unsupported',
     message: string,
   ) {
     super(message)
@@ -166,20 +195,23 @@ export class ClaudeCodeAuthError extends Error {
   }
 }
 
-async function readOAuthSecret(path: string): Promise<ClaudeCodeOAuthSecret> {
-  let text: string
-  try {
-    text = await readFile(path, 'utf8')
-  } catch (error) {
+async function readRevision(
+  document: CredentialDocument
+): Promise<{ secret: ClaudeCodeOAuthSecret; version: string }> {
+  const revision = await document.read()
+  if (!revision)
     throw new ClaudeCodeAuthError(
       'auth_missing',
-      `Failed to read Claude OAuth file ${path}: ${errorMessage(error)}`,
+      `Claude OAuth credential not found: ${document.name}`,
     )
+  const source = `Claude OAuth credential ${document.name}`
+  return {
+    secret: validateOAuthSecret(
+      parseCredentialJson(revision.text, source),
+      source
+    ),
+    version: revision.version,
   }
-  return validateOAuthSecret(
-    parseCredentialJson(text, `Claude OAuth file ${path}`),
-    `Claude OAuth file ${path}`,
-  )
 }
 
 /** Reads the CLI's own keychain item; null when the CLI is not logged in. */

@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readdir, writeFile } from 'node:fs/promises'
+import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'bun:test'
@@ -301,13 +301,13 @@ test(
       providerTypes: {
         'stub-sub': {
           credential: 'subscription',
-          create: ({ providerId, label, vaultDir }) =>
+          create: ({ providerId, label, credentialPool }) =>
           defineProvider({
             id: providerId,
             displayName: label,
             credentials: {
               capability: () => ({ mode: 'supported', canBeginLogin: true }),
-              list: () => [],
+              list: () => credentialPool.list(),
               getActive: () => ({
                 credentialId: 'cred-1',
                 status: { status: 'ok' } as never
@@ -322,11 +322,12 @@ test(
                   userCode: 'ABCD-1234'
                 })
                 await approve.promise
-                await mkdir(vaultDir, { recursive: true })
-                await writeFile(
-                  join(vaultDir, 'oauth.json'),
-                  '{"token":"secret"}'
-                )
+                await credentialPool.writeEntry({
+                  id: 'cred-1',
+                  label: 'stub@example.test',
+                  updatedAt: new Date().toISOString()
+                }, '{"token":"secret"}')
+                await credentialPool.setActiveId('cred-1')
                 return { status: 'completed', credentialId: 'cred-1' }
               },
             },
@@ -412,10 +413,21 @@ test(
         providerType: 'stub-sub'
       }),
     ])
-    // The login's pool became the provider's vault directory.
-    expect(existsSync(join(dataDir, 'vault', providerId, 'oauth.json')))
-      .toBe(true)
-    expect(await readdir(join(dataDir, 'vault'))).toEqual([providerId])
+    // The login's account was published with the entry, as a record: the
+    // losing login stored nothing, and nothing is a file.
+    const accounts = await api<{ accounts: Array<{ id: string }> }>(
+      backend,
+      `/api/providers/${providerId}/accounts`
+    )
+    expect(accounts.body.accounts.map(account => account.id)).toEqual(['cred-1'])
+    expect(existsSync(join(dataDir, 'vault'))).toBe(false)
+    const controlDb = openSqliteDatabase(join(dataDir, 'control.sqlite'))
+    const stored = controlDb.all<{ provider_id: string; secret: string }>(
+      'SELECT provider_id, secret FROM provider_credentials'
+    )
+    controlDb.close()
+    expect(stored.map(row => row.provider_id)).toEqual([providerId])
+    expect(stored[0]!.secret).not.toContain('secret')
 
     // One subscription per family per scope: the catalog says it is configured, a second login is refused.
     const catalog = await api<{ subscriptions: Array<{
@@ -452,7 +464,9 @@ test(
       { method: 'DELETE' }
     )
     expect(deleted.status).toBe(204)
-    expect(existsSync(join(dataDir, 'vault', providerId))).toBe(false)
+    const afterDelete = openSqliteDatabase(join(dataDir, 'control.sqlite'))
+    expect(afterDelete.all('SELECT id FROM provider_credentials')).toEqual([])
+    afterDelete.close()
 
     await backend.close()
   },

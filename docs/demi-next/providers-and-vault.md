@@ -173,23 +173,27 @@ three rules:
   Network providers (Codex, Grok Build, API keys) never send a credential off
   the backend.
 
-### The credential store contract
+### The credential pool contract
 
 A provider package does not know where credentials live. It receives a
-**credential store** and keeps the vendor-specific secret document opaque to it:
+**credential pool** bound to one entry and keeps the vendor-specific secret
+document opaque to it
+([Provider credentials](../provider-global-credentials.md#51-the-pool-is-injected)):
 
 | Operation | Meaning |
 |---|---|
-| `list()` | Public metadata of every account of this entry |
-| `read(id)` | `{ meta, secret, version }`, or nothing |
-| `put(meta, secret)` | Insert, or replace the account with the same identity key |
-| `replace(id, secret, version)` | Write a refreshed secret only if `version` is still current |
+| `list`, `readMeta`, `findByIdentityKey` | Public metadata of this entry's accounts |
+| `writeEntry(meta, secret)` | Insert, or replace the account with this id |
+| `document(id).read()` | `{ text, version }`, or nothing |
+| `document(id).replace(text, version)` | Write a refreshed secret only if `version` is still current |
+| `getActiveId`, `setActiveId` | The account the entry infers with |
 | `remove(id)` | Delete the account |
+| `vendorDefault` | False: an entry without an account never stands for a vendor login of this machine |
 
-The backend's store is the `provider_credentials` table. The framework keeps a
-file store under `$DEMI_HOME` for local consumers, and only that store may fall
-back to the vendor's own login. See
-[Provider credentials](../provider-global-credentials.md).
+The backend's pool is the `provider_credentials` table
+(`backend/vault/credential-pool.ts`). The framework keeps a file pool under
+`$DEMI_HOME` for local consumers, and only that pool may fall back to the
+vendor's own login.
 
 **Refresh** goes through `replace`. OAuth refresh tokens are single-use, so two
 refreshers of one account race: the one whose `replace` finds a newer version,
@@ -278,15 +282,15 @@ A displayed quota snapshot is not itself a product token-budget enforcement rule
 
 ## Implementation limits
 
-Subscription accounts are not yet control-store records. The current
-implementation keeps each entry's accounts in a pool directory
-(`vault/<providerId>/`) written by the provider package's file store, with the
-active pointer and a `quota.json` usage snapshot beside them. That pool is
-unencrypted, exists on one backend only, builds the runtime for the active
-account alone (so only that account can be tested or probed), clears usage on
-every switch, and falls back to the backend machine's vendor login when the pool
-is empty. [Credential vault](#credential-vault) replaces all of it; the first
-start on the new store imports each pool directory and then removes it.
+A backend that finds pool directories of an older version under
+`<dataDir>/vault/` imports each into its entry's account records — secrets,
+active selection and usage snapshot — and removes it, before serving.
+
+`DEMI_INSTANCE_SECRET` is not read yet: the instance secret is the file in the
+data directory. Each backend holds the latest usage snapshot of an account in
+memory beside its record, so with several workers a snapshot another worker
+stored shows after the next probe or restart; multi-worker deployment is not
+implemented.
 
 The current request limiter is an in-memory, per-backend sliding window with a
 default of 120 requests per user per minute. It is not a distributed limiter or

@@ -123,10 +123,15 @@ function removeProvider(id: string) {
 }
 
 /** The mock judges a connection by its inputs: no key is rejected, localhost is unreachable. */
-function test(p: SettingsProviderEntry) {
-  testing.value = p.id
+function test(p: SettingsProviderEntry, accountId?: string) {
+  if (accountId) {
+    accountOperation.value = { providerId: p.id, accountId, action: 'test' }
+  } else {
+    testing.value = p.id
+  }
   window.setTimeout(() => {
     testing.value = null
+    accountOperation.value = null
     if (p.vendorId && !p.apiKey) {
       p.state = 'error'
       p.detail = '401 · No API key provided'
@@ -151,16 +156,29 @@ function refresh(p: SettingsProviderEntry) {
   }, 1400)
 }
 
-// The product asks the vendor; here the active account's windows move a little, as a fresh answer would.
-const usageRefreshing = ref<string | null>(null)
+// The product asks the vendor about one account, in use or not; here that account's
+// windows move a little, as a fresh answer would.
+const accountOperation = ref<{
+  providerId: string
+  accountId: string
+  action: 'test' | 'usage'
+} | null>(null)
 const operations = computed<Record<string, SettingsProviderOperation>>(() =>
-  usageRefreshing.value ? { [usageRefreshing.value]: { kind: 'usage' } } : {},
+  accountOperation.value
+    ? {
+        [accountOperation.value.providerId]: {
+          kind: 'account',
+          accountId: accountOperation.value.accountId,
+          action: accountOperation.value.action,
+        },
+      }
+    : {},
 )
-function refreshUsage(p: SettingsProviderEntry) {
-  usageRefreshing.value = p.id
+function refreshUsage(p: SettingsProviderEntry, accountId: string) {
+  accountOperation.value = { providerId: p.id, accountId, action: 'usage' }
   window.setTimeout(() => {
-    usageRefreshing.value = null
-    for (const window of p.accounts.find((account) => account.active)?.quota ?? []) {
+    accountOperation.value = null
+    for (const window of p.accounts.find((account) => account.id === accountId)?.quota ?? []) {
       window.used = Math.min(window.max, window.used + 1)
     }
   }, 1200)

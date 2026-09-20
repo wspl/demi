@@ -20,6 +20,7 @@ import { LocalControlService } from '../storage/control'
 import { openSqliteDatabase } from '../storage/database'
 import { CONTROL_MIGRATIONS, migrate } from '../storage/migrations'
 import { ProviderRateLimiter } from '../usage/rate-limit'
+import { AccountQuotas } from '../vault/credential-pool'
 import { ProviderVault } from '../vault/providers'
 
 test(
@@ -82,7 +83,7 @@ test(
           },
         }),
       },
-    }, '/unused-vault', new VendorCatalog(), new ModelCatalogCache(control))
+    }, new AccountQuotas(control), new VendorCatalog(), new ModelCatalogCache(control))
     const resolve = createSessionProviderResolver({
       assembly,
       control,
@@ -238,7 +239,7 @@ test(
           createRuntime: () => new StubProvider([[events.response()]]),
         }),
       },
-    }, '/unused-vault', new VendorCatalog(), new ModelCatalogCache(control))
+    }, new AccountQuotas(control), new VendorCatalog(), new ModelCatalogCache(control))
     try {
       pauseNextRead = true
       const oldLookup = assembly.providerFor(entry.id)

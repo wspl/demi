@@ -219,6 +219,32 @@ CREATE UNIQUE INDEX idx_providers_subscription_owner ON providers(owner_user_id,
   WHERE credential_kind = 'subscription';
 `,
   },
+  {
+    id: 7,
+    name: 'provider_credentials',
+    // A subscription entry's accounts (providers-and-vault.md § Credential
+    // vault): the secret document is encrypted like `providers.config`, every
+    // secret write advances `version`, and `quota` is the account's usage
+    // snapshot. The entry names the account it infers with.
+    sql: `
+CREATE TABLE provider_credentials (
+  provider_id  TEXT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+  id           TEXT NOT NULL,
+  identity_key TEXT,
+  label        TEXT NOT NULL,
+  detail       TEXT,
+  source       TEXT,
+  secret       TEXT NOT NULL,
+  version      INTEGER NOT NULL,
+  quota        TEXT,
+  updated_at   TEXT NOT NULL,
+  PRIMARY KEY (provider_id, id)
+);
+CREATE UNIQUE INDEX idx_provider_credentials_identity ON provider_credentials(provider_id, identity_key)
+  WHERE identity_key IS NOT NULL;
+ALTER TABLE providers ADD COLUMN active_credential_id TEXT;
+`,
+  },
 ]
 
 /**

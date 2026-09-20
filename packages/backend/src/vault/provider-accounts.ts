@@ -1,4 +1,3 @@
-import { rename, rm } from 'node:fs/promises'
 import { createId } from '@demicodes/utils'
 import type { ProviderCredentials } from '@demicodes/provider'
 import type { ProviderAssembly } from '../llm/assembly'
@@ -37,13 +36,11 @@ export class ProviderAccounts {
         'Add this token to the existing Claude provider'
       )
     }
-    const id = createId()
-    const pendingDir = this.assembly.vaultDir(`pending-${id}`)
-    let unpublishedDir: string | null = pendingDir
+    const staged = this.vault.stagedCredentialPool()
     try {
       const provider = this.assembly.buildDetached(
         'claude-code',
-        { id, label, vaultDir: pendingDir }
+        { id: createId(), label, credentialPool: staged }
       )
       if (!provider.credentials?.add)
         throw new AccountRefused(
@@ -52,20 +49,14 @@ export class ProviderAccounts {
           400
         )
       await provider.credentials.add({ accessToken: token })
-      const destination = this.assembly.vaultDir(id)
-      await rename(pendingDir, destination)
-      unpublishedDir = destination
-      const entry = await this.vault.create({
-        id,
+      return await this.vault.create({
         ownerUserId,
         label,
         config: {
           kind: 'subscription',
           providerType: 'claude-code'
         }
-      })
-      unpublishedDir = null
-      return entry
+      }, await staged.accounts())
     } catch (error) {
       if (error instanceof AccountRefused)
         throw error
@@ -74,9 +65,6 @@ export class ProviderAccounts {
         'token_import_failed',
         'Unable to import setup token'
       )
-    } finally {
-      if (unpublishedDir)
-        await rm(unpublishedDir, { recursive: true, force: true })
     }
   }
 

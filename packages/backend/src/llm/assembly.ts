@@ -1,7 +1,5 @@
 import { createHash } from 'node:crypto'
 import { ModelCatalogCache } from './model-catalog-cache'
-import { rm } from 'node:fs/promises'
-import { join } from 'node:path'
 import {
   modelSelectionFromCatalog,
   providerRuntime,
@@ -11,6 +9,9 @@ import {
   type ProviderModelList
 } from '@demicodes/provider'
 import type { ModelSelection } from '@demicodes/core'
+import type { ProviderQuotaSnapshots } from '@demicodes/provider'
+import type { CredentialPool } from '@demicodes/provider/credentials-pool'
+import type { AccountQuotas } from '../vault/credential-pool'
 import { createId, errorMessage } from '@demicodes/utils'
 import { createAnthropicApiProvider } from '@demicodes/provider-anthropic-api'
 import {
@@ -49,15 +50,17 @@ export interface ProviderType {
 }
 
 /**
- * Builds a base provider for one entry; the provider id is the entry id.
- * `vaultDir` is the entry's private credential-pool root — subscription
- * providers keep their OAuth material there.
+ * Builds a base provider for one entry; the provider id is the entry id. A
+ * subscription provider reads its accounts from `credentialPool` and stands for
+ * the account `credentialId` names, whose usage `quotaSnapshots` keeps.
  */
 export type ProviderTypeFactory = (options: {
   providerId: string
   label: string
   config: ProviderConfig
-  vaultDir: string
+  credentialPool: CredentialPool
+  credentialId?: string
+  quotaSnapshots?: ProviderQuotaSnapshots
   /**
    * Present when the provider needs the session's execution target (CLI
    * transports).
@@ -81,6 +84,11 @@ function apiKey(config: ProviderConfig): ApiKeyProviderConfig {
 }
 
 export function builtinProviderTypes(): Record<string, ProviderType> {
+  const accountOf = (options: Parameters<ProviderTypeFactory>[0]) => ({
+    credentialPool: options.credentialPool,
+    ...(options.credentialId ? { credentialId: options.credentialId } : {}),
+    ...(options.quotaSnapshots ? { quotaSnapshots: options.quotaSnapshots } : {}),
+  })
   const common = ({ providerId, label }: {
     providerId: string;
     label: string
@@ -136,18 +144,18 @@ export function builtinProviderTypes(): Record<string, ProviderType> {
     'claude-code': subscription((options) =>
     createClaudeCodeProvider({
       ...common(options),
-      stateDir: options.vaultDir,
+      ...accountOf(options),
       ...(options.session ? { spawn: options.session.spawn } : {}),
     }),
     ),
     codex: subscription(
       (options) => createCodexProvider(
-        { ...common(options), stateDir: options.vaultDir }
+        { ...common(options), ...accountOf(options) }
       )
     ),
     'grok-build': subscription(
       (options) => createGrokBuildProvider(
-        { ...common(options), stateDir: options.vaultDir }
+        { ...common(options), ...accountOf(options) }
       )
     ),
   }
@@ -179,8 +187,7 @@ export class ProviderAssembly {
   constructor(
     private readonly vault: ProviderVault,
     private readonly types: Record<string, ProviderType>,
-    /** Per-entry credential-pool root: `<vaultRoot>/<providerId>/`. */
-    private readonly vaultRoot: string,
+    private readonly quotas: AccountQuotas,
     private readonly vendors: VendorCatalog,
     private readonly catalogs: ModelCatalogCache,
   ) {}
@@ -192,20 +199,16 @@ export class ProviderAssembly {
       .map(([name]) => name)
   }
 
-  vaultDir(providerId: string): string {
-    return join(this.vaultRoot, providerId)
-  }
-
   /**
    * Builds a provider through a registered type factory without a provider row
-   * (login flows).
+   * (login flows): its accounts are the staged pool's until it is published.
    */
   buildDetached(
     providerType: string,
     options: {
       id: string;
       label: string;
-      vaultDir: string
+      credentialPool: CredentialPool
     }
   ): Provider {
     const type = this.types[providerType]
@@ -215,14 +218,8 @@ export class ProviderAssembly {
       providerId: options.id,
       label: options.label,
       config: { kind: 'subscription', providerType },
-      vaultDir: options.vaultDir,
+      credentialPool: options.credentialPool,
     })
-  }
-
-  /** Removes a deleted provider's credential-pool directory. */
-  async deleteProviderState(providerId: string): Promise<void> {
-    await this.invalidate(providerId)
-    await rm(this.vaultDir(providerId), { recursive: true, force: true })
   }
 
   /**
@@ -241,36 +238,80 @@ export class ProviderAssembly {
     const cached = this.cache.get(providerId)
     if (cached &&
       cached.entry.label === entry.label &&
+      cached.entry.activeCredentialId === entry.activeCredentialId &&
       JSON.stringify(cached.entry.config) === JSON.stringify(entry.config)) {
       return { entry, provider: cached.provider }
     }
-    const provider = this.build(entry)
+    const provider = await this.build(entry, entry.activeCredentialId)
     this.cache.set(providerId, { entry, provider })
     return { entry, provider }
+  }
+
+  /** The entry's public facts, with the usage kept for each of its accounts. */
+  async details(entry: ProviderEntry, provider: Provider) {
+    const usage = new Map((await this.vault.accounts(entry.id)).map(
+      account => [account.id, this.quotas.latest(entry.id, account)] as const
+    ))
+    return providerDetails(provider, {
+      requireAccount: entry.config.kind === 'subscription',
+      usage
+    })
   }
 
   /**
    * Builds an independent session provider from the entry snapshot selected for
    * this request.
    */
-  forSession(entry: ProviderEntry, session: SessionProviderContext): Provider {
-    return this.build(entry, session)
+  forSession(
+    entry: ProviderEntry,
+    session: SessionProviderContext
+  ): Promise<Provider> {
+    return this.build(entry, entry.activeCredentialId, session)
   }
 
-  private build(
+  /**
+   * The entry's provider standing for one of its accounts, whichever is
+   * active; null when the entry has no such account.
+   */
+  async forAccount(
     entry: ProviderEntry,
+    credentialId: string
+  ): Promise<Provider | null> {
+    if (credentialId === entry.activeCredentialId)
+      return (await this.providerFor(entry.id))?.provider ?? null
+    return await this.vault.account(entry.id, credentialId)
+      ? this.build(entry, credentialId)
+      : null
+  }
+
+  private async build(
+    entry: ProviderEntry,
+    credentialId: string | null,
     session?: SessionProviderContext
-  ): Provider {
+  ): Promise<Provider> {
     const type = this.types[entry.config.providerType]
     if (!type)
       throw new Error(`Unknown provider type "${entry.config.providerType}"`)
+    const account = credentialId
+      ? await this.vault.account(entry.id, credentialId)
+      : null
     return type.create({
       providerId: entry.id,
       label: entry.label,
       config: entry.config,
-      vaultDir: this.vaultDir(entry.id),
+      credentialPool: this.vault.credentialPool(entry.id),
+      ...(account ? {
+        credentialId: account.id,
+        quotaSnapshots: this.quotas.keeper(entry.id, account),
+      } : {}),
       ...(session ? { session } : {}),
     })
+  }
+
+  /** Forgets what is held of a deleted provider. */
+  async deleteProviderState(providerId: string): Promise<void> {
+    await this.invalidate(providerId)
+    this.quotas.forget(providerId)
   }
 
   async invalidate(providerId: string): Promise<void> {
@@ -303,7 +344,9 @@ export class ProviderAssembly {
    */
   async testProvider(
     providerId: string,
-    modelId: string
+    modelId: string,
+    /** The account to test, instead of the one the entry infers with. */
+    credentialId?: string
   ): Promise<{
     ok: boolean;
     message?: string
@@ -312,7 +355,12 @@ export class ProviderAssembly {
     const resolved = await this.providerFor(providerId)
     if (!resolved)
       return { ok: false, message: 'Unknown provider' }
-    const { entry, provider } = resolved
+    const { entry } = resolved
+    const provider = credentialId
+      ? await this.forAccount(entry, credentialId)
+      : resolved.provider
+    if (!provider)
+      return { ok: false, message: 'Unknown account' }
     // A CLI transport runs on the conversation's execution target, never on this machine.
     if (provider.requiresProcessCapableHost) {
       return {
@@ -392,7 +440,7 @@ export class ProviderAssembly {
         try {
           health = await providerDetails(
             provider,
-            entry.config.kind === 'subscription'
+            { requireAccount: entry.config.kind === 'subscription' }
           )
         } catch (error) {
           health = {

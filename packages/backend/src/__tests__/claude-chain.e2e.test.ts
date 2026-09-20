@@ -5,7 +5,6 @@ import { join } from 'node:path'
 import { expect, test } from 'bun:test'
 import type { ModelSelection } from '@demicodes/core'
 import { AgentClient, createWebSocketClientTransport } from '@demicodes/agent'
-import { FileCredentialPool } from '@demicodes/provider/credentials-pool'
 import { startRunner } from '@demicodes/host-remote/testing'
 import { delay, waitFor } from '@demicodes/utils'
 import { LocalControlService } from '../storage/control'
@@ -111,11 +110,12 @@ chain(
         // the CLI at the mock upstream.
         'claude-code': {
           credential: 'subscription',
-          create: ({ providerId, label, vaultDir, session }) =>
+          create: ({ providerId, label, credentialPool, credentialId, session }) =>
           createClaudeCodeProvider({
             id: providerId,
             displayName: label,
-            stateDir: vaultDir,
+            credentialPool,
+            ...(credentialId ? { credentialId } : {}),
             ...(session ? { spawn: session.spawn } : {}),
             env: { ANTHROPIC_BASE_URL: `http://localhost:${upstream.port}` },
           }),
@@ -159,11 +159,7 @@ chain(
       label: 'Claude subscription',
       config: { kind: 'subscription', providerType: 'claude-code' },
     })
-    const pool = new FileCredentialPool({
-      stateDir: join(dataDir, 'vault', provider.id),
-      providerKey: 'claude-code',
-      secretFileName: 'oauth.json',
-    })
+    const pool = vault.credentialPool(provider.id)
     const meta = await pool.writeEntry(
       {
         id: 'cred-chain',

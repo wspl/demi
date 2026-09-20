@@ -95,10 +95,11 @@ const emit = defineEmits<{
   addEndpoint: [wireApi: SettingsWireApi]
   remove: [id: string]
   signIn: [provider: SettingsProviderEntry]
-  test: [provider: SettingsProviderEntry]
+  /** Test the provider; a subscription names the account to test with. */
+  test: [provider: SettingsProviderEntry, accountId?: string]
   refresh: [provider: SettingsProviderEntry]
-  /** Ask the vendor for the active account's usage again. */
-  refreshUsage: [provider: SettingsProviderEntry]
+  /** Ask the vendor for one account's usage again. */
+  refreshUsage: [provider: SettingsProviderEntry, accountId: string]
   activateAccount: [provider: SettingsProviderEntry, accountId: string]
   removeAccount: [provider: SettingsProviderEntry, accountId: string]
   removeModel: [provider: SettingsProviderEntry, model: SettingsProviderModel]
@@ -194,22 +195,31 @@ function isTesting(provider: SettingsProviderEntry): boolean {
   return props.testing === provider.id || props.operations?.[provider.id]?.kind === 'testing'
 }
 
-// A subscription's test ends in a toast: its button has no row to show the answer in.
-const testingSubscriptions = computed(() =>
-  props.providers.filter((provider) => provider.kind === 'subscription' && isTesting(provider)).map((provider) => provider.id),
+// An account's test ends in a toast: its button has no row to show the answer in.
+const testingAccounts = computed(() =>
+  props.providers.flatMap((provider) => {
+    const operation = props.operations?.[provider.id]
+    return operation?.kind === 'account' && operation.action === 'test'
+      ? [{ providerId: provider.id, accountId: operation.accountId }]
+      : []
+  }),
 )
-watch(testingSubscriptions, (now, before) => {
-  for (const id of before.filter((candidate) => !now.includes(candidate))) {
-    const provider = props.providers.find((candidate) => candidate.id === id)
-    if (!provider) {
+watch(testingAccounts, (now, before) => {
+  for (const tested of before) {
+    if (now.some((candidate) => candidate.providerId === tested.providerId && candidate.accountId === tested.accountId)) {
+      continue
+    }
+    const provider = props.providers.find((candidate) => candidate.id === tested.providerId)
+    const account = provider?.accounts?.find((candidate) => candidate.id === tested.accountId)
+    if (!provider || !account) {
       continue
     }
     const model = provider.testedWith ? ` · ${provider.testedWith}` : ''
     // A test that failed left the provider's own words; one that passed left none.
     if (!provider.detail) {
-      showToast({ title: `${provider.name} connected${model}`, tone: 'success' })
+      showToast({ title: `${account.label} connected${model}`, tone: 'success' })
     } else {
-      showToast({ title: `${provider.name} test failed${model}`, message: provider.detail, tone: 'danger' })
+      showToast({ title: `${account.label} test failed${model}`, message: provider.detail, tone: 'danger' })
     }
   }
 })
@@ -315,7 +325,7 @@ async function saveModel(draft: SettingsModelDraft) {
 function accountPending(
   providerId: string,
   accountId: string,
-  action: 'activate' | 'remove',
+  action: 'activate' | 'remove' | 'test' | 'usage',
 ): boolean {
   const operation = props.operations?.[providerId]
   return (
@@ -515,37 +525,32 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                     >Activate</Button
                   >
                   <!-- Usage is the vendor's to report and is asked for, never polled: here, and once
-                       when an account becomes the active one. It belongs to the active account. -->
-                  <Tooltip v-if="account.active" content="Refresh usage"
+                       when an account is added. Each account keeps its own. -->
+                  <Tooltip content="Refresh usage"
                     ><IconButton
                       size="sm"
                       :icon="RefreshCw"
                       aria-label="Refresh usage"
                       spin-on-click
-                      :spinning="operations?.[selected.id]?.kind === 'usage'"
-                      :disabled="!!operations?.[selected.id] && operations[selected.id]?.kind !== 'usage'"
-                      @click="emit('refreshUsage', selected)"
+                      :spinning="accountPending(selected.id, account.id, 'usage')"
+                      :disabled="!!operations?.[selected.id] && !accountPending(selected.id, account.id, 'usage')"
+                      @click="emit('refreshUsage', selected, account.id)"
                   /></Tooltip>
-                  <!-- The test asks with the account requests go out on; its answer is a toast,
+                  <!-- The test asks with this account, in use or not; its answer is a toast,
                        since the row has no room to keep it. -->
                   <Tooltip content="Test connection"
                     ><IconButton
                       size="sm"
                       :icon="Plug"
                       aria-label="Test connection"
-                      :loading="account.active && isTesting(selected)"
+                      :loading="accountPending(selected.id, account.id, 'test')"
                       :disabled="
-                        !account.active ||
                         selected.runsOnHost === true ||
-                        (!!operations?.[selected.id] && !isTesting(selected)) ||
+                        (!!operations?.[selected.id] && !accountPending(selected.id, account.id, 'test')) ||
                         !selected.models.some((model) => model.enabled)
                       "
-                      :disabled-reason="
-                        account.active
-                          ? testBlockReason
-                          : 'Requests use the active account; activate this one to test it'
-                      "
-                      @click="emit('test', selected)"
+                      :disabled-reason="testBlockReason"
+                      @click="emit('test', selected, account.id)"
                   /></Tooltip>
                   <Tooltip content="Remove"
                     ><IconButton

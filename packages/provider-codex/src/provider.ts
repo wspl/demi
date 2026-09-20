@@ -7,6 +7,8 @@ import {
   mapResponsesEvents,
   httpFailureRecord,
   normalizeErrorCode,
+  fileQuotaSnapshots,
+  type ProviderQuotaSnapshots,
   quotaSnapshotFile,
   withRetryWait,
   type AgentProvider,
@@ -31,6 +33,7 @@ import {
 } from './credentials'
 import { readCodexFailure } from './failure'
 import { listCodexModels } from './models'
+import type { CredentialPool } from '@demicodes/provider/credentials-pool'
 import { createCodexQuota } from './quota'
 import { buildCodexResponsesRequestBody } from './responses'
 import {
@@ -68,6 +71,12 @@ export interface CodexProviderOptions extends CodexProviderConfig {
   authStore?: CodexAuthStore
   /** Demi state root for credential pool (`$DEMI_HOME` / `~/.demi`). */
   stateDir?: string
+  /** The accounts of this entry, kept by the caller instead of under `stateDir`. */
+  credentialPool?: CredentialPool
+  /** The account this provider stands for, instead of the pool's active one. */
+  credentialId?: string
+  /** Keeps the account's usage snapshot; by default a file in `stateDir`. */
+  quotaSnapshots?: ProviderQuotaSnapshots
   /**
    * When true (default if `authStore` is not provided), attach multi-credential
    * pool + global switch under `provider.credentials`.
@@ -204,17 +213,18 @@ export function createCodexProvider(
   const displayName = options.displayName ?? 'Codex'
   const enableCredentials = options.credentials
     ?? options.authStore === undefined
-  const pool = !options.authStore
-    && enableCredentials ? openCodexCredentialPool(
-    {
-      stateDir: options.stateDir
-    }
-  ) : null
+  const pool = !options.authStore && enableCredentials
+    ? options.credentialPool
+      ?? openCodexCredentialPool({ stateDir: options.stateDir })
+    : null
 
   const authStore: CodexAuthStore =
     options.authStore ??
     (pool
-      ? new PoolAwareCodexAuthStore(pool, { codexHome: options.codexHome })
+      ? new PoolAwareCodexAuthStore(pool, {
+        codexHome: options.codexHome,
+        credentialId: options.credentialId,
+      })
       : new FileCodexAuthStore({ codexHome: options.codexHome }))
 
   const runtimeOptions: CodexRuntimeOptions = {
@@ -235,7 +245,8 @@ export function createCodexProvider(
     baseUrl: options.baseUrl,
     authStore,
     userAgent: options.userAgent,
-    snapshotFile: quotaSnapshotFile(options.stateDir),
+    snapshots: options.quotaSnapshots
+      ?? fileQuotaSnapshots(quotaSnapshotFile(options.stateDir), id),
   })
   runtimeOptions.quota = quota
 
@@ -243,7 +254,11 @@ export function createCodexProvider(
     ? createCodexCredentials(
       pool,
       authStore,
-      { codexHome: options.codexHome, quota }
+      {
+        codexHome: options.codexHome,
+        quota,
+        pinned: options.credentialId !== undefined,
+      }
     )
     : undefined
 

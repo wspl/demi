@@ -1,10 +1,13 @@
 import type {
+  ProviderCredentialRecord,
+  ProviderCredentialWrite,
   ProviderRecord,
   ProviderScope,
   ControlService
 } from '../storage/control'
 import type { InstanceMode } from '../auth/identity'
 import { decryptJson, encryptJson } from './crypto'
+import { StagedCredentialPool, VaultCredentialPool } from './credential-pool'
 
 import { z } from 'zod'
 import { configuredModelsSchema } from '../llm/model-config'
@@ -35,6 +38,8 @@ export interface ProviderEntry {
   ownerUserId: string
   label: string
   config: ProviderConfig
+  /** The account a subscription entry infers with. */
+  activeCredentialId: string | null
   createdAt: string
 }
 
@@ -66,6 +71,27 @@ export class ProviderVault {
     return this.masterId
   }
 
+  /** The accounts of one subscription entry. */
+  credentialPool(providerId: string): VaultCredentialPool {
+    return new VaultCredentialPool(this.control, this.secret, providerId)
+  }
+
+  /** The accounts of an entry a login has yet to publish. */
+  stagedCredentialPool(): StagedCredentialPool {
+    return new StagedCredentialPool(this.secret)
+  }
+
+  accounts(providerId: string): Promise<ProviderCredentialRecord[]> {
+    return this.control.listProviderCredentials(providerId)
+  }
+
+  account(
+    providerId: string,
+    credentialId: string
+  ): Promise<ProviderCredentialRecord | null> {
+    return this.control.getProviderCredential(providerId, credentialId)
+  }
+
   /** The provider a user may name, or null. */
   async visible(userId: string, providerId: string): Promise<ProviderEntry | null> {
     const [provider, ownerUserId] = await Promise.all([
@@ -80,6 +106,9 @@ export class ProviderVault {
     ownerUserId: string;
     label: string;
     config: ProviderConfig
+  }, accounts?: {
+    credentials: ProviderCredentialWrite[];
+    activeCredentialId: string | null
   }): Promise<ProviderEntry> {
     const record = await this.control.createProvider({
       ...(options.id ? { id: options.id } : {}),
@@ -88,7 +117,7 @@ export class ProviderVault {
       credentialKind: options.config.kind,
       label: options.label,
       config: encryptJson(this.secret, options.config),
-    })
+    }, accounts)
     return this.decode(record)
   }
 
@@ -135,6 +164,7 @@ export class ProviderVault {
       config: providerConfigSchema.parse(
         decryptJson(this.secret, record.config)
       ),
+      activeCredentialId: record.activeCredentialId,
       createdAt: record.createdAt,
     }
   }

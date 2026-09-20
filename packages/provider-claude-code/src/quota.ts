@@ -7,6 +7,7 @@ import {
   unixSecondsToIso,
   type ProviderQuota,
   type ProviderQuotaProbeResult,
+  type ProviderQuotaSnapshots,
   type ProviderQuotaWindow,
 } from '@demicodes/provider'
 import {
@@ -24,7 +25,7 @@ export interface ClaudeCodeQuotaOptions {
   ) => Promise<Response>
   usageUrl?: string
   /** Where the latest snapshot is kept across rebuilds and restarts (`createProviderQuota`). */
-  snapshotFile?: string
+  snapshots?: ProviderQuotaSnapshots
 }
 
 const DEFAULT_USAGE_URL = 'https://api.anthropic.com/api/oauth/usage'
@@ -85,7 +86,7 @@ export function createClaudeCodeQuota(
 
   return createProviderQuota({
     providerId,
-    snapshotFile: options.snapshotFile,
+    snapshots: options.snapshots,
     canProbe: true,
     canObserve: true,
     probeCost: 'free',

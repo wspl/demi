@@ -249,36 +249,58 @@ export interface Provider {
 
 ## 5. Storage
 
-### 5.1 The store is injected
+### 5.1 The pool is injected
 
-A provider kit reads and writes accounts through a `ProviderCredentialStore` and
-never assumes where they live:
+A provider kit reads and writes accounts through a `CredentialPool`
+(`@demicodes/provider/credentials-pool`) and never assumes where they live:
 
 ```ts
-interface ProviderCredentialStore {
-  list(): Promise<CredentialEntryMeta[]>
-  read(id: string): Promise<{ meta: CredentialEntryMeta; secret: unknown; version: string } | null>
-  /** Insert, or replace the entry with the same identityKey. */
-  put(meta: CredentialEntryDraft, secret: unknown): Promise<CredentialEntryMeta>
-  /** Write a refreshed secret; false when `version` is no longer current. */
-  replace(id: string, secret: unknown, version: string): Promise<boolean>
+interface CredentialPool {
+  /** Whether an empty pool stands for the vendor's own login on this machine. */
+  readonly vendorDefault: boolean
+  list(): Promise<ProviderCredentialInfo[]>
+  listMeta(): Promise<CredentialEntryMeta[]>
+  readMeta(id: string): Promise<CredentialEntryMeta | null>
+  findByIdentityKey(identityKey: string): Promise<CredentialEntryMeta | null>
+  getActiveId(): Promise<string | null>
+  setActiveId(id: string): Promise<void>
+  ensureActivePointer(): Promise<string | null>
+  /** Insert, or replace the entry with this id. */
+  writeEntry(meta: CredentialEntryMeta, secretText: string): Promise<CredentialEntryMeta>
+  document(id: string): CredentialDocument
   remove(id: string): Promise<void>
+}
+
+interface CredentialDocument {
+  readonly key: string   // identifies the document across handles; never secret
+  readonly name: string  // names it in messages; never secret
+  read(): Promise<{ text: string; version: string } | null>
+  /** Stores `text` if the document is still at `version`. */
+  replace(text: string, version: string): Promise<boolean>
 }
 ```
 
-`secret` is the kit's own document (Codex `auth.json` shape, Grok entry, Claude
-OAuth tokens), validated by the kit on every read. A refresh that loses `replace`
-reads the entry again and uses what it finds.
+The document's text is the kit's own format (Codex `auth.json`, a Grok entry,
+Claude OAuth tokens), validated by the kit on every read. **Refresh** runs under
+`exclusiveCredentialRefresh(document, …)`, which makes refreshes of one account
+in a process take turns, and ends in `replace`. A refresh token is spent once,
+so a refresher that loses — `replace` answers false, or the vendor refuses while
+the version moved — reads the document again and uses the winner's tokens. It
+fails only when the document did not change.
 
-The runtime, auth status, quota and model discovery are built **for one entry**:
-`create*Provider({ store, credentialId })`. The active pointer is the caller's
-choice of `credentialId`, not state inside the kit, so a product can test or
-probe an account it is not using. `credentials.setActive` remains for the file
-store, where the pointer is a file.
+`create*Provider({ credentialPool, credentialId })` builds the runtime, auth
+status, quota and model discovery **for one account**. Without `credentialId`
+the provider follows the pool's active pointer, as local consumers do. With it,
+the provider stands for that account whichever is active, so a product can test
+or probe an account it is not using, and another account being added, selected
+or removed does not clear this one's usage.
 
-A product with its own storage (Demi Next keeps accounts as encrypted control
-records) supplies its store and gets no vendor-default fallback: §6's read-through
-of `~/.codex`, `~/.grok`, env and keychain applies to the file store alone.
+A pool with `vendorDefault: false` has no vendor fallback: §6's read-through of
+`~/.codex`, `~/.grok`, the environment token and the keychain, and
+`importDefault`, exist only for the framework's file pool. A product that serves
+other users (Demi Next keeps accounts as encrypted control records) must not
+lend them the login of whoever operates the machine; its entry without an
+account is unauthenticated.
 
 ### 5.2 The file store
 

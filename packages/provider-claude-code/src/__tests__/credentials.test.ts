@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
 import { createProviderQuota } from '@demicodes/provider'
+import { MemoryCredentialPool } from '@demicodes/provider/credentials-pool'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -97,4 +98,120 @@ test('custom authStore skips credentials surface', () => {
     }),
   })
   expect(provider.credentials).toBeUndefined()
+})
+
+test('a pinned credential resolves whichever account is active', async () => {
+  const pool = new MemoryCredentialPool()
+  const credentials = createClaudeCodeCredentials(
+    pool,
+    new PoolAwareClaudeCodeAuthStore(pool)
+  )
+  const a = await credentials.add!({ accessToken: 'token-a' })
+  const b = await credentials.add!({
+    accessToken: 'token-b',
+    subscriptionType: 'max'
+  })
+  await credentials.setActive(a.id)
+
+  const pinned = new PoolAwareClaudeCodeAuthStore(pool, { credentialId: b.id })
+  expect((await pinned.resolveAccess()).accessToken).toBe('token-b')
+  expect(await pinned.status()).toMatchObject({
+    status: 'authenticated',
+    accountLabel: 'max',
+  })
+  expect(await pool.getActiveId()).toBe(a.id)
+})
+
+test('an empty pool without a vendor default never reads the machine login', async () => {
+  const previous = process.env.CLAUDE_CODE_OAUTH_TOKEN
+  process.env.CLAUDE_CODE_OAUTH_TOKEN = 'operator-token'
+  try {
+    const pool = new MemoryCredentialPool(false)
+    const authStore = new PoolAwareClaudeCodeAuthStore(pool)
+    // The message is the pool's own: neither the environment nor the keychain
+    // lookup produced it.
+    expect(await authStore.status()).toEqual({
+      status: 'unauthenticated',
+      message: 'No Claude Code account is signed in',
+    })
+    await expect(authStore.resolveAccess()).rejects.toThrow(
+      'No Claude Code account is signed in'
+    )
+
+    const credentials = createClaudeCodeCredentials(pool, authStore)
+    expect(credentials.capability()).toMatchObject({ canImportDefault: false })
+    await expect(credentials.importDefault!()).rejects.toThrow(/vendor login/)
+    expect(await credentials.list()).toEqual([])
+  } finally {
+    if (previous === undefined)
+      delete process.env.CLAUDE_CODE_OAUTH_TOKEN
+    else
+      process.env.CLAUDE_CODE_OAUTH_TOKEN = previous
+  }
+})
+
+test('an empty pool with a vendor default reads the environment token', async () => {
+  const previous = process.env.CLAUDE_CODE_OAUTH_TOKEN
+  process.env.CLAUDE_CODE_OAUTH_TOKEN = 'own-token'
+  try {
+    const pool = new MemoryCredentialPool(true)
+    const authStore = new PoolAwareClaudeCodeAuthStore(pool)
+    expect(await authStore.resolveAccess()).toEqual({
+      accessToken: 'own-token',
+      source: 'env',
+    })
+  } finally {
+    if (previous === undefined)
+      delete process.env.CLAUDE_CODE_OAUTH_TOKEN
+    else
+      process.env.CLAUDE_CODE_OAUTH_TOKEN = previous
+  }
+})
+
+test('pinned credentials keep their quota when the active account changes', async () => {
+  const pool = new MemoryCredentialPool()
+  const quota = createProviderQuota({
+    providerId: 'claude-code',
+    canProbe: true,
+    probe: async () => ({ accountLabel: 'pinned-account', windows: [] }),
+  })
+  let changes = 0
+  const credentials = createClaudeCodeCredentials(
+    pool,
+    new PoolAwareClaudeCodeAuthStore(pool, { credentialId: 'pinned' }),
+    { quota, pinned: true, onActiveChange: () => { changes += 1 } },
+  )
+  const a = await credentials.add!({ accessToken: 'token-a' })
+  await quota.probe()
+  expect(quota.latest()).not.toBeNull()
+
+  await credentials.setActive(a.id)
+  expect(quota.latest()).not.toBeNull()
+  await credentials.remove!(a.id)
+  expect(quota.latest()).not.toBeNull()
+  expect(changes).toBe(3)
+})
+
+test('createClaudeCodeProvider stands for the pinned account of an injected pool', async () => {
+  const pool = new MemoryCredentialPool()
+  const shared = createClaudeCodeProvider({ credentialPool: pool })
+  const a = await shared.credentials!.add!({
+    accessToken: 'token-a',
+    subscriptionType: 'pro'
+  })
+  const b = await shared.credentials!.add!({
+    accessToken: 'token-b',
+    subscriptionType: 'max'
+  })
+  expect((await shared.credentials!.getActive()).credentialId).toBe(a.id)
+
+  const pinned = createClaudeCodeProvider({
+    credentialPool: pool,
+    credentialId: b.id
+  })
+  expect(await pinned.auth!.status()).toMatchObject({
+    status: 'authenticated',
+    accountLabel: 'max',
+  })
+  expect(await shared.auth!.status()).toMatchObject({ accountLabel: 'pro' })
 })

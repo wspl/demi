@@ -7,7 +7,7 @@ import type { ProviderOperations } from '../vault/provider-operations'
 import { errorMessage } from '@demicodes/utils'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
-import { providerDetails, publicQuota } from '../llm/provider-details'
+import { publicQuota } from '../llm/provider-details'
 import { configuredModelsSchema } from '../llm/model-config'
 import type { AuthEnv, InstanceMode } from '../auth/identity'
 import type { ProviderAssembly } from '../llm/assembly'
@@ -90,6 +90,9 @@ export function providerRoutes(options: {
     const provider = await vault.get(c.req.param('id') ?? '')
     return provider && provider.ownerUserId === await ownerOf(c) ? provider : null
   }
+  const accountBodySchema = z.object({
+    credentialId: z.string().min(1).optional()
+  })
   const invalidBody = (c: Context<AuthEnv>, error: z.ZodError) => {
     const issue = error.issues[0]
     return c.json(
@@ -107,7 +110,6 @@ export function providerRoutes(options: {
     const refreshingQuota = c.req.method === 'POST' &&
       /^\/api\/providers\/[^/]+\/quota$/.test(c.req.path)
     if (c.req.method !== 'GET' &&
-      !refreshingQuota &&
       !canConfigureProviders(mode, c.get('user').role)) {
       return c.json({
         code: 'forbidden',
@@ -462,10 +464,7 @@ export function providerRoutes(options: {
     try {
       return c.json({
         providerId: entry.id,
-        ...await providerDetails(
-          resolved.provider,
-          entry.config.kind === 'subscription'
-        )
+        ...await assembly.details(entry, resolved.provider)
       })
     } catch (error) {
       return c.json({
@@ -482,7 +481,21 @@ export function providerRoutes(options: {
         code: 'provider_not_found',
         message: 'No such provider'
       }, 404)
-    const quota = (await assembly.providerFor(entry.id))?.provider.quota
+    const parsed = accountBodySchema.safeParse(
+      await c.req.json().catch(() => ({}))
+    )
+    if (!parsed.success)
+      return invalidBody(c, parsed.error)
+    // The account the user names, or the one the entry infers with.
+    const provider = parsed.data.credentialId
+      ? await assembly.forAccount(entry, parsed.data.credentialId)
+      : (await assembly.providerFor(entry.id))?.provider
+    if (!provider)
+      return c.json({
+        code: 'account_not_found',
+        message: 'No such account'
+      }, 404)
+    const quota = provider.quota
     const capability = quota?.capability()
     if (!quota || capability?.mode !== 'supported' || !capability.canProbe)
       return c.json({ quota: publicQuota(quota?.latest() ?? null) })
@@ -512,18 +525,25 @@ export function providerRoutes(options: {
         code: 'provider_not_found',
         message: 'No such provider'
       }, 404)
-    const parsed = z.object({ modelId: z.string().min(1) }).safeParse(
+    const parsed = z.object({
+      modelId: z.string().min(1),
+      credentialId: z.string().min(1).optional()
+    }).safeParse(
       await c.req.json().catch(() => null)
     )
     if (!parsed.success)
       return c.json({
         code: 'invalid_body',
-        message: 'Expected { modelId: string }: the model to test with'
+        message: 'Expected { modelId: string, credentialId?: string }: the model to test with'
       }, 400)
     // The test ran either way: a provider that refused is the answer, with
     // its reason, not a failure of this request.
     try {
-      return c.json(await assembly.testProvider(provider.id, parsed.data.modelId))
+      return c.json(await assembly.testProvider(
+        provider.id,
+        parsed.data.modelId,
+        parsed.data.credentialId
+      ))
     } catch (error) {
       return c.json({ ok: false, message: errorMessage(error) })
     }

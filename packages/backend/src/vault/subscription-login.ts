@@ -1,5 +1,3 @@
-import { rename, rm } from 'node:fs/promises'
-import { join } from 'node:path'
 import type {
   ProviderCredentialLoginOptions,
   ProviderCredentialLoginResult
@@ -8,6 +6,7 @@ import { createId, errorMessage } from '@demicodes/utils'
 import type { ProviderAssembly } from '../llm/assembly'
 import type { ProviderEntry, ProviderVault } from './providers'
 import type { ProviderOperations } from './provider-operations'
+import type { StagedCredentialPool } from './credential-pool'
 
 export type SubscriptionLoginState =
 | {
@@ -45,10 +44,7 @@ export class SubscriptionLoginFlows {
   constructor(
     private readonly vault: ProviderVault,
     private readonly assembly: ProviderAssembly,
-    private readonly options: {
-      vaultRoot: string;
-      operations: ProviderOperations
-    },
+    private readonly options: { operations: ProviderOperations },
   ) {}
 
   async start(
@@ -72,15 +68,13 @@ export class SubscriptionLoginFlows {
     if (!release)
       return { refused: 'busy' }
     const id = createId()
-    const pendingDir = existing
-      ? null
-      : join(this.options.vaultRoot, `pending-${id}`)
+    const staged = existing ? null : this.vault.stagedCredentialPool()
     try {
       const provider = existing
         ? (await this.assembly.providerFor(existing.id))?.provider
         : this.assembly.buildDetached(
           providerType,
-          { id, label, vaultDir: pendingDir! }
+          { id, label, credentialPool: staged! }
         )
       const begin = provider?.credentials?.beginLogin?.bind(
         provider.credentials
@@ -101,7 +95,7 @@ export class SubscriptionLoginFlows {
         finishedAt: null
       }
       this.flows.set(id, flow)
-      flow.done = this.complete(flow, begin, { providerType, label, existing, pendingDir })
+      flow.done = this.complete(flow, begin, { providerType, label, existing, staged })
         .finally(release)
       return { id }
     } catch (error) {
@@ -119,10 +113,9 @@ export class SubscriptionLoginFlows {
       providerType: string;
       label: string;
       existing?: ProviderEntry;
-      pendingDir: string | null
+      staged: StagedCredentialPool | null
     }
   ): Promise<void> {
-    let unpublishedDir = input.pendingDir
     const timer = setTimeout(
       () => flow.abort.abort(new Error('Login expired')),
       10 * 60_000
@@ -146,20 +139,16 @@ export class SubscriptionLoginFlows {
         throw new Error(result.message)
       let providerId = input.existing?.id
       if (!providerId) {
-        providerId = createId()
-        const destination = this.assembly.vaultDir(providerId)
-        await rename(input.pendingDir!, destination)
-        unpublishedDir = destination
-        await this.vault.create({
-          id: providerId,
+        // One transaction publishes the entry with its account: a login
+        // that loses the uniqueness rule has stored nothing.
+        providerId = (await this.vault.create({
           ownerUserId: flow.ownerUserId,
           label: input.label,
           config: {
             kind: 'subscription',
             providerType: input.providerType
           }
-        })
-        unpublishedDir = null
+        }, await input.staged!.accounts())).id
       }
       await this.assembly.invalidate(providerId)
       flow.state = { status: 'completed', providerId, credentialId: result.credentialId }
@@ -167,16 +156,6 @@ export class SubscriptionLoginFlows {
       flow.state = { status: 'failed', message: errorMessage(error) }
     } finally {
       clearTimeout(timer)
-      if (unpublishedDir) {
-        try {
-          await rm(unpublishedDir, { recursive: true, force: true })
-        } catch (error) {
-          flow.state = {
-            status: 'failed',
-            message: `Credential cleanup failed: ${errorMessage(error)}`
-          }
-        }
-      }
       flow.finishedAt = Date.now()
     }
   }

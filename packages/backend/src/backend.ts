@@ -58,6 +58,8 @@ import { PipeBroker } from '@demicodes/host-remote'
 import { ProviderRateLimiter } from './usage/rate-limit'
 import { ProviderVault } from './vault/providers'
 import { loadOrCreateInstanceSecret } from './vault/secret'
+import { importCredentialPools } from './vault/import-pools'
+import { AccountQuotas } from './vault/credential-pool'
 import { ProviderAccounts } from './vault/provider-accounts'
 import { ProviderOperations } from './vault/provider-operations'
 import { SubscriptionLoginFlows } from './vault/subscription-login'
@@ -252,18 +254,22 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     options.accountMail,
     options.auth?.now
   )
+  await importCredentialPools(
+    control,
+    instanceSecret,
+    join(options.dataDir, 'vault')
+  )
   const vault = new ProviderVault(control, instanceSecret, options.mode)
-  const vaultRoot = join(options.dataDir, 'vault')
   const vendors = new VendorCatalog(options.modelsDev ?? {})
   const assembly = new ProviderAssembly(vault, {
     ...builtinProviderTypes(),
     ...options.providerTypes
-  }, vaultRoot, vendors, new ModelCatalogCache(control))
+  }, new AccountQuotas(control), vendors, new ModelCatalogCache(control))
   const providerOperations = new ProviderOperations()
   const logins = new SubscriptionLoginFlows(
     vault,
     assembly,
-    { vaultRoot, operations: providerOperations }
+    { operations: providerOperations }
   )
   const rateLimiter = new ProviderRateLimiter(
     options.usage?.providerRequestsPerMinute
