@@ -5,9 +5,7 @@ import type { ToolResultContentBlock } from '@demicodes/core'
 import {
   applyModelPolicy,
   defineProvider,
-  fileQuotaSnapshots,
   type ProviderQuotaSnapshots,
-  quotaSnapshotFile,
   type AgentProvider,
   type InferenceItem,
   type InferenceRequest,
@@ -18,8 +16,12 @@ import {
   type ProviderQuota,
   type ProviderQuotaObserver,
 } from '@demicodes/provider'
-import { FileClaudeCodeAuthStore } from './auth'
-import type { CredentialPool } from '@demicodes/provider/credentials-pool'
+import {
+  fallbackCredentialPool,
+  fileQuotaSnapshots,
+  quotaSnapshotFile,
+  type CredentialPool,
+} from '@demicodes/provider/credentials-pool'
 import {
   createClaudeCodeCredentials,
   openClaudeCodeCredentialPool,
@@ -42,6 +44,7 @@ import {
 } from './output'
 import { createClaudeCodeQuota } from './quota'
 import type { ClaudeSpawn } from './spawn'
+import { claudeCodeVendorPool, type ClaudeCodeVendorOptions } from './vendor'
 import {
   ClaudeCliTransportFactory,
   type ClaudeStdoutLine,
@@ -60,6 +63,8 @@ export interface ClaudeCodeProviderOptions {
   credentialPool?: CredentialPool
   /** The account this provider stands for, instead of the pool's active one. */
   credentialId?: string
+  /** How the vendor login of this machine is read (tests). */
+  vendor?: ClaudeCodeVendorOptions
   /** Keeps the account's usage snapshot; by default a file in `stateDir`. */
   quotaSnapshots?: ProviderQuotaSnapshots
   /** When true (default), attach multi-credential pool + global switch. */
@@ -782,16 +787,16 @@ export function createClaudeCodeProvider(
   const displayName = options.displayName ?? 'Claude Code'
   const enableCredentials = options.credentials
     ?? options.authStore === undefined
-  const pool = !options.authStore && enableCredentials
-    ? options.credentialPool
-      ?? openClaudeCodeCredentialPool({ stateDir: options.stateDir })
-    : null
+  const vendor = claudeCodeVendorPool(options.vendor)
+  const pool = options.credentialPool ?? (enableCredentials
+    ? fallbackCredentialPool(
+      openClaudeCodeCredentialPool({ stateDir: options.stateDir }),
+      vendor
+    )
+    : vendor)
   const pinnedId = options.credentialId
-  const authStore =
-    options.authStore ??
-    (pool
-      ? new PoolAwareClaudeCodeAuthStore(pool, { credentialId: pinnedId })
-      : new FileClaudeCodeAuthStore())
+  const authStore = options.authStore
+    ?? new PoolAwareClaudeCodeAuthStore(pool, { credentialId: pinnedId })
 
   const quota = createClaudeCodeQuota({
     providerId: id,
@@ -806,8 +811,9 @@ export function createClaudeCodeProvider(
     },
   })
 
-  const credentialsApi = pool
+  const credentialsApi = !options.authStore && enableCredentials
     ? createClaudeCodeCredentials(pool, authStore, {
+      ...(options.credentialPool ? {} : { importFrom: vendor }),
       quota,
       pinned: pinnedId !== undefined,
     })
@@ -819,9 +825,9 @@ export function createClaudeCodeProvider(
     authStore,
     // The retained CLI process belongs to the account the provider resolves:
     // the pinned one, whichever account the pool has active.
-    getActiveCredentialId: pool
-      ? async () => pinnedId ?? pool.getActiveId()
-      : undefined,
+    getActiveCredentialId: options.authStore
+      ? undefined
+      : async () => pinnedId ?? pool.getActiveId(),
     spawn: options.spawn,
     env: options.env,
   }

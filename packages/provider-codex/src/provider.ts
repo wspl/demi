@@ -7,9 +7,7 @@ import {
   mapResponsesEvents,
   httpFailureRecord,
   normalizeErrorCode,
-  fileQuotaSnapshots,
   type ProviderQuotaSnapshots,
-  quotaSnapshotFile,
   withRetryWait,
   type AgentProvider,
   type InferenceRequest,
@@ -21,7 +19,6 @@ import {
 } from '@demicodes/provider'
 import {
   CodexAuthError,
-  FileCodexAuthStore,
   redactCodexSecretText,
   type CodexAuthStore,
   type CodexResolvedAuth,
@@ -33,7 +30,13 @@ import {
 } from './credentials'
 import { readCodexFailure } from './failure'
 import { listCodexModels } from './models'
-import type { CredentialPool } from '@demicodes/provider/credentials-pool'
+import {
+  fallbackCredentialPool,
+  fileQuotaSnapshots,
+  quotaSnapshotFile,
+  type CredentialPool,
+} from '@demicodes/provider/credentials-pool'
+import { codexVendorPool, FileCodexAuthStore } from './vendor'
 import { createCodexQuota } from './quota'
 import { buildCodexResponsesRequestBody } from './responses'
 import {
@@ -213,19 +216,18 @@ export function createCodexProvider(
   const displayName = options.displayName ?? 'Codex'
   const enableCredentials = options.credentials
     ?? options.authStore === undefined
-  const pool = !options.authStore && enableCredentials
-    ? options.credentialPool
-      ?? openCodexCredentialPool({ stateDir: options.stateDir })
-    : null
+  // A caller that passes no pool gets Demi's files, standing for the Codex
+  // CLI's own login while they hold no account.
+  const vendor = codexVendorPool({ codexHome: options.codexHome })
+  const pool = options.credentialPool ?? (enableCredentials
+    ? fallbackCredentialPool(
+      openCodexCredentialPool({ stateDir: options.stateDir }),
+      vendor
+    )
+    : vendor)
 
-  const authStore: CodexAuthStore =
-    options.authStore ??
-    (pool
-      ? new PoolAwareCodexAuthStore(pool, {
-        codexHome: options.codexHome,
-        credentialId: options.credentialId,
-      })
-      : new FileCodexAuthStore({ codexHome: options.codexHome }))
+  const authStore: CodexAuthStore = options.authStore
+    ?? new PoolAwareCodexAuthStore(pool, { credentialId: options.credentialId })
 
   const runtimeOptions: CodexRuntimeOptions = {
     authStore,
@@ -250,16 +252,12 @@ export function createCodexProvider(
   })
   runtimeOptions.quota = quota
 
-  const credentialsApi = pool
-    ? createCodexCredentials(
-      pool,
-      authStore,
-      {
-        codexHome: options.codexHome,
-        quota,
-        pinned: options.credentialId !== undefined,
-      }
-    )
+  const credentialsApi = !options.authStore && enableCredentials
+    ? createCodexCredentials(pool, authStore, {
+      ...(options.credentialPool ? {} : { importFrom: vendor }),
+      quota,
+      pinned: options.credentialId !== undefined,
+    })
     : undefined
 
   return defineProvider({
