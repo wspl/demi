@@ -195,6 +195,16 @@ function rename(name: string) {
   }
 }
 
+// Why the selected provider cannot be tested right now, for the button's tooltip.
+const testBlockReason = computed(() => {
+  if (selected.value?.runsOnHost) {
+    return 'This provider runs on a conversation\'s Host; start a conversation to try it'
+  }
+  return selected.value?.models.some((model) => model.enabled)
+    ? undefined
+    : 'Enable a model to test with'
+})
+
 const modelFilter = ref('')
 const cap = (word: string) => word.charAt(0).toUpperCase() + word.slice(1)
 
@@ -426,7 +436,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                   compact
                 >
                   <template #tags>
-                    <Tag>{{ account.plan }}</Tag>
+                    <Tag v-if="account.plan">{{ account.plan }}</Tag>
                     <Tag v-if="account.active" tone="accent">Active</Tag>
                     <Tag
                       v-if="
@@ -560,73 +570,71 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                     class="w-72 max-w-full"
                   />
                 </SettingsRow>
-                <SettingsRow
-                  label="Test connection"
-                  description="Sends one short request to the first enabled model."
-                >
-                  <!-- The provider's own words in full, under the row; the page does not paraphrase them. -->
-                  <template
-                    v-if="
-                      selected.detail &&
-                      testing !== selected.id &&
-                      operations?.[selected.id]?.kind !== 'testing'
-                    "
-                    #detail
-                  >
-                    <p class="select-text break-words text-[12px] leading-4 text-on-danger">
-                      {{ selected.detail }}
-                    </p>
-                  </template>
-                  <span
-                    v-if="
-                      testing === selected.id ||
-                      operations?.[selected.id]?.kind === 'testing'
-                    "
-                    class="flex items-center gap-1.5 text-[12px] text-fg-subtle"
-                    ><IndeterminateSpinner :size="ICON_PX.in24" />
-                    Testing…</span
-                  >
-                  <span
-                    v-else-if="selected.testPassed || selected.testedIn"
-                    class="flex items-center gap-1 text-[12px] text-on-success"
-                    ><Check :size="ICON_PX.in24" /> Connected<template
-                      v-if="selected.testedWith"
-                    >
-                      · {{ selected.testedWith }}</template
-                    ><template
-                      v-if="selected.testedIn"
-                    >
-                      · {{ selected.testedIn }}</template
-                    ></span
-                  >
-                  <span
-                    v-else-if="selected.detail"
-                    class="min-w-0 truncate text-[12px] text-on-danger"
-                    >Failed<template
-                      v-if="selected.testedWith"
-                    >
-                      · {{ selected.testedWith }}</template
-                    ></span
-                  >
-                  <Tooltip content="Test connection"
-                    ><IconButton
-                      size="sm"
-                      :icon="Plug"
-                      aria-label="Test connection"
-                      :disabled="
-                        selected.configured === false ||
-                        !!operations?.[selected.id] ||
-                        !selected.models.some((model) => model.enabled)
-                      "
-                      :disabled-reason="
-                        selected.models.some((model) => model.enabled)
-                          ? undefined
-                          : 'Enable a model to test with'
-                      "
-                      @click="emit('test', selected)"
-                  /></Tooltip>
-                </SettingsRow>
               </template>
+              <!-- Every provider can be tried, a subscription as much as a key. -->
+              <SettingsRow
+                label="Test connection"
+                description="Sends one short request to the first enabled model."
+              >
+                <!-- The provider's own words in full, under the row; the page does not paraphrase them. -->
+                <template
+                  v-if="
+                    selected.detail &&
+                    testing !== selected.id &&
+                    operations?.[selected.id]?.kind !== 'testing'
+                  "
+                  #detail
+                >
+                  <p class="select-text break-words text-[12px] leading-4 text-on-danger">
+                    {{ selected.detail }}
+                  </p>
+                </template>
+                <span
+                  v-if="
+                    testing === selected.id ||
+                    operations?.[selected.id]?.kind === 'testing'
+                  "
+                  class="flex items-center gap-1.5 text-[12px] text-fg-subtle"
+                  ><IndeterminateSpinner :size="ICON_PX.in24" />
+                  Testing…</span
+                >
+                <span
+                  v-else-if="selected.testPassed || selected.testedIn"
+                  class="flex items-center gap-1 text-[12px] text-on-success"
+                  ><Check :size="ICON_PX.in24" /> Connected<template
+                    v-if="selected.testedWith"
+                  >
+                    · {{ selected.testedWith }}</template
+                  ><template
+                    v-if="selected.testedIn"
+                  >
+                    · {{ selected.testedIn }}</template
+                  ></span
+                >
+                <span
+                  v-else-if="selected.detail"
+                  class="min-w-0 truncate text-[12px] text-on-danger"
+                  >Failed<template
+                    v-if="selected.testedWith"
+                  >
+                    · {{ selected.testedWith }}</template
+                  ></span
+                >
+                <Tooltip content="Test connection"
+                  ><IconButton
+                    size="sm"
+                    :icon="Plug"
+                    aria-label="Test connection"
+                    :disabled="
+                      selected.configured === false ||
+                      selected.runsOnHost === true ||
+                      !!operations?.[selected.id] ||
+                      !selected.models.some((model) => model.enabled)
+                    "
+                    :disabled-reason="testBlockReason"
+                    @click="emit('test', selected)"
+                /></Tooltip>
+              </SettingsRow>
             </SettingsGroup>
 
             <!-- Models. A subscription's list is whatever the vendor serves, so its only control is a
