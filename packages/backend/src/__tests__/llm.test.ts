@@ -824,7 +824,7 @@ test(
 )
 
 test(
-  'a process provider reuses its process on one target and replaces it after a workspace switch',
+  'a process provider runs on the user\'s Cloud and keeps its process whichever target the conversation has',
   async () => {
     const dataDir = await mkdtemp(join(tmpdir(), 'demi-provider-target-'))
     const observed: string[] = []
@@ -936,12 +936,12 @@ test(
           workspaceId: workspaces[1]!.id
         } }))).status).toBe(200)
       await client.send([{ type: 'text', text: 'second target' }])
-      expect(observed).toEqual([
-        workspaces[0]!.path,
-        workspaces[0]!.path,
-        workspaces[1]!.path
-      ])
-      expect(runtimes).toBe(2)
+      // Every request ran in the Cloud guest, not on either paired device, and
+      // a target switch is no reason to start another process.
+      expect(new Set(observed).size).toBe(1)
+      expect(observed).toHaveLength(3)
+      expect(workspaces.map(workspace => workspace.path)).not.toContain(observed[0])
+      expect(runtimes).toBe(1)
     } finally {
       await client?.close()
       for (const runner of runners)

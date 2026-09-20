@@ -225,6 +225,8 @@ export class RemoteHost implements Host {
   private readonly pendingServices = new Map<string, Deferred<void>>()
   private readonly serviceStreams = new Map<string, ServiceStreamState>()
   private readonly activeSpawns = new Map<string, RemoteSpawn>()
+  /** The active spawns that are retained, which the activity count leaves out. */
+  private readonly retainedSpawns = new Set<string>()
   private readonly activeJobs = new Map<string, RemoteJobState>()
   private readonly artifactRequests = new Set<string>()
 
@@ -300,6 +302,7 @@ export class RemoteHost implements Host {
     this.serviceStreams.clear()
     const spawns = [...this.activeSpawns.values()]
     this.activeSpawns.clear()
+    this.retainedSpawns.clear()
     for (const spawn of spawns) {
       spawn.finish({
         exitCode: null,
@@ -340,7 +343,7 @@ export class RemoteHost implements Host {
 
   /** Remote processes currently in flight (diagnostics). */
   get activeSpawnCount(): number {
-    return this.activeSpawns.size
+    return this.activeSpawns.size - this.retainedSpawns.size
   }
 
   /** Jobs this Host started that have not exited (diagnostics). */
@@ -553,6 +556,7 @@ export class RemoteHost implements Host {
       if (!spawn)
         return
       this.activeSpawns.delete(message.spawnId)
+      this.retainedSpawns.delete(message.spawnId)
       spawn.finish({
         exitCode: message.exitCode,
         signal: message.signal,
@@ -864,10 +868,15 @@ export class RemoteHost implements Host {
         spawnError: { kind: 'other' }
       })
     }
-    const release = this.options.admit?.()
+    // A retained process is retention, not activity
+    // (`resource-lifecycle.md` § Activity): it holds no admission and is not
+    // counted, so the machine can go idle and stop with it running.
+    const release = params.retained ? undefined : this.options.admit?.()
     const spawnId = createId()
     const spawn = new RemoteSpawn(spawnId, (message) => this.dispatch(message))
     void spawn.handle().wait().finally(() => release?.())
+    if (params.retained)
+      this.retainedSpawns.add(spawnId)
     this.activeSpawns.set(spawnId, spawn)
     try {
       this.send({
@@ -884,6 +893,7 @@ export class RemoteHost implements Host {
       })
     } catch (error) {
       this.activeSpawns.delete(spawnId)
+      this.retainedSpawns.delete(spawnId)
       release?.()
       throw error
     }

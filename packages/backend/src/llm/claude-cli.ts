@@ -190,6 +190,23 @@ export class ClaudeCli {
     return usable.path
   }
 
+  /**
+   * Where a CLI process runs on `target`: the executable, and directories of
+   * Demi's under the machine's home, made first. The CLI keeps nothing there
+   * that a conversation owns, so every process of a machine shares them.
+   */
+  async place(
+    target: ClaudeCliTarget,
+    options: { held?: string; signal?: AbortSignal } = {}
+  ): Promise<{ command: string; cwd: string; configDir: string }> {
+    const command = await this.executable(target, options)
+    const cwd = `${target.cwd}/.demi/claude/run`
+    const configDir = `${target.cwd}/.demi/claude/config`
+    await target.host.fs.mkdir(cwd, { recursive: true })
+    await target.host.fs.mkdir(configDir, { recursive: true })
+    return { command, cwd, configDir }
+  }
+
   /** Installs `release` on `target` and answers the executable's path. */
   async ensure(
     target: ClaudeCliTarget,

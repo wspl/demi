@@ -47,13 +47,23 @@ export interface ClaudeTransportFactory {
   start(request: InferenceRequest): Promise<ClaudeTransport>
 }
 
+/** The executable and the directories of one CLI process, on the machine that runs it. */
+export interface ClaudeProcessPlace {
+  command: string
+  cwd: string
+  /** The CLI's configuration home (`CLAUDE_CONFIG_DIR`). */
+  configDir: string
+}
+
 export interface ClaudeCliTransportFactoryOptions {
   claudePath?: string
   /**
-   * Names the CLI executable for each process, instead of `claudePath`: a
-   * product that installs its own CLI on the machine the process runs on.
+   * Where each process runs, instead of `claudePath` in the request's
+   * directory: a product that installs its own CLI on a machine of its choosing
+   * names the executable, the working directory and the CLI's configuration
+   * home there.
    */
-  resolveClaudePath?: () => Promise<string>
+  resolveProcess?: () => Promise<ClaudeProcessPlace>
   /**
    * Resolve OAuth token for CLAUDE_CODE_OAUTH_TOKEN env overlay (multi-cred).
    */
@@ -74,7 +84,7 @@ export interface ClaudeCliTransportFactoryOptions {
 
 export class ClaudeCliTransportFactory implements ClaudeTransportFactory {
   private readonly claudePath: string
-  private readonly resolveClaudePath: (() => Promise<string>) | null
+  private readonly resolveProcess: (() => Promise<ClaudeProcessPlace>) | null
   private readonly resolveOAuthAccessToken: (() => Promise<string | null>)
     | null
   private readonly spawnFn: ClaudeSpawn | null
@@ -83,13 +93,13 @@ export class ClaudeCliTransportFactory implements ClaudeTransportFactory {
   constructor(options: ClaudeCliTransportFactoryOptions | string = {}) {
     if (typeof options === 'string') {
       this.claudePath = options
-      this.resolveClaudePath = null
+      this.resolveProcess = null
       this.resolveOAuthAccessToken = null
       this.spawnFn = null
       this.envOverlay = null
     } else {
       this.claudePath = options.claudePath ?? 'claude'
-      this.resolveClaudePath = options.resolveClaudePath ?? null
+      this.resolveProcess = options.resolveProcess ?? null
       this.resolveOAuthAccessToken = options.resolveOAuthAccessToken ?? null
       this.spawnFn = options.spawn ?? null
       this.envOverlay = options.env ?? null
@@ -110,29 +120,33 @@ export class ClaudeCliTransportFactory implements ClaudeTransportFactory {
       ? await this.resolveOAuthAccessToken()
       : null
     const overlay = this.envOverlay ?? undefined
-    const command = this.resolveClaudePath
-      ? await this.resolveClaudePath()
-      : this.claudePath
+    // Without a place of the product's, the process runs where the request is.
+    const place = this.resolveProcess
+      ? await this.resolveProcess()
+      : {
+        command: this.claudePath,
+        cwd: request.cwd,
+        configDir: `${request.cwd}/.demi-artifacts/claude-config`,
+      }
     const handle = this.spawnFn
       ? await this.spawnFn({
-          command,
+          command: place.command,
           args,
-          cwd: request.cwd,
+          cwd: place.cwd,
+          // The CLI is kept between turns; the turn is the activity, not it.
+          retained: true,
           // Injected-spawn targets are managed devices: the CLI must consume
           // zero device-local configuration (settings, hooks, sessions), so
-          // its config home is pinned inside the workspace's artifacts dir.
+          // its config home is one the caller names.
           env: buildClaudeEnv({}, {
             oauthAccessToken,
-            overlay: {
-              CLAUDE_CONFIG_DIR: `${request.cwd}/.demi-artifacts/claude-config`,
-              ...overlay
-            },
+            overlay: { CLAUDE_CONFIG_DIR: place.configDir, ...overlay },
           }),
         })
       : await localClaudeSpawn({
-          command,
+          command: place.command,
           args,
-          cwd: resolveSpawnCwd(request.cwd),
+          cwd: resolveSpawnCwd(place.cwd),
           env: buildClaudeEnv(process.env, { oauthAccessToken, overlay }),
         })
 

@@ -167,3 +167,51 @@ test(
   },
   60_000
 )
+
+test(
+  'a reset holds a conversation on a paired device whose provider runs on the Cloud, and lets it go on afterwards',
+  async () => {
+    const rebuilding = deferred<void>()
+    const proceed = deferred<void>()
+    class HeldReset extends FakeProvisioner {
+      override async reset(
+        ...args: Parameters<FakeProvisioner['reset']>
+      ): Promise<void> {
+        rebuilding.resolve()
+        await proceed.promise
+        await super.reset(...args)
+      }
+    }
+    const world = await World.create({
+      processProvider: true,
+      managedHosts: { provisioner: new HeldReset(), config: { sweepMs: 60_000 } }
+    })
+    try {
+      await world.pair('alpha')
+      // Its files and commands are on alpha; only its provider uses the Cloud.
+      const local = await world.conversation('runner:alpha')
+      const before = await local.turn({ model: [model.shell('where', 'echo on-alpha'), model.say('done')] })
+      expect(before.received[0]).toContain('on-alpha')
+      const attached = await world.api<{ hosts: unknown[] }>(`/api/conversations/${local.id}/hosts`)
+      expect(attached.hosts).toEqual([])
+
+      await world.api('/api/cloud/reset', { operationId: crypto.randomUUID() })
+      await rebuilding.promise
+
+      // It waits instead of failing, and opens by itself when the reset ends.
+      await local.detach()
+      let opened = false
+      const opening = local.attach().then(() => { opened = true })
+      await delay(300)
+      expect(opened).toBe(false)
+      proceed.resolve()
+      await opening
+      const after = await local.turn({ model: [model.shell('again', 'echo still-alpha'), model.say('done')] })
+      expect(after.received[0]).toContain('still-alpha')
+    } finally {
+      proceed.resolve()
+      await world.close()
+    }
+  },
+  60_000
+)

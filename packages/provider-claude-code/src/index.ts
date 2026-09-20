@@ -6,6 +6,7 @@ export {
   createClaudeCodeProvider,
   type ClaudeCodeProviderOptions,
 } from './provider'
+export type { ClaudeProcessPlace } from './transport'
 export { resolveWireLogDir } from './wire-log'
 export type {
   ClaudeSpawn,

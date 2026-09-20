@@ -49,6 +49,8 @@ export interface WorldOptions {
    * sizes the scenario needs.
    */
   managedHosts?: BackendOptions['managedHosts']
+  /** The scripted provider declares that its requests are a process, which runs on the user's Cloud. */
+  processProvider?: boolean
   /** The URL managed guests dial (real guests cannot reach localhost). */
   publicUrl?: string
   /**
@@ -167,6 +169,7 @@ export class World {
           create: ({ providerId, label }) => defineProvider({
             id: providerId,
             displayName: label,
+            ...(options.processProvider ? { requiresProcessCapableHost: true } : {}),
             readFailure: (diagnostics, receivedAt) => model.readFailure(diagnostics, receivedAt),
             createRuntime: () => model.runtime()
           })
