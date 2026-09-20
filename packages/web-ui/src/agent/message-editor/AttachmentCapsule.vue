@@ -44,12 +44,26 @@ const caption = computed(() => {
   }
   return host ? `${host} · ${path ?? name}` : path ?? name
 })
+
+/** What the capsule shows when pointed at; a file still on its way shows its caption alone. */
+const preview = computed<
+  { kind: 'picture'; src: string } | { kind: 'lines'; text: string } | { kind: 'caption' }
+>(() => {
+  if (uploading.value || failed.value) {
+    return { kind: 'caption' }
+  }
+  if (image.value) {
+    return { kind: 'picture', src: image.value }
+  }
+  return props.capsule.snippet ? { kind: 'lines', text: props.capsule.snippet } : { kind: 'caption' }
+})
 </script>
 
 <template>
   <Tooltip
     tag="span"
     class="inline-flex max-w-full align-middle"
+    :picture="preview.kind === 'picture'"
   >
     <span
       class="group/capsule relative mx-px inline-flex h-5 min-w-0 max-w-full select-none items-center gap-1 rounded-md pl-0.5 pr-1.5 align-middle text-[13px] font-normal not-italic leading-5 no-underline shadow-[var(--shadow-btn)]"
@@ -142,15 +156,15 @@ const caption = computed(() => {
     </span>
     <template #overlay>
       <img
-        v-if="image && !uploading && !failed"
-        :src="image"
+        v-if="preview.kind === 'picture'"
+        :src="preview.src"
         :alt="capsule.name"
         class="block max-h-48 max-w-full rounded object-contain"
       />
       <pre
-        v-else-if="capsule.snippet && !uploading && !failed"
+        v-else-if="preview.kind === 'lines'"
         class="max-h-40 overflow-hidden whitespace-pre-wrap break-all font-mono text-[11px] leading-4"
-      >{{ capsule.snippet }}</pre>
+      >{{ preview.text }}</pre>
       <span
         v-else
         class="break-all"
