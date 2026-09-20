@@ -112,6 +112,20 @@ export interface RemoteServices {
     output: PipeRef
     resolveArtifact: ArtifactResolver
   }): Promise<RemoteServiceStream>
+  /**
+   * One question, one answer: opens a stream, sends `input` as its whole
+   * input and returns its whole output, which may not exceed `maxBytes`.
+   */
+  call(params: {
+    context: CommandContext
+    package: NativePackage
+    operation: string
+    cwd: string
+    input: Uint8Array
+    resolveArtifact: ArtifactResolver
+    maxBytes: number
+    signal?: AbortSignal
+  }): Promise<Uint8Array>
 }
 
 export interface RemoteServiceStream {
@@ -234,7 +248,10 @@ export class RemoteHost implements Host {
       },
     }
     this.net = { open: (params) => this.openNet(params) }
-    this.services = { open: (params) => this.openService(params) }
+    this.services = {
+      open: (params) => this.openService(params),
+      call: (params) => this.callService(params),
+    }
     this.process = {
       spawn: (params) => this.spawn(params),
       openCwd: async (path) => this.openCwd(path),
@@ -786,6 +803,57 @@ export class RemoteHost implements Host {
       throw error
     }
     return { close }
+  }
+
+  private async callService(
+    params: Parameters<RemoteServices['call']>[0]
+  ): Promise<Uint8Array> {
+    const { input: bytes, maxBytes, signal, ...open } = params
+    signal?.throwIfAborted()
+    const input = this.options.pipes.toRunner()
+    const output = this.options.pipes.fromRunner()
+    // Each end is observed below; a settled pipe must not reject unheard.
+    input.done.catch(() => {})
+    output.done.catch(() => {})
+    const abandon = (reason: string) => {
+      input.fail(reason)
+      output.fail(reason)
+    }
+    const aborted = () => abandon('service call cancelled')
+    signal?.addEventListener('abort', aborted, { once: true })
+    let stream: RemoteServiceStream | null = null
+    try {
+      stream = await this.openService({
+        ...open,
+        input: input.ref(),
+        output: output.ref(),
+      })
+      const writer = input.writer()
+      await writer.write(bytes)
+      writer.end()
+      const chunks: Uint8Array[] = []
+      let size = 0
+      for await (const chunk of output.stream()) {
+        size += chunk.length
+        if (size > maxBytes)
+          throw new Error(`Service answer exceeds ${maxBytes} bytes`)
+        chunks.push(chunk)
+      }
+      signal?.throwIfAborted()
+      const answer = new Uint8Array(size)
+      let offset = 0
+      for (const chunk of chunks) {
+        answer.set(chunk, offset)
+        offset += chunk.length
+      }
+      return answer
+    } catch (error) {
+      abandon('service call failed')
+      throw signal?.aborted ? signal.reason : error
+    } finally {
+      signal?.removeEventListener('abort', aborted)
+      stream?.close()
+    }
   }
 
   private async spawn(params: HostSpawnParams): Promise<HostSpawnHandle> {

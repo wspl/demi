@@ -50,6 +50,11 @@ export interface ClaudeTransportFactory {
 export interface ClaudeCliTransportFactoryOptions {
   claudePath?: string
   /**
+   * Names the CLI executable for each process, instead of `claudePath`: a
+   * product that installs its own CLI on the machine the process runs on.
+   */
+  resolveClaudePath?: () => Promise<string>
+  /**
    * Resolve OAuth token for CLAUDE_CODE_OAUTH_TOKEN env overlay (multi-cred).
    */
   resolveOAuthAccessToken?: () => Promise<string | null>
@@ -69,6 +74,7 @@ export interface ClaudeCliTransportFactoryOptions {
 
 export class ClaudeCliTransportFactory implements ClaudeTransportFactory {
   private readonly claudePath: string
+  private readonly resolveClaudePath: (() => Promise<string>) | null
   private readonly resolveOAuthAccessToken: (() => Promise<string | null>)
     | null
   private readonly spawnFn: ClaudeSpawn | null
@@ -77,11 +83,13 @@ export class ClaudeCliTransportFactory implements ClaudeTransportFactory {
   constructor(options: ClaudeCliTransportFactoryOptions | string = {}) {
     if (typeof options === 'string') {
       this.claudePath = options
+      this.resolveClaudePath = null
       this.resolveOAuthAccessToken = null
       this.spawnFn = null
       this.envOverlay = null
     } else {
       this.claudePath = options.claudePath ?? 'claude'
+      this.resolveClaudePath = options.resolveClaudePath ?? null
       this.resolveOAuthAccessToken = options.resolveOAuthAccessToken ?? null
       this.spawnFn = options.spawn ?? null
       this.envOverlay = options.env ?? null
@@ -102,9 +110,12 @@ export class ClaudeCliTransportFactory implements ClaudeTransportFactory {
       ? await this.resolveOAuthAccessToken()
       : null
     const overlay = this.envOverlay ?? undefined
+    const command = this.resolveClaudePath
+      ? await this.resolveClaudePath()
+      : this.claudePath
     const handle = this.spawnFn
       ? await this.spawnFn({
-          command: this.claudePath,
+          command,
           args,
           cwd: request.cwd,
           // Injected-spawn targets are managed devices: the CLI must consume
@@ -119,7 +130,7 @@ export class ClaudeCliTransportFactory implements ClaudeTransportFactory {
           }),
         })
       : await localClaudeSpawn({
-          command: this.claudePath,
+          command,
           args,
           cwd: resolveSpawnCwd(request.cwd),
           env: buildClaudeEnv(process.env, { oauthAccessToken, overlay }),

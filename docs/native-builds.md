@@ -1,12 +1,15 @@
 # Native builds and releases
 
-`scripts/native/build.ts` builds `demi-runner` and `demi-commands` for the six
-triples in `command-protocol`, or for the ones named with `--target`. The same
+`scripts/native/build.ts` builds `demi-runner` and the command packages
+(`demi-commands`, `demi-claude`) for the six triples in `command-protocol`, or
+for the ones named with `--target`; repeated `--package <crate>` options build
+only those crates. The same
 cross tools run on Linux and macOS. Host platform execution is a separate gate.
 
 The first-party Cargo workspace contains `crates/runner`,
-`crates/command-service` and `crates/demi-commands`. Runner and Demi commands
-produce executables; command-service is their shared library. TypeScript protocol
+`crates/command-service`, `crates/demi-commands` and `crates/demi-claude`. The
+runner and the command packages produce executables; command-service is their
+shared library. TypeScript protocol
 packages are build inputs, not additional Cargo workspace members.
 
 ## Toolchain
@@ -80,13 +83,17 @@ bun --conditions development scripts/native/build.ts \
 ## Packaging
 
 ```sh
-bun --conditions development scripts/native/release-package.ts \
+bun --conditions development scripts/native/release-package.ts --package demi-commands \
   --artifacts .cache/native-target --output .cache/releases/demi-builtin-0.1.0
+bun --conditions development scripts/native/release-package.ts --package demi-claude \
+  --artifacts .cache/native-target --output .cache/releases/demi-claude-0.1.0
 bun --conditions development scripts/native/release-runner.ts \
   --artifacts .cache/native-target --output .cache/releases/runners
 ```
 
-Both packagers take the same repeated `--target <triple>` options as the build
+Each command package is released on its own: `--package` names its crate, and
+the release carries that crate's package id and operations. Both packagers take
+the same repeated `--target <triple>` options as the build
 and package exactly those targets; without them they require all six. A release
 of fewer targets is a development release: the backend artifact module refuses
 to publish it

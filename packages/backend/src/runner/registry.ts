@@ -209,6 +209,7 @@ export class RunnerRegistry {
   /** Device access Hosts, one per device (`sessions-and-targets.md`). */
   private readonly deviceHosts = new Map<string, RemoteHost>()
   private readonly conversationOfHost = new WeakMap<RemoteHost, string>()
+  private readonly deviceOfHost = new WeakMap<RemoteHost, string>()
   /**
    * Last-known identity per device, so a Host can exist while its runner is
    * offline.
@@ -403,6 +404,11 @@ export class RunnerRegistry {
    * devices still resolve — operations fail as ordinary tool errors until the
    * runner reattaches.
    */
+  /** The device a Host of this registry stands for. */
+  deviceOf(host: RemoteHost): string | null {
+    return this.deviceOfHost.get(host) ?? null
+  }
+
   hostFor(
     workspace: Pick<WorkspaceRecord, 'deviceId' | 'path'>,
     conversationId: string,
@@ -430,6 +436,7 @@ export class RunnerRegistry {
       })
       deviceHosts.set(key, host)
       this.conversationOfHost.set(host, conversationId)
+      this.deviceOfHost.set(host, workspace.deviceId)
       const connection = this.connections.get(workspace.deviceId)
       if (connection)
         host.attach((message) => connection.send(message))

@@ -35,8 +35,10 @@ wake one.
 A newer version does not interrupt work. A machine that already has a usable
 version keeps answering with it while the newer one installs beside it; the
 next CLI process after the install is the newer one. Only a machine with no
-usable version waits for an install. A version no process uses any more, other
-than the newest, is removed.
+usable version waits for an install. Installing a version removes the others:
+a process already running one keeps its executable where the system allows a
+file in use to be removed, and where it does not, the removal is left for a
+later install.
 
 ## The package
 
@@ -48,8 +50,17 @@ two operations:
 
 | Operation | Input | Answer |
 |---|---|---|
-| `claude.ensure` | A release record: version, and this platform's official URL, byte size and SHA-256 | The executable's absolute path and its version |
-| `claude.status` | — | The versions installed on this machine, and an install in progress |
+| `claude.ensure` | A release record: `{ version, platforms }`, each platform's official `url`, byte `size` and `sha256` | `{ version, path }`: the executable's absolute path |
+| `claude.status` | — | `{ platform, installed }`: this machine's platform key and the versions it has, newest first |
+
+The backend reaches them through a [service stream](runner.md#service-streams),
+which carries no arguments: the record is the stream's input, read to its end,
+and the answer is one JSON document on its output, since the output is all a
+service stream brings back: `{ ok: true, … }`, or `{ ok: false, code, message }`
+with one of `invalid_release`, `unsupported_platform`, `download_failed`,
+`verification_failed`, `install_failed`. An output with no document is a
+service that failed. The command context names the
+conversation being served, or the provider entry for work that belongs to none.
 
 The backend builds the release record from the manifest; the package does not
 read pointers or choose versions. It picks the platform from the machine, not

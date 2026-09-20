@@ -14,6 +14,7 @@ import { z } from 'zod'
 import { defineProvider, type AgentProvider, type InferenceRequest, type ProviderEvent } from '@demicodes/provider'
 import { events } from '@demicodes/provider/testing'
 import { createBackend } from './backend'
+import { fakeClaudeReleases } from './testing/fake-claude-releases'
 import { FakeProvisioner } from './testing/fake-provisioner'
 import { SESSION_COOKIE } from './http/cookies'
 
@@ -61,6 +62,7 @@ async function main(): Promise<void> {
     mode: 'shared',
     // The development Cloud is a runner process on this machine.
     managedHosts: { provisioner: new FakeProvisioner() },
+    claudeReleases: fakeClaudeReleases(),
     providerTypes: {
       echo: {
         credential: 'api_key',

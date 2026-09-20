@@ -1,0 +1,27 @@
+[package]
+name = "demi-claude"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "demi-claude"
+path = "src/main.rs"
+
+[dependencies]
+bytes.workspace = true
+demi-command-service = { path = "../command-service" }
+futures-util.workspace = true
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.10"
+tempfile = "3"
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+
+[package.metadata.demi]
+id = "demi.claude"
+operations = ["claude.ensure", "claude.status"]

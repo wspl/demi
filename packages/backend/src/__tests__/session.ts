@@ -6,6 +6,7 @@ import {
   type User
 } from '../index'
 import { SESSION_COOKIE } from '../http/cookies'
+import { fakeClaudeReleases } from '../testing/fake-claude-releases'
 import { FakeProvisioner } from '../testing/fake-provisioner'
 import { modelsDevFetch } from './models-dev'
 
@@ -45,6 +46,7 @@ export async function openBackend(
     nativeCommands: await nativePackageFixture(),
     // Every backend has Cloud; a test that does not use it never wakes a guest.
     managedHosts: { provisioner: new FakeProvisioner() },
+    claudeReleases: fakeClaudeReleases(),
     modelsDev: { fetch: modelsDevFetch() },
     // These tests count provider requests; the scenarios cover generated titles.
     conversationTitles: false,

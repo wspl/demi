@@ -47,7 +47,8 @@ import type { NativeBinding } from '@demicodes/command-protocol'
 import {
   ProviderAssembly,
   builtinProviderTypes,
-  type ProviderType
+  type ProviderType,
+  type SessionProviderContext
 } from './llm/assembly'
 import { VendorCatalog } from './llm/vendors'
 import type { ModelsDevFetch } from '@demicodes/provider'
@@ -56,10 +57,13 @@ import { ConversationTitles } from './conversation/title'
 import { RunnerRegistry, type RunnerRegistryOptions } from './runner/registry'
 import { PipeBroker } from '@demicodes/host-remote'
 import { ProviderRateLimiter } from './usage/rate-limit'
-import { ProviderVault } from './vault/providers'
+import { ProviderVault, type ProviderEntry } from './vault/providers'
 import { loadOrCreateInstanceSecret } from './vault/secret'
 import { importCredentialPools } from './vault/import-pools'
 import { AccountQuotas } from './vault/credential-pool'
+import { ClaudeCli, ClaudeReleases } from './llm/claude-cli'
+import { ProcessPlacement } from './llm/process-placement'
+import { CliInstalls } from './llm/cli-installs'
 import { ProviderAccounts } from './vault/provider-accounts'
 import { ProviderOperations } from './vault/provider-operations'
 import { SubscriptionLoginFlows } from './vault/subscription-login'
@@ -93,6 +97,8 @@ export interface BackendOptions {
    * By default the live browser view, when the package provides it.
    */
   userStreams?: Record<string, NativeBinding>
+  /** How the Claude Code distribution is read; tests answer for the vendor. */
+  claudeReleases?: ConstructorParameters<typeof ClaudeReleases>[0]
   /**
    * Directory produced by scripts/native/release-runner.ts; exposes paired
    * client/runner downloads.
@@ -178,6 +184,21 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
         }] as const]
       : []
   }))
+  const claudePackage = options.nativeCommands.packages.find(descriptor =>
+    descriptor.id === 'demi.claude' && descriptor.operations.includes('claude.ensure'))
+  const installedClaudeCli = claudePackage
+    ? new ClaudeCli({
+      releases: new ClaudeReleases(options.claudeReleases),
+      package: claudePackage,
+      resolveArtifact: options.nativeCommands.resolveArtifact,
+    })
+    : null
+  // Demi never starts a `claude` it did not install (`claude-cli.md`).
+  const claudeCli = (): ClaudeCli => {
+    if (!installedClaudeCli)
+      throw new Error('Claude Code needs the demi.claude package, which this deployment does not carry')
+    return installedClaudeCli
+  }
   const controlDb = openSqliteDatabase(join(options.dataDir, 'control.sqlite'))
   migrate(controlDb, CONTROL_MIGRATIONS)
   const control: ControlService = new LocalControlService(controlDb)
@@ -275,6 +296,14 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     control,
     vault,
     hostFor: (id) => targets.hostFor(id),
+    claudeCli: async (conversationId, held) => {
+      const placed = await placement.place({ kind: 'inference', conversationId })
+      try {
+        return await claudeCli().executable(placed, { held })
+      } finally {
+        placed.release()
+      }
+    },
     rateLimiter
   })
 
@@ -333,6 +362,58 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     reserveTree: (conversationId) => agentServer.reserveTreeMutation(
       conversationId
     ),
+  })
+  // A process provider's work that belongs to no conversation runs where the
+  // placement says, with Demi's CLI there.
+  const placeAccountProcess = async (
+    userId: string,
+    entry: ProviderEntry,
+    signal?: AbortSignal
+  ) => {
+    const placed = await placement.place(
+      { kind: 'account', userId, providerId: entry.id },
+      signal
+    )
+    return {
+      cwd: placed.cwd,
+      release: placed.release,
+      session: {
+        spawn: (params: Parameters<SessionProviderContext['spawn']>[0]) =>
+          placed.host.process.spawn({ ...params, inheritEnv: true }),
+        claudeCli: () => claudeCli().executable(placed, {
+          held: entry.config.kind === 'subscription'
+            ? entry.config.cliVersion
+            : undefined,
+          signal
+        }),
+      } satisfies SessionProviderContext,
+    }
+  }
+  const cliInstalls = new CliInstalls(placeAccountProcess)
+  const providerCli = {
+    installs: cliInstalls,
+    newest: async (refresh: boolean) =>
+      (await claudeCli().releases.latest(refresh)).version,
+    verify: async (version: string) => {
+      await claudeCli().releases.release(version)
+    },
+    machines: async (userId: string, signal: AbortSignal) => Promise.all(
+      (await placement.online(userId, 'provider-cli')).map(async machine => ({
+        deviceId: machine.deviceId,
+        name: machine.name,
+        // A machine that does not answer is one whose version is not known.
+        versions: await claudeCli().installed(machine, signal).then(
+          installed => installed.map(entry => entry.version),
+          () => null
+        ),
+      }))
+    ),
+  }
+  const placement = new ProcessPlacement({
+    control,
+    targets,
+    managedHosts,
+    registry: runnerRegistry,
   })
 
   const hostCommandDeps = {
@@ -427,6 +508,8 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   })
 
   const app = createApp({
+    placeAccountProcess,
+    providerCli,
     webDirectory: options.webDirectory,
     titles,
     ...(relay ? { relay } : {}),
@@ -513,6 +596,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
       cleanup.defer(() => runnerRegistry.close())
       cleanup.defer(() => pipes.close())
       cleanup.defer(() => managedHosts.close())
+      cleanup.defer(() => cliInstalls.close())
       cleanup.defer(() => targets.close())
       cleanup.defer(() => conversations.close())
       cleanup.defer(() => agentServer.close())
