@@ -365,7 +365,23 @@ project and pin partition. [Storage](storage.md) owns persistent ordering. Activ
 runs in, resolved the same way for a device directory, a workspace, and the
 Cloud, so the browser never derives it. Status is running/compacting from the live agent tree,
 otherwise completed/error/stopped from its latest terminal block, or idle.
-An unfinished checkpoint without a live session is interrupted. Checkpoint output
+An unfinished checkpoint without a live session is interrupted.
+
+A conversation is running while its tree will go on working without the user:
+an agent of the tree is acting, or a child is still open. An open child counts
+whatever it is doing, a wait for its own `yield` wakeup included, because it
+resumes by itself and its close wakes its parent
+([Subagents](../subagent.md#result)). A shell command that outlives its turn
+does not count: its exit wakes no one, so nothing follows until the user
+writes. For example, the root answers "two children are looking into it" and
+ends its turn: the conversation stays running until both children close and
+the root has answered their results. The root answers "the build has started"
+while `npm run build` still runs: the conversation is completed, and the
+command shows as running only on its terminal tab. The browser applies the
+same rule to a conversation it is attached to
+(`web-ui/agent/conversation-status.ts`).
+
+Checkpoint output
 changes advance a persisted revision; user input alone does not. A browser sends
 `POST /api/conversations/:id/read { revision }` for the output it actually showed.
 Acknowledgements only move forward, and revisions beyond current output are refused.

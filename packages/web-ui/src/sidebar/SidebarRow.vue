@@ -40,7 +40,7 @@ const emit = defineEmits<{
   togglePin: []
 }>()
 
-// One quiet mark: a breathing dot while running, green for a result waiting to be read, orange
+// One quiet mark: a breathing dot while running, blue for a result waiting to be read, orange
 // when the conversation needs the user (it failed or was stopped). Nothing when settled.
 const dotClass = computed(() => {
   const { status, unread } = props.conversation
@@ -54,7 +54,7 @@ const dotClass = computed(() => {
     return 'bg-on-warning'
   }
   if (status === 'done' && unread) {
-    return 'bg-on-success'
+    return 'bg-on-info'
   }
   return null
 })

@@ -196,6 +196,19 @@ export class AgentServer {
     return this.activity(rootSessionId).active
   }
 
+  /**
+   * True while the tree will go on working by itself: an agent of it is
+   * acting, or a child is still open — a child waiting on its own yield
+   * wakeup included, which holds no action yet resumes and then wakes its
+   * parent. A shell command that outlives its turn wakes no one and does not
+   * count.
+   */
+  treeRunning(rootSessionId: string): boolean {
+    if (this.treeActive(rootSessionId))
+      return true
+    return this.sessionOwnership.get(rootSessionId)?.supervisor.hasLiveJobs() ?? false
+  }
+
   observeTreeActivity(rootSessionId: string, changed: () => void): () => void {
     return this.activity(rootSessionId).subscribe(changed)
   }

@@ -31,7 +31,7 @@ export async function conversationSummary(
   let status:
     'running' | 'compacting' | 'interrupted' | 'error' |
     'stopped' | 'completed' | 'idle' = 'idle'
-  if (server.treeActive(conversation.id))
+  if (server.treeRunning(conversation.id))
     status = live === 'compacting' ? 'compacting' : 'running'
   else if (!live && summary.phase !== 'idle')
     status = 'interrupted'

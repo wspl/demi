@@ -33,6 +33,7 @@
   --color-on-danger-muted: var(--on-danger-muted);
   --color-on-success: var(--on-success);
   --color-on-warning: var(--on-warning);
+  --color-on-info: var(--on-info);
   --color-on-accent: var(--on-accent);
   --color-on-highlight: var(--on-highlight);
   --color-accent-fill: var(--accent-fill);
@@ -86,6 +87,8 @@
   --on-danger-muted: rgba(248, 113, 113, 0.6);
   --on-success: #34d399;
   --on-warning: #fbbf24;
+  /* News that is not an outcome: a fixed blue, so it never takes the accent's hue. */
+  --on-info: #60a5fa;
   --on-accent: #60a5fa;
   --on-highlight: #fde68a;
   /* Solid accent fill for primary controls; --on-accent stays a text color. */
@@ -166,6 +169,7 @@
   --on-danger-muted: rgba(220, 38, 38, 0.6);
   --on-success: #16a34a;
   --on-warning: #d97706;
+  --on-info: #2563eb;
   --on-accent: #2563eb;
   --on-highlight: #92400e;
   --accent-fill: var(--on-accent);
