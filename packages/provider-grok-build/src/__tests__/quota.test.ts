@@ -208,3 +208,19 @@ test(
     ])
   }
 )
+
+test('a plan whose billing meters no credits has no credits window', () => {
+  const snap = mapGrokQuotaProbe(
+    { subscriptionTier: 'XPremium', email: 'u@example.com' },
+    {
+      config: {
+        currentPeriod: { type: 'USAGE_PERIOD_TYPE_WEEKLY', start: '2026-09-18T00:00:00Z', end: '2026-09-25T00:00:00Z' },
+        onDemandUsed: { val: 0 },
+        prepaidBalance: { val: 0 },
+        billingPeriodEnd: '2026-10-01T00:00:00Z',
+      },
+    },
+  )
+  expect(snap.plan?.label).toBe('XPremium')
+  expect(snap.windows).toEqual([])
+})
