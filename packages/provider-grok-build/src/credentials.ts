@@ -26,28 +26,39 @@ import {
 import { runGrokDeviceLogin } from './device-login'
 import {
   FileCredentialPool,
+  type CredentialPool,
   credentialIdFromIdentity,
   type CredentialEntryMeta,
 } from '@demicodes/provider/credentials-pool'
 
+/**
+ * Auth store that prefers the demi pool active entry; falls back to vendor
+ * ~/.grok.
+ */
 export class PoolAwareGrokAuthStore implements GrokAuthStore {
-  private readonly pool: FileCredentialPool
+  private readonly pool: CredentialPool
   private readonly vendorHome: string
+  private readonly credentialId: string | null
   private readonly fileAuthOptions: Omit<FileGrokAuthStoreOptions, 'grokHome'
     | 'authFile'
+    | 'document'
     | 'entryKey'>
 
   constructor(
-    pool: FileCredentialPool,
+    pool: CredentialPool,
     options: {
       grokHome?: string;
+      /** The account this store stands for, instead of the pool's active one. */
+      credentialId?: string;
       fileAuthOptions?: Omit<FileGrokAuthStoreOptions, 'grokHome'
         | 'authFile'
+        | 'document'
         | 'entryKey'>
     } = {},
   ) {
     this.pool = pool
     this.vendorHome = options.grokHome ?? defaultGrokHome()
+    this.credentialId = options.credentialId ?? null
     this.fileAuthOptions = options.fileAuthOptions ?? {}
   }
 
@@ -59,23 +70,36 @@ export class PoolAwareGrokAuthStore implements GrokAuthStore {
     return this.currentStore().then((s) => s.resolveAuth(options))
   }
 
-  private async currentStore(): Promise<FileGrokAuthStore> {
-    await this.pool.ensureActivePointer()
-    const activeId = await this.pool.getActiveId()
-    if (activeId) {
-      const meta = await this.pool.readMeta(activeId)
-      const entryKey = meta?.identityKey ?? undefined
+  private async currentStore(): Promise<GrokAuthStore> {
+    const id = this.credentialId ?? await this.pool.ensureActivePointer()
+    if (id) {
+      const meta = await this.pool.readMeta(id)
       return new FileGrokAuthStore({
         ...this.fileAuthOptions,
-        authFile: this.pool.secretPath(activeId),
-        grokHome: this.pool.entryDir(activeId),
-        entryKey,
+        document: this.pool.document(id),
+        entryKey: meta?.identityKey ?? undefined,
       })
     }
+    if (!this.pool.vendorDefault)
+      return new MissingGrokAuthStore()
     return new FileGrokAuthStore({
       ...this.fileAuthOptions,
       grokHome: this.vendorHome,
     })
+  }
+}
+
+/** An entry without an account, where no vendor login may stand in for one. */
+class MissingGrokAuthStore implements GrokAuthStore {
+  async status() {
+    return {
+      status: 'unauthenticated' as const,
+      message: 'No Grok account is signed in'
+    }
+  }
+
+  async resolveAuth(): Promise<never> {
+    throw new GrokAuthError('auth_missing', 'No Grok account is signed in')
   }
 }
 
@@ -90,11 +114,16 @@ export function openGrokCredentialPool(
 }
 
 export function createGrokBuildCredentials(
-  pool: FileCredentialPool,
+  pool: CredentialPool,
   authStore: GrokAuthStore,
   options: {
     grokHome?: string
     quota?: ProviderQuota | null
+    /**
+     * The provider stands for one named account: another account becoming
+     * active or being added says nothing about its usage.
+     */
+    pinned?: boolean
     /** Injectable fetch for the device-code login flow (tests). */
     loginFetch?: typeof fetch
   } = {},
@@ -104,10 +133,15 @@ export function createGrokBuildCredentials(
   const capability = (): ProviderCredentialsCapability => ({
     mode: 'supported',
     canBeginLogin: true,
-    canImportDefault: true,
+    canImportDefault: pool.vendorDefault,
     canAdd: true,
     multi: true,
   })
+
+  const accountChanged = (): void => {
+    if (!options.pinned)
+      options.quota?.clearLatest?.()
+  }
 
   const getActive = async (): Promise<ProviderCredentialActive> => {
     await pool.ensureActivePointer()
@@ -120,7 +154,7 @@ export function createGrokBuildCredentials(
     credentialId: string
   ): Promise<ProviderCredentialActive> => {
     await pool.setActiveId(credentialId)
-    options.quota?.clearLatest?.()
+    accountChanged()
     return getActive()
   }
 
@@ -147,7 +181,7 @@ export function createGrokBuildCredentials(
     const active = await pool.getActiveId()
     if (!active)
       await pool.setActiveId(id)
-    options.quota?.clearLatest?.()
+    accountChanged()
     return {
       id: meta.id,
       label: meta.label,
@@ -202,6 +236,11 @@ export function createGrokBuildCredentials(
       }
     },
     importDefault: async () => {
+      if (!pool.vendorDefault)
+        throw new GrokAuthError(
+          'auth_unsupported',
+          'This pool does not take the vendor login of the machine'
+        )
       const authFile = join(vendorHome, 'auth.json')
       let text: string
       try {
@@ -222,7 +261,7 @@ export function createGrokBuildCredentials(
         const byKey = (await pool.listMeta()).find((m) => m.identityKey === preferred.entryKey)
         if (byKey) {
           await pool.setActiveId(byKey.id)
-          options.quota?.clearLatest?.()
+          accountChanged()
           return {
             id: byKey.id,
             label: byKey.label,
@@ -264,7 +303,7 @@ export function createGrokBuildCredentials(
     },
     remove: async (credentialId: string) => {
       await pool.remove(credentialId)
-      options.quota?.clearLatest?.()
+      accountChanged()
     },
   }
 }

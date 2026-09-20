@@ -254,9 +254,7 @@ not implement `RemoteControlService`, `demi-controld`, S3 store adapters, routin
 ownership/fencing, or Litestream provisioning and restore orchestration. The
 multi-worker section defines required behavior, not an available deployment mode.
 
-Subscription accounts are still pool files under `vault/<providerId>/`, not yet
-`provider_credentials` rows; see
-[Providers](providers-and-vault.md#implementation-limits). The directory blob store uses rename publication but does not explicitly fsync
+The directory blob store uses rename publication but does not explicitly fsync
 file and directory data; its power-loss durability must be defined before
 claiming the same durability guarantee as committed machine generations.
 

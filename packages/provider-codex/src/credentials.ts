@@ -25,6 +25,7 @@ import {
 import { runCodexDeviceLogin } from './device-login'
 import {
   FileCredentialPool,
+  type CredentialPool,
   credentialIdFromIdentity,
   type CredentialEntryMeta,
 } from '@demicodes/provider/credentials-pool'
@@ -42,20 +43,25 @@ export interface CodexCredentialsOptions {
  * ~/.codex.
  */
 export class PoolAwareCodexAuthStore implements CodexAuthStore {
-  private readonly pool: FileCredentialPool
+  private readonly pool: CredentialPool
   private readonly vendorHome: string
+  private readonly credentialId: string | null
   private readonly fileAuthOptions: Omit<FileCodexAuthStoreOptions, 'codexHome'
-    | 'authFile'>
+    | 'authFile'
+    | 'document'>
 
   constructor(
-    pool: FileCredentialPool,
+    pool: CredentialPool,
     options: {
       codexHome?: string;
-      fileAuthOptions?: Omit<FileCodexAuthStoreOptions, 'codexHome' | 'authFile'>
+      /** The account this store stands for, instead of the pool's active one. */
+      credentialId?: string;
+      fileAuthOptions?: Omit<FileCodexAuthStoreOptions, 'codexHome' | 'authFile' | 'document'>
     } = {},
   ) {
     this.pool = pool
     this.vendorHome = options.codexHome ?? defaultCodexHome()
+    this.credentialId = options.credentialId ?? null
     this.fileAuthOptions = options.fileAuthOptions ?? {}
   }
 
@@ -67,16 +73,16 @@ export class PoolAwareCodexAuthStore implements CodexAuthStore {
     return this.currentStore().then((s) => s.resolveAuth(options))
   }
 
-  private async currentStore(): Promise<FileCodexAuthStore> {
-    await this.pool.ensureActivePointer()
-    const activeId = await this.pool.getActiveId()
-    if (activeId) {
+  private async currentStore(): Promise<CodexAuthStore> {
+    const id = this.credentialId ?? await this.pool.ensureActivePointer()
+    if (id) {
       return new FileCodexAuthStore({
         ...this.fileAuthOptions,
-        authFile: this.pool.secretPath(activeId),
-        codexHome: this.pool.entryDir(activeId),
+        document: this.pool.document(id),
       })
     }
+    if (!this.pool.vendorDefault)
+      return new MissingCodexAuthStore()
     return new FileCodexAuthStore({
       ...this.fileAuthOptions,
       codexHome: this.vendorHome,
@@ -84,12 +90,31 @@ export class PoolAwareCodexAuthStore implements CodexAuthStore {
   }
 }
 
+/** An entry without an account, where no vendor login may stand in for one. */
+class MissingCodexAuthStore implements CodexAuthStore {
+  async status() {
+    return {
+      status: 'unauthenticated' as const,
+      message: 'No Codex account is signed in'
+    }
+  }
+
+  async resolveAuth(): Promise<never> {
+    throw new CodexAuthError('auth_missing', 'No Codex account is signed in')
+  }
+}
+
 export function createCodexCredentials(
-  pool: FileCredentialPool,
+  pool: CredentialPool,
   authStore: CodexAuthStore,
   options: {
     codexHome?: string
     quota?: ProviderQuota | null
+    /**
+     * The provider stands for one named account: another account becoming
+     * active or being added says nothing about its usage.
+     */
+    pinned?: boolean
     onActiveChange?: () => void
     /** Injectable fetch for the device-code login flow (tests). */
     loginFetch?: typeof fetch
@@ -100,10 +125,16 @@ export function createCodexCredentials(
   const capability = (): ProviderCredentialsCapability => ({
     mode: 'supported',
     canBeginLogin: true,
-    canImportDefault: true,
+    canImportDefault: pool.vendorDefault,
     canAdd: true,
     multi: true,
   })
+
+  const accountChanged = (): void => {
+    if (!options.pinned)
+      options.quota?.clearLatest?.()
+    options.onActiveChange?.()
+  }
 
   const getActive = async (): Promise<ProviderCredentialActive> => {
     await pool.ensureActivePointer()
@@ -116,8 +147,7 @@ export function createCodexCredentials(
     credentialId: string
   ): Promise<ProviderCredentialActive> => {
     await pool.setActiveId(credentialId)
-    options.quota?.clearLatest?.()
-    options.onActiveChange?.()
+    accountChanged()
     return getActive()
   }
 
@@ -143,8 +173,7 @@ export function createCodexCredentials(
     const active = await pool.getActiveId()
     if (!active)
       await pool.setActiveId(id)
-    options.quota?.clearLatest?.()
-    options.onActiveChange?.()
+    accountChanged()
     return {
       id: meta.id,
       label: meta.label,
@@ -185,6 +214,11 @@ export function createCodexCredentials(
       }
     },
     importDefault: async () => {
+      if (!pool.vendorDefault)
+        throw new CodexAuthError(
+          'auth_unsupported',
+          'This pool does not take the vendor login of the machine'
+        )
       const authFile = join(vendorHome, 'auth.json')
       let text: string
       try {
@@ -218,8 +252,7 @@ export function createCodexCredentials(
     },
     remove: async (credentialId: string) => {
       await pool.remove(credentialId)
-      options.quota?.clearLatest?.()
-      options.onActiveChange?.()
+      accountChanged()
     },
   }
 }

@@ -117,7 +117,6 @@ test(
 test(
   'adding a device-login account reserves the provider and cancellation releases it',
   async () => {
-    const { mkdir, writeFile } = await import('node:fs/promises')
     const { defineProvider } = await import('@demicodes/provider')
     const { StubProvider } = await import('@demicodes/provider/testing')
     let attempts = 0
@@ -128,7 +127,7 @@ test(
       providerTypes: {
         device: {
           credential: 'subscription',
-          create: ({ providerId, label, vaultDir }) => defineProvider({
+          create: ({ providerId, label, credentialPool }) => defineProvider({
             id: providerId,
             displayName: label,
             credentials: {
@@ -145,8 +144,12 @@ test(
               beginLogin: async options => {
                 attempts += 1
                 if (attempts === 1) {
-                  await mkdir(vaultDir, { recursive: true })
-                  await writeFile(join(vaultDir, 'fixture'), 'fixture')
+                  await credentialPool.writeEntry({
+                    id: 'account',
+                    label: 'Fixture',
+                    updatedAt: new Date().toISOString()
+                  }, 'fixture')
+                  await credentialPool.setActiveId('account')
                   return { status: 'completed', credentialId: 'account' }
                 }
                 options!.onPending?.({

@@ -28,6 +28,7 @@ export {
   FileClaudeCodeAuthStore,
   StaticClaudeCodeAuthStore,
   type ClaudeCodeAuthStore,
+  type FileClaudeCodeAuthStoreOptions,
 } from './auth'
 export {
   createClaudeCodeCredentials,

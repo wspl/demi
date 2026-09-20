@@ -138,11 +138,6 @@ const healthSchema = z.object({
   ]),
   message: z.string().optional(),
 })
-const credentialSchema = z.object({
-  id: z.string(),
-  label: z.string(),
-  detail: z.string().nullable().optional(),
-})
 const activeCredentialSchema = z.object({
   credentialId: z.string().nullable(),
   status: healthSchema,
@@ -167,6 +162,13 @@ export const quotaSchema = z.object({
       resetsAt: z.string().nullable(),
     }),
   ),
+})
+const credentialSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  detail: z.string().nullable().optional(),
+  /** The account's own usage, as last asked for or observed. */
+  quota: quotaSchema.nullable(),
 })
 const providerDetailsSchema = z.object({
   auth: healthSchema,

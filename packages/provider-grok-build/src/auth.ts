@@ -22,7 +22,11 @@ import {
   reportedStringSchema,
   type ProviderAuthState
 } from '@demicodes/provider'
-import { writeJsonFileAtomic } from '@demicodes/provider/credentials-pool'
+import {
+  exclusiveCredentialRefresh,
+  writeJsonFileAtomic,
+  type CredentialDocument,
+} from '@demicodes/provider/credentials-pool'
 
 /**
  * One credential entry as written by the Grok CLI (`~/.grok/auth.json`).
@@ -79,8 +83,10 @@ export interface GrokAuthStore {
 
 export interface FileGrokAuthStoreOptions {
   grokHome?: string
-  /** Override auth.json path (e.g. demi credential pool entry). */
+  /** Override auth.json path. */
   authFile?: string
+  /** The account's document in a credential pool, instead of a file. */
+  document?: CredentialDocument
   /**
    * Prefer this map key when the auth file has multiple OIDC entries.
    * When unset, uses {@link selectAuthEntry} scoring.
@@ -138,9 +144,11 @@ export async function grokBuildAuthStatus(
 
 export class FileGrokAuthStore implements GrokAuthStore {
   readonly grokHome: string
+  /** The file, or the name of the pool document that stands in for it. */
   readonly authFile: string
   readonly entryKey: string | null
 
+  private readonly document: CredentialDocument | null
   private readonly refreshImpl: GrokTokenRefresh
   private readonly now: () => Date
   private readonly lockRetryDelayMs: number
@@ -148,7 +156,10 @@ export class FileGrokAuthStore implements GrokAuthStore {
 
   constructor(options: FileGrokAuthStoreOptions = {}) {
     this.grokHome = options.grokHome ?? defaultGrokHome()
-    this.authFile = options.authFile ?? join(this.grokHome, 'auth.json')
+    this.document = options.document ?? null
+    this.authFile = this.document?.name
+      ?? options.authFile
+      ?? join(this.grokHome, 'auth.json')
     this.entryKey = nonEmptyString(options.entryKey) ?? null
     this.refreshImpl = options.refresh ?? refreshGrokOidcToken
     this.now = options.now ?? (() => new Date())
@@ -181,7 +192,7 @@ export class FileGrokAuthStore implements GrokAuthStore {
   async resolveAuth(
     options: { forceRefresh?: boolean } = {}
   ): Promise<GrokResolvedAuth> {
-    const file = await this.readAuthFile()
+    const { file } = await this.readRevision()
     const selected = this.entryKey
       ? selectAuthEntryByKey(file, this.entryKey)
       : selectAuthEntry(file)
@@ -194,39 +205,24 @@ export class FileGrokAuthStore implements GrokAuthStore {
       )
     }
 
-    const { entryKey, entry, accessToken } = selected
-    const refreshToken = nonEmptyString(entry.refresh_token) ?? null
-    const clientId = nonEmptyString(entry.oidc_client_id)
-      ?? parseClientIdFromEntryKey(entryKey)
-    const issuer = nonEmptyString(entry.oidc_issuer)
-      ?? parseIssuerFromEntryKey(entryKey)
-    const expiresAt = parseExpiresAt(entry.expires_at)
-      ?? parseJwtExpiration(accessToken)
+    const auth = resolvedAuthFromSelected(selected, this.authFile)
     const shouldRefresh =
       options.forceRefresh === true || expiresWithin(
-        expiresAt,
+        auth.expiresAt,
         this.now(),
         REFRESH_EXPIRY_SKEW_MS
       )
 
-    if (shouldRefresh && refreshToken && clientId) {
-      return this.refreshAndResolve(accessToken, entryKey, {
-        refreshToken,
-        clientId,
-        tokenEndpoint: tokenEndpointForIssuer(issuer),
-        principalType: entry.principal_type ?? null,
-        principalId: entry.principal_id ?? null,
+    if (shouldRefresh && auth.refreshToken && auth.clientId) {
+      return this.refreshAndResolve(selected.accessToken, selected.entryKey, {
+        refreshToken: auth.refreshToken,
+        clientId: auth.clientId,
+        tokenEndpoint: tokenEndpointForIssuer(auth.issuer),
+        principalType: selected.entry.principal_type ?? null,
+        principalId: selected.entry.principal_id ?? null,
       })
     }
-
-    return resolvedAuthFromEntry(entry, accessToken, {
-      refreshToken,
-      expiresAt,
-      issuer,
-      clientId,
-      entryKey,
-      authFile: this.authFile,
-    })
+    return auth
   }
 
   private async refreshAndResolve(
@@ -240,54 +236,49 @@ export class FileGrokAuthStore implements GrokAuthStore {
       principalId?: string | null
     },
   ): Promise<GrokResolvedAuth> {
-    return this.withAuthFileLock(async () => {
-      const latest = await this.readAuthFile()
-      const latestEntry = latest[entryKey]
+    const refresh = async (): Promise<GrokResolvedAuth> => {
+      const latest = await this.readRevision()
+      const latestEntry = latest.file[entryKey]
       if (!latestEntry) {
         throw new GrokAuthError(
           'auth_missing',
           `Grok auth entry "${entryKey}" disappeared during refresh`
         )
       }
-      const refreshToken = nonEmptyString(latestEntry.refresh_token)
-        ?? refreshInput.refreshToken
-      const clientId = nonEmptyString(latestEntry.oidc_client_id)
-        ?? refreshInput.clientId
-      const issuer = nonEmptyString(latestEntry.oidc_issuer)
-        ?? parseIssuerFromEntryKey(entryKey)
 
-      // Another process may have refreshed while we waited for the lock. If the
-      // token changed and is no longer near expiry, use it — refreshing again
-      // wastes a round-trip and needlessly rotates the refresh token.
-      const latestAccessToken = nonEmptyString(latestEntry.key)
-      if (latestAccessToken && latestAccessToken !== staleAccessToken) {
-        const latestExpiresAt = parseExpiresAt(latestEntry.expires_at)
-          ?? parseJwtExpiration(latestAccessToken)
-        if (!expiresWithin(
-          latestExpiresAt,
-          this.now(),
-          REFRESH_EXPIRY_SKEW_MS
-        )) {
-          return resolvedAuthFromEntry(latestEntry, latestAccessToken, {
-            refreshToken: nonEmptyString(latestEntry.refresh_token) ?? null,
-            expiresAt: latestExpiresAt,
-            issuer,
-            clientId,
-            entryKey,
-            authFile: this.authFile,
-          })
-        }
+      // Someone else may have refreshed while this refresh waited its turn. If
+      // the token changed and is no longer near expiry, use it — refreshing
+      // again wastes a round-trip and needlessly rotates the refresh token.
+      const waited = selectAuthEntryByKey(latest.file, entryKey)
+      if (waited && waited.accessToken !== staleAccessToken) {
+        const auth = resolvedAuthFromSelected(waited, this.authFile)
+        if (!expiresWithin(auth.expiresAt, this.now(), REFRESH_EXPIRY_SKEW_MS))
+          return auth
       }
 
-      const response = await this.refreshImpl({
-        refreshToken,
-        clientId,
-        tokenEndpoint: tokenEndpointForIssuer(issuer)
-          || refreshInput.tokenEndpoint,
-        principalType: latestEntry.principal_type
-          ?? refreshInput.principalType,
-        principalId: latestEntry.principal_id ?? refreshInput.principalId,
-      })
+      const issuer = nonEmptyString(latestEntry.oidc_issuer)
+        ?? parseIssuerFromEntryKey(entryKey)
+      let response: GrokRefreshTokenResponse
+      try {
+        response = await this.refreshImpl({
+          refreshToken: nonEmptyString(latestEntry.refresh_token)
+            ?? refreshInput.refreshToken,
+          clientId: nonEmptyString(latestEntry.oidc_client_id)
+            ?? refreshInput.clientId,
+          tokenEndpoint: tokenEndpointForIssuer(issuer)
+            || refreshInput.tokenEndpoint,
+          principalType: latestEntry.principal_type
+            ?? refreshInput.principalType,
+          principalId: latestEntry.principal_id ?? refreshInput.principalId,
+        })
+      } catch (error) {
+        // A refresh token is spent once: whoever refreshed first has stored
+        // the tokens this one was refused for.
+        const stored = await this.readRevision()
+        if (stored.version !== latest.version)
+          return this.storedAuth(stored.file, entryKey)
+        throw error
+      }
       const accessToken = response.access_token
       const expiresAt = response.expires_in === undefined
         ? parseJwtExpiration(accessToken)
@@ -301,21 +292,65 @@ export class FileGrokAuthStore implements GrokAuthStore {
           : {}),
         ...(expiresAt ? { expires_at: expiresAt.toISOString() } : {}),
       }
-      const nextFile: GrokAuthDotJson = { ...latest, [entryKey]: nextEntry }
-      await writeJsonFileAtomic(this.authFile, nextFile)
-
-      return resolvedAuthFromEntry(nextEntry, accessToken, {
-        refreshToken: nonEmptyString(nextEntry.refresh_token) ?? null,
+      const nextFile: GrokAuthDotJson = {
+        ...latest.file,
+        [entryKey]: nextEntry
+      }
+      const nextAuth: GrokResolvedAuth = {
+        ...resolvedAuthFromSelected(
+          { entryKey, entry: nextEntry, accessToken },
+          this.authFile
+        ),
         expiresAt,
-        issuer,
-        clientId,
-        entryKey,
-        authFile: this.authFile,
-      })
-    })
+      }
+      if (!this.document) {
+        await writeJsonFileAtomic(this.authFile, nextFile)
+        return nextAuth
+      }
+      const kept = await this.document.replace(
+        `${JSON.stringify(nextFile, null, 2)}\n`,
+        latest.version
+      )
+      return kept
+        ? nextAuth
+        : this.storedAuth((await this.readRevision()).file, entryKey)
+    }
+    return this.document
+      ? exclusiveCredentialRefresh(this.document, refresh)
+      : this.withAuthFileLock(refresh)
   }
 
-  private async readAuthFile(): Promise<GrokAuthDotJson> {
+  /** The auth the stored entry holds, as whoever wrote it last left it. */
+  private storedAuth(
+    file: GrokAuthDotJson,
+    entryKey: string
+  ): GrokResolvedAuth {
+    const selected = selectAuthEntryByKey(file, entryKey)
+    if (!selected) {
+      throw new GrokAuthError(
+        'auth_missing',
+        `Grok auth entry "${entryKey}" disappeared during refresh`
+      )
+    }
+    return resolvedAuthFromSelected(selected, this.authFile)
+  }
+
+  private async readRevision(): Promise<{
+    file: GrokAuthDotJson
+    version: string
+  }> {
+    if (this.document) {
+      const revision = await this.document.read()
+      if (!revision)
+        throw new GrokAuthError(
+          'auth_missing',
+          `Grok auth not found: ${this.authFile}`
+        )
+      return {
+        file: parseGrokAuthDotJson(revision.text, `Grok auth ${this.authFile}`),
+        version: revision.version,
+      }
+    }
     let text: string
     try {
       text = await readFile(this.authFile, 'utf8')
@@ -331,7 +366,11 @@ export class FileGrokAuthStore implements GrokAuthStore {
         `Failed to read Grok auth file ${this.authFile}: ${redactGrokSecretText(errorMessage(error))}`,
       )
     }
-    return parseGrokAuthDotJson(text, `Grok auth file ${this.authFile}`)
+    return {
+      file: parseGrokAuthDotJson(text, `Grok auth file ${this.authFile}`),
+      // The file lock keeps other writers out; the text itself tells revisions apart.
+      version: text,
+    }
   }
 
   private async withAuthFileLock<T>(fn: () => Promise<T>): Promise<T> {
@@ -411,6 +450,7 @@ export class GrokAuthError extends Error {
   constructor(
     readonly code: 'auth_missing'
       | 'auth_invalid'
+      | 'auth_unsupported'
       | 'auth_refresh_failed'
       | 'auth_lock_failed',
     message: string,
@@ -643,34 +683,30 @@ function resolveGrokUserId(
   )
 }
 
-function resolvedAuthFromEntry(
-  entry: GrokAuthEntry,
-  accessToken: string,
-  rest: {
-    refreshToken: string | null
-    expiresAt: Date | null
-    issuer: string | null
-    clientId: string | null
-    entryKey: string
-    authFile: string
-  },
+/** The auth a selected entry holds, before any refresh decision. */
+function resolvedAuthFromSelected(
+  selected: SelectedGrokAuthEntry,
+  authFile: string
 ): GrokResolvedAuth {
+  const { entryKey, entry, accessToken } = selected
   const peeked = peekGrokAccessTokenPrincipal(accessToken)
   return {
     accessToken,
-    refreshToken: rest.refreshToken,
-    expiresAt: rest.expiresAt,
+    refreshToken: nonEmptyString(entry.refresh_token) ?? null,
+    expiresAt: parseExpiresAt(entry.expires_at)
+      ?? parseJwtExpiration(accessToken),
     email: entry.email ?? null,
     userId: resolveGrokUserId(entry, accessToken),
     principalType: entry.principal_type ?? peeked?.principalType ?? null,
     principalId: entry.principal_id ?? peeked?.principalId ?? null,
-    issuer: rest.issuer,
-    clientId: rest.clientId,
-    entryKey: rest.entryKey,
-    authFile: rest.authFile,
+    issuer: nonEmptyString(entry.oidc_issuer)
+      ?? parseIssuerFromEntryKey(entryKey),
+    clientId: nonEmptyString(entry.oidc_client_id)
+      ?? parseClientIdFromEntryKey(entryKey),
+    entryKey,
+    authFile,
   }
 }
-
 
 /**
  * Grok CLI lock format is `pid:unix_seconds`. A valid live PID always owns its

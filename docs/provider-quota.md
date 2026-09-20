@@ -209,11 +209,11 @@ const probed = await provider.quota?.probe({ force: true })
 Guidance:
 
 1. Prefer **observation** during active chat (zero extra cost when headers/body carry windows).
-2. Call **probe** when the user asks, and when the account in use has just changed. The product's providers page
-   has a Refresh usage button on the active account; it also probes once after a sign-in makes an account active
-   and after the user activates another one, since the snapshot was just cleared. Nothing probes on a timer or on
-   opening a page: the snapshot is kept (see Goals) and says when it was taken, and a vendor's usage API is rate
-   limited like any other.
+2. Call **probe** when the user asks, and once when an account is added. The product's providers page has a
+   Refresh usage button on every account, in use or not, and probes once after a sign-in adds one. Selecting
+   another account probes nothing: each account keeps its own snapshot. Nothing probes on a timer or on opening a
+   page: the snapshot is kept (see Goals) and says when it was taken, and a vendor's usage API is rate limited
+   like any other.
 3. Do not poll `probe()` on a tight timer; use observe + sparse probe.
 
 ## 7. Implementation notes

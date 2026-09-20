@@ -14,7 +14,11 @@ import {
   reportedStringSchema,
   type ProviderAuthState
 } from '@demicodes/provider'
-import { writeJsonFileAtomic } from '@demicodes/provider/credentials-pool'
+import {
+  exclusiveCredentialRefresh,
+  writeJsonFileAtomic,
+  type CredentialDocument,
+} from '@demicodes/provider/credentials-pool'
 
 export const CODEX_AUTH_MODES = [
   'apiKey',
@@ -109,8 +113,10 @@ export async function codexAuthStatus(
 
 export interface FileCodexAuthStoreOptions {
   codexHome?: string
-  /** Override auth.json path (e.g. demi credential pool entry). */
+  /** Override auth.json path. */
   authFile?: string
+  /** The account's document in a credential pool, instead of a file. */
+  document?: CredentialDocument
   refresh?: CodexTokenRefresh
   now?: () => Date
   lockRetryDelayMs?: number
@@ -156,8 +162,10 @@ const REFRESH_STALENESS_MS = 8 * 24 * 60 * 60 * 1000
 
 export class FileCodexAuthStore implements CodexAuthStore {
   readonly codexHome: string
+  /** The file, or the name of the pool document that stands in for it. */
   readonly authFile: string
 
+  private readonly document: CredentialDocument | null
   private readonly refreshImpl: CodexTokenRefresh
   private readonly now: () => Date
   private readonly lockRetryDelayMs: number
@@ -165,7 +173,10 @@ export class FileCodexAuthStore implements CodexAuthStore {
 
   constructor(options: FileCodexAuthStoreOptions = {}) {
     this.codexHome = options.codexHome ?? defaultCodexHome()
-    this.authFile = options.authFile ?? join(this.codexHome, 'auth.json')
+    this.document = options.document ?? null
+    this.authFile = this.document?.name
+      ?? options.authFile
+      ?? join(this.codexHome, 'auth.json')
     this.refreshImpl = options.refresh ?? refreshCodexToken
     this.now = options.now ?? (() => new Date())
     this.lockRetryDelayMs = options.lockRetryDelayMs ?? 25
@@ -215,7 +226,7 @@ export class FileCodexAuthStore implements CodexAuthStore {
   async resolveAuth(
     options: { forceRefresh?: boolean } = {}
   ): Promise<CodexResolvedAuth> {
-    const auth = await this.readAuthFile()
+    const { auth } = await this.readRevision()
     const mode = resolvedAuthMode(auth)
 
     if (mode === 'bedrockApiKey') {
@@ -269,12 +280,22 @@ export class FileCodexAuthStore implements CodexAuthStore {
     auth: CodexAuthDotJson,
     refreshToken: string
   ): Promise<CodexResolvedAuth> {
-    return this.withAuthFileLock(async () => {
-      const latest = await this.readAuthFile()
-      const latestTokens = latest.tokens
+    const refresh = async (): Promise<CodexResolvedAuth> => {
+      const latest = await this.readRevision()
+      const latestTokens = latest.auth.tokens
       const latestRefreshToken = nonEmptyString(latestTokens?.refresh_token)
         ?? refreshToken
-      const response = await this.refreshImpl(latestRefreshToken)
+      let response: RefreshTokenResponse
+      try {
+        response = await this.refreshImpl(latestRefreshToken)
+      } catch (error) {
+        // A refresh token is spent once: whoever refreshed first has stored
+        // the tokens this one was refused for.
+        const stored = await this.readRevision()
+        if (stored.version !== latest.version)
+          return resolveChatGptAuthFromFile(stored.auth, this.authFile)
+        throw error
+      }
       const nextTokens: CodexTokenData = {
         ...(latestTokens ?? {}),
         access_token: response.access_token,
@@ -284,18 +305,44 @@ export class FileCodexAuthStore implements CodexAuthStore {
           : {}),
       }
       const nextAuth: CodexAuthDotJson = {
-        ...latest,
-        auth_mode: latest.auth_mode ?? auth.auth_mode ?? 'chatgpt',
+        ...latest.auth,
+        auth_mode: latest.auth.auth_mode ?? auth.auth_mode ?? 'chatgpt',
         tokens: nextTokens,
         last_refresh: this.now().toISOString(),
       }
-      await writeJsonFileAtomic(this.authFile, nextAuth)
-      return resolveChatGptAuthFromFile(nextAuth, this.authFile)
-    })
+      if (!this.document) {
+        await writeJsonFileAtomic(this.authFile, nextAuth)
+        return resolveChatGptAuthFromFile(nextAuth, this.authFile)
+      }
+      const kept = await this.document.replace(
+        `${JSON.stringify(nextAuth, null, 2)}\n`,
+        latest.version
+      )
+      return resolveChatGptAuthFromFile(
+        kept ? nextAuth : (await this.readRevision()).auth,
+        this.authFile
+      )
+    }
+    return this.document
+      ? exclusiveCredentialRefresh(this.document, refresh)
+      : this.withAuthFileLock(refresh)
   }
 
-  private async readAuthFile(): Promise<CodexAuthDotJson> {
+  private async readRevision(): Promise<{ auth: CodexAuthDotJson; version: string }> {
     let text: string
+    if (this.document) {
+      const revision = await this.document.read()
+      if (!revision)
+        throw new CodexAuthError(
+          'auth_missing',
+          `Codex auth not found: ${this.authFile}`
+        )
+      text = revision.text
+      return {
+        auth: parseCodexAuthDotJson(text, `Codex auth ${this.authFile}`),
+        version: revision.version,
+      }
+    }
     try {
       text = await readFile(this.authFile, 'utf8')
     } catch (error) {
@@ -310,10 +357,11 @@ export class FileCodexAuthStore implements CodexAuthStore {
         `Failed to read Codex auth file ${this.authFile}: ${redactCodexSecretText(errorMessage(error))}`
       )
     }
-    return parseCodexAuthDotJson(
-      text,
-      `Codex auth file ${this.authFile}`
-    )
+    return {
+      auth: parseCodexAuthDotJson(text, `Codex auth file ${this.authFile}`),
+      // The file lock keeps other writers out; the text itself tells revisions apart.
+      version: text,
+    }
   }
 
   private async withAuthFileLock<T>(fn: () => Promise<T>): Promise<T> {

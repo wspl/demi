@@ -5,6 +5,8 @@ import type { ToolResultContentBlock } from '@demicodes/core'
 import {
   applyModelPolicy,
   defineProvider,
+  fileQuotaSnapshots,
+  type ProviderQuotaSnapshots,
   quotaSnapshotFile,
   type AgentProvider,
   type InferenceItem,
@@ -17,6 +19,7 @@ import {
   type ProviderQuotaObserver,
 } from '@demicodes/provider'
 import { FileClaudeCodeAuthStore } from './auth'
+import type { CredentialPool } from '@demicodes/provider/credentials-pool'
 import {
   createClaudeCodeCredentials,
   openClaudeCodeCredentialPool,
@@ -53,6 +56,12 @@ export interface ClaudeCodeProviderOptions {
   models?: ModelPolicy
   /** Demi state root for credential pool (`$DEMI_HOME` / `~/.demi`). */
   stateDir?: string
+  /** The accounts of this entry, kept by the caller instead of under `stateDir`. */
+  credentialPool?: CredentialPool
+  /** The account this provider stands for, instead of the pool's active one. */
+  credentialId?: string
+  /** Keeps the account's usage snapshot; by default a file in `stateDir`. */
+  quotaSnapshots?: ProviderQuotaSnapshots
   /** When true (default), attach multi-credential pool + global switch. */
   credentials?: boolean
   authStore?: import('./auth').ClaudeCodeAuthStore
@@ -773,21 +782,21 @@ export function createClaudeCodeProvider(
   const displayName = options.displayName ?? 'Claude Code'
   const enableCredentials = options.credentials
     ?? options.authStore === undefined
-  const pool = !options.authStore
-    && enableCredentials ? openClaudeCodeCredentialPool(
-    {
-      stateDir: options.stateDir
-    }
-  ) : null
+  const pool = !options.authStore && enableCredentials
+    ? options.credentialPool
+      ?? openClaudeCodeCredentialPool({ stateDir: options.stateDir })
+    : null
+  const pinnedId = options.credentialId
   const authStore =
     options.authStore ??
     (pool
-      ? new PoolAwareClaudeCodeAuthStore(pool)
+      ? new PoolAwareClaudeCodeAuthStore(pool, { credentialId: pinnedId })
       : new FileClaudeCodeAuthStore())
 
   const quota = createClaudeCodeQuota({
     providerId: id,
-    snapshotFile: quotaSnapshotFile(options.stateDir),
+    snapshots: options.quotaSnapshots
+      ?? fileQuotaSnapshots(quotaSnapshotFile(options.stateDir), id),
     resolveAccess: async () => {
       try {
         return await authStore.resolveAccess()
@@ -798,14 +807,21 @@ export function createClaudeCodeProvider(
   })
 
   const credentialsApi = pool
-    ? createClaudeCodeCredentials(pool, authStore, { quota })
+    ? createClaudeCodeCredentials(pool, authStore, {
+      quota,
+      pinned: pinnedId !== undefined,
+    })
     : undefined
 
   const runtimeOptions: ClaudeCodeRuntimeOptions = {
     claudePath: options.claudePath,
     quota,
     authStore,
-    getActiveCredentialId: pool ? () => pool.getActiveId() : undefined,
+    // The retained CLI process belongs to the account the provider resolves:
+    // the pinned one, whichever account the pool has active.
+    getActiveCredentialId: pool
+      ? async () => pinnedId ?? pool.getActiveId()
+      : undefined,
     spawn: options.spawn,
     env: options.env,
   }

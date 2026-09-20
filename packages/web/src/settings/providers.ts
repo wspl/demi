@@ -436,20 +436,26 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     }
   }
 
-  /** Tests with the first model the user keeps enabled; the page offers no test without one. */
-  function test(provider: SettingsProviderEntry): void {
+  /**
+   * Tests with the first model the user keeps enabled; the page offers no test
+   * without one. A subscription names the account to test, in use or not.
+   */
+  function test(provider: SettingsProviderEntry, accountId?: string): void {
     const model = provider.models.find((candidate) => candidate.enabled)
     if (!model) {
       return
     }
-    perform(provider.id, { kind: 'testing' }, async (signal) => {
+    const operation = accountId
+      ? { kind: 'account' as const, accountId, action: 'test' as const }
+      : { kind: 'testing' as const }
+    perform(provider.id, operation, async (signal) => {
       try {
         const response = await apiRequest(
           `/providers/${encodeURIComponent(provider.id)}/test`,
           {
             method: 'POST',
             signal,
-            ...jsonBody({ modelId: model.id }),
+            ...jsonBody({ modelId: model.id, ...(accountId ? { credentialId: accountId } : {}) }),
           },
         )
         const result = await readResponse(
@@ -479,13 +485,22 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   }
 
   /**
-   * Asks the vendor for the active account's usage (`provider-quota.md`
-   * § Guidance). The user's button says why it could not; the probes Demi makes
-   * by itself, after a sign-in or a switch, stay quiet: the account works either way.
+   * Asks the vendor for one account's usage (`provider-quota.md` § Guidance).
+   * The user's button says why it could not; the probe Demi makes by itself,
+   * when an account is added, stays quiet: the account works either way.
    */
-  async function loadUsage(providerId: string, signal: AbortSignal, quiet: boolean): Promise<void> {
+  async function loadUsage(
+    providerId: string,
+    credentialId: string,
+    signal: AbortSignal,
+    quiet: boolean,
+  ): Promise<void> {
     try {
-      await apiRequest(`/providers/${encodeURIComponent(providerId)}/quota`, { method: 'POST', signal })
+      await apiRequest(`/providers/${encodeURIComponent(providerId)}/quota`, {
+        method: 'POST',
+        signal,
+        ...jsonBody({ credentialId }),
+      })
     } catch (error) {
       if (!quiet && !signal.aborted) {
         reportError('Could not refresh usage', error, { userVisible: true })
@@ -496,8 +511,12 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     }
   }
 
-  function refreshUsage(provider: SettingsProviderEntry): void {
-    perform(provider.id, { kind: 'usage' }, (signal) => loadUsage(provider.id, signal, false))
+  function refreshUsage(provider: SettingsProviderEntry, accountId: string): void {
+    perform(
+      provider.id,
+      { kind: 'account', accountId, action: 'usage' },
+      (signal) => loadUsage(provider.id, accountId, signal, false),
+    )
   }
 
   function refresh(provider: SettingsProviderEntry): void {
@@ -529,9 +548,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
           },
         )
         signal.throwIfAborted()
-        if (action === 'activate') {
-          await loadUsage(provider.id, signal, true)
-        }
         await product.revalidate(true)
       },
     )
@@ -600,14 +616,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       }
       if (result.status === 'completed') {
         loginId = null
-        await product.revalidate(true)
+        await loadUsage(result.providerId, result.credentialId, controller.signal, true)
         controller.signal.throwIfAborted()
-        const nowActive = product.snapshot?.providers.find((entry) => entry.id === result.providerId)
-          ?.details?.active?.credentialId === result.credentialId
-        if (nowActive) {
-          await loadUsage(result.providerId, controller.signal, true)
-          controller.signal.throwIfAborted()
-        }
         const provider = resources.providers.find(
           (entry) => entry.id === result.providerId,
         )

@@ -129,6 +129,10 @@ export interface ControlService {
     credentialKind: ProviderCredentialKind
     label: string
     config: string
+  }, accounts?: {
+    /** Stored with the row in one transaction: a published entry has its accounts. */
+    credentials: ProviderCredentialWrite[]
+    activeCredentialId: string | null
   }): Promise<ProviderRecord>
   getProvider(id: string): Promise<ProviderRecord | null>
   /**
@@ -151,6 +155,33 @@ export interface ControlService {
   putModelCatalog(providerId: string, record: ModelCatalogRecord): Promise<void>
   deleteModelCatalog(providerId: string): Promise<void>
   deleteProvider(id: string): Promise<void>
+  /** A subscription entry's accounts, by id. `secret` is opaque ciphertext. */
+  listProviderCredentials(providerId: string): Promise<ProviderCredentialRecord[]>
+  getProviderCredential(
+    providerId: string,
+    id: string
+  ): Promise<ProviderCredentialRecord | null>
+  /** Inserts the account or replaces the one with this id; advances its version. */
+  putProviderCredential(
+    providerId: string,
+    credential: ProviderCredentialWrite
+  ): Promise<ProviderCredentialRecord>
+  /** Stores a refreshed secret only while the account is still at `version`. */
+  replaceProviderCredentialSecret(
+    providerId: string,
+    id: string,
+    secret: string,
+    version: number
+  ): Promise<boolean>
+  setProviderCredentialQuota(
+    providerId: string,
+    id: string,
+    quota: string | null
+  ): Promise<void>
+  /** Removes the account; an entry that inferred with it has no active account. */
+  removeProviderCredential(providerId: string, id: string): Promise<void>
+  /** False when the entry has no such account. */
+  setActiveProviderCredential(providerId: string, id: string): Promise<boolean>
   appendUsage(row: Omit<UsageRow, 'id' | 'createdAt'>): Promise<void>
   listUsage(userId: string): Promise<UsageRow[]>
   /** The whole ledger — the shared-mode admin view. */
@@ -387,7 +418,26 @@ export interface ProviderRecord {
   label: string
   /** Encrypted at rest (vault crypto); opaque to storage. */
   config: string
+  /** The account a subscription entry infers with. */
+  activeCredentialId: string | null
   createdAt: string
+}
+
+export interface ProviderCredentialWrite {
+  id: string
+  identityKey: string | null
+  label: string
+  detail: string | null
+  source: string | null
+  /** Encrypted at rest (vault crypto); opaque to storage. */
+  secret: string
+}
+
+export interface ProviderCredentialRecord extends ProviderCredentialWrite {
+  version: number
+  /** The account's usage snapshot as JSON, validated by its reader. */
+  quota: string | null
+  updatedAt: string
 }
 
 export type ProviderCredentialKind = 'api_key' | 'subscription'
@@ -1014,6 +1064,9 @@ export class LocalControlService implements ControlService {
     credentialKind: ProviderCredentialKind
     label: string
     config: string
+  }, accounts?: {
+    credentials: ProviderCredentialWrite[]
+    activeCredentialId: string | null
   }): Promise<ProviderRecord> {
     const record: ProviderRecord = {
       id: provider.id ?? createId(),
@@ -1022,23 +1075,29 @@ export class LocalControlService implements ControlService {
       credentialKind: provider.credentialKind,
       label: provider.label,
       config: provider.config,
+      activeCredentialId: accounts?.activeCredentialId ?? null,
       createdAt: new Date().toISOString(),
     }
-    const inserted = this.db.get<{ id: string }>(
-      "INSERT INTO providers (id, owner_user_id, provider_type, credential_kind, label, config, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(owner_user_id, provider_type) WHERE credential_kind = 'subscription' DO NOTHING RETURNING id",
-      [
-        record.id,
-        record.ownerUserId,
-        record.providerType,
-        record.credentialKind,
-        record.label,
-        record.config,
-        record.createdAt,
-      ]
-    )
-    if (!inserted)
-      throw new ProviderExistsError(provider.providerType)
-    return record
+    return this.db.transaction(() => {
+      const inserted = this.db.get<{ id: string }>(
+        "INSERT INTO providers (id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(owner_user_id, provider_type) WHERE credential_kind = 'subscription' DO NOTHING RETURNING id",
+        [
+          record.id,
+          record.ownerUserId,
+          record.providerType,
+          record.credentialKind,
+          record.label,
+          record.config,
+          record.activeCredentialId,
+          record.createdAt,
+        ]
+      )
+      if (!inserted)
+        throw new ProviderExistsError(provider.providerType)
+      for (const credential of accounts?.credentials ?? [])
+        this.writeProviderCredential(record.id, credential)
+      return record
+    })
   }
 
   async getProvider(id: string): Promise<ProviderRecord | null> {
@@ -1101,6 +1160,104 @@ export class LocalControlService implements ControlService {
 
   async deleteProvider(id: string): Promise<void> {
     this.db.run('DELETE FROM providers WHERE id = ?', [id])
+  }
+
+  async listProviderCredentials(
+    providerId: string
+  ): Promise<ProviderCredentialRecord[]> {
+    return this.db.all<ProviderCredentialRow>(
+      `${PROVIDER_CREDENTIAL_SELECT} WHERE provider_id = ? ORDER BY id`,
+      [providerId]
+    ).map(providerCredentialFromRow)
+  }
+
+  async getProviderCredential(
+    providerId: string,
+    id: string
+  ): Promise<ProviderCredentialRecord | null> {
+    const row = this.db.get<ProviderCredentialRow>(
+      `${PROVIDER_CREDENTIAL_SELECT} WHERE provider_id = ? AND id = ?`,
+      [providerId, id]
+    )
+    return row ? providerCredentialFromRow(row) : null
+  }
+
+  async putProviderCredential(
+    providerId: string,
+    credential: ProviderCredentialWrite
+  ): Promise<ProviderCredentialRecord> {
+    return this.db.transaction(() => {
+      this.writeProviderCredential(providerId, credential)
+      return providerCredentialFromRow(this.db.get<ProviderCredentialRow>(
+        `${PROVIDER_CREDENTIAL_SELECT} WHERE provider_id = ? AND id = ?`,
+        [providerId, credential.id]
+      )!)
+    })
+  }
+
+  private writeProviderCredential(
+    providerId: string,
+    credential: ProviderCredentialWrite
+  ): void {
+    this.db.run(
+      'INSERT INTO provider_credentials (provider_id, id, identity_key, label, detail, source, secret, version, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?) ON CONFLICT(provider_id, id) DO UPDATE SET identity_key = excluded.identity_key, label = excluded.label, detail = excluded.detail, source = excluded.source, secret = excluded.secret, version = version + 1, updated_at = excluded.updated_at',
+      [
+        providerId,
+        credential.id,
+        credential.identityKey,
+        credential.label,
+        credential.detail,
+        credential.source,
+        credential.secret,
+        new Date().toISOString(),
+      ]
+    )
+  }
+
+  async replaceProviderCredentialSecret(
+    providerId: string,
+    id: string,
+    secret: string,
+    version: number
+  ): Promise<boolean> {
+    return this.db.get<{ id: string }>(
+      'UPDATE provider_credentials SET secret = ?, version = version + 1, updated_at = ? WHERE provider_id = ? AND id = ? AND version = ? RETURNING id',
+      [secret, new Date().toISOString(), providerId, id, version]
+    ) !== null
+  }
+
+  async setProviderCredentialQuota(
+    providerId: string,
+    id: string,
+    quota: string | null
+  ): Promise<void> {
+    this.db.run(
+      'UPDATE provider_credentials SET quota = ? WHERE provider_id = ? AND id = ?',
+      [quota, providerId, id]
+    )
+  }
+
+  async removeProviderCredential(providerId: string, id: string): Promise<void> {
+    this.db.transaction(() => {
+      this.db.run(
+        'DELETE FROM provider_credentials WHERE provider_id = ? AND id = ?',
+        [providerId, id]
+      )
+      this.db.run(
+        'UPDATE providers SET active_credential_id = NULL WHERE id = ? AND active_credential_id = ?',
+        [providerId, id]
+      )
+    })
+  }
+
+  async setActiveProviderCredential(
+    providerId: string,
+    id: string
+  ): Promise<boolean> {
+    return this.db.get<{ id: string }>(
+      'UPDATE providers SET active_credential_id = ? WHERE id = ? AND EXISTS (SELECT 1 FROM provider_credentials WHERE provider_id = ? AND id = ?) RETURNING id',
+      [id, providerId, providerId, id]
+    ) !== null
   }
 
   async appendUsage(row: Omit<UsageRow, 'id' | 'createdAt'>): Promise<void> {
@@ -1880,6 +2037,7 @@ interface ProviderRow {
   credential_kind: ProviderCredentialKind
   label: string
   config: string
+  active_credential_id: string | null
   created_at: string
 }
 
@@ -1905,7 +2063,8 @@ interface UsageLedgerRow {
   created_at: string
 }
 
-const PROVIDER_SELECT = 'SELECT id, owner_user_id, provider_type, credential_kind, label, config, created_at FROM providers'
+const PROVIDER_SELECT = 'SELECT id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at FROM providers'
+const PROVIDER_CREDENTIAL_SELECT = 'SELECT id, identity_key, label, detail, source, secret, version, quota, updated_at FROM provider_credentials'
 
 const USAGE_SELECT =
   'SELECT id, user_id, conversation_id, provider_id, model_id, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, created_at FROM usage_ledger'
@@ -1925,6 +2084,34 @@ function usageFromRow(row: UsageLedgerRow): UsageRow {
   }
 }
 
+interface ProviderCredentialRow {
+  id: string
+  identity_key: string | null
+  label: string
+  detail: string | null
+  source: string | null
+  secret: string
+  version: number
+  quota: string | null
+  updated_at: string
+}
+
+function providerCredentialFromRow(
+  row: ProviderCredentialRow
+): ProviderCredentialRecord {
+  return {
+    id: row.id,
+    identityKey: row.identity_key,
+    label: row.label,
+    detail: row.detail,
+    source: row.source,
+    secret: row.secret,
+    version: row.version,
+    quota: row.quota,
+    updatedAt: row.updated_at,
+  }
+}
+
 function providerFromRow(row: ProviderRow): ProviderRecord {
   return {
     id: row.id,
@@ -1933,6 +2120,7 @@ function providerFromRow(row: ProviderRow): ProviderRecord {
     credentialKind: row.credential_kind,
     label: row.label,
     config: row.config,
+    activeCredentialId: row.active_credential_id,
     createdAt: row.created_at,
   }
 }
