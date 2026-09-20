@@ -10,10 +10,17 @@ import { dataTransferFiles } from './message-input/attachments'
  * a dashed line runs inside its edge, so the target is the whole composer
  * and not one control, and the editor marks where in the text they will land.
  *
- * The editor comes first: the model slot hears how much wider than
- * `EDITOR_MIN_PX` the editor is (`room`, negative when narrower), so the
- * control there can drop its label to its icon before the editor narrows past
- * that.
+ * The message's line comes first. The editor slot hears what the line offers
+ * its text (`line`), so a message that outgrows it opens the shell instead of
+ * running off its end; the model slot hears how much wider than
+ * `EDITOR_MIN_PX` that is (`room`, negative when narrower), so the control
+ * there can drop its label to its icon before the line narrows past that.
+ *
+ * A ruler measures the line in both shapes: on one line it lies in the
+ * editor's own cell, and in the open shell it takes the editor's column in
+ * the row of controls below, which is the same width. So the two slots hear
+ * one width that does not change with the shape, and the controls neither
+ * jump nor drive each other when the shell opens and closes.
  */
 
 const props = defineProps<{
@@ -30,9 +37,9 @@ const emit = defineEmits<{
 /** The least the editor keeps: the placeholder whole, and room to type after it. */
 const EDITOR_MIN_PX = 128
 
-const editor = ref<HTMLElement | null>(null)
-const { width: editorWidth } = useElementSize(editor)
-const room = computed(() => editorWidth.value - EDITOR_MIN_PX)
+const ruler = ref<HTMLElement | null>(null)
+const { width: line } = useElementSize(ruler)
+const room = computed(() => line.value - EDITOR_MIN_PX)
 
 const shell = ref<HTMLElement | null>(null)
 const { over: dragOver } = useFileDrop(shell, {
@@ -58,12 +65,17 @@ const showDrop = computed(() => props.dropping === true || dragOver.value)
     <div class="composer-attach">
       <slot name="attach" />
     </div>
-    <div ref="editor" class="composer-editor">
-      <slot name="editor" />
+    <div class="composer-editor">
+      <slot name="editor" :line="line" />
     </div>
     <div class="composer-model">
       <slot name="model" :room="room" />
     </div>
+    <div
+      ref="ruler"
+      class="composer-line-ruler"
+      aria-hidden="true"
+    />
     <div class="composer-actions flex items-center gap-1">
       <slot name="actions" />
     </div>

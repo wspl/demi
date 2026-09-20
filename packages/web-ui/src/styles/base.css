@@ -461,7 +461,22 @@ svg.lucide {
   grid-template-columns: auto auto minmax(0, 1fr) auto;
   grid-template-areas:
     "editor editor editor editor"
-    "attach model . actions";
+    "attach model ruler actions";
+}
+
+/* What one line offers the text, measured where the editor stands on one
+   line: its own cell, which the ruler lies in without taking height, and in
+   the open shell the free column of the lower row — the same four items, so
+   the same width, down to the editor's start margin. */
+.composer-line-ruler {
+  grid-area: editor;
+  height: 0;
+  margin-inline-start: calc(var(--composer-attach-gap) - 0.25rem);
+  pointer-events: none;
+}
+
+.composer-shell-expanded .composer-line-ruler {
+  grid-area: ruler;
 }
 
 .composer-shell-expanded .composer-attach,
