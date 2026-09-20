@@ -4,7 +4,7 @@ import { provideMessageFiles } from '../markdown/message-files'
 import type { ConversationFiles } from '../markdown/types'
 import { computed, ref, watch } from 'vue'
 import { useElementSize } from '@vueuse/core'
-import { PanelRight, Play, RefreshCw, TextCursorInput } from '@lucide/vue'
+import { PanelRight, Play, Radar, TextCursorInput } from '@lucide/vue'
 import type { TranscriptVersion } from '@demicodes/agent/client'
 import { beginMessageEdit, lastEditableUserMessageId, type MessageEditState } from './message-editing'
 import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
@@ -200,7 +200,7 @@ watch(() => props.conversation.id, close)
             class="shrink-0"
           >
             <IconButton
-              :icon="RefreshCw"
+              :icon="Radar"
               variant="ghost"
               aria-label="Update title"
               spin-on-click
