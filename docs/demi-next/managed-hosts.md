@@ -220,7 +220,9 @@ Cloud tasks stop, system packages and configuration are replaced, and home stays
 
 The reset sequence is:
 
-1. Close device admission and interrupt affected turns and jobs across conversations.
+1. Close device admission and interrupt the turns of the conversations whose
+   target is this Cloud, and the device's jobs
+   ([which conversations a reset reaches](sessions-and-targets.md#coordinate-shared-cloud-activity)).
 2. Stop the guest and preserve its latest home image.
 3. Create an empty system image for the selected base.
 4. Atomically publish that system image with the preserved home.

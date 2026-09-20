@@ -328,7 +328,10 @@ transfer, which archive ends instead
 allow transcript reads and read acknowledgements; stream upgrades, existing
 socket writes, attachment delivery, host changes and metadata edits are refused until restore.
 The transport waits for frame handling to finish before releasing admission;
-it does not wait for an entire inference turn.
+it does not wait for an entire inference turn. A frame that arrives while a
+transition holds the conversation waits for it
+([held conversations](sessions-and-targets.md#coordinate-shared-cloud-activity));
+the socket's later frames queue behind it in order.
 
 `POST /api/sidebar/reorder` takes `{ kind: "conversation" | "workspace", id,
 beforeId: string | null }`; null appends. Conversation moves stay within the same
