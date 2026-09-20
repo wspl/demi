@@ -92,6 +92,8 @@ watch(() => props.messageEdit?.request.operationId, () => {
 /** The message holds more than one line, so the composer grows to hold it. */
 const multiline = ref(false)
 const fileInput = ref<HTMLInputElement>()
+/** The send button, which says why it cannot send when the message is given to it anyway. */
+const sendButton = ref<InstanceType<typeof IconButton>>()
 /** What the composer carries, as the editor builds its document from it. */
 const carried = computed(() => props.attachments.map(composerCapsule))
 /** The files the message has, in the order of their capsules: the document says so. */
@@ -158,12 +160,18 @@ const submitLabel = computed(() => props.messageEdit
 )
 
 function submit() {
-  if (!sendDisabled.value && hasDraft.value) {
-    if (props.messageEdit) {
-      emit('submitEdit')
-    } else {
-      emit('submit')
-    }
+  if (sendDisabled.value) {
+    // Enter on a message that cannot go: the send button says why, unpointed.
+    sendButton.value?.showReason()
+    return
+  }
+  if (!hasDraft.value) {
+    return
+  }
+  if (props.messageEdit) {
+    emit('submitEdit')
+  } else {
+    emit('submit')
   }
 }
 
@@ -379,6 +387,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             :disabled="sendDisabled"
           >
             <IconButton
+              ref="sendButton"
               :icon="messageEdit?.phase === 'uncertain' ? RotateCcw : ArrowUp"
               variant="accent"
               circle

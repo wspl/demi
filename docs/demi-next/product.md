@@ -273,8 +273,11 @@ model as typed. Copying a sent message gives its Markdown, each file by its
 name.
 
 Enter sends and Shift+Enter breaks the line; in a code block Enter breaks the
-line and ⌘/Ctrl+Enter sends. An input method's Enter never sends. The
-composer and the conversation render a user message with one editor,
+line and ⌘/Ctrl+Enter sends. An input method's Enter never sends. Enter on a
+message that cannot go yet does not send in silence: the send button says why
+it cannot, in the words it says when it is pointed at — an upload still
+running, one that failed, a model that cannot send — and the answer goes by
+itself. The composer and the conversation render a user message with one editor,
 read-only in the conversation, so a sent message cannot look different from
 what was written.
 
