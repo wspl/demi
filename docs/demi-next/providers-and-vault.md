@@ -188,12 +188,13 @@ document opaque to it
 | `document(id).replace(text, version)` | Write a refreshed secret only if `version` is still current |
 | `getActiveId`, `setActiveId` | The account the entry infers with |
 | `remove(id)` | Delete the account |
-| `vendorDefault` | False: an entry without an account never stands for a vendor login of this machine |
 
 The backend's pool is the `provider_credentials` table
-(`backend/vault/credential-pool.ts`). The framework keeps a file pool under
-`$DEMI_HOME` for local consumers, and only that pool may fall back to the
-vendor's own login.
+(`backend/vault/credential-pool.ts`). The framework's file pool and each kit's
+vendor pool implement the same contract for local consumers; a kit falls back
+to the vendor's own login only when it composes those two itself, which it does
+when no pool is passed. The backend always passes its pool, so an entry without
+an account never stands for a vendor login of this machine.
 
 **Refresh** goes through `replace`. OAuth refresh tokens are single-use, so two
 refreshers of one account race: the one whose `replace` finds a newer version,
