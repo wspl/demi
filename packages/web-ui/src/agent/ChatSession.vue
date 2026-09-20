@@ -4,7 +4,7 @@ import { provideMessageFiles } from '../markdown/message-files'
 import type { ConversationFiles } from '../markdown/types'
 import { computed, ref, watch } from 'vue'
 import { useElementSize } from '@vueuse/core'
-import { PanelRight, Play } from '@lucide/vue'
+import { PanelRight, Pencil, Play } from '@lucide/vue'
 import type { TranscriptVersion } from '@demicodes/agent/client'
 import { beginMessageEdit, lastEditableUserMessageId, type MessageEditState } from './message-editing'
 import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
@@ -21,6 +21,7 @@ import type { ChatSessionState, PendingSubmissionState } from './types'
 import type { MessageForkHandler } from './message-fork'
 
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
+import TitleInput from '@demicodes/web-ui/ui/TitleInput.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { provideLabelRoom } from '../ui/label-room'
 import { sessionFailureNotice, turnRecovery } from './session-status'
@@ -42,6 +43,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   openAside: []
+  rename: [title: string]
   retry: []
   retryLoad: []
   retrySubmission: []
@@ -63,16 +65,21 @@ const surface = ref<{ dockHeight: number }>()
 // greatest width: the controls beside it give up their labels before a title
 // narrower than that is cut, and keep them while a longer one is cut to it.
 const TITLE_MAX_PX = 260
+/** The rename button beside the title, and the gap before it. */
+const TITLE_ACTION_PX = 28 + 4
+const renaming = ref(false)
 const titleCell = ref<HTMLElement | null>(null)
 const title = ref<HTMLElement | null>(null)
 const { width: titleCellWidth } = useElementSize(titleCell)
 const titleRoom = ref<number>()
 watch(
-  [titleCellWidth, () => props.conversation.title, title],
+  [titleCellWidth, () => props.conversation.title, title, renaming],
   () => {
-    titleRoom.value = title.value
-      ? titleCellWidth.value - Math.min(title.value.scrollWidth, TITLE_MAX_PX)
-      : undefined
+    // The input a rename swaps in is as wide as a title gets, and leaves no button beside it.
+    const need = title.value
+      ? Math.min(title.value.scrollWidth, TITLE_MAX_PX) + TITLE_ACTION_PX
+      : TITLE_MAX_PX
+    titleRoom.value = titleCellWidth.value - need
   },
   { flush: 'post' },
 )
@@ -136,15 +143,34 @@ watch(() => props.conversation.id, close)
     <header
       class="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 px-3 py-2"
     >
-      <div ref="titleCell" class="col-span-2 flex min-w-0 items-center sm:col-span-1">
-        <h1
-          ref="title"
-          class="min-w-0 select-none truncate text-chrome font-normal text-fg"
-          :style="{ maxWidth: `${TITLE_MAX_PX}px` }"
+      <div ref="titleCell" class="col-span-2 flex min-w-0 items-center gap-1 sm:col-span-1">
+        <TitleInput
+          v-if="renaming"
+          class="text-chrome font-normal text-fg"
+          :style="{ width: `${TITLE_MAX_PX}px` }"
           :title="conversation.title"
-        >
-          {{ conversation.title }}
-        </h1>
+          @submit="renaming = false; emit('rename', $event)"
+          @cancel="renaming = false"
+        />
+        <template v-else>
+          <h1
+            ref="title"
+            class="min-w-0 select-none truncate text-chrome font-normal text-fg"
+            :style="{ maxWidth: `${TITLE_MAX_PX}px` }"
+            :title="conversation.title"
+          >
+            {{ conversation.title }}
+          </h1>
+          <Tooltip content="Rename" class="shrink-0">
+            <IconButton
+              :icon="Pencil"
+              variant="ghost"
+              aria-label="Rename"
+              :disabled="conversation.archived"
+              @click="renaming = true"
+            />
+          </Tooltip>
+        </template>
       </div>
       <div
         class="col-span-2 row-start-2 flex min-w-0 items-center gap-1 sm:col-span-1 sm:col-start-2 sm:row-start-1"
