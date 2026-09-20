@@ -58,6 +58,8 @@ function changeProvider(
 ): void {
   Object.assign(entry, patch)
   if (patch.apiKey) {
+    // As in the product, the page never gets a stored key back: only that one exists.
+    entry.apiKey = ''
     entry.configured = true
     entry.keyConfigured = true
   }
