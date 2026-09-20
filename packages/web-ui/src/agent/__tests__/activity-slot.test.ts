@@ -8,13 +8,12 @@ function kind(
   phase: SessionPhase,
   transcriptBlocks: readonly MessageListBlock[],
   renderBlocks: readonly MessageListBlock[] = transcriptBlocks,
-  options: { load?: SessionLoad; pendingAction?: PendingAction; retrying?: boolean } = {},
+  options: { load?: SessionLoad; pendingAction?: PendingAction } = {},
 ) {
   return activitySlotKind({
     load: options.load ?? 'ready',
     phase,
     pendingAction: options.pendingAction ?? null,
-    retrying: options.retrying ?? false,
     transcriptBlocks,
     renderBlocks,
   })
@@ -77,13 +76,6 @@ test('a recovery in flight requests: the hidden record is the transcript tail, t
 test('a pending resume says Requesting, after an error record and after a Stop alike', () => {
   expect(kind('idle', [userBlock(), errorBlock()], [userBlock()], { pendingAction: 'resume' })).toBe('requesting')
   expect(kind('idle', [userBlock(), abortBlock()], undefined, { pendingAction: 'resume' })).toBe('requesting')
-})
-
-test('an automatic retry says Retrying where the turn would say Requesting, and nowhere else', () => {
-  expect(kind('running', [userBlock()], undefined, { retrying: true })).toBe('retrying')
-  expect(kind('running', [thinkingBlock()], undefined, { retrying: true })).toBeNull()
-  expect(kind('idle', [userBlock()], undefined, { retrying: true })).toBeNull()
-  expect(kind('running', [userBlock()], undefined, { retrying: true, load: 'reconnecting' })).toBe('connecting')
 })
 
 test('connecting wins over a pending recovery and a running turn', () => {

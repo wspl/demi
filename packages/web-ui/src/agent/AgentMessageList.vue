@@ -45,8 +45,6 @@ const props = defineProps<{
   load?: SessionLoad
   /** A recovery the server has not acknowledged: the tail row says Requesting. */
   pendingAction?: PendingAction
-  /** The agent is retrying a failed provider request on its own: the tail row says Retrying. */
-  retrying?: boolean
   /** What the providers read out of the error blocks' failure records, by block id. */
   failures?: Record<string, ProviderFailureFacts>
   loadError?: string | null
@@ -96,7 +94,6 @@ const slotKind = computed(() => activitySlotKind({
   load: props.load ?? 'ready',
   phase: props.phase,
   pendingAction: props.pendingAction ?? null,
-  retrying: props.retrying ?? false,
   transcriptBlocks: visibleBlocks.value,
   renderBlocks: [...transcriptBlocks.value, ...tailBlocks.value],
 }))

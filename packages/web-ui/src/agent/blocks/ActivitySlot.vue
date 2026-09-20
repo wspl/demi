@@ -21,9 +21,9 @@ const props = defineProps<{
   incoming?: HandoffBlock | null
 }>()
 
-// Requesting and Retrying are one wait on the provider; the clock runs across both.
+// The clock runs across the agent's own retries: they are one wait on the provider.
 const isRequesting = computed(
-  () => (props.kind === 'requesting' || props.kind === 'retrying') && !props.incoming,
+  () => props.kind === 'requesting' && !props.incoming,
 )
 const requestingSince = ref(Date.now())
 watch(isRequesting, (requesting) => {
@@ -46,9 +46,8 @@ const waitLabel = computed(() => {
   switch (props.kind) {
     case 'connecting':
       return 'Connecting'
-    case 'retrying':
     case 'requesting':
-      return providerWaitLabel(props.kind, requestingElapsed.value ?? 0)
+      return providerWaitLabel(requestingElapsed.value ?? 0)
   }
 })
 

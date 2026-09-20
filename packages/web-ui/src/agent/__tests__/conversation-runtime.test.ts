@@ -43,7 +43,6 @@ function state(): RuntimeState {
     lastError: null,
     load: 'loading',
     pendingAction: null,
-    retrying: false,
     failures: {},
   }
 }
@@ -288,20 +287,15 @@ test('a resume is pending from the request until the next phase event', async ()
   expect(s.pendingAction).toBeNull()
 })
 
-test('an automatic retry lasts from its event to the retry\'s output or the turn\'s end', async () => {
+test('the agent\'s own retries change nothing the page shows: the row keeps saying Requesting', async () => {
   const h = clientHarness()
   const s = state()
   const runtime = new ConversationRuntime({ state: s, prepareModel: async () => provider, connect: async () => h.client })
   await runtime.connect()
   h.receive({ type: 'phase', phase: 'running' })
+  const before = structuredClone(s)
   h.receive({ type: 'retry_scheduled', attempt: 1, delayMs: 1000, code: 'overloaded' })
-  expect(s.retrying).toBe(true)
-  h.receive({ type: 'transcript_reset', epoch: 'epoch', revision: 1, blocks: [] })
-  expect(s.retrying).toBe(false)
-  h.receive({ type: 'retry_scheduled', attempt: 2, delayMs: 2000, code: 'overloaded' })
-  expect(s.retrying).toBe(true)
-  h.receive({ type: 'phase', phase: 'idle' })
-  expect(s.retrying).toBe(false)
+  expect(s).toEqual(before)
   runtime.dispose()
 })
 

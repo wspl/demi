@@ -59,8 +59,6 @@ export interface Conversation extends SidebarConversation {
   terminals: TerminalRecord[]
   load: SessionLoad
   pendingAction: PendingAction
-  /** The agent is retrying a failed provider request on its own; the tail row says Retrying. */
-  retrying: boolean
   /** The failure facts of the error blocks, by block id, as the backend sends them. */
   failures: Record<string, ProviderFailureFacts>
 }

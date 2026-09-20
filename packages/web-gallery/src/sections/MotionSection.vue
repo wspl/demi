@@ -17,7 +17,7 @@ import { demoModel, shellTool } from '../fixtures/blocks'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 
-const labelFaces = ['Requesting', 'Retrying'] as const
+const labelFaces = ['Requesting', 'Connecting'] as const
 const faceFaces = [
   { key: 'requesting', label: 'Requesting', icon: 'sweep' },
   { key: 'thinking', label: 'Thinking', icon: 'brain' },

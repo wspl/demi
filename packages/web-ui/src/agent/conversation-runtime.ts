@@ -32,7 +32,6 @@ export type RuntimeState = Pick<
   | 'lastError'
   | 'load'
   | 'pendingAction'
-  | 'retrying'
   | 'failures'
 >
 
@@ -347,18 +346,9 @@ export class ConversationRuntime {
       case 'transcript_patch':
         state.blocks = event.blocks
         state.failures = event.failures
-        // The rewrite that unwinds a failed attempt arrives before its
-        // `retry_scheduled`; the next change is the retry's own output.
-        state.retrying = false
-        break
-      case 'retry_scheduled':
-        state.retrying = true
         break
       case 'phase':
         state.phase = event.phase
-        if (event.phase === 'idle') {
-          state.retrying = false
-        }
         this.settlePendingAction()
         break
       case 'queue':
