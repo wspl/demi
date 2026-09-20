@@ -64,7 +64,7 @@ export const useConversations = defineStore('conversations', () => {
   const uploads = createConversationUploads(saveDrafts, (error) =>
     report('Could not upload the attachment', error),
   )
-  const { uploadFile, addFiles, removeFile, releaseAside, arrangeFiles, retryFile } = uploads
+  const { uploadFile, addFiles, removeFile, releaseSpare, arrangeFiles, retryFile } = uploads
   let lifetime = new AbortController()
   const cache = new ConversationCache()
   let storageErrorReported = false
@@ -164,6 +164,7 @@ export const useConversations = defineStore('conversations', () => {
       lastError: null,
       draft: '',
       files: [],
+      attachmentIds: [],
       submission: 'idle',
       pendingSend: null,
       messageEdit: null,
@@ -266,7 +267,7 @@ export const useConversations = defineStore('conversations', () => {
             },
       text: conversation.draft,
       model: { ...conversation.model },
-      files: conversation.files.map((file) =>
+      files: messageFiles(conversation).map((file) =>
         isComposerFile(file)
           ? {
               kind: 'file',
@@ -418,6 +419,8 @@ export const useConversations = defineStore('conversations', () => {
                 phase: file.upload ? 'ready' : 'uploading',
               },
         )
+        // A saved draft keeps the files its message has, in the order of its capsules.
+        conversation.attachmentIds = conversation.files.map((file) => file.id)
       }
     } catch (error) {
       signal.throwIfAborted()
@@ -492,7 +495,7 @@ export const useConversations = defineStore('conversations', () => {
       previous.id !== id &&
       previous.persistence === 'draft' &&
       !previous.draft.trim() &&
-      !previous.files.length
+      !previous.attachmentIds.length
     ) {
       saveDrafts()
       items.value = items.value.filter((item) => item !== previous)
@@ -770,7 +773,7 @@ export const useConversations = defineStore('conversations', () => {
         !item.archived &&
         item.projectId === projectId &&
         !item.draft.trim() &&
-        !item.files.length,
+        !item.attachmentIds.length,
     )
     if (empty) {
       return empty.id
@@ -1140,10 +1143,10 @@ export const useConversations = defineStore('conversations', () => {
     if (
       conversation.archived ||
       conversation.submission === 'sending' ||
-      (!conversation.pendingSend && !attachmentsReady(conversation.files)) ||
+      (!conversation.pendingSend && !attachmentsReady(messageFiles(conversation))) ||
       (!conversation.pendingSend &&
         !conversation.draft.trim() &&
-        !conversation.files.length)
+        !conversation.attachmentIds.length)
     ) {
       return
     }
@@ -1154,10 +1157,11 @@ export const useConversations = defineStore('conversations', () => {
       conversation.pendingSend = {
         id: crypto.randomUUID(),
         text: conversation.draft,
-        fileIds: conversation.files.map((file) => file.id),
+        fileIds: messageFiles(conversation).map((file) => file.id),
         error: null,
       }
       conversation.draft = ''
+      conversation.attachmentIds = []
     }
     const pending = conversation.pendingSend
     const signal = lifetime.signal
@@ -1203,6 +1207,13 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
+  /** The files the message has, in the order of its capsules; the rest wait for an undo. */
+  function messageFiles(conversation: Conversation): Conversation['files'] {
+    return conversation.attachmentIds.flatMap((id) =>
+      conversation.files.filter((file) => file.id === id),
+    )
+  }
+
   function clearSubmission(conversation: Conversation, id: string): void {
     const pending = conversation.pendingSend
     if (pending?.id !== id) {
@@ -1212,8 +1223,8 @@ export const useConversations = defineStore('conversations', () => {
     for (const fileId of pending.fileIds) {
       removeFile(conversation, fileId)
     }
-    // The message is gone: what its composer set aside for an undo goes with it.
-    releaseAside(conversation)
+    // The message is gone: what its composer still held for an undo goes with it.
+    releaseSpare(conversation)
     saveDrafts()
   }
 
