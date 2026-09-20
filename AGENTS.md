@@ -13,7 +13,11 @@
 - Two implementations of the same one-sentence purpose are a defect regardless of length or package. Consolidate to one owner and import.
 - Prefer protocols, APIs, and file interfaces over external CLI processes.
 - Preserve unrelated work and keep changes within the task's scope.
-- Run checks appropriate to the change. Never run tests that call real models.
+- Run checks appropriate to the change. An automated test never calls a real
+  model: it works against fixtures or stubs, so a suite costs nothing and
+  answers the same way every time. Accepting a change by using the running
+  product is a different thing, and there sending a real message is part of
+  the check; stop a turn once it has shown what you were looking for.
 - Every UI behavior lives in `web-ui` as a reusable component or primitive; `web` and `web-gallery` supply only data, state and handlers. A behavior first built for one surface (a control's affordance, a page's interaction, a dialog flow) is generalized into `web-ui` before the checkpoint, never left local to the gallery or the product.
 - A control placed at a container's edge (an icon button at the end of a menu row, a settings row, a tab) keeps the same distance to every edge it touches: (container height - control height) / 2. The container's `web-ui` primitive computes that inset and offers a dedicated slot for such controls; a caller never positions a control through a generic slot with its own margin or padding.
 - Keep `web` and `web-gallery` synchronized in both directions. Every UI change is made once in `web-ui`, whether the request came from the gallery or the product, and lands in both surfaces in the same checkpoint: update the gallery specimens and the product usage together, and verify the result in both. A change visible in only one of them is incomplete.
