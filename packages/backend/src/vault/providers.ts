@@ -3,6 +3,7 @@ import type {
   ProviderScope,
   ControlService
 } from '../storage/control'
+import type { InstanceMode } from '../auth/identity'
 import { decryptJson, encryptJson } from './crypto'
 
 import { z } from 'zod'
@@ -31,7 +32,7 @@ export type ProviderConfig = z.infer<typeof providerConfigSchema>
 
 export interface ProviderEntry {
   id: string
-  ownerUserId: string | null
+  ownerUserId: string
   label: string
   config: ProviderConfig
   createdAt: string
@@ -43,14 +44,40 @@ export interface ProviderEntry {
  * instance secret.
  */
 export class ProviderVault {
+  private masterId: string | null = null
+
   constructor(
     private readonly control: ControlService,
     private readonly secret: Uint8Array,
+    private readonly mode: InstanceMode,
   ) {}
+
+  /**
+   * Whose entries a user infers with (`product.md` § Instance mode): the
+   * master's on a shared instance, their own on an isolated one.
+   */
+  async ownerFor(userId: string): Promise<string> {
+    if (this.mode === 'isolated')
+      return userId
+    // The master is created once by setup and never changes.
+    this.masterId ??= (await this.control.getMaster())?.id ?? null
+    if (!this.masterId)
+      throw new Error('This instance has no master account yet')
+    return this.masterId
+  }
+
+  /** The provider a user may name, or null. */
+  async visible(userId: string, providerId: string): Promise<ProviderEntry | null> {
+    const [provider, ownerUserId] = await Promise.all([
+      this.get(providerId),
+      this.ownerFor(userId)
+    ])
+    return provider?.ownerUserId === ownerUserId ? provider : null
+  }
 
   async create(options: {
     id?: string;
-    ownerUserId: string | null;
+    ownerUserId: string;
     label: string;
     config: ProviderConfig
   }): Promise<ProviderEntry> {

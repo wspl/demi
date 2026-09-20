@@ -89,7 +89,7 @@ export const useResources = defineStore('resources', () => {
     () =>
       !!product.snapshot &&
       (product.snapshot.mode === 'isolated' ||
-        product.snapshot.user.role !== 'user'),
+        product.snapshot.user.role === 'master'),
   )
   const appearance = computed(() => preferences.appearance)
   const keys = computed(() => preferences.keys)

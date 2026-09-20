@@ -40,6 +40,8 @@ export interface ControlService {
   ): Promise<(User & { passwordHash: string }) | null>
   listUsers(): Promise<User[]>
   countUsers(): Promise<number>
+  /** The one master account; null until setup has run. */
+  getMaster(): Promise<User | null>
   getUserPreferences(userId: string): Promise<UserPreferences>
   patchUserPreferences(
     userId: string,
@@ -122,7 +124,7 @@ export interface ControlService {
    */
   createProvider(provider: {
     id?: string
-    ownerUserId: string | null
+    ownerUserId: string
     providerType: string
     credentialKind: ProviderCredentialKind
     label: string
@@ -379,7 +381,7 @@ export interface WorkspaceRecord {
 
 export interface ProviderRecord {
   id: string
-  ownerUserId: string | null
+  ownerUserId: string
   providerType: string
   credentialKind: ProviderCredentialKind
   label: string
@@ -412,7 +414,7 @@ export interface AttachmentRecord {
  * A provider listing's scope: one owner (null = the instance's, shared mode) or
  * every row.
  */
-export type ProviderScope = { ownerUserId: string | null } | 'all'
+export type ProviderScope = { ownerUserId: string } | 'all'
 
 export interface UsageRow {
   id: string
@@ -666,6 +668,11 @@ export class LocalControlService implements ControlService {
 
   async countUsers(): Promise<number> {
     return this.db.get<{ n: number }>('SELECT COUNT(*) AS n FROM users')?.n ?? 0
+  }
+
+  async getMaster(): Promise<User | null> {
+    const row = this.db.get<UserRow>(`${USER_SELECT} WHERE role = 'master'`)
+    return row ? userFromRow(row) : null
   }
 
   async getUserPreferences(userId: string): Promise<UserPreferences> {
@@ -1002,7 +1009,7 @@ export class LocalControlService implements ControlService {
 
   async createProvider(provider: {
     id?: string
-    ownerUserId: string | null
+    ownerUserId: string
     providerType: string
     credentialKind: ProviderCredentialKind
     label: string
@@ -1018,7 +1025,7 @@ export class LocalControlService implements ControlService {
       createdAt: new Date().toISOString(),
     }
     const inserted = this.db.get<{ id: string }>(
-      "INSERT INTO providers (id, owner_user_id, provider_type, credential_kind, label, config, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(COALESCE(owner_user_id, ''), provider_type) WHERE credential_kind = 'subscription' DO NOTHING RETURNING id",
+      "INSERT INTO providers (id, owner_user_id, provider_type, credential_kind, label, config, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(owner_user_id, provider_type) WHERE credential_kind = 'subscription' DO NOTHING RETURNING id",
       [
         record.id,
         record.ownerUserId,
@@ -1046,14 +1053,10 @@ export class LocalControlService implements ControlService {
     const rows =
       scope === 'all'
         ? this.db.all<ProviderRow>(`${PROVIDER_SELECT} ORDER BY created_at`)
-        : scope.ownerUserId === null
-          ? this.db.all<ProviderRow>(
-            `${PROVIDER_SELECT} WHERE owner_user_id IS NULL ORDER BY created_at`
-          )
-          : this.db.all<ProviderRow>(
-            `${PROVIDER_SELECT} WHERE owner_user_id = ? ORDER BY created_at`,
-            [scope.ownerUserId]
-          )
+        : this.db.all<ProviderRow>(
+          `${PROVIDER_SELECT} WHERE owner_user_id = ? ORDER BY created_at`,
+          [scope.ownerUserId]
+        )
     return rows.map(providerFromRow)
   }
 
@@ -1872,7 +1875,7 @@ const DEVICE_SELECT = 'SELECT id, user_id, kind, name, platform, claimed_at, las
 
 interface ProviderRow {
   id: string
-  owner_user_id: string | null
+  owner_user_id: string
   provider_type: string
   credential_kind: ProviderCredentialKind
   label: string
