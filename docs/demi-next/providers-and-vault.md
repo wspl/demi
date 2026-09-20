@@ -6,8 +6,8 @@ refresh, and response parsing. A conversation selects a provider entry and model
 it does not own a copy of the provider's credentials.
 
 HTTP inference runs in the backend. A provider that requires a process runs its
-transport on the conversation's execution target. This distinction determines
-where credentials must be available:
+transport on the user's Cloud, whatever the conversation's execution target is.
+This distinction determines where credentials must be available:
 
 ```text
 Backend                                  External service / target
@@ -17,15 +17,16 @@ Backend                                  External service / target
 |                       |          |
 | Session runtime ------+----------+----> vendor HTTP API
 |                       |          |
-|                       +----------+----> runner -> Claude Code CLI
+|                       +----------+----> Cloud runner -> Claude Code CLI
 |                                  |      token in process environment
 | Usage observer -> control store  |                |
 +----------------------------------+                +--> vendor API
 ```
 
 For example, an OpenAI API conversation can infer without waking Cloud. A Claude
-Code conversation needs an available execution target with the CLI installed;
-its next inference starts the CLI there using the backend's selected account.
+Code conversation wakes the user's Cloud; its next inference starts Demi's CLI
+there using the backend's selected account, while its tools keep running on its
+own execution target.
 
 ## Provider entries and model discovery
 
@@ -72,8 +73,7 @@ An unavailable selected vendor does not silently select a different source.
 The backend persists fetched directories per provider entry and combines them
 with current authentication and runtime health. Cache freshness, refresh,
 invalidation, and frontend reuse are defined in
-[Model catalog caching](../model-catalog-cache.md). Model metadata is not proof
-that the selected execution target can run a process provider.
+[Model catalog caching](../model-catalog-cache.md).
 
 ## Inference admission and runtime ownership
 
@@ -97,10 +97,10 @@ requests permanently reuse an old snapshot. Account changes invalidate the
 provider and its model directory.
 
 Process admission uses the provider's `requiresProcessCapableHost` capability,
-not its name. The backend obtains or wakes Cloud, or refuses an unavailable
-paired device, before inference. Each spawn resolves the current target again.
-Target ownership and switching are defined in
-[Sessions and execution targets](sessions-and-targets.md).
+not its name. The backend asks the [placement](claude-cli.md#where-it-runs) for
+the machine, which obtains or wakes the user's Cloud before inference, and the
+conversation [uses that Cloud as `provider`](sessions-and-targets.md#how-a-conversation-uses-a-device)
+for as long as such a provider is its selection.
 
 ## Credential vault
 
@@ -164,11 +164,11 @@ three rules:
   snapshot describes the account, not a user; per-user consumption is the usage
   ledger's, not the vendor's.
 - **Disclosure.** A process provider sends the active account's token to the
-  execution target ([Claude Code execution boundary](#claude-code-execution-boundary)).
-  On an isolated instance that is the owner's token on the owner's machine. On a
-  shared instance it is the master's token on a machine another user controls,
-  Cloud included: every user who can infer with a Claude Code entry can read its
-  token. Demi allows this and does not hide it; a master who adds a Claude Code
+  Cloud of the user who infers ([Claude Code execution boundary](#claude-code-execution-boundary)),
+  and to no paired device. On an isolated instance that is the owner's token on
+  the owner's Cloud. On a shared instance it is the master's token on a Cloud
+  another user has a shell in: every user who can infer with a Claude Code entry
+  can read its token. Demi allows this and does not hide it; a master who adds a Claude Code
   account to a shared instance is trusting every user with that account.
   Network providers (Codex, Grok Build, API keys) never send a credential off
   the backend.
@@ -249,12 +249,11 @@ configuration metadata, account metadata and usage, never token material.
 The Claude Code provider remains a backend component. It uses the Host process
 interface to start the CLI on a runner and exchanges stream-json on stdin and
 stdout. Which CLI that is, and which machine, are defined in
-[The Claude Code CLI](claude-cli.md): Demi's own verified copy, on the
-conversation's execution target for inference. The provider resolves the selected vault account and sends
+[The Claude Code CLI](claude-cli.md): Demi's own verified copy, on the user's
+Cloud, whatever the conversation's execution target is. The provider resolves the selected vault account and sends
 its token as `CLAUDE_CODE_OAUTH_TOKEN` in the spawn environment. The runner and CLI
-therefore receive this credential. A device selected for this transport must be
-trusted with that account's token; on a shared instance that means every user
-([Scope](#scope)).
+therefore receive this credential: the user's Cloud is trusted with that
+account's token, which on a shared instance means every user ([Scope](#scope)).
 
 The CLI sends its inference traffic directly to the vendor. Demi does not add
 an inference proxy or remote-inference RPC. OAuth refresh and quota probes remain
