@@ -479,51 +479,31 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   }
 
   /**
-   * Usage for the providers that can report it for free and whose snapshot is
-   * missing or older than the provider calls fresh (`provider-quota.md`
-   * § Guidance: probe when the dashboard opens). A snapshot that only requests
-   * filled has no plan, and a kept one can be days old.
+   * Asks the vendor for the active account's usage (`provider-quota.md`
+   * § Guidance). The user's button says why it could not; the probes Demi makes
+   * by itself, after a sign-in or a switch, stay quiet: the account works either way.
    */
-  async function probeStaleQuota(): Promise<void> {
-    const signal = lifetime.signal
-    const missing = (product.snapshot?.providers ?? []).filter((entry) => {
-      const capability = entry.details?.quotaCapability
-      if (capability?.canProbe !== true || capability.probeCost !== 'free') {
-        return false
+  async function loadUsage(providerId: string, signal: AbortSignal, quiet: boolean): Promise<void> {
+    try {
+      await apiRequest(`/providers/${encodeURIComponent(providerId)}/quota`, { method: 'POST', signal })
+    } catch (error) {
+      if (!quiet && !signal.aborted) {
+        reportError('Could not refresh usage', error, { userVisible: true })
       }
-      const observedAt = entry.details?.quota?.observedAt
-      const age = observedAt ? Date.now() - Date.parse(observedAt) : Number.POSITIVE_INFINITY
-      return !(age < (capability.staleAfterMs ?? 60_000))
-    })
-    if (missing.length === 0) {
-      return
     }
-    // A provider that cannot answer now is not an error of opening the page.
-    await Promise.allSettled(missing.map((entry) => apiRequest(
-      `/providers/${encodeURIComponent(entry.id)}/quota`,
-      { method: 'POST', signal },
-    )))
     if (!signal.aborted) {
       await product.refresh()
     }
+  }
+
+  function refreshUsage(provider: SettingsProviderEntry): void {
+    perform(provider.id, { kind: 'usage' }, (signal) => loadUsage(provider.id, signal, false))
   }
 
   function refresh(provider: SettingsProviderEntry): void {
     perform(provider.id, { kind: 'refreshing' }, async (signal) => {
       await product.loadModels(true)
       signal.throwIfAborted()
-      const capability = product.snapshot?.providers.find(
-        (entry) => entry.id === provider.id,
-      )?.details?.quotaCapability
-      if (capability?.canProbe && capability.probeCost === 'free') {
-        await apiRequest(
-          `/providers/${encodeURIComponent(provider.id)}/quota`,
-          {
-            method: 'POST',
-            signal,
-          },
-        )
-      }
       await product.refresh()
     })
   }
@@ -549,6 +529,9 @@ export const useProviderSettings = defineStore('provider-settings', () => {
           },
         )
         signal.throwIfAborted()
+        if (action === 'activate') {
+          await loadUsage(provider.id, signal, true)
+        }
         await product.revalidate(true)
       },
     )
@@ -619,6 +602,12 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         loginId = null
         await product.revalidate(true)
         controller.signal.throwIfAborted()
+        const nowActive = product.snapshot?.providers.find((entry) => entry.id === result.providerId)
+          ?.details?.active?.credentialId === result.credentialId
+        if (nowActive) {
+          await loadUsage(result.providerId, controller.signal, true)
+          controller.signal.throwIfAborted()
+        }
         const provider = resources.providers.find(
           (entry) => entry.id === result.providerId,
         )
@@ -805,6 +794,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     saveModel,
     saveModels,
     submitToken,
-    probeStaleQuota,
+    refreshUsage,
   }
 })

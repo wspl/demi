@@ -13,6 +13,7 @@ import {
   WIRE_API_LABELS,
   type SettingsModelDraft,
   type SettingsProviderEntry,
+  type SettingsProviderOperation,
   type SettingsProviderModel,
   type SettingsVendor,
   type SettingsWireApi,
@@ -148,6 +149,21 @@ function refresh(p: SettingsProviderEntry) {
     p.catalogFetched = 'just now'
     p.stale = false
   }, 1400)
+}
+
+// The product asks the vendor; here the active account's windows move a little, as a fresh answer would.
+const usageRefreshing = ref<string | null>(null)
+const operations = computed<Record<string, SettingsProviderOperation>>(() =>
+  usageRefreshing.value ? { [usageRefreshing.value]: { kind: 'usage' } } : {},
+)
+function refreshUsage(p: SettingsProviderEntry) {
+  usageRefreshing.value = p.id
+  window.setTimeout(() => {
+    usageRefreshing.value = null
+    for (const window of p.accounts.find((account) => account.active)?.quota ?? []) {
+      window.used = Math.min(window.max, window.used + 1)
+    }
+  }, 1200)
 }
 
 function activateAccount(p: SettingsProviderEntry, id: string) {
@@ -320,6 +336,8 @@ function closeLogin() {
     @sign-in="beginLogin"
     @test="test"
     @refresh="refresh"
+    :operations="operations"
+    @refresh-usage="refreshUsage"
     @activate-account="activateAccount"
     @remove-account="removeAccount"
     :save-model="saveModel"

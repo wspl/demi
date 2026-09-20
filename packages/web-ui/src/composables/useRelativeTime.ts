@@ -13,6 +13,11 @@ export function useRelativeTime(timestamp: MaybeRefOrGetter<string>) {
   return computed(() => dayjs(toValue(timestamp)).from(now.value))
 }
 
+/** A timestamp against now, in words: "in 2 days", "3 hours ago". A label for one render, not a ticking one. */
+export function formatRelativeTime(timestamp: string): string {
+  return dayjs(timestamp).fromNow()
+}
+
 /** Time left before a future timestamp, ticking on the shared clock; negative once it passes. */
 export function useTimeRemaining(timestamp: MaybeRefOrGetter<string>) {
   const now = useClock()

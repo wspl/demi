@@ -22,6 +22,7 @@ const {
   closeLogin,
   test,
   refresh,
+  refreshUsage,
   accountAction,
   saveModel,
   saveModels,
@@ -41,10 +42,7 @@ function retry(): void {
 function openUrl(url: string): void {
   window.open(url, '_blank', 'noopener,noreferrer')
 }
-onMounted(() => {
-  loadVendors()
-  void settings.probeStaleQuota()
-})
+onMounted(loadVendors)
 onUnmounted(closeLogin)
 </script>
 
@@ -75,6 +73,7 @@ onUnmounted(closeLogin)
     @sign-in="beginLogin"
     @test="test"
     @refresh="refresh"
+    @refresh-usage="refreshUsage"
     @activate-account="
       (provider, id) => accountAction(provider, id, 'activate')
     "

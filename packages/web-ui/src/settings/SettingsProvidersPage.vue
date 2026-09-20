@@ -97,6 +97,8 @@ const emit = defineEmits<{
   signIn: [provider: SettingsProviderEntry]
   test: [provider: SettingsProviderEntry]
   refresh: [provider: SettingsProviderEntry]
+  /** Ask the vendor for the active account's usage again. */
+  refreshUsage: [provider: SettingsProviderEntry]
   activateAccount: [provider: SettingsProviderEntry, accountId: string]
   removeAccount: [provider: SettingsProviderEntry, accountId: string]
   removeModel: [provider: SettingsProviderEntry, model: SettingsProviderModel]
@@ -512,6 +514,18 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                     @click="emit('activateAccount', selected, account.id)"
                     >Activate</Button
                   >
+                  <!-- Usage is the vendor's to report and is asked for, never polled: here, and once
+                       when an account becomes the active one. It belongs to the active account. -->
+                  <Tooltip v-if="account.active" content="Refresh usage"
+                    ><IconButton
+                      size="sm"
+                      :icon="RefreshCw"
+                      aria-label="Refresh usage"
+                      spin-on-click
+                      :spinning="operations?.[selected.id]?.kind === 'usage'"
+                      :disabled="!!operations?.[selected.id] && operations[selected.id]?.kind !== 'usage'"
+                      @click="emit('refreshUsage', selected)"
+                  /></Tooltip>
                   <!-- The test asks with the account requests go out on; its answer is a toast,
                        since the row has no room to keep it. -->
                   <Tooltip content="Test connection"
