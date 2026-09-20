@@ -70,7 +70,7 @@ const preview = computed<
     :picture="preview.kind === 'picture'"
   >
     <span
-      class="group/capsule relative mx-px inline-flex h-5 min-w-0 max-w-full select-none items-baseline gap-1 rounded-md pl-0.5 pr-1.5 align-baseline text-[13px] font-normal not-italic leading-5 no-underline shadow-[var(--shadow-btn)]"
+      class="message-capsule group/capsule relative mx-px inline-flex h-5 min-w-0 max-w-full select-none items-baseline gap-1 pl-[var(--capsule-inset)] pr-1.5 align-baseline text-[13px] font-normal not-italic leading-5 no-underline shadow-[var(--shadow-btn)]"
       :class="[
         failed ? 'bg-tint-danger text-on-danger' : 'bg-[var(--btn-bg)] text-fg-body',
         selected ? 'outline outline-2 outline-line-focus' : '',
@@ -122,7 +122,7 @@ const preview = computed<
         v-else-if="image"
         :src="image"
         alt=""
-        class="size-4 shrink-0 self-center rounded-[3px] object-cover"
+        class="message-capsule-thumb size-4 shrink-0 self-center object-cover"
       />
       <FileIcon
         v-else
