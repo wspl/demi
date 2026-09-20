@@ -75,15 +75,30 @@ const TITLE_MAX_PX = 260
 /** One button beside the title, and the gap before it. */
 const TITLE_ACTION_PX = 28 + 4
 const renaming = ref(false)
+// The button's revolution is under way; it outlives the state that started it.
+const retitleTurning = ref(false)
+watch(() => props.retitle, (state) => {
+  if (state === 'running') {
+    retitleTurning.value = true
+  }
+}, { immediate: true })
+
+function requestTitle(): void {
+  if (props.retitle !== 'available') {
+    return
+  }
+  retitleTurning.value = true
+  emit('retitle')
+}
 const titleCell = ref<HTMLElement | null>(null)
 const title = ref<HTMLElement | null>(null)
 const { width: titleCellWidth } = useElementSize(titleCell)
 const titleRoom = ref<number>()
 watch(
-  [titleCellWidth, () => props.conversation.title, title, renaming, () => props.retitle],
+  [titleCellWidth, () => props.conversation.title, title, renaming, () => props.retitle, retitleTurning],
   () => {
     // The input a rename swaps in is as wide as a title gets, and leaves no button beside it.
-    const actions = props.retitle ? 2 : 1
+    const actions = props.retitle || retitleTurning.value ? 2 : 1
     const need = title.value
       ? Math.min(title.value.scrollWidth, TITLE_MAX_PX) + actions * TITLE_ACTION_PX
       : TITLE_MAX_PX
@@ -177,17 +192,21 @@ watch(() => props.conversation.id, close)
               @click="renaming = true"
             />
           </Tooltip>
+          <!-- It turns where it stands, as every button that refreshes does, and stays for
+               the turn it is in even when the title arrives, or fails, before that ends. -->
           <Tooltip
-            v-if="retitle"
-            :content="retitle === 'running' ? 'Updating title…' : 'Update title'"
+            v-if="retitle || retitleTurning"
+            :content="retitle === 'available' ? 'Update title' : 'Updating title…'"
             class="shrink-0"
           >
             <IconButton
               :icon="RefreshCw"
               variant="ghost"
               aria-label="Update title"
-              :loading="retitle === 'running'"
-              @click="emit('retitle')"
+              spin-on-click
+              :spinning="retitle === 'running'"
+              @click="requestTitle"
+              @spin-end="retitleTurning = false"
             />
           </Tooltip>
         </template>
