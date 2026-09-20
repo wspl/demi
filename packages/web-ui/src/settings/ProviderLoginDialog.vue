@@ -158,22 +158,23 @@ const { copy: copyLink, copied: linkCopied } = useClipboard({ copiedDuring: 1500
               <TextInput
                 v-model="token"
                 secret
+                trim
                 :placeholder="`${phase.prefix}…`"
                 class="flex-1"
                 @keydown.enter="
-                  token.trim().startsWith(phase.prefix) &&
-                  emit('submitToken', token.trim())
+                  token.startsWith(phase.prefix) &&
+                  emit('submitToken', token)
                 "
               />
               <Button
                 variant="primary"
-                :disabled="!token.trim().startsWith(phase.prefix)"
-                @click="emit('submitToken', token.trim())"
+                :disabled="!token.startsWith(phase.prefix)"
+                @click="emit('submitToken', token)"
                 >Continue</Button
               >
             </div>
             <span
-              v-if="token.trim() && !token.trim().startsWith(phase.prefix)"
+              v-if="token && !token.startsWith(phase.prefix)"
               class="text-[12px] text-on-danger"
               >A token starts with {{ phase.prefix }}.</span
             >

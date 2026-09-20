@@ -555,6 +555,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                     aria-label="API key"
                     @commit="emit('change', selected, { apiKey: $event })"
                     secret
+                    trim
                     :placeholder="selected.keyConfigured ? 'Enter a new key to replace' : 'Paste your API key'"
                     class="w-72 max-w-full"
                   />
