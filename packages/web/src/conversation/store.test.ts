@@ -803,3 +803,56 @@ test('slow or failed model discovery does not hold history behind the loading pa
   expect(current.load).toBe('ready')
   expect(current.blocks[0]?.id).toBe('visible-history')
 })
+
+test('a rename shows at once, survives a snapshot read before the write lands, and a refused one gives the title back', async () => {
+  const store = useConversations()
+  const product = useProduct()
+  const started = deferred<void>()
+  const release = deferred<void>()
+  let refuse = false
+  let answered = 0
+  const fetch = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    if (String(input) !== '/api/conversations/first' || init?.method !== 'PATCH') {
+      return fetch(input, init)
+    }
+    started.resolve()
+    await release.promise
+    answered += 1
+    const current = records.find((item) => item.id === 'first')!
+    const { title } = JSON.parse(String(init.body)) as { title: string }
+    if (!refuse) {
+      current.title = title
+    }
+    return Response.json({
+      conversation: current,
+      results: [refuse
+        ? { field: 'title', status: 'failed', code: 'archived', message: 'Restore it first' }
+        : { field: 'title', status: 'applied' }],
+    })
+  }) as typeof fetch
+  const title = () => store.items.find((item) => item.id === 'first')!.title
+
+  store.rename('first', 'Renamed')
+  expect(title()).toBe('Renamed')
+  await started.promise
+  // The poll still reads the old title from the backend.
+  await product.revalidate()
+  expect(title()).toBe('Renamed')
+  release.resolve()
+  // The write is answered, then the store revalidates and settles the pending title.
+  const settled = async (count: number) => {
+    while (answered < count) {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    }
+    await new Promise((resolve) => setTimeout(resolve, 30))
+  }
+  await settled(1)
+  expect(title()).toBe('Renamed')
+
+  refuse = true
+  store.rename('first', 'Refused')
+  expect(title()).toBe('Refused')
+  await settled(2)
+  expect(title()).toBe('Renamed')
+})
