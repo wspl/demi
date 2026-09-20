@@ -4,13 +4,13 @@ import {
   clampUsedPercent,
   createProviderQuota,
   ensureQuota,
-  fileQuotaSnapshots,
   ProviderQuotaUnsupportedError,
   ProviderQuotaInvalidatedError,
   severityFromUsedPercent,
   unixSecondsToIso,
   usedPercentFromRatio,
 } from '../quota'
+import { fileQuotaSnapshots } from '../credentials-pool'
 
 test('createProviderQuota probes and caches latest', async () => {
   let probes = 0

@@ -1,24 +1,13 @@
-import {
-  decodeJwtPayload,
-  delay,
-  errorCode,
-  errorMessage,
-  nonEmptyString
-} from '@demicodes/utils'
+import { decodeJwtPayload, nonEmptyString } from '@demicodes/utils'
 import { z } from 'zod'
-import { mkdir, open, readFile, rm } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import {
   redactCredentialText,
   reportedStringSchema,
   type ProviderAuthState
 } from '@demicodes/provider'
-import {
-  exclusiveCredentialRefresh,
-  writeJsonFileAtomic,
-  type CredentialDocument,
-} from '@demicodes/provider/credentials-pool'
+import type { CredentialDocument } from '@demicodes/provider/credentials-pool'
 
 export const CODEX_AUTH_MODES = [
   'apiKey',
@@ -105,22 +94,11 @@ export interface CodexAuthStore {
   resolveAuth(options?: { forceRefresh?: boolean }): Promise<CodexResolvedAuth>
 }
 
-export async function codexAuthStatus(
-  options: FileCodexAuthStoreOptions = {}
-): Promise<ProviderAuthState> {
-  return new FileCodexAuthStore(options).status()
-}
-
-export interface FileCodexAuthStoreOptions {
-  codexHome?: string
-  /** Override auth.json path. */
-  authFile?: string
-  /** The account's document in a credential pool, instead of a file. */
-  document?: CredentialDocument
+export interface CodexDocumentAuthStoreOptions {
+  /** The account's `auth.json`, whoever keeps it. */
+  document: CredentialDocument
   refresh?: CodexTokenRefresh
   now?: () => Date
-  lockRetryDelayMs?: number
-  lockTimeoutMs?: number
 }
 
 /**
@@ -160,27 +138,24 @@ export function codexOauthClientId(): string {
 const REFRESH_EXPIRY_SKEW_MS = 5 * 60 * 1000
 const REFRESH_STALENESS_MS = 8 * 24 * 60 * 60 * 1000
 
-export class FileCodexAuthStore implements CodexAuthStore {
-  readonly codexHome: string
-  /** The file, or the name of the pool document that stands in for it. */
+/**
+ * Resolves and refreshes one account from its document. The document's keeper
+ * — a product's records, Demi's files, the vendor's own `auth.json` — is the
+ * caller's business.
+ */
+export class CodexDocumentAuthStore implements CodexAuthStore {
+  /** The document's name, which a resolved auth reports as where it came from. */
   readonly authFile: string
 
-  private readonly document: CredentialDocument | null
+  private readonly document: CredentialDocument
   private readonly refreshImpl: CodexTokenRefresh
   private readonly now: () => Date
-  private readonly lockRetryDelayMs: number
-  private readonly lockTimeoutMs: number
 
-  constructor(options: FileCodexAuthStoreOptions = {}) {
-    this.codexHome = options.codexHome ?? defaultCodexHome()
-    this.document = options.document ?? null
-    this.authFile = this.document?.name
-      ?? options.authFile
-      ?? join(this.codexHome, 'auth.json')
+  constructor(options: CodexDocumentAuthStoreOptions) {
+    this.document = options.document
+    this.authFile = options.document.name
     this.refreshImpl = options.refresh ?? refreshCodexToken
     this.now = options.now ?? (() => new Date())
-    this.lockRetryDelayMs = options.lockRetryDelayMs ?? 25
-    this.lockTimeoutMs = options.lockTimeoutMs ?? 5_000
   }
 
   async status(): Promise<ProviderAuthState> {
@@ -310,10 +285,6 @@ export class FileCodexAuthStore implements CodexAuthStore {
         tokens: nextTokens,
         last_refresh: this.now().toISOString(),
       }
-      if (!this.document) {
-        await writeJsonFileAtomic(this.authFile, nextAuth)
-        return resolveChatGptAuthFromFile(nextAuth, this.authFile)
-      }
       const kept = await this.document.replace(
         `${JSON.stringify(nextAuth, null, 2)}\n`,
         latest.version
@@ -323,72 +294,19 @@ export class FileCodexAuthStore implements CodexAuthStore {
         this.authFile
       )
     }
-    return this.document
-      ? exclusiveCredentialRefresh(this.document, refresh)
-      : this.withAuthFileLock(refresh)
+    return this.document.exclusive(refresh)
   }
 
   private async readRevision(): Promise<{ auth: CodexAuthDotJson; version: string }> {
-    let text: string
-    if (this.document) {
-      const revision = await this.document.read()
-      if (!revision)
-        throw new CodexAuthError(
-          'auth_missing',
-          `Codex auth not found: ${this.authFile}`
-        )
-      text = revision.text
-      return {
-        auth: parseCodexAuthDotJson(text, `Codex auth ${this.authFile}`),
-        version: revision.version,
-      }
-    }
-    try {
-      text = await readFile(this.authFile, 'utf8')
-    } catch (error) {
-      if (errorCode(error) === 'ENOENT') {
-        throw new CodexAuthError(
-          'auth_missing',
-          `Codex auth file not found: ${this.authFile}`
-        )
-      }
+    const revision = await this.document.read()
+    if (!revision)
       throw new CodexAuthError(
-        'auth_invalid',
-        `Failed to read Codex auth file ${this.authFile}: ${redactCodexSecretText(errorMessage(error))}`
+        'auth_missing',
+        `Codex auth not found: ${this.authFile}`
       )
-    }
     return {
-      auth: parseCodexAuthDotJson(text, `Codex auth file ${this.authFile}`),
-      // The file lock keeps other writers out; the text itself tells revisions apart.
-      version: text,
-    }
-  }
-
-  private async withAuthFileLock<T>(fn: () => Promise<T>): Promise<T> {
-    const lockFile = `${this.authFile}.lock`
-    await mkdir(dirname(this.authFile), { recursive: true })
-    const started = Date.now()
-    let handle: Awaited<ReturnType<typeof open>> | null = null
-    while (!handle) {
-      try {
-        handle = await open(lockFile, 'wx', 0o600)
-      } catch (error) {
-        if (errorCode(error) !== 'EEXIST'
-          || Date.now() - started > this.lockTimeoutMs) {
-          throw new CodexAuthError(
-            'auth_lock_failed',
-            `Failed to lock Codex auth file: ${redactCodexSecretText(errorMessage(error))}`
-          )
-        }
-        await delay(this.lockRetryDelayMs)
-      }
-    }
-
-    try {
-      return await fn()
-    } finally {
-      await handle.close().catch(() => undefined)
-      await rm(lockFile, { force: true }).catch(() => undefined)
+      auth: parseCodexAuthDotJson(revision.text, `Codex auth ${this.authFile}`),
+      version: revision.version,
     }
   }
 }

@@ -10,6 +10,7 @@ import {
   PoolAwareCodexAuthStore
 } from '../credentials'
 import { createCodexCredentials } from '../credentials'
+import { codexVendorPool } from '../vendor'
 
 function jwt(payload: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' }))
@@ -58,7 +59,7 @@ test(
       await writeVendorAuth(codexB, 'b@example.com', 'acct-b')
 
       const pool = openCodexCredentialPool({ stateDir })
-      const authStore = new PoolAwareCodexAuthStore(pool, { codexHome: codexA })
+      const authStore = new PoolAwareCodexAuthStore(pool)
       const quota = createProviderQuota({
         providerId: 'codex',
         canProbe: true,
@@ -68,7 +69,7 @@ test(
       const credentials = createCodexCredentials(
         pool,
         authStore,
-        { codexHome: codexA, quota }
+        { importFrom: codexVendorPool({ codexHome: codexA }), quota }
       )
 
       const importedA = await credentials.importDefault!()
@@ -79,7 +80,7 @@ test(
       const credentialsB = createCodexCredentials(
         pool,
         authStore,
-        { codexHome: codexB }
+        { importFrom: codexVendorPool({ codexHome: codexB }) }
       )
       const importedB = await credentialsB.importDefault!()
       expect(importedB.label).toBe('b@example.com')
@@ -129,10 +130,16 @@ test(
 test('createCodexProvider exposes credentials surface by default', async () => {
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-cred-prov-'))
   try {
-    const provider = createCodexProvider({ stateDir, credentials: true })
+    // A Codex home without a login: the default pool stands for nothing.
+    const provider = createCodexProvider({
+      stateDir,
+      codexHome: join(stateDir, 'codex-home'),
+      credentials: true
+    })
     expect(provider.credentials).toBeDefined()
     expect(provider.credentials!.capability()).toMatchObject({
       mode: 'supported',
+      canImportDefault: true,
       multi: true
     })
     expect(await provider.credentials!.list()).toEqual([])
@@ -207,11 +214,11 @@ test(
       }) as typeof fetch
 
       const pool = openCodexCredentialPool({ stateDir })
-      const authStore = new PoolAwareCodexAuthStore(pool, { codexHome })
+      const authStore = new PoolAwareCodexAuthStore(pool)
       const credentials = createCodexCredentials(
         pool,
         authStore,
-        { codexHome, loginFetch }
+        { loginFetch }
       )
 
       const pendings: Array<{

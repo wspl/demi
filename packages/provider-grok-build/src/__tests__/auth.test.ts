@@ -4,12 +4,8 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { redactCredentialText } from '@demicodes/provider'
-import {
-  FileGrokAuthStore,
-  grokRefreshTokenResponseSchema,
-  isAbandonedGrokAuthLock,
-  selectAuthEntry
-} from '../auth'
+import { grokRefreshTokenResponseSchema, selectAuthEntry } from '../auth'
+import { FileGrokAuthStore, isAbandonedGrokAuthLock } from '../vendor'
 
 test(
   'FileGrokAuthStore resolves OIDC session from Grok CLI auth.json shape',

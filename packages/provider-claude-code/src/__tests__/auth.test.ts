@@ -3,7 +3,11 @@ import {
   type CredentialDocument,
   MemoryCredentialPool,
 } from '@demicodes/provider/credentials-pool'
-import { ClaudeCodeAuthError, FileClaudeCodeAuthStore } from '../auth'
+import {
+  ClaudeCodeAuthError,
+  ClaudeCodeDocumentAuthStore,
+  type ClaudeCodeSecretRefresh,
+} from '../auth'
 import type { ClaudeCodeOAuthSecret } from '../secret'
 
 const META = {
@@ -30,6 +34,16 @@ async function withOAuthDocument(
   })
 }
 
+/** The store of a stored secret; by default one whose renewal is never due. */
+function storeOf(
+  document: CredentialDocument,
+  refresh: ClaudeCodeSecretRefresh = async () => {
+    throw new Error('this secret is not renewed')
+  },
+): ClaudeCodeDocumentAuthStore {
+  return new ClaudeCodeDocumentAuthStore({ document, source: 'file', refresh })
+}
+
 function secretJson(secret: Partial<ClaudeCodeOAuthSecret>): string {
   return JSON.stringify(secret)
 }
@@ -38,7 +52,7 @@ test('a valid oauth document resolves to file-sourced access', async () => {
   await withOAuthDocument(
     secretJson({ accessToken: 'at-1', subscriptionType: 'max' }),
     async (document) => {
-      const store = new FileClaudeCodeAuthStore({ document })
+      const store = storeOf(document)
       expect(await store.resolveAccess()).toEqual({
         accessToken: 'at-1',
         source: 'file',
@@ -55,20 +69,18 @@ test('a valid oauth document resolves to file-sourced access', async () => {
 
 test('a corrupt oauth document is an error, never a repaired value', async () => {
   await withOAuthDocument('{not json', async (document) => {
-    const store = new FileClaudeCodeAuthStore({ document })
+    const store = storeOf(document)
     await expect(store.resolveAccess()).rejects.toThrow(/not valid JSON/)
   })
   await withOAuthDocument(secretJson({ subscriptionType: 'max' }), async (document) => {
-    const store = new FileClaudeCodeAuthStore({ document })
+    const store = storeOf(document)
     await expect(store.resolveAccess()).rejects.toThrow(/accessToken/)
     expect(await store.status()).toMatchObject({ status: 'error' })
   })
 })
 
 test('a missing oauth document reads as an unauthenticated credential', async () => {
-  const store = new FileClaudeCodeAuthStore({
-    document: new MemoryCredentialPool().document('absent'),
-  })
+  const store = storeOf(new MemoryCredentialPool().document('absent'))
   await expect(store.resolveAccess()).rejects.toThrow(ClaudeCodeAuthError)
   expect(await store.status()).toMatchObject({ status: 'unauthenticated' })
 })
@@ -78,8 +90,9 @@ test('an expiring secret is renewed and the renewal is written back', async () =
   await withOAuthDocument(
     secretJson({ accessToken: 'at-old', refreshToken: 'rt-1', expiresAt }),
     async (document) => {
-      const store = new FileClaudeCodeAuthStore({
+      const store = new ClaudeCodeDocumentAuthStore({
         document,
+        source: 'file',
         refresh: async (secret) => ({
           ...secret,
           accessToken: 'at-new',
@@ -104,8 +117,9 @@ test('an invalid renewal is rejected before it reaches the document', async () =
     expiresAt
   })
   await withOAuthDocument(stored, async (document) => {
-    const store = new FileClaudeCodeAuthStore({
+    const store = new ClaudeCodeDocumentAuthStore({
       document,
+      source: 'file',
       refresh: async () => ({ accessToken: '' }),
     })
     await expect(store.resolveAccess()).rejects.toThrow(/renewal is invalid/)
@@ -119,8 +133,9 @@ test('a secret that is not expiring is used as it is', async () => {
     secretJson({ accessToken: 'at-old', refreshToken: 'rt-1', expiresAt }),
     async (document) => {
       let refreshes = 0
-      const store = new FileClaudeCodeAuthStore({
+      const store = new ClaudeCodeDocumentAuthStore({
         document,
+        source: 'file',
         refresh: async (secret) => {
           refreshes += 1
           return secret
@@ -138,8 +153,9 @@ test('a renewal whose replace loses uses the stored winner', async () => {
     secretJson({ accessToken: 'at-old', refreshToken: 'rt-1', expiresAt }),
     async (document, storeElsewhere) => {
       const winner = secretJson({ accessToken: 'at-winner', refreshToken: 'rt-2' })
-      const store = new FileClaudeCodeAuthStore({
+      const store = new ClaudeCodeDocumentAuthStore({
         document,
+        source: 'file',
         refresh: async (secret) => {
           // Another process stores its renewal while this one is in flight.
           await storeElsewhere(winner)
@@ -157,8 +173,9 @@ test('a refused renewal uses the tokens stored meanwhile', async () => {
   await withOAuthDocument(
     secretJson({ accessToken: 'at-old', refreshToken: 'rt-1', expiresAt }),
     async (document, storeElsewhere) => {
-      const store = new FileClaudeCodeAuthStore({
+      const store = new ClaudeCodeDocumentAuthStore({
         document,
+        source: 'file',
         refresh: async () => {
           // The refresh token was spent by whoever stored these tokens.
           await storeElsewhere(
@@ -177,8 +194,9 @@ test('a refused renewal of an unchanged document is an error', async () => {
   await withOAuthDocument(
     secretJson({ accessToken: 'at-old', refreshToken: 'rt-1', expiresAt }),
     async (document) => {
-      const store = new FileClaudeCodeAuthStore({
+      const store = new ClaudeCodeDocumentAuthStore({
         document,
+        source: 'file',
         refresh: async () => {
           throw new Error('invalid_grant')
         },
@@ -186,4 +204,15 @@ test('a refused renewal of an unchanged document is an error', async () => {
       await expect(store.resolveAccess()).rejects.toThrow(/invalid_grant/)
     },
   )
+})
+
+test('the access reports the source the store was given', async () => {
+  await withOAuthDocument(secretJson({ accessToken: 'at-1' }), async (document) => {
+    const store = new ClaudeCodeDocumentAuthStore({
+      document,
+      source: 'keychain',
+      refresh: async (secret) => secret,
+    })
+    expect((await store.resolveAccess()).source).toBe('keychain')
+  })
 })

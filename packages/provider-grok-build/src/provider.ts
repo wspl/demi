@@ -5,9 +5,7 @@ import {
   httpRequestFailedEvent,
   mapChatCompletionsStream,
   providerErrorFromUnknown,
-  fileQuotaSnapshots,
   type ProviderQuotaSnapshots,
-  quotaSnapshotFile,
   readHttpFailure,
   readServerSentEvents,
   type AgentProvider,
@@ -18,7 +16,6 @@ import {
   type ProviderSelection,
 } from '@demicodes/provider'
 import {
-  FileGrokAuthStore,
   GrokAuthError,
   type GrokAuthStore,
   type GrokResolvedAuth,
@@ -31,8 +28,14 @@ import {
 } from './credentials'
 import { DEFAULT_GROK_BUILD_BASE_URL, buildGrokBuildHeaders } from './headers'
 import { listGrokBuildModels } from './models'
-import type { CredentialPool } from '@demicodes/provider/credentials-pool'
+import {
+  fallbackCredentialPool,
+  fileQuotaSnapshots,
+  quotaSnapshotFile,
+  type CredentialPool,
+} from '@demicodes/provider/credentials-pool'
 import { createGrokBuildQuota } from './quota'
+import { grokVendorPool } from './vendor'
 
 const GROK_VENDOR_LABEL = 'Grok Build'
 
@@ -191,18 +194,17 @@ export function createGrokBuildProvider(
   const displayName = options.displayName ?? 'Grok Build'
   const enableCredentials = options.credentials
     ?? options.authStore === undefined
-  const pool = !options.authStore && enableCredentials
-    ? options.credentialPool
-      ?? openGrokCredentialPool({ stateDir: options.stateDir })
-    : null
-  const authStore =
-    options.authStore ??
-    (pool
-      ? new PoolAwareGrokAuthStore(pool, {
-        grokHome: options.grokHome,
-        credentialId: options.credentialId,
-      })
-      : new FileGrokAuthStore({ grokHome: options.grokHome }))
+  // A caller that passes no pool gets Demi's files, standing for the Grok
+  // CLI's own logins while they hold no account.
+  const vendor = grokVendorPool({ grokHome: options.grokHome })
+  const pool = options.credentialPool ?? (enableCredentials
+    ? fallbackCredentialPool(
+      openGrokCredentialPool({ stateDir: options.stateDir }),
+      vendor
+    )
+    : vendor)
+  const authStore: GrokAuthStore = options.authStore
+    ?? new PoolAwareGrokAuthStore(pool, { credentialId: options.credentialId })
   const baseUrl = normalizeBaseUrl(options.baseUrl
     ?? DEFAULT_GROK_BUILD_BASE_URL)
   const fetchImpl = options.fetch ?? fetch
@@ -216,16 +218,12 @@ export function createGrokBuildProvider(
     snapshots: options.quotaSnapshots
       ?? fileQuotaSnapshots(quotaSnapshotFile(options.stateDir), id),
   })
-  const credentialsApi = pool
-    ? createGrokBuildCredentials(
-      pool,
-      authStore,
-      {
-        grokHome: options.grokHome,
-        quota,
-        pinned: options.credentialId !== undefined,
-      }
-    )
+  const credentialsApi = !options.authStore && enableCredentials
+    ? createGrokBuildCredentials(pool, authStore, {
+      ...(options.credentialPool ? {} : { importFrom: vendor }),
+      quota,
+      pinned: options.credentialId !== undefined,
+    })
     : undefined
   const runtimeOptions: GrokBuildRuntimeOptions = {
     baseUrl,
