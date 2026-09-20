@@ -10,7 +10,7 @@ Each vendor exposes usage and rate-limit data differently:
 
 | Provider | Active probe | Passive observation |
 |---|---|---|
-| Codex | Minimal Responses request (headers only) | `x-codex-*` on live Responses |
+| Codex | `GET …/wham/usage`, the account's usage status | `x-codex-*` on live Responses |
 | Claude Code | `GET /api/oauth/usage` | Stream-json `rate_limits` / unified rate-limit headers |
 | Grok Build | `/v1/billing?format=credits` + `/v1/user?include=subscription` | Short-window `x-ratelimit-*` on chat |
 
@@ -31,7 +31,7 @@ vendor-specific UI branches for every header name.
 
 - Billing UI or payment flows.
 - Cross-provider aggregate “total remaining” product metrics (products can compose snapshots).
-- Free unlimited probing when the vendor only offers a paid/minimal inference sniff (Codex).
+- Free unlimited probing when a vendor only offers a paid/minimal inference sniff.
 
 ## 3. Public contract (`@demicodes/provider`)
 
@@ -93,7 +93,7 @@ type ProviderQuotaCapability =
 ```
 
 - **`free`**: dedicated usage API (Claude, Grok billing).
-- **`minimal_request`**: probe burns a tiny inference / streamed request (Codex).
+- **`minimal_request`**: probe burns a tiny inference / streamed request. No shipped provider needs it now.
 
 ### 3.3 Helpers
 
@@ -120,11 +120,15 @@ Agent runtime does **not** call quota. Products (web control, REPL, dashboards) 
 
 | Path | Behavior |
 |---|---|
-| **probe** | Auth from active store → minimal streamed Responses → parse `x-codex-primary-*` / `x-codex-secondary-*` → cancel body. `probeCost: 'minimal_request'`. |
-| **observe** | Same headers on any live Responses HTTP response (`onHttpResponse` in the provider). |
-| **Windows** | Typically `primary` and `secondary` with percent + reset. |
+| **probe** | Auth from active store → `GET {chatgpt base}/wham/usage` with the same authorization and `ChatGPT-Account-Id` headers a request carries → `plan_type` and `rate_limit.primary_window` / `secondary_window` (`used_percent`, `limit_window_seconds`, `reset_at`). `probeCost: 'free'`. This is the request the open-source Codex CLI makes for its own status (`codex-rs/backend-client`, `get_rate_limits`). |
+| **observe** | `x-codex-primary-*` / `x-codex-secondary-*` headers on any live Responses HTTP response (`onHttpResponse` in the provider), a refusal included. |
+| **Windows** | `primary` and `secondary`, named by their length (`5-hour`, `Weekly`), with percent + reset. |
+| **Plan** | `plan_type` from the usage status (`plus`, `pro`, `team`, …). |
 
-There is no free Codex “usage only” HTTP API in this stack; passive observe on SSE is the preferred steady-state path.
+The usage status exists for a ChatGPT sign-in only. An `OPENAI_API_KEY` has no
+such account, so its probe fails and its windows come from observation alone.
+The probe spends nothing, which matters most exactly when the limit is reached:
+a request then is refused, and a probe that needed one could not say why.
 
 ### 4.2 Claude Code (`@demicodes/provider-claude-code`)
 
@@ -185,7 +189,7 @@ const snap = provider.quota
   ? await ensureQuota(provider.quota, { prefer: 'cache' })
   : null
 
-// Force a network probe (respect probeCost — Codex is not free):
+// Force a network probe (respect probeCost):
 const probed = await provider.quota?.probe({ force: true })
 ```
 
@@ -193,7 +197,7 @@ Guidance:
 
 1. Prefer **observation** during active chat (zero extra cost when headers/body carry windows).
 2. Call **probe** for dashboard open / refresh, or when `latest()` is null/stale.
-3. For Codex, avoid polling `probe()` on a tight timer; use observe + sparse probe.
+3. Do not poll `probe()` on a tight timer; use observe + sparse probe.
 
 ## 7. Implementation notes
 
@@ -215,7 +219,7 @@ Guidance:
 | Question | Answer |
 |---|---|
 | One snapshot type for all three? | **Yes** |
-| Free probe for all? | **No** — Codex is `minimal_request` |
+| Free probe for all? | **Yes** for the shipped providers; the contract still allows `minimal_request` |
 | Primary steady-state path? | **observe** on live inference where possible |
 | Agent protocol change? | **None** |
 | Tied to multi-cred? | **Yes** — active credential + `clearLatest` on switch |
