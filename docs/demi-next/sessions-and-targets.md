@@ -231,14 +231,33 @@ Conversation and device admission protect different resources:
 | --- | --- | --- |
 | One conversation tree | Target change | Root and child turns, restores, queued work, and wakeups admitted by the tree lifecycle |
 | Conversation files | Target change | Host operations: uploads, the working tree, file text. File transfers and user streams are ended, not awaited. |
-| One Cloud device | Shutdown or reset | Device operations and relevant agent trees across all of its user's conversations |
+| One Cloud device | Shutdown or reset | Device operations, and the agent trees of the conversations whose target is that Cloud |
 
 The lifecycle module reserves device admission before the managed-host
 adapter changes the machine.
 Tree reservations alone cannot protect a Cloud device shared by multiple
-conversations. Normal wake can be joined. Reset rejects new work with a resetting
-status, interrupts device work, and coordinates the durable disk transition in
-[managed hosts](managed-hosts.md). It does not silently replay interrupted work.
+conversations. Normal wake can be joined. Reset interrupts device work and
+coordinates the durable disk transition in [managed hosts](managed-hosts.md).
+It does not silently replay interrupted work.
+
+A reset reaches a conversation only through its target. It interrupts and
+holds the conversations whose target is that Cloud, and no others. A
+conversation that merely has the Cloud attached keeps running on its own
+target: its turn is not interrupted, its streams stay open, and it can be
+opened, read and written throughout. A command it had running on the Cloud
+ends with the device, as it would on any Host that went away, and its next
+Cloud command waits for the device like any other wake.
+
+A held conversation is waiting, not failed. While a transition holds a
+conversation (a reset, a target change, an archive), everything the user sends
+to it waits for the transition and then proceeds: opening it, a message, a
+steer, a Host operation. Nothing is answered with a refusal because the
+transition is running, so nothing is left for the user to retry, and the
+conversation is usable the moment the transition ends. A wait ends early only
+when its requester goes away. User streams and file transfers are the
+exception the table names: a transition ends them instead of waiting for them,
+and the page reopens its streams by itself afterwards. The page shows that the conversation is waiting
+and why (`Cloud is resetting`), from the Cloud status it already follows.
 
 For example, an idle conversation cannot cause Cloud shutdown while another
 conversation is using that same device. A callback remains bound to the job that
