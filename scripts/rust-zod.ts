@@ -199,7 +199,8 @@ export class RustZodTypes {
           lines.push(`for key in ${value}.keys() { ${keys} }`)
         else if (values)
           lines.push(`for value in ${value}.values() { ${values} }`)
-        if (def.keyType._zod.def.type === 'enum')
+        // A partial record names any of its keys; a full one names each.
+        if (def.keyType._zod.def.type === 'enum' && !def.partial)
           require(`${value}.len() == ${Object.keys((def.keyType as z.core.$ZodEnum)._zod.def.entries).length}`, 'missing record key')
         break
       }

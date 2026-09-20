@@ -44,3 +44,27 @@ test('runner releases verify immutable artifacts before advancing the manifest',
     await rm(root, { recursive: true, force: true })
   }
 })
+
+test('a development release carries the named targets only', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'demi-release-'))
+  const artifacts = join(root, 'artifacts')
+  const output = join(root, 'releases')
+  const carried = [NATIVE_TARGETS[0], NATIVE_TARGETS[2]]
+  try {
+    for (const target of carried) {
+      await mkdir(join(artifacts, target, 'release'), { recursive: true })
+      await writeFile(join(artifacts, target, 'release', 'demi-runner'), `fixture ${target}`)
+    }
+    const packager = resolve(import.meta.dir, '../release-runner.ts')
+    const command = [process.execPath, '--conditions', 'development', packager, '--artifacts', artifacts, '--output', output]
+    const complete = Bun.spawn(command, { stdout: 'ignore', stderr: 'ignore' })
+    expect(await complete.exited).not.toBe(0)
+    const named = Bun.spawn([...command, ...carried.flatMap(target => ['--target', target])], { stdout: 'ignore', stderr: 'pipe' })
+    expect(await named.exited, await new Response(named.stderr).text()).toBe(0)
+    const manifest = runnerReleaseSchema.parse(JSON.parse(await readFile(join(output, 'manifest.json'), 'utf8')))
+    expect(Object.keys(manifest.targets).sort()).toEqual([...carried].sort())
+    expect((await readdir(join(output, manifest.release))).sort()).toEqual([...carried, 'manifest.json'].sort())
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})

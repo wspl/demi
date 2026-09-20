@@ -34,7 +34,7 @@ test('artifact requests require the active job and its exact manifest artifact',
   } })
   expect(messages[0]?.type).toBe('manifest')
   expect(start.manifestHash).toBe(catalog.hash)
-  const request = { type: 'artifact_resolve' as const, id: 'request', owner: { jobId: start.jobId, manifestHash: catalog.hash }, target: 'aarch64-apple-darwin' as const, sha256: descriptor.targets['aarch64-apple-darwin'].sha256 }
+  const request = { type: 'artifact_resolve' as const, id: 'request', owner: { jobId: start.jobId, manifestHash: catalog.hash }, target: 'aarch64-apple-darwin' as const, sha256: descriptor.targets['aarch64-apple-darwin']!.sha256 }
   host.handleMessage({ ...request, sha256: 'f'.repeat(64) })
   await Bun.sleep(0)
   expect(calls).toBe(0)
@@ -58,7 +58,7 @@ test('job completion aborts pending location resolution without a stale response
     await new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }))
     throw new Error('unreachable')
   } })
-  host.handleMessage({ type: 'artifact_resolve', id: 'request', owner: { jobId: start.jobId, manifestHash: catalog.hash }, target: 'aarch64-apple-darwin', sha256: descriptor.targets['aarch64-apple-darwin'].sha256 })
+  host.handleMessage({ type: 'artifact_resolve', id: 'request', owner: { jobId: start.jobId, manifestHash: catalog.hash }, target: 'aarch64-apple-darwin', sha256: descriptor.targets['aarch64-apple-darwin']!.sha256 })
   expect(observed?.aborted).toBe(false)
   host.handleMessage({ type: 'job_exit', files: [], filesTruncated: false, jobId: start.jobId, exitCode: 0 })
   await Bun.sleep(0)

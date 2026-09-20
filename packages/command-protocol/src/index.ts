@@ -18,6 +18,9 @@ export const nativeArtifactSchema = z.object({
   size: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
 }).strict()
 
+/** The targets a release carries. Publication requires all of them; a development release may carry fewer. */
+export const nativeTargetsSchema = z.partialRecord(nativeTargetSchema, nativeArtifactSchema)
+
 export const nativePackageSchema = z.object({
   id: nativePackageIdSchema,
   version: z.string().min(1),
@@ -25,7 +28,7 @@ export const nativePackageSchema = z.object({
   operations: z.array(z.string().min(1)).min(1)
     .refine(operations => new Set(operations).size === operations.length,
       'Operation ids must be unique').meta({ uniqueItems: true }),
-  targets: z.record(nativeTargetSchema, nativeArtifactSchema),
+  targets: nativeTargetsSchema,
 }).strict()
 
 export type NativeTarget = z.infer<typeof nativeTargetSchema>

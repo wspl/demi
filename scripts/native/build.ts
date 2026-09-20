@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { z } from 'zod'
-import { NATIVE_TARGETS, nativeTargetSchema } from '@demicodes/command-protocol'
+import { selectedTargets } from './release-files'
 
 const APPLE_SDK_VERSION = '15.4'
 const WINDOWS_SDK_VERSION = '10.0.26100'
@@ -19,7 +19,7 @@ const { values } = parseArgs({ options: {
 } })
 const root = resolve(import.meta.dir, '../..')
 const artifacts = resolve(root, values.artifacts)
-const targets = values.target?.map(target => nativeTargetSchema.parse(target)) ?? [...NATIVE_TARGETS]
+const targets = selectedTargets(values.target)
 const sdk = values.sdk ? resolve(values.sdk) : process.env.SDKROOT
 const cache = join(root, '.cache')
 const xwinCache = join(cache, `native-xwin-${WINDOWS_CRT_VERSION}-${WINDOWS_SDK_VERSION}`)
