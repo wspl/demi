@@ -1,11 +1,11 @@
 import { modelSelectionFromCatalog } from '@demicodes/provider'
 import { Hono } from 'hono'
-import type { AuthEnv, InstanceMode } from '../auth/identity'
+import type { AuthEnv } from '../auth/identity'
 import type { ProviderAssembly } from '../llm/assembly'
+import type { ProviderVault } from '../vault/providers'
 import {
   modelAvailability
 } from '../llm/model-availability'
-import { providerOwner } from '../vault/scope'
 import { booleanQuerySchema } from './query'
 
 /**
@@ -14,7 +14,7 @@ import { booleanQuerySchema } from './query'
  */
 export function modelRoutes(options: {
   assembly: ProviderAssembly;
-  mode: InstanceMode
+  vault: ProviderVault
 }): Hono<AuthEnv> {
   const app = new Hono<AuthEnv>()
   app.get('/', async (c) => {
@@ -25,7 +25,7 @@ export function modelRoutes(options: {
         message: 'refresh must be true or false'
       }, 400)
     const providers = await options.assembly.catalog(
-      providerOwner(options.mode, c.get('user').id),
+      await options.vault.ownerFor(c.get('user').id),
       parsed.data ?? false
     )
     return c.json({ providers: providers.map(provider => ({

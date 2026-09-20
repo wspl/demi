@@ -27,7 +27,6 @@ import { createBunWebSocket } from 'hono/bun'
 import type { InstanceMode } from './auth/identity'
 import { EmailChanges, type AccountMailSender } from './auth/email-change'
 import { LoginLimiter, type LoginLimiterOptions } from './auth/login-limiter'
-import { ownerFitsMode } from './vault/scope'
 import { WebSessions, type WebSessionsOptions } from './auth/sessions'
 import { switchAnnouncementPreamble } from './conversation/switch-announcement'
 import { ProductState } from './sync/product-state'
@@ -183,17 +182,6 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   const controlDb = openSqliteDatabase(join(options.dataDir, 'control.sqlite'))
   migrate(controlDb, CONTROL_MIGRATIONS)
   const control: ControlService = new LocalControlService(controlDb)
-  // The mode is fixed for the instance's life: providers configured under
-  // the other mode would change owner meaning, so the process refuses to start.
-  const misfits = (await control.listProviders('all')).filter(
-    (row) => !ownerFitsMode(options.mode, row.ownerUserId)
-  )
-  if (misfits.length > 0) {
-    controlDb.close()
-    throw new Error(
-      `${misfits.length} provider(s) were configured under the other instance mode; the mode cannot change once providers are configured`
-    )
-  }
   const sessions = new WebSessions(control, options.auth)
   const loginLimiter = new LoginLimiter(options.auth)
 
@@ -264,7 +252,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     options.accountMail,
     options.auth?.now
   )
-  const vault = new ProviderVault(control, instanceSecret)
+  const vault = new ProviderVault(control, instanceSecret, options.mode)
   const vaultRoot = join(options.dataDir, 'vault')
   const vendors = new VendorCatalog(options.modelsDev ?? {})
   const assembly = new ProviderAssembly(vault, {
@@ -284,7 +272,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
   const resolveProvider = createSessionProviderResolver({
     assembly,
     control,
-    mode: options.mode,
+    vault,
     hostFor: (id) => targets.hostFor(id),
     rateLimiter
   })
@@ -466,7 +454,6 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     conversationUpdates: new ConversationUpdates({
       control,
       vault,
-      mode: options.mode,
       targets,
       agentServer,
       titles
