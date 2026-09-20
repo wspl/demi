@@ -183,9 +183,11 @@ test(
       for (let i = 0; i < 100; i += 1) {
         const state = await (await backend.session.fetch(
           `/api/providers/subscription-login/${started.id}`
-        )).json() as { login: { providerId?: string } }
+        )).json() as { login: { providerId?: string, credentialId?: string } }
         if (state.login.providerId) {
           id = state.login.providerId
+          // The page names the account this login added, not whichever is active.
+          expect(state.login.credentialId).toBe('account')
           break
         }
         await Bun.sleep(5)
