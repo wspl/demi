@@ -52,6 +52,7 @@ const props = withDefaults(
     models?: Record<string, ModelInfo[]>
     canConfigure?: boolean
     archived?: boolean
+    hold?: string | null
     messageEdit?: MessageEditState | null
   }>(),
   {
@@ -231,6 +232,7 @@ onBeforeUnmount(() => {
     :models="props.models ?? demoModels"
     :can-configure="canConfigure !== false"
     :archived="archived"
+    :hold="hold"
     :selected-provider-id="providerId"
     :selected-model-id="modelId"
     :service-tier-id="tier"
