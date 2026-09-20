@@ -17,6 +17,11 @@ const props = withDefaults(defineProps<{
   showFocus?: boolean
   /** A key or password: masked, with a built-in eye to reveal it. */
   secret?: boolean
+  /**
+   * The value has no whitespace around it, such as a pasted key or token: what
+   * a terminal or a web page adds around a copy is dropped as it arrives.
+   */
+  trim?: boolean
   /** Height family: lg is 36px, md is 28px, sm is 24px. Match the surface's other controls. */
   size?: 'sm' | 'md' | 'lg'
   /**
@@ -53,6 +58,15 @@ const inputAttrs = computed(
 const inputRef = ref<HTMLInputElement>()
 const isFocused = ref(false)
 const autofocus = useAutofocus()
+function input(event: Event): void {
+  const target = event.target as HTMLInputElement
+  if (props.trim && target.value !== target.value.trim()) {
+    // The field shows what it holds: the model alone would leave the spaces on screen.
+    target.value = target.value.trim()
+  }
+  emit('update:modelValue', target.value)
+}
+
 const tooltipContent = computed(() => disabledTooltip(props.disabled, props.disabledReason))
 
 const frameHeightClass = computed(() => {
@@ -136,7 +150,7 @@ defineExpose({
         :disabled="disabled || undefined"
         class="h-full min-w-0 flex-1 bg-transparent text-chrome text-fg outline-none placeholder:text-fg-subtle"
         :class="inputPadClass"
-        @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
+        @input="input"
         @focus="isFocused = true"
         @blur="isFocused = false"
       />
