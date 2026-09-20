@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import type { ChatSessionState } from '@demicodes/web-ui/agent/types'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
@@ -19,6 +19,22 @@ import { showToast } from '@demicodes/web-ui/infra/toast'
 import { demoExposes } from '../fixtures/settings'
 
 const props = withDefaults(defineProps<{ showActivity?: boolean }>(), { showActivity: true })
+// The product asks the backend for a title and hides the button until the
+// user's next message; here a timer stands in for the model.
+const retitle = ref<'available' | 'running' | null>('available')
+let retitleTimer: ReturnType<typeof setTimeout> | undefined
+function updateTitle(): void {
+  retitle.value = 'running'
+  clearTimeout(retitleTimer)
+  retitleTimer = setTimeout(() => {
+    session.title = session.title === 'Login test fix' ? 'Session cookie rename' : 'Login test fix'
+    retitle.value = null
+    // A message sent now would bring the button back; the specimen does it after a pause.
+    retitleTimer = setTimeout(() => { retitle.value = 'available' }, 3000)
+  }, 1500)
+}
+onBeforeUnmount(() => clearTimeout(retitleTimer))
+
 const session = reactive<ChatSessionState>({
   id: 'shared-product-session',
   cwd: WORKSPACE_ROOT,
@@ -141,6 +157,8 @@ function abortAgents(): void {
       <ChatSession
         :conversation="session"
         @rename="session.title = $event"
+        :retitle="retitle"
+        @retitle="updateTitle"
         has-provider
         @save-scroll="(_id, state) => (session.scroll = state)"
         @abort-subagents="abortAgents"

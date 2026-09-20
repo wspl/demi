@@ -127,7 +127,8 @@ test('a title chosen at creation is a user title: neither a message nor a model 
   ))!
   const named = await control.createConversation(user.id, { title: 'Chosen at creation' })
   expect(await control.defaultConversationTitle(named.id, 'from a message')).toBe(false)
-  expect(await control.generatedConversationTitle(named.id, 'from a model')).toBe(false)
+  // A model's title replaces the title its request started from, and only that one.
+  expect(await control.generatedConversationTitle(named.id, 'from a model', 'Another title', 0)).toBe(false)
   expect((await control.getConversation(named.id))?.title).toBe('Chosen at creation')
 })
 
@@ -147,19 +148,27 @@ test('ControlService conversation CRUD and ordering', async () => {
   const second = await control.createConversation(user.id)
   expect(first.title).toBe('New conversation')
 
-  // Title origins (product.md § Conversation titles): placeholder → message → generated, each once.
+  // Title origins (product.md § Conversation titles): the first message
+  // replaces the placeholder once; a generated title replaces the title its
+  // request started from, and records how many messages it had seen.
   expect(await control.defaultConversationTitle(first.id, 'hello world')).toBe(true)
   expect(await control.defaultConversationTitle(first.id, 'should not overwrite')).toBe(false)
-  expect((await control.getConversation(first.id))?.title).toBe('hello world')
-  expect(await control.generatedConversationTitle(first.id, 'Greeting')).toBe(true)
-  expect(await control.generatedConversationTitle(first.id, 'Second greeting')).toBe(false)
+  expect(await control.countUserMessage(first.id)).toBe(1)
+  expect(await control.generatedConversationTitle(first.id, 'Greeting', 'hello world', 1)).toBe(true)
+  expect(await control.getConversation(first.id)).toMatchObject({ title: 'Greeting', userMessages: 1, titledMessages: 1 })
+  // A request that began before the title changed writes nothing.
+  expect(await control.generatedConversationTitle(first.id, 'Stale', 'hello world', 1)).toBe(false)
   expect((await control.getConversation(first.id))?.title).toBe('Greeting')
+  // A later message makes the title old again; asking replaces it, a user's title included.
+  expect(await control.countUserMessage(first.id)).toBe(2)
+  await control.renameConversation(first.id, 'Typed by hand')
+  expect(await control.generatedConversationTitle(first.id, 'Login test', 'Typed by hand', 2)).toBe(true)
+  expect(await control.getConversation(first.id)).toMatchObject({ title: 'Login test', userMessages: 2, titledMessages: 2 })
 
-  // A placeholder has no message to improve on, and a user's title is never replaced.
-  expect(await control.generatedConversationTitle(second.id, 'Too early')).toBe(false)
+  // A rename that lands while a request is in flight wins.
   await control.renameConversation(second.id, 'renamed')
   expect(await control.defaultConversationTitle(second.id, 'from a message')).toBe(false)
-  expect(await control.generatedConversationTitle(second.id, 'from a model')).toBe(false)
+  expect(await control.generatedConversationTitle(second.id, 'from a model', 'New conversation', 1)).toBe(false)
   expect((await control.getConversation(second.id))?.title).toBe('renamed')
 
   // Most recently updated first.

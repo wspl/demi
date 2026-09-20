@@ -12,7 +12,7 @@ import type { Block, ModelSelection } from '@demicodes/core'
 import { errorMessage, SerialQueue } from '@demicodes/utils'
 import type { ProviderSelection } from '@demicodes/provider'
 import type { ControlService, ConversationRecord } from '../storage/control'
-import { titleFromMessage } from './title'
+import { titleFromMessage, type TitleRequest } from './title'
 import type { FailureFactsReader } from './failure-facts'
 import { resolveUploadRefs } from './attachment-refs'
 import {
@@ -58,7 +58,7 @@ export interface ConversationTransportOptions {
    * The send that gave the conversation its message-derived title: a generated
    * title may follow (`product.md` § Conversation titles).
    */
-  startTitle?: (provider: ProviderSelection, text: string) => void
+  startTitle?: (provider: ProviderSelection, request: TitleRequest) => void
   /** Reads the failure facts sent beside the transcript frames (`backend.md` § Failure facts). */
   readFailures?: FailureFactsReader
 }
@@ -321,6 +321,8 @@ async function rewriteFrame(
         content
       )
     const rewritten = clientFrameSchema.parse({ ...frame, content })
+    // Every message the user sends makes the generated title older than the conversation.
+    const seen = await control.countUserMessage(conversation.id)
     if (frame.type === 'send') {
       const text = frame.content.flatMap(block => block.type === 'text'
         ? [block.text]
@@ -330,10 +332,14 @@ async function rewriteFrame(
         ? await control.defaultConversationTitle(conversation.id, title)
         : false
       if (titled && connection.provider)
-        options.startTitle?.(connection.provider, text)
+        options.startTitle?.(connection.provider, { messages: [text], from: title, seen })
       await control.touchConversation(conversation.id)
     }
     return rewritten
+  }
+  if (frame.type === 'edit_and_send') {
+    await control.countUserMessage(conversation.id)
+    return frame
   }
   if (frame.type === 'set_provider') {
     return { ...frame, provider: await recordProvider(frame.provider) }
