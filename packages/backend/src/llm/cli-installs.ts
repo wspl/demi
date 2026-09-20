@@ -39,7 +39,7 @@ export class CliInstalls {
         try {
           this.states.set(key, {
             state: 'installed',
-            path: await placed.session.claudeCli()
+            path: (await placed.session.claudeProcess()).command
           })
         } finally {
           placed.release()

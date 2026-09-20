@@ -8,6 +8,7 @@ import {
   type ProviderRun,
   type ProviderSelection
 } from '@demicodes/provider'
+import type { ClaudeProcessPlace } from '@demicodes/provider-claude-code'
 import type { Host } from '@demicodes/shell'
 import type { ProviderVault } from '../vault/providers'
 import type { ControlService } from '../storage/control'
@@ -23,12 +24,16 @@ interface SessionProvidersOptions {
   assembly: ProviderAssembly
   control: ControlService
   vault: ProviderVault
-  hostFor: (conversationId: string) => Promise<Host>
   /**
-   * Demi's Claude Code CLI on the conversation's execution target
-   * (`claude-cli.md`): its path, installed first when the target has none.
+   * The machine a conversation's provider process runs on, which the
+   * placement decides (`claude-cli.md` § Where it runs).
    */
-  claudeCli: (conversationId: string, held: string | undefined) => Promise<string>
+  processHost: (conversationId: string) => Promise<Host>
+  /** Where a Claude Code process runs on that machine, with Demi's CLI installed there. */
+  claudeProcess: (
+    conversationId: string,
+    held: string | undefined
+  ) => Promise<ClaudeProcessPlace>
   rateLimiter: ProviderRateLimiter
 }
 
@@ -53,15 +58,15 @@ export function createSessionProviderResolver(
     const initial = await resolve()
     if (!initial)
       return null
-    const host = () => options.hostFor(agentSessionId)
+    const host = () => options.processHost(agentSessionId)
     const session: SessionProviderContext = {
       spawn: async (params) => {
         const target = await host()
         return target.process.spawn({ ...params, inheritEnv: true })
       },
-      claudeCli: async () => {
+      claudeProcess: async () => {
         const entry = (await resolve())?.entry
-        return options.claudeCli(
+        return options.claudeProcess(
           agentSessionId,
           entry?.config.kind === 'subscription' ? entry.config.cliVersion : undefined
         )

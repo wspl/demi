@@ -9,7 +9,7 @@ interface CliState {
 }
 
 test(
-  'a Claude Code entry reads its CLI from the machines, installs on Cloud after an account is added, and says why an install failed',
+  'a Claude Code entry reads its CLI from the user\'s Cloud, installs there after an account is added, and says why an install failed',
   async () => {
     const world = await World.create({ runners: ['laptop'] })
     try {
@@ -18,11 +18,11 @@ test(
         { token: 'sk-ant-oat01-fixture', label: 'Claude' }
       )
       const path = `/api/providers/${provider.id}/cli`
-      // The paired laptop is asked through the demi.claude package; it has nothing yet.
+      // A paired device is never asked: the CLI runs on Cloud.
       const first = await world.api<CliState>(path)
       expect(first.newest).toEqual({ version: '9.9.9' })
       expect(first.held).toBeNull()
-      expect(first.machines.find(machine => machine.name === 'laptop')?.versions).toEqual([])
+      expect(first.machines.map(machine => machine.name)).not.toContain('laptop')
 
       // Adding the account started the install on the user's Cloud, which the
       // fake distribution has no build for: the account stays, the reason shows.
@@ -32,6 +32,8 @@ test(
         state = await world.api<CliState>(path)
       }
       expect(state.install?.message).toContain('Claude Code 9.9.9 could not be installed')
+      // The install woke the Cloud, which the demi.claude package now answers for: nothing installed.
+      expect(state.machines.map(machine => machine.versions)).toEqual([[]])
       expect((await world.api<{ accounts: unknown[] }>(`/api/providers/${provider.id}/accounts`)).accounts)
         .toHaveLength(1)
 

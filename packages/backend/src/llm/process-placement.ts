@@ -18,6 +18,7 @@ export type ProcessWork =
 export interface PlacedHost {
   host: RemoteHost
   deviceId: string
+  /** The machine user's home directory. */
   cwd: string
   /** The command context package operations on this machine run under. */
   context: CommandContext
@@ -25,6 +26,16 @@ export interface PlacedHost {
 }
 
 type Candidate = (signal?: AbortSignal) => Promise<PlacedHost | null>
+
+/**
+ * The whole policy: for each kind of work, the machines to try in order. A
+ * provider's process runs on the user's Cloud, whatever the conversation's
+ * execution target is (`claude-cli.md` § Where it runs).
+ */
+const POLICY: Record<ProcessWork['kind'], ReadonlyArray<'cloud' | 'execution-target'>> = {
+  inference: ['cloud'],
+  account: ['cloud'],
+}
 
 /**
  * Decides the machine for a provider's process. Callers say what the work is
@@ -50,16 +61,15 @@ export class ProcessPlacement {
   }
 
   /**
-   * The user's machines that can be asked something now. It wakes nothing: a
-   * stopped Cloud and an offline device are simply not among them.
+   * The machines account work is placed on that can be asked something now.
+   * It wakes nothing: a stopped Cloud is simply not among them.
    */
   async online(userId: string, scope: string): Promise<Array<PlacedHost & { name: string }>> {
-    const [paired, managed, { locale }] = await Promise.all([
-      this.deps.control.listDevices(userId),
+    const [managed, { locale }] = await Promise.all([
       this.deps.control.getManagedDevice(userId),
       this.deps.control.getUserPreferences(userId),
     ])
-    return [...paired, ...(managed ? [managed] : [])].flatMap((device) => {
+    return (managed ? [managed] : []).flatMap((device) => {
       const home = this.deps.registry.deviceIdentity(device.id)?.homeDir
       if (!home || !this.deps.registry.deviceOnline(device.id))
         return []
@@ -82,10 +92,37 @@ export class ProcessPlacement {
     })
   }
 
+  /**
+   * Whether this kind of work is placed on the user's Cloud. A conversation
+   * whose provider needs a process uses that Cloud as `provider` exactly when
+   * its requests are placed there, so the lifecycle asks the same policy.
+   */
+  onCloud(kind: ProcessWork['kind']): boolean {
+    return POLICY[kind].includes('cloud')
+  }
+
   private candidates(work: ProcessWork): Candidate[] {
-    return work.kind === 'inference'
-      ? [() => this.executionTarget(work.conversationId)]
-      : [signal => this.cloud(work.userId, `provider-${work.providerId}`, signal)]
+    return POLICY[work.kind].map((machine): Candidate => {
+      if (machine === 'cloud')
+        return async (signal) => work.kind === 'inference'
+          ? this.cloud(
+            await this.conversationUser(work.conversationId),
+            `provider-process-${work.conversationId}`,
+            await buildCommandContext(this.deps.control, work.conversationId, { kind: 'user' }),
+            signal
+          )
+          : this.cloud(work.userId, `provider-${work.providerId}`, null, signal)
+      return () => work.kind === 'inference'
+        ? this.executionTarget(work.conversationId)
+        : Promise.resolve(null)
+    })
+  }
+
+  private async conversationUser(conversationId: string): Promise<string> {
+    const conversation = await this.deps.control.getConversation(conversationId)
+    if (!conversation)
+      throw new Error(`No conversation ${conversationId}`)
+    return conversation.userId
   }
 
   /** The conversation's execution target, woken or refused as any of its work is. */
@@ -97,7 +134,7 @@ export class ProcessPlacement {
     return {
       host,
       deviceId,
-      cwd: host.defaultCwd,
+      cwd: host.identity.homeDir,
       context: await buildCommandContext(
         this.deps.control,
         conversationId,
@@ -111,6 +148,7 @@ export class ProcessPlacement {
   private async cloud(
     userId: string,
     scope: string,
+    context: CommandContext | null,
     signal?: AbortSignal
   ): Promise<PlacedHost> {
     const device = await this.deps.control.getOrCreateCloudDevice(userId)
@@ -128,7 +166,7 @@ export class ProcessPlacement {
         ),
         deviceId: device.id,
         cwd: home,
-        context: {
+        context: context ?? {
           conversation: scope,
           caller: { kind: 'user' },
           locale: locale ?? DEFAULT_LOCALE

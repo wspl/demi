@@ -18,6 +18,7 @@ import {
   createClaudeCodeProvider,
   type ClaudeSpawn
 } from '@demicodes/provider-claude-code'
+import type { ClaudeProcessPlace } from '@demicodes/provider-claude-code'
 import { createCodexProvider } from '@demicodes/provider-codex'
 import { createGoogleProvider } from '@demicodes/provider-google'
 import { createGrokBuildProvider } from '@demicodes/provider-grok-build'
@@ -76,10 +77,11 @@ export type ProviderTypeFactory = (options: {
 export interface SessionProviderContext {
   spawn: ClaudeSpawn
   /**
-   * The path of Demi's own Claude Code CLI on that target (`claude-cli.md`),
-   * installed first when the target has none.
+   * Where a Claude Code process runs on the machine `spawn` reaches
+   * (`claude-cli.md`): Demi's CLI, installed first when the machine has none,
+   * and its directories.
    */
-  claudeCli: () => Promise<string>
+  claudeProcess: () => Promise<ClaudeProcessPlace>
 }
 
 function apiKey(config: ProviderConfig): ApiKeyProviderConfig {
@@ -152,7 +154,7 @@ export function builtinProviderTypes(): Record<string, ProviderType> {
       ...accountOf(options),
       ...(options.session ? {
         spawn: options.session.spawn,
-        resolveClaudePath: options.session.claudeCli,
+        resolveProcess: options.session.claudeProcess,
       } : {}),
     }),
     ),
