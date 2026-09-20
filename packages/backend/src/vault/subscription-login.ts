@@ -18,6 +18,8 @@ export type SubscriptionLoginState =
 | {
   status: 'completed';
   providerId: string
+  /** The account this login added; it is the active one only if none was before. */
+  credentialId: string
 }
 | {
   status: 'failed';
@@ -160,7 +162,7 @@ export class SubscriptionLoginFlows {
         unpublishedDir = null
       }
       await this.assembly.invalidate(providerId)
-      flow.state = { status: 'completed', providerId }
+      flow.state = { status: 'completed', providerId, credentialId: result.credentialId }
     } catch (error) {
       flow.state = { status: 'failed', message: errorMessage(error) }
     } finally {

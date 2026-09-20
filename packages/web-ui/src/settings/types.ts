@@ -261,7 +261,10 @@ export type ProviderLoginPhase =
     }
   | {
       kind: 'done'
+      /** The account this sign-in added. */
       account: string
+      /** Whether requests now go out on it: a first account is, one added beside another is not. */
+      active: boolean
     }
   | {
       kind: 'failed'
