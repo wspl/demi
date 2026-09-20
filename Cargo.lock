@@ -1115,6 +1115,7 @@ dependencies = [
  "diffutils",
  "filetime",
  "findutils",
+ "fsevent-sys",
  "futures-util",
  "gix",
  "jaq",

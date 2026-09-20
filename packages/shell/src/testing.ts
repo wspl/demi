@@ -421,6 +421,33 @@ export function hostConformanceCases(
       },
     },
     {
+      name: 'fs: writeFile takes a stream; one that fails leaves the file as it was',
+      run: async () => {
+        const dir = `${root}/write-stream`
+        await fs.mkdir(dir, { recursive: true })
+        async function* parts(...chunks: string[]): AsyncGenerator<Uint8Array> {
+          for (const chunk of chunks)
+            yield text(chunk)
+        }
+        await fs.writeFile(`${dir}/joined.txt`, parts('ab', 'cd', 'ef'))
+        equal(await read(`${dir}/joined.txt`), 'abcdef', 'the chunks in order')
+        const broken = new Error('the stream broke')
+        async function* failing(): AsyncGenerator<Uint8Array> {
+          yield text('partial')
+          throw broken
+        }
+        let thrown: unknown = null
+        try {
+          await fs.writeFile(`${dir}/joined.txt`, failing())
+        } catch (error) {
+          thrown = error
+        }
+        ok(thrown === broken, 'the stream\'s own failure is the one thrown')
+        equal(await read(`${dir}/joined.txt`), 'abcdef', 'a failed stream leaves the file as it was')
+        equal(await fs.readdir(dir), ['joined.txt'], 'and no partial copy beside it')
+      },
+    },
+    {
       name: 'fs: errors carry errno codes',
       run: async () => {
         const dir = `${root}/errors`

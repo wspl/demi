@@ -41,6 +41,12 @@ const props = withDefaults(defineProps<{
   openDelayMs?: number
   closeDelayMs?: number
   tag?: 'span' | 'div'
+  /**
+   * The overlay is a picture, not text: the tip frames it with the same space
+   * on every side, where text keeps the wider space beside it that its lines
+   * need.
+   */
+  picture?: boolean
   overlayStore?: OverlayStore
 }>(), {
   placement: 'top',
@@ -78,8 +84,12 @@ const { floatingStyles } = useFloating(triggerRef, floatingRef, {
   transform: false,
 })
 
+/** How long a tip that was asked for, rather than pointed at, stays. */
+const ASKED_MS = 3000
+
 let openTimer: ReturnType<typeof setTimeout> | null = null
 let closeTimer: ReturnType<typeof setTimeout> | null = null
+let askedTimer: ReturnType<typeof setTimeout> | null = null
 let scrollTargets: EventTarget[] = []
 let stopClickOutside: (() => void) | undefined
 
@@ -127,9 +137,17 @@ function clearCloseTimer() {
   closeTimer = null
 }
 
+function clearAskedTimer() {
+  if (!askedTimer)
+    return
+  clearTimeout(askedTimer)
+  askedTimer = null
+}
+
 function clearTimers() {
   clearOpenTimer()
   clearCloseTimer()
+  clearAskedTimer()
 }
 
 function openNow() {
@@ -187,6 +205,24 @@ watch(canShow, (nextCanShow) => {
 
 useOverlay(overlayStore.value, isOpen, closeNow, 'hint')
 
+defineExpose({
+  /**
+   * Shows the tip without the pointer, to answer something the user just
+   * tried — Enter on a send that cannot send. It goes by itself, and sooner
+   * if anything that dismisses a tip happens first.
+   */
+  show(): void {
+    clearTimers()
+    openNow()
+    if (isOpen.value) {
+      askedTimer = setTimeout(() => {
+        askedTimer = null
+        closeNow()
+      }, ASKED_MS)
+    }
+  },
+})
+
 onBeforeUnmount(() => {
   clearTimers()
   unbindDismiss()
@@ -218,7 +254,9 @@ onBeforeUnmount(() => {
         ref="floatingRef"
         class="overlay-shell select-none pointer-events-none z-40 w-max min-w-max rounded-md text-fg"
         :class="hasOverlay
-          ? 'max-w-xs px-3 py-2 text-xs leading-relaxed'
+          ? picture
+            ? 'max-w-xs p-2'
+            : 'max-w-xs px-3 py-2 text-xs leading-relaxed'
           : 'line-clamp-2 max-w-sm px-2.5 py-1.5 text-[12px] leading-4'"
         :style="floatingStyles"
         role="tooltip"

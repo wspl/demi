@@ -395,8 +395,8 @@ test(
     expect(changes.repository).toBe(true)
     expect(changes.head).toMatch(/^[0-9a-f]{40}$/)
     expect(changes.files).toEqual([
-      { path: 'a.txt', kind: 'modified', added: 1, removed: 0 },
-      { path: 'b.txt', kind: 'added', added: 1, removed: 0 },
+      { path: 'a.txt', status: ' M', kind: 'modified', added: 1, removed: 0 },
+      { path: 'b.txt', status: '??', kind: 'added', added: 1, removed: 0 },
     ])
     expect(new TextDecoder().decode(await remote.git.show(dir, 'a.txt'))).toBe('1\n2\n')
     const missing = await remote.git.show(dir, 'b.txt').catch((error: unknown) => error)

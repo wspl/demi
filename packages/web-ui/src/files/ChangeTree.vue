@@ -1,22 +1,24 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { RefreshCw } from '@lucide/vue'
-import CornerDot from '../ui/CornerDot.vue'
 import IconButton from '../ui/IconButton.vue'
 import Tooltip from '../ui/Tooltip.vue'
+import GitStatusLetter from './GitStatusLetter.vue'
 import Tree from './Tree.vue'
 import { changeTreeRows, type ChangeSetSource, type ChangeTreeRow } from './changes'
+import { gitMark } from './git-status'
 import { baseName } from './paths'
 
 /**
  * The changed files as a tree beside the diff, on a `Tree`: directories on
- * the way to them fold and unfold, each file shows how it changed the way
- * the changed-file pills do (a green dot for a new file, a struck name for
- * a deleted one) and its line counts at the row's end. The caption row
- * names the workspace and, at its end, holds the control that lists the
- * changes again when the source can; it turns while a list is on its way.
- * A list cut short says so under its last row. A click on a file selects
- * it.
+ * the way to them fold and unfold. A file ends its row with its line counts
+ * and then the letter VS Code's Git marks it with, from git's status of it
+ * (`GitStatusLetter`): U untracked, A added, M modified, D deleted, R
+ * renamed, C copied, T type changed, ! in conflict, and a deleted file's
+ * name is struck through, all as VS Code does. The caption row names the
+ * workspace and, at its end, holds the control that lists the changes again
+ * when the source can; it turns while a list is on its way. A list cut short
+ * says so under its last row. A click on a file selects it.
  */
 const props = defineProps<{
   source: ChangeSetSource
@@ -79,17 +81,17 @@ function activate(row: ChangeTreeRow): void {
         />
       </Tooltip>
     </template>
-    <template #mark="{ row }">
-      <CornerDot v-if="row.change?.kind === 'added'" tone="success" size="xs" ring="editor" />
-    </template>
     <template #name="{ row }">
-      <span class="truncate" :class="row.change?.kind === 'deleted' ? 'line-through text-fg-muted' : ''">{{ row.name }}</span>
+      <span class="truncate" :class="row.change && gitMark(row.change.status)?.strike ? 'line-through text-fg-muted' : ''">{{ row.name }}</span>
     </template>
     <template #trailing="{ row }">
-      <!-- Counts as on the changed-file pills: added in green, removed in red, zero omitted. -->
-      <span v-if="row.change" class="ml-auto mr-1 inline-flex shrink-0 gap-1 pl-2 font-mono text-[11px] tabular-nums">
-        <span v-if="row.change.added > 0" class="text-on-success">+{{ row.change.added }}</span>
-        <span v-if="row.change.removed > 0" class="text-on-danger">−{{ row.change.removed }}</span>
+      <span v-if="row.change" class="ml-auto flex shrink-0 items-center gap-2 pl-2">
+        <!-- Counts as on the changed-file pills: added in green, removed in red, zero omitted. -->
+        <span class="inline-flex gap-1 font-mono text-[11px] tabular-nums">
+          <span v-if="row.change.added > 0" class="text-on-success">+{{ row.change.added }}</span>
+          <span v-if="row.change.removed > 0" class="text-on-danger">−{{ row.change.removed }}</span>
+        </span>
+        <GitStatusLetter :status="row.change.status" />
       </span>
     </template>
     <template #empty>

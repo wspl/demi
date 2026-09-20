@@ -22,3 +22,4 @@ pub mod volumes;
 pub mod commands;
 
 pub(crate) mod file_diff;
+pub(crate) mod tree_watch;

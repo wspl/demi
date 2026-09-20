@@ -25,7 +25,8 @@ import SettingsRow from './SettingsRow.vue'
  */
 const props = defineProps<{
   overlayStore: OverlayStore
-  nameSave?: 'idle' | 'saving' | 'saved'
+  /** While the display name saves: the field waits, and says so. */
+  nameSaving?: boolean
   email: string
   emailVerified?: boolean
   /** When the password last changed, formatted by the host. */
@@ -77,19 +78,15 @@ const initial = computed(() => accountInitial(name.value, props.email))
       >
         <CommitTextInput
           :model-value="name"
-          :disabled="nameSave === 'saving'"
+          :disabled="nameSaving"
           aria-label="Display name"
           @commit="name = $event"
           maxlength="50"
           class="w-56 max-w-full"
         />
-        <!-- One word beside the field. A save that failed is the product's toast; the field keeps the draft. -->
-        <span
-          v-if="nameSave === 'saving' || nameSave === 'saved'"
-          class="text-[12px] text-fg-subtle"
-          role="status"
-          >{{ nameSave === 'saving' ? 'Saving…' : 'Saved' }}</span
-        >
+        <!-- One word beside the field while it saves, and none once it has: the field shows
+             the name. A save that failed is the product's toast; the field keeps the draft. -->
+        <span v-if="nameSaving" class="text-[12px] text-fg-subtle" role="status">Saving…</span>
       </SettingsRow>
       <SettingsRow label="Email">
         <template v-if="emailVerified" #tags

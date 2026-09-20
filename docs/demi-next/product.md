@@ -228,12 +228,110 @@ way [compaction](../compaction-context-cache.md) summarizes, keeps the agent's
 system prompt, tools and history out of a job that needs one message, and
 keeps the title independent of whether the first turn succeeds.
 
+## Writing a message
+
+The composer shows a message as it will look once sent. For example, a user
+types "Compare ", drops `before.png`, types " with ", pastes `after.png`, and
+ends with ". The **modal** `padding` is off." The composer reads
+
+```text
+Compare [▣ before.png] with [▣ after.png]. The modal padding is off.
+```
+
+with "modal" in bold, "padding" set as code, and each file a capsule where it
+was put ([Attachments](#attachments)). The conversation shows the sent message
+exactly so, the model receives its text and files in that order, and editing
+it opens it the same way ([Message editing](../message-editing.md)).
+
+A message is Markdown in the user dialect below. The composer formats a
+construct as it is typed, once its closing delimiter is; Backspace right after
+gives back the characters. A star typed right before the construct holds it
+back, so `**bold**` does not turn italic at its first closing star. A fence
+typed as a line of its own opens a code block when the line ends, and typed
+as the block's last line closes it. Pasted text is read the same way.
+
+| Written | Shows as |
+| --- | --- |
+| `**bold**`, `*italic*`, `~~struck~~`, `` `code` `` | Formatted |
+| A fenced code block | A highlighted code block |
+| `[text](target)`, a bare `http` or `https` URL | A link, resolved as in [Files named in messages](file-previews.md#files-named-in-messages) |
+| `![alt](target)` | The image, resolved the same way |
+| A line break | A line break; a blank line is an empty line |
+| `_` and `__`, a single `~`, HTML, `<…>`, math, tables, and lines that start a list, heading, quote, rule or indented code | The characters as typed |
+
+The literal ones are what a conversation about code types as text:
+`snake_case`, `__init__`, `~/.zshrc`, `x < y`, `$PATH`, `- item`. Formatting
+stays on its line and on its side of a capsule: `**a` and `b**` on two lines
+are the characters as typed. Emphasis beside CJK text follows the
+[CJK-friendly amendment](https://github.com/tats-u/markdown-cjk-friendly/blob/main/specification.md)
+to CommonMark, so `**注意：**这是` is bold as its writer means it.
+
+The model receives the message's Markdown. Where the user typed literally a
+character the dialect would read as formatting, it carries a backslash
+(`\*args`); nothing else is escaped, so `snake_case` and `x < y` reach the
+model as typed. Copying a sent message gives its Markdown, each file by its
+name.
+
+Enter sends and Shift+Enter breaks the line; in a code block Enter breaks the
+line and ⌘/Ctrl+Enter sends. An input method's Enter never sends. Enter on a
+message that cannot go yet does not send in silence: the send button says why
+it cannot, in the words it says when it is pointed at — an upload still
+running, one that failed, a model that cannot send — and the answer goes by
+itself. The composer and the conversation render a user message with one editor,
+read-only in the conversation, so a sent message cannot look different from
+what was written.
+
+The composer stands one line high while the message fits that line. As soon
+as the message needs more — a line break, a code block, an image, or text
+wider than the line — the composer opens into a box that wraps the text,
+grows to six lines and scrolls beyond them; it closes again once the message
+fits one line. No part of a message is ever cut off at the line's end.
+
 ## Attachments
 
 Short pasted text stays in the composer and sends as message text. A paste of at
 least 2,000 characters or 40 lines becomes `pasted-text.txt`, using the shared
 composer's paste thresholds. Dropped, selected, and pasted files use the same
 staged attachment flow.
+
+Each attachment is a capsule in the message's text, and that text is the
+editor's document. The document is the message: it says which files the
+message carries, in what order, and what each one is. Nothing outside it adds
+a file to a message or takes one away.
+
+A capsule carries what it shows and what the message sends: the file's name
+and kind, its picture when it has one, the device and path of a file that
+lives on another device, and the opening lines of a text file. Bytes on their
+way to the Host cannot be in a document, so they wait beside it under the
+capsule's id: the file itself, how far its upload has come, whether it
+failed. That is a transfer, not a fact of the message, and a capsule with no
+transfer beside it is a file that needs none — a restored draft, or a sent
+message.
+
+What follows from that split:
+
+- A capsule is a character of the message and is edited as one. Backspace
+  deletes it, undo brings it back, and it can be dragged to another place in
+  the text; it carries no control of its own for any of that.
+- A dropped file lands where it is dropped, a picked or pasted one at the
+  cursor, and one added from a file browser at the cursor. A file joins the
+  message as one change to its document, so there is never a file without a
+  capsule or a capsule without a file.
+- Deleting a capsule takes its file out of the message and stops its upload.
+  The transfer waits, so undo brings the file back with the capsule and the
+  upload starts over. What is still waiting goes when the message is sent or
+  the composer is left.
+- While a file uploads its capsule shows how far along it is, and a failed
+  upload offers Retry. Pointed at, a capsule shows the picture larger or a
+  text file's opening lines. In the conversation, a click on a capsule opens
+  its file in the File view.
+- The message's content is read off the document: for the example in
+  [Writing a message](#writing-a-message), `Compare `, then `before.png`,
+  then ` with `, then `after.png`, then the rest. Providers pass content in
+  order, so the model meets each file where the user put it.
+- A saved draft keeps the message's text with a mark where each capsule
+  stands and each file beside it under its id, so opening the draft builds
+  the same document again.
 
 Sending a file proceeds through three owners:
 
@@ -250,13 +348,14 @@ an existing name. It does not put attachment files in the project directory.
 A Cloud target may need to wake before this write.
 
 The agent message contains one `attachment` record with name, path, media type,
-size, and blob hash; text files can include a short opening preview. Providers
-render the record as an attachment tag so the model can read the file with tools.
-The complete text file is not duplicated into the message.
+size, and blob hash; text files can include a short opening preview, which the
+capsule shows when pointed at. Providers render the record as an attachment tag
+so the model can read the file with tools. The complete text file is not
+duplicated into the message.
 
 Native media adds the corresponding image, video, audio, or document input beside
 the attachment record when the selected model supports it. The attachment remains
-one visible tile. The model's accepted extensions govern selection; an adapter
+one capsule. The model's accepted extensions govern selection; an adapter
 must not replace supported media with a placeholder. Other files remain
 accessible by path. Attachment presence and model capability are separate facts.
 
@@ -267,9 +366,9 @@ missing-upload behavior, and browser blob delivery are defined in
 [Web API uploads](web-api.md#uploads-and-media).
 
 A remote-file selection is different from an upload: it names an existing file
-on a connected device. Its bytes are read when the model executes the supplied
-host command, so it is not a snapshot. Revocation, disconnect, or file changes
-can affect that later read.
+on a connected device, and its capsule names the device. Its bytes are read
+when the model executes the supplied host command, so it is not a snapshot.
+Revocation, disconnect, or file changes can affect that later read.
 
 ## Provider management
 

@@ -91,13 +91,6 @@ main {
   padding-bottom: 2.75rem;
 }
 
-/* Overflow specimen only: conversation-column width so max-h-48 reads as a tall clipped box, not a last-line fade on a page-wide bubble. */
-.gallery-user-overflow {
-  margin-left: auto;
-  width: 100%;
-  max-width: 36rem;
-}
-
 /* Pinned-open overlays only. The well is a containing block (`contain: paint`), so the
    fixed-positioned panel that would teleport to <body> stays inside and is clipped to it;
    the min-height is the room it takes. Click-to-open overlays do not need a well. */
