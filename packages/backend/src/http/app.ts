@@ -90,11 +90,11 @@ export function createApp(options: {
   userStreams: ReadonlyMap<string, UserStreamDeclaration>
   /** The product's origin when it is served under another host name. */
   publicOrigin?: string
-  managedHosts: ManagedHosts | null
-  createCloudWorkspace: ((
+  managedHosts: ManagedHosts
+  createCloudWorkspace: (
     userId: string,
     name: string
-  ) => Promise<WorkspaceRecord>) | null
+  ) => Promise<WorkspaceRecord>
   sessions: WebSessions
   loginLimiter: LoginLimiter
   emailChanges: EmailChanges

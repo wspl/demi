@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test'
-import { FakeProvisioner } from './fake-provisioner'
+import { FakeProvisioner } from '../../testing/fake-provisioner'
 import { World } from './world'
 import { itemsText } from './model'
 import { model } from './driver'

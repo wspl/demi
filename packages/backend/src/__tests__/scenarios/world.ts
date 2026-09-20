@@ -14,7 +14,7 @@ import type { BackendOptions } from '../../index'
 import { openBackend, type TestBackend } from '../session'
 import { DirBlobStore } from '../../storage/blob-store'
 import { openSqliteDatabase } from '../../storage/database'
-import { FakeProvisioner } from './fake-provisioner'
+import { FakeProvisioner } from '../../testing/fake-provisioner'
 import { ScriptedModel } from './model'
 import { Driver, type Target } from './driver'
 
@@ -47,7 +47,7 @@ export interface WorldOptions {
    * Managed hosts through a provisioner (the fake, in tests) with the lifecycle
    * sizes the scenario needs.
    */
-  managedHosts?: BackendOptions['managedHosts'] | null
+  managedHosts?: BackendOptions['managedHosts']
   /** The URL managed guests dial (real guests cannot reach localhost). */
   publicUrl?: string
   /**
@@ -117,10 +117,10 @@ export class World {
   static async create(options: WorldOptions = {}): Promise<World> {
     options = {
       ...options,
-      managedHosts: options.managedHosts === undefined ? {
+      managedHosts: options.managedHosts ?? {
         provisioner: new FakeProvisioner(),
         config: { sweepMs: 60_000 }
-      } : options.managedHosts
+      }
     }
     const dataDir = options.dataDir ??
       (await mkdtemp(join(tmpdir(), 'demi-scenario-')))
@@ -173,7 +173,7 @@ export class World {
       },
       // The scripted model answers title requests on their own lane (model.ts).
       conversationTitles: true,
-      ...(options.managedHosts ? { managedHosts: options.managedHosts } : {}),
+      managedHosts: options.managedHosts!,
       ...(options.publicUrl ? { publicUrl: options.publicUrl } : {}),
       ...(options.providerRequestsPerMinute
         ? { usage: { providerRequestsPerMinute: options.providerRequestsPerMinute } }

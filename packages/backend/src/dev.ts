@@ -14,6 +14,7 @@ import { z } from 'zod'
 import { defineProvider, type AgentProvider, type InferenceRequest, type ProviderEvent } from '@demicodes/provider'
 import { events } from '@demicodes/provider/testing'
 import { createBackend } from './backend'
+import { FakeProvisioner } from './testing/fake-provisioner'
 import { SESSION_COOKIE } from './http/cookies'
 
 const DEV_USER = { email: 'dev@example.test', password: 'dev-pass-1234' }
@@ -58,6 +59,8 @@ async function main(): Promise<void> {
     dataDir,
     port,
     mode: 'shared',
+    // The development Cloud is a runner process on this machine.
+    managedHosts: { provisioner: new FakeProvisioner() },
     providerTypes: {
       echo: {
         credential: 'api_key',

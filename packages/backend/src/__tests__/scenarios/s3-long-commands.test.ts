@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import type { InferenceRequest } from '@demicodes/provider'
 import { delay, waitFor } from '@demicodes/utils'
-import { FakeProvisioner } from './fake-provisioner'
+import { FakeProvisioner } from '../../testing/fake-provisioner'
 import { World } from './world'
 import { model, type Target, type TurnScript } from './driver'
 

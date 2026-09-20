@@ -2,12 +2,12 @@ import { expect, test } from 'bun:test'
 import { waitFor } from '@demicodes/utils'
 import { CONVERSATION_IDLE_MS } from '../../lifecycle/coordinator'
 import { model } from './driver'
-import { FakeProvisioner } from './fake-provisioner'
+import { FakeProvisioner } from '../../testing/fake-provisioner'
 import { World } from './world'
 
 test('paired release uses one hour, resets on activity, and reaches main and attached devices', async () => {
   let now = 0
-  const world = await World.create({ runners: ['main', 'attached'], managedHosts: null, lifecycle: { now: () => now, pollMs: 10 } })
+  const world = await World.create({ runners: ['main', 'attached'], lifecycle: { now: () => now, pollMs: 10 } })
   try {
     const driver = await world.conversation('runner:main')
     await world.api(`/api/conversations/${driver.id}/hosts`, { deviceId: world.device('attached').deviceId })
@@ -33,7 +33,7 @@ test('paired release uses one hour, resets on activity, and reaches main and att
 
 test('a target switch invalidates the old idle deadline', async () => {
   let now = 0
-  const world = await World.create({ runners: ['old', 'new'], managedHosts: null, lifecycle: { now: () => now, pollMs: 10 } })
+  const world = await World.create({ runners: ['old', 'new'], lifecycle: { now: () => now, pollMs: 10 } })
   try {
     const driver = await world.conversation('runner:old')
     await world.api(`/api/conversations/${driver.id}/fs`)
@@ -75,7 +75,7 @@ test('paired Host activity resets the idle deadline of an attached Cloud', async
 }, 45_000)
 
 test('target switch, attachment detach and archive release before changing the binding', async () => {
-  const world = await World.create({ runners: ['one', 'two'], managedHosts: null })
+  const world = await World.create({ runners: ['one', 'two'] })
   try {
     const { conversation: driver } = await world.api<{ conversation: { id: string } }>('/api/conversations', { id: crypto.randomUUID() })
     await world.api(`/api/conversations/${driver.id}`, { target: { kind: 'workspace', workspaceId: world.device('one').workspaceId } }, 'PATCH')

@@ -6,6 +6,7 @@ import {
   type User
 } from '../index'
 import { SESSION_COOKIE } from '../http/cookies'
+import { FakeProvisioner } from '../testing/fake-provisioner'
 import { modelsDevFetch } from './models-dev'
 
 /** The master account every test backend is set up with. */
@@ -33,11 +34,17 @@ export interface TestBackend extends Backend {
  * directory, logged in over a reopened one.
  */
 export async function openBackend(
-  options: Omit<BackendOptions, 'mode' | 'nativeCommands'> & { mode?: BackendOptions['mode']; nativeCommands?: BackendOptions['nativeCommands'] }
+  options: Omit<BackendOptions, 'mode' | 'nativeCommands' | 'managedHosts'> & {
+    mode?: BackendOptions['mode'];
+    nativeCommands?: BackendOptions['nativeCommands']
+    managedHosts?: BackendOptions['managedHosts']
+  }
 ): Promise<TestBackend> {
   const backend = await createBackend({
     mode: 'shared',
     nativeCommands: await nativePackageFixture(),
+    // Every backend has Cloud; a test that does not use it never wakes a guest.
+    managedHosts: { provisioner: new FakeProvisioner() },
     modelsDev: { fetch: modelsDevFetch() },
     // These tests count provider requests; the scenarios cover generated titles.
     conversationTitles: false,

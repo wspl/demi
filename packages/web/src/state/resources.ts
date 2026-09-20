@@ -136,8 +136,9 @@ export const useResources = defineStore('resources', () => {
       ? snapshot?.workspaces.find(item => item.id === target.workspaceId)?.deviceId
       : target?.kind === 'device' ? target.deviceId : null
     const device = snapshot?.devices.find(item => item.id === deviceId)
+    // Cloud is always there to be woken; a paired device has to be online.
     const execution = !target || target.kind === 'cloud' || device?.kind === 'managed'
-      ? snapshot?.cloud !== null && snapshot?.cloud !== undefined
+      ? !!snapshot
       : device?.online === true
     return (snapshot?.providers ?? []).map(provider => {
       const entry = catalog.find(item => item.providerId === provider.id)
