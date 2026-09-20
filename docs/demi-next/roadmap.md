@@ -81,8 +81,9 @@ user-to-worker routing entry does not prevent a stale worker from writing disks.
 
 - Define worker leases, fencing, and reassignment before enabling multiple writers
   or restoring a user's machine on another worker.
-- Define credential-pool distribution and recovery alongside provider ownership
-  before moving inference across workers.
+- Move subscription accounts into control records
+  ([Credential vault](providers-and-vault.md#credential-vault)) before moving
+  inference across workers; a pool directory exists on one backend only.
 - Define disk/blob retention for explicit account/data deletion. Removing project
   metadata must never implicitly delete the user's Cloud machine or files.
 - Choose resource profiles and unattended lifetime from measured memory, startup,

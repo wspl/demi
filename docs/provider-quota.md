@@ -23,10 +23,10 @@ vendor-specific UI branches for every header name.
 
 - Shared types: `ProviderQuota`, `ProviderQuotaSnapshot`, `ProviderQuotaWindow`.
 - Two fill paths: **active** `probe()` and **passive** `observeResponse()`.
-- `latest()`, the last snapshot, with `clearLatest()` (required after credential switch). A provider given a
-  snapshot file keeps the snapshot there as well, without the vendor's raw payload, and starts from it: what is
-  known about an account's usage survives the provider being rebuilt (an account added, an entry edited) and the
-  backend restarting. `clearLatest()` removes the file, since it says nothing about another account.
+- `latest()`, the last snapshot of **the account the provider was built for**. The snapshot is kept with that
+  account by whoever stores it (Demi Next: a column of the account's record; the file store: beside the entry's
+  secret), without the vendor's raw payload, so it survives a rebuilt provider and a restart. Another account
+  has its own snapshot; switching accounts clears nothing.
 - Helper `ensureQuota()` for “cache if fresh, else probe”.
 - Wire observation into live inference so quota stays warm without extra probes when possible.
 
@@ -159,9 +159,13 @@ changed.
 
 ## 5. Relationship to credentials
 
-- Quota always reflects the **global active** credential for that provider.
-- On `credentials.setActive`, implementations **must** call `quota.clearLatest()` so UI does not show the previous account’s windows.
-- `ProviderQuotaSnapshot.accountLabel` should match the active account label when known.
+- A quota belongs to **one account**: the entry the provider was built for
+  ([store contract](provider-global-credentials.md#51-the-store-is-injected)). Probes and observations of that
+  provider read and write that account's snapshot only.
+- The file store builds its provider for the active pointer, so there `credentials.setActive` still calls
+  `quota.clearLatest()`: the same object now stands for another account. A product that builds a provider per
+  account never needs it.
+- `ProviderQuotaSnapshot.accountLabel` should match the account's label when known.
 - `clearLatest()` also invalidates work started before the clear. A pending probe
   rejects with `ProviderQuotaInvalidatedError`; it neither returns the old account's
   snapshot nor replaces the current cache. The caller can issue a new probe for
