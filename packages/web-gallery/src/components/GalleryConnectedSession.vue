@@ -140,6 +140,7 @@ function abortAgents(): void {
       </template>
       <ChatSession
         :conversation="session"
+        @rename="session.title = $event"
         has-provider
         @save-scroll="(_id, state) => (session.scroll = state)"
         @abort-subagents="abortAgents"

@@ -1503,7 +1503,7 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="Product session"
-        note="The shared product page, with local fixture state and handlers. The header gives its title up to 260px and cuts it short last: a longer title is cut to that and the buttons keep their names, and as the frame narrows, the directory button and then the host button become their icons, their names in tooltips, and they name themselves again once the title fits whole. Resize the frame from its corner."
+        note="The shared product page, with local fixture state and handlers. The header gives its title up to 260px and cuts it short last: a longer title is cut to that and the buttons keep their names, and as the frame narrows, the directory button and then the host button become their icons, their names in tooltips, and they name themselves again once the title fits whole. Resize the frame from its corner. The pencil beside the title renames it in place: Enter or clicking away keeps the new title, Escape or an empty one keeps the old."
       >
         <div class="max-w-full resize-x overflow-hidden pb-3" style="min-width: 20rem">
           <GalleryConnectedSession />
@@ -1690,6 +1690,7 @@ function abortTerminal(id: string) {
                 :files="sessionFiles"
                 @open-aside="panelAsideOpen = true"
                 @retry="sessionFlow.resume()"
+                @rename="session.title = $event"
                 @abort-subagents="abortAgents"
                 @abort-subagent="abortAgent"
                 @abort-terminal="abortTerminal"
@@ -1863,6 +1864,7 @@ function abortTerminal(id: string) {
         :edit-version="editVersion"
         v-model:message-edit="messageEdit"
         @retry="sessionFlow.resume()"
+        @rename="session.title = $event"
         @save-scroll="(_id, state) => (session.scroll = state)"
         @abort-subagents="abortAgents"
         @abort-subagent="abortAgent"
