@@ -13,6 +13,7 @@ import {
   WIRE_API_LABELS,
   type SettingsModelDraft,
   type SettingsModelEditor,
+  type SettingsProviderCli,
   type SettingsProviderEntry,
   type SettingsProviderOperation,
   type SettingsProviderModel,
@@ -56,12 +57,15 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       }
     >
   >({})
+  /** Each process provider's CLI, as last read (`claude-cli.md` § What the user sees). */
+  const clis = ref<Record<string, SettingsProviderCli>>({})
   let lifetime = new AbortController()
   const writes = new SerialQueue()
   const providers = computed(() => {
     const configured = resources.providers.map((provider) => ({
       ...provider,
       ...testResults.value[provider.id],
+      ...(provider.runsOnHost ? { cli: clis.value[provider.id] ?? null } : {}),
       ...edits.value[provider.id],
       ...(manualDrafts.value[provider.id]
         ? {
@@ -511,6 +515,96 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     }
   }
 
+  const cliSchema = z.object({
+    newest: z.union([z.object({ version: z.string() }), z.object({ error: z.string() })]),
+    held: z.string().nullable(),
+    install: z.union([
+      z.object({ state: z.literal('installing') }),
+      z.object({ state: z.literal('installed') }),
+      z.object({ state: z.literal('failed'), message: z.string() }),
+    ]).nullable(),
+    machines: z.array(z.object({
+      deviceId: z.string(),
+      name: z.string(),
+      versions: z.array(z.string()).nullable(),
+    })),
+  })
+
+  /**
+   * Reads a process provider's CLI. An install under way is read again until
+   * it ends: it is the one thing here that changes without the user.
+   */
+  async function readCli(providerId: string, refresh: boolean, signal: AbortSignal): Promise<void> {
+    const path = `/providers/${encodeURIComponent(providerId)}/cli${refresh ? '?refresh=true' : ''}`
+    const cli = await readResponse(await apiRequest(path, { signal }), cliSchema)
+    signal.throwIfAborted()
+    clis.value[providerId] = {
+      newest: cli.newest,
+      held: cli.held,
+      install: cli.install,
+      machines: cli.machines.map((machine) => ({
+        id: machine.deviceId,
+        name: machine.name,
+        versions: machine.versions,
+      })),
+    }
+    if (cli.install?.state === 'installing') {
+      window.setTimeout(() => {
+        if (!signal.aborted) {
+          void readCli(providerId, false, signal).catch(() => {})
+        }
+      }, 2_000)
+    }
+  }
+
+  /** Loads the CLI of a provider the page is showing; its failure is not the page's. */
+  function loadCli(provider: SettingsProviderEntry): void {
+    if (!provider.runsOnHost || provider.configured === false) {
+      return
+    }
+    void readCli(provider.id, false, lifetime.signal).catch((error) => {
+      if (!lifetime.signal.aborted) {
+        reportError('Could not read the command-line tool', error)
+      }
+    })
+  }
+
+  function checkCli(provider: SettingsProviderEntry): void {
+    perform(provider.id, { kind: 'cli' }, async (signal) => {
+      try {
+        await readCli(provider.id, true, signal)
+      } catch (error) {
+        report(error)
+      }
+    })
+  }
+
+  function installCli(provider: SettingsProviderEntry): void {
+    perform(provider.id, { kind: 'cli' }, async (signal) => {
+      try {
+        await apiRequest(`/providers/${encodeURIComponent(provider.id)}/cli/install`, { method: 'POST', signal })
+        await readCli(provider.id, false, lifetime.signal)
+      } catch (error) {
+        report(error)
+      }
+    })
+  }
+
+  function holdCli(provider: SettingsProviderEntry, version: string | null): void {
+    perform(provider.id, { kind: 'cli' }, async (signal) => {
+      try {
+        await apiRequest(`/providers/${encodeURIComponent(provider.id)}/cli`, {
+          method: 'PUT',
+          signal,
+          ...jsonBody({ held: version }),
+        })
+        await readCli(provider.id, false, signal)
+      } catch (error) {
+        report(error)
+      }
+    })
+  }
+
   function refreshUsage(provider: SettingsProviderEntry, accountId: string): void {
     perform(
       provider.id,
@@ -805,5 +899,9 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     saveModels,
     submitToken,
     refreshUsage,
+    loadCli,
+    checkCli,
+    installCli,
+    holdCli,
   }
 })

@@ -114,6 +114,18 @@ export interface SettingsProviderAccount {
   quota: SettingsQuotaWindow[]
 }
 
+/** The CLI a process provider starts, which Demi installs and updates on the machines that run it. */
+export interface SettingsProviderCli {
+  /** The vendor's newest version, or why it could not be read. */
+  newest: { version: string } | { error: string }
+  /** The version the entry is held at instead of following the newest. */
+  held: string | null
+  /** The last install on the user's Cloud, which adding an account starts. */
+  install: { state: 'installing' } | { state: 'installed' } | { state: 'failed'; message: string } | null
+  /** The machines that could be asked now, and what each has; null when one did not answer. */
+  machines: Array<{ id: string; name: string; versions: string[] | null }>
+}
+
 /**
  * A provider as the settings page shows and edits it. The page emits field changes and actions for the host: adding, removing, signing in, testing, refreshing, saving a model.
  */
@@ -128,8 +140,10 @@ export interface SettingsProviderEntry {
   apiKey: string
   keyConfigured?: boolean
   configured?: boolean
-  /** Its requests run as a process on a conversation's Host, so the backend cannot try it by itself. */
+  /** Its requests run as a process on a machine, started from a CLI Demi installs there. */
   runsOnHost?: boolean
+  /** That CLI, once asked for; null while it is not known. */
+  cli?: SettingsProviderCli | null
   /** Where the model list comes from: the vendor catalog, or ids the user typed. */
   modelSource: 'catalog' | 'manual'
   catalogFetched: string | null
@@ -272,5 +286,5 @@ export type ProviderLoginPhase =
     }
 
 export type SettingsProviderOperation =
-  | { kind: 'saving' | 'testing' | 'refreshing' | 'removing' }
+  | { kind: 'saving' | 'testing' | 'refreshing' | 'removing' | 'cli' }
   | { kind: 'account'; accountId: string; action: 'activate' | 'remove' | 'test' | 'usage' }
