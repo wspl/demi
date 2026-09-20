@@ -191,6 +191,17 @@ export function mockProviders(): MockProvider[] {
       id: 'claude-code', name: 'Claude Code', kind: 'subscription', family: 'claude-code', logo: '/logos/claude.svg',
       // The CLI runs on a conversation's Host: the backend cannot try it by itself.
       runsOnHost: true,
+      // Two machines answered; the Cloud install after the last account failed, which is the one
+      // state here that asks the user for anything.
+      cli: {
+        newest: { version: '2.1.278' },
+        held: null,
+        install: { state: 'failed', message: 'Claude Code 2.1.278 could not be installed: the download stopped after 120 MB' },
+        machines: [
+          { id: 'cloud', name: 'Cloud', versions: ['2.1.267'] },
+          { id: 'laptop', name: 'MacBook Pro', versions: [] },
+        ],
+      },
       accounts: [
         {
           id: 'a1',

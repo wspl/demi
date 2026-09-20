@@ -100,6 +100,12 @@ const emit = defineEmits<{
   refresh: [provider: SettingsProviderEntry]
   /** Ask the vendor for one account's usage again. */
   refreshUsage: [provider: SettingsProviderEntry, accountId: string]
+  /** Read the CLI's newest version and the machines again. */
+  checkCli: [provider: SettingsProviderEntry]
+  /** Install the CLI on the user's Cloud again. */
+  installCli: [provider: SettingsProviderEntry]
+  /** Hold the entry at a version, or follow the newest with null. */
+  holdCli: [provider: SettingsProviderEntry, version: string | null]
   activateAccount: [provider: SettingsProviderEntry, accountId: string]
   removeAccount: [provider: SettingsProviderEntry, accountId: string]
   removeModel: [provider: SettingsProviderEntry, model: SettingsProviderModel]
@@ -226,9 +232,6 @@ watch(testingAccounts, (now, before) => {
 
 // Why the selected provider cannot be tested right now, for the button's tooltip.
 const testBlockReason = computed(() => {
-  if (selected.value?.runsOnHost) {
-    return 'This provider runs on a conversation\'s Host; start a conversation to try it'
-  }
   return selected.value?.models.some((model) => model.enabled)
     ? undefined
     : 'Enable a model to test with'
@@ -545,7 +548,6 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                       aria-label="Test connection"
                       :loading="accountPending(selected.id, account.id, 'test')"
                       :disabled="
-                        selected.runsOnHost === true ||
                         (!!operations?.[selected.id] && !accountPending(selected.id, account.id, 'test')) ||
                         !selected.models.some((model) => model.enabled)
                       "
@@ -686,13 +688,92 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                     aria-label="Test connection"
                     :disabled="
                       selected.configured === false ||
-                      selected.runsOnHost === true ||
                       !!operations?.[selected.id] ||
                       !selected.models.some((model) => model.enabled)
                     "
                     :disabled-reason="testBlockReason"
                     @click="emit('test', selected)"
                 /></Tooltip>
+              </SettingsRow>
+            </SettingsGroup>
+
+            <!-- The CLI of a provider whose requests are a process: Demi installs the vendor's newest
+               on the machines that run it, so this shows what is wanted and what each machine has,
+               and only a failure asks for anything. -->
+            <SettingsGroup v-if="selected.cli" title="Command-line tool">
+              <SettingsRow
+                label="Version"
+                :description="
+                  selected.cli.held
+                    ? 'Held at this version; updates are not installed.'
+                    : 'Follows the newest version; updates install by themselves.'
+                "
+              >
+                <span
+                  v-if="'version' in selected.cli.newest || selected.cli.held"
+                  class="text-[13px] tabular-nums text-fg-muted"
+                  >{{ selected.cli.held ?? ('version' in selected.cli.newest ? selected.cli.newest.version : '') }}</span
+                >
+                <Tag v-if="selected.cli.held" tone="warning">Held</Tag>
+                <Tooltip content="Check for updates"
+                  ><IconButton
+                    size="sm"
+                    :icon="RefreshCw"
+                    aria-label="Check for updates"
+                    spin-on-click
+                    :spinning="operations?.[selected.id]?.kind === 'cli'"
+                    :disabled="!!operations?.[selected.id] && operations[selected.id]?.kind !== 'cli'"
+                    @click="emit('checkCli', selected)"
+                /></Tooltip>
+                <Button
+                  v-if="selected.cli.held"
+                  size="sm"
+                  :disabled="!!operations?.[selected.id]"
+                  @click="emit('holdCli', selected, null)"
+                  >Follow newest</Button
+                >
+                <Button
+                  v-else-if="'version' in selected.cli.newest"
+                  size="sm"
+                  :disabled="!!operations?.[selected.id]"
+                  @click="emit('holdCli', selected, selected.cli.newest.version)"
+                  >Hold</Button
+                >
+              </SettingsRow>
+              <SettingsRow
+                v-if="'error' in selected.cli.newest"
+                compact
+                label="The newest version could not be read"
+                :description="selected.cli.newest.error"
+              />
+              <SettingsRow
+                v-for="machine in selected.cli.machines"
+                :key="machine.id"
+                compact
+                :label="machine.name"
+              >
+                <span class="text-[13px] tabular-nums text-fg-muted">{{
+                  machine.versions === null
+                    ? 'No answer'
+                    : machine.versions.length
+                      ? machine.versions.join(', ')
+                      : 'Not installed'
+                }}</span>
+              </SettingsRow>
+              <SettingsRow
+                v-if="selected.cli.install && selected.cli.install.state !== 'installed'"
+                compact
+                :label="selected.cli.install.state === 'installing' ? 'Installing on Cloud' : 'Could not install on Cloud'"
+                :description="selected.cli.install.state === 'failed' ? selected.cli.install.message : undefined"
+              >
+                <IndeterminateSpinner v-if="selected.cli.install.state === 'installing'" />
+                <Button
+                  v-else
+                  size="sm"
+                  :disabled="!!operations?.[selected.id]"
+                  @click="emit('installCli', selected)"
+                  >Install</Button
+                >
               </SettingsRow>
             </SettingsGroup>
 

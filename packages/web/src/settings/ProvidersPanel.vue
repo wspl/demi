@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { onMounted, onUnmounted, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SettingsProvidersPage from '@demicodes/web-ui/settings/SettingsProvidersPage.vue'
@@ -27,6 +27,10 @@ const {
   saveModel,
   saveModels,
   submitToken,
+  loadCli,
+  checkCli,
+  installCli,
+  holdCli,
 } = settings
 
 // The vendor catalog's failure is the page's region state, with its own Retry.
@@ -43,6 +47,21 @@ function openUrl(url: string): void {
   window.open(url, '_blank', 'noopener,noreferrer')
 }
 onMounted(loadVendors)
+// A process provider's CLI is read when the page shows that provider, and again
+// when its accounts change, since adding one starts an install.
+watch(
+  () => {
+    const shown = providers.value.find((provider) => provider.id === resources.selectedProviderId)
+    return shown?.runsOnHost ? `${shown.id}:${shown.accounts.length}` : null
+  },
+  () => {
+    const shown = providers.value.find((provider) => provider.id === resources.selectedProviderId)
+    if (shown) {
+      loadCli(shown)
+    }
+  },
+  { immediate: true },
+)
 onUnmounted(closeLogin)
 </script>
 
@@ -74,6 +93,9 @@ onUnmounted(closeLogin)
     @test="test"
     @refresh="refresh"
     @refresh-usage="refreshUsage"
+    @check-cli="checkCli"
+    @install-cli="installCli"
+    @hold-cli="holdCli"
     @activate-account="
       (provider, id) => accountAction(provider, id, 'activate')
     "
