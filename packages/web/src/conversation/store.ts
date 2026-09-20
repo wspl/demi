@@ -110,6 +110,9 @@ export const useConversations = defineStore('conversations', () => {
     return status === 'completed' ? 'done' : 'idle'
   }
 
+  /** Titles the user has set that the backend has not confirmed yet, by conversation. */
+  const pendingTitles = new Map<string, string>()
+
   function metadata(
     record: Pick<
       BackendConversation,
@@ -203,6 +206,8 @@ export const useConversations = defineStore('conversations', () => {
         const contextChanged = current.contextVersion !== record.contextVersion
         const archiveChanged = current.archived !== record.archived
         Object.assign(current, metadata(record))
+        // A snapshot read before the rename reached the backend must not show the old title again.
+        current.title = pendingTitles.get(current.id) ?? current.title
         const cached = cache.get(current.id)
         if (!cached?.runtime?.connected) {
           current.status = summaryStatus(record.status)
@@ -898,13 +903,32 @@ export const useConversations = defineStore('conversations', () => {
       saveDrafts()
       return
     }
+    // The new title shows at once and stays while the write is on its way;
+    // a write that fails or is refused gives the stored title back.
+    if (conversation) {
+      conversation.title = title
+    }
+    pendingTitles.set(id, title)
     const signal = lifetime.signal
     void writes
       .run(() => {
         signal.throwIfAborted()
         return patch(id, { title })
       })
-      .catch((error) => report('Could not rename the conversation', error))
+      .catch((error) => {
+        report('Could not rename the conversation', error)
+        return false
+      })
+      .then((renamed) => {
+        if (pendingTitles.get(id) !== title) {
+          return
+        }
+        pendingTitles.delete(id)
+        const stored = product.snapshot?.conversations.find((item) => item.id === id)
+        if (!renamed && conversation && stored) {
+          conversation.title = stored.title
+        }
+      })
   }
 
   async function reorder(id: string, beforeId: string | null): Promise<void> {
