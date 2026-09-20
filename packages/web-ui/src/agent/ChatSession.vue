@@ -59,8 +59,10 @@ provideEditSelection((selection) => props.selectEdit?.(selection))
 // Relative paths resolve against the directory the conversation works in.
 provideMessageFiles(() => props.files && { ...props.files, cwd: props.conversation.cwd })
 const surface = ref<{ dockHeight: number }>()
-// The title is the last thing in the header to be cut short: the controls
-// beside it give up their labels first, and get them back when it fits whole.
+// The title is the last thing in the header to be cut short, up to its
+// greatest width: the controls beside it give up their labels before a title
+// narrower than that is cut, and keep them while a longer one is cut to it.
+const TITLE_MAX_PX = 260
 const titleCell = ref<HTMLElement | null>(null)
 const title = ref<HTMLElement | null>(null)
 const { width: titleCellWidth } = useElementSize(titleCell)
@@ -68,7 +70,9 @@ const titleRoom = ref<number>()
 watch(
   [titleCellWidth, () => props.conversation.title, title],
   () => {
-    titleRoom.value = title.value ? titleCellWidth.value - title.value.scrollWidth : undefined
+    titleRoom.value = title.value
+      ? titleCellWidth.value - Math.min(title.value.scrollWidth, TITLE_MAX_PX)
+      : undefined
   },
   { flush: 'post' },
 )
@@ -136,6 +140,7 @@ watch(() => props.conversation.id, close)
         <h1
           ref="title"
           class="min-w-0 select-none truncate text-chrome font-normal text-fg"
+          :style="{ maxWidth: `${TITLE_MAX_PX}px` }"
           :title="conversation.title"
         >
           {{ conversation.title }}
