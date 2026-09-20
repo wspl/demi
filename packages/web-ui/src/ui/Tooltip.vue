@@ -41,6 +41,12 @@ const props = withDefaults(defineProps<{
   openDelayMs?: number
   closeDelayMs?: number
   tag?: 'span' | 'div'
+  /**
+   * The overlay is a picture, not text: the tip frames it with the same space
+   * on every side, where text keeps the wider space beside it that its lines
+   * need.
+   */
+  picture?: boolean
   overlayStore?: OverlayStore
 }>(), {
   placement: 'top',
@@ -218,7 +224,9 @@ onBeforeUnmount(() => {
         ref="floatingRef"
         class="overlay-shell select-none pointer-events-none z-40 w-max min-w-max rounded-md text-fg"
         :class="hasOverlay
-          ? 'max-w-xs px-3 py-2 text-xs leading-relaxed'
+          ? picture
+            ? 'max-w-xs p-2'
+            : 'max-w-xs px-3 py-2 text-xs leading-relaxed'
           : 'line-clamp-2 max-w-sm px-2.5 py-1.5 text-[12px] leading-4'"
         :style="floatingStyles"
         role="tooltip"
