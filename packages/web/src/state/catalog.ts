@@ -1,3 +1,4 @@
+import { formatRelativeTime } from '@demicodes/web-ui/composables/useRelativeTime'
 import type { ModelInfo } from '@demicodes/web-ui/transport/protocol'
 import type {
   SettingsProviderEntry,
@@ -146,7 +147,7 @@ export function providerView(
                     label: window.label ?? window.id.replaceAll('_', ' '),
                     used: window.usedPercent,
                     max: 100,
-                    resets: window.resetsAt,
+                    resets: window.resetsAt ? formatRelativeTime(window.resetsAt) : null,
                   },
                 ]
               }) ?? [])
