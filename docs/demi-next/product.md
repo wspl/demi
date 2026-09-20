@@ -185,11 +185,16 @@ first send ──► title = start of the message (80 characters)      origin: m
 rename at any time ──► title = what the user typed               origin: user
 ```
 
+Later the conversation turns to the login test and the title no longer says
+what it is about. A button beside the title asks for a new one; the button
+spins while the model writes it, the title changes, and the button goes away
+until the user sends another message.
+
 Every title records its origin, one of `placeholder` ("New conversation",
-before any send), `message`, `generated`, and `user`. The generated title is
-written only while the origin is `message`, in the same statement that checks
-it, so a rename that lands while the request is in flight wins and is never
-overwritten. A rename is a title that differs from the current one; a patch
+before any send), `message`, `generated`, and `user`. A generated title is
+written only while the title is still the one the request started from, in the
+same statement that checks it, so a rename that lands while the request is in
+flight wins and is never overwritten. A rename is a title that differs from the current one; a patch
 that repeats the current title, as the browser's record creation does with
 the placeholder, changes no origin. A Fork's title, the source's with " (Fork)", has origin `user`:
 it is already a settled name and is not regenerated.
@@ -198,13 +203,13 @@ The request:
 
 | Aspect | Rule |
 | --- | --- |
-| When | Once per conversation, at the first send, concurrently with the first turn. It neither waits for the turn nor delays it. A first message without text starts none, and the title stays the placeholder until renamed. |
-| Model | The provider and model selected for the conversation at that send. No separate title model is configured. The first message therefore goes only where the user already chose to send it. |
+| When | At the first send, concurrently with the first turn: it neither waits for the turn nor delays it. A first message without text starts none, and the title stays the placeholder until renamed. After that only when the user asks, with the button beside the title. One request per conversation at a time; asking while one runs joins it. |
+| Model | The provider and model selected for the conversation at that moment. No separate title model is configured. The messages therefore go only where the user already chose to send them. |
 | Effort | The lowest thinking effort the model offers, the default service tier, and a small output limit. |
-| Input | A fixed title instruction as the system prompt, and the text of the first user message, at most its first 4,000 characters. No agent system prompt, no tools, no history, no attachments or images. |
+| Input | A fixed title instruction as the system prompt, and one user message holding the text of every message the user has sent, oldest first and numbered. Each is cut to its first 400 characters, and the whole to 4,000: when they do not fit, the first message and the most recent ones stay and the middle is left out, since the first says what the conversation set out to do and the last what it has become. No agent system prompt, no tools, no assistant output, no attachments or images, no file references. The input stays short so that the title arrives quickly. At the first send the input is that one message. |
 | Path | The same metered provider runtime a turn uses, so the request counts in the user's usage ledger and obeys the same limits. It is not a session turn: nothing is added to the transcript and no session event is emitted. |
 | Output | The first non-empty line of the text response, without surrounding quotes, cut to 80 characters. Thinking output is ignored. An empty result writes nothing. |
-| Failure | A refused, failed or empty request is logged and ends there; the message-derived title stays. There is no retry: the title in place is already usable. |
+| Failure | A refused, failed or empty request is logged and ends there; the title in place stays, and is already usable. Nothing retries by itself: the button stays, and pressing it is the retry. |
 | Release | The request is aborted when the conversation is archived or the backend closes. |
 
 The instruction tells the model to produce a title, never an answer: one line
@@ -216,11 +221,25 @@ examples show the result. It also asks for natural grammar,
 exact technical terms, file names, numbers and error codes kept, no tool
 names, no leading "the" or "my", and something meaningful even for a greeting.
 
-The browser learns the new title the way it learns a rename made elsewhere,
-from the next [state snapshot](web-api.md); there is no title event.
+The button shows exactly when a new title could differ from the last one the
+model wrote. The backend counts the user's messages on the conversation (a
+send, a steer, an edit and resend) and records, when a request finishes with a
+usable line, how many the request had seen. The title is current while the two
+are equal, and the button is hidden; it returns with the next message. This
+holds for the first request as for one the user asked for, so a first title
+that failed leaves the button up, and a title the user typed themselves can
+still be replaced by asking. The conversation summary carries both facts:
+`titleCurrent`, and `titleGenerating` while a request is in flight, which
+shows the button spinning, for the first request too.
 
-Not included: regenerating a title on request, retitling after the first
-message is edited, and titling from a different, cheaper model. The last is a
+`POST /api/conversations/:id/title` with the conversation's provider and model
+selection starts the request and answers 202 at once; it answers 409
+`no_messages` when the user has sent no text. The browser learns the new title
+the way it learns a rename made elsewhere, from the next
+[state snapshot](web-api.md); there is no title event.
+
+Not included: retitling by itself as a conversation grows, and titling from a
+different, cheaper model. The last is a
 natural extension once instance or user configuration names such a model.
 
 Rationale: a request beside the turn, rather than a clone of the session the
