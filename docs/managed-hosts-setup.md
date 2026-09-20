@@ -42,6 +42,26 @@ uses iproute2 and nftables. The writable disk images and chroot base must be
 on the same filesystem because the script hardlinks those images into each
 jail.
 
+## The manager's filesystem
+
+`DEMI_MACHINES_DATA` and the chroot base belong on a filesystem that clones
+files, so that a machine's disks cost what its guest writes instead of a whole
+image on every wake ([Managed hosts](demi-next/managed-hosts.md#lifecycle-and-capacity)).
+XFS with reflinks is the tested choice; btrfs clones too. Format the volume,
+mount it, and set XFS's copy-on-write extent hint to the block size on the
+directory, which new files inherit — without the hint XFS rounds each small
+guest write up until nothing is shared:
+
+```sh
+sudo mkfs.xfs -m reflink=1 /dev/<device>   # reflink=1 since xfsprogs 5.1
+sudo mount /dev/<device> /var/lib/demi-machines
+sudo xfs_io -c 'cowextsize 4096' /var/lib/demi-machines
+```
+
+`xfs_io -c 'stat' /var/lib/demi-machines` reports the hint as `fsxattr.cowextsize`;
+`xfs_info` reports `reflink=1`. The manager runs on a filesystem without clones
+as well — ext4 copies each image in full, which is slower and larger, not wrong.
+
 The machines package includes `scripts/`; no helper compilation is required.
 From the package directory (`packages/machines` in a checkout), install the
 launcher under a root-owned directory:
@@ -121,7 +141,13 @@ prepares the tap pool with the Mac as the backend address (printed as the
 `DEMI_BACKEND_PUBLIC_URL` to use), and runs the manager in the foreground on
 `/run/user/<uid>/demi-machines.sock`, which Lima forwards to
 `~/.lima/demi-machines/sock/demi-machines.sock`. The manager's state lives on
-the instance disk under `/var/lib/demi-machines`.
+a Lima disk the script creates beside the instance, `demi-machines-data`,
+formatted XFS with reflinks and mounted at `/var/lib/demi-machines` with the
+copy-on-write extent hint set, so a development machine's disks cost what its
+guest writes as they do on a Linux host. The disk is sparse; `--data-size`
+changes the capacity it may grow into, 100 GiB by default. Removing the
+instance leaves the disk behind, and `limactl disk delete demi-machines-data`
+discards the machines on it.
 
 The install script adds the guest user to `kvm`. The launcher starts the
 manager through `sudo -n -H -u <guest-user>` so its supplementary groups are

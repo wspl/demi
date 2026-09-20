@@ -16,9 +16,15 @@ disk: 40GiB
 base: template:ubuntu-26.04
 
 # The checkout is read from the home mount; the manager's own state lives on
-# the instance disk (`/var/lib/demi-machines`), never on the mount.
+# its own disk (`/var/lib/demi-machines`), never on the mount. That disk is
+# XFS with reflinks, so image copies are clones as they are on a Linux host
+# (`docs/demi-next/managed-hosts.md` § Lifecycle and capacity).
 mounts:
   - location: "~"
+
+additionalDisks:
+  - name: "demi-machines-data"
+    format: false
 
 portForwards:
   - guestSocket: "/run/user/{{.UID}}/demi-machines.sock"
@@ -31,7 +37,7 @@ provision:
       set -euxo pipefail
       export DEBIAN_FRONTEND=noninteractive
       apt-get update -qq
-      apt-get install -y -qq e2fsprogs nftables iproute2 curl unzip
+      apt-get install -y -qq e2fsprogs xfsprogs nftables iproute2 curl unzip
       firecracker_version=v1.16.1
       if ! [ -x /usr/local/bin/firecracker ]; then
         arch=$(uname -m)
@@ -40,6 +46,37 @@ provision:
         install -m 0755 "/tmp/release-${firecracker_version}-${arch}/firecracker-${firecracker_version}-${arch}" /usr/local/bin/firecracker
         install -m 0755 "/tmp/release-${firecracker_version}-${arch}/jailer-${firecracker_version}-${arch}" /usr/local/bin/jailer
       fi
+      # The manager's state on its own cloning filesystem. The disk arrives
+      # raw: whole, childless and without a signature, which no other disk of
+      # this instance is. Lima's own attempt to mount it as a partition fails
+      # in the boot log, because the filesystem below is the whole device.
+      if ! findmnt -n /var/lib/demi-machines >/dev/null; then
+        if ! blkid -L demi-data >/dev/null 2>&1; then
+          for candidate in /dev/vd?; do
+            [ -b "$candidate" ] || continue
+            [ -z "$(lsblk -nr -o NAME "$candidate" | tail -n +2)" ] || continue
+            [ -z "$(blkid -o value -s TYPE "$candidate" 2>/dev/null)" ] || continue
+            mkfs.xfs -q -m reflink=1 -L demi-data "$candidate"
+            udevadm settle || true
+            break
+          done
+        fi
+        blkid -L demi-data >/dev/null 2>&1 || {
+          echo >&2 "no spare disk to hold /var/lib/demi-machines; add the demi-machines-data disk"
+          exit 1
+        }
+        # State from before this disk existed would hide under the mount.
+        if [ -d /var/lib/demi-machines ] && [ -n "$(ls -A /var/lib/demi-machines)" ]; then
+          mv /var/lib/demi-machines "/var/lib/demi-machines.before-$(date +%Y%m%d%H%M%S)"
+        fi
+        mkdir -p /var/lib/demi-machines
+        grep -q "LABEL=demi-data" /etc/fstab ||
+          echo "LABEL=demi-data /var/lib/demi-machines xfs defaults,nofail 0 2" >> /etc/fstab
+        mount /var/lib/demi-machines
+      fi
+      # Without the hint XFS rounds each small guest write up until a clone
+      # shares nothing. New files inherit it from the directory.
+      xfs_io -c "cowextsize 4096" /var/lib/demi-machines
       install -d -o "{{.User}}" -g "{{.User}}" -m 0750 /var/lib/demi-machines
   - mode: user
     script: |
