@@ -56,7 +56,6 @@ async function create(draft: WorkspaceDraft) {
     :load="product.load"
     @retry="product.revalidate"
     :devices="resources.devices"
-    :cloud="!!product.snapshot?.cloud"
     :message="message"
     :source-for="(id) => fileSourceFor(deviceById(id))"
     :places-for="(id) => placesFor(deviceById(id), resources.projects)"

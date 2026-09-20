@@ -26,7 +26,7 @@ export class ProductState {
     registry: RunnerRegistry;
     vault: ProviderVault;
     assembly: ProviderAssembly;
-    managed: ManagedHosts | null;
+    managed: ManagedHosts;
     mode: InstanceMode;
     exposes: Exposes;
     titles: ConversationTitles;
@@ -43,7 +43,7 @@ export class ProductState {
         control.getManagedDevice(user.id),
         control.getUserPreferences(user.id),
         vault.ownerFor(user.id).then(ownerUserId => vault.list({ ownerUserId })),
-        managed?.status(user.id) ?? null,
+        managed.status(user.id),
         exposes.list(user.id),
       ]
     )
@@ -86,12 +86,12 @@ export class ProductState {
         online: registry.deviceOnline(device.id),
         home: registry.deviceIdentity(device.id)?.homeDir ?? null
       })),
-      cloud: cloud ? {
+      cloud: {
         ...cloud,
         device: cloud.device
           ? { id: cloud.device.id, name: cloud.device.name }
           : null
-      } : null,
+      },
       exposes: exposeRecords.map(record => exposes.view(record)),
       exposeDomain: exposes.domain,
     }

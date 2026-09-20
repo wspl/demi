@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { deferred, delay } from '@demicodes/utils'
 import { World } from './world'
 import { model } from './driver'
-import { FakeProvisioner } from './fake-provisioner'
+import { FakeProvisioner } from '../../testing/fake-provisioner'
 import type { ManagedOperation } from '../../storage/control'
 
 test(

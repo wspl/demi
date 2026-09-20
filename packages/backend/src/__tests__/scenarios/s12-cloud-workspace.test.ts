@@ -64,18 +64,3 @@ test(
   },
   60_000
 )
-
-test(
-  'Cloud creation is explicitly unavailable without a provisioner',
-  async () => {
-    const world = await World.create({ managedHosts: null })
-    try {
-      await expect(world.api('/api/workspaces', { cloud: true, name: 'unavailable' })).rejects.toThrow(
-        '409'
-      )
-    }
-    finally {
-      await world.close()
-    }
-  }
-)

@@ -18,7 +18,7 @@ test.skipIf(process.env.DEMI_BROWSER_ACCEPTANCE !== '1')('AgentServer operates a
       return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } })
     },
   })
-  const world = await World.create({ runners: ['browser'], managedHosts: null })
+  const world = await World.create({ runners: ['browser'] })
   world.selection.model.model.acceptedExtensions = ['png']
   try {
     const driver = await world.conversation('runner:browser')
@@ -103,7 +103,7 @@ demi browser read "$tab" --css output --property text --json`, 30000),
 test.skipIf(process.env.DEMI_BROWSER_ACCEPTANCE !== '1')('a retained paired browser is retired after one hour of conversation inactivity', async () => {
   const application = Bun.serve({ port: 0, fetch: () => new Response('<h1>Idle browser</h1>', { headers: { 'content-type': 'text/html' } }) })
   let now = 0
-  const world = await World.create({ runners: ['browser-idle'], managedHosts: null, lifecycle: { now: () => now, pollMs: 10 } })
+  const world = await World.create({ runners: ['browser-idle'], lifecycle: { now: () => now, pollMs: 10 } })
   try {
     const driver = await world.conversation('runner:browser-idle')
     const opened = await driver.turn({ model: [
@@ -152,7 +152,7 @@ test.skipIf(process.env.DEMI_BROWSER_ACCEPTANCE !== '1')('a retained paired brow
 }, 180_000)
 
 test.skipIf(process.env.DEMI_BROWSER_ACCEPTANCE !== '1')('switch and archive release browser environments on main and attached Hosts', async () => {
-  const world = await World.create({ runners: ['one', 'two'], managedHosts: null })
+  const world = await World.create({ runners: ['one', 'two'] })
   try {
     const driver = await world.conversation('runner:one')
     const opened = await driver.turn({ model: [

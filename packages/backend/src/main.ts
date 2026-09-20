@@ -13,9 +13,8 @@ import { RemoteProvisioner } from '@demicodes/machines'
  * fails at startup with the variable's name instead of surfacing later as a
  * NaN port or an unset mode.
  *
- * Managed hosts (`managed-hosts.md`) are on when `DEMI_MACHINES_SOCKET` names
- * the machine manager's Unix socket; guests dial `DEMI_BACKEND_PUBLIC_URL`,
- * which is therefore required with it.
+ * Every deployment has Cloud (`managed-hosts.md`): `DEMI_MACHINES_SOCKET` names
+ * the machine manager's Unix socket, and guests dial `DEMI_BACKEND_PUBLIC_URL`.
  */
 const backendEnvSchema = z
   .object({
@@ -29,20 +28,15 @@ const backendEnvSchema = z
       'must be "shared" or "isolated" (product.md § Instance mode)',
     ),
     DEMI_EXPOSE_DOMAIN: z.string().min(1).optional(),
-    DEMI_MACHINES_SOCKET: z.string().min(1).optional(),
-    DEMI_BACKEND_PUBLIC_URL: z.url().optional(),
+    DEMI_MACHINES_SOCKET: z
+      .string()
+      .min(1, 'must name the machine manager socket: every deployment has Cloud (managed-hosts.md)'),
+    DEMI_BACKEND_PUBLIC_URL: z.url('must be the URL Cloud guests dial'),
     DEMI_NATIVE_CONFIG: z
       .string()
       .min(1, 'must name the native release and object storage configuration'),
     DEMI_WEB_DIRECTORY: z.string().min(1).optional(),
   })
-  .refine(
-    (env) => !env.DEMI_MACHINES_SOCKET || env.DEMI_BACKEND_PUBLIC_URL,
-    {
-      path: ['DEMI_BACKEND_PUBLIC_URL'],
-      message: 'required with managed hosts: the URL guests dial',
-    },
-  )
 
 async function main(): Promise<void> {
   const env = backendEnvSchema.parse(process.env)
@@ -74,10 +68,8 @@ async function main(): Promise<void> {
     exposeDomain: env.DEMI_EXPOSE_DOMAIN,
     port: env.DEMI_BACKEND_PORT,
     mode: env.DEMI_INSTANCE_MODE,
-    ...(publicUrl ? { publicUrl } : {}),
-    ...(machinesSocket
-      ? { managedHosts: { provisioner: new RemoteProvisioner({ socketPath: machinesSocket }) } }
-      : {}),
+    publicUrl,
+    managedHosts: { provisioner: new RemoteProvisioner({ socketPath: machinesSocket }) },
   }).catch(error => {
     nativeCommands.close()
     changeStore?.close()
@@ -86,8 +78,7 @@ async function main(): Promise<void> {
   console.log(
     `demi-backend listening on ${backend.url} (data: ${dataDir}, ${env.DEMI_INSTANCE_MODE} mode)`
   )
-  if (machinesSocket)
-    console.log(`managed hosts: machine manager at ${machinesSocket}`)
+  console.log(`Cloud: machine manager at ${machinesSocket}`)
   console.log(
     'Providers come from providers: add one via POST /api/providers (or the web UI).'
   )
