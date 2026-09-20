@@ -265,6 +265,38 @@ export function composerFileNames(items: readonly ComposerAttachment[]): string[
   return items.filter(isComposerFile).map((item) => item.name)
 }
 
+/**
+ * Keeps a message's files to the capsules in its text, in their order.
+ *
+ * A file whose capsule was deleted is set aside rather than dropped, since
+ * undo brings the capsule back and its file belongs with it; a capsule that
+ * comes back takes its file from there. What stays aside is released when the
+ * message goes or the composer is taken away. A file that is not the message's
+ * to arrange, such as one of a message already being sent, is left where it is.
+ */
+export function arrangeCapsuleFiles<T extends { id: string }>(
+  files: readonly T[],
+  aside: readonly T[],
+  ids: readonly string[],
+  isSending: (item: T) => boolean = () => false,
+): { files: T[]; aside: T[]; detached: T[]; restored: T[] } {
+  const marked = new Set(ids)
+  const sending = files.filter((item) => isSending(item))
+  const detached = files.filter((item) => !marked.has(item.id) && !isSending(item))
+  const restored = aside.filter((item) => marked.has(item.id))
+  const byId = new Map([...files, ...restored].map((item) => [item.id, item]))
+  const placed = ids.flatMap((id) => {
+    const item = byId.get(id)
+    return item && !isSending(item) ? [item] : []
+  })
+  return {
+    files: [...sending, ...placed],
+    aside: [...aside.filter((item) => !marked.has(item.id)), ...detached],
+    detached,
+    restored,
+  }
+}
+
 /** In-flight uploads by attachment id. Removing an attachment cancels its upload, which then reports nothing. */
 export class AttachmentUploadQueue {
   readonly #jobs = new Map<string, AbortController>()

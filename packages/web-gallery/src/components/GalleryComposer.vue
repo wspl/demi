@@ -8,6 +8,7 @@ import RemoteFilePicker from '@demicodes/web-ui/files/RemoteFilePicker.vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import {
   applyAttachmentUpdate,
+  arrangeCapsuleFiles,
   AttachmentUploadQueue,
   attachmentFileError,
   attachTextSnippet,
@@ -73,6 +74,8 @@ const emit = defineEmits<{
 }>()
 const draft = ref(props.draft)
 const attached = ref(props.attachments.map((item) => composerAttachment(item)))
+/** Files whose capsule was deleted: they wait here for an undo. */
+const aside = ref<ComposerAttachment[]>([])
 const uploads = new AttachmentUploadQueue()
 const providerId = ref(props.selectedProviderId)
 const modelId = ref(props.selectedModelId)
@@ -106,14 +109,33 @@ function forget(id: string, release: boolean) {
   attached.value = attached.value.filter((file) => file.id !== id)
 }
 
-/** The capsules in the text, in their order: a file whose capsule was deleted goes. */
+/**
+ * The capsules in the text, in their order. A file whose capsule was deleted
+ * waits aside for an undo to bring both back, as the product's does.
+ */
 function arrange(ids: string[]) {
-  for (const item of attached.value) {
-    if (!ids.includes(item.id)) {
-      forget(item.id, true)
+  const next = arrangeCapsuleFiles(attached.value, aside.value, ids)
+  for (const item of next.detached) {
+    uploads.cancel(item.id)
+  }
+  attached.value = next.files
+  aside.value = next.aside
+  for (const item of next.restored) {
+    if (isComposerFile(item) && item.phase !== 'ready') {
+      upload(item.id)
     }
   }
-  attached.value = ids.flatMap((id) => attached.value.filter((item) => item.id === id))
+}
+
+/** Lets the files set aside go: they are in no message, and no undo can reach them now. */
+function releaseAside() {
+  for (const item of aside.value) {
+    uploads.cancel(item.id)
+    if (isComposerFile(item) && item.src?.startsWith('blob:')) {
+      URL.revokeObjectURL(item.src)
+    }
+  }
+  aside.value = []
 }
 
 /** A sent file as the transcript records it: a record at a made-up Host path, a picture before it, or a device's file. */
@@ -142,6 +164,7 @@ function submit() {
   while (attached.value.length) {
     forget(attached.value[0]!.id, false)
   }
+  releaseAside()
   if (props.running) {
     emit('queue', content)
   } else {
@@ -191,6 +214,7 @@ function selectModel(provider: string, model: string) {
 }
 onBeforeUnmount(() => {
   uploads.cancelAll()
+  releaseAside()
   while (attached.value.length) {
     forget(attached.value[0]!.id, true)
   }

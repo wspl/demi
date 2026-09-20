@@ -403,6 +403,28 @@ test('a draft keeps its files; the conversation itself is created on first send'
   expect(conversation.pendingSend?.fileIds).toEqual([conversation.files[0]!.id])
 })
 
+test('a file whose capsule was deleted comes back when undo brings the capsule back', async () => {
+  const store = useConversations()
+  store.create()
+  const conversation = store.items[0]!
+  store.addFiles(conversation, [new File(['before'], 'before.png', { type: 'image/png' })])
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  const file = conversation.files[0]!
+  expect(file).toMatchObject({ name: 'before.png', phase: 'ready' })
+  const uploaded = file.kind === 'file' ? file.upload?.id : undefined
+
+  // The capsule was deleted: the message has no file, and neither has the draft.
+  store.arrangeFiles(conversation, [])
+  expect(conversation.files).toEqual([])
+
+  // Undo brought the capsule back, and its file stands where it does.
+  store.arrangeFiles(conversation, [file.id])
+  expect(conversation.files).toEqual([file])
+  // It kept the upload it had: coming back is not uploading again.
+  const back = conversation.files[0]!
+  expect(back.kind === 'file' ? back.upload?.id : undefined).toBe(uploaded)
+})
+
 test('a message sends its text and files in the order the composer shows them', async () => {
   const store = useConversations()
   const current = store.items[0]!

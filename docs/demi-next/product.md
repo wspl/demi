@@ -297,8 +297,11 @@ file browser at the cursor. A capsule shows an image's thumbnail or another
 file's icon, then the file's name; pointed at, it shows the picture larger.
 While the file uploads it shows how far along it is, and a failed upload
 offers Retry. A capsule is a character of the message and is edited as one:
-Backspace deletes it and its attachment with it, and it can be dragged to
-another place in the text; it carries no control of its own for either. In
+Backspace deletes it and its attachment with it, undo brings the two back
+together, and it can be dragged to another place in the text; it carries no
+control of its own for any of that. A file waits aside from the moment its
+capsule is deleted until the message is sent or the composer is left, so an
+undo in between always finds it; an upload that was running starts over. In
 the conversation, a click on a capsule opens its file in the File view. The
 message's content keeps text and attachments in the order the composer shows
 them: for the example in

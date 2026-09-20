@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, watch } from 'vue'
 import { Fragment, Slice, type Node as ProseMirrorNode, type Schema } from '@tiptap/pm/model'
 import { Selection, TextSelection, type Transaction } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
@@ -201,17 +201,23 @@ function textWidth(): number {
 
 /** Tells the owner what the message now is. */
 function write(): void {
-  // Undo can bring back a capsule whose file was removed with it: it goes again, and that change is written instead.
-  const tr = editor.state.tr
-  dropStrayCapsules(tr)
-  if (tr.docChanged) {
-    editor.view.dispatch(tr.setMeta('addToHistory', false))
-    return
-  }
   const { markdown, attachmentIds } = serializeUserMarkdown(editor.getJSON())
   shown = markdown
   measure()
   emit('change', markdown, attachmentIds)
+  // Undo brings a deleted capsule back with the rest of the change, so the
+  // owner hears of it and can take its file back; a capsule it does not
+  // answer for goes once it has had its say.
+  void nextTick(dropUnansweredCapsules)
+}
+
+/** Deletes the capsules the owner has no file for; the deletion is written like any other change. */
+function dropUnansweredCapsules(): void {
+  const tr = editor.state.tr
+  dropStrayCapsules(tr)
+  if (tr.docChanged) {
+    editor.view.dispatch(tr.setMeta('addToHistory', false))
+  }
 }
 
 /** Shows Markdown that came from outside, such as a cleared draft or another message; the undo history forgets what was there. */

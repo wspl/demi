@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 import { delay } from '@demicodes/utils'
 import {
   applyAttachmentUpdate,
+  arrangeCapsuleFiles,
   AttachmentUploadQueue,
   attachmentFileError,
   attachmentProgress,
@@ -170,4 +171,25 @@ test('unknown bytes become a document block', async () => {
   expect(block.source.fileName).toBe('note.txt')
   expect(block.source.mediaType.startsWith('text/plain')).toBe(true)
   expect(block.source.data).toEqual(bytes)
+})
+
+test('a file whose capsule was deleted waits aside until the capsule comes back', () => {
+  const before = { id: 'before' }
+  const after = { id: 'after' }
+  const files = [before, after]
+
+  // The capsule of `after` is deleted: its file leaves the message but is kept.
+  const deleted = arrangeCapsuleFiles(files, [], ['before'])
+  expect(deleted).toEqual({ files: [before], aside: [after], detached: [after], restored: [] })
+
+  // Undo brings the capsule back, and the file with it, where it stood.
+  const undone = arrangeCapsuleFiles(deleted.files, deleted.aside, ['after', 'before'])
+  expect(undone).toEqual({ files: [after, before], aside: [], detached: [], restored: [after] })
+
+  // A file of a message being sent is not the draft's to arrange.
+  const sending = arrangeCapsuleFiles([before, after], [], ['after'], (item) => item.id === 'before')
+  expect(sending).toEqual({ files: [before, after], aside: [], detached: [], restored: [] })
+
+  // A capsule with no file anywhere leaves the files as they are.
+  expect(arrangeCapsuleFiles([before], [], ['before', 'stray']).files).toEqual([before])
 })
