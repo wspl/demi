@@ -296,10 +296,12 @@ it is dropped, a picked or pasted one at the cursor, and one added from a
 file browser at the cursor. A capsule shows an image's thumbnail or another
 file's icon, then the file's name; pointed at, it shows the picture larger.
 While the file uploads it shows how far along it is, and a failed upload
-offers Retry. Deleting a capsule removes its attachment; a capsule can be
-dragged to another place in the text. In the conversation, a click on a
-capsule opens its file in the File view. The message's content keeps text and
-attachments in the order the composer shows them: for the example in
+offers Retry. A capsule is a character of the message and is edited as one:
+Backspace deletes it and its attachment with it, and it can be dragged to
+another place in the text; it carries no control of its own for either. In
+the conversation, a click on a capsule opens its file in the File view. The
+message's content keeps text and attachments in the order the composer shows
+them: for the example in
 [Writing a message](#writing-a-message), `Compare `, then `before.png`, then
 ` with `, then `after.png`, then the rest. Providers pass content in order, so
 the model meets each file where the user put it.

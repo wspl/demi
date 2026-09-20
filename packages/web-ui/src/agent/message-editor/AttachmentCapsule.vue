@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { CircleAlert, RotateCw, X } from '@lucide/vue'
+import { CircleAlert, RotateCw } from '@lucide/vue'
 import FileIcon from '../../files/FileIcon.vue'
 import Tooltip from '../../ui/Tooltip.vue'
 import { useMediaUrl } from '../media-source'
@@ -15,17 +15,17 @@ import type { MessageCapsule } from './capsules'
  * The capsule stands on the line by its name, which keeps the baseline of the
  * text around it; the icon and Retry are centred in the pill. Hanging the
  * pill on its own middle instead would set the name a little below that line.
+ *
+ * It is a character of the message, so it is deleted as one, by the editor's
+ * own keys; it carries no control of its own for that.
  */
 const props = defineProps<{
   capsule: MessageCapsule
   /** The editor holds it as its selection. */
   selected?: boolean
-  /** A remove control appears when the capsule is pointed at. */
-  removable?: boolean
 }>()
 
 const emit = defineEmits<{
-  remove: []
   retry: []
 }>()
 
@@ -41,7 +41,7 @@ const failed = computed(() => props.capsule.upload?.phase === 'failed')
 const caption = computed(() => {
   const { host, path, name } = props.capsule
   if (failed.value) {
-    return `${name} did not upload. Retry, or remove it.`
+    return `${name} did not upload. Retry, or delete it.`
   }
   if (uploading.value) {
     return `Uploading ${Math.round(uploading.value.progress * 100)}% · ${name}`
@@ -70,7 +70,7 @@ const preview = computed<
     :picture="preview.kind === 'picture'"
   >
     <span
-      class="message-capsule group/capsule relative mx-px inline-flex h-5 min-w-0 max-w-full select-none items-baseline gap-1 pl-[var(--capsule-inset)] pr-1.5 align-baseline text-[13px] font-normal not-italic leading-5 no-underline shadow-[var(--shadow-btn)]"
+      class="message-capsule mx-px inline-flex h-5 min-w-0 max-w-full select-none items-baseline gap-1 pl-[var(--capsule-inset)] pr-1.5 align-baseline text-[13px] font-normal not-italic leading-5 no-underline shadow-[var(--shadow-btn)]"
       :class="[
         failed ? 'bg-tint-danger text-on-danger' : 'bg-[var(--btn-bg)] text-fg-body',
         selected ? 'outline outline-2 outline-line-focus' : '',
@@ -147,15 +147,6 @@ const preview = computed<
         @click.stop="emit('retry')"
       >
         <RotateCw :size="11" />
-      </button>
-      <button
-        v-if="removable"
-        type="button"
-        class="absolute -right-1 -top-1 flex size-3.5 items-center justify-center rounded-full bg-surface-raised text-fg-muted opacity-0 ring-1 ring-line transition-opacity duration-150 ease-out hover:text-fg-body focus-visible:opacity-100 group-hover/capsule:opacity-100"
-        aria-label="Remove"
-        @click.stop="emit('remove')"
-      >
-        <X :size="9" />
       </button>
     </span>
     <template #overlay>
