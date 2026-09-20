@@ -31,17 +31,6 @@ side, `DEMI_BACKEND_PORT` must be a port number, `DEMI_INSTANCE_MODE` must be
 `shared` or `isolated`, and `DEMI_BACKEND_PUBLIC_URL` must be a URL and is
 required whenever `DEMI_MACHINES_SOCKET` is set.
 
-## Install jailer mode on Linux
-
-Run these steps on the Linux host that runs the manager. The examples use the
-service account `demi-machines`, Firecracker and jailer installed as
-root-owned executables at `/opt/firecracker/firecracker` and
-`/opt/firecracker/jailer`, and the default chroot base `/srv/jailer`. Bash,
-coreutils, sudo, e2fsprogs and KVM are required; the networking setup also
-uses iproute2 and nftables. The writable disk images and chroot base must be
-on the same filesystem because the script hardlinks those images into each
-jail.
-
 ## The manager's filesystem
 
 `DEMI_MACHINES_DATA` and the chroot base belong on a filesystem that clones
@@ -61,6 +50,17 @@ sudo xfs_io -c 'cowextsize 4096' /var/lib/demi-machines
 `xfs_io -c 'stat' /var/lib/demi-machines` reports the hint as `fsxattr.cowextsize`;
 `xfs_info` reports `reflink=1`. The manager runs on a filesystem without clones
 as well — ext4 copies each image in full, which is slower and larger, not wrong.
+
+## Install jailer mode on Linux
+
+Run these steps on the Linux host that runs the manager. The examples use the
+service account `demi-machines`, Firecracker and jailer installed as
+root-owned executables at `/opt/firecracker/firecracker` and
+`/opt/firecracker/jailer`, and the default chroot base `/srv/jailer`. Bash,
+coreutils, sudo, e2fsprogs and KVM are required; the networking setup also
+uses iproute2 and nftables. The writable disk images and chroot base must be
+on the same filesystem because the script hardlinks those images into each
+jail.
 
 The machines package includes `scripts/`; no helper compilation is required.
 From the package directory (`packages/machines` in a checkout), install the
