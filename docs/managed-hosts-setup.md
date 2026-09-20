@@ -28,8 +28,8 @@ and `jailer` additionally requires `DEMI_MANAGED_JAILER` and
 `DEMI_MANAGED_HELPER`. Every count and size — vCPUs, the MiB sizes, slots and
 `DEMI_MANAGED_UID_BASE` — must be a whole number above zero. On the backend
 side, `DEMI_BACKEND_PORT` must be a port number, `DEMI_INSTANCE_MODE` must be
-`shared` or `isolated`, and `DEMI_BACKEND_PUBLIC_URL` must be a URL and is
-required whenever `DEMI_MACHINES_SOCKET` is set.
+`shared` or `isolated`, and `DEMI_MACHINES_SOCKET` and `DEMI_BACKEND_PUBLIC_URL`
+(a URL) are both required: the backend does not start without Cloud.
 
 ## The manager's filesystem
 
