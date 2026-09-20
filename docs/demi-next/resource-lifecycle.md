@@ -24,7 +24,9 @@ A conversation is active while any of these holds:
   page reports at most every 30 seconds while the user operates.
 
 Everything else is retention, not activity: open browser tabs, cookies, a
-resident native service, a paired device that stays online, a sidebar entry, a
+resident native service, a provider's process kept between turns (the turn that
+waits for it is the activity; a Host that stops ends the process, and the next
+turn starts another), a paired device that stays online, a sidebar entry, a
 connected chat, a metadata observer, a scheduled future turn that has not been
 admitted, an open user stream that the user only watches, a
 [Host expose](expose.md#lifetime) and its visitors' traffic. The backend's existing admission records are the only source of this
@@ -40,7 +42,7 @@ work that won admission first.
 
 | Resource | Idle predicate | Consequence |
 | --- | --- | --- |
-| Cloud device | No conversation using this device has been active within the window, and no running job | Save disks and stop the VM; everything inside it ends with the machine, and the device's exposes are destroyed |
+| Cloud device | No conversation [using this device](sessions-and-targets.md#how-a-conversation-uses-a-device), in any role, has been active within the window, and no running job | Save disks and stop the VM; everything inside it ends with the machine, and the device's exposes are destroyed |
 | Conversation on a paired device | This conversation has not been active within the window | Send the conversation release to that device |
 
 Idle retirement never interrupts active work. A retirement that loses the race

@@ -84,34 +84,48 @@ changes the version.
 
 ## Where it runs
 
-Two kinds of work need the CLI, and a **placement** decides the machine for
-each. Placement is one rule in one place: what calls the CLI asks it for a
-Host and does not know why it got that one.
-
-| Work | Example | Placement today |
-|---|---|---|
-| Account work: not part of any conversation | Installing after an account is added; **Test connection** | The acting user's Cloud |
-| Inference | A conversation's request | The conversation's execution target |
-
-A placement answers with candidates in order, and the work takes the first that
-is available. Today each list has one entry. The shape is what lets this
-change without touching the callers: inference that falls back to Cloud when
-its target has no usable CLI, or everything on Cloud, are each a different
-list. Cloud is always there to be a candidate.
-
-Account work runs on Cloud because it is the machine Demi owns, and every
-deployment has one ([Managed Cloud hosts](managed-hosts.md)): waking it for a
-test surprises nobody, and a CLI installed there right after the account is
-added is already warm when the first Cloud conversation asks. Usage and plan
-need no CLI and no machine at all: the backend asks the vendor itself
+The CLI runs on Cloud, always: the Cloud of the conversation's user for a
+request, the Cloud of the acting user for work that belongs to no conversation
+(installing after an account is added, **Test connection**). Every deployment
+has Cloud ([Managed Cloud hosts](managed-hosts.md)), Demi owns it, and it is one
+kind of machine, so the CLI has one install to keep and one platform to be
+right on. A conversation whose files and commands are on a paired device still
+infers through the user's Cloud; its tools keep running on its own device, and
+the account's token never reaches a paired device. Usage and plan need no CLI
+and no machine at all: the backend asks the vendor itself
 ([Provider quota](../provider-quota.md)).
 
-On a shared instance the acting user is the master, so account work runs on the
-master's Cloud and inference on each user's own target.
+A **placement** decides the machine. It is one rule in one place: what needs a
+provider's process says what the work is and takes the Host, the run directory
+and the command context it is given, and does not know why it got that one.
+
+| Work | Placement |
+|---|---|
+| A conversation's request | The Cloud of the conversation's user |
+| Work that belongs to no conversation | The acting user's Cloud |
+
+A placement answers with candidates in order and the work takes the first that
+is available; today each list has one entry, and a different policy is a
+different list. The placement is also what makes a conversation
+[use the Cloud as `provider`](sessions-and-targets.md#how-a-conversation-uses-a-device),
+which is all the Cloud's lifecycle knows of this: the conversation's turn keeps
+the Cloud awake, and a reset holds the conversation and lets it go on
+afterwards. Nothing in the lifecycle names Claude Code.
+
+The process is **retained** between turns and is not activity
+([Activity](resource-lifecycle.md#activity)): a Cloud that goes idle stops with
+the process in it, and the next request wakes the Cloud, starts the CLI again
+and replays the transcript. It runs in a directory of Demi's on the Cloud, not
+in the conversation's directory, which on a paired device is a path the Cloud
+does not have; the CLI reads and writes nothing there that a conversation owns.
+
+On a shared instance each user's requests run on their own Cloud with the
+master's account, so the master's token reaches every user's Cloud
+([Scope](providers-and-vault.md#scope)).
 
 ## What the user sees
 
-Installing is not an event of the conversation. A request whose machine has no
+Installing is not an event of the conversation. A request whose Cloud has no
 usable CLI installs one and then proceeds, under the same **Requesting** the
 request would show anyway; an update installs with nothing shown at all.
 
@@ -124,8 +138,8 @@ account was added does not undo the account: the settings page shows the
 account as added and the CLI as not installed, with **Install** to try again.
 
 Settings show, for a Claude Code entry: the vendor's newest version, whether
-the entry is held, and for each machine that can be asked now, the version it
-has.
+the entry is held, and the version the user's Cloud has when it can be asked
+now.
 
 ## Implementation limits
 

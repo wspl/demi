@@ -231,7 +231,7 @@ Conversation and device admission protect different resources:
 | --- | --- | --- |
 | One conversation tree | Target change | Root and child turns, restores, queued work, and wakeups admitted by the tree lifecycle |
 | Conversation files | Target change | Host operations: uploads, the working tree, file text. File transfers and user streams are ended, not awaited. |
-| One Cloud device | Shutdown or reset | Device operations, and the agent trees of the conversations whose target is that Cloud |
+| One Cloud device | Shutdown or reset | Device operations, and the agent trees of the conversations that cannot work without that Cloud |
 
 The lifecycle module reserves device admission before the managed-host
 adapter changes the machine.
@@ -240,13 +240,32 @@ conversations. Normal wake can be joined. Reset interrupts device work and
 coordinates the durable disk transition in [managed hosts](managed-hosts.md).
 It does not silently replay interrupted work.
 
-A reset reaches a conversation only through its target. It interrupts and
-holds the conversations whose target is that Cloud, and no others. A
-conversation that merely has the Cloud attached keeps running on its own
-target: its turn is not interrupted, its streams stay open, and it can be
-opened, read and written throughout. A command it had running on the Cloud
-ends with the device, as it would on any Host that went away, and its next
-Cloud command waits for the device like any other wake.
+### How a conversation uses a device
+
+A conversation uses a device in one of three roles, and everything a device's
+lifecycle does to conversations follows from the role alone:
+
+| Role | The device is | While a turn runs | When the Cloud resets or stops |
+| --- | --- | --- | --- |
+| `target` | where the conversation's files and commands are | keeps it awake | The turn is interrupted, the conversation is held, its file transfers and user streams end |
+| `provider` | where the process of its model's provider runs | keeps it awake | The turn is interrupted and the conversation is held |
+| `attached` | an extra Host the conversation can reach | keeps it awake | Nothing: it runs on its own target |
+
+The `provider` role is derived, never stored: the conversation's selected
+provider needs a process (`requiresProcessCapableHost`), and the
+[placement](claude-cli.md#where-it-runs) says which device that process runs
+on. The same placement starts the process, so the role and the process cannot
+name different machines. A conversation on a paired device whose model is
+Claude Code therefore uses its device as `target` and the user's Cloud as
+`provider`. The lifecycle knows roles; it does not know providers.
+
+A reset reaches a conversation through the `target` and `provider` roles, and
+no others: those conversations cannot work without the device. A conversation
+that merely has the Cloud attached keeps running on its own target: its turn
+is not interrupted, its streams stay open, and it can be opened, read and
+written throughout. A command it had running on the Cloud ends with the
+device, as it would on any Host that went away, and its next Cloud command
+waits for the device like any other wake.
 
 A held conversation is waiting, not failed. While a transition holds a
 conversation (a reset, a target change, an archive), everything the user sends
