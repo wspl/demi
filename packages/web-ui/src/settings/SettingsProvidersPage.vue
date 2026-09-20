@@ -639,9 +639,9 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
               </SettingsRow>
             </SettingsGroup>
 
-            <!-- Models. A subscription's list is whatever the vendor serves, so its only control is a
-               refresh; a vendor key chooses between the catalog and a manual list; a bare endpoint
-               only has the manual list. -->
+            <!-- Models. A subscription's list is whatever the vendor serves, so it is refreshed, never
+               edited; a vendor key chooses between the catalog and a manual list; a bare endpoint only
+               has the manual list. Every kind chooses which of its models the pickers offer. -->
             <SettingsGroup>
               <template #header>
                 <header class="flex h-7 select-none items-center gap-2">
@@ -741,7 +741,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                   :key="m.id"
                   :label="m.name || m.id"
                   compact
-                  :interactive="selected.kind === 'api_key'"
+                  interactive
                   isolate-controls
                   :class="m.enabled ? '' : 'opacity-60'"
                   @click="emit('toggleModel', selected, m, !m.enabled)"
@@ -804,7 +804,6 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                       @click="openModel('view', m)"
                   /></Tooltip>
                   <Switch
-                    v-if="selected.kind === 'api_key'"
                     :model-value="m.enabled"
                     @update:model-value="
                       emit('toggleModel', selected, m, $event)
