@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { useClipboard } from '@vueuse/core'
-import { Check, Copy, ExternalLink } from '@lucide/vue'
+import { Check, Copy, ExternalLink, Link } from '@lucide/vue'
 import CopyCode from '../ui/CopyCode.vue'
 import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import type { OverlayStore } from '../overlay/overlayStore'
@@ -11,6 +11,7 @@ import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
 import InlineError from '@demicodes/web-ui/ui/InlineError.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
+import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 
 /**
@@ -44,6 +45,8 @@ watch(
   },
 )
 const { copy, copied } = useClipboard({ copiedDuring: 1500 })
+// The link has its own tick: copying it must not mark the code as copied.
+const { copy: copyLink, copied: linkCopied } = useClipboard({ copiedDuring: 1500 })
 </script>
 
 <template>
@@ -106,6 +109,15 @@ const { copy, copied } = useClipboard({ copiedDuring: 1500 })
             Open in browser
             <ExternalLink :size="ICON_PX.in24" />
           </Button>
+          <!-- For a browser on another machine, or another profile: the link alone. -->
+          <Tooltip :content="linkCopied ? 'Copied' : 'Copy link'">
+            <IconButton
+              :icon="linkCopied ? Check : Link"
+              variant="ghost"
+              :aria-label="linkCopied ? 'Copied' : 'Copy link'"
+              @click="copyLink(phase.url)"
+            />
+          </Tooltip>
           <span class="flex items-center gap-1.5 text-[12px] text-fg-subtle">
             <IndeterminateSpinner :size="ICON_PX.in20" />
             Waiting<template v-if="phase.expiresIn">
