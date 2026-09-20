@@ -4,6 +4,7 @@ import {
   clampUsedPercent,
   createProviderQuota,
   ensureQuota,
+  fileQuotaSnapshots,
   ProviderQuotaUnsupportedError,
   ProviderQuotaInvalidatedError,
   severityFromUsedPercent,
@@ -214,7 +215,7 @@ test('a snapshot file carries the latest snapshot to the next provider, without 
   const snapshotFile = join(directory, 'state', 'quota.json')
   const make = (providerId = 'vendor') => createProviderQuota({
     providerId,
-    snapshotFile,
+    snapshots: fileQuotaSnapshots(snapshotFile, providerId),
     canProbe: true,
     probeCost: 'free',
     probe: async () => ({

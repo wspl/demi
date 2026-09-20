@@ -196,7 +196,7 @@ class SessionProviderRuntime implements AgentProvider {
       return { runtime: this.current.runtime, selection }
     }
     const provider = resolved.provider.requiresProcessCapableHost
-      ? this.options.assembly.forSession(resolved.entry, this.options.session)
+      ? await this.options.assembly.forSession(resolved.entry, this.options.session)
       : resolved.provider
     const runtime = meterRuntime(
       await providerRuntime(provider, selection),

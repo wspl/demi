@@ -268,13 +268,22 @@ catalog failure does not erase other providers or saved models. Static or never
 fetched catalog timestamps use the framework's epoch sentinel.
 
 `GET /api/providers/:id/status` returns auth/runtime state, account metadata,
-active account, capabilities and the last real quota snapshot. No query returns
-key/token material or raw vendor quota envelopes. `POST /api/providers/:id/quota`
-refreshes only a provider's free quota probe, using request cancellation. A
-provider requiring inference for a probe returns `quota_requires_inference`;
-no data returns null, not a fabricated percentage. Reading status never invokes
-inference. Shared users can read state and refresh free quota; configuring or
-explicitly testing providers still requires admin rights.
+active account, capabilities and quota. Each account carries its own `quota`,
+the last real snapshot kept for it; the top-level `quota` is the active
+account's. No query returns key/token material or raw vendor quota envelopes.
+`POST /api/providers/:id/quota` takes `{ credentialId? }` and refreshes that
+account's free quota probe (the active account's without one), using request
+cancellation; an unknown account is `account_not_found`. A provider requiring
+inference for a probe returns `quota_requires_inference`; no data returns null,
+not a fabricated percentage. Reading status never invokes inference.
+`POST /api/providers/:id/test` takes `{ modelId, credentialId? }` and tests
+with that account, in use or not.
+
+On a shared instance every user reads provider state, but only the master sees
+accounts, plan and usage: for everyone else `accounts` is empty, `active` names
+no account, `quota` is null and an authenticated `auth` carries no account
+label. Configuring, testing and refreshing usage are the master's
+([Scope](providers-and-vault.md#scope)).
 
 ## Subscription accounts
 
@@ -296,7 +305,7 @@ path. Terminal results are retained for ten minutes. Login lifetime, credential
 publication, and account selection follow
 [Providers](providers-and-vault.md#credential-vault).
 
-Provider account mutations obey the same shared-admin/isolated-owner rule as
+Provider account mutations obey the same shared-master/isolated-owner rule as
 configuration. A switch invalidates the assembly cache so subsequent requests
 use the selected account, while an already-running request finishes with its
 original runtime. An empty subscription pool is refused before inference; the

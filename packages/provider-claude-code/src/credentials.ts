@@ -20,13 +20,30 @@ import { refreshClaudeCodeSecret, runClaudeCodeLogin } from './login'
 import type { ClaudeCodeOAuthSecret } from './secret'
 import {
   FileCredentialPool,
+  type CredentialPool,
   credentialIdFromIdentity,
   type CredentialEntryMeta,
 } from '@demicodes/provider/credentials-pool'
 import type { ClaudeCodeOAuthAccess } from './oauth'
 
+/**
+ * Auth store that prefers the demi pool active entry; falls back to the vendor
+ * login of this machine where the pool allows it.
+ */
 export class PoolAwareClaudeCodeAuthStore implements ClaudeCodeAuthStore {
-  constructor(private readonly pool: FileCredentialPool) {}
+  private readonly pool: CredentialPool
+  private readonly credentialId: string | null
+
+  constructor(
+    pool: CredentialPool,
+    options: {
+      /** The account this store stands for, instead of the pool's active one. */
+      credentialId?: string
+    } = {},
+  ) {
+    this.pool = pool
+    this.credentialId = options.credentialId ?? null
+  }
 
   async status() {
     return this.currentStore().then((s) => s.status())
@@ -36,16 +53,36 @@ export class PoolAwareClaudeCodeAuthStore implements ClaudeCodeAuthStore {
     return this.currentStore().then((s) => s.resolveAccess())
   }
 
-  private async currentStore(): Promise<FileClaudeCodeAuthStore> {
-    await this.pool.ensureActivePointer()
-    const activeId = await this.pool.getActiveId()
-    if (activeId) {
+  private async currentStore(): Promise<ClaudeCodeAuthStore> {
+    const id = this.credentialId ?? await this.pool.ensureActivePointer()
+    if (id) {
       return new FileClaudeCodeAuthStore({
-        oauthFile: this.pool.secretPath(activeId),
+        document: this.pool.document(id),
         refresh: refreshClaudeCodeSecret,
       })
     }
+    // The environment token and the keychain are the login of whoever runs
+    // this machine: only a pool that stands for that user may read them.
+    if (!this.pool.vendorDefault)
+      return new MissingClaudeCodeAuthStore()
     return new FileClaudeCodeAuthStore()
+  }
+}
+
+/** An entry without an account, where no vendor login may stand in for one. */
+class MissingClaudeCodeAuthStore implements ClaudeCodeAuthStore {
+  async status() {
+    return {
+      status: 'unauthenticated' as const,
+      message: 'No Claude Code account is signed in'
+    }
+  }
+
+  async resolveAccess(): Promise<never> {
+    throw new ClaudeCodeAuthError(
+      'auth_missing',
+      'No Claude Code account is signed in'
+    )
   }
 }
 
@@ -85,23 +122,33 @@ function accessFromMaterial(
 }
 
 export function createClaudeCodeCredentials(
-  pool: FileCredentialPool,
+  pool: CredentialPool,
   authStore: ClaudeCodeAuthStore,
   options: {
     quota?: ProviderQuota | null
+    /**
+     * The provider stands for one named account: another account becoming
+     * active or being added says nothing about its usage.
+     */
+    pinned?: boolean
     onActiveChange?: () => void
     /** Injectable fetch for the OAuth login flow (tests). */
     loginFetch?: typeof fetch
   } = {},
 ): ProviderCredentials {
-
   const capability = (): ProviderCredentialsCapability => ({
     mode: 'supported',
     canBeginLogin: true,
-    canImportDefault: true,
+    canImportDefault: pool.vendorDefault,
     canAdd: true,
     multi: true,
   })
+
+  const accountChanged = (): void => {
+    if (!options.pinned)
+      options.quota?.clearLatest?.()
+    options.onActiveChange?.()
+  }
 
   const getActive = async (): Promise<ProviderCredentialActive> => {
     await pool.ensureActivePointer()
@@ -114,8 +161,7 @@ export function createClaudeCodeCredentials(
     credentialId: string
   ): Promise<ProviderCredentialActive> => {
     await pool.setActiveId(credentialId)
-    options.quota?.clearLatest?.()
-    options.onActiveChange?.()
+    accountChanged()
     return getActive()
   }
 
@@ -154,8 +200,7 @@ export function createClaudeCodeCredentials(
     const active = await pool.getActiveId()
     if (!active)
       await pool.setActiveId(id)
-    options.quota?.clearLatest?.()
-    options.onActiveChange?.()
+    accountChanged()
     return {
       id: meta.id,
       label: meta.label,
@@ -190,8 +235,7 @@ export function createClaudeCodeCredentials(
     const active = await pool.getActiveId()
     if (!active)
       await pool.setActiveId(id)
-    options.quota?.clearLatest?.()
-    options.onActiveChange?.()
+    accountChanged()
     return {
       id: meta.id,
       label: meta.label,
@@ -233,6 +277,11 @@ export function createClaudeCodeCredentials(
       }
     },
     importDefault: async () => {
+      if (!pool.vendorDefault)
+        throw new ClaudeCodeAuthError(
+          'auth_unsupported',
+          'This pool does not take the vendor login of the machine'
+        )
       const vendor = new FileClaudeCodeAuthStore()
       let access: ClaudeCodeOAuthAccess
       try {
@@ -263,8 +312,7 @@ export function createClaudeCodeCredentials(
     },
     remove: async (credentialId: string) => {
       await pool.remove(credentialId)
-      options.quota?.clearLatest?.()
-      options.onActiveChange?.()
+      accountChanged()
     },
   }
 }

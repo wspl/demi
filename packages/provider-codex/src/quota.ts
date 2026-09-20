@@ -7,6 +7,7 @@ import {
   unixSecondsToIso,
   type ProviderQuota,
   type ProviderQuotaProbeResult,
+  type ProviderQuotaSnapshots,
   type ProviderQuotaWindow,
 } from '@demicodes/provider'
 import { FileCodexAuthStore, type CodexAuthStore } from './auth'
@@ -24,7 +25,7 @@ export interface CodexQuotaOptions {
   ) => Promise<Response>
   userAgent?: string
   /** Where the latest snapshot is kept across rebuilds and restarts (`createProviderQuota`). */
-  snapshotFile?: string
+  snapshots?: ProviderQuotaSnapshots
 }
 
 const DEFAULT_CHATGPT_BASE_URL = 'https://chatgpt.com/backend-api'
@@ -61,7 +62,7 @@ export function createCodexQuota(options: CodexQuotaOptions = {}): ProviderQuota
 
   return createProviderQuota({
     providerId,
-    snapshotFile: options.snapshotFile,
+    snapshots: options.snapshots,
     canProbe: true,
     canObserve: true,
     probeCost: 'free',
