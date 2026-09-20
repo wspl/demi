@@ -114,7 +114,8 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
     </span>
     <TitleInput
       v-if="renaming"
-      class="flex-1 font-normal"
+      class="flex-1"
+      size="sm"
       :title="conversation.title"
       @submit="emit('renameSubmit', $event)"
       @cancel="emit('renameCancel')"

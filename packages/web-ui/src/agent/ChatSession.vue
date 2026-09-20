@@ -146,7 +146,6 @@ watch(() => props.conversation.id, close)
       <div ref="titleCell" class="col-span-2 flex min-w-0 items-center gap-1 sm:col-span-1">
         <TitleInput
           v-if="renaming"
-          class="text-chrome font-normal text-fg"
           :style="{ width: `${TITLE_MAX_PX}px` }"
           :title="conversation.title"
           @submit="renaming = false; emit('rename', $event)"
