@@ -37,40 +37,58 @@ test('mapCodexRateLimitHeaders maps primary and secondary windows', () => {
   })
   const mapped = mapCodexRateLimitHeaders(headers)
   expect(mapped?.windows).toHaveLength(2)
-  expect(mapped?.windows[0]).toMatchObject({ id: 'primary', usedPercent: 35.5 })
-  expect(mapped?.windows[1]).toMatchObject({ id: 'secondary', usedPercent: 10 })
+  expect(mapped?.windows[0]).toMatchObject({ id: 'primary', label: '5-hour', usedPercent: 35.5 })
+  expect(mapped?.windows[1]).toMatchObject({ id: 'secondary', label: 'Weekly', usedPercent: 10 })
 })
 
-test(
-  'createCodexQuota probe uses response headers and cancels body',
-  async () => {
-    let seenUrl = ''
-    const quota = createCodexQuota({
-      authStore: staticStore(),
-      fetch: async (input) => {
-        seenUrl = String(input)
-        return new Response('data: skip\n\n', {
-          status: 200,
-          headers: {
-            'content-type': 'text/event-stream',
-            'x-codex-primary-used-percent': '22',
-            'x-codex-primary-window-minutes': '300',
-            'x-codex-primary-reset-at': '1700000000',
-          },
-        })
-      },
-    })
-    const snap = await quota.probe()
-    expect(seenUrl).toContain('responses')
-    expect(snap.windows[0]?.id).toBe('primary')
-    expect(snap.windows[0]?.usedPercent).toBe(22)
-    expect(snap.accountLabel).toBe('u@example.com')
-    expect(quota.capability()).toMatchObject({
-      probeCost: 'minimal_request',
-      canObserve: true
-    })
-  }
-)
+test('the probe reads the account\'s usage status: free, with the plan and the windows named by their length', async () => {
+  let seen: { url: string, method?: string, account: string | null } | undefined
+  const quota = createCodexQuota({
+    authStore: staticStore(),
+    fetch: async (input, init) => {
+      seen = {
+        url: String(input),
+        method: init?.method,
+        account: new Headers(init?.headers).get('ChatGPT-Account-Id'),
+      }
+      return Response.json({
+        plan_type: 'pro',
+        rate_limit: {
+          allowed: false,
+          limit_reached: true,
+          primary_window: { used_percent: 100, limit_window_seconds: 18_000, reset_after_seconds: 60, reset_at: 1_700_000_000 },
+          secondary_window: { used_percent: 41, limit_window_seconds: 604_800, reset_after_seconds: 900, reset_at: 1_700_500_000 },
+        },
+      })
+    },
+  })
+  const snap = await quota.probe()
+  expect(seen).toEqual({ url: 'https://chatgpt.com/backend-api/wham/usage', method: 'GET', account: 'acct' })
+  expect(snap.plan).toMatchObject({ id: 'pro', label: 'Pro' })
+  expect(snap.windows.map(window => [window.id, window.label, window.usedPercent])).toEqual([
+    ['primary', '5-hour', 100],
+    ['secondary', 'Weekly', 41],
+  ])
+  expect(snap.windows[0]?.resetsAt).toBe(new Date(1_700_000_000_000).toISOString())
+  expect(snap.accountLabel).toBe('u@example.com')
+  expect(quota.capability()).toMatchObject({ probeCost: 'free', canObserve: true })
+})
+
+test('a usage status the backend refuses, and an API key that has none, fail the probe', async () => {
+  const refused = createCodexQuota({
+    authStore: staticStore(),
+    fetch: async () => new Response('nope', { status: 403 }),
+  })
+  await expect(refused.probe()).rejects.toThrow('HTTP 403')
+  const apiKey = createCodexQuota({
+    authStore: {
+      status: async () => ({ status: 'authenticated', accountLabel: 'OPENAI_API_KEY' }),
+      resolveAuth: async () => ({ kind: 'apiKey', apiKey: 'sk-test' }) as CodexResolvedAuth,
+    },
+    fetch: async () => { throw new Error('no request expected') },
+  })
+  await expect(apiKey.probe()).rejects.toThrow('no Codex usage status')
+})
 
 test.each([false, true])(
   'Codex SSE quota respects account invalidation: %s',

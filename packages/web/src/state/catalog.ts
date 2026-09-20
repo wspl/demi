@@ -128,7 +128,11 @@ export function providerView(
       details?.accounts.map((account) => ({
         id: account.id,
         label: account.label,
-        plan: account.detail ?? '',
+        // The plan the vendor reports with the usage, which it does for the account in
+        // use. How an account signed in (`chatgpt`, `oidc`) is not a plan and is not shown.
+        plan: account.id === details.active?.credentialId
+          ? (details.quota?.plan?.label ?? details.quota?.plan?.id ?? '')
+          : '',
         active: account.id === details.active?.credentialId,
         quota:
           account.id === details.active?.credentialId
