@@ -159,3 +159,32 @@ test('a provider standing for one account keeps its usage when another account i
     expect(quota.latest() !== null).toBe(pinned)
   }
 })
+
+test('the framework\'s file pool keeps a refreshed account in its entry file, not the vendor home', async () => {
+  const { readFile } = await import('node:fs/promises')
+  const { openCodexCredentialPool } = await import('../credentials')
+  const stateDir = await mkdtemp(join(tmpdir(), 'demi-codex-state-'))
+  const codexHome = await mkdtemp(join(tmpdir(), 'demi-codex-home-'))
+  try {
+    const pool = openCodexCredentialPool({ stateDir })
+    await pool.writeEntry(meta('a'), authText('a@example.com', 'a'))
+    const store = new PoolAwareCodexAuthStore(pool, {
+      codexHome,
+      fileAuthOptions: {
+        refresh: async () => ({
+          access_token: jwt({ exp: 1_900_000_000 }),
+          refresh_token: 'renewed'
+        }),
+      },
+    })
+    const auth = await store.resolveAuth({ forceRefresh: true })
+    expect(auth.kind === 'chatgpt' && auth.refreshToken).toBe('renewed')
+    expect(await readFile(pool.secretPath('a'), 'utf8')).toContain('renewed')
+    // A rebuilt store reads what the refresh kept.
+    const again = await new PoolAwareCodexAuthStore(pool, { codexHome }).resolveAuth()
+    expect(again.kind === 'chatgpt' && again.refreshToken).toBe('renewed')
+  } finally {
+    await rm(stateDir, { recursive: true, force: true })
+    await rm(codexHome, { recursive: true, force: true })
+  }
+})
