@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref } from 'vue'
-import type { ThinkingConfig, TokenUsage } from '@demicodes/core'
+import type { ThinkingConfig, TokenUsage, UserContentBlock } from '@demicodes/core'
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
+import { joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
+import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
 import type { MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import RemoteFilePicker from '@demicodes/web-ui/files/RemoteFilePicker.vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import {
   applyAttachmentUpdate,
+  arrangeCapsuleFiles,
   AttachmentUploadQueue,
   attachmentFileError,
   attachTextSnippet,
@@ -14,9 +17,11 @@ import {
   composerAttachmentFromFile,
   composerFileNames,
   composerRemoteAttachment,
+  encodeRemoteReference,
   isComposerFile,
   remoteAttachmentError,
   type AttachmentUploadUpdate,
+  type ComposerAttachment,
   type ComposerAttachmentInput,
 } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { ModelInfo, ProviderInfo } from '@demicodes/web-ui/transport/protocol'
@@ -33,6 +38,7 @@ const props = withDefaults(
     disabled?: boolean
     /** The model catalog: `failed` tells it beside the model chip with Retry, as the product does. */
     modelLoad?: 'loading' | 'ready' | 'failed'
+    /** The draft's Markdown, an attachment mark where each capsule stands; files without one follow the text. */
     draft?: string
     attachments?: ComposerAttachmentInput[]
     focused?: boolean
@@ -57,8 +63,8 @@ const props = withDefaults(
   },
 )
 const emit = defineEmits<{
-  send: [text: string]
-  queue: [text: string]
+  send: [content: UserContentBlock[]]
+  queue: [content: UserContentBlock[]]
   stop: []
   compact: []
   configure: []
@@ -69,6 +75,9 @@ const emit = defineEmits<{
 }>()
 const draft = ref(props.draft)
 const attached = ref(props.attachments.map((item) => composerAttachment(item)))
+/** The files the message has, in the order of its capsules; the rest wait for an undo. */
+const carried = ref<string[]>(attached.value.map((item) => item.id))
+const composer = ref<InstanceType<typeof SessionComposer>>()
 const uploads = new AttachmentUploadQueue()
 const providerId = ref(props.selectedProviderId)
 const modelId = ref(props.selectedModelId)
@@ -86,42 +95,102 @@ function applyUpdate(id: string, update: AttachmentUploadUpdate) {
   }
 }
 
-function remove(id: string) {
+/** Pictures of sent files stay loadable while the transcript shows them; they go with the page. */
+const sentPictures: string[] = []
+
+function forget(id: string, release: boolean) {
   uploads.cancel(id)
   const item = attached.value.find((file) => file.id === id)
   if (item && isComposerFile(item) && item.src?.startsWith('blob:')) {
-    URL.revokeObjectURL(item.src)
+    if (release) {
+      URL.revokeObjectURL(item.src)
+    } else {
+      sentPictures.push(item.src)
+    }
   }
   attached.value = attached.value.filter((file) => file.id !== id)
 }
 
-function submit() {
-  const text =
-    draft.value.trim() || attached.value.map((item) => item.name).join(', ')
-  if (!text) {
-    return
+/**
+ * The files the message now has, in the order of its capsules; the rest wait
+ * for an undo, as the product's do.
+ */
+function arrange(ids: string[]) {
+  const next = arrangeCapsuleFiles(attached.value, carried.value, ids)
+  carried.value = [...ids]
+  attached.value = next.carried
+  for (const item of next.stopped) {
+    uploads.cancel(item.id)
   }
-  draft.value = ''
-  while (attached.value.length) {
-    remove(attached.value[0]!.id)
-  }
-  if (props.running) {
-    emit('queue', text)
-  } else {
-    emit('send', text)
+  for (const item of next.resumed) {
+    if (isComposerFile(item) && item.phase !== 'ready') {
+      upload(item.id)
+    }
   }
 }
 
-function addFiles(files: File[]) {
+/** A sent file as the transcript records it: a record at a made-up Host path, a picture before it, or a device's file. */
+function sentBlocks(item: ComposerAttachment): UserContentBlock[] {
+  if (item.kind === 'reference') {
+    return [{ type: 'reference', reference: encodeRemoteReference(item.host, item.path) }]
+  }
+  const record: UserContentBlock = {
+    type: 'attachment',
+    name: item.name,
+    path: `/home/demi/.demi/attachments/gallery/${item.name}`,
+    mediaType: item.src ? 'image/png' : 'application/octet-stream',
+    sizeBytes: 0,
+    sha256: 'gallery',
+    snippet: item.snippet,
+  }
+  return item.src ? [{ type: 'image', source: { type: 'url', url: item.src } }, record] : [record]
+}
+
+function submit() {
+  const sent = carried.value.flatMap((id) => attached.value.filter((item) => item.id === id))
+  const content = joinMessageContent(draft.value, sent.map(sentBlocks))
+  if (!content.length) {
+    return
+  }
+  draft.value = ''
+  carried.value = []
+  while (attached.value.length) {
+    forget(attached.value[0]!.id, false)
+  }
+  if (props.running) {
+    emit('queue', content)
+  } else {
+    emit('send', content)
+  }
+}
+
+function upload(id: string) {
+  // The sweep never fails; were it to, the file would keep its capsule with Retry, as the product's does.
+  uploads.start(id, sweepUpload, (update) => applyUpdate(id, update)).catch(() => applyUpdate(id, { phase: 'failed' }))
+}
+
+/** Takes files and puts their capsules in the message, where the composer said they would land. */
+async function addFiles(files: File[]) {
+  const taken: ComposerAttachment[] = []
   for (const file of files) {
     if (attachmentFileError(file, composerFileNames(attached.value))) {
       continue
     }
     const item = composerAttachmentFromFile(file)
+    // A text file's opening belongs to its capsule, so it is read before the capsule goes in.
+    await attachTextSnippet(item, file)
     attached.value.push(item)
-    void attachTextSnippet(attached.value.find((held) => held.id === item.id) as typeof item, file)
-    // The sweep never fails; a failure would drop the file as the product does.
-    uploads.start(item.id, sweepUpload, (update) => applyUpdate(item.id, update)).catch(() => remove(item.id))
+    const held = attached.value.find((each) => each.id === item.id)!
+    taken.push(held)
+    upload(item.id)
+  }
+  composer.value?.insertCapsules(taken.map(composerCapsule))
+}
+
+function retry(id: string) {
+  const item = attached.value.find((file) => file.id === id)
+  if (item && isComposerFile(item) && item.phase === 'failed') {
+    upload(id)
   }
 }
 
@@ -130,7 +199,9 @@ const remotePicker = ref<InstanceType<typeof RemoteFilePicker>>()
 function attachRemote(file: { host: string; path: string }) {
   const error = remoteAttachmentError(file.path, file.host, attached.value)
   if (!error) {
-    attached.value.push(composerRemoteAttachment(file))
+    const item = composerRemoteAttachment(file)
+    attached.value.push(item)
+    composer.value?.insertCapsules([composerCapsule(item)])
   }
 }
 function selectModel(provider: string, model: string) {
@@ -140,13 +211,17 @@ function selectModel(provider: string, model: string) {
 onBeforeUnmount(() => {
   uploads.cancelAll()
   while (attached.value.length) {
-    remove(attached.value[0]!.id)
+    forget(attached.value[0]!.id, true)
+  }
+  for (const url of sentPictures) {
+    URL.revokeObjectURL(url)
   }
 })
 </script>
 
 <template>
   <SessionComposer
+    ref="composer"
     v-bind="props"
     v-model:draft="draft"
     @update:message-edit="emit('update:messageEdit', $event)"
@@ -168,7 +243,8 @@ onBeforeUnmount(() => {
     @retry-models="emit('retryModels')"
     @add-files="addFiles"
     @attach-remote="remotePicker?.open()"
-    @remove-attachment="remove"
+    @arrange-attachments="arrange"
+    @retry-attachment="retry"
     @select-model="selectModel"
     @change-thinking="thinking = $event"
     @change-service-tier="tier = $event"

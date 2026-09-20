@@ -18,6 +18,24 @@ export interface TreeRow {
   open: boolean
 }
 
+/**
+ * What a drag over a tree would drop into, lit while it is there: one of its
+ * directory rows with the rows it holds, or the tree itself.
+ */
+export type TreeDropTarget = { kind: 'row'; path: string } | { kind: 'tree' }
+
+/** A directory row and the rows it holds, as indices into `rows`: from the row to the last one under it. */
+export function treeBlock(rows: readonly TreeRow[], path: string): { first: number; last: number } | null {
+  const first = rows.findIndex((row) => row.path === path)
+  if (first < 0)
+    return null
+  const depth = rows[first]!.depth
+  let last = first
+  while (last + 1 < rows.length && rows[last + 1]!.depth > depth)
+    last += 1
+  return { first, last }
+}
+
 /** What to pin: the directory rows, and how far up the stack rides as the deepest one leaves. */
 export interface StickyTreeStack {
   paths: string[]

@@ -112,12 +112,17 @@ watch([() => props.room, labelText, label], () => {
     >
       <template #trigger="{ isOpen }">
         <span class="relative inline-flex items-center overflow-hidden">
-          <Sparkles :size="ICON_PX.in28" class="shrink-0" />
+          <!-- The sparkle stands in for the name; with room for the name it would only repeat it. -->
+          <Sparkles
+            v-if="compact"
+            :size="ICON_PX.in28"
+            class="mr-1 shrink-0"
+          />
           <!-- The name sits a step above the chip's tone and the level a step below it, so the
                two stay two steps apart whether the chip is subtle (closed) or body (open). -->
           <span
             ref="label"
-            class="inline-flex items-center gap-1 whitespace-nowrap pl-1"
+            class="inline-flex items-center gap-1 whitespace-nowrap"
             :class="compact ? 'invisible absolute left-0 top-0' : ''"
           >
             <span :class="isOpen ? 'text-fg-body' : 'text-fg-muted'">{{ state.label }}</span>
