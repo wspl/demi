@@ -3,7 +3,8 @@ import { provideEditSelection, type EditSelectionHandler } from './edit-selectio
 import { provideMessageFiles } from '../markdown/message-files'
 import type { ConversationFiles } from '../markdown/types'
 import { computed, ref, watch } from 'vue'
-import { Archive, PanelRight, Play } from '@lucide/vue'
+import { useElementSize } from '@vueuse/core'
+import { PanelRight, Play } from '@lucide/vue'
 import type { TranscriptVersion } from '@demicodes/agent/client'
 import { beginMessageEdit, lastEditableUserMessageId, type MessageEditState } from './message-editing'
 import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
@@ -21,6 +22,7 @@ import type { MessageForkHandler } from './message-fork'
 
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import { provideLabelRoom } from '../ui/label-room'
 import { sessionFailureNotice, turnRecovery } from './session-status'
 import { getVisibleBlocks } from './visible-blocks'
 import type { PersistedScrollState } from '../composables/useBlockVirtualizer'
@@ -39,7 +41,6 @@ const props = defineProps<{
   files?: ConversationFiles
 }>()
 const emit = defineEmits<{
-  archive: []
   openAside: []
   retry: []
   retryLoad: []
@@ -58,6 +59,20 @@ provideEditSelection((selection) => props.selectEdit?.(selection))
 // Relative paths resolve against the directory the conversation works in.
 provideMessageFiles(() => props.files && { ...props.files, cwd: props.conversation.cwd })
 const surface = ref<{ dockHeight: number }>()
+// The title is the last thing in the header to be cut short: the controls
+// beside it give up their labels first, and get them back when it fits whole.
+const titleCell = ref<HTMLElement | null>(null)
+const title = ref<HTMLElement | null>(null)
+const { width: titleCellWidth } = useElementSize(titleCell)
+const titleRoom = ref<number>()
+watch(
+  [titleCellWidth, () => props.conversation.title, title],
+  () => {
+    titleRoom.value = title.value ? titleCellWidth.value - title.value.scrollWidth : undefined
+  },
+  { flush: 'post' },
+)
+provideLabelRoom(() => titleRoom.value)
 // Recovery of an unfinished turn needs a provider and a conversation that is
 // neither archived nor being edited.
 const canRecover = computed(
@@ -117,25 +132,14 @@ watch(() => props.conversation.id, close)
     <header
       class="grid shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 px-3 py-2"
     >
-      <div class="col-span-2 flex min-w-0 items-center gap-1 sm:col-span-1">
+      <div ref="titleCell" class="col-span-2 flex min-w-0 items-center sm:col-span-1">
         <h1
+          ref="title"
           class="min-w-0 select-none truncate text-chrome font-normal text-fg"
           :title="conversation.title"
         >
           {{ conversation.title }}
         </h1>
-        <Tooltip
-          content="Archive"
-          class="shrink-0"
-        >
-          <IconButton
-            :icon="Archive"
-            variant="ghost"
-            aria-label="Archive"
-            :disabled="conversation.phase !== 'idle' || conversation.archived"
-            @click="emit('archive')"
-          />
-        </Tooltip>
       </div>
       <div
         class="col-span-2 row-start-2 flex min-w-0 items-center gap-1 sm:col-span-1 sm:col-start-2 sm:row-start-1"

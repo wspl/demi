@@ -1503,9 +1503,11 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="Product session"
-        note="The shared product page, with local fixture state and handlers."
+        note="The shared product page, with local fixture state and handlers. The header cuts its title short last: as the frame narrows, the directory button and then the host button become their icons, their names in tooltips, and they name themselves again once the title fits whole. Resize the frame from its corner."
       >
-        <GalleryConnectedSession />
+        <div class="max-w-full resize-x overflow-hidden pb-3" style="min-width: 20rem">
+          <GalleryConnectedSession />
+        </div>
       </GallerySection>
       <GallerySection
         title="Scroll control without task chips"
@@ -1861,7 +1863,6 @@ function abortTerminal(id: string) {
         :edit-version="editVersion"
         v-model:message-edit="messageEdit"
         @retry="sessionFlow.resume()"
-        @archive="session.archived = true"
         @save-scroll="(_id, state) => (session.scroll = state)"
         @abort-subagents="abortAgents"
         @abort-subagent="abortAgent"
