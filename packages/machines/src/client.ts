@@ -61,6 +61,10 @@ export class RemoteProvisioner implements ManagedHostProvisioner {
     return this.call('image_state', { deviceId })
   }
 
+  runtimeState(deviceId: string) {
+    return this.call('runtime_state', { deviceId })
+  }
+
   wake(deviceId: string, boot: BootArgs): Promise<void> {
     return this.call('wake', { deviceId, boot }).then(() => undefined)
   }

@@ -4,14 +4,11 @@
 // Unix socket: one request per line, one `ok`/`error` per request, `death`
 // on the manager's own initiative. Ids are opaque strings the client picks.
 import { z } from 'zod'
-import { imageStateSchema, type BootArgs } from './provisioner'
+import { managedBootSchema } from '@demicodes/runner-protocol'
+import { imageStateSchema, runtimeStateSchema } from './provisioner'
 
 const deviceId = z.string().min(1)
 
-const bootArgsSchema: z.ZodType<BootArgs> = z.object({
-  backendUrl: z.string().min(1),
-  deviceToken: z.string().min(1),
-})
 
 /**
  * One entry per `ManagedHostProvisioner` method: its parameters and its
@@ -24,7 +21,8 @@ export const machineOps = {
     params: z.object({ deviceId }),
     result: imageStateSchema.nullable()
   },
-  wake: { params: z.object({ deviceId, boot: bootArgsSchema }), result: z.null() },
+  runtime_state: { params: z.object({ deviceId }), result: runtimeStateSchema },
+  wake: { params: z.object({ deviceId, boot: managedBootSchema }), result: z.null() },
   hibernate: { params: z.object({ deviceId }), result: z.null() },
   checkpoint: { params: z.object({ deviceId }), result: z.null() },
   grow_volume: {
@@ -57,6 +55,7 @@ export const machineRequestSchema = z.discriminatedUnion('op', [
   z.object({ id, op: z.literal('reconcile'), params: machineOps.reconcile.params }),
   z.object({ id, op: z.literal('current_base_version'), params: machineOps.current_base_version.params }),
   z.object({ id, op: z.literal('image_state'), params: machineOps.image_state.params }),
+  z.object({ id, op: z.literal('runtime_state'), params: machineOps.runtime_state.params }),
   z.object({ id, op: z.literal('wake'), params: machineOps.wake.params }),
   z.object({ id, op: z.literal('hibernate'), params: machineOps.hibernate.params }),
   z.object({ id, op: z.literal('checkpoint'), params: machineOps.checkpoint.params }),

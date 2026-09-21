@@ -4,12 +4,8 @@ Cloud runs on a Linux execution host, or inside one Linux VM for local macOS
 development. The backend reaches the manager over a restricted Unix socket and
 the sandbox's runner connects to the configured backend endpoint.
 
-This guide describes the selected gVisor deployment. **The installer, manager
-adapter, image pipeline, and Lima template still need implementation.** The
-configuration below is their intended interface, not a claim that the current
-scripts accept it. The authoritative runtime contract is
-[Managed hosts](demi-next/managed-hosts.md); image artifacts are defined in
-[Cloud images](cloud-images.md).
+The authoritative runtime contract is [Managed hosts](demi-next/managed-hosts.md);
+image artifacts are defined in [Cloud images](cloud-images.md).
 
 ## Linux requirements
 
@@ -20,7 +16,10 @@ administration through iproute2 and nftables. An ordinary hardware-virtualized
 VPS can provide these without exposing KVM. A restricted container sold as a VPS
 may not; check the facilities instead of relying on the provider's product name.
 
-Install the complete pinned runsc distribution and verify its release checksum.
+The installer installs the complete pinned runsc distribution and verifies its
+release checksum on amd64. On arm64 it builds the pinned source with the shipped
+seccomp ABI fix and runs the native/systrap regression probe. Build dependencies
+and pinned inputs are in [runtime inputs](../packages/machines/runtime/README.md).
 Keep `runsc` and its accompanying `gvisor-bin/` directory together; upstream
 packaging can include helper binaries. The build/deployment manifest pins the
 release and archive hash, and startup validates the configured executable and
@@ -28,7 +27,7 @@ required flags. Follow the upstream
 [installation instructions](https://gvisor.dev/docs/user_guide/install/).
 
 The execution host also needs Bun for the manager, e2fsprogs, util-linux,
-iproute2, nftables, and an archive reader for the shipped image format. Docker
+iproute2, nftables, and `bsdtar` from libarchive-tools for the shipped image format. Docker
 and containerd are not required. The manager runs as a privileged system service
 in a private mount namespace. Only its dedicated backend/forwarding group may
 connect to the manager socket; group membership grants control of Cloud machines.
@@ -37,6 +36,13 @@ Startup validates runtime support, image architecture and integrity, storage
 mount/freeze support, cgroup enforcement, and network policy installation. It
 fails with a named diagnostic before serving requests if a requirement is absent.
 It never falls back to another runtime or launches an unisolated process.
+
+Existing host firewalls must also permit the manager's approved forwarded traffic.
+For example, Docker can leave a `FORWARD` policy of `DROP`; a rule accepting a
+packet in the manager's nftables table does not override a later table's drop.
+The manager does not rewrite another service's firewall. Configure that service's
+integration rules for the Cloud interfaces, then verify public egress and private
+destination refusal through a real sandbox.
 
 ## Configuration
 
@@ -77,7 +83,7 @@ Example manager configuration for an already prepared Linux execution host:
 ```dotenv
 DEMI_MACHINES_SOCKET=/run/demi/machines.sock
 DEMI_MACHINES_DATA=/var/lib/demi-machines
-DEMI_MANAGED_RUNSC=/opt/gvisor/runsc
+DEMI_MANAGED_RUNSC=/opt/gvisor/<pinned-version>/runsc
 DEMI_MANAGED_IMAGE=/opt/demi-cloud/current
 DEMI_MANAGED_BACKEND_URL=https://backend.example.com
 DEMI_MANAGED_DNS=1.1.1.1,8.8.8.8
@@ -93,7 +99,8 @@ by host rules or the development tunnel.
 Place persistent state on a dedicated Linux filesystem. XFS with `reflink=1` is
 the preferred image-cloning setup; set its copy-on-write extent hint to the
 filesystem block size for the state directory. btrfs can clone image files too.
-ext4 works by copying and has higher save latency and space cost. Never put
+ext4 uses sparse-preserving copies and has higher save latency and space cost
+for populated volumes. Never put
 working images on a Mac shared directory or a container engine's temporary layer.
 
 The installer checks the existing mount and reports an unsuitable configuration;
@@ -108,6 +115,21 @@ cleanup on service death. No host shell command supplied by a user becomes a
 privileged launcher argument. The installer operates only on its own service,
 network namespace/interface names, cgroup subtree, and nftables table.
 
+After installing the Linux dependencies and publishing an image, install the
+service with absolute paths:
+
+```sh
+sudo bash packages/machines/scripts/install-managed-hosts.sh \
+  --user backend --bun /opt/bun/bin/bun \
+  --manager /opt/demi/packages/machines/dist/main.mjs \
+  --image /opt/demi-cloud/releases/build-id \
+  --backend-url https://backend.example.com --dns 1.1.1.1 \
+  --data /var/lib/demi-machines
+```
+
+The backend user joins the `demi-cloud` group. Restart its service or login session
+to acquire that membership. The installer never starts the backend itself.
+
 Publish a new image, restart the manager, and explicitly reset a device when it
 should use the new base. Restart alone does not upgrade pinned devices. A new
 runtime starts only after prior writers have stopped. The replacement deployment
@@ -119,12 +141,23 @@ Use one native-architecture Linux VM. On Apple silicon, select arm64 Linux and
 arm64 image/native artifacts. The VM runs the same privileged manager and runsc
 profile as Linux deployment. It has no nested virtualization requirement.
 
-The replacement `packages/machines/lima/demi-machines.yaml` and
-`scripts/lima-machines.sh` must provision Linux dependencies, a separate persistent
+`packages/machines/lima/demi-machines.yaml` and
+`packages/machines/scripts/lima-machines.sh` provision Linux dependencies, a separate persistent
 data disk, manager service, network policy, and Unix socket forwarding. The Mac
 backend connects at `~/.lima/demi-machines/sock/demi-machines.sock`; the script
-prints the guest-reachable Mac URL to configure and validates it from a sandbox.
+prints the guest-reachable Mac URL to configure. Verify the connection by
+starting a managed device through the backend.
 Do not assume a particular Lima gateway address works on every installation.
+
+With an image already built inside Lima:
+
+```sh
+bash packages/machines/scripts/lima-machines.sh \
+  --image /opt/demi-cloud/releases/build-id --dns 1.1.1.1
+```
+
+For an existing VM, pass `--data` with a newly prepared Linux state directory.
+The installer does not reinterpret an old deployment's disk layout.
 
 If a checkout is shared for manager development, it belongs only to the outer
 Linux VM, never to a user's sandbox. Data stays on the Linux disk. Stopping or
@@ -139,5 +172,6 @@ endpoint. Verify runner readiness, shell/native/browser operations, persistent
 package and home files across stop/wake, and reset with a broken system. Check
 network refusal and failure cleanup using the full
 [acceptance contract](demi-next/managed-hosts.md#verification). Measure local
-Lima and VPS performance separately; the existing x86 VPS evaluation establishes
-neither arm64 performance nor acceptance of this manager implementation.
+Lima and VPS performance separately. The [evaluation report](gvisor-evaluation.md)
+records tested profiles; those observations do not certify a different host,
+image, runtime, or concurrent-user capacity.

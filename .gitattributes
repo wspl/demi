@@ -5,6 +5,9 @@
 # The Bun lockfile is generated: collapse it in diffs and don't attempt to merge it.
 bun.lock linguist-generated=true -diff
 
+# Unified patches preserve upstream context, including its leading diff space.
+packages/machines/runtime/*.patch -whitespace
+
 # Binary assets — never normalize or attempt to diff.
 *.png binary
 *.jpg binary

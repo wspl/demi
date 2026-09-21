@@ -33,6 +33,8 @@ async function wire(): Promise<string> {
       [artifactLocationSchema, 'demi_command_service::protocol::ArtifactLocation'],
     ]),
   })
+  const { managedBootSchema } = await import('../packages/runner-protocol/src/managed-boot')
+  generator.type(managedBootSchema, 'ManagedBoot')
   const schemas = unionOptions(backendToRunnerMessageSchema)
   const inbound = generator.taggedEnum(backendToRunnerMessageSchema, 'Inbound')
   const requestIds = (prefix: string) => schemas.flatMap(schema => {
