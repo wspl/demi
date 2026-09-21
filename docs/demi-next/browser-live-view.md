@@ -418,22 +418,12 @@ checks read it there.
 
 ## Implementation status
 
-Not implemented yet: [a browser tab in the panel](#a-browser-tab-in-the-panel)
-as designed above. Today the panel's Host tabs are the view's last `state`
-message, the view opens with the panel rather than with a `browser` tab, and
-tabs open, close and navigate through `open`, `close`, `navigate` and
-`history` view messages, which the design replaces with the browser tab
-routes. A module that cannot list its tabs says so only on its standard error,
-which no log keeps ([Host log](runner.md#host-log), not implemented either):
-on a Cloud the view then never learns its tabs, and the panel waits forever
-for a tab the browser already opened. The cause is to be read from the Host
-log once it exists.
-
 Implemented: the protocol, the [user stream](native-runtime.md#user-streams)
 that carries it, the Host's live view module with its capture extension and
-page observers, the view in `web-ui`, the product's stream source and
-activity reports, the gallery's own browser, and the guest image's fonts for
-Chinese, Japanese and Korean.
+page observers, the `browser` tab kind in `web-ui` with its tab source and
+content, the [browser tab routes](web-api.md#conversation-browser-tabs), the
+product's stream source, tab requests and activity reports, the gallery's own
+browser, and the guest image's fonts for Chinese, Japanese and Korean.
 
 Verified against real Chrome on macOS and Linux arm64: watching a tab beside
 the agent, the viewport modes, the viewer's ratio in the picture it receives
