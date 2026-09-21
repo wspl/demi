@@ -3,7 +3,7 @@ import type { LiveControl, LiveModuleMessage, LiveTab, LiveViewerMessage } from 
 import { LiveFrameReader, encodeFile, encodeMessage, type LiveFrame } from '../frames'
 import { keyMessage, localKey, modifiers, pointerMessage, viewerPlatform, wheelMessage } from '../input'
 import { LiveSession, type LiveSessionOptions, type LiveStreamHandlers, type PictureSink } from '../session'
-import { panelSize, placePicture, panelRect, tabPoint, viewportChoices } from '../view'
+import { deviceSnap, panelSize, placePicture, panelRect, tabPoint, viewportChoices } from '../view'
 
 const WEB = { width: 800, height: 600, devicePixelRatio: 2, mode: 'web' } as const
 const PHONE = { width: 390, height: 844, devicePixelRatio: 2, mode: 'mobile' } as const
@@ -77,6 +77,15 @@ test('a web tab fills the panel and a phone keeps its size in the middle', () =>
   expect(phone.scale).toBeCloseTo(600 / 844)
   expect(phone.left).toBeCloseTo((800 - 390 * phone.scale) / 2)
   expect(phone.top).toBe(0)
+})
+
+test('a picture starts on a whole device pixel wherever its panel stands', () => {
+  expect(deviceSnap(600, 2)).toBe(0)
+  expect(deviceSnap(600.5, 2)).toBe(0)
+  // A percentage split leaves the panel between two device pixels.
+  expect(deviceSnap(594.67, 2)).toBeCloseTo(-0.17, 2)
+  expect(deviceSnap(594.3, 1)).toBeCloseTo(-0.3, 5)
+  expect((594.67 + deviceSnap(594.67, 2)) * 2).toBeCloseTo(1189, 5)
 })
 
 test('panel points map to the tab and back, within the picture', () => {
