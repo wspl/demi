@@ -100,9 +100,9 @@ work panel tab state        browser kind                         backend / Host
   selection.
 - **A tab the Host no longer has.** The agent closed it, the browser ended, the
   Cloud stopped, or the Host restarted. The panel tab stays: the kind never
-  removes a tab. Its content says that the tab is gone and offers Reopen, which
-  opens a new browser tab on the saved URL and binds to it; the user may close
-  the panel tab instead. The browser's storage outlives its tabs, so a reopened
+  removes a tab. Its content says that the page was closed on the device and
+  offers two ways on: Close tab, and Reload, which opens a new browser tab on
+  the saved URL and binds to it. The browser's storage outlives its tabs, so a reopened
   page is still signed in ([Ownership](browser.md#ownership)).
 - **A Host that cannot be reached.** A stopped Cloud, an offline device, or a
   lost connection changes no tab. The content of the shown tab says what is

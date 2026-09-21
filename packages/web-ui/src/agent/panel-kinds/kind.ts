@@ -17,7 +17,8 @@ export interface PanelTabKind<Data = unknown> {
   mark: Component
   /**
    * The tab's content. Props: `tabId`, `data`, and `shown`, whether the tab is
-   * the panel's selection. Emits `update` with the tab's next `data`.
+   * the panel's selection. Emits `update` with the tab's next `data`, and
+   * `close` to have the panel close the tab as its user would.
    */
   content: Component
   /** The user closed a tab of this kind; the panel has already removed it. */
