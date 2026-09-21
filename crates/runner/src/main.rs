@@ -159,6 +159,7 @@ async fn runner(args: Vec<String>) -> io::Result<u8> {
     };
     let options = Options {
         backend,
+        log: directory.join("log"),
         directory,
         executable: std::env::current_exe()?,
         cwd: std::env::current_dir()?,

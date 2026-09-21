@@ -4,6 +4,7 @@ use crate::commands::{
     cache::{ArtifactCache, ArtifactResolver, RuntimeError},
     services::ResidentService,
 };
+use crate::host_log;
 use demi_command_service::Client;
 use demi_command_service::protocol::{
     ConversationRequest, ConversationStatus, PackageDescriptor, Record,
@@ -126,8 +127,14 @@ impl Services {
                             .map_err(Arc::new)
                     }
                     .await;
+                    let ran = started.is_ok();
                     let outcome = match started {
                         Ok(mut service) => {
+                            host_log::event(format_args!(
+                                "service {} started (pid {})",
+                                descriptor.id,
+                                service.pid()
+                            ));
                             slot.ready
                                 .send_replace(Some(Ok(Arc::new(service.client().clone()))));
                             let stopped = tokio::select! {
@@ -155,8 +162,15 @@ impl Services {
                     let error = outcome
                         .err()
                         .unwrap_or_else(|| Arc::new(RuntimeError::Cancelled));
-                    if !matches!(&*error, RuntimeError::Cancelled) {
-                        eprintln!("demi-runner: native service retired: {error}");
+                    if matches!(&*error, RuntimeError::Cancelled) {
+                        if ran {
+                            host_log::event(format_args!("service {} stopped", descriptor.id));
+                        }
+                    } else {
+                        host_log::runner(format_args!(
+                            "service {} retired: {error}",
+                            descriptor.id
+                        ));
                     }
                     slot.ready.send_replace(Some(Err(error)));
                 });
@@ -200,7 +214,7 @@ impl Services {
                     match status {
                         Ok(status) => !status.conversations.is_empty(),
                         Err(error) => {
-                            eprintln!("demi-runner: native status failed: {error}");
+                            host_log::runner(format_args!("native status failed: {error}"));
                             false
                         }
                     }
@@ -314,9 +328,10 @@ async fn conversation(
                 {
                     completed = true
                 }
-                Record::Stderr(chunk) => {
-                    eprintln!("demi-runner: {}", String::from_utf8_lossy(&chunk))
-                }
+                Record::Stderr(chunk) => host_log::runner(format_args!(
+                    "conversation {operation}: {}",
+                    String::from_utf8_lossy(&chunk).trim_end()
+                )),
                 _ => return Err("native conversation operation failed".into()),
             }
         }
