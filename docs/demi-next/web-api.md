@@ -180,8 +180,11 @@ at most 64 tabs, and at most 64 KiB in all.
 `GET /api/conversations/:id/panel` returns the document, or the empty one,
 `{ selection: "change", tabs: [] }`, for a conversation that never saved.
 `PUT` replaces it and answers 204. The page applies every change to itself
-first and then saves the whole document; the last save wins, and a page that
-becomes visible reads the document again. Archived conversations allow the
+first and then saves the whole document, one save at a time so that the
+latest is the one that stays. A page reads a conversation's document once:
+from then on its own state is the newest there is, and reading again could
+only bring back something older. Two pages open on one conversation each keep
+their own view of it, and the last to save decides what the next page reads. Archived conversations allow the
 read and refuse the save with 409 `conversation_archived`.
 
 ## Conversation browser tabs

@@ -31,9 +31,11 @@ export interface WorkState {
   views: WorkTab[]
   /** The selection and the user's tabs, saved with the conversation. */
   panel: PanelState
+  /** The one read of the saved panel has started; it is not asked for again once it answered. */
+  loading: boolean
   /** The saved panel has been read; nothing is saved over it before. */
   loaded: boolean
-  /** Counts the page's own changes, so a read knows whether what it fetched is older than the page. */
+  /** Counts the page's own changes, so the read knows whether the user acted before it arrived. */
   revision: number
   /** A save is on its way; `unsaved` says the panel changed again since it left. */
   saving: boolean
@@ -64,6 +66,7 @@ export const useWorkPanel = defineStore('work-panel', () => {
         },
         views: workPanelTabs(),
         panel: emptyPanelState(),
+        loading: false,
         loaded: false,
         revision: 0,
         saving: false,
@@ -77,33 +80,35 @@ export const useWorkPanel = defineStore('work-panel', () => {
   }
 
   /**
-   * Reads the saved panel: once per page, and again when the page returns to
-   * it. The page's own state is never older than what it saved, so a read
-   * replaces it only when the page changed nothing meanwhile and has nothing
-   * on its way out; otherwise the read is stale and is dropped. A panel
-   * changed before its first read keeps those changes beside the saved tabs.
+   * Reads the saved panel, once per conversation in a page's life. From then
+   * on the page's own state is the newest there is: everything it changes it
+   * saves, so reading again could only bring back something older. What the
+   * user did before the read arrived stays, beside the saved tabs.
    */
   async function load(conversationId: string): Promise<void> {
     const state = stateFor(conversationId)
+    if (state.loading) {
+      return
+    }
+    state.loading = true
     const revision = state.revision
     let saved: PanelState
     try {
       saved = await loadPanel(conversationId)
     } catch (error) {
+      // Not read: the next opening of the panel tries again.
+      state.loading = false
       reportError('Could not read the work panel', error, { userVisible: true })
       return
     }
-    const first = !state.loaded
     state.loaded = true
-    if (state.revision === revision && !state.saving) {
+    if (state.revision === revision) {
       state.panel = saved
       return
     }
-    if (first) {
-      const known = new Set(saved.tabs.map((tab) => tab.id))
-      const added = state.panel.tabs.filter((tab) => !known.has(tab.id))
-      change(conversationId, { selection: state.panel.selection, tabs: [...saved.tabs, ...added] })
-    }
+    const known = new Set(saved.tabs.map((tab) => tab.id))
+    const added = state.panel.tabs.filter((tab) => !known.has(tab.id))
+    change(conversationId, { selection: state.panel.selection, tabs: [...saved.tabs, ...added] })
   }
 
   /** Every change applies to the page first and is then saved whole. */

@@ -120,9 +120,6 @@ function refreshVisible(): void {
   if (document.visibilityState === 'visible') {
     state.value.changes.refresh()
     void browser.value?.refresh()
-    if (state.value.open) {
-      void work.load(props.conversationId)
-    }
   }
 }
 onMounted(() => {
