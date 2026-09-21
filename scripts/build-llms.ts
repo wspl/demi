@@ -15,6 +15,9 @@ const sections: Array<{
   { title: 'Overview', path: 'README.md' },
   { title: 'Guide: Add a Provider', path: 'docs/guides/add-a-provider.md' },
   { title: 'Reference: Package Boundaries', path: 'docs/package-boundaries.md' },
+  { title: 'Design: Managed Cloud Hosts', path: 'docs/demi-next/managed-hosts.md' },
+  { title: 'Guide: Cloud Images', path: 'docs/cloud-images.md' },
+  { title: 'Guide: Cloud Setup', path: 'docs/managed-hosts-setup.md' },
   { title: 'Reference: Package Versioning', path: 'docs/package-versioning.md' },
   { title: 'Reference: Provider Quota', path: 'docs/provider-quota.md' },
   {

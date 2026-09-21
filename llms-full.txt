@@ -43,6 +43,10 @@ runner with an embedded shell and standard utilities. Agent commands select
 application callbacks or independently distributed resident native services.
 See [native execution](docs/demi-next/native-runtime.md).
 
+Cloud uses the selected [gVisor/systrap design](docs/demi-next/managed-hosts.md).
+The replacement implementation is pending. Start with [Cloud images](docs/cloud-images.md)
+and [Cloud setup](docs/managed-hosts-setup.md) for the build and deployment contracts.
+
 Notable design records outside `docs/demi-next/`:
 
 - [Provider quota](docs/provider-quota.md) — unified probe/observe for subscription rate limits
@@ -53,7 +57,7 @@ Notable design records outside `docs/demi-next/`:
 
 Temporary investigation:
 
-- [Browser behavior and reference implementations](docs/browser-investigation.md) — issue inventory, Codex/Playwright evidence, and API repair guidance
+- [gVisor systrap evaluation](docs/gvisor-evaluation.md) — VPS browser measurements, persistence findings, and the remaining Cloud integration work
 
 ## Development
 
@@ -622,20 +626,40 @@ Test code may depend upward for integration coverage. Production code must not.
   - `vault/` — instance secret, credential crypto, the typed provider vault over the control plane, and the provider scope (whose providers a caller works with under the instance mode).
   - `usage/` — enforcement (the provider-request rate limiter); the ledger rows live on the `ControlService`.
   - `lifecycle/` — the conversation idle clock (one window for Cloud stop and conversation release), retirement admission and shutdown. Domain modules supply activity facts; there is no domain-specific idle sweep.
-  - `managed/` — one managed device per user, Cloud policy and its lifecycle adapter, allocation/wake, paired system/home checkpointing, volume growth, external system reset, Cloud project directory creation. Every VM and disk operation goes to the `ManagedHostProvisioner` it is given; the backend never spawns a hypervisor or an image tool itself.
+  - `managed/` — one managed device per user, Cloud policy and its lifecycle adapter, allocation/wake, paired system/home checkpointing, volume growth, external system reset, Cloud project directory creation. Every sandbox and disk operation goes to the `ManagedHostProvisioner` it is given; the backend never spawns runsc or an image tool itself.
   - New modules get sibling directories — never new files at the root.
 
 - Execution coordination: authenticated live-job RPC routing, conversation target/file admission and user-device lifecycle admission. Managed operations persist allocation/reset intent and recover it before new work; every conversation using Cloud shares its device-wide operation gate.
 
 ### `@demicodes/machines`
 
-- Status: implemented (`docs/demi-next/managed-hosts.md` § Provisioning).
-- Production deps: `@demicodes/utils`; external: `zod`.
-- Owns: the machine manager — the `ManagedHostProvisioner` contract (reconcile, base version, image state, wake, hibernate, checkpoint, volume growth, reset, close, death events) and the `MachineImageState` schema; the machine wire (`protocol.ts`: the `machineOps` table from which the request union and the typed replies derive, newline-delimited JSON over a Unix socket); `serveMachines` (the service end: one socket, any number of backend connections, every request dispatched to one provisioner, deaths broadcast); `RemoteProvisioner` (the backend's end: a provisioner whose calls travel over the socket, reconnecting on the next call after a drop); the Firecracker implementation (`firecracker/`: the image tools over e2fsprogs, the VM process in its two launch modes, the Firecracker API over its socket, the tap slots, the per-VM kernel command line) and the machine-image store (paired system/home generations, pinned bases); the `demi-machines` bin (`main.ts`: `DEMI_MACHINES_SOCKET`, `DEMI_MACHINES_DATA`, `DEMI_MANAGED_*`).
-- Public boundary: the provisioner types and `imageStateSchema`, the protocol schemas, `RemoteProvisioner`, `serveMachines`, `FirecrackerProvisioner`, `firecrackerConfigFromEnv` from root; the `demi-machines` bin.
-- Deployment files: `scripts/install-managed-hosts.sh` (taps, forwarding, egress rules), `scripts/firecracker-jailer.sh` (the privileged jailer helper the manager invokes through `sudo -n`), `scripts/lima-machines.sh` and `lima/demi-machines.yaml` (the manager inside a Lima instance with nested virtualization, for macOS).
-- Spawning `firecracker`, the jailer and e2fsprogs is this package's transport — the intentional external-process exception.
-- Must not: listen on TCP (the socket file's permissions are the boundary; there is no authentication); know users, conversations or the control database (it receives device ids and boot arguments); import the backend.
+- Status: selected gVisor/systrap replacement contract; implementation pending
+  ([Managed hosts](demi-next/managed-hosts.md#implementation-status)).
+- Production deps: `@demicodes/utils`, `@demicodes/runner-protocol`; external: `zod`.
+- Owns: `ManagedHostProvisioner`, `MachineImageState`, and the Cloud base manifest
+  schema; `protocol.ts` and its single `machineOps` table for newline-delimited
+  JSON requests, replies, and death events over a restricted Unix socket;
+  `serveMachines` and `RemoteProvisioner`; the gVisor implementation in `gvisor/`
+  (validated configuration, OCI bundles, runsc process supervision, private
+  mounts and loop devices, network namespaces and policy, cgroups, transient boot
+  files); the machine-image store (paired generations, working recovery, pinned
+  bases, publication and collection); and the `demi-machines` composition root.
+- Public boundary: provisioner types, `imageStateSchema`, base manifest schema,
+  wire schemas, `RemoteProvisioner`, `serveMachines`, `GVisorProvisioner`, and
+  `gvisorConfigFromEnv`; the `demi-machines` bin. Runtime-specific operations stay
+  inside the provisioner, not in backend or Host APIs.
+- Deployment files: `scripts/install-managed-hosts.sh` installs/checks Linux
+  services and host resources; `scripts/lima-machines.sh` and
+  `lima/demi-machines.yaml` run the same service inside one Linux VM on macOS.
+  They implement [Cloud setup](managed-hosts-setup.md), not another lifecycle.
+- Process boundary: invoking runsc and Linux storage/network tools is the
+  intentional infrastructure external-process exception. Use file interfaces
+  and established libraries where available; no user command becomes a host
+  administration command. Docker/containerd are not manager dependencies.
+- Must not: listen on TCP; know users, conversations, or the control database;
+  import backend; execute image content on the host; offer alternative runtime
+  modes or a Firecracker compatibility path. Workload credentials use the
+  runner-protocol's managed-boot schema, not a separately maintained shape.
 
 ### `@demicodes/command-loader`
 
@@ -650,10 +674,11 @@ Test code may depend upward for integration coverage. Production code must not.
 - Conversation scope: jobs and service streams carry the
   [command context](demi-next/native-runtime.md#command-context);
   `conversation_release` is the one generic release message; no browser policy.
-- Status: implemented (the final wire: MessagePack frames, per-op fs messages, jobs, the rpc relay, the manifest push, transfers).
+- Status: runner wire implemented; managed-boot file schema pending with the
+  gVisor replacement.
 - Production deps: `@demicodes/command-protocol`, `@demicodes/shell` (the Host types the fs messages carry), `@demicodes/utils`, `@msgpack/msgpack` (the Bun end's codec).
-- Owns: the authoritative Zod backend runner wire contract — the message schemas (claim/auth handshake, liveness, the `fsOps` table from which the per-op fs requests and typed replies derive (file contents name a pipe and never ride a message, `docs/demi-next/runner.md` § File contents), streaming spawn, jobs, the rpc relay, the manifest push, transfers, the network stream `net_open` and its replies), `createRunnerWire(codec)` (encode, and decode-with-validation per direction over an injected MessagePack codec: `msgpackCodec` under `@demicodes/runner-protocol/msgpack` used by Bun; Rust uses the generated contract and rmp-serde), the protocol constants (`RUNNER_PROTOCOL_VERSION`, `JOB_VIEW_BYTES`, the message size limit both ends enforce).
-- Public boundary: message types and schemas, `createRunnerWire`, the constants from root; `msgpackCodec` under `msgpack`; six-target runner release schemas under `release`. The backend consumes this package directly; the Rust runner generates bindings from its Zod schemas. It depends on neither endpoint.
+- Owns: the authoritative Zod backend runner wire contract — the message schemas (claim/auth handshake, liveness, the `fsOps` table from which the per-op fs requests and typed replies derive (file contents name a pipe and never ride a message, `docs/demi-next/runner.md` § File contents), streaming spawn, jobs, the rpc relay, the manifest push, transfers, the network stream `net_open` and its replies, the Host log read `log_read` and its replies), `createRunnerWire(codec)` (encode, and decode-with-validation per direction over an injected MessagePack codec: `msgpackCodec` under `@demicodes/runner-protocol/msgpack` used by Bun; Rust uses the generated contract and rmp-serde), the protocol constants (`RUNNER_PROTOCOL_VERSION`, `JOB_VIEW_BYTES`, the message size limit both ends enforce).
+- Public boundary: message types and schemas, `createRunnerWire`, the constants from root; `msgpackCodec` under `msgpack`; six-target runner release schemas under `release`; the managed-boot file schema (backend URL and device token), also consumed by machines and generated into the Rust runner. The backend consumes this package directly; the Rust runner generates bindings from its Zod schemas. It depends on neither endpoint.
 - Must not: contain network IO, a Host implementation, a shell environment, the job table, credentials, claim policy, device registry, or conversation state.
 
 ### `@demicodes/host-remote`
@@ -662,7 +687,7 @@ Test code may depend upward for integration coverage. Production code must not.
   conversation release; no browser knowledge.
 - Status: implemented (M9).
 - Production deps: `@demicodes/command-loader`, `@demicodes/command-protocol`, `@demicodes/runner-protocol`, `@demicodes/shell`, `@demicodes/utils`.
-- Owns: the backend's end of a runner — the pipe broker (`pipes.ts`: the rendezvous of a pipe's two ends, which the backend's `/api/pipes` routes feed, holding only the bytes in flight; `devicePipes` binds it to one device) and `RemoteHost`, a `Host` over a connection whose file contents travel through that device's pipes, with a jobs facet (stable object across reconnects, logical cwd fallback, injected store), a working-tree facet and a network facet (`net.open`: one TCP stream on the device as two pipes, `runner.md` § Network streams), and `RemoteShellEnvironment`, the `ShellEnvironment` of a real host over jobs (the model's view as the record, the working directory carried between execs). The production Host and shell the backend injects into the agent.
+- Owns: the backend's end of a runner — the pipe broker (`pipes.ts`: the rendezvous of a pipe's two ends, which the backend's `/api/pipes` routes feed, holding only the bytes in flight; `devicePipes` binds it to one device) and `RemoteHost`, a `Host` over a connection whose file contents travel through that device's pipes, with a jobs facet (stable object across reconnects, logical cwd fallback, injected store), a working-tree facet, a network facet (`net.open`: one TCP stream on the device as two pipes, `runner.md` § Network streams) and a log facet (`log.read`: lines of the Host's log after a cursor, `runner.md` § Host log), and `RemoteShellEnvironment`, the `ShellEnvironment` of a real host over jobs (the model's view as the record, the working directory carried between execs). The production Host and shell the backend injects into the agent.
 - Public boundary: `RemoteHost`, `RemoteShellEnvironment`, `createRemoteShellEnvironmentFactory` and their option types from root. The factory validates a package catalog and serializes each context's declarations. Each job pins its manifest; artifact location requests are admitted only for a matching active job, manifest and target artifact. The injected resolver supplies a location, and job completion cancels outstanding resolutions.
 - Must not: contain network IO (the wire is an injected send/handle pair, and the backend's HTTP routes hand the broker its device ends), credentials, the device registry, or conversation state. `Host.store` never crosses the wire.
 
@@ -672,7 +697,17 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `packages/guest-image` (not a workspace package)
 
-- Owns: the guest image pipeline (`docs/demi-next/managed-hosts.md` § Images): the kernel build (Linux 6.1 on Firecracker's microvm config plus `kernel/extra.config`), the rootfs build (Ubuntu by debootstrap, the toolchain list, the guest user with sudo, the runner as `/demi-runner` with a command alias at `/usr/bin/demi`, `mke2fs -d`), and the runner packing for Linux musl. Shell scripts and a kernel config; runs on Linux with root at build time, never at backend runtime. Its outputs (`vmlinux`, `rootfs.ext4`) are release artifacts the backend is pointed at.
+- Status: selected container-root pipeline; implementation pending.
+- Owns: the Linux Cloud image build, package inventory, standalone tools, init,
+  `demi` user and sudo configuration, shell skeleton, and embedding verified native
+  releases. Produces `rootfs.tar.zst` and its manifest per Linux architecture,
+  using the machines package's release schema. The authoritative artifact and
+  build contract is [Cloud images](cloud-images.md).
+- Build boundary: Linux filesystem assembly runs at build time. Native binaries
+  come from the machine's cross tools in [Native builds](native-builds.md).
+  No guest kernel, bootloader, ext4 base release, or hypervisor configuration.
+- Must not: own runtime OCI policy, mounts, networking, device credentials,
+  lifecycle, or backend configuration.
 
 ### `@demicodes/browser-protocol`
 
@@ -694,7 +729,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Retained-resource scope: authoritative native resource lifecycle and
   scoped invocation/event wire schemas, following
-  [Native runtime](demi-next/native-runtime.md#retained-resources).
+  [Native runtime](demi-next/native-runtime.md#conversation-scoped-state).
 - Owns: authoritative Zod command-service wire and native package descriptor
   schemas, including the [command context](demi-next/native-runtime.md#command-context), derived TypeScript types, protocol constants and package identities.
   Package identities use canonical JSON and SHA-256.
@@ -743,7 +778,8 @@ Test code may depend upward for integration coverage. Production code must not.
 - Owns: the independently released `demi-commands` resident program and all native
   Demi command implementations, including file read/create/edit/patch.
   `coding-agent` owns the TypeScript declarations; backend supplies the runtime
-  release catalog. `scripts/native/release-package.ts` packages six target binaries.
+  release catalog. `scripts/native/release-package.ts --package demi-commands`
+  packages its six target binaries.
 - Uses command-service for transport and invocation context. File operations use
   invocation-local cwd and cancellation. Mutations serialize planning and
   application; each replacement publishes atomically, and multi-file patches
@@ -752,6 +788,18 @@ Test code may depend upward for integration coverage. Production code must not.
 - Must not: host a runner connection, define the agent's command tree, store
   conversations or be linked into runner. Standard shell utilities belong to
   runner's shell module.
+
+### `crates/demi-claude` (Rust executable)
+
+- Owns: the independently released `demi.claude` package, which installs and
+  verifies Demi's copy of the Claude Code CLI on the machine that runs it
+  ([The Claude Code CLI](demi-next/claude-cli.md#the-package)). Its operations
+  are `claude.ensure` and `claude.status`.
+  `scripts/native/release-package.ts --package demi-claude` packages its six
+  target binaries.
+- First-party production dependency: command-service only.
+- Must not: read release pointers or choose a version, start the CLI, or be
+  linked into runner or `demi-commands`.
 
 ### `crates/runner` (Rust executable)
 
@@ -762,7 +810,8 @@ Test code may depend upward for integration coverage. Production code must not.
 - Owns: the `demi-runner` execution host, backend registration and connection,
   filesystem/process RPC with file contents through pipes, network streams (`net_open`: a TCP socket on the
   device carried as two pipes, no protocol parsing), service streams
-  (`service_open`: a user stream's invocation carried as two pipes, no protocol parsing), shell jobs, local command
+  (`service_open`: a user stream's invocation carried as two pipes, no protocol parsing), the Host's log
+  (`host_log.rs`: the bounded log of diagnostics and its `log_read` answer), shell jobs, local command
   forwarding and installation.
 - `build.rs` consumes the Zod runner-message and manifest definitions from
   `packages/runner-protocol` and `packages/command-loader`. Generated bindings
@@ -781,13 +830,16 @@ Test code may depend upward for integration coverage. Production code must not.
   Cancellation preserves the runner and unrelated jobs; see
   [runner.md](demi-next/runner.md) for lifecycle behavior.
 - Local forwarding uses an owner-restricted Unix socket or Windows named pipe.
-  Guest initialization owns Linux PID 1 boot and volume operations.
+  Managed registration reads a validated temporary boot file. Init belongs to
+  the shipped image; mounts, networking, and volumes belong to machines. The
+  runner has no Linux PID 1 boot or kernel-command-line path.
 - First-party production dependency: command-service only. Vendored brush and
   utility libraries are external dependencies, not additional Demi workspace crates.
 - Public boundary: the executable. Native build/release scripts produce six
   target artifacts. TypeScript integration fixtures belong to host-remote/testing.
 - Must not: own conversations or model/provider implementations, execute
-  downloaded JavaScript, or link Demi command algorithms into the runner.
+  downloaded JavaScript, administer Cloud mounts or networking, or link Demi
+  command algorithms into the runner.
 
 ### `@demicodes/web-ui`
 
@@ -870,7 +922,7 @@ browser-protocol -> none
 command-protocol -> none
 command-loader -> command-protocol, shell, utils
 runner-protocol -> command-protocol, shell, utils
-machines -> utils
+machines -> runner-protocol, utils
 host-remote -> command-loader, command-protocol, runner-protocol, shell, utils
 backend -> agent, browser-protocol, coding-agent, command-loader, command-protocol, core, host-remote, machines, provider, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shell, utils
 web-ui -> agent, browser-protocol, core, utils
@@ -887,6 +939,7 @@ First-party Rust production dependencies are:
 ```text
 runner -> command-service
 demi-commands -> command-service
+demi-claude -> command-service
 command-service -> none
 ```
 
@@ -972,6 +1025,728 @@ Existing boundary coverage:
 - The same test builds the production source package graph and fails on cycles or edges outside the enforced graph.
 - The same test checks that production workspace imports are declared in package `dependencies`.
 - The same test checks public provider root exports so internal transport, parser, protocol, auth-store, stream, and testing helpers do not leak through by accident.
+
+---
+
+# Design: Managed Cloud Hosts
+<!-- source: docs/demi-next/managed-hosts.md -->
+
+# Managed Cloud hosts
+
+After a user installs a system package and writes a project under `/home/demi`,
+stopping and waking Cloud preserves both. Reset replaces the system and keeps
+home. All of that user's conversations share the same files, packages, ports,
+and resource budget. A workspace is a starting directory, not an isolation
+boundary.
+
+Cloud is one persistent logical device per user, with at most one active gVisor
+sandbox running its runner. **Every deployment provides Cloud.** Conversations
+without a paired device and process-backed provider work need it. The sole
+execution platform is **gVisor with systrap**. There is no selectable hypervisor,
+ordinary-container fallback, or unsandboxed execution on the backend host.
+
+This document owns provisioning, isolation, persistence, and reset. The
+[execution-target contract](sessions-and-targets.md) owns Host access and
+admission; [resource lifecycle](resource-lifecycle.md) owns the idle rule and its
+clock. [Cloud setup](../managed-hosts-setup.md) owns deployment configuration;
+[Cloud images](../cloud-images.md) owns image production. Package responsibilities
+are authoritative in [package boundaries](../package-boundaries.md).
+
+## Provisioning
+
+The backend owns device identity, authentication, Cloud policy, and durable
+allocation/reset intent. Its lifecycle coordinator admits work and schedules
+maintenance. The machine manager owns sandbox processes, mounts, networking,
+resource enforcement, and stored generations. It has no users, conversations,
+transcripts, or control database.
+
+```text
+Backend (Linux or the developer's Mac)
+    | provisioner requests over a restricted Unix socket
+    v
+Machine manager (Linux)
+    | OCI bundle and runsc lifecycle commands
+    v
+One user's gVisor/systrap sandbox
+    init -> runner -> jobs and native services -> Chrome
+    |
+    +---- authenticated outbound connection ----> Backend
+```
+
+The manager invokes the pinned `runsc` distribution directly using its OCI
+runtime interface. Docker and containerd are not runtime dependencies. An OCI
+bundle describes a prepared root directory, process, mounts, namespaces, and
+resource limits; it is not another image build on each wake. `runsc` supplies the
+Sentry, which implements the sandbox's Linux interface, and its filesystem
+helper, the Gofer. The manager supervises their lifetime, including failed starts.
+See the upstream [OCI interface](https://gvisor.dev/docs/user_guide/quick_start/oci/).
+
+A Linux execution host can be a VPS without KVM. It must still support the Linux
+facilities listed in setup. On a Mac, the manager and sandboxes run inside one
+Lima Linux VM with the Mac's native CPU architecture. systrap needs no nested
+virtualization. Backend storage and the web application can stay on the Mac.
+A remote Linux manager with a local Mac backend is also supported: the manager
+socket and the runner's outbound connection use separate SSH forwards. gVisor
+itself does not run on macOS. See the upstream
+[platform guide](https://gvisor.dev/docs/architecture_guide/platforms/).
+
+### Control and ownership
+
+The manager serves newline-delimited JSON over a restricted Unix socket.
+Requests contain `{ id, op, params }`; replies identify that request and contain
+a result or an error. Death events identify the device whose sandbox exited.
+`packages/machines/src/protocol.ts` owns the wire schemas. Socket access grants
+infrastructure control: there is no manager TCP listener or application login.
+The socket's dedicated owner/group includes only the backend or its trusted SSH
+forwarding account. The backend never runs as root merely to reach this socket.
+
+The manager is a trusted, privileged Linux service because it prepares mounts,
+loop devices, network namespaces, firewall rules, and cgroups. Its private mount
+namespace contains the storage mounts. Its data directory, runtime bundles, and
+control files are inaccessible to ordinary host users. No sandbox receives these
+infrastructure privileges.
+
+One manager holds an exclusive lock on its state directory. Each device's
+operations serialize under that manager. A durable working record identifies
+the device, generation, runtime instance, resource paths, and operation phase;
+it contains no device token. Runtime identity includes a unique boot id, so a
+late death event cannot stop a replacement sandbox. Startup reconciles runtime
+state and removes old writers before accepting work. Losing the client socket
+does not establish that an operation failed: the backend queries/reconciles state
+before retrying. Repeated reset requests use the same operation id.
+
+`ManagedHostProvisioner` retains these operations:
+
+| Operation | Meaning |
+| --- | --- |
+| `currentBaseVersion`, `imageState` | Read the selected base and a device's committed generation. |
+| `reconcile` | Recover incomplete operations and establish saved, stopped devices. |
+| `wake` | Create first-use storage or recover existing storage, then start one sandbox with the supplied boot credential. |
+| `checkpoint` | Publish paired system/home storage while preserving the running processes. |
+| `hibernate` | Stop execution, save storage, and release runtime resources. No memory image is saved. |
+| `growVolume` | Increase one writable filesystem's capacity within policy limits. |
+| `reset` | Publish a clean system paired with retained home, idempotently by operation id; do not boot. |
+| `close`, `onDeath` | Drain/save on shutdown and report unexpected runtime loss. |
+
+A successful `wake` means the runtime started. Backend readiness additionally
+requires the authenticated runner and command transport; starting `runsc` alone
+must not mark Cloud ready. Closing the backend saves its machines and disconnects
+without terminating the manager service.
+
+## Images
+
+A committed generation contains `generation`, `baseVersion`, `resetId`,
+`systemBytes`, and `homeBytes`. The byte fields are filesystem capacities, not
+used bytes, host allocation, or quota. The generation identifies two immutable
+ext4 image files. Only private working copies are mounted writable.
+
+| Storage | Contents | Stop and wake | System reset |
+| --- | --- | --- | --- |
+| Pinned read-only base directory | OS, shipped tools, runner, and init | Keep the exact base | Select the reset base |
+| System image | Host OverlayFS upper/work directories; changes outside the separate mounts | Preserve | Replace with an empty layer |
+| Home image | `/home`, including projects and user tools | Preserve | Preserve |
+| Runtime mounts | `/run`, `/tmp`, `/dev/shm`, boot credential, resolver configuration | Recreate | Recreate |
+
+The manager extracts a verified base once, before making it available. At wake,
+it mounts the two working ext4 images through loop devices in its private mount
+namespace. Linux OverlayFS combines the immutable base with upper/work on the
+system filesystem; the resulting directory is the OCI root. The home filesystem
+is a separate OCI bind mount at `/home`. The images and loop devices themselves
+are never visible inside the sandbox. All user-created files, including overlay
+whiteouts and metadata, belong to the writable images, not the shared base.
+
+This retains bounded filesystem capacities and paired generations without
+requiring a guest kernel. The host storage filesystem can be XFS with reflinks,
+btrfs, or ext4; cloning is an optimization, not a correctness requirement. The
+writable ext4 filesystems remain distinct from that host storage filesystem.
+Overlay layout and supported mount options are fixed by the image/storage
+format; they are not per-user configuration. See the Linux
+[OverlayFS contract](https://docs.kernel.org/filesystems/overlayfs.html).
+
+The runtime uses `--overlay2=none`: its default temporary overlay would hide
+system writes from this storage. Root and external file access both use shared
+mode (`--file-access=shared --file-access-mounts=shared`), with no forced private
+page cache. The manager must be able to save the host-backed files after pausing
+sandbox tasks. This is a deliberate persistence choice whose performance must
+be measured. It differs from the evaluation's default root access mode. See the
+[gVisor filesystem guide](https://gvisor.dev/docs/user_guide/filesystem/) and the
+pinned runtime's [file I/O implementation](https://github.com/google/gvisor/blob/release-20260914.0/pkg/sentry/fsimpl/gofer/regular_file.go).
+
+Deploying a base makes it available for new devices and resets; ordinary wake
+never silently upgrades an existing base. A base identifies its architecture and
+complete build manifest. CPU architectures are not interchangeable: moving
+persisted system/home state between architectures is outside this contract.
+Runner output, command contexts, caches, and browser processes under `/run/demi`
+are temporary. Durable results must be written outside runtime mounts.
+
+### Container initialization
+
+The OCI process is a shipped minimal init (`tini`) running as `demi`, UID/GID
+1000, which starts the runner and reaps orphaned descendants. The manager supplies
+mounts, network configuration, and resource limits before start. The runner is
+an ordinary process; it does not mount a root filesystem, configure host
+networking, parse kernel boot arguments, or infer a boot mode from PID 1.
+
+The manager initializes a newly allocated home from the base's `/etc/skel` and
+records that initialization with storage publication. It never repeats this
+based merely on an empty directory, and never recursively changes an existing
+home's ownership at wake or reset. Jobs and Host file operations use `demi`.
+Passwordless sudo permits administration inside the sandbox. Home configuration,
+including a broken shell profile, survives reset.
+
+Init forwards termination and reaps children. A runner exit ends the sandbox;
+init does not hide repeated runner crashes by restarting it. The manager applies
+a bounded graceful-stop interval, then terminates the remaining runtime and
+waits for all Sentry/Gofer processes before releasing storage. Orphaned Chrome,
+crashpad, native services, and sandbox helper processes cannot survive stop.
+
+### Save a generation
+
+A checkpoint is a disk operation, not gVisor memory checkpoint/restore. The
+manager reserves device maintenance and performs the following sequence:
+
+1. Pause sandbox tasks through `runsc` and confirm the instance is still alive.
+2. Flush and freeze both host-mounted writable ext4 filesystems. The frozen
+   mounts are inside the working images, not the manager's parent state filesystem.
+3. Clone or copy both backing files into a new staging generation while both
+   filesystems remain frozen. Sync the staged files and manifest.
+4. Thaw both filesystems and resume the same runtime. Always attempt both thaw
+   operations and resume on failure or cancellation; do not leave a paused
+   sandbox or frozen filesystem behind.
+5. Publish the staged generation by atomic rename, sync its directory, and
+   atomically replace and sync `current.json` and its parent directory.
+
+The pair is captured during one interval with no sandbox writer. Pausing alone
+is not a persistence barrier: shared host-backed writes, host filesystem
+flush/freeze, and durable publication are all required. Acceptance must exercise
+ordinary writes, writable mappings, rename/unlink, and cross-volume writers.
+An unresponsive runtime cannot produce a successful live checkpoint. Report the
+failure; do not claim a checkpoint by silently restarting the user's browser.
+If thaw/resume fails, close admission and recover the device as a runtime loss.
+
+Hibernate instead stops all writers, releases Gofer references, unmounts the
+merged root and writable filesystems, and publishes their saved images. This
+path must work without a healthy runner or user shell. A forced stop promises
+filesystem crash consistency; unsynced application buffers can be lost. Neither
+path promises an application transaction across files or volumes.
+
+| Failure boundary | Recovery |
+| --- | --- |
+| Before publication | Keep the prior committed pair and the newer working pair for recovery. |
+| After publication | Use the new committed pair. Never combine volumes from different generations. |
+| Working state contains newer writes | Recover it before wake; do not overwrite it from an older generation. |
+| Manager, backend, or host restart | Fence old writers, thaw surviving mounts where necessary, recover filesystems, then save or start. |
+| Save fails or storage is full | Keep working data and the error; release execution resources where safe and block a stale boot. |
+
+The immutable store retains current and previous generations and removes older
+committed pairs after durable publication. Staging data is removable only after
+reconciliation establishes that no pending operation needs it; failed working
+data is never garbage. Base directories are retained automatically. An operator
+may remove an unreferenced base only with backend and manager stopped, after
+checking the configured image, committed generations, working records, and backend
+reset intents. This keeps a base selected by a durable reset available even before
+the backend has dispatched that reset to the manager.
+Snapshot sharing does not make retained generations free; capacity monitoring
+includes bases, staging, working files, and retained generations. Cross-host
+storage and execution fencing remain a
+[scaled-deployment requirement](sessions-and-targets.md#implementation-ownership-and-checks).
+
+## Lifecycle and capacity
+
+Device identity survives wake, stop, runtime loss, and reset. Concurrent first
+uses join one allocation and wake. Metadata alone never creates a sandbox.
+
+| Transition | Result |
+| --- | --- |
+| Off → booting → running | Recover the pinned storage, rotate the token, start a sandbox, and await the runner. |
+| Running → checkpoint → running | Save a paired generation and resume the same processes. |
+| Running → saving → off | End processes, save storage, and release the runtime. |
+| Resetting → running | Publish a fresh system with retained home, then boot. |
+| Failed boot, save, or reset | Keep the device and operation error; retry only after recovery establishes the authoritative state. |
+
+The [idle rule](resource-lifecycle.md) applies across every conversation using
+this device. Tabs, resident services, attachments, and passive observers do not
+keep it active. Maintenance does not restart the idle clock. Stopping Cloud ends
+all in-sandbox browser/native state and its [exposes](expose.md#lifetime); cleanup
+must not wake it or send per-conversation release to a stopped device.
+
+The hard lifetime cap can stop unattended jobs only after reserving admission
+and rechecking active turns and other demand. An admitted interactive operation
+postpones it. Cancel eligible jobs and await released leases before stopping.
+Crash-loop protection stops repeated automatic boots while retaining reset.
+Scheduling belongs to the shared lifecycle coordinator; Cloud policy supplies
+checkpoint and lifetime schedules.
+
+| Owner | Setting | Default |
+| --- | --- | --- |
+| Machine manager | CPU budget / memory limit per sandbox | 2 CPUs / 2 GiB |
+| Machine manager | Writable system / home initial capacity | 1 GiB / 1 GiB |
+| Machine manager | `/dev/shm` / `/tmp` / `/run` size limits | 256 MiB / 256 MiB / 256 MiB |
+| Backend policy | System / home maximum capacity | 16 GiB / 32 GiB |
+| Backend lifecycle | Idle window / unattended-job cap | 1 hour / 24 hours |
+| Backend lifecycle | Checkpoint interval | 15 minutes |
+| Backend admission | Concurrent running or booting devices | 16 |
+
+CPU is a cgroup scheduling budget, not a virtual CPU allocation. cgroup v2 limits
+cover the complete sandbox, including Sentry and Gofer; temporary mounts count
+toward memory and do not create extra allowances. Disable sandbox swap. Set host
+`pids.max` to 1024 and the sandbox process soft/hard `RLIMIT_NPROC` to 1024. These count different things: gVisor does not
+map each sandbox process to a host PID. The latter limits ordinary-user jobs,
+not sandbox root; CPU and memory remain the resource boundary for sudo workloads.
+Reserve capacity for the host and manager rather than treating 16 devices as safe
+on every VPS.
+
+Growth changes only one working filesystem: enlarge its sparse backing file,
+refresh the loop device capacity, and grow ext4 on the host. It is serialized
+against saving and reset, monotonic, bounded by backend policy, and recoverable
+if interrupted between those steps. Record the actual filesystem capacity, not
+merely the requested file size, before reporting success. A quota increase does
+not promise physical disk space; admission and monitoring must handle host
+`ENOSPC`. A sandbox cannot grow its own backing device.
+
+Archiving conversations or deleting project metadata never deletes Cloud data.
+Account-data destruction requires its own explicit retention/deletion policy.
+
+## System reset
+
+The owner can reset through the backend even when the runner, shell, or system
+files are broken. The backend persists an operation id, selected base, phase,
+and error. A retry resumes that operation, rather than selecting a newer base.
+
+1. Reserve device admission and hold/interrupt affected work according to
+   [shared Cloud coordination](sessions-and-targets.md#coordinate-shared-cloud-activity).
+2. Stop the sandbox and preserve its latest home, including recoverable working
+   changes newer than the last checkpoint.
+3. Create an empty system layer for the selected base.
+4. Durably publish the new system and preserved home as one generation carrying
+   the reset operation id.
+5. Announce reset to affected execution contexts, rotate the token, and boot.
+   Report success only when the runner is ready.
+
+A failed home save blocks publication and retains the working home. Before
+publication recovery retains the old pair; after publication it uses the new
+pair and may retry boot. Admission remains held until an authoritative state
+is established; a terminal failure is surfaced to waiting operations. Reset
+never runs repair commands inside the broken sandbox. Interrupted side effects
+are not automatically replayed.
+
+Device identity, projects, and history remain unchanged. Lifecycle status and
+reset phase are distinct: `resetting` may include stopping, saving, rebuilding,
+or booting. Each agent node observes reset in its next persisted context.
+
+## Isolation and joining
+
+The isolation boundary is the gVisor sandbox, not a workspace, Docker namespace,
+or hardware VM. Each user gets a separate Sentry, filesystem view, network
+namespace, and resource group. Infrastructure still trusts the Linux kernel,
+manager, runsc distribution, and image builder. The product supports ordinary
+Linux development and browsers, not arbitrary kernel features or privileged
+nested Docker. Unsupported operations return errors; they never widen isolation.
+
+The initial supported runtime is `release-20260914.0`, with each architecture
+archive pinned by its verified release checksum. Runtime upgrades require the
+same acceptance matrix, but do not change user storage format.
+
+The runtime profile fixes `--platform=systrap`, `--network=sandbox`, and
+`--allow-suid=true`. OCI `noNewPrivileges` is false so sudo can work. The
+OCI bounding set is `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `FSETID`, `KILL`, `SETGID`,
+`SETUID`, `SETPCAP`, `NET_BIND_SERVICE`, `SYS_CHROOT`, and `SETFCAP` (all with the
+`CAP_` prefix). The initial UID 1000 process has empty effective, permitted,
+inheritable, and ambient sets; setuid sudo may acquire privileges only within
+that bounding set. The profile excludes host administration, module loading,
+raw devices, and network administration. Test sudo and Chrome with this exact set.
+Chrome's own sandbox remains enabled. No privileged mode, host networking,
+unconfined runtime seccomp, host PID namespace, or runtime socket is exposed.
+Keep runsc's standard Directfs security profile; changes require a design and
+acceptance update, not a per-user escape hatch.
+
+Only the prepared root, this device's home, and explicit runtime mounts reach
+Gofer. No checkout, Mac home, Docker socket, manager state, arbitrary host path,
+or other user's mount is available. `/proc` and devices are sandbox views;
+host sysfs and writable cgroups are not mounted. The workload cannot supply
+OCI annotations, host paths, runtime flags, or network/cgroup identities.
+
+### Networking
+
+The manager creates a dedicated Linux network namespace and veth connection per
+sandbox. runsc builds its isolated network stack from that namespace. Host
+firewall rules are installed before start and match the device interface and
+source address; the workload cannot replace them. There are no guest taps or
+per-user host port publications.
+
+Allow outbound public traffic, replies to established connections, the exact
+configured backend address/port, and the configured DNS resolver on TCP/UDP 53.
+Deny other private, loopback, link-local, metadata, multicast, reserved, and
+other-tenant destinations, including the host's own services. Enforce policy on
+both forwarded traffic and traffic addressed to the execution host. Disable IPv6
+in the initial profile so it cannot bypass IPv4 policy. Resolver configuration
+uses an address reachable from the sandbox, never a container engine's loopback
+resolver. Filtering is by destination address, so DNS rebinding does not grant
+private-network access. Exceptions for a private backend or resolver are exact
+endpoints, not whole subnets; address changes require revalidation and rule update.
+
+A service's public URL uses the backend's [Host expose](expose.md) relay over the
+runner connection. The same connection carries files, commands, and browser
+streams through normal Host access. SSH is infrastructure transport in remote
+development, never an alternate route for conversation operations.
+
+### Managed boot credential
+
+The backend mints a managed-device token per boot and stores its hash. The
+manager receives `{ backendUrl, deviceToken }` only for that boot, validates it
+against the runner-protocol schema and configured backend allowlist, and supplies
+a private read-only credential file on a temporary mount. The runner accepts
+`--managed-boot <path>`, reads and validates the record before connecting, and keeps its installation state under `/run/demi`.
+The token never appears in process arguments, image layers, persistent working
+files, OCI environment, logs, or stored generations. Only the non-secret file
+path is part of the OCI process arguments. Runtime metadata containing sensitive
+paths stays in an owner-restricted temporary directory; cleanup removes it on
+both failed start and stop.
+
+A managed runner with missing or invalid boot credentials fails; it never enters
+pairing. Each token permits one live connection and is scoped to that device.
+Rotation rejects the previous boot's token. Sandbox root can inspect its own
+runner and credential; the boundary is against other users and infrastructure,
+not against the owner of that Cloud. The ordinary paired-device registration and
+persistent token path remain separate, as defined by the [runner](runner.md).
+
+## Verification
+
+Scripted-provider and fake-provisioner scenarios cover allocation races,
+admission, identity, token rotation, crash loops, idle policy, and reset failures.
+Real provisioner acceptance covers the exact shipped runtime, image, storage,
+and network profile, on Linux amd64 and arm64 without KVM, and on arm64 Lima.
+Compilation or a Docker evaluation container cannot substitute for these checks.
+
+Required real checks include system package installation across wake, retained
+home across reset, broken-runner reset, live checkpoint with a running browser,
+file and mmap durability, growth, disk-full failures, restart at each publication
+boundary, runtime/OOM loss, and simultaneous users. Confirm private/metadata and
+cross-user traffic refusal, the permitted backend/DNS paths, and no residual
+processes, mounts, loop devices, network rules, credentials, or listeners after
+success, failure, and cancellation. Inject faults after acquiring each resource.
+
+Exercise shell, native commands, provider CLI installation, and the real browser
+panel through normal Host access on both Cloud and a paired device. Automated
+checks use scripted models. Measure image preparation, storage setup, runsc
+start, runner authentication, first command, first Chrome open, subsequent open,
+first live frame, checkpoint pause, and stop separately; include cold/warm runs,
+CPU architecture, memory peaks, and concurrent load. Do not turn a single observed
+runtime-start duration into an end-to-end startup promise.
+
+## Implementation status
+
+This is the selected replacement design. Implementation is deferred to the next
+checkpoint. The repository still contains the old Firecracker provisioner,
+launcher, kernel image build, and PID 1 runner path; these are to be removed,
+not retained behind a runtime selector. There is no old-state importer or dual
+storage-format support in this design. A deployment uses a new state directory;
+existing data is not silently discarded by a manager startup.
+
+The [VPS evaluation](../gvisor-evaluation.md) established runner/browser viability
+and several configuration requirements. It did not validate this direct-OCI
+manager, host-mounted volume/freeze path, shared root mode, managed credentials,
+production egress policy, or Mac performance. Those remain implementation and
+acceptance work. The specified runtime/capability/process-limit profile and
+flush/freeze behavior must pass the real checks before enabling this design in
+the product; an unsupported primitive is a reason to revisit its responsible
+contract, not to substitute weaker persistence or isolation.
+
+---
+
+# Guide: Cloud Images
+<!-- source: docs/cloud-images.md -->
+
+# Build and release Cloud images
+
+A Cloud base supplies the files that gVisor runs: Ubuntu, development tools,
+Chrome, init, and the native runner. It contains no guest kernel or virtual
+hardware configuration. The manager combines those files with each device's
+persistent storage, as defined in [Managed hosts](demi-next/managed-hosts.md#images).
+
+This is the selected image contract; the replacement build pipeline is not yet
+implemented. [Cloud setup](managed-hosts-setup.md) describes the matching target
+deployment. Do not use the existing kernel/ext4 base build as this release format.
+
+## Release artifacts
+
+`packages/guest-image` owns the Linux root filesystem build. The directory name
+is retained; it does not imply a VM. Each architecture produces:
+
+| Artifact | Contents |
+| --- | --- |
+| `rootfs.tar.zst` | A complete root tree with numeric ownership, modes, symlinks, hardlinks, and extended attributes preserved. |
+| `manifest.json` | Versioned schema, Linux architecture, archive size and SHA-256, pinned build inputs, and the embedded executable hashes. |
+
+The manifest uses `formatVersion: 1`, `os: linux`, and `architecture: amd64 | arm64`.
+It records the exact Ubuntu base, package inventory, standalone-tool versions and
+hashes, and runner/native release descriptors. Its `rootfs` entry names the archive
+and its byte size and SHA-256. The SHA-256 of the exact manifest file bytes is
+`baseVersion`; one hash names one immutable build. Schema ownership belongs to
+the machines package, which validates a release before importing it.
+
+The archive is a prepared OCI root filesystem, not an OCI runtime configuration.
+The manager generates the per-boot OCI bundle. Image content cannot select
+runtime flags, privileged mounts, cgroups, network exceptions, or credentials.
+No Docker daemon, image pull, archive extraction, or compilation is part of an
+ordinary wake. Transport can copy the release directory to an execution host;
+the manager consumes local verified artifacts.
+
+Build amd64 and arm64 separately. Native executable targets are
+`x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`, respectively. Use
+[native cross tools](native-builds.md) on the developer's machine and package only
+the targets of the Hosts in use. Assemble the Linux filesystem on a matching
+Linux builder, including Lima for Mac development. Do not confuse cross-compiling
+a Rust executable with validating the complete image on another architecture.
+
+## Root filesystem contents
+
+The base is Ubuntu 26.04. Its system package inventory has one source:
+[packages.txt](../packages/guest-image/rootfs/packages.txt). The build also installs
+standalone `uv`, pinned Chrome for Testing using the browser package's existing
+installer, and the shipped native artifacts. It records resolved versions and
+hashes rather than maintaining a second version list in documentation.
+
+The image supplies `demi` UID/GID 1000, passwordless sudo, a minimal init (`tini`),
+and `/usr/bin/demi-runner`, with the `demi` command alias expected by the native
+runtime. Embedded command packages use their content-addressed artifact paths
+and descriptors. Their identities must match the backend's selected releases;
+rebuilding the runner alone does not refresh command binaries.
+
+The image contains mount points for `/home`, `/run`, `/tmp`, `/dev`, `/proc`, and
+`/dev/shm`. It does not mount them or configure routes at runtime. Service startup
+is disabled during package installation; no systemd boot or distribution service
+manager is required in the sandbox. The image entry process and home initialization
+are defined only in [container initialization](demi-next/managed-hosts.md#container-initialization).
+
+Home-based version managers and runtimes are installed on demand. The base does
+not preinstall nvm, rustup, Bun, Go, a JDK, or Docker. `/etc/skel` keeps installer
+setup outside interactive-only shell guards, so subsequent login jobs can find
+user tools. User changes under home belong to the home volume.
+
+Builds contain no device credentials, host checkout paths, package-registry
+credentials, machine ids copied from a builder, or temporary package caches.
+The build permits setuid files needed by the selected sandbox profile, including
+sudo; extraction must preserve them. They execute only inside gVisor.
+
+## Import and publication
+
+Build into a staging directory, verify every embedded artifact against its release
+descriptor, create the archive and manifest, and publish the directory atomically.
+A manager rejects unknown schemas, mismatched hashes or sizes, missing executable
+entries, and an architecture that differs from its Linux host.
+
+Extraction uses a maintained archive implementation that preserves the required
+metadata and confines entries, symlinks, and hardlinks to the staging tree. It
+must not follow an archive path into the host filesystem. Import strips no
+unexpected input to make a corrupt release appear valid: reject it. Block devices,
+sockets, and runtime state are not permitted archive entries. Sync the extracted
+tree and manifest before publishing the immutable base directory. The manager
+never executes image content on the host during import.
+
+The base directory is writable only during staging, then exposed read-only as
+OverlayFS's lower layer. Ordinary wake uses the base named by the stored generation;
+changing the configured release does not rewrite that reference. Collection and
+reset pinning follow [generation storage](demi-next/managed-hosts.md#save-a-generation).
+
+## Acceptance and local refresh
+
+Verify the full image on each supported architecture with the shipped runsc
+profile: init reaps orphans, jobs use UID 1000, sudo works, package installation
+and standalone tools work, and Chrome retains its sandbox. Test shell/native
+commands and the browser through the real managed runner connection.
+
+When a runner or embedded native package changes, build the Cloud target, rebuild
+the image, restart the local manager, and reset local Cloud to that base before
+acceptance. Check the running runner's executable hash and native package identity
+after initial start and again after hibernate/wake. Do not hash PID 1 as a proxy
+for the runner: PID 1 is init. Exercise the paired device in the same checkpoint.
+
+Image acceptance is separate from the six-target native release. The latter also
+covers macOS and Windows paired devices; the Cloud base is Linux only.
+
+---
+
+# Guide: Cloud Setup
+<!-- source: docs/managed-hosts-setup.md -->
+
+# Set up managed Cloud hosts
+
+The backend can run on your Mac while a Linux VPS executes Cloud. The Mac sends
+lifecycle requests through a forwarded manager socket; the sandbox's runner
+connects back through a separate endpoint. The same split applies when Linux
+runs locally inside Lima.
+
+This guide describes the selected gVisor deployment. **The installer, manager
+adapter, image pipeline, and Lima template still need implementation.** The
+configuration below is their intended interface, not a claim that the current
+scripts accept it. The authoritative runtime contract is
+[Managed hosts](demi-next/managed-hosts.md); image artifacts are defined in
+[Cloud images](cloud-images.md).
+
+## Linux requirements
+
+Use a native amd64 or arm64 Linux execution host with the runtime release
+pinned in [isolation and joining](demi-next/managed-hosts.md#isolation-and-joining).
+The host needs seccomp, namespaces, cgroup v2 with CPU/memory/PID controllers, OverlayFS, ext4, loop devices, filesystem freeze, and network
+administration through iproute2 and nftables. An ordinary hardware-virtualized
+VPS can provide these without exposing KVM. A restricted container sold as a VPS
+may not; check the facilities instead of relying on the provider's product name.
+
+Install the complete pinned runsc distribution and verify its release checksum.
+Keep `runsc` and its accompanying `gvisor-bin/` directory together; upstream
+packaging can include helper binaries. The build/deployment manifest pins the
+release and archive hash, and startup validates the configured executable and
+required flags. Follow the upstream
+[installation instructions](https://gvisor.dev/docs/user_guide/install/).
+
+The execution host also needs Bun for the manager, e2fsprogs, util-linux,
+iproute2, nftables, and an archive reader for the shipped image format. Docker
+and containerd are not required. The manager runs as a privileged system service
+in a private mount namespace. Only its dedicated backend/forwarding group may
+connect to the manager socket; group membership grants control of Cloud machines.
+
+Startup validates runtime support, image architecture and integrity, storage
+mount/freeze support, cgroup enforcement, and network policy installation. It
+fails with a named diagnostic before serving requests if a requirement is absent.
+It never falls back to another runtime or launches an unisolated process.
+
+## Configuration
+
+Both processes validate their environment at startup. Unknown or malformed
+managed settings fail configuration; required values are not inferred from a
+legacy runtime switch. Counts and MiB sizes are positive integers. Cloud is
+mandatory, so a missing manager configuration is a startup error.
+
+| Variable | Owner and meaning |
+| --- | --- |
+| `DEMI_MACHINES_SOCKET` | Manager listen path; backend connect path. Different paths are expected when forwarded. |
+| `DEMI_MACHINES_DATA` | Manager's persistent state, default `/var/lib/demi-machines`. |
+| `DEMI_MANAGED_RUNSC` | Required absolute path to the pinned runsc executable. |
+| `DEMI_MANAGED_IMAGE` | Required directory containing the Cloud image manifest and archive. |
+| `DEMI_MANAGED_CPUS`, `DEMI_MANAGED_MEM_MIB` | Per-sandbox CPU budget and total memory limit. |
+| `DEMI_MANAGED_SYSTEM_MIB`, `DEMI_MANAGED_HOME_MIB` | Initial writable filesystem capacities. |
+| `DEMI_MANAGED_SUBNET`, `DEMI_MANAGED_SLOTS` | Non-overlapping IPv4 address pool and maximum network slots. |
+| `DEMI_MANAGED_DNS` | Required reachable IPv4 resolver addresses, validated as an address list. |
+| `DEMI_MANAGED_BACKEND_URL` | Manager's allowed runner destination; each wake must match it. |
+| `DEMI_BACKEND_PUBLIC_URL` | Backend's runner-reachable URL; must name the same endpoint as the manager allowlist. |
+
+The sizing defaults and limits live in
+[lifecycle and capacity](demi-next/managed-hosts.md#lifecycle-and-capacity), rather
+than being duplicated here. The network pool defaults to `172.30.0.0/16` with
+256 slots, validated against host routes before use. `DEMI_MANAGED_DNS` is a
+comma-separated nonempty list with no loopback or unspecified address. Runtime
+security flags, mount sizes, capability policy, and process limits are a single
+shipped profile, not environment overrides. All old hypervisor/kernel/jailer
+variables are removed; there is no `direct`/`jailer` selector.
+
+The backend independently requires a valid `DEMI_BACKEND_PORT`,
+`DEMI_INSTANCE_MODE` (`shared` or `isolated`), manager socket, and public URL.
+Its [native release configuration](demi-next/native-runtime.md#backend-deployment-configuration)
+remains required. An image release and backend command release must agree.
+
+Example manager configuration for an already prepared Linux execution host:
+
+```dotenv
+DEMI_MACHINES_SOCKET=/run/demi/machines.sock
+DEMI_MACHINES_DATA=/var/lib/demi-machines
+DEMI_MANAGED_RUNSC=/opt/gvisor/runsc
+DEMI_MANAGED_IMAGE=/opt/demi-cloud/current
+DEMI_MANAGED_BACKEND_URL=https://backend.example.com
+DEMI_MANAGED_DNS=1.1.1.1,8.8.8.8
+```
+
+Resolver addresses above are examples, not a product requirement. Choose permitted
+resolvers reachable from the actual sandbox. Public endpoints use TLS. A local
+HTTP development endpoint is allowed only on the explicit private path protected
+by host rules or the development tunnel.
+
+## Storage and service setup
+
+Place persistent state on a dedicated Linux filesystem. XFS with `reflink=1` is
+the preferred image-cloning setup; set its copy-on-write extent hint to the
+filesystem block size for the state directory. btrfs can clone image files too.
+ext4 works by copying and has higher save latency and space cost. Never put
+working images on a Mac shared directory or a container engine's temporary layer.
+
+The installer checks the existing mount and reports an unsuitable configuration;
+it never formats a device containing data. Provision a new data volume separately
+and point the manager at it. Capacity planning includes working images, retained
+generations, and image imports, not just the user-visible quotas.
+
+The service creates an owner/group-restricted socket, acquires the state lock,
+reconciles surviving runtimes and mounts, and installs its network policy before
+readiness. Its systemd unit keeps the manager's mounts private and defines process
+cleanup on service death. No host shell command supplied by a user becomes a
+privileged launcher argument. The installer operates only on its own service,
+network namespace/interface names, cgroup subtree, and nftables table.
+
+Publish a new image, restart the manager, and explicitly reset a device when it
+should use the new base. Restart alone does not upgrade pinned devices. A new
+runtime starts only after prior writers have stopped. The replacement deployment
+uses a new data directory; it does not import or delete older deployment state.
+
+## Mac backend with a remote VPS
+
+There are two independent transports:
+
+```text
+Mac backend -> local Unix socket -> SSH -> VPS manager socket
+VPS sandbox -> VPS private relay -> SSH reverse forward -> Mac backend
+```
+
+For example, keep the Mac backend listening on `127.0.0.1:3271`. Forward its
+manager connection from a private Mac socket to `/run/demi/machines.sock` on the
+VPS using SSH stream-local forwarding. Use a dedicated SSH account that can open
+that socket. The SSH forward is the socket's authorization boundary on the Mac;
+keep its parent directory private.
+
+Create a reverse TCP forward from VPS loopback `127.0.0.1:4287` to Mac
+`127.0.0.1:3271`. A supervised relay on the VPS's sandbox gateway listens on
+port 4288 and forwards to that loopback port. Configure the same gateway URL in
+both `DEMI_BACKEND_PUBLIC_URL` and `DEMI_MANAGED_BACKEND_URL`. Permit only the
+sandbox interfaces to reach the relay. Do not bind it to the VPS public address
+or enable unrestricted SSH `GatewayPorts`.
+
+The deployment helper owns SSH, relay, socket, and firewall lifetimes together.
+Use exit-on-forward-failure, liveness detection, and bounded reconnects. A broken
+tunnel makes Cloud unavailable; do not allocate a replacement device. A broken
+control connection is reconciled before retrying a transition. Remove forwarding
+sockets and relays on cancellation or helper exit, including failed setup.
+
+This arrangement keeps the database, conversations, agent, and web service on the
+Mac, and persistent Cloud files on the VPS. It is a development topology, not
+multi-worker failover. No conversation shell/file operation uses SSH; those
+continue through the runner and normal Host access.
+
+## Mac backend with local Lima
+
+Use one native-architecture Linux VM. On Apple silicon, select arm64 Linux and
+arm64 image/native artifacts. The VM runs the same privileged manager and runsc
+profile as Linux deployment. It has no nested virtualization requirement.
+
+The replacement `packages/machines/lima/demi-machines.yaml` and
+`scripts/lima-machines.sh` must provision Linux dependencies, a separate persistent
+data disk, manager service, network policy, and Unix socket forwarding. The Mac
+backend connects at `~/.lima/demi-machines/sock/demi-machines.sock`; the script
+prints the guest-reachable Mac URL to configure and validates it from a sandbox.
+Do not assume a particular Lima gateway address works on every installation.
+
+If a checkout is shared for manager development, it belongs only to the outer
+Linux VM, never to a user's sandbox. Data stays on the Linux disk. Stopping or
+recreating the Lima instance preserves that disk; deleting the data disk is a
+separate explicit action. The script must not reuse or reformat an old instance's
+storage to make this replacement appear to start successfully.
+
+## Acceptance before use
+
+Start a real managed device through the backend, not the paired-device claim
+endpoint. Verify runner readiness, shell/native/browser operations, persistent
+package and home files across stop/wake, and reset with a broken system. Check
+network refusal and failure cleanup using the full
+[acceptance contract](demi-next/managed-hosts.md#verification). Measure local
+Lima and VPS performance separately; the existing x86 VPS evaluation establishes
+neither arm64 performance nor acceptance of this manager implementation.
 
 ---
 

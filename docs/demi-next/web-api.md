@@ -116,9 +116,9 @@ failure behavior are defined in [Backend media handling](backend.md#media-by-ref
 `managed/` owns the unique managed device for each user, lazy allocation/wake,
 shared-device admission and system reset. `conversation/` resolves target
 selections and coordinates per-conversation switches. `storage/` enforces
-managed-device uniqueness and records lifecycle intents; `managed/` publishes
-consistent disk generations. Workspace creation ensures a directory on the user's device;
-it does not allocate an independent VM.
+managed-device uniqueness and records lifecycle intents; `managed/` requests
+consistent disk publication through the provisioner. Workspace creation ensures a
+directory on the user's device; it does not allocate an independent sandbox.
 
 The authenticated Web API exposes `GET /api/cloud` for logical device identity,
 lifecycle state, disk usage/limits and pending operation, and

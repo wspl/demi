@@ -160,7 +160,7 @@ user and introduces one internal control service:
 ```text
 Browser / runner -> reverse proxy -> worker for that user
                                       +-- conversations and live sessions
-                                      +-- runner connections and managed VMs
+                                      +-- runner connections and managed sandboxes
                                       +-- remote ControlService -> demi-controld
 ```
 
@@ -191,8 +191,9 @@ The executable refuses to start without a machine manager: `DEMI_MACHINES_SOCKET
 and `DEMI_BACKEND_PUBLIC_URL` are required. The development backend
 (`backend/src/dev.ts`) and the test suite supply Cloud through a provisioner
 whose guest is a runner process on the same machine
-(`backend/src/testing/fake-provisioner.ts`), the second implementation of the
-[provisioner contract](managed-hosts.md).
+(`backend/src/testing/fake-provisioner.ts`), a test adapter of the
+[provisioner contract](managed-hosts.md), not a supported deployment isolation
+boundary. The selected production gVisor adapter remains unimplemented.
 
 Multi-worker routing, ownership fencing, the remote control service, and S3
 recovery are not implemented. Subscription accounts must first become control

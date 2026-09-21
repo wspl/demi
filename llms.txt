@@ -33,6 +33,10 @@ TypeScript ESM with bundled `.d.ts`; install only the packages you need.
 
 ## Reference
 
+- [Managed Cloud hosts](docs/demi-next/managed-hosts.md): selected gVisor/systrap runtime, persistence, isolation, and reset.
+- [Cloud images](docs/cloud-images.md): Linux image build and release contract.
+- [Cloud setup](docs/managed-hosts-setup.md): Linux VPS, remote Mac backend, and local Lima deployment.
+
 - [Package boundaries](docs/package-boundaries.md): the enforced dependency graph and per-package public surface.
 - [Provider quota](docs/provider-quota.md): unified probe/observe for subscription rate limits.
 - [Provider global credentials](docs/provider-global-credentials.md): multi-account pool + global `setActive`.
