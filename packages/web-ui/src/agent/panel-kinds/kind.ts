@@ -20,6 +20,8 @@ export interface PanelTabKind<Data = unknown> {
    * the panel's selection. Emits `update` with the tab's next `data`.
    */
   content: Component
+  /** The user closed a tab of this kind; the panel has already removed it. */
+  removed?(data: Data): void
   /** The kind is offered on the strip's new-tab control; `data` is a new tab's. */
   create?: {
     label: string

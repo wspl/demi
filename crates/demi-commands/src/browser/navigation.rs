@@ -1,14 +1,14 @@
 //! Per-command main-document observation; subscriptions are dropped with the command.
 
-use super::{BrowserError, BrowserTab, Result, operation::Operation};
+use super::{BrowserError, BrowserTab, Result, operation::Operation, protocol::BrowserCommand};
 use chromiumoxide::{
     Page,
     cdp::browser_protocol::{
         network::{EventLoadingFailed, EventRequestWillBeSent, LoaderId, RequestId, ResourceType},
         page::{
             EventFrameNavigated, EventFrameStartedLoading, EventLifecycleEvent,
-            EventNavigatedWithinDocument, FrameId, GetFrameTreeParams, NavigateParams,
-            NavigateToHistoryEntryParams, ReloadParams,
+            EventNavigatedWithinDocument, FrameId, GetFrameTreeParams, GetNavigationHistoryParams,
+            NavigateParams, NavigateToHistoryEntryParams, NavigationEntry, ReloadParams,
         },
     },
     listeners::EventStream,
@@ -18,6 +18,9 @@ use std::{
     collections::{HashMap, HashSet},
     time::Duration,
 };
+
+/// How long a navigation nobody waits for may load.
+const DETACHED_LOAD_TIMEOUT: Duration = Duration::from_secs(60);
 
 pub(super) enum Navigation {
     Url(String),
@@ -362,6 +365,86 @@ pub(super) async fn wait_current_load(page: &Page, load: &str) -> Result<()> {
             return Ok(());
         }
     }
+}
+
+/// The history entry one step back or forward from the tab's current one.
+pub(super) async fn history_step(
+    tab: &BrowserTab,
+    back: bool,
+    operation: &Operation<'_>,
+) -> Result<NavigationEntry> {
+    let history = operation
+        .run(async {
+            Ok(tab
+                .page
+                .execute(GetNavigationHistoryParams {})
+                .await?
+                .result)
+        })
+        .await?;
+    let index = history.current_index + if back { -1 } else { 1 };
+    usize::try_from(index)
+        .ok()
+        .and_then(|index| history.entries.into_iter().nth(index))
+        .ok_or(BrowserError::HistoryBoundary)
+}
+
+/// Starts loading `url` in `tab` as an address bar does. The user sees the
+/// page load, or Chrome's own error page, so nothing waits for it.
+pub(super) fn visit(tab: &BrowserTab, url: &str) {
+    detach(tab, NavigateParams::new(url));
+}
+
+/// Sends a navigation without waiting for it: chromiumoxide answers one
+/// only once the page loaded.
+fn detach<C>(tab: &BrowserTab, command: C)
+where
+    C: chromiumoxide::types::Command + Send + 'static,
+    C::Response: Send,
+{
+    let page = tab.page.clone();
+    tokio::spawn(async move {
+        // The user sees a load that fails or never ends; nobody waits for this answer.
+        let _loaded = tokio::time::timeout(DETACHED_LOAD_TIMEOUT, page.execute(command)).await;
+    });
+}
+
+/// The user's `goto`, `reload`, `back` or `forward` (`web-api.md` §
+/// Conversation browser tabs): the work panel shows the page loading, so the
+/// navigation starts and the answer does not wait for it.
+pub(super) async fn steer(
+    tab: &BrowserTab,
+    command: &BrowserCommand,
+    operation: &Operation<'_>,
+) -> Result<serde_json::Value> {
+    let url = match command {
+        BrowserCommand::Goto(input) => {
+            validate_url(&input.url)?;
+            visit(tab, &input.url);
+            Some(input.url.clone())
+        }
+        BrowserCommand::Reload(_) => {
+            let url = operation.run(async { Ok(tab.page.url().await?) }).await?;
+            detach(tab, ReloadParams::default());
+            url
+        }
+        BrowserCommand::Back(_) | BrowserCommand::Forward(_) => {
+            let back = matches!(command, BrowserCommand::Back(_));
+            let entry = history_step(tab, back, operation).await?;
+            detach(tab, NavigateToHistoryEntryParams::new(entry.id));
+            Some(entry.url)
+        }
+        _ => {
+            return Err(BrowserError::Configuration(
+                "not a navigation command".into(),
+            ));
+        }
+    };
+    let mut result = serde_json::json!({ "tab": tab.id() });
+    if let Some(url) = url {
+        result["url"] = serde_json::json!(url);
+    }
+    Ok(result)
 }
 
 /// Compile the browser URL glob; regex escaping owns every literal character.
