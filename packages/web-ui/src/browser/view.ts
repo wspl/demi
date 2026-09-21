@@ -42,6 +42,17 @@ export function placePicture(viewport: LiveViewport, panel: PanelSize): Placemen
   }
 }
 
+/**
+ * How far to move a picture, in CSS pixels, so that it starts on a whole
+ * device pixel. A panel whose edge falls between two device pixels, as a
+ * percentage split leaves it, would have its every pixel blended from two of
+ * the picture's: sharp text turns soft although each frame is exact.
+ */
+export function deviceSnap(origin: number, devicePixelRatio: number): number {
+  const device = origin * devicePixelRatio
+  return (Math.round(device) - device) / devicePixelRatio
+}
+
 /** The tab's CSS coordinates under a point of the panel. */
 export function tabPoint(
   point: { x: number; y: number },

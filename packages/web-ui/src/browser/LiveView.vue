@@ -7,7 +7,7 @@ import { CanvasPictures, picturesSupported } from './pictures'
 import type { LiveSession } from './session'
 import { viewerClipboard } from './clipboard'
 import { keyMessage, localKey, composingKey, pointerMessage, wheelMessage } from './input'
-import { panelSize, placePicture, tabPoint, type PanelSize } from './view'
+import { deviceSnap, panelSize, placePicture, tabPoint, type PanelSize } from './view'
 
 /**
  * A tab of the conversation's browser, live (`browser-live-view.md`): its
@@ -23,7 +23,12 @@ const bridge = ref<HTMLInputElement | null>(null)
 const panel = ref<PanelSize>({ width: 1, height: 1 })
 const supported = picturesSupported()
 const state = props.session.state
-const placement = computed(() => placePicture(props.tab.viewport, panel.value))
+/** What moves the picture onto the screen's pixel grid, from where the panel stands. */
+const snap = ref({ x: 0, y: 0 })
+const placement = computed(() => {
+  const placed = placePicture(props.tab.viewport, panel.value)
+  return { ...placed, left: placed.left + snap.value.x, top: placed.top + snap.value.y }
+})
 const stalled = computed(() => state.connection === 'stalled')
 const cursor = computed(() => {
   // A page can name a cursor this browser has no rule for, or an image.
@@ -46,6 +51,7 @@ function report(): void {
     return
   }
   panel.value = panelSize(bounds.width, bounds.height)
+  snap.value = { x: deviceSnap(bounds.left, devicePixelRatio), y: deviceSnap(bounds.top, devicePixelRatio) }
   props.session.panel(
     panel.value,
     devicePixelRatio,
