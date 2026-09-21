@@ -40,6 +40,9 @@ export interface PictureSink {
   stop(): void
 }
 
+/** The module's notice that it has no picture of the watched tab; it retries by itself. */
+const CAPTURE_FAILED = 'capture_failed'
+
 export type LiveConnection = 'opening' | 'live' | 'stalled' | 'ended'
 
 export interface LiveState {
@@ -285,6 +288,10 @@ export class LiveSession {
       return
     }
     this.pictures?.show(frame)
+    // A picture of the watched tab is the view working again: what it could not do before no longer holds.
+    if (this.state.notice?.code === CAPTURE_FAILED) {
+      this.state.notice = null
+    }
   }
 
   /** The page showed a frame; the module paces itself by these. */
