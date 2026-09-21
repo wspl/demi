@@ -5,9 +5,9 @@ Chrome, init, and the native runner. It contains no guest kernel or virtual
 hardware configuration. The manager combines those files with each device's
 persistent storage, as defined in [Managed hosts](demi-next/managed-hosts.md#images).
 
-This is the selected image contract; the replacement build pipeline is not yet
-implemented. [Cloud setup](managed-hosts-setup.md) describes the matching target
-deployment. Do not use the existing kernel/ext4 base build as this release format.
+[Cloud setup](managed-hosts-setup.md) describes deployment. The
+[build instructions](../packages/guest-image/README.md) assemble and publish this
+format on a matching Linux builder.
 
 ## Release artifacts
 

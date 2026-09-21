@@ -99,17 +99,36 @@ async fn runner(args: Vec<String>) -> io::Result<u8> {
     if !matches!(action, "run" | "status" | "drain") {
         return Err(usage());
     }
-    let backend = match &args[1..] {
-        [] => None,
-        [flag, value] if flag == "--backend" => Some(value.clone()),
+    let (backend, boot_path) = match &args[1..] {
+        [] => (None, None),
+        [flag, value] if flag == "--backend" => (Some(value.clone()), None),
+        [flag, value] if action == "run" && flag == "--managed-boot" => (None, Some(value)),
         _ => return Err(usage()),
     };
+    let boot = match boot_path {
+        Some(path) => {
+            let bytes = tokio::fs::read(path).await?;
+            let boot: demi_runner::connection::wire::ManagedBoot = serde_json::from_slice(&bytes)
+                .map_err(|_| {
+                io::Error::new(io::ErrorKind::InvalidData, "invalid managed boot file")
+            })?;
+            state::backend_url(&boot.backend_url)?;
+            Some(boot)
+        }
+        None => None,
+    };
+    let backend = boot
+        .as_ref()
+        .map(|boot| boot.backend_url.clone())
+        .or(backend);
     let env: BTreeMap<_, _> = std::env::vars().collect();
     let home = env
         .get(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
         .ok_or_else(|| io::Error::other("user home is not configured"))?
         .clone();
-    let directory = if let Some(directory) = env.get("DEMI_HOME") {
+    let directory = if boot.is_some() {
+        PathBuf::from("/run/demi")
+    } else if let Some(directory) = env.get("DEMI_HOME") {
         PathBuf::from(directory)
     } else {
         let backend = backend
@@ -153,9 +172,10 @@ async fn runner(args: Vec<String>) -> io::Result<u8> {
             .cloned()
             .unwrap_or_else(|| env!("CARGO_PKG_VERSION").into()),
         identity,
-        managed: env
-            .get("DEMI_RUNNER_MANAGED")
-            .map(|value| !value.is_empty()),
+        managed: boot.as_ref().map(|_| true).or_else(|| {
+            env.get("DEMI_RUNNER_MANAGED")
+                .map(|value| !value.is_empty())
+        }),
     };
     let options = Options {
         backend,
@@ -165,8 +185,21 @@ async fn runner(args: Vec<String>) -> io::Result<u8> {
         cwd: std::env::current_dir()?,
         env,
         runner,
-        token: None,
-        volumes: vec![],
+        token: boot.as_ref().map(|boot| boot.device_token.clone()),
+        volumes: if boot.is_some() {
+            vec![
+                demi_runner::volumes::ManagedVolume {
+                    name: "system".into(),
+                    mount: "/".into(),
+                },
+                demi_runner::volumes::ManagedVolume {
+                    name: "home".into(),
+                    mount: "/home".into(),
+                },
+            ]
+        } else {
+            vec![]
+        },
     };
     let stop = CancellationToken::new();
     let running = mode::run(options, stop.clone());
@@ -229,47 +262,11 @@ async fn signal() -> io::Result<()> {
 fn usage() -> io::Error {
     io::Error::new(
         io::ErrorKind::InvalidInput,
-        "Usage: demi-runner <run|status|drain> [--backend <url>]",
+        "Usage: demi-runner <run|status|drain> [--backend <url> | --managed-boot <path>]",
     )
 }
 
 fn main() {
-    #[cfg(target_os = "linux")]
-    if std::process::id() == 1 {
-        let result = (|| {
-            let boot = demi_runner::init::boot()?;
-            if let Some(code) = demi_runner::init::supervise()? {
-                return Ok(code);
-            }
-            let runtime = tokio::runtime::Builder::new_multi_thread()
-                .worker_threads(2)
-                .enable_all()
-                .build()?;
-            let result = runtime.block_on(async {
-                let stop = CancellationToken::new();
-                let running = mode::run(boot.options, stop.clone());
-                tokio::pin!(running);
-                tokio::select! {
-                    result = &mut running => result,
-                    result = signal() => {
-                        result?;
-                        stop.cancel();
-                        running.await
-                    },
-                }
-            });
-            runtime.shutdown_background();
-            result.map(|()| 0)
-        })();
-        let code = match result {
-            Ok(code) => code,
-            Err(error) => {
-                eprintln!("demi-runner: guest boot failed: {error}");
-                1
-            }
-        };
-        std::process::exit(i32::from(code));
-    }
     let args: Vec<_> = std::env::args().collect();
     let name = Path::new(&args[0])
         .file_stem()

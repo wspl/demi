@@ -72,11 +72,11 @@ conversation stores, native execution, provider integration, browser adapters,
 and user Cloud lifecycle code. Their existence does not certify every failure
 case or target platform; the responsible documents identify remaining limits.
 
-The selected Cloud design replaces the existing Firecracker implementation with
-gVisor/systrap. The new provisioner, container initialization, root archive build,
-Linux/Lima installation, and managed acceptance are not implemented. The
-[implementation boundary](managed-hosts.md#implementation-status) distinguishes
-that work from the completed [VPS evaluation](../gvisor-evaluation.md).
+Cloud uses the direct gVisor/systrap provisioner, ordinary runner boot, root
+archive pipeline, and Linux/Lima installers. The
+[implementation boundary](managed-hosts.md#implementation-status) identifies the
+real acceptance suite; measured environments and limits remain in the
+[evaluation report](../gvisor-evaluation.md).
 
 Distributed control transport, remote storage/replication, user-worker placement,
 and writer fencing remain target architecture. Do not describe a local restart

@@ -70,7 +70,7 @@ interface Machine {
   state: 'off' | 'booting' | 'running' | 'saving' | 'resetting'
   // Boots and saves can be joined; reset waits for either before taking ownership.
   transitionTask: Promise<void> | null
-  // Reset closes admission across several VM transitions, including their failures.
+  // Reset closes admission across several runtime transitions, including their failures.
   resetTask: Promise<void> | null
   // The latest durable reset result remains visible after its task has ended.
   resetOperation: ManagedOperation | null
@@ -83,7 +83,7 @@ interface Machine {
 }
 
 /**
- * User-owned machines. Admission and every VM transition share one device
+ * User-owned machines. Admission and every runtime transition share one device
  * identity.
  */
 export class ManagedHosts {
@@ -172,6 +172,15 @@ export class ManagedHosts {
       throw new ManagedHostError('resetting', 'Cloud environment is resetting')
     }
     if (machine.state === 'running') {
+      if (!this.options.registry.deviceOnline(device.id)) {
+        const recovery = this.recoverRunner(machine)
+        machine.transitionTask = recovery
+        try {
+          await recovery
+        } finally {
+          if (machine.transitionTask === recovery) machine.transitionTask = null
+        }
+      }
       return
     }
     const recentDeaths = machine.deaths.filter(
@@ -196,6 +205,21 @@ export class ManagedHosts {
         machine.transitionTask = null
       }
     }
+  }
+
+  /** Reconcile a missing Cloud runner without assuming its disconnected runtime died. */
+  private async recoverRunner(machine: Machine): Promise<void> {
+    const state = await this.options.provisioner.runtimeState(machine.device.id)
+    if (state === 'running') {
+      await withTimeout(this.options.registry.whenOnline(machine.device.id),
+        this.config.bootTimeoutMs, 'Cloud runner reconnect timeout')
+      return
+    }
+    await this.leaveRunning(machine)
+    machine.stopIdle?.()
+    machine.stopIdle = null
+    machine.state = 'booting'
+    await this.startMachine(machine)
   }
 
   private assertCapacity(machine: Machine): void {

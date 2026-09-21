@@ -11,6 +11,7 @@ import {
 import { join } from 'node:path'
 import { z } from 'zod'
 import { createId, errorCode } from '@demicodes/utils'
+import { requireTool } from './gvisor/image-tools'
 import {
   imageStateSchema,
   type MachineImageState
@@ -27,6 +28,17 @@ export async function syncFile(path: string): Promise<void> {
   } finally {
     await file.close()
   }
+}
+
+/** Clone a Cloud disk image without allocating its empty ranges on non-reflink storage. */
+export async function copyMachineImage(source: string, destination: string): Promise<void> {
+  if (process.platform === 'linux') {
+    // fs.copyFile has no sparse-file policy; Bun's fallback writes every empty range.
+    // GNU cp owns both reflink selection and the sparse fallback for Linux storage.
+    await requireTool('cp', ['--reflink=auto', '--sparse=always', '--', source, destination], undefined, 300_000)
+    return
+  }
+  await copyFile(source, destination, constants.COPYFILE_FICLONE)
 }
 
 export async function atomicJson(path: string, value: unknown): Promise<void> {
@@ -97,10 +109,9 @@ export class DirMachineImageStore implements MachineImageStore {
     )
     await mkdir(destination, { recursive: true })
     for (const volume of ['system', 'home']) {
-      await copyFile(
+      await copyMachineImage(
         join(from, `${volume}.ext4`),
         join(destination, `${volume}.ext4`),
-        constants.COPYFILE_FICLONE,
       )
     }
   }
@@ -116,18 +127,22 @@ export class DirMachineImageStore implements MachineImageStore {
     const generations = join(device, 'generations')
     const directory = join(generations, parsed.generation)
     await mkdir(generations, { recursive: true })
-    await mkdir(directory)
-    for (const volume of ['system', 'home']) {
-      const destination = join(directory, `${volume}.ext4`)
-      await copyFile(
-        join(source, `${volume}.ext4`),
-        destination,
-        constants.COPYFILE_FICLONE
-      )
-      await syncFile(destination)
+    await syncFile(this.root)
+    await syncFile(device)
+    const stage = join(generations, `.publish-${createId()}`)
+    await mkdir(stage)
+    try {
+      for (const volume of ['system', 'home']) {
+        const destination = join(stage, `${volume}.ext4`)
+        await copyMachineImage(join(source, `${volume}.ext4`), destination)
+        await syncFile(destination)
+      }
+      await atomicJson(join(stage, 'manifest.json'), parsed)
+      await syncFile(stage)
+      await rename(stage, directory)
+    } finally {
+      await rm(stage, { recursive: true, force: true })
     }
-    await atomicJson(join(directory, 'manifest.json'), parsed)
-    await syncFile(directory)
     await syncFile(generations)
     await atomicJson(join(device, 'current.json'), parsed)
     await syncFile(device)

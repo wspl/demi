@@ -11,7 +11,7 @@ import { liveSite, LiveView } from './fixtures/live-view'
 /**
  * The live browser view on a real Cloud guest (`browser-live-view.md` §
  * Acceptance): the same pages and viewer as the paired-device run, through a
- * Firecracker machine's runner, including the guest's fonts for Chinese,
+ * gVisor sandbox's runner, including the guest's fonts for Chinese,
  * Japanese and Korean text. Run it with `DEMI_BROWSER_LIVE_CLOUD_E2E=1`.
  */
 const acceptance = process.env.DEMI_BROWSER_LIVE_CLOUD_E2E === '1' ? test : test.skip

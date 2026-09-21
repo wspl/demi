@@ -1,134 +1,88 @@
 #!/usr/bin/env bash
-# The one-time, root, install-time setup for managed hosts on a backend
-# machine (managed-hosts.md § Provisioning): the tap pool with a /30 per
-# slot, IP forwarding and NAT for the guests' egress, and the egress policy
-# as nftables rules the guests cannot alter. Idempotent: rerun after a
-# reboot or to change the pool.
-#
-#   sudo install-managed-hosts.sh --user demi-backend \
-#        --backend-address 172.16.0.1 --backend-port 3271 \
-#        [--mode direct|jailer] [--uid-base 20000] \
-#        [--subnet 172.16.0.0/16] [--slots 256] [--egress-iface eth0]
+# Install the privileged Cloud manager service; storage must already exist.
 set -euo pipefail
+here="$(cd "$(dirname "$0")" && pwd)"
 user=""
-backend_address=""
-backend_port=""
-mode=direct
-uid_base=20000
-subnet=172.16.0.0/16
+bun=""
+manager=""
+image=""
+backend=""
+dns=""
+data=/var/lib/demi-machines
+socket=/run/demi-cloud/machines.sock
 slots=256
-egress=""
-prefix=demi
-while [ $# -gt 0 ]; do
+while [ "$#" -gt 0 ]; do
   case "$1" in
-    --user)
-      user=$2
-      shift 2
-      ;;
-    --backend-address)
-      backend_address=$2
-      shift 2
-      ;;
-    --backend-port)
-      backend_port=$2
-      shift 2
-      ;;
-    --mode)
-      mode=$2
-      shift 2
-      ;;
-    --uid-base)
-      uid_base=$2
-      shift 2
-      ;;
-    --subnet)
-      subnet=$2
-      shift 2
-      ;;
-    --slots)
-      slots=$2
-      shift 2
-      ;;
-    --egress-iface)
-      egress=$2
-      shift 2
-      ;;
-    *)
-      echo "unknown argument $1" >&2
-      exit 2
-      ;;
+    --user) user=$2 ;;
+    --bun) bun=$2 ;;
+    --manager) manager=$2 ;;
+    --image) image=$2 ;;
+    --backend-url) backend=$2 ;;
+    --dns) dns=$2 ;;
+    --data) data=$2 ;;
+    --socket) socket=$2 ;;
+    --slots) slots=$2 ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
+  shift 2
 done
-[ -n "$user" ] && [ -n "$backend_address" ] && [ -n "$backend_port" ] || {
-  echo "--user, --backend-address and --backend-port are required" >&2
+[ "$(id -u)" = 0 ] || { echo 'run as root' >&2; exit 2; }
+[ -n "$user" ] && [ -n "$bun" ] && [ -n "$manager" ] && [ -n "$image" ] && [ -n "$backend" ] && [ -n "$dns" ] || {
+  echo '--user --bun --manager --image --backend-url and --dns are required' >&2
   exit 2
 }
-[ "$(id -u)" = 0 ] || {
-  echo "run as root" >&2
-  exit 2
-}
-[ -n "$egress" ] || egress=$(ip -o route show default | awk '{print $5; exit}')
-
-ip_to_int() {
-  local IFS=.
-  read -r a b c d <<<"$1"
-  echo $(( (a<<24) + (b<<16) + (c<<8) + d ))
-}
-int_to_ip() {
-  echo "$(( ($1>>24)&255 )).$(( ($1>>16)&255 )).$(( ($1>>8)&255 )).$(( $1&255 ))"
-}
-network=${subnet%/*}
-base=$(ip_to_int "$network")
-
-for ((i=0; i<slots; i++)); do
-  tap="$prefix$i"
-  if [ "$mode" = jailer ]; then
-    owner=$((uid_base + i))
-  else
-    owner=$user
-  fi
-  # Recreated every run: the owner follows the mode, and a tap's owner cannot
-  # change in place.
-  ip link show "$tap" >/dev/null 2>&1 && ip link del "$tap"
-  ip tuntap add "$tap" mode tap user "$owner"
-  gw=$(int_to_ip $((base + i*4 + 1)))
-  ip addr replace "$gw/30" dev "$tap"
-  ip link set "$tap" up
+# Unit values must not introduce quoting, expansion, or systemd specifiers.
+for value in "$user" "$bun" "$manager" "$image" "$backend" "$dns" "$data" "$socket" "$slots"; do
+  [[ "$value" =~ ^[a-zA-Z0-9_./:@,?=+\&-]+$ ]] || { echo 'unsupported service configuration characters' >&2; exit 2; }
 done
-
-sysctl -qw net.ipv4.ip_forward=1
-
-# /dev/kvm for the backend user (direct mode spawns Firecracker as it; jailer
-# mode's helper runs as root anyway):
-# the kvm group, effective at the user's next login.
-getent group kvm >/dev/null && usermod -aG kvm "$user"
-
-# The egress policy, one table, replaced whole so reruns converge.
-nft -f - <<RULES
-table inet demi
-delete table inet demi
-table inet demi {
-  set private { type ipv4_addr; flags interval; elements = { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 127.0.0.0/8, 100.64.0.0/10 } }
-  chain forward {
-    type filter hook forward priority 0; policy accept;
-    iifname "$prefix*" ct state established,related accept
-    iifname "$prefix*" ip daddr $backend_address accept
-    iifname "$prefix*" ip daddr @private drop
-    iifname "$prefix*" accept
-    oifname "$prefix*" ct state established,related accept
-    oifname "$prefix*" drop
-  }
-  chain input {
-    type filter hook input priority 0; policy accept;
-    iifname "$prefix*" ct state established,related accept
-    iifname "$prefix*" ip daddr $backend_address tcp dport $backend_port accept
-    iifname "$prefix*" ip daddr $backend_address udp dport 53 accept
-    iifname "$prefix*" drop
-  }
-  chain postrouting {
-    type nat hook postrouting priority 100; policy accept;
-    ip saddr $subnet oifname "$egress" masquerade
-  }
-}
-RULES
-echo "managed hosts: $slots taps (${prefix}0..${prefix}$((slots-1))) on $subnet, mode $mode, egress via $egress, backend $backend_address:$backend_port"
+for path in "$bun" "$manager" "$image" "$data" "$socket"; do
+  [[ "$path" = /* ]] || { echo 'service paths must be absolute' >&2; exit 2; }
+done
+[ -x "$bun" ] && [ -f "$manager" ] && [ -f "$image/manifest.json" ]
+id "$user" >/dev/null
+[ -d "$data" ] || { echo "prepare a Linux state directory first: $data" >&2; exit 2; }
+filesystem=$(findmnt -n -o FSTYPE -T "$data")
+case "$filesystem" in
+  xfs) xfs_io -c 'cowextsize 4096' "$data" ;;
+  ext4|btrfs) ;;
+  *) echo "unsupported Cloud storage filesystem: $filesystem" >&2; exit 2 ;;
+esac
+BUN="$bun" bash "$here/install-runsc.sh"
+runsc=$("$bun" -e 'const r = await Bun.file(process.argv[1]).json(); console.log("/opt/gvisor/" + (process.arch === "arm64" ? r.arm64Version.replace(/^release-/, "") : r.upstream) + "/runsc")' "$here/../runtime/release.json")
+getent group demi-cloud >/dev/null || groupadd --system demi-cloud
+usermod -aG demi-cloud "$user"
+install -d -o root -g root -m 0700 "$data"
+install -d -o root -g demi-cloud -m 0750 /run/demi-cloud
+cat > /etc/systemd/system/demi-machines.service <<UNIT
+[Unit]
+Description=Demi gVisor Cloud manager
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=$data $image $manager $bun
+[Service]
+Type=simple
+User=root
+Group=demi-cloud
+PrivateMounts=yes
+KillMode=control-group
+TimeoutStopSec=180
+Restart=on-failure
+RestartSec=3
+UMask=0077
+RuntimeDirectory=demi-cloud
+RuntimeDirectoryMode=0750
+Environment=DEMI_MACHINES_SOCKET=$socket
+Environment=DEMI_MACHINES_DATA=$data
+Environment=DEMI_MANAGED_RUNSC=$runsc
+Environment=DEMI_MANAGED_IMAGE=$image
+Environment=DEMI_MANAGED_BACKEND_URL=$backend
+Environment=DEMI_MANAGED_DNS=$dns
+Environment=DEMI_MANAGED_SLOTS=$slots
+ExecStart=$bun --conditions development $manager
+ExecStopPost=$bun --conditions development $manager --recover
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable demi-machines.service
+systemctl restart demi-machines.service
