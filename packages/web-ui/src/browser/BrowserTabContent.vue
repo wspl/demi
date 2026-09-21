@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { Check, Monitor } from '@lucide/vue'
+import { computed, onBeforeUnmount, ref, watch, type Component } from 'vue'
+import { Monitor, Ruler, Smartphone } from '@lucide/vue'
 import BrowserAddressBar from '../agent/BrowserAddressBar.vue'
 import Button from '../ui/Button.vue'
 import DropdownTrigger from '../ui/DropdownTrigger.vue'
@@ -13,7 +13,7 @@ import { ICON_PX } from '../ui/icon-metrics'
 import { appOverlayStore } from '../overlay/appOverlay'
 import LiveView from './LiveView.vue'
 import { asTabsError, type BrowserTabData, type BrowserTabsController, type BrowserTabsError } from './tabs'
-import { viewportChoices } from './view'
+import { viewportChoices, type ViewportChoice } from './view'
 
 /**
  * A `browser` tab's content (`browser-live-view.md` § A browser tab in the
@@ -47,6 +47,8 @@ const gone = computed(() => {
 })
 const viewport = computed(() => live.value?.viewport ?? null)
 const choices = computed(() => (viewport.value ? viewportChoices(viewport.value) : []))
+/** A computer, a phone, or a size the agent set. */
+const MODE_ICONS: Record<ViewportChoice['mode'], Component> = { web: Monitor, mobile: Smartphone, custom: Ruler }
 
 async function open(): Promise<void> {
   failure.value = null
@@ -149,11 +151,11 @@ function history(action: 'back' | 'forward' | 'reload'): void {
       @reload="history('reload')"
     >
       <template #trailing>
+        <!-- The mode alone, as its icon: the size is the panel's and says nothing the picture does not. -->
         <Tooltip v-if="viewport" content="Viewport" class="shrink-0">
           <span ref="anchor" class="flex">
-            <DropdownTrigger :is-open="menu" size="sm" aria-label="Viewport" @click="menu = !menu">
-              <Monitor :size="ICON_PX.in24" />
-              <span class="text-[12px] tabular-nums">{{ viewport.width }} × {{ viewport.height }}</span>
+            <DropdownTrigger :is-open="menu" aria-label="Viewport" @click="menu = !menu">
+              <component :is="MODE_ICONS[viewport.mode]" :size="ICON_PX.in28" />
             </DropdownTrigger>
           </span>
         </Tooltip>
@@ -211,7 +213,9 @@ function history(action: 'back' | 'forward' | 'reload'): void {
           v-for="choice in choices"
           :key="choice.mode"
           :label="choice.label"
-          :icon="choice.mode === viewport?.mode ? Check : undefined"
+          :icon="MODE_ICONS[choice.mode]"
+          choice
+          :is-selected="choice.mode === viewport?.mode"
           :disabled="!choice.selectable && choice.mode !== viewport?.mode"
           @select="() => {
             menu = false

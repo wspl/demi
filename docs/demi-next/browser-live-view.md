@@ -257,6 +257,10 @@ of the tab being watched.
 | Mobile | 390 × 844 CSS pixels | The viewer's `devicePixelRatio` | `mobile`, touch, an Android Chrome user agent with matching client hints |
 | Custom | What the agent set | What the agent set | No |
 
+- Choosing Mobile, or leaving it, loads the page again. A phone's user agent,
+  client hints and touch reach only what loads after them: the page already in
+  the tab was served to the other kind of device and would keep that layout,
+  a desktop page shrunk into a phone's width.
 - Custom appears only after the agent runs `viewport set`
   ([Evaluation, console, and viewport](browser.md#evaluation-console-and-viewport)).
   The menu lists it as Custom W × H @S and selects it. Choosing Web or Mobile

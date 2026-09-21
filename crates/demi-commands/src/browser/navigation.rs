@@ -391,6 +391,11 @@ pub(super) async fn history_step(
 
 /// Starts loading `url` in `tab` as an address bar does. The user sees the
 /// page load, or Chrome's own error page, so nothing waits for it.
+/// Loads the page again without waiting for it.
+pub(super) fn reload(tab: &BrowserTab) {
+    detach(tab, ReloadParams::default());
+}
+
 pub(super) fn visit(tab: &BrowserTab, url: &str) {
     detach(tab, NavigateParams::new(url));
 }

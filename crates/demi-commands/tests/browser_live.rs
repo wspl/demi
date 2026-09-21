@@ -4,9 +4,17 @@
 
 mod browser_families;
 
-use std::time::Duration;
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
-use axum::{Router, response::Html, routing::get};
+use axum::{
+    Router,
+    http::{HeaderMap, header::USER_AGENT},
+    response::Html,
+    routing::get,
+};
 use browser_families::{BrowserFixture, with_browser_fixture};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use demi_command_service::{
@@ -51,12 +59,27 @@ setInterval(() => { spin.style.left = `${(x = (x + 5) % 500)}px`; }, 16);
 
 struct Site {
     base: String,
+    /// The user agent of every request for the page, in order.
+    served: Arc<Mutex<Vec<String>>>,
     _task: AbortOnDropHandle<()>,
 }
 
 async fn site() -> Site {
+    let served = Arc::new(Mutex::new(Vec::new()));
+    let recording = served.clone();
     let app = Router::new()
-        .route("/", get(|| async { Html(PAGE) }))
+        .route(
+            "/",
+            get(move |headers: HeaderMap| {
+                let agent = headers
+                    .get(USER_AGENT)
+                    .and_then(|value| value.to_str().ok())
+                    .unwrap_or_default()
+                    .to_owned();
+                recording.lock().unwrap().push(agent);
+                async { Html(PAGE) }
+            }),
+        )
         // A page that does not answer while a test runs.
         .route(
             "/slow",
@@ -70,7 +93,11 @@ async fn site() -> Site {
     let task = AbortOnDropHandle::new(tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     }));
-    Site { base, _task: task }
+    Site {
+        base,
+        served,
+        _task: task,
+    }
 }
 
 #[derive(Debug)]
@@ -452,6 +479,19 @@ async fn modes_follow_the_viewer_and_the_agent() {
             .until("a phone-wide stream", |message| message["type"] == "stream" && message["width"] == 780)
             .await;
         assert_eq!(stream["height"], 1688);
+        // The page loads again, so the site serves it to a phone.
+        for _ in 0..200 {
+            if site.served.lock().unwrap().iter().any(|agent| agent.contains("Android")) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        let served = site.served.lock().unwrap().clone();
+        assert!(
+            served.last().is_some_and(|agent| agent.contains("Android")),
+            "the page was never served to a phone: {served:?}"
+        );
+        eventually(&fixture, &tab, "document.readyState === 'complete'").await;
         let phone = evaluate(
             &fixture,
             &tab,

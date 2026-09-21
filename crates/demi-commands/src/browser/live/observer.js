@@ -38,7 +38,8 @@
     }
     if (!element || element.matches('iframe,frame')) return;
     const style = getComputedStyle(element);
-    const editable = element.matches('textarea, input:not([type]), input[type=text], input[type=search], input[type=url], input[type=tel], input[type=email], input[type=password], input[type=number]') || element.isContentEditable;
+    // An SVG element has no isContentEditable; an undefined field would be dropped from the report.
+    const editable = element.matches('textarea, input:not([type]), input[type=text], input[type=search], input[type=url], input[type=tel], input[type=email], input[type=password], input[type=number]') || element.isContentEditable === true;
     // `auto` resolves against the text under the pointer, as a local browser does.
     let cursor = style.cursor;
     if (cursor === 'auto') {
