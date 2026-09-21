@@ -409,7 +409,12 @@ export class PipeBroker {
     return new ReadableStream<Uint8Array>({
       start: (controller) => {
         pipe.cancelBody = (error) => {
-          controller.error(error)
+          // This body is an HTTP response: its reader is a device, which sees
+          // only that the connection was cut. The pipe carries the failure
+          // itself (`failure`, `done`), so the body is failed without a value:
+          // Bun prints any value given here as an uncaught error, and a pipe
+          // ending with its stream is not one.
+          controller.error()
           // Preserve the pipe's first failure even if cancellation fails.
           void reader.cancel(error).catch(noop).finally(() => releaseFinishedReader(reader))
         }
