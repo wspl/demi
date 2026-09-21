@@ -259,9 +259,17 @@ export class LiveSession {
           this.state.running = message.running
           this.state.tabs = message.tabs
           this.options.onTabs?.(message.tabs)
+          // The page decides what it watches. The module says otherwise when
+          // the tab went away, or when its answer crossed a newer wish on the
+          // way: a tab that is still there is asked for again.
           if (this.state.watched !== message.watched) {
             this.state.controls = []
-            this.state.watched = message.watched
+            const wanted = this.state.watched
+            if (wanted !== null && message.tabs.some((tab) => tab.id === wanted)) {
+              this.send({ type: 'watch', tab: wanted })
+            } else {
+              this.state.watched = message.watched
+            }
           }
           break
         case 'stream':
