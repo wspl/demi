@@ -9,6 +9,7 @@ import {
   beforeLeaveTab,
   enterTab,
   leaveTab,
+  revealScroll,
   settledTabBounds,
 } from './tab-strip'
 
@@ -107,13 +108,9 @@ function revealActive(): void {
   const strip = el.value
   const active = strip?.querySelector<HTMLElement>('[aria-selected="true"]')
   if (strip && active) {
-    const { left, right } = settledTabBounds(strip, active)
-    const viewLeft = strip.scrollLeft
-    const viewRight = viewLeft + strip.clientWidth
-    if (left - FADE_PX < viewLeft) {
-      scrollStripTo(strip, Math.max(0, left - FADE_PX))
-    } else if (right + FADE_PX > viewRight) {
-      scrollStripTo(strip, right + FADE_PX - strip.clientWidth)
+    const target = revealScroll(strip, settledTabBounds(strip, active), FADE_PX)
+    if (target !== null) {
+      scrollStripTo(strip, target)
     }
   }
   updateEdges()
