@@ -794,7 +794,7 @@ impl Session<'_> {
             }
         } else {
             let seconds = elapsed.as_secs_f64().max(0.001);
-            delivery.rate.update(&Sample {
+            let sample = Sample {
                 now: (now - delivery.started).as_secs_f64() * 1000.0,
                 buffered_bytes: self.writer.queued(),
                 ack_age: oldest.map_or(0.0, |sent| (now - sent).as_secs_f64() * 1000.0),
@@ -808,7 +808,22 @@ impl Session<'_> {
                 congested: delivery.dropped,
                 encoded_bitrate: delivery.bytes as f64 * 8.0 / seconds,
                 delivered_bitrate: delivery.acknowledged as f64 * 8.0 / seconds,
-            });
+            };
+            if let Some(cause) = delivery.rate.update(&sample) {
+                // Why a picture lost quality is found in the Host's log, not guessed.
+                eprintln!(
+                    "live view rate fell to {} bps, {} fps, scale {} after {cause}: {} bytes waiting, oldest frame {:.0} ms, round trip {:.0} ms, decode queue {}, sent {:.0} bps, acknowledged {:.0} bps",
+                    delivery.rate.bitrate(),
+                    delivery.rate.fps(),
+                    delivery.rate.scale(),
+                    sample.buffered_bytes,
+                    sample.ack_age,
+                    sample.round_trip,
+                    sample.decode_queue,
+                    sample.encoded_bitrate,
+                    sample.delivered_bitrate,
+                );
+            }
             let encoding = (
                 delivery.rate.bitrate(),
                 delivery.rate.fps(),

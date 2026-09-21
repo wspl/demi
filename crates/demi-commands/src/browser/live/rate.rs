@@ -104,7 +104,9 @@ impl Rate {
         self.bitrate / (self.pixels * scale * scale * f64::from(fps)).max(1.0)
     }
 
-    pub fn update(&mut self, sample: &Sample) {
+    /// Adapts to `sample`; when the budget falls, says which sign of pressure
+    /// made it fall, for the Host's log.
+    pub fn update(&mut self, sample: &Sample) -> Option<&'static str> {
         let delayed = self.minimum_round_trip.is_finite()
             && sample.round_trip > self.minimum_round_trip + 150.0
             && sample.round_trip > self.previous_round_trip + 25.0;
@@ -113,11 +115,21 @@ impl Rate {
             self.previous_round_trip = sample.round_trip;
         }
         let ack_limit = (self.previous_round_trip + 250.0).max(500.0);
-        let pressure = sample.congested
-            || sample.buffered_bytes > 256 * 1024
-            || sample.ack_age > ack_limit
-            || delayed
-            || sample.decode_queue > 3;
+        let cause = if sample.congested {
+            Some("frames dropped for the viewer")
+        } else if sample.buffered_bytes > 256 * 1024 {
+            Some("bytes waiting for the stream")
+        } else if sample.ack_age > ack_limit {
+            Some("an old unacknowledged frame")
+        } else if delayed {
+            Some("a growing round trip")
+        } else if sample.decode_queue > 3 {
+            Some("the page's decode queue")
+        } else {
+            None
+        };
+        let pressure = cause.is_some();
+        let mut fell = None;
         let fps = f64::from(self.fps());
         // Per-frame demand, so intermittent scrolling can recover quality too.
         let demand = if sample.active_frames > 0 {
@@ -134,6 +146,7 @@ impl Rate {
                 };
                 self.bitrate = (self.bitrate * 0.7).min(delivered).max(MIN_BITRATE).round();
                 self.backoff_until = sample.now + (self.previous_round_trip * 2.0).max(1000.0);
+                fell = cause;
                 // Too few bits for sharp motion: fewer frames, then fewer pixels.
                 if self.bits(self.fps(), self.scale()) < LOW_BITS {
                     if self.rate + 1 < FRAME_RATES.len() {
@@ -164,6 +177,7 @@ impl Rate {
                 .ceil()
                 .clamp(4.0, 60.0) as u32;
         }
+        fell
     }
 }
 
