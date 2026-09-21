@@ -69,7 +69,8 @@ function point(event: { clientX: number; clientY: number }): { x: number; y: num
 
 function flushMove(): void {
   if (move) {
-    props.session.input(pointerMessage(props.tab.id, 'move', move, { ...move.event, detail: 0 }))
+    // The event itself: a DOM event's fields are getters on its prototype, so a spread copy has none of them.
+    props.session.input(pointerMessage(props.tab.id, 'move', move, move.event))
     move = null
   }
 }

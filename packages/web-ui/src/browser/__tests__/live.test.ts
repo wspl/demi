@@ -306,6 +306,29 @@ test('a picture ends the notice that capture failed, and no other', () => {
   expect(view.live.state.notice?.code).toBe('input_failed')
 })
 
+test('a message the protocol refuses is never sent, so the module does not end the view', () => {
+  const view = session()
+  view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
+  // A DOM event's fields are getters on its prototype: a spread copy of one has none of them.
+  class Hover {
+    get button() { return 0 }
+    get buttons() { return 0 }
+    get detail() { return 0 }
+    get altKey() { return false }
+    get ctrlKey() { return false }
+    get metaKey() { return false }
+    get shiftKey() { return false }
+  }
+  const event = new Hover()
+  const before = view.sent.length
+  // Typed as the event, as the DOM's own types are; at run time the copy is empty.
+  view.live.input(pointerMessage(TAB.id, 'move', { x: 10, y: 20 }, Object.assign({}, event)))
+  expect(view.sent).toHaveLength(before)
+  view.live.input(pointerMessage(TAB.id, 'move', { x: 10, y: 20 }, event))
+  expect(view.sent.at(-1)).toMatchObject({ type: 'pointer', action: 'move', buttons: 0, clickCount: 0 })
+  expect(view.live.state.connection).toBe('live')
+})
+
 test('text the watched tab copies reaches the viewer', () => {
   const copied: string[] = []
   const view = session({ onClipboard: (text) => copied.push(text) })

@@ -7,6 +7,7 @@
 import {
   LIVE_FILE_CHUNK_BYTES,
   LIVE_STALL_MS,
+  liveViewerMessageSchema,
   type LiveControl,
   type LiveDialog,
   type LiveTab,
@@ -14,6 +15,7 @@ import {
   type LiveViewport,
 } from '@demicodes/browser-protocol/live'
 import { reactive } from 'vue'
+import { reportError } from '../infra/errors'
 import { LiveFrameReader, encodeFile, encodeMessage, type LiveBytes, type LiveVideoFrame } from './frames'
 import type { PanelSize } from './view'
 
@@ -208,8 +210,18 @@ export class LiveSession {
     }, delay)
   }
 
+  /**
+   * The module ends a view that sends it a message the protocol refuses, so a
+   * message that does not fit is this page's defect: it is reported and never
+   * sent, and the view stays.
+   */
   private send(message: LiveViewerMessage): void {
-    this.stream?.send(encodeMessage(message))
+    const checked = liveViewerMessageSchema.safeParse(message)
+    if (!checked.success) {
+      reportError(`The live view built an invalid ${message.type} message`, checked.error)
+      return
+    }
+    this.stream?.send(encodeMessage(checked.data))
   }
 
   /** Input the page discards rather than queueing while the stream stalls. */
