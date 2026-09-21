@@ -1,5 +1,7 @@
 /** Chrome-like tab strip motion: lock the current width, then collapse or grow in flow. */
 
+import { clamp } from '@demicodes/utils'
+
 export const TAB_TRANSITION = 'tabs'
 export const TAB_WIDTH_MS = 200
 
@@ -58,6 +60,24 @@ export function settledTabBounds(strip: HTMLElement, tab: HTMLElement): { left: 
     }
   }
   return { left, right: left + settledTabWidth(tab) }
+}
+
+/**
+ * Where the strip scrolls to so `tab` shows clear of the edge fades, or null
+ * when it already does. A tab wider than the view between the fades cannot
+ * show whole: its start wins, so the two edges never pull against each other.
+ */
+export function revealScroll(
+  view: { scrollLeft: number; clientWidth: number; scrollWidth: number },
+  tab: { left: number; right: number },
+  fade: number,
+): number | null {
+  const latest = Math.max(0, tab.left - fade)
+  const earliest = tab.right + fade - view.clientWidth
+  const wanted = earliest > latest ? latest : clamp(view.scrollLeft, earliest, latest)
+  // The last tab's fade reaches past the strip's end: the end is as far as it goes.
+  const target = Math.min(wanted, Math.max(0, view.scrollWidth - view.clientWidth))
+  return Math.abs(target - view.scrollLeft) < 1 ? null : target
 }
 
 function prefersReducedMotion(): boolean {
