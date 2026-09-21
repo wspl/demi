@@ -232,7 +232,9 @@ impl Scope {
                     if error.raw_os_error()
                         != Some(windows_sys::Win32::Foundation::ERROR_NOT_FOUND as i32)
                     {
-                        eprintln!("shell IO cancellation failed: {error}");
+                        crate::host_log::runner(format_args!(
+                            "shell IO cancellation failed: {error}"
+                        ));
                         return;
                     }
                 }

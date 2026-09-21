@@ -3,9 +3,11 @@
 export {
   RemoteHost,
   RemoteGitError,
+  RemoteLogError,
   RemoteNetError,
   RemoteServiceError,
   type RemoteGit,
+  type RemoteLog,
   type RemoteNet,
   type RemoteServices,
   type RemoteServiceStream,

@@ -205,7 +205,9 @@ impl HostServer {
                     }
                 }
                 Err(error) => {
-                    eprintln!("demi-runner: filesystem response encoding failed: {error}");
+                    crate::host_log::runner(format_args!(
+                        "filesystem response encoding failed: {error}"
+                    ));
                     cancel.cancel();
                 }
             }
@@ -253,7 +255,9 @@ impl HostServer {
                     }
                 }
                 Err(error) => {
-                    eprintln!("demi-runner: working-tree response encoding failed: {error}");
+                    crate::host_log::runner(format_args!(
+                        "working-tree response encoding failed: {error}"
+                    ));
                     cancel.cancel();
                 }
             }

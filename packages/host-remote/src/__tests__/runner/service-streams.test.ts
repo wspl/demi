@@ -10,7 +10,7 @@ import {
   TEST_RUNNER_DEVICE,
 } from '@demicodes/host-remote/testing'
 import { memoryHostStore } from '@demicodes/shell/testing'
-import { collectBytes, decodeUtf8, waitFor } from '@demicodes/utils'
+import { collectBytes, decodeUtf8, delay, waitFor } from '@demicodes/utils'
 import { PipeBroker, RemoteHost, RemoteServiceError, devicePipes } from '@demicodes/host-remote'
 import type { RunnerToBackendMessage } from '@demicodes/runner-protocol'
 
@@ -68,7 +68,7 @@ async function connected() {
     })
     return { input, output, stream }
   }
-  return { dir, open, received, pipes }
+  return { dir, open, received, pipes, log: () => remote.log.read({ since: 0, limit: 1000 }) }
 }
 
 test(
@@ -124,6 +124,39 @@ test(
       message => message.type === 'pipe_done' && message.pipeId === id && !message.ok,
     )))
     held.stream.close()
+  },
+  60_000,
+)
+
+test(
+  'the Host log keeps a stream\'s standard error under its own source, and the runner\'s words about streams and services',
+  async () => {
+    const { open, log } = await connected()
+    const result = await open('result')
+    expect(decodeUtf8(await collectBytes(result.output.stream()))).toBe('command output')
+    result.stream.close()
+    await open('missing').catch(() => null)
+
+    // A read waits for no queued line: ask until the writer has put the
+    // stream's end in the files.
+    const ended = (line: { text: string }) => line.text === 'stream:result ended'
+    let page = await log()
+    for (let tries = 0; tries < 500 && !page.lines.some(ended); tries += 1) {
+      await delay(10)
+      page = await log()
+    }
+    const told = page.lines.map(({ source, conversationId, text }) => ({ source, conversationId, text }))
+    const conversationId = context.conversation
+    expect(told).toContainEqual({ source: 'stream:result', conversationId, text: 'command diagnostic' })
+    expect(told).toContainEqual({ source: 'runner', conversationId, text: 'stream:result opened' })
+    expect(told).toContainEqual({ source: 'runner', conversationId, text: 'stream:result ended' })
+    expect(told).toContainEqual({
+      source: 'runner',
+      conversationId,
+      text: 'stream:missing refused (unknown_operation): demicodes.runner-test has no operation missing',
+    })
+    expect(told.some(line => line.source === 'runner'
+      && /^service demicodes\.runner-test started \(pid \d+\)$/.test(line.text))).toBe(true)
   },
   60_000,
 )

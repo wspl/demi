@@ -12,6 +12,7 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 use super::cache::RuntimeError;
+use crate::host_log::{self, LineSplitter};
 
 const START_TIMEOUT: Duration = Duration::from_secs(10);
 const STOP_TIMEOUT: Duration = Duration::from_secs(6);
@@ -83,6 +84,7 @@ impl ResidentService {
         };
         let diagnostics = Arc::new(Mutex::new(Vec::new()));
         let diagnostics_writer = diagnostics.clone();
+        let source = format!("service:{}", descriptor.id);
         let cancel = CancellationToken::new();
         let owner_cancel = cancel.clone();
         let shutdown_client = client.clone();
@@ -94,12 +96,22 @@ impl ResidentService {
                 })?;
                 Ok(true)
             });
+            // Standard error goes two ways (`native-runtime.md` § Invocation
+            // protocol): each line to the Host's log as it arrives, and the
+            // tail kept here to accompany the service's failure.
             tasks.spawn(async move {
                 let mut buffer = [0; 4096];
+                let mut lines = LineSplitter::default();
                 loop {
                     let count = stderr.read(&mut buffer).await?;
                     if count == 0 {
+                        if let Some(line) = lines.finish() {
+                            host_log::write(&source, None, &line);
+                        }
                         return Ok(false);
+                    }
+                    for line in lines.push(&buffer[..count]) {
+                        host_log::write(&source, None, &line);
                     }
                     let mut tail = diagnostics_writer.lock().await;
                     let remove = (tail.len() + count).saturating_sub(STDERR_LIMIT);

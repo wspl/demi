@@ -1,11 +1,13 @@
 import { browseDirectory } from '../runner/file-browser'
 import { errorCode, errorMessage, isAbsolutePath } from '@demicodes/utils'
+import { RemoteLogError } from '@demicodes/host-remote'
 import { Hono, type Context } from 'hono'
 import { z } from 'zod'
 import type { AuthEnv } from '../auth/identity'
 import type { RunnerRegistry } from '../runner/registry'
 import type { ControlService } from '../storage/control'
 import type { Exposes } from '../expose/records'
+import { logQuerySchema } from './query'
 
 const claimBodySchema = z.object({ code: z.string().min(1) })
 
@@ -22,7 +24,7 @@ const createDirectoryBodySchema = z.object({ path: devicePathSchema })
 
 /**
  * `/api/devices` — the device registry surface: list, claim, revoke, directory
- * browse.
+ * browse, and the Host's log.
  */
 export function deviceRoutes(options: {
   control: ControlService;
@@ -150,8 +152,38 @@ export function deviceRoutes(options: {
     }
   })
 
+  // The Host's log (`web-api.md` § Device log), of a paired device or the
+  // user's Cloud alike. It reads through device access, which wakes nothing.
+  app.get('/:id/log', async (c) => {
+    const device = await control.getDevice(c.req.param('id'))
+    if (!device || device.userId !== c.get('user').id)
+      return c.json(DEVICE_NOT_FOUND, 404)
+    const query = logQuerySchema.safeParse(c.req.query())
+    if (!query.success)
+      return c.json({
+        code: 'invalid_query',
+        message: 'Expected since=<cursor>, limit=1..1000 and source=<source>'
+      }, 400)
+    const host = registry.deviceHost(device.id)
+    if (!host)
+      return c.json(DEVICE_OFFLINE, 409)
+    try {
+      return c.json(await host.log.read(query.data))
+    } catch (error) {
+      // The runner went away while the read was in flight.
+      if (errorCode(error) === 'ERUNNEROFFLINE')
+        return c.json(DEVICE_OFFLINE, 409)
+      if (error instanceof RemoteLogError)
+        return c.json({ code: 'log_unreadable', message: error.message }, 500)
+      throw error
+    }
+  })
+
   return app
 }
+
+const DEVICE_NOT_FOUND = { code: 'device_not_found', message: 'No such device' }
+const DEVICE_OFFLINE = { code: 'device_offline', message: 'Device is offline' }
 
 async function deviceFsFor(
   deviceId: string,
@@ -164,10 +196,7 @@ async function deviceFsFor(
     return {
       ok: false as const,
       status: 404 as const,
-      error: {
-        code: 'device_not_found',
-        message: 'No such device'
-      }
+      error: DEVICE_NOT_FOUND
     }
   }
   const fs = registry.deviceFs(device.id)
@@ -175,10 +204,7 @@ async function deviceFsFor(
     return {
       ok: false as const,
       status: 409 as const,
-      error: {
-        code: 'device_offline',
-        message: 'Device is offline'
-      }
+      error: DEVICE_OFFLINE
     }
   }
   return { ok: true as const, fs }

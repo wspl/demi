@@ -30,7 +30,7 @@ import {
   withTimeout,
   type Deferred
 } from '@demicodes/utils'
-import { fsOps, gitOps, STDIN_CHUNK_BYTES } from '@demicodes/runner-protocol'
+import { fsOps, gitOps, logPageSchema, STDIN_CHUNK_BYTES } from '@demicodes/runner-protocol'
 import type {
   BackendToRunnerMessage,
   FsOp,
@@ -41,6 +41,8 @@ import type {
   GitOp,
   GitParams,
   GitResult,
+  LogCursor,
+  LogPage,
   JobExitMessage,
   NetErrorCode,
   PipeRef,
@@ -67,6 +69,23 @@ export class RemoteGitError extends Error {
     super(message)
     this.name = 'RemoteGitError'
     this.code = code
+  }
+}
+
+/**
+ * The Host's log (`runner.md` § Host log): up to `limit` lines after `since`,
+ * oldest first, of one `source` when named; without `since` the page ends at
+ * the newest line. The runner answers from its files, so a read starts
+ * nothing on the Host. A log the runner cannot read is a `RemoteLogError`.
+ */
+export interface RemoteLog {
+  read(params: { since?: LogCursor; limit: number; source?: string }): Promise<LogPage>
+}
+
+export class RemoteLogError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'RemoteLogError'
   }
 }
 
@@ -215,6 +234,7 @@ export class RemoteHost implements Host {
   readonly fs: HostFileSystem
   readonly process: HostProcess
   readonly git: RemoteGit
+  readonly log: RemoteLog
   readonly net: RemoteNet
   readonly services: RemoteServices
 
@@ -249,6 +269,7 @@ export class RemoteHost implements Host {
         return collectBytes(pipe.stream())
       },
     }
+    this.log = { read: (params) => this.readLog(params) }
     this.net = { open: (params) => this.openNet(params) }
     this.services = {
       open: (params) => this.openService(params),
@@ -526,6 +547,15 @@ export class RemoteHost implements Host {
       else pending.reject(new RemoteGitError(message.code, message.message))
       return
     }
+    if (message.type === 'log_lines' || message.type === 'log_error') {
+      const pending = this.pendingCalls.get(message.id)
+      if (!pending)
+        return
+      this.pendingCalls.delete(message.id)
+      if (message.type === 'log_lines') pending.resolve({ lines: message.lines, next: message.next })
+      else pending.reject(new RemoteLogError(message.message))
+      return
+    }
     if (message.type === 'service_opened' || message.type === 'service_error') {
       const pending = this.pendingServices.get(message.streamId)
       if (!pending)
@@ -724,6 +754,33 @@ export class RemoteHost implements Host {
       // Same widening as `call`: `gitOps[op].result` is every operation's
       // result schema; the value is the one `op` named.
       return gitOps[op].result.parse(await pending.promise) as GitResult<Op>
+    } catch (error) {
+      this.pendingCalls.delete(id)
+      throw error
+    }
+  }
+
+  /** One `log_read` request, answered by `log_lines` or `log_error` under its id. */
+  private async readLog(params: {
+    since?: LogCursor
+    limit: number
+    source?: string
+  }): Promise<LogPage> {
+    if (!this.send)
+      throw offlineError('runner disconnected')
+    const id = createId()
+    const pending = deferred<unknown>()
+    this.pendingCalls.set(id, pending)
+    try {
+      // An absent field must stay off the wire: MessagePack would carry
+      // `undefined` as nil, which the runner's contract refuses.
+      this.send({
+        type: 'log_read',
+        id,
+        limit: params.limit,
+        ...definedFields({ since: params.since, source: params.source }),
+      })
+      return logPageSchema.parse(await pending.promise)
     } catch (error) {
       this.pendingCalls.delete(id)
       throw error

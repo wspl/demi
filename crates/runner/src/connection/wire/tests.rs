@@ -1,4 +1,4 @@
-use super::{Inbound, decode};
+use super::{Inbound, LogLinesLinesItem, Timestamp, decode, log_lines};
 
 #[test]
 fn decodes_binary_and_dates_written_by_the_typescript_codec() {
@@ -64,4 +64,56 @@ fn generated_wire_checks_optional_fields_and_nested_unions() {
     let mut invalid = valid;
     invalid["cwd"] = serde_json::Value::Null;
     assert!(decode(&rmp_serde::to_vec_named(&invalid).unwrap()).is_err());
+}
+
+#[test]
+fn log_read_bounds_its_limit_and_log_lines_carries_times_as_timestamps() {
+    let valid = serde_json::json!({"type":"log_read", "id":"log", "limit":200});
+    match decode(&rmp_serde::to_vec_named(&valid).unwrap()).unwrap() {
+        Inbound::LogRead {
+            id,
+            since,
+            limit,
+            source,
+        } => {
+            assert_eq!(id, "log");
+            assert_eq!(since, None);
+            assert_eq!(limit, 200);
+            assert_eq!(source, None);
+        }
+        _ => panic!("wrong message type"),
+    }
+    let valid = serde_json::json!({
+        "type":"log_read", "id":"log", "since":41, "limit":1000, "source":"service:demi.builtin"
+    });
+    assert!(decode(&rmp_serde::to_vec_named(&valid).unwrap()).is_ok());
+    for limit in [0, 1001] {
+        let invalid = serde_json::json!({"type":"log_read", "id":"log", "limit":limit});
+        assert!(decode(&rmp_serde::to_vec_named(&invalid).unwrap()).is_err());
+    }
+
+    let line = LogLinesLinesItem {
+        at: Timestamp(1_700_000_000_123),
+        source: "stream:browser.live".into(),
+        conversation_id: Some("conversation".into()),
+        text: "could not list tabs".into(),
+    };
+    let reply = log_lines("log".into(), vec![line.clone()], 42).unwrap();
+    #[derive(serde::Deserialize)]
+    struct Reply {
+        r#type: String,
+        id: String,
+        lines: Vec<LogLinesLinesItem>,
+        next: u64,
+    }
+    let reply: Reply = rmp_serde::from_slice(&reply.into_bytes()).unwrap();
+    assert_eq!(reply.r#type, "log_lines");
+    assert_eq!(reply.id, "log");
+    assert_eq!(reply.lines, [line]);
+    assert_eq!(reply.next, 42);
+    let empty_source = LogLinesLinesItem {
+        source: String::new(),
+        ..reply.lines[0].clone()
+    };
+    assert!(log_lines("log".into(), vec![empty_source], 42).is_err());
 }

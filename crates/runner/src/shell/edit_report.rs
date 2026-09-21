@@ -12,7 +12,7 @@ pub fn finish(recorder: Option<&Recorder>) -> (Vec<wire::JobExitFilesItem>, bool
     let journal = match recorder.report() {
         Ok(journal) => journal,
         Err(error) => {
-            eprintln!("edit report failed: {error}");
+            crate::host_log::runner(format_args!("edit report failed: {error}"));
             return (Vec::new(), false);
         }
     };
@@ -38,7 +38,7 @@ pub fn finish(recorder: Option<&Recorder>) -> (Vec<wire::JobExitFilesItem>, bool
                         removed += counts.1;
                     }
                     Err(error) => {
-                        eprintln!("edit snapshot read failed: {error}");
+                        crate::host_log::runner(format_args!("edit snapshot read failed: {error}"));
                         edit.original = None;
                         edit.modified = None;
                     }

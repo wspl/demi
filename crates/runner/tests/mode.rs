@@ -1,5 +1,7 @@
 use demi_command_service::protocol::LocalInvocation;
-use demi_runner::connection::wire::{HelloRunner, HelloRunnerIdentity, JobExitOutput, WireBytes};
+use demi_runner::connection::wire::{
+    HelloRunner, HelloRunnerIdentity, JobExitOutput, LogLinesLinesItem, WireBytes,
+};
 use demi_runner::{
     commands::command_client::{Stdio, forward},
     mode::{self, Options},
@@ -24,6 +26,12 @@ enum Reply {
         #[serde(rename = "exitCode")]
         code: Option<f64>,
         output: Option<JobExitOutput>,
+    },
+    #[serde(rename = "log_lines")]
+    LogLines {
+        id: String,
+        lines: Vec<LogLinesLinesItem>,
+        next: u64,
     },
 }
 
@@ -51,6 +59,7 @@ async fn backend_job_invokes_same_binary_alias_and_drain_releases_installation()
         let options = Options {
             backend,
             directory: state_dir.clone(),
+            log: state_dir.join("log"),
             executable: env!("CARGO_BIN_EXE_demi-runner").into(),
             cwd: directory.path().into(),
             env: BTreeMap::from([("HOME".into(), home.clone())]),
@@ -86,6 +95,27 @@ async fn backend_job_invokes_same_binary_alias_and_drain_releases_installation()
         }
         send(&mut socket, json!({"type":"hello_ok", "deviceId":"device"})).await;
         eprintln!("mode test: runner connected");
+        // The log answers from its files and waits for no queued line, so
+        // ask until the writer has put the start there.
+        loop {
+            send(
+                &mut socket,
+                json!({"type":"log_read", "id":"log", "limit":10, "source":"runner"}),
+            )
+            .await;
+            match receive(&mut socket).await {
+                Reply::LogLines { id, lines, next } => {
+                    assert_eq!(id, "log");
+                    assert!(lines.iter().all(|line| line.source == "runner"));
+                    if lines.iter().any(|line| line.text == "runner test started") {
+                        assert!(next > 0);
+                        break;
+                    }
+                }
+                _ => panic!("expected log_lines"),
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
         let body = json!({"roots": {"fixture": {"tree": {
             "name":"fixture", "summary":"Remote declaration", "kind":"rpc", "stdinField":"body",
             "input":{"type":"object", "properties":{"body":{"type":"string"}}, "required":["body"]}

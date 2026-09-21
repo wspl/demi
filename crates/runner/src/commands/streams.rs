@@ -21,6 +21,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use crate::{
     commands::{artifacts::Artifacts, contexts::Contexts, native::Services},
     connection::wire,
+    host_log::{self, LineSplitter},
     pipes::PipeClient,
     tasks::report_pipe,
 };
@@ -115,15 +116,19 @@ impl ServiceStreams {
         let draining = self.draining.clone();
         let live = self.live.clone();
         let contexts = self.contexts.clone();
+        let log = StreamLog {
+            source: format!("stream:{operation}"),
+            conversation: context.conversation.clone(),
+        };
         self.streams.spawn(async move {
             if draining.is_cancelled() {
                 let message = "the runner is draining for an upgrade".to_owned();
-                send_error(&reply, stream_id, "refused", message, &stream).await;
+                send_error(&reply, stream_id, "refused", message, &stream, &log).await;
                 return;
             }
             if !package.operations.contains(&operation) {
                 let message = format!("{} has no operation {operation}", package.id);
-                send_error(&reply, stream_id, "unknown_operation", message, &stream).await;
+                send_error(&reply, stream_id, "unknown_operation", message, &stream, &log).await;
                 return;
             }
             // The stream holds its service from the start: acquiring one no
@@ -154,7 +159,8 @@ impl ServiceStreams {
                 result = opened => match result {
                     Ok(exchange) => exchange,
                     Err(message) => {
-                        send_error(&reply, stream_id, "service_failed", message, &stream).await;
+                        send_error(&reply, stream_id, "service_failed", message, &stream, &log)
+                            .await;
                         return;
                     }
                 },
@@ -172,10 +178,11 @@ impl ServiceStreams {
                     }
                 }
                 Err(error) => {
-                    eprintln!("demi-runner: service_opened encoding failed: {error}");
+                    host_log::runner(format_args!("service_opened encoding failed: {error}"));
                     return;
                 }
             }
+            log.event("opened");
             let (pulls, demanded) = mpsc::channel(1);
             let completed = CancellationToken::new();
             let exchange = TaskTracker::new();
@@ -205,10 +212,18 @@ impl ServiceStreams {
             exchange.spawn({
                 let reply = reply.clone();
                 let cancel = stream.clone();
+                let log = log.clone();
                 async move {
-                    let result =
-                        pump_output(pipes, &output.url, command_output, pulls, &completed, &cancel)
-                            .await;
+                    let result = pump_output(
+                        pipes,
+                        &output.url,
+                        command_output,
+                        pulls,
+                        &completed,
+                        &cancel,
+                        &log,
+                    )
+                    .await;
                     if result.is_err() {
                         cancel.cancel();
                     }
@@ -217,6 +232,7 @@ impl ServiceStreams {
             });
             exchange.close();
             exchange.wait().await;
+            log.event("ended");
         });
         Ok(())
     }
@@ -225,6 +241,29 @@ impl ServiceStreams {
         self.cancel.cancel();
         self.streams.close();
         self.streams.wait().await;
+    }
+}
+
+/// Where one stream's lines go in the Host's log (`runner.md` § Host log):
+/// its invocation's standard error under the stream's own source, the
+/// runner's words about it under `runner`, both with its conversation.
+#[derive(Clone)]
+struct StreamLog {
+    source: String,
+    conversation: String,
+}
+
+impl StreamLog {
+    fn event(&self, text: &str) {
+        host_log::write(
+            host_log::RUNNER,
+            Some(&self.conversation),
+            &format!("{} {text}", self.source),
+        );
+    }
+
+    fn stderr(&self, line: &str) {
+        host_log::write(&self.source, Some(&self.conversation), line);
     }
 }
 
@@ -312,60 +351,67 @@ async fn pump_output(
     pulls: mpsc::Sender<()>,
     completed: &CancellationToken,
     cancel: &CancellationToken,
+    log: &StreamLog,
 ) -> io::Result<()> {
     let (sender, receiver) = mpsc::channel::<io::Result<Bytes>>(OUTPUT_QUEUE);
     let records = async move {
-        loop {
-            let record = tokio::select! {
-                _ = cancel.cancelled() => return,
-                record = output.next() => record,
-            };
-            let item = match record {
-                Ok(Some(Record::Stdout(bytes))) => Ok(bytes),
-                Ok(Some(Record::Stderr(bytes))) => {
-                    eprintln!(
-                        "demi-runner: service stream: {}",
-                        String::from_utf8_lossy(&bytes).trim_end()
-                    );
-                    continue;
-                }
-                Ok(Some(Record::InputPull)) => {
-                    if pulls.try_send(()).is_err() {
-                        let _ = sender
-                            .send(Err(io::Error::other(
-                                "overlapping service stream input demands",
-                            )))
-                            .await;
-                        return;
+        let mut lines = LineSplitter::default();
+        let stderr = &mut lines;
+        let pump = async move {
+            loop {
+                let record = tokio::select! {
+                    _ = cancel.cancelled() => return,
+                    record = output.next() => record,
+                };
+                let item = match record {
+                    Ok(Some(Record::Stdout(bytes))) => Ok(bytes),
+                    Ok(Some(Record::Stderr(bytes))) => {
+                        for line in stderr.push(&bytes) {
+                            log.stderr(&line);
+                        }
+                        continue;
                     }
-                    continue;
-                }
-                Ok(Some(Record::Completion(completion))) => {
-                    if let Some(error) = completion.error {
-                        eprintln!(
-                            "demi-runner: service stream ended: {}: {}",
-                            error.code, error.message
-                        );
+                    Ok(Some(Record::InputPull)) => {
+                        if pulls.try_send(()).is_err() {
+                            let _ = sender
+                                .send(Err(io::Error::other(
+                                    "overlapping service stream input demands",
+                                )))
+                                .await;
+                            return;
+                        }
+                        continue;
                     }
-                    completed.cancel();
-                    continue;
-                }
-                // The response ended: complete only after a completion record.
-                Ok(None) if completed.is_cancelled() => return,
-                Ok(None) => Err(io::Error::other(
-                    "service stream invocation has no completion",
-                )),
-                Err(error) => Err(io::Error::other(error)),
-            };
-            let failed = item.is_err();
-            tokio::select! {
-                _ = cancel.cancelled() => return,
-                result = sender.send(item) => {
-                    if result.is_err() || failed {
-                        return;
+                    Ok(Some(Record::Completion(completion))) => {
+                        if let Some(error) = completion.error {
+                            log.event(&format!("failed: {}: {}", error.code, error.message));
+                        }
+                        completed.cancel();
+                        continue;
+                    }
+                    // The response ended: complete only after a completion record.
+                    Ok(None) if completed.is_cancelled() => return,
+                    Ok(None) => Err(io::Error::other(
+                        "service stream invocation has no completion",
+                    )),
+                    Err(error) => Err(io::Error::other(error)),
+                };
+                let failed = item.is_err();
+                tokio::select! {
+                    _ = cancel.cancelled() => return,
+                    result = sender.send(item) => {
+                        if result.is_err() || failed {
+                            return;
+                        }
                     }
                 }
             }
+        };
+        pump.await;
+        // The words a last chunk left without a newline, however the
+        // invocation ended.
+        if let Some(line) = lines.finish() {
+            log.stderr(&line);
         }
     };
     // The upload's end tells the backend the stream is over: only a
@@ -397,7 +443,9 @@ async fn send_error(
     code: &str,
     message: String,
     cancel: &CancellationToken,
+    log: &StreamLog,
 ) {
+    log.event(&format!("refused ({code}): {message}"));
     match wire::service_error(stream_id, code.into(), message) {
         Ok(message) => {
             tokio::select! {
@@ -405,6 +453,6 @@ async fn send_error(
                 _ = output.send(message) => {},
             }
         }
-        Err(error) => eprintln!("demi-runner: service_error encoding failed: {error}"),
+        Err(error) => host_log::runner(format_args!("service_error encoding failed: {error}")),
     }
 }

@@ -250,3 +250,47 @@ test('a working-tree change carries one of the pairs git status prints', () => {
   for (const status of ['  ', '!!', 'U ', ' U', ' C', 'X ', 'M', 'MMM'])
     expect(gitChangeSchema.safeParse({ ...change, status }).success).toBe(false)
 })
+
+test('a log read bounds its limit, and its lines carry their time as a Date', () => {
+  const read: RunnerProtocolMessage = {
+    type: 'log_read',
+    id: 'l1',
+    since: 41,
+    limit: 200,
+    source: 'service:demi.builtin'
+  }
+  expect(wire.decodeBackendToRunner(wire.encode(read))).toEqual(read)
+  const newest: RunnerProtocolMessage = { type: 'log_read', id: 'l2', limit: 1000 }
+  expect(wire.decodeBackendToRunner(wire.encode(newest))).toEqual(newest)
+  for (const bad of [{ limit: 0 }, { limit: 1001 }, { limit: 10, since: -1 }, { limit: 10, source: '' }]) {
+    expect(() => wire.decodeBackendToRunner(msgpackCodec.encode({
+      type: 'log_read',
+      id: 'l3',
+      ...bad
+    }))).toThrow('Malformed')
+  }
+
+  const lines: RunnerProtocolMessage = {
+    type: 'log_lines',
+    id: 'l1',
+    lines: [
+      { at: new Date('2026-09-21T00:00:00.250Z'), source: 'runner', text: 'online' },
+      {
+        at: new Date('2026-09-21T00:00:01Z'),
+        source: 'stream:browser.live',
+        conversationId: 'conversation',
+        text: 'could not list tabs'
+      }
+    ],
+    next: 43
+  }
+  expect(wire.decodeRunnerToBackend(wire.encode(lines))).toEqual(lines)
+  const error: RunnerProtocolMessage = { type: 'log_error', id: 'l1', message: 'permission denied' }
+  expect(wire.decodeRunnerToBackend(wire.encode(error))).toEqual(error)
+  expect(() => wire.decodeRunnerToBackend(msgpackCodec.encode({
+    type: 'log_lines',
+    id: 'l1',
+    lines: [{ at: 'yesterday', source: 'runner', text: 'online' }],
+    next: 1
+  }))).toThrow('Malformed')
+})
