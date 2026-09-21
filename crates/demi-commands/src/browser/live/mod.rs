@@ -13,7 +13,6 @@ mod uploads;
 mod viewer;
 mod writer;
 
-pub(super) use commands::visit;
 pub(crate) use hub::Hub;
 pub(crate) use observers::Observed;
 pub(super) use viewer::serve;

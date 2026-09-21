@@ -84,7 +84,7 @@ function saveScroll(id: string, state: PersistedScrollState | null): void {
 const selectEdit: EditSelectionHandler = (selection) => {
   const current = conversation.value
   if (current) {
-    work.selectEdit(work.stateFor(current.id), selection)
+    work.selectEdit(current.id, selection)
   }
 }
 
@@ -95,10 +95,9 @@ const files = computed<ConversationFiles | undefined>(() => {
     return undefined
   }
   const contents = rawFileContents(conversationFileRoutes(current.id).raw)
-  const state = work.stateFor(current.id)
   return {
     imageUrl: (path) => contents.url(path),
-    open: (path) => work.open(state, path),
+    open: (path) => work.open(current.id, path),
   }
 })
 

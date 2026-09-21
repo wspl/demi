@@ -6,6 +6,7 @@ export {
   RemoteLogError,
   RemoteNetError,
   RemoteServiceError,
+  RemoteServiceExit,
   type RemoteGit,
   type RemoteLog,
   type RemoteNet,
