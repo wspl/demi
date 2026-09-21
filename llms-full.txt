@@ -1085,9 +1085,7 @@ A Linux execution host can be a VPS without KVM. It must still support the Linux
 facilities listed in setup. On a Mac, the manager and sandboxes run inside one
 Lima Linux VM with the Mac's native CPU architecture. systrap needs no nested
 virtualization. Backend storage and the web application can stay on the Mac.
-A remote Linux manager with a local Mac backend is also supported: the manager
-socket and the runner's outbound connection use separate SSH forwards. gVisor
-itself does not run on macOS. See the upstream
+gVisor itself does not run on macOS. See the upstream
 [platform guide](https://gvisor.dev/docs/architecture_guide/platforms/).
 
 ### Control and ownership
@@ -1097,8 +1095,7 @@ Requests contain `{ id, op, params }`; replies identify that request and contain
 a result or an error. Death events identify the device whose sandbox exited.
 `packages/machines/src/protocol.ts` owns the wire schemas. Socket access grants
 infrastructure control: there is no manager TCP listener or application login.
-The socket's dedicated owner/group includes only the backend or its trusted SSH
-forwarding account. The backend never runs as root merely to reach this socket.
+The socket's dedicated owner/group includes only trusted backend infrastructure. The backend never runs as root merely to reach this socket.
 
 The manager is a trusted, privileged Linux service because it prepares mounts,
 loop devices, network namespaces, firewall rules, and cgroups. Its private mount
@@ -1387,8 +1384,7 @@ endpoints, not whole subnets; address changes require revalidation and rule upda
 
 A service's public URL uses the backend's [Host expose](expose.md) relay over the
 runner connection. The same connection carries files, commands, and browser
-streams through normal Host access. SSH is infrastructure transport in remote
-development, never an alternate route for conversation operations.
+streams through normal Host access. No infrastructure transport is an alternate route for conversation operations.
 
 ### Managed boot credential
 
@@ -1572,10 +1568,9 @@ covers macOS and Windows paired devices; the Cloud base is Linux only.
 
 # Set up managed Cloud hosts
 
-The backend can run on your Mac while a Linux VPS executes Cloud. The Mac sends
-lifecycle requests through a forwarded manager socket; the sandbox's runner
-connects back through a separate endpoint. The same split applies when Linux
-runs locally inside Lima.
+Cloud runs on a Linux execution host, or inside one Linux VM for local macOS
+development. The backend reaches the manager over a restricted Unix socket and
+the sandbox's runner connects to the configured backend endpoint.
 
 This guide describes the selected gVisor deployment. **The installer, manager
 adapter, image pipeline, and Lima template still need implementation.** The
@@ -1685,39 +1680,6 @@ Publish a new image, restart the manager, and explicitly reset a device when it
 should use the new base. Restart alone does not upgrade pinned devices. A new
 runtime starts only after prior writers have stopped. The replacement deployment
 uses a new data directory; it does not import or delete older deployment state.
-
-## Mac backend with a remote VPS
-
-There are two independent transports:
-
-```text
-Mac backend -> local Unix socket -> SSH -> VPS manager socket
-VPS sandbox -> VPS private relay -> SSH reverse forward -> Mac backend
-```
-
-For example, keep the Mac backend listening on `127.0.0.1:3271`. Forward its
-manager connection from a private Mac socket to `/run/demi/machines.sock` on the
-VPS using SSH stream-local forwarding. Use a dedicated SSH account that can open
-that socket. The SSH forward is the socket's authorization boundary on the Mac;
-keep its parent directory private.
-
-Create a reverse TCP forward from VPS loopback `127.0.0.1:4287` to Mac
-`127.0.0.1:3271`. A supervised relay on the VPS's sandbox gateway listens on
-port 4288 and forwards to that loopback port. Configure the same gateway URL in
-both `DEMI_BACKEND_PUBLIC_URL` and `DEMI_MANAGED_BACKEND_URL`. Permit only the
-sandbox interfaces to reach the relay. Do not bind it to the VPS public address
-or enable unrestricted SSH `GatewayPorts`.
-
-The deployment helper owns SSH, relay, socket, and firewall lifetimes together.
-Use exit-on-forward-failure, liveness detection, and bounded reconnects. A broken
-tunnel makes Cloud unavailable; do not allocate a replacement device. A broken
-control connection is reconciled before retrying a transition. Remove forwarding
-sockets and relays on cancellation or helper exit, including failed setup.
-
-This arrangement keeps the database, conversations, agent, and web service on the
-Mac, and persistent Cloud files on the VPS. It is a development topology, not
-multi-worker failover. No conversation shell/file operation uses SSH; those
-continue through the runner and normal Host access.
 
 ## Mac backend with local Lima
 
