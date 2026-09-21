@@ -9,8 +9,8 @@ use tokio_util::sync::CancellationToken;
 
 use super::{hub::Membership, writer::Writer};
 use crate::browser::{
-    BrowserEnvironment, BrowserError, BrowserTab, Result, operation::CONTROL_TIMEOUT,
-    viewport::Mode,
+    BrowserEnvironment, BrowserError, BrowserTab, Result, navigation::reload,
+    operation::CONTROL_TIMEOUT, viewport::Mode,
 };
 
 pub(super) enum Command {
@@ -45,9 +45,15 @@ async fn run(
     match command {
         Command::Mode { tab, mode } => {
             if let Some(membership) = membership.upgrade() {
-                membership
-                    .mode(&find(environment, &tab).await?, mode)
-                    .await?;
+                let tab = find(environment, &tab).await?;
+                let was_phone = tab.viewport().mode == Mode::Mobile;
+                membership.mode(&tab, mode).await?;
+                // A phone's user agent and touch reach only what loads after
+                // them: the page in the tab was served to the other kind of
+                // device, and lays out as that one until it loads again.
+                if was_phone != (mode == Mode::Mobile) {
+                    reload(&tab);
+                }
             }
         }
     }
