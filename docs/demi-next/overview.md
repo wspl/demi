@@ -102,7 +102,7 @@ backend APIs rather than receiving stored provider secrets.
 | Execution target | The conversation's selection of Cloud, a device directory, or a workspace. |
 | Device | A registered execution device, either user-paired or managed. |
 | Host | The filesystem/process abstraction used to execute on a device. |
-| Guest | A managed virtual machine running a runner. |
+| Guest | A managed gVisor/systrap sandbox running a runner. |
 | Backend machine | The machine running backend infrastructure or the guest provisioner. |
 
 The backend uses `host-remote` to access devices through the Host contract.
@@ -139,6 +139,7 @@ implementation.
 | How does a message show a file it names? | [Files named in messages](file-previews.md#files-named-in-messages) |
 | How do external programs call declared commands? | [External command clients](commands.md#external-command-clients) |
 | How is Cloud provisioned and reset? | [Managed hosts](managed-hosts.md) |
+| How are Cloud images built and deployed? | [Cloud images](../cloud-images.md), [Cloud setup](../managed-hosts-setup.md) |
 | How does the web application fit together? | [Web application](web-application.md) |
 | Which end-to-end cases must hold? | [Scenarios](scenarios.md) |
 | What is the delivery plan? | [Roadmap](roadmap.md) |

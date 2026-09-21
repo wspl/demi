@@ -25,7 +25,7 @@ receives, not just what the client displays.
 
 A fake managed provisioner starts the same native runner as a local process with
 a retained home directory and a pre-issued token. It records wake, hibernate,
-checkpoint, reset, and growth calls. It does not create a VM, mount disk images,
+checkpoint, reset, and growth calls. It does not start a sandbox, mount disk images,
 or implement filesystem isolation. Its reset clears runner state while retaining
 home; a successful fake reset does not demonstrate replacement of system packages.
 
@@ -109,20 +109,20 @@ than relying only on the common job counters.
 
 ## Real machine acceptance
 
-`real-firecracker.e2e.test.ts` is gated by `DEMI_FIRECRACKER_E2E=1` and requires a
-configured Linux/KVM environment. It uses scripted providers with the real
-provisioner. Its tests exercise shared Cloud identity, file/job user identity,
-uploads, retained system/home markers across wake, external reset, and toolchain
-availability across commands. The toolchain test needs network egress but does
-not call a model.
+The selected real-machine suite runs the actual gVisor/systrap provisioner and
+shipped image with scripted providers. It exercises managed-token registration,
+shared Cloud identity, file/job user identity, uploads, system/home persistence,
+external reset, and toolchain/browser availability through normal Host access.
+Network egress is needed for package checks; no test calls a real model.
 
-Run acceptance separately in direct and jailer launch modes; a single configured
-run does not cover both. The current test's system marker and disabled Bash binary
-do not establish every broken-guest case, package lifecycle, disk-growth case,
-or publication failure boundary. Exercise those through targeted provisioner and
-image-store fault tests and real-machine checks as appropriate.
+The full persistence, isolation, failure, and platform matrix is owned by
+[Managed hosts — Verification](managed-hosts.md#verification). Linux amd64,
+Linux arm64, and local Lima execution are separate acceptance environments.
+Record startup phases, memory, and checkpoint I/O separately from functional
+assertions. A fake provisioner does not certify filesystem durability, sandbox
+isolation, or distributed writer fencing.
 
-Record resident/peak memory, cold command-ready latency, wake latency, and
-checkpoint I/O separately from functional assertions. No fake-provisioner result
-certifies ext4 durability, Firecracker isolation, or distributed writer fencing.
-Setup requirements are in [Cloud setup](../managed-hosts-setup.md).
+Implementation of this suite is pending. Replace the old KVM-gated machine tests;
+the [Docker-based evaluation](../gvisor-evaluation.md) used pairing and is not
+managed-provisioner acceptance. Deployment prerequisites are in
+[Cloud setup](../managed-hosts-setup.md).

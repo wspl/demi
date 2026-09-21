@@ -131,3 +131,11 @@ exercise repeated process startup and teardown.
 client. Build it with `cargo build --release -p demi-command-service --example
 benchmark`, then execute `target/release/examples/benchmark`. It never calls a
 model. Run it directly to obtain measurements for the current machine and build.
+
+## Cloud image refresh
+
+Cloud runs the Linux target matching its execution host, including arm64 inside
+Lima on Apple silicon. Build and package that target with the paired-device target
+used for acceptance. The [Cloud image contract](cloud-images.md#acceptance-and-local-refresh)
+owns embedding, manager restart, local reset, and checking the executing artifact
+identities; rebuilding a native release alone does not refresh a pinned Cloud.
