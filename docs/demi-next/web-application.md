@@ -91,6 +91,16 @@ tab for pages that refuse framing.
 
 ## Backend communication
 
+A request asks for something and an answer says what happened. Every control
+operation is therefore an ordinary HTTP request: it has one answer, a status
+and an error the caller can show, it appears in the network panel and the
+backend's log, and it can be retried. A WebSocket carries only what a request
+cannot: bytes that flow for as long as the user watches, such as pictures and
+the input that must stay in order with them, and events the backend pushes as
+they happen. An operation is never a message on a stream that some later
+message may or may not answer: a lost answer then looks exactly like a slow
+one, and nothing records that it failed.
+
 The browser uses same-origin cookie authentication. REST supplies account,
 conversation, project, device, provider, and preference data. The agent WebSocket
 supplies live transcript, queue, child-agent, and shell-job events. A live

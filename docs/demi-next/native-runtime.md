@@ -404,8 +404,9 @@ invocation's completion ends the page's connection.
 
 Protocol version 1 uses direct HTTP/2 requests. The shared SDK owns process IO.
 Handlers use logical output writers. Executable stdout contains only protocol
-bytes. Process stderr carries service diagnostics, drained independently by the
-runner with bounded retention.
+bytes. Process stderr carries service diagnostics, which the runner drains
+independently into the [Host's log](runner.md#host-log) line by line; the tail
+of a service that fails still accompanies its failure.
 
 | Request | Purpose |
 | --- | --- |

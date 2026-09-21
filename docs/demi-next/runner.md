@@ -192,7 +192,7 @@ invocation receives as a command's does, the conversation's directory, which
 becomes the invocation's `cwd`, and two pipes ([Pipes and output](#pipes-and-output)): `input`, whose bytes the
 runner delivers to the invocation as input chunks when the operation asks for
 them, and `output`, into which it writes the invocation's standard output. Its
-standard error goes to the runner's log. The runner
+standard error goes to the [Host's log](#host-log). The runner
 starts the invocation in the resident service that holds the conversation's
 state, starting the service when needed, and answers `service_opened`, or
 `service_error` with `unknown_operation`, `service_failed`, or `refused`; no
@@ -207,6 +207,37 @@ backend closing cancels the invocation. The runner reports each pipe end with `p
 pipe. Like a network stream, the service stream is generic mechanism: the
 runner does not parse what flows through it. The backend uses it for the
 [live browser view](browser-live-view.md).
+
+## Host log
+
+A Host that cannot say what went wrong cannot be debugged. For example, the
+live view module fails to list the browser's tabs on a Cloud and writes why to
+its standard error; without a log those words are gone, and the page only
+sees a view that never learns its tabs.
+
+The runner keeps one log per Host, in its own data directory: text lines, each
+with a time, a source and, when the work belongs to one, a conversation id.
+
+| Source | Lines |
+| --- | --- |
+| `runner` | Connecting and losing the backend, starting and stopping services, opening, refusing and ending streams, failed Host operations, guest boot |
+| `service:<package>` | Every line a resident service writes to its standard error, as it arrives |
+| `stream:<name>` | The standard error of a [service stream](#service-streams)'s invocation |
+
+- The log is bounded: two files of 4 MiB, the older replaced when the newer
+  fills. It outlives a runner restart and, on a Cloud, a stop and a wake; a
+  reset starts it again.
+- A `log_read` request returns lines after a cursor, up to a limit, optionally
+  of one source, with the cursor to continue from. It reads the files and
+  waits for nothing. The backend serves it as the
+  [device log route](web-api.md#device-log).
+- What a source writes is diagnostics: what it tried and why it failed. Page
+  content, typed text, cookies, tokens and file contents never go to the log.
+- A failure the user's page is waiting on is also told to the page, by the
+  request's answer or a stream's `notice`. The log is where the cause is
+  found, never the only place a failure is told.
+
+The same log, route and bound serve a paired device and a Cloud.
 
 ## Load
 
