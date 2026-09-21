@@ -1,170 +1,177 @@
 # Set up managed Cloud hosts
 
-This guide installs the machine manager for Linux or macOS development.
-[Managed hosts](demi-next/managed-hosts.md) defines lifecycle, persistence, and
-isolation. The backend and manager are separate processes. Build the guest kernel
-and rootfs using the [guest-image instructions](../packages/guest-image/README.md)
-before starting the manager.
+The backend can run on your Mac while a Linux VPS executes Cloud. The Mac sends
+lifecycle requests through a forwarded manager socket; the sandbox's runner
+connects back through a separate endpoint. The same split applies when Linux
+runs locally inside Lima.
+
+This guide describes the selected gVisor deployment. **The installer, manager
+adapter, image pipeline, and Lima template still need implementation.** The
+configuration below is their intended interface, not a claim that the current
+scripts accept it. The authoritative runtime contract is
+[Managed hosts](demi-next/managed-hosts.md); image artifacts are defined in
+[Cloud images](cloud-images.md).
+
+## Linux requirements
+
+Use a native amd64 or arm64 Linux execution host with the runtime release
+pinned in [isolation and joining](demi-next/managed-hosts.md#isolation-and-joining).
+The host needs seccomp, namespaces, cgroup v2 with CPU/memory/PID controllers, OverlayFS, ext4, loop devices, filesystem freeze, and network
+administration through iproute2 and nftables. An ordinary hardware-virtualized
+VPS can provide these without exposing KVM. A restricted container sold as a VPS
+may not; check the facilities instead of relying on the provider's product name.
+
+Install the complete pinned runsc distribution and verify its release checksum.
+Keep `runsc` and its accompanying `gvisor-bin/` directory together; upstream
+packaging can include helper binaries. The build/deployment manifest pins the
+release and archive hash, and startup validates the configured executable and
+required flags. Follow the upstream
+[installation instructions](https://gvisor.dev/docs/user_guide/install/).
+
+The execution host also needs Bun for the manager, e2fsprogs, util-linux,
+iproute2, nftables, and an archive reader for the shipped image format. Docker
+and containerd are not required. The manager runs as a privileged system service
+in a private mount namespace. Only its dedicated backend/forwarding group may
+connect to the manager socket; group membership grants control of Cloud machines.
+
+Startup validates runtime support, image architecture and integrity, storage
+mount/freeze support, cgroup enforcement, and network policy installation. It
+fails with a named diagnostic before serving requests if a requirement is absent.
+It never falls back to another runtime or launches an unisolated process.
 
 ## Configuration
 
-| Variable | Meaning |
-|---|---|
-| `DEMI_MACHINES_SOCKET` | the Unix socket the manager listens on and the backend dials (required on both) |
-| `DEMI_MACHINES_DATA` | the manager's state: working VM files and the image generations (default `~/.demi/machines`) |
-| `DEMI_MANAGED_FIRECRACKER`, `DEMI_MANAGED_KERNEL`, `DEMI_MANAGED_ROOTFS` | the Firecracker binary and the guest-image artifacts (required) |
-| `DEMI_MANAGED_LAUNCH` | `direct` (default) or `jailer`, with `DEMI_MANAGED_JAILER`, `DEMI_MANAGED_HELPER`, `DEMI_MANAGED_CHROOT_BASE`, `DEMI_MANAGED_UID_BASE` |
-| `DEMI_MANAGED_VCPUS`, `DEMI_MANAGED_MEM_MIB`, `DEMI_MANAGED_SYSTEM_MIB`, `DEMI_MANAGED_HOME_MIB`, `DEMI_MANAGED_SUBNET`, `DEMI_MANAGED_SLOTS`, `DEMI_MANAGED_DNS` | guest sizing and the tap pool |
+Both processes validate their environment at startup. Unknown or malformed
+managed settings fail configuration; required values are not inferred from a
+legacy runtime switch. Counts and MiB sizes are positive integers. Cloud is
+mandatory, so a missing manager configuration is a startup error.
 
-The backend needs `DEMI_MACHINES_SOCKET` and `DEMI_BACKEND_PUBLIC_URL`, the
-URL guests dial.
+| Variable | Owner and meaning |
+| --- | --- |
+| `DEMI_MACHINES_SOCKET` | Manager listen path; backend connect path. Different paths are expected when forwarded. |
+| `DEMI_MACHINES_DATA` | Manager's persistent state, default `/var/lib/demi-machines`. |
+| `DEMI_MANAGED_RUNSC` | Required absolute path to the pinned runsc executable. |
+| `DEMI_MANAGED_IMAGE` | Required directory containing the Cloud image manifest and archive. |
+| `DEMI_MANAGED_CPUS`, `DEMI_MANAGED_MEM_MIB` | Per-sandbox CPU budget and total memory limit. |
+| `DEMI_MANAGED_SYSTEM_MIB`, `DEMI_MANAGED_HOME_MIB` | Initial writable filesystem capacities. |
+| `DEMI_MANAGED_SUBNET`, `DEMI_MANAGED_SLOTS` | Non-overlapping IPv4 address pool and maximum network slots. |
+| `DEMI_MANAGED_DNS` | Required reachable IPv4 resolver addresses, validated as an address list. |
+| `DEMI_MANAGED_BACKEND_URL` | Manager's allowed runner destination; each wake must match it. |
+| `DEMI_BACKEND_PUBLIC_URL` | Backend's runner-reachable URL; must name the same endpoint as the manager allowlist. |
 
-Both processes read their environment once at startup and refuse to start on a
-value they cannot use, naming the variable. `DEMI_MANAGED_FIRECRACKER` decides
-whether managed hosts are configured at all: unset, the manager runs without
-them and the rest of `DEMI_MANAGED_*` is ignored; set, every required variable
-above must be present. `DEMI_MANAGED_LAUNCH` accepts only `direct` or `jailer`,
-and `jailer` additionally requires `DEMI_MANAGED_JAILER` and
-`DEMI_MANAGED_HELPER`. Every count and size — vCPUs, the MiB sizes, slots and
-`DEMI_MANAGED_UID_BASE` — must be a whole number above zero. On the backend
-side, `DEMI_BACKEND_PORT` must be a port number, `DEMI_INSTANCE_MODE` must be
-`shared` or `isolated`, and `DEMI_MACHINES_SOCKET` and `DEMI_BACKEND_PUBLIC_URL`
-(a URL) are both required: the backend does not start without Cloud.
+The sizing defaults and limits live in
+[lifecycle and capacity](demi-next/managed-hosts.md#lifecycle-and-capacity), rather
+than being duplicated here. The network pool defaults to `172.30.0.0/16` with
+256 slots, validated against host routes before use. `DEMI_MANAGED_DNS` is a
+comma-separated nonempty list with no loopback or unspecified address. Runtime
+security flags, mount sizes, capability policy, and process limits are a single
+shipped profile, not environment overrides. All old hypervisor/kernel/jailer
+variables are removed; there is no `direct`/`jailer` selector.
 
-## The manager's filesystem
+The backend independently requires a valid `DEMI_BACKEND_PORT`,
+`DEMI_INSTANCE_MODE` (`shared` or `isolated`), manager socket, and public URL.
+Its [native release configuration](demi-next/native-runtime.md#backend-deployment-configuration)
+remains required. An image release and backend command release must agree.
 
-`DEMI_MACHINES_DATA` and the chroot base belong on a filesystem that clones
-files, so that a machine's disks cost what its guest writes instead of a whole
-image on every wake ([Managed hosts](demi-next/managed-hosts.md#lifecycle-and-capacity)).
-XFS with reflinks is the tested choice; btrfs clones too. Format the volume,
-mount it, and set XFS's copy-on-write extent hint to the block size on the
-directory, which new files inherit — without the hint XFS rounds each small
-guest write up until nothing is shared:
+Example manager configuration for an already prepared Linux execution host:
 
-```sh
-sudo mkfs.xfs -m reflink=1 /dev/<device>   # reflink=1 since xfsprogs 5.1
-sudo mount /dev/<device> /var/lib/demi-machines
-sudo xfs_io -c 'cowextsize 4096' /var/lib/demi-machines
-```
-
-`xfs_io -c 'stat' /var/lib/demi-machines` reports the hint as `fsxattr.cowextsize`;
-`xfs_info` reports `reflink=1`. The manager runs on a filesystem without clones
-as well — ext4 copies each image in full, which is slower and larger, not wrong.
-
-## Install jailer mode on Linux
-
-Run these steps on the Linux host that runs the manager. The examples use the
-service account `demi-machines`, Firecracker and jailer installed as
-root-owned executables at `/opt/firecracker/firecracker` and
-`/opt/firecracker/jailer`, and the default chroot base `/srv/jailer`. Bash,
-coreutils, sudo, e2fsprogs and KVM are required; the networking setup also
-uses iproute2 and nftables. The writable disk images and chroot base must be
-on the same filesystem because the script hardlinks those images into each
-jail.
-
-The machines package includes `scripts/`; no helper compilation is required.
-From the package directory (`packages/machines` in a checkout), install the
-launcher under a root-owned directory:
-
-```sh
-sudo install -d -o root -g root -m 0755 /usr/local/libexec/demi
-sudo install -o root -g root -m 0755 scripts/firecracker-jailer.sh \
-  /usr/local/libexec/demi/firecracker-jailer.sh
-sudo install -d -o root -g root -m 0755 /srv/jailer
-```
-
-Use `sudo visudo -f /etc/sudoers.d/demi-firecracker` to add exactly these two
-allowed operations, replacing the account name if necessary:
-
-```sudoers
-demi-machines ALL=(root) NOPASSWD: /usr/local/libexec/demi/firecracker-jailer.sh vm start *, /usr/local/libexec/demi/firecracker-jailer.sh vm kill *
-```
-
-The manager invokes this installed path directly through `sudo -n`; sudoers
-must name the script, not `/bin/bash`. Keep the script and its parent
-directories unwritable by the manager's account. This account is trusted to
-supply executable and image paths: the helper permission is an infrastructure
-privilege, not a security boundary against the manager itself.
-
-Set the manager service environment:
-
-```sh
+```dotenv
 DEMI_MACHINES_SOCKET=/run/demi/machines.sock
 DEMI_MACHINES_DATA=/var/lib/demi-machines
-DEMI_MANAGED_LAUNCH=jailer
-DEMI_MANAGED_FIRECRACKER=/opt/firecracker/firecracker
-DEMI_MANAGED_JAILER=/opt/firecracker/jailer
-DEMI_MANAGED_HELPER=/usr/local/libexec/demi/firecracker-jailer.sh
-DEMI_MANAGED_CHROOT_BASE=/srv/jailer
-DEMI_MANAGED_UID_BASE=20000
-DEMI_MANAGED_KERNEL=/opt/demi-guest/vmlinux
-DEMI_MANAGED_ROOTFS=/opt/demi-guest/rootfs.ext4
+DEMI_MANAGED_RUNSC=/opt/gvisor/runsc
+DEMI_MANAGED_IMAGE=/opt/demi-cloud/current
+DEMI_MANAGED_BACKEND_URL=https://backend.example.com
+DEMI_MANAGED_DNS=1.1.1.1,8.8.8.8
 ```
 
-Point the last two variables at the deployed guest-image artifacts. The
-manager pins its own base-image copies before starting a VM. Use the same uid
-base, slot count and subnet when preparing networking; for example:
+Resolver addresses above are examples, not a product requirement. Choose permitted
+resolvers reachable from the actual sandbox. Public endpoints use TLS. A local
+HTTP development endpoint is allowed only on the explicit private path protected
+by host rules or the development tunnel.
 
-```sh
-sudo bash scripts/install-managed-hosts.sh \
-  --user demi-machines \
-  --mode jailer \
-  --uid-base 20000 \
-  --slots 256 \
-  --subnet 172.16.0.0/16 \
-  --backend-address 172.16.0.1 \
-  --backend-port 3271
+## Storage and service setup
+
+Place persistent state on a dedicated Linux filesystem. XFS with `reflink=1` is
+the preferred image-cloning setup; set its copy-on-write extent hint to the
+filesystem block size for the state directory. btrfs can clone image files too.
+ext4 works by copying and has higher save latency and space cost. Never put
+working images on a Mac shared directory or a container engine's temporary layer.
+
+The installer checks the existing mount and reports an unsuitable configuration;
+it never formats a device containing data. Provision a new data volume separately
+and point the manager at it. Capacity planning includes working images, retained
+generations, and image imports, not just the user-visible quotas.
+
+The service creates an owner/group-restricted socket, acquires the state lock,
+reconciles surviving runtimes and mounts, and installs its network policy before
+readiness. Its systemd unit keeps the manager's mounts private and defines process
+cleanup on service death. No host shell command supplied by a user becomes a
+privileged launcher argument. The installer operates only on its own service,
+network namespace/interface names, cgroup subtree, and nftables table.
+
+Publish a new image, restart the manager, and explicitly reset a device when it
+should use the new base. Restart alone does not upgrade pinned devices. A new
+runtime starts only after prior writers have stopped. The replacement deployment
+uses a new data directory; it does not import or delete older deployment state.
+
+## Mac backend with a remote VPS
+
+There are two independent transports:
+
+```text
+Mac backend -> local Unix socket -> SSH -> VPS manager socket
+VPS sandbox -> VPS private relay -> SSH reverse forward -> Mac backend
 ```
 
-Replace the backend address and port with the guest-reachable listener. This
-network script configures taps and firewall rules only; it does not install the
-launcher or edit sudoers. Repeat networking setup after reboot.
+For example, keep the Mac backend listening on `127.0.0.1:3271`. Forward its
+manager connection from a private Mac socket to `/run/demi/machines.sock` on the
+VPS using SSH stream-local forwarding. Use a dedicated SSH account that can open
+that socket. The SSH forward is the socket's authorization boundary on the Mac;
+keep its parent directory private.
 
-Run the backend under the socket owner account and set
-`DEMI_MACHINES_SOCKET=/run/demi/machines.sock`. Restart both services after
-configuration. The manager socket uses owner-only access.
+Create a reverse TCP forward from VPS loopback `127.0.0.1:4287` to Mac
+`127.0.0.1:3271`. A supervised relay on the VPS's sandbox gateway listens on
+port 4288 and forwards to that loopback port. Configure the same gateway URL in
+both `DEMI_BACKEND_PUBLIC_URL` and `DEMI_MANAGED_BACKEND_URL`. Permit only the
+sandbox interfaces to reach the relay. Do not bind it to the VPS public address
+or enable unrestricted SSH `GatewayPorts`.
 
-## Run the manager on macOS
+The deployment helper owns SSH, relay, socket, and firewall lifetimes together.
+Use exit-on-forward-failure, liveness detection, and bounded reconnects. A broken
+tunnel makes Cloud unavailable; do not allocate a replacement device. A broken
+control connection is reconciled before retrying a transition. Remove forwarding
+sockets and relays on cancellation or helper exit, including failed setup.
 
-Requirements: Lima 2.0 or later and macOS 15 on Apple silicon (nested
-virtualization). Build or fetch the guest-image artifacts into
-`packages/guest-image/out/aarch64/`, then, from the checkout:
+This arrangement keeps the database, conversations, agent, and web service on the
+Mac, and persistent Cloud files on the VPS. It is a development topology, not
+multi-worker failover. No conversation shell/file operation uses SSH; those
+continue through the runner and normal Host access.
 
-```sh
-packages/machines/scripts/lima-machines.sh --backend-port 3271
-```
+## Mac backend with local Lima
 
-The script creates the `demi-machines` instance from the template on first
-use (Ubuntu 26.04, Firecracker, e2fsprogs, nftables and Bun provisioned; the
-home directory mounted read-only so the checkout is visible at the same path),
-prepares the tap pool with the Mac as the backend address (printed as the
-`DEMI_BACKEND_PUBLIC_URL` to use), and runs the manager in the foreground on
-`/run/user/<uid>/demi-machines.sock`, which Lima forwards to
-`~/.lima/demi-machines/sock/demi-machines.sock`. The manager's state lives on
-a Lima disk the script creates beside the instance, `demi-machines-data`,
-formatted XFS with reflinks and mounted at `/var/lib/demi-machines` with the
-copy-on-write extent hint set, so a development machine's disks cost what its
-guest writes as they do on a Linux host. The disk is sparse; `--data-size`
-changes the capacity it may grow into, 100 GiB by default. Removing the
-instance leaves the disk behind, and `limactl disk delete demi-machines-data`
-discards the machines on it.
+Use one native-architecture Linux VM. On Apple silicon, select arm64 Linux and
+arm64 image/native artifacts. The VM runs the same privileged manager and runsc
+profile as Linux deployment. It has no nested virtualization requirement.
 
-The install script adds the guest user to `kvm`. The launcher starts the
-manager through `sudo -n -H -u <guest-user>` so its supplementary groups are
-loaded from the guest's user database, including when Lima reuses an SSH
-session opened before installation. The manager and Firecracker run as that
-ordinary user. Access relies on the device's `kvm` group, not a temporary
-per-user ACL that udev or logind can replace. Before starting the manager,
-the launcher opens `/dev/kvm` read-write as that user and fails immediately
-with a permission diagnostic if it cannot.
+The replacement `packages/machines/lima/demi-machines.yaml` and
+`scripts/lima-machines.sh` must provision Linux dependencies, a separate persistent
+data disk, manager service, network policy, and Unix socket forwarding. The Mac
+backend connects at `~/.lima/demi-machines/sock/demi-machines.sock`; the script
+prints the guest-reachable Mac URL to configure and validates it from a sandbox.
+Do not assume a particular Lima gateway address works on every installation.
 
-Configure the backend
-[native command releases](demi-next/native-runtime.md#backend-deployment-configuration)
-first, including `DEMI_NATIVE_CONFIG`. Then start the backend on the Mac:
+If a checkout is shared for manager development, it belongs only to the outer
+Linux VM, never to a user's sandbox. Data stays on the Linux disk. Stopping or
+recreating the Lima instance preserves that disk; deleting the data disk is a
+separate explicit action. The script must not reuse or reformat an old instance's
+storage to make this replacement appear to start successfully.
 
-```sh
-DEMI_MACHINES_SOCKET=$HOME/.lima/demi-machines/sock/demi-machines.sock \
-DEMI_BACKEND_PUBLIC_URL=http://192.168.5.2:3271 \
-bun run --conditions development packages/backend/src/main.ts
-```
+## Acceptance before use
 
+Start a real managed device through the backend, not the paired-device claim
+endpoint. Verify runner readiness, shell/native/browser operations, persistent
+package and home files across stop/wake, and reset with a broken system. Check
+network refusal and failure cleanup using the full
+[acceptance contract](demi-next/managed-hosts.md#verification). Measure local
+Lima and VPS performance separately; the existing x86 VPS evaluation establishes
+neither arm64 performance nor acceptance of this manager implementation.

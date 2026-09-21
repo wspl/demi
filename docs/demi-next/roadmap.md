@@ -34,7 +34,7 @@ Contracts and package boundaries
 | Browser | Shared UI has real product adapters and gallery examples; backend persistence and authorization are verified through the product | [Web architecture](web-application.md) |
 | Browser automation | Conversation-owned browser, shell commands, observations, screenshots and lifecycle satisfy their contracts on paired devices and Cloud; workpanel display is deferred | [Conversation browser](browser.md#acceptance) |
 | Host expose | A device service gets a one-hour public URL; HTTP, streaming and WebSocket relay byte-faithfully on paired devices and Cloud; expiry, removal, Cloud stop and revocation destroy it | [Host expose](expose.md#acceptance) |
-| Packaging | Published artifacts install and start; shipped images boot in direct and jailer Linux/KVM modes | [Native builds](../native-builds.md), [Cloud setup](../managed-hosts-setup.md) |
+| Packaging | Published artifacts install and start; shipped images run under gVisor/systrap on supported Linux and Lima hosts | [Native builds](../native-builds.md), [Cloud setup](../managed-hosts-setup.md) |
 | Distributed deployment | Ownership loss fences old writers before reassignment; metadata and disk generations recover consistently | [Backend](backend.md), [Storage](storage.md) |
 
 ## Evidence required at a checkpoint
@@ -51,7 +51,7 @@ Report performance measurements separately from conformance results.
 
 Cloud acceptance requires both fake-provisioner scenarios and real machine checks.
 A fixture can prove lifecycle admission and operation ordering; it cannot prove
-ext4 durability, snapshot publication, guest isolation, or Firecracker startup.
+ext4 durability, snapshot publication, sandbox isolation, or gVisor startup.
 Real machine checks must establish system/home preservation through wake and
 home preservation through reset, including a guest that cannot connect.
 
@@ -71,6 +71,12 @@ The repository has a single-backend composition with local control and
 conversation stores, native execution, provider integration, browser adapters,
 and user Cloud lifecycle code. Their existence does not certify every failure
 case or target platform; the responsible documents identify remaining limits.
+
+The selected Cloud design replaces the existing Firecracker implementation with
+gVisor/systrap. The new provisioner, container initialization, root archive build,
+Linux/Lima installation, and managed acceptance are not implemented. The
+[implementation boundary](managed-hosts.md#implementation-status) distinguishes
+that work from the completed [VPS evaluation](../gvisor-evaluation.md).
 
 Distributed control transport, remote storage/replication, user-worker placement,
 and writer fencing remain target architecture. Do not describe a local restart

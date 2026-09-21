@@ -31,6 +31,10 @@ runner with an embedded shell and standard utilities. Agent commands select
 application callbacks or independently distributed resident native services.
 See [native execution](docs/demi-next/native-runtime.md).
 
+Cloud uses the selected [gVisor/systrap design](docs/demi-next/managed-hosts.md).
+The replacement implementation is pending. Start with [Cloud images](docs/cloud-images.md)
+and [Cloud setup](docs/managed-hosts-setup.md) for the build and deployment contracts.
+
 Notable design records outside `docs/demi-next/`:
 
 - [Provider quota](docs/provider-quota.md) — unified probe/observe for subscription rate limits
@@ -41,7 +45,6 @@ Notable design records outside `docs/demi-next/`:
 
 Temporary investigation:
 
-- [Browser behavior and reference implementations](docs/browser-investigation.md) — issue inventory, Codex/Playwright evidence, and API repair guidance
 - [gVisor systrap evaluation](docs/gvisor-evaluation.md) — VPS browser measurements, persistence findings, and the remaining Cloud integration work
 
 ## Development
