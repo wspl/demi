@@ -171,14 +171,17 @@ An archive, a target or directory change, and a detach end the conversation's
 user streams as they end file transfers; a Cloud stop or reset ends them with
 the device's other work.
 
-One kind of access reaches a device without a conversation: the public relay
-of a [Host expose](expose.md#the-public-relay), whose traffic comes from
-anonymous visitors and belongs to the user's device, not to any
-conversation. It uses device access: the registry's Host for a device the
-expose's owner owns, admitted only while the device is connected. It takes
-no file gate, because it touches no conversation files, and never wakes a
-stopped Cloud, because a stop has already destroyed the device's exposes.
-Device access exists for that one caller; anything on a conversation's
+Two kinds of access reach a device without a conversation. The first is the
+public relay of a [Host expose](expose.md#the-public-relay), whose traffic
+comes from anonymous visitors and belongs to the user's device, not to any
+conversation. The second is the [device log route](web-api.md#device-log),
+which reads the [Host's log](runner.md#host-log) of a device, not of any
+conversation. Both use device access: the registry's Host for a device the
+caller owns (for the relay, the expose's owner), admitted only while the
+device is connected. It takes no file gate, because it touches no
+conversation files, and never wakes a stopped Cloud: a stop has already
+destroyed the device's exposes, and a log is read when its Host runs again.
+Device access exists for those two callers; anything on a conversation's
 behalf still goes through `withHost`.
 
 Attached cwd is a starting directory, not a permission boundary. It is updated

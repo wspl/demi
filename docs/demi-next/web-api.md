@@ -194,10 +194,13 @@ runs the operation the agent's command runs, `browser.tabs`, `browser.open`,
 [one-shot user call](native-runtime.md#user-streams) through the
 conversation's [host access](sessions-and-targets.md#host-operations).
 What happens inside a tab travels on the [`browser` user stream](#user-streams).
+A user waits in the panel, not in a script: for a `user` caller `open`, `goto`,
+`back`, `forward` and `reload` start their work and answer at once, without
+waiting for the page to load, and the tab's content shows the loading.
 
 | Route | Does | A stopped Cloud |
 | --- | --- | --- |
-| `GET …/browser/tabs` | Returns `{ running, tabs: [{ id, title, url, createdBy }] }` | Is not woken: answers `{ running: false, tabs: [] }` |
+| `GET …/browser/tabs` | Returns `{ tabs: [{ id, title, url, createdBy }] }`; a browser that does not run has none | Is not woken: answers `{ tabs: [] }` |
 | `POST …/browser/tabs { url? }` | Opens a tab, starting the environment when needed, and returns the tab; `url` defaults to `about:blank` | Is woken: opening a tab is ordinary demand |
 | `DELETE …/browser/tabs/:tab` | Closes the tab and answers 204, also when the browser no longer has it | Is not woken: answers 204 |
 | `POST …/browser/tabs/:tab/navigate { url }` | Loads the URL in the tab and returns the tab | Is not woken: answers 409 `host_stopped` |
