@@ -63,6 +63,9 @@ const emit = defineEmits<{
       @update:model-value="emit('update:address', $event)"
       @keydown.enter="emit('submit')"
     />
-    <slot name="trailing" />
+    <!-- A trailing control stands as far from the address as the navigation group does. -->
+    <div v-if="$slots.trailing" class="ml-2 flex shrink-0 items-center">
+      <slot name="trailing" />
+    </div>
   </div>
 </template>

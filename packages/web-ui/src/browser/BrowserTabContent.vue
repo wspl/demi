@@ -26,7 +26,7 @@ const props = defineProps<{
   shown: boolean
   controller: BrowserTabsController
 }>()
-const emit = defineEmits<{ update: [data: BrowserTabData] }>()
+const emit = defineEmits<{ update: [data: BrowserTabData]; close: [] }>()
 
 /** Why the last request of this content failed, until the next one. */
 const failure = ref<BrowserTabsError | null>(null)
@@ -63,7 +63,7 @@ async function open(): Promise<void> {
   }
 }
 
-/** A browser tab the Host lost opens again on the saved address. */
+/** A page the device closed loads again: a new browser tab on the saved address. */
 function reopen(): void {
   emit('update', { url: props.data.url })
 }
@@ -149,10 +149,10 @@ function history(action: 'back' | 'forward' | 'reload'): void {
       @forward="history('forward')"
       @reload="history('reload')"
     >
-      <template #trailing>
+      <template v-if="viewport" #trailing>
         <!-- The mode alone, as its icon, on a button like the bar's others: the size is the panel's and
              says nothing the picture does not. -->
-        <Tooltip v-if="viewport" content="Viewport" class="shrink-0">
+        <Tooltip content="Viewport" class="shrink-0">
           <span ref="anchor" class="flex">
             <IconButton
               :icon="MODE_ICONS[viewport.mode]"
@@ -193,18 +193,20 @@ function history(action: 'back' | 'forward' | 'reload'): void {
         <Button variant="default" size="sm" @click="open">Retry</Button>
       </template>
       <template v-else-if="gone">
-        <span>The browser no longer has this tab.</span>
-        <Button variant="default" size="sm" @click="reopen">Reopen</Button>
+        <span>This page was closed on the device.</span>
+        <span class="flex items-center gap-2">
+          <Button variant="default" size="sm" @click="emit('close')">Close tab</Button>
+          <Button variant="default" size="sm" @click="reopen">Reload</Button>
+        </span>
       </template>
       <template v-else-if="controller.listError.value && !session">
         <span class="text-on-danger" role="alert">{{ controller.listError.value.message }}</span>
         <Button variant="default" size="sm" @click="controller.refresh()">Retry</Button>
       </template>
+      <!-- Waiting says only that it waits: why the last view ended is no news while the next one opens. -->
       <template v-else>
         <IndeterminateSpinner :size="16" class="text-fg-subtle" />
         <span>Connecting to the conversation's browser…</span>
-        <span v-if="session?.state.notice" class="text-[12px] text-on-danger" role="alert">{{ session.state.notice.message }}</span>
-        <span v-else-if="session?.state.ended" class="text-[12px]">{{ session.state.ended }}</span>
       </template>
     </div>
     <Popover

@@ -40,7 +40,7 @@ export function browserTabKind(controller: BrowserTabsController): PanelTabKind<
       data: { type: Object as PropType<BrowserTabData>, required: true },
       shown: { type: Boolean, required: true },
     },
-    emits: { update: (_data: BrowserTabData) => true },
+    emits: { update: (_data: BrowserTabData) => true, close: () => true },
     setup: (props, { emit }) => () =>
       h(BrowserTabContent, {
         tabId: props.tabId,
@@ -48,6 +48,7 @@ export function browserTabKind(controller: BrowserTabsController): PanelTabKind<
         shown: props.shown,
         controller,
         onUpdate: (data: BrowserTabData) => emit('update', data),
+        onClose: () => emit('close'),
       }),
   })
   return {

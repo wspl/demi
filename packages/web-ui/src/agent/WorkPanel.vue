@@ -189,6 +189,7 @@ function openFromTree(path: string): void {
           :data="shownTab.data"
           shown
           @update="emit('updateTab', shownTab.tab.id, $event)"
+          @close="emit('closeTabs', [shownTab.tab.id])"
         />
         <div
           v-else-if="shownTab"
