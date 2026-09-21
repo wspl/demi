@@ -52,9 +52,7 @@ A Linux execution host can be a VPS without KVM. It must still support the Linux
 facilities listed in setup. On a Mac, the manager and sandboxes run inside one
 Lima Linux VM with the Mac's native CPU architecture. systrap needs no nested
 virtualization. Backend storage and the web application can stay on the Mac.
-A remote Linux manager with a local Mac backend is also supported: the manager
-socket and the runner's outbound connection use separate SSH forwards. gVisor
-itself does not run on macOS. See the upstream
+gVisor itself does not run on macOS. See the upstream
 [platform guide](https://gvisor.dev/docs/architecture_guide/platforms/).
 
 ### Control and ownership
@@ -64,8 +62,7 @@ Requests contain `{ id, op, params }`; replies identify that request and contain
 a result or an error. Death events identify the device whose sandbox exited.
 `packages/machines/src/protocol.ts` owns the wire schemas. Socket access grants
 infrastructure control: there is no manager TCP listener or application login.
-The socket's dedicated owner/group includes only the backend or its trusted SSH
-forwarding account. The backend never runs as root merely to reach this socket.
+The socket's dedicated owner/group includes only trusted backend infrastructure. The backend never runs as root merely to reach this socket.
 
 The manager is a trusted, privileged Linux service because it prepares mounts,
 loop devices, network namespaces, firewall rules, and cgroups. Its private mount
@@ -354,8 +351,7 @@ endpoints, not whole subnets; address changes require revalidation and rule upda
 
 A service's public URL uses the backend's [Host expose](expose.md) relay over the
 runner connection. The same connection carries files, commands, and browser
-streams through normal Host access. SSH is infrastructure transport in remote
-development, never an alternate route for conversation operations.
+streams through normal Host access. No infrastructure transport is an alternate route for conversation operations.
 
 ### Managed boot credential
 
