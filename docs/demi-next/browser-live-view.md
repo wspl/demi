@@ -140,11 +140,19 @@ File or another kind closes the view, so the Host captures nothing.
 One view is one invocation. The page shows one Host: the conversation's main Host. A browser on an
 attached Host is not shown.
 
-The view carries what happens inside the watched tab: pictures, input,
-dialogs, native controls, navigation, history and the viewport mode, which
-must keep their order with the user's input. Opening and closing tabs are
-[requests](web-api.md#conversation-browser-tabs), not view messages: they
-have an answer, and they work while no view is open.
+The view carries only what a request cannot
+([Backend communication](web-application.md#backend-communication)): pictures,
+the user's input and its answers to dialogs and native controls, which must
+reach the page in order, and what belongs to this viewer's view, the watched
+tab, the panel's size and ratio, the viewport mode that follows them, and
+frame acknowledgements. Listing, opening, closing and navigating tabs, and
+Back, Forward and Reload, are
+[requests](web-api.md#conversation-browser-tabs): each has an answer the
+content can show, and each works while no view is open.
+
+The module never fails silently toward the page. What it cannot do for a
+viewer, such as reading the tab list, it tells that viewer in a `notice` and
+writes to the [Host's log](runner.md#host-log).
 
 A view ends once. The module's `ended` message and the socket's close are one
 end, and the page opens at most one view after it. An answer that cannot
@@ -413,8 +421,13 @@ checks read it there.
 Not implemented yet: [a browser tab in the panel](#a-browser-tab-in-the-panel)
 as designed above. Today the panel's Host tabs are the view's last `state`
 message, the view opens with the panel rather than with a `browser` tab, and
-tabs open and close through `open` and `close` view messages, which the design
-replaces with the browser tab routes.
+tabs open, close and navigate through `open`, `close`, `navigate` and
+`history` view messages, which the design replaces with the browser tab
+routes. A module that cannot list its tabs says so only on its standard error,
+which no log keeps ([Host log](runner.md#host-log), not implemented either):
+on a Cloud the view then never learns its tabs, and the panel waits forever
+for a tab the browser already opened. The cause is to be read from the Host
+log once it exists.
 
 Implemented: the protocol, the [user stream](native-runtime.md#user-streams)
 that carries it, the Host's live view module with its capture extension and
