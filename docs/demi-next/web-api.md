@@ -26,6 +26,8 @@ Partial conversation mutations use the explicit outcomes described below.
 | Conversation files | `GET/POST /conversations/:id/fs`, `DELETE /conversations/:id/fs?path=...`, `GET /conversations/:id/fs/file?path=...`, `GET /conversations/:id/fs/raw?path=...&version=...&download=true\|false`, `PUT /conversations/:id/fs/raw?path=...&replace=true\|false` with raw bytes, `GET/POST /conversations/:id/hosts/:deviceId/fs` |
 | Working tree | `GET /conversations/:id/changes`, `GET /conversations/:id/changes/file?path=...`, `GET /conversations/:id/changes/raw?path=...&download=true\|false` |
 | User streams | `WS /conversations/:id/streams/:name` opens a declared [user stream](#user-streams); `POST /conversations/:id/activity` reports a user operation |
+| Work panel | `GET/PUT /conversations/:id/panel` reads and saves the [work panel's state](#work-panel-state) |
+| Conversation browser | `GET/POST /conversations/:id/browser/tabs`, `DELETE /conversations/:id/browser/tabs/:tab`; see [Conversation browser tabs](#conversation-browser-tabs) |
 | Sidebar | `POST /sidebar/reorder { kind, id, beforeId }` |
 | Models | `GET /models?refresh=true\|false` returns the account-wide catalog |
 | Providers | `GET /providers/catalog`, `GET/POST /providers`, `PATCH/DELETE /providers/:id`, `GET /providers/:id/status`, `POST /providers/:id/test`, `POST /providers/:id/quota`; account routes below |
@@ -163,6 +165,43 @@ bytes. It closes the socket when the stream ends, with a code and a reason:
 conversation's Host as [activity](resource-lifecycle.md#activity) and answers
 204. The page calls it at most every 30 seconds while the user operates a
 user stream's view.
+
+## Work panel state
+
+The [work panel](web-application.md#work-panel) saves one document per
+conversation: `{ selection, tabs: [{ id, kind, data }] }`. `selection` is
+`"change"`, `"file"` or a tab's id; `tabs` is in the user's order. The backend
+stores the document and does not interpret it: `kind` and `data` mean
+something only to the page, which validates each tab's `data` against its
+kind's schema when it reads the document. The backend checks the shape above,
+at most 64 tabs, and at most 64 KiB in all.
+
+`GET /api/conversations/:id/panel` returns the document, or the empty one,
+`{ selection: "change", tabs: [] }`, for a conversation that never saved.
+`PUT` replaces it and answers 204. The page applies every change to itself
+first and then saves the whole document; the last save wins, and a page that
+becomes visible reads the document again. Archived conversations allow the
+read and refuse the save with 409 `conversation_archived`.
+
+## Conversation browser tabs
+
+These routes are how the page opens, closes and lists the tabs of the
+[conversation browser](browser.md) on the conversation's main Host. Each runs
+the operation the agent's command runs, `browser.tabs`, `browser.open` or
+`browser.close`, with a `user` caller, as a
+[one-shot user call](native-runtime.md#user-streams) through the
+conversation's [host access](sessions-and-targets.md#host-operations).
+What happens inside a tab travels on the [`browser` user stream](#user-streams).
+
+| Route | Does | A stopped Cloud |
+| --- | --- | --- |
+| `GET …/browser/tabs` | Returns `{ running, tabs: [{ id, title, url, createdBy }] }` | Is not woken: answers `{ running: false, tabs: [] }` |
+| `POST …/browser/tabs { url? }` | Opens a tab, starting the environment when needed, and returns the tab; `url` defaults to `about:blank` | Is woken: opening a tab is ordinary demand |
+| `DELETE …/browser/tabs/:tab` | Closes the tab and answers 204, also when the browser no longer has it | Is not woken: answers 204 |
+
+Refusals follow the user stream's: 409 `conversation_archived`,
+`device_offline` and `conversation_busy`, and 502 `browser_failed` with the
+operation's own code and message when the browser refuses or cannot start.
 
 ## Exposes
 

@@ -64,13 +64,58 @@ User's browser (Demi web)      Backend                     Host (Cloud or paired
 - `web-ui` shows the video, sends input, and places the page's native form
   controls over the video.
 
-The work panel has two kinds of browser tab, which are different things side
-by side. A Host tab is one tab of the conversation browser, shown live: the
-agent's `open` adds one, a tab closed on the Host disappears, and the user
-opens and closes Host tabs in the panel. A local tab shows a page in the user's
-own browser, in a frame, and is where exposes open
-([Web architecture](web-application.md#package-responsibilities)). Both kinds
-use the same address bar component; only a Host tab has the viewport menu.
+## A browser tab in the panel
+
+The live view is the content of the work panel's `browser`
+[tab kind](web-application.md#work-panel). The panel's tabs are the user's
+saved state and know nothing of this document; everything below is the kind's
+own business. A `browser` tab's `data` is `{ url, tab? }`: the address it
+shows, and the id of the conversation browser's tab it is bound to, once it
+has one.
+
+```text
+work panel tab state        browser kind                         backend / Host
+  add / update / remove  <-- tab source: list, open, close  -->  browser tab routes
+                         <-- content: one view, while shown <==> browser user stream
+```
+
+- **Opening.** The strip's control adds a tab with `url: 'about:blank'` and no
+  `tab`. Its content, once shown, asks the backend to
+  [open a tab](web-api.md#conversation-browser-tabs) on that URL and writes the
+  answer's id into `data`. That request is ordinary demand: it wakes a stopped
+  Cloud and starts the environment as the agent's first `open` does. Meanwhile
+  the content shows that the browser is starting; a refusal shows its message
+  with Retry. None of this is written to the tab.
+- **Showing.** A bound tab's content opens the view (below) and watches its
+  `tab`. The address bar follows the page and saves the URL into `data` as it
+  changes.
+- **Closing.** The user's close removes the panel tab at once and then asks
+  the backend to close the browser's tab; closing the last one ends the
+  environment, as the agent's `close` does.
+- **The agent's tabs.** The kind reads the browser's
+  [tab list](web-api.md#conversation-browser-tabs) when the panel opens, when
+  the page becomes visible, when a tool call of the conversation finishes, and
+  from every `state` message of an open view. A browser tab that no panel tab
+  is bound to is added as a panel tab, after the others and without taking the
+  selection.
+- **A tab the Host no longer has.** The agent closed it, the browser ended, the
+  Cloud stopped, or the Host restarted. The panel tab stays: the kind never
+  removes a tab. Its content says that the tab is gone and offers Reopen, which
+  opens a new browser tab on the saved URL and binds to it; the user may close
+  the panel tab instead. The browser's storage outlives its tabs, so a reopened
+  page is still signed in ([Ownership](browser.md#ownership)).
+- **A Host that cannot be reached.** A stopped Cloud, an offline device, or a
+  lost connection changes no tab. The content of the shown tab says what is
+  wrong, reconnects by itself where that can help, and offers Retry where it
+  cannot.
+
+A page has at most one view per conversation, open only while a `browser` tab
+is the panel's selection. Selecting another `browser` tab keeps the view and
+sends `watch`; the module then releases what the viewer held on the old tab,
+starts a new stream generation and sends the new tab's dialog, controls and
+cursor, and the page discards frames of older generations. A view carries one
+watched tab at a time: nothing of one tab can reach another. Selecting Change,
+File or another kind closes the view, so the Host captures nothing.
 
 ## The stream
 
@@ -80,8 +125,8 @@ use the same address bar component; only a Host tab has the viewport menu.
    origin. The backend checks the session cookie, that the conversation belongs
    to the user, and the `Origin` header.
 2. The backend admits the stream through the conversation's host access,
-   without waking a stopped Cloud: a stopped Cloud holds no browser, so the page
-   shows that the browser is not running
+   without waking a stopped Cloud: a stopped Cloud holds no browser, so the
+   shown tab's content says that the Cloud is stopped
    ([Host operations](sessions-and-targets.md#host-operations)).
 3. The backend mints two pipes and asks the main Host's runner to open the
    `browser` user stream on them ([Service streams](runner.md#service-streams)).
@@ -95,9 +140,15 @@ use the same address bar component; only a Host tab has the viewport menu.
 One view is one invocation. The page shows one Host: the conversation's main Host. A browser on an
 attached Host is not shown.
 
-When no browser runs, the page says so and offers a new tab. A new tab is
-ordinary demand: it wakes a stopped Cloud, starts the environment as the
-agent's first `open` does, and then opens the view.
+The view carries what happens inside the watched tab: pictures, input,
+dialogs, native controls, navigation, history and the viewport mode, which
+must keep their order with the user's input. Opening and closing tabs are
+[requests](web-api.md#conversation-browser-tabs), not view messages: they
+have an answer, and they work while no view is open.
+
+A view ends once. The module's `ended` message and the socket's close are one
+end, and the page opens at most one view after it. An answer that cannot
+change, such as 404 for a conversation that does not exist, is not retried.
 
 ### Framing and versions
 
@@ -336,9 +387,9 @@ checks read it there.
 | `crates/demi-commands` | The live view module: viewers, capture control, delivery and congestion, heartbeat, input, viewport modes and screen ratio; the capture extension and page observers as embedded resources; launch configuration. |
 | `crates/command-service`, `crates/runner`, `packages/runner-protocol`, `packages/host-remote` | [User streams](native-runtime.md#user-streams) and [service streams](runner.md#service-streams), with no browser knowledge. |
 | `packages/coding-agent` | Declaring the `browser` user stream and `viewport set --scale`. |
-| `packages/backend` | The user stream route, its admission and end, backpressure, and activity reports. It has no browser module. |
-| `packages/web-ui` | The live view: video, input, native control overlays, clipboard, dialogs, the viewport menu, stall display. It depends on `browser-protocol` for the protocol, as it depends on `agent` for agent frames. |
-| `packages/web`, `packages/web-gallery` | The product's stream source and activity reports; a gallery source that encodes its own picture and speaks the protocol, so the view shows without a Host. |
+| `packages/backend` | The user stream route, its admission and end, backpressure, and activity reports; the [browser tab routes](web-api.md#conversation-browser-tabs), which call the browser's own operations and hold no browser logic. |
+| `packages/web-ui` | The `browser` tab kind: its tab source, which lists, opens and closes tabs through an interface the consumer supplies, and its content, the live view: video, input, native control overlays, clipboard, dialogs, the viewport menu, and what it shows while a tab is opening, gone, or out of reach. It depends on `browser-protocol` for the protocol, as it depends on `agent` for agent frames. |
+| `packages/web`, `packages/web-gallery` | The product's stream source, tab routes and activity reports; a gallery source that encodes its own picture, keeps its own tab list and speaks the protocol, so the kind shows without a Host. |
 | `packages/guest-image` | Fonts for Chinese, Japanese and Korean text. |
 
 ## Rationale
@@ -358,6 +409,12 @@ checks read it there.
   browser.
 
 ## Implementation status
+
+Not implemented yet: [a browser tab in the panel](#a-browser-tab-in-the-panel)
+as designed above. Today the panel's Host tabs are the view's last `state`
+message, the view opens with the panel rather than with a `browser` tab, and
+tabs open and close through `open` and `close` view messages, which the design
+replaces with the browser tab routes.
 
 Implemented: the protocol, the [user stream](native-runtime.md#user-streams)
 that carries it, the Host's live view module with its capture extension and

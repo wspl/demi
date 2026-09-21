@@ -33,15 +33,56 @@ The gallery is the reference for components, appearance, layout, and interaction
 examples. Those details are not duplicated in design documents. This document
 covers only the browser's technology and architectural boundaries.
 
-The work panel has two kinds of browser tab, both owned by `web-ui`, side by
-side. A Host tab shows a tab of the [conversation browser](browser.md) live,
-and the user operates it there while the agent does;
-[Live browser view](browser-live-view.md) owns that view, its stream, its input
-and its viewport menu. A local tab does not connect to the Host browser: it
-shows a page in the user's own browser, in a sandboxed iframe. The two kinds
-share the address bar component.
-A tab opens on a URL, as an [expose](expose.md#product-surface) does, or loads
-the `http` or `https` address the user submits; an empty tab shows nothing.
+## Work panel
+
+The work panel shows one thing at a time: a fixed view, or a tab.
+
+```text
+selection   'change' | 'file' | <tab id>
+tabs        [{ id, kind, data }], in the user's order
+```
+
+- **Fixed views.** Change and File belong to the panel itself. They are not
+  tabs: they are never created, closed, listed or saved. They only compete
+  with the tabs for the selection.
+- **Tabs.** A tab is a saved fact: a tab of this kind stands here, with this
+  `data`. It has no status, no error and no stored title. Whether its content
+  is loading, disconnected or refused is the content's own runtime state, shown
+  inside the tab's content and never written to the tab.
+- **Kinds.** A kind registers with `web-ui` what the panel needs to show its
+  tabs: the mark, the title derived from `data`, the content component, a
+  schema for `data`, and whether the user can create one from the strip. The
+  panel and the tab state know nothing else about a kind. What protocol,
+  stream or route a tab's content uses is the kind's own business, behind its
+  content component. A new kind, such as a streamed window of the Host, is a
+  new registration and changes neither the panel nor the tab state.
+
+The tab state is ordinary state with `add`, `update`, `remove`, `move` and
+`select`. Every change applies to the page first and is then saved
+([Work panel state](web-api.md#work-panel-state)); a save that fails is
+reported as any failed save is and retried with the next change. A kind's
+content reaches its own tab only through `update` of its `data`.
+
+For example, the user presses the strip's new-tab control. The panel adds
+`{ id, kind: 'browser', data: { url: 'about:blank' } }`, selects it and saves.
+The tab is there at once, whatever the Host is doing. Its content then asks
+for a tab in the conversation browser, writes that tab's id into `data`, and
+shows the page live; while that takes time or fails, the content says so and
+offers to try again ([Live browser view](browser-live-view.md#a-browser-tab-in-the-panel)).
+
+A tab is removed only by its user. A tab whose `data` does not fit its kind's
+schema, or whose kind the page does not know, stays in the strip and its
+content says that it cannot be shown; the page never repairs or drops it.
+
+The kinds:
+
+| Kind | Shows | Created by |
+| --- | --- | --- |
+| `browser` | One tab of the [conversation browser](browser.md), live; [Live browser view](browser-live-view.md) owns its content | The strip's new-tab control; the agent's `open`, which the kind adds as a tab |
+| `page` | A page in the user's own browser, in a sandboxed iframe | Only an [expose](expose.md#product-surface), on its URL |
+
+A `page` tab loads the `http` or `https` address the user submits in its
+address bar, which it shares with the `browser` kind.
 The frame may run scripts, submit forms and open popups, which land in
 ordinary browser tabs; it cannot navigate the product page. The parent sees
 nothing of a cross-origin page, so Back and Forward stay unavailable, Refresh
@@ -83,8 +124,9 @@ and attachment bytes. A draft is its Markdown, with a mark where each staged
 file's capsule sits, and those files in mark order. Browser-local preferences
 hold presentation-only choices. Work-panel width and per-conversation open/closed state use the same account-scoped
 local preferences. Refreshing restores whether the panel was open; a conversation
-without a saved choice starts closed. Tab selections and browser address drafts
-remain in memory for the page lifetime. Switching accounts uses that account's
+without a saved choice starts closed. The panel's tabs and selection are saved
+with the conversation ([Work panel](#work-panel)); the File and Change views'
+own selections and address drafts remain in memory for the page lifetime. Switching accounts uses that account's
 saved choices. These stores do not replace backend ownership or authorization.
 
 New conversations begin with a local UUID. The first send creates the backend
@@ -99,12 +141,9 @@ the working-tree change routes, the raw file routes behind
 to the user stream route; and shared account interfaces to provider, pairing,
 and Cloud APIs. The product reports the time zone and languages of the user's
 browser to the user's preferences when they change.
-The work panel keeps one file selection, one change selection and local browser
-tabs per conversation; its Host tabs follow the conversation browser's tab
-registry. Change and File are fixed view selections; browser tabs
-can be added and closed. One active tab selects the
-view. Closing the active browser tab selects its nearest remaining predecessor,
-or the first remaining tab. Browser address drafts and shown URLs belong to their tabs.
+The work panel keeps one file selection and one change selection per
+conversation. Closing the selected tab selects its nearest remaining
+predecessor, then the first remaining tab, then Change.
 The change summary comes from the uncommitted working-tree source, refreshed
 while the panel is visible, independently of which section is selected.
 Historical edit selection follows [Edit tracking](edit-tracking.md#delivery-to-the-conversation).
