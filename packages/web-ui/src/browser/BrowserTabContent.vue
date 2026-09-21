@@ -3,13 +3,12 @@ import { computed, onBeforeUnmount, ref, watch, type Component } from 'vue'
 import { Monitor, Ruler, Smartphone } from '@lucide/vue'
 import BrowserAddressBar from '../agent/BrowserAddressBar.vue'
 import Button from '../ui/Button.vue'
-import DropdownTrigger from '../ui/DropdownTrigger.vue'
+import IconButton from '../ui/IconButton.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import Popover from '../ui/Popover.vue'
 import Tooltip from '../ui/Tooltip.vue'
-import { ICON_PX } from '../ui/icon-metrics'
 import { appOverlayStore } from '../overlay/appOverlay'
 import LiveView from './LiveView.vue'
 import { asTabsError, type BrowserTabData, type BrowserTabsController, type BrowserTabsError } from './tabs'
@@ -151,12 +150,18 @@ function history(action: 'back' | 'forward' | 'reload'): void {
       @reload="history('reload')"
     >
       <template #trailing>
-        <!-- The mode alone, as its icon: the size is the panel's and says nothing the picture does not. -->
+        <!-- The mode alone, as its icon, on a button like the bar's others: the size is the panel's and
+             says nothing the picture does not. -->
         <Tooltip v-if="viewport" content="Viewport" class="shrink-0">
           <span ref="anchor" class="flex">
-            <DropdownTrigger :is-open="menu" aria-label="Viewport" @click="menu = !menu">
-              <component :is="MODE_ICONS[viewport.mode]" :size="ICON_PX.in28" />
-            </DropdownTrigger>
+            <IconButton
+              :icon="MODE_ICONS[viewport.mode]"
+              variant="ghost"
+              aria-label="Viewport"
+              aria-haspopup="menu"
+              :pressed="menu"
+              @click="menu = !menu"
+            />
           </span>
         </Tooltip>
       </template>
