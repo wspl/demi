@@ -7,7 +7,7 @@ use std::{collections::VecDeque, sync::Arc, time::Duration};
 use chromiumoxide::cdp::browser_protocol::page::EventJavascriptDialogOpening;
 use demi_command_service::{
     Input as ServiceInput, InvocationContext, ServiceError,
-    protocol::{CommandError, CommandLocale, Completion},
+    protocol::{CommandError, Completion},
 };
 use tokio::{
     sync::{broadcast, mpsc, watch},
@@ -51,16 +51,15 @@ pub(in crate::browser) async fn serve(
     context: InvocationContext,
 ) -> Result<Completion, ServiceError> {
     let InvocationContext {
-        request,
         input,
         output,
         cancellation,
+        ..
     } = context;
     let (writer, writing) = Writer::start(output);
     let (inbound, uploads, _reading) = read(input);
     let mut viewer = Viewer {
         controller,
-        locale: request.context.locale,
         cancel: cancellation,
         writer,
         inbound,
@@ -141,7 +140,6 @@ fn read(
 
 struct Viewer {
     controller: Arc<Controller>,
-    locale: CommandLocale,
     cancel: CancellationToken,
     writer: Writer,
     inbound: Inbounds,
@@ -166,10 +164,10 @@ impl Viewer {
             Some(_) => return Err(Failure::Protocol("a view starts with hello".into())),
             None => return Ok(()),
         }
-        let Some((environment, opened)) = self.environment().await? else {
+        let Some(environment) = self.environment().await? else {
             return Ok(());
         };
-        self.view(environment, opened).await
+        self.view(environment).await
     }
 
     async fn end(&self, reason: &str) {
@@ -180,15 +178,14 @@ impl Viewer {
             .await;
     }
 
-    /// The conversation's browser; without one, the page hears that none runs
-    /// and may start one with a new tab.
-    async fn environment(
-        &mut self,
-    ) -> Result<Option<(BrowserEnvironment, Option<BrowserTab>)>, Failure> {
+    /// The conversation's browser; without one, the page hears that none runs,
+    /// and the view waits for one: the page starts it by opening a tab with a
+    /// request (`web-api.md` § Conversation browser tabs).
+    async fn environment(&mut self) -> Result<Option<BrowserEnvironment>, Failure> {
         loop {
             let mut started = self.controller.started();
             match self.controller.environment(None, &self.cancel).await {
-                Ok(Some(environment)) => return Ok(Some((environment, None))),
+                Ok(Some(environment)) => return Ok(Some(environment)),
                 Err(BrowserError::Cancelled) => return Err(Failure::Cancelled),
                 Err(BrowserError::Closed) => {
                     self.end("released").await;
@@ -223,35 +220,6 @@ impl Viewer {
                 match message {
                     None => return Ok(None),
                     Some(message @ LiveInbound::Panel { .. }) => self.panel = panel(&message),
-                    Some(LiveInbound::Open { url }) => {
-                        // A new tab is ordinary demand: it starts the browser
-                        // in the viewer's locale, as the agent's first open does.
-                        let started = self
-                            .controller
-                            .environment(Some(&self.locale), &self.cancel)
-                            .await;
-                        let environment = match started {
-                            Ok(Some(environment)) => environment,
-                            Err(BrowserError::Cancelled) => return Err(Failure::Cancelled),
-                            Ok(None) => continue,
-                            Err(error) => {
-                                self.writer.notice(error.code(), &error.to_string()).await;
-                                continue;
-                            }
-                        };
-                        let deadline = Instant::now() + Duration::from_secs(30);
-                        let opened = environment
-                            .open_user(url.as_deref(), &self.cancel, deadline)
-                            .await;
-                        return match opened {
-                            Ok(tab) => Ok(Some((environment, Some(tab)))),
-                            Err(BrowserError::Cancelled) => Err(Failure::Cancelled),
-                            Err(error) => {
-                                self.writer.notice(error.code(), &error.to_string()).await;
-                                Ok(Some((environment, None)))
-                            }
-                        };
-                    }
                     // Nothing else acts without a browser.
                     Some(_) => {}
                 }
@@ -259,20 +227,15 @@ impl Viewer {
         }
     }
 
-    async fn view(
-        &mut self,
-        environment: BrowserEnvironment,
-        opened: Option<BrowserTab>,
-    ) -> Result<(), Failure> {
+    async fn view(&mut self, environment: BrowserEnvironment) -> Result<(), Failure> {
         let membership = Arc::new(environment.live.join());
         if let Some(panel) = self.panel {
             membership.panel(panel);
         }
         let mut changes = environment.live.subscribe();
         let (input, input_task) = Input::start(self.writer.clone(), self.mac);
-        let (commands, mut opening) = commands::start(
+        let commands = commands::start(
             environment.clone(),
-            self.controller.clone(),
             Arc::downgrade(&membership),
             self.writer.clone(),
         );
@@ -295,9 +258,6 @@ impl Viewer {
             pasted: None,
         };
         session.state().await;
-        if let Some(tab) = opened {
-            session.watch(Some(tab)).await;
-        }
         let mut refresh: Option<Instant> = None;
         let mut ticks = tokio::time::interval(Duration::from_secs(1));
         ticks.set_missed_tick_behavior(MissedTickBehavior::Skip);
@@ -327,10 +287,6 @@ impl Viewer {
                     },
                 },
                 update = Watched::next(&mut session.watched) => session.update(update).await,
-                Some(tab) = opening.recv() => {
-                    session.watch(Some(tab)).await;
-                    refresh = Some(Instant::now());
-                }
                 _ = changes.changed() => {
                     refresh.get_or_insert_with(|| Instant::now() + STATE_DELAY);
                 }
@@ -527,8 +483,11 @@ impl Session<'_> {
         {
             Ok(listed) => listed,
             Err(error) => {
+                // A browser that ended takes its tab list with it; the view
+                // ends with it and says so.
                 if !self.environment.ended.is_cancelled() {
                     eprintln!("live view tabs: {error}");
+                    self.writer.notice(error.code(), &error.to_string()).await;
                 }
                 return;
             }
@@ -581,8 +540,11 @@ impl Session<'_> {
                 let observed = match observers::observe(&tab, &self.environment.observers).await {
                     Ok(observed) => Some(Observing::new(&observed)),
                     Err(error) => {
+                        // Without its observer the viewer gets no cursor, native
+                        // controls or copied text of this tab.
                         if !tab.ended.is_cancelled() {
                             eprintln!("live view observer of {}: {error}", tab.id());
+                            self.writer.notice(error.code(), &error.to_string()).await;
                         }
                         None
                     }
@@ -629,18 +591,6 @@ impl Session<'_> {
                     Mode::Web
                 };
                 let _ended = commands.send(Command::Mode { tab, mode });
-            }
-            LiveInbound::Open { url } => {
-                let _ended = commands.send(Command::Open(url));
-            }
-            LiveInbound::Close { tab } => {
-                let _ended = commands.send(Command::Close(tab));
-            }
-            LiveInbound::Navigate { tab, url } => {
-                let _ended = commands.send(Command::Navigate { tab, url });
-            }
-            LiveInbound::History { tab, action } => {
-                let _ended = commands.send(Command::History { tab, action });
             }
             LiveInbound::Dialog { tab, accept, text } => {
                 if let Some(watched) = &self.watched
@@ -744,6 +694,9 @@ impl Session<'_> {
             }
             Update::Picture(Event::Unavailable(reason)) => {
                 self.writer.notice("capture_unavailable", &reason).await;
+            }
+            Update::Picture(Event::Failed(reason)) => {
+                self.writer.notice("capture_failed", &reason).await;
             }
             Update::StreamEnded => watched.events = None,
             Update::Dialog => {

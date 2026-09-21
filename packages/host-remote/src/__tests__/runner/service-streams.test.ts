@@ -11,7 +11,7 @@ import {
 } from '@demicodes/host-remote/testing'
 import { memoryHostStore } from '@demicodes/shell/testing'
 import { collectBytes, decodeUtf8, delay, waitFor } from '@demicodes/utils'
-import { PipeBroker, RemoteHost, RemoteServiceError, devicePipes } from '@demicodes/host-remote'
+import { PipeBroker, RemoteHost, RemoteServiceError, RemoteServiceExit, devicePipes } from '@demicodes/host-remote'
 import type { RunnerToBackendMessage } from '@demicodes/runner-protocol'
 
 // The runner's service streams (`runner.md` § Service streams): `service_open`
@@ -68,7 +68,17 @@ async function connected() {
     })
     return { input, output, stream }
   }
-  return { dir, open, received, pipes, log: () => remote.log.read({ since: 0, limit: 1000 }) }
+  const call = (operation: string, args?: Record<string, unknown>) => remote.services.call({
+    context,
+    package: native.descriptor,
+    operation,
+    ...(args ? { args, json: true } : {}),
+    cwd: dir,
+    input: new Uint8Array(),
+    resolveArtifact: native.resolveArtifact,
+    maxBytes: 64 * 1024,
+  })
+  return { dir, open, call, received, pipes, log: () => remote.log.read({ since: 0, limit: 1000 }) }
 }
 
 test(
@@ -157,6 +167,24 @@ test(
     })
     expect(told.some(line => line.source === 'runner'
       && /^service demicodes\.runner-test started \(pid \d+\)$/.test(line.text))).toBe(true)
+  },
+  60_000,
+)
+
+test(
+  'a one-shot call carries its arguments and learns a failed invocation\'s exit code and words',
+  async () => {
+    const { call, received } = await connected()
+    const answer = JSON.parse(decodeUtf8(await call('where', { label: 'from the user' })))
+    expect(answer.label).toBe('from the user')
+    expect(answer.context.caller).toEqual({ kind: 'user' })
+    expect(received.some(message => message.type === 'service_done' && message.exitCode === 0)).toBe(true)
+
+    // `result` writes to both outputs and exits 17: the call fails with what it said on standard error.
+    const failed = await call('result').then(() => null, (error: unknown) => error)
+    expect(failed).toBeInstanceOf(RemoteServiceExit)
+    expect((failed as RemoteServiceExit).exitCode).toBe(17)
+    expect((failed as RemoteServiceExit).stderr).toBe('command diagnostic')
   },
   60_000,
 )

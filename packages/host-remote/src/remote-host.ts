@@ -126,6 +126,9 @@ export interface RemoteServices {
     context: CommandContext
     package: NativePackage
     operation: string
+    /** The operation's arguments and whether it answers in JSON, as a command's invocation carries them. */
+    args?: Record<string, unknown>
+    json?: boolean
     cwd: string
     input: PipeRef
     output: PipeRef
@@ -133,12 +136,15 @@ export interface RemoteServices {
   }): Promise<RemoteServiceStream>
   /**
    * One question, one answer: opens a stream, sends `input` as its whole
-   * input and returns its whole output, which may not exceed `maxBytes`.
+   * input and returns its whole output, which may not exceed `maxBytes`. An
+   * invocation that exits nonzero rejects with a `RemoteServiceExit`.
    */
   call(params: {
     context: CommandContext
     package: NativePackage
     operation: string
+    args?: Record<string, unknown>
+    json?: boolean
     cwd: string
     input: Uint8Array
     resolveArtifact: ArtifactResolver
@@ -148,8 +154,21 @@ export interface RemoteServices {
 }
 
 export interface RemoteServiceStream {
+  /** How the invocation completed; rejects when the runner goes before it says. */
+  done: Promise<{ exitCode: number; stderr: string }>
   /** The stream is over: its artifact requests are no longer answered. */
   close(): void
+}
+
+/** A one-shot call's invocation exited nonzero; `stderr` is the tail of what it wrote there. */
+export class RemoteServiceExit extends Error {
+  constructor(
+    readonly exitCode: number,
+    readonly stderr: string,
+  ) {
+    super(`Service call exited with ${exitCode}${stderr.trim() ? `: ${stderr.trim()}` : ''}`)
+    this.name = 'RemoteServiceExit'
+  }
 }
 
 export class RemoteServiceError extends Error {
@@ -177,6 +196,8 @@ interface ServiceStreamState {
   package: NativePackage
   resolveArtifact: ArtifactResolver
   controller: AbortController
+  /** The runner's `service_done`. */
+  done: Deferred<{ exitCode: number; stderr: string }>
 }
 
 /**
@@ -318,8 +339,10 @@ export class RemoteHost implements Host {
     for (const stream of streams) {
       stream.reject(offlineError(reason))
     }
-    for (const stream of this.serviceStreams.values())
+    for (const stream of this.serviceStreams.values()) {
       stream.controller.abort(offlineError(reason))
+      stream.done.reject(offlineError(reason))
+    }
     this.serviceStreams.clear()
     const spawns = [...this.activeSpawns.values()]
     this.activeSpawns.clear()
@@ -563,6 +586,13 @@ export class RemoteHost implements Host {
       this.pendingServices.delete(message.streamId)
       if (message.type === 'service_opened') pending.resolve()
       else pending.reject(new RemoteServiceError(message.code, message.message))
+      return
+    }
+    if (message.type === 'service_done') {
+      this.serviceStreams.get(message.streamId)?.done.resolve({
+        exitCode: message.exitCode,
+        stderr: message.stderr,
+      })
       return
     }
     if (message.type === 'net_opened' || message.type === 'net_error') {
@@ -838,9 +868,13 @@ export class RemoteHost implements Host {
       package: params.package,
       resolveArtifact: params.resolveArtifact,
       controller: new AbortController(),
+      done: deferred(),
     }
+    // A long stream's owner follows its pipes, not this; a settled outcome must not reject unheard.
+    stream.done.promise.catch(() => {})
     const close = () => {
       stream.controller.abort(new Error('Service stream closed'))
+      stream.done.reject(new Error('Service stream closed'))
       if (this.serviceStreams.get(streamId) === stream)
         this.serviceStreams.delete(streamId)
     }
@@ -853,6 +887,8 @@ export class RemoteHost implements Host {
         context: params.context,
         package: params.package,
         operation: params.operation,
+        ...(params.args ? { args: params.args } : {}),
+        ...(params.json === undefined ? {} : { json: params.json }),
         cwd: params.cwd,
         input: params.input,
         output: params.output,
@@ -863,7 +899,7 @@ export class RemoteHost implements Host {
       close()
       throw error
     }
-    return { close }
+    return { done: stream.done.promise, close }
   }
 
   private async callService(
@@ -901,6 +937,9 @@ export class RemoteHost implements Host {
         chunks.push(chunk)
       }
       signal?.throwIfAborted()
+      const outcome = await stream.done
+      if (outcome.exitCode !== 0)
+        throw new RemoteServiceExit(outcome.exitCode, outcome.stderr)
       const answer = new Uint8Array(size)
       let offset = 0
       for (const chunk of chunks) {

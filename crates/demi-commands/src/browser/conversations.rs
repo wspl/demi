@@ -388,6 +388,18 @@ impl Conversations {
             }
             return Err(BrowserError::TabNotFound);
         };
+        if let BrowserCommand::Open(input) = command
+            && context.request.context.caller.node().is_none()
+        {
+            // The user's new tab (`web-api.md` § Conversation browser tabs): the
+            // work panel shows its loading, so opening does not wait for the page.
+            let url = (input.url != "about:blank").then_some(input.url.as_str());
+            let tab = environment.open_user(url, cancellation, deadline).await?;
+            let shown = url.unwrap_or("about:blank");
+            return Ok(CommandOutput::Json(
+                serde_json::json!({"tab": tab.id(), "url": shown}),
+            ));
+        }
         if let BrowserCommand::Open(input) = command {
             let (tab, url) = environment
                 .open_for(
@@ -446,6 +458,20 @@ impl Conversations {
             .iter()
             .find(|tab| Some(tab.id().as_str()) == command.tab())
             .ok_or(BrowserError::TabNotFound)?;
+        if context.request.context.caller.node().is_none()
+            && matches!(
+                command,
+                BrowserCommand::Goto(_)
+                    | BrowserCommand::Reload(_)
+                    | BrowserCommand::Back(_)
+                    | BrowserCommand::Forward(_)
+            )
+        {
+            let operation = super::operation::Operation::for_tab(tab, cancellation, deadline);
+            return super::navigation::steer(tab, command, &operation)
+                .await
+                .map(CommandOutput::Json);
+        }
         {
             let family: Option<futures_util::future::BoxFuture<'_, Result<serde_json::Value>>> =
                 match command {

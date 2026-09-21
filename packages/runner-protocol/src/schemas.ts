@@ -351,6 +351,9 @@ export type NetErrorCode = z.infer<typeof netErrorCodeSchema>
  * the package lacks the operation, its service could not start, or the
  * runner turned the stream away (it is draining for an upgrade).
  */
+/** The most of an invocation's standard error a `service_done` carries: its tail. */
+export const SERVICE_STDERR_CHARS = 16 * 1024
+
 export const serviceErrorCodeSchema = z.enum([
   'unknown_operation',
   'service_failed',
@@ -575,6 +578,17 @@ export const runnerToBackendMessageSchema = z.union([
     code: serviceErrorCodeSchema,
     message: z.string()
   }),
+  /**
+   * A `service_open` stream's invocation completed: its exit code and the
+   * bounded tail of its standard error, which is how a one-shot call learns
+   * that it failed and why (`runner.md` § Service streams).
+   */
+  z.strictObject({
+    type: z.literal('service_done'),
+    streamId: z.string(),
+    exitCode: z.number().int().min(0).max(255),
+    stderr: z.string().max(SERVICE_STDERR_CHARS),
+  }),
   /** The lines a `log_read` asked for (`runner.md` § Host log). */
   z.strictObject({ type: z.literal('log_lines'), id: z.string() })
     .extend(logPageSchema.shape),
@@ -733,6 +747,9 @@ export const backendToRunnerMessageSchema = z.union([
       context: commandContextSchema,
       package: nativePackageSchema,
       operation: z.string().min(1),
+      /** The operation's arguments and whether it answers in JSON, as a command's invocation carries them. */
+      args: z.record(z.string(), z.unknown()).optional(),
+      json: z.boolean().optional(),
       cwd: z.string().min(1),
       input: pipeRefSchema,
       output: pipeRefSchema,

@@ -203,8 +203,8 @@ waiting for the page to load, and the tab's content shows the loading.
 | `GET …/browser/tabs` | Returns `{ tabs: [{ id, title, url, createdBy }] }`; a browser that does not run has none | Is not woken: answers `{ tabs: [] }` |
 | `POST …/browser/tabs { url? }` | Opens a tab, starting the environment when needed, and returns the tab; `url` defaults to `about:blank` | Is woken: opening a tab is ordinary demand |
 | `DELETE …/browser/tabs/:tab` | Closes the tab and answers 204, also when the browser no longer has it | Is not woken: answers 204 |
-| `POST …/browser/tabs/:tab/navigate { url }` | Loads the URL in the tab and returns the tab | Is not woken: answers 409 `host_stopped` |
-| `POST …/browser/tabs/:tab/history { action }` | `back`, `forward` or `reload`; returns the tab | Is not woken: answers 409 `host_stopped` |
+| `POST …/browser/tabs/:tab/navigate { url }` | Starts loading the URL in the tab and answers 204 | Is not woken: answers 409 `host_stopped` |
+| `POST …/browser/tabs/:tab/history { action }` | `back`, `forward` or `reload`; answers 204 | Is not woken: answers 409 `host_stopped` |
 
 A tab the browser does not have answers 404 `tab_not_found`. Other refusals follow the user stream's: 409 `conversation_archived`,
 `device_offline` and `conversation_busy`, and 502 `browser_failed` with the

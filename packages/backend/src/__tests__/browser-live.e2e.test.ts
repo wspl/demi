@@ -149,8 +149,28 @@ acceptance('a viewer watches the conversation\'s browser, types into it and ends
     () => 'the pictures never resumed', { timeoutMs: 30_000 })
   expect(view.closed).toBe(null)
 
+  // 9. The panel's tab requests (`web-api.md` § Conversation browser tabs) run the agent's own
+  // operations as the user: they list the agent's tab, open one without waiting for its page,
+  // navigate it, and tell a tab the browser does not have.
+  const tabRoutes = `/api/conversations/${driver.id}/browser/tabs`
+  const json = (body: unknown) => ({ method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json' } })
+  const listed = await (await world.backend.session.fetch(tabRoutes)).json() as { tabs: Array<{ id: string; createdBy: { kind: string } }> }
+  expect(listed.tabs.map((item) => item.id)).toEqual([tab])
+  const userTab = await world.backend.session.fetch(tabRoutes, json({}))
+  expect(userTab.status).toBe(200)
+  const mine = await userTab.json() as { id: string; url: string; createdBy: { kind: string } }
+  expect(mine).toMatchObject({ url: 'about:blank', createdBy: { kind: 'user' } })
+  expect((await world.backend.session.fetch(`${tabRoutes}/${mine.id}/navigate`, json({ url: site.url }))).status).toBe(204)
+  expect((await world.backend.session.fetch(`${tabRoutes}/${mine.id}/history`, json({ action: 'reload' }))).status).toBe(204)
+  const missing = await world.backend.session.fetch(`${tabRoutes}/t_nosuchtabnosuchtabnosu/navigate`, json({ url: site.url }))
+  expect(missing.status).toBe(404)
+  expect(await missing.json()).toMatchObject({ code: 'tab_not_found' })
+  expect((await world.backend.session.fetch(`${tabRoutes}/${mine.id}`, { method: 'DELETE' })).status).toBe(204)
+  // A tab the browser no longer has is closed.
+  expect((await world.backend.session.fetch(`${tabRoutes}/${mine.id}`, { method: 'DELETE' })).status).toBe(204)
+
   // 7. Closing the last tab ends the browser, and the view says so.
-  view.send({ type: 'close', tab })
+  expect((await world.backend.session.fetch(`${tabRoutes}/${tab}`, { method: 'DELETE' })).status).toBe(204)
   const ended = await view.message('ended')
   expect(ended.reason).toBe('browser_ended')
   await waitFor(() => view.closed !== null, () => 'the stream stayed open', { timeoutMs: 30_000 })

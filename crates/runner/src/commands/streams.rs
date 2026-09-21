@@ -93,6 +93,8 @@ impl ServiceStreams {
             context,
             package,
             operation,
+            args,
+            json,
             cwd,
             input,
             output,
@@ -143,11 +145,11 @@ impl ServiceStreams {
                     operation,
                     invocation_id: stream_id.clone(),
                     context,
-                    args: serde_json::json!({}),
+                    args: serde_json::Value::Object(args.unwrap_or_default().into_iter().collect()),
                     cwd,
                     env: Default::default(),
                     edits: None,
-                    json: None,
+                    json,
                 };
                 client
                     .invoke(&invocation)
@@ -166,7 +168,7 @@ impl ServiceStreams {
                 },
             };
             // No bytes move before the answer.
-            match wire::service_opened(stream_id) {
+            match wire::service_opened(stream_id.clone()) {
                 Ok(message) => {
                     tokio::select! {
                         _ = stream.cancelled() => return,
@@ -209,10 +211,12 @@ impl ServiceStreams {
             });
             // The invocation's standard output → output pipe; its completion
             // ends the upload.
+            let outcome = Arc::new(Mutex::new(None));
             exchange.spawn({
                 let reply = reply.clone();
                 let cancel = stream.clone();
                 let log = log.clone();
+                let outcome = outcome.clone();
                 async move {
                     let result = pump_output(
                         pipes,
@@ -222,6 +226,7 @@ impl ServiceStreams {
                         &completed,
                         &cancel,
                         &log,
+                        &outcome,
                     )
                     .await;
                     if result.is_err() {
@@ -232,6 +237,20 @@ impl ServiceStreams {
             });
             exchange.close();
             exchange.wait().await;
+            // A one-shot call has no page to tell: its caller learns the
+            // exit code and the operation's own words from this message.
+            let done = outcome.lock().unwrap().take();
+            if let Some(Outcome { exit_code, stderr }) = done {
+                match wire::service_done(stream_id, exit_code, stderr) {
+                    Ok(message) => {
+                        // A disconnected backend no longer waits for the call.
+                        let _ = reply.send(message).await;
+                    }
+                    Err(error) => {
+                        host_log::runner(format_args!("service_done encoding failed: {error}"));
+                    }
+                }
+            }
             log.event("ended");
         });
         Ok(())
@@ -342,6 +361,22 @@ async fn pump_input(
     }
 }
 
+/// How an invocation completed: its exit code and the tail of its standard error.
+struct Outcome {
+    exit_code: u8,
+    stderr: String,
+}
+
+/// The most of an invocation's standard error its `service_done` carries.
+const STDERR_TAIL_BYTES: usize = 16 * 1024;
+
+/// Keeps the last `STDERR_TAIL_BYTES` of `tail` after `bytes` join it.
+fn keep_tail(tail: &mut Vec<u8>, bytes: &[u8]) {
+    tail.extend_from_slice(bytes);
+    let excess = tail.len().saturating_sub(STDERR_TAIL_BYTES);
+    tail.drain(..excess);
+}
+
 /// Uploads the invocation's standard output until its completion ends the
 /// pipe; input pulls go to the input pump, standard error to the log.
 async fn pump_output(
@@ -352,9 +387,11 @@ async fn pump_output(
     completed: &CancellationToken,
     cancel: &CancellationToken,
     log: &StreamLog,
+    outcome: &Mutex<Option<Outcome>>,
 ) -> io::Result<()> {
     let (sender, receiver) = mpsc::channel::<io::Result<Bytes>>(OUTPUT_QUEUE);
     let records = async move {
+        let mut tail = Vec::new();
         let mut lines = LineSplitter::default();
         let stderr = &mut lines;
         let pump = async move {
@@ -366,6 +403,7 @@ async fn pump_output(
                 let item = match record {
                     Ok(Some(Record::Stdout(bytes))) => Ok(bytes),
                     Ok(Some(Record::Stderr(bytes))) => {
+                        keep_tail(&mut tail, &bytes);
                         for line in stderr.push(&bytes) {
                             log.stderr(&line);
                         }
@@ -383,9 +421,15 @@ async fn pump_output(
                         continue;
                     }
                     Ok(Some(Record::Completion(completion))) => {
-                        if let Some(error) = completion.error {
+                        if let Some(error) = &completion.error {
                             log.event(&format!("failed: {}: {}", error.code, error.message));
                         }
+                        // A tail cut inside a character loses that character, not the words after it.
+                        let stderr = String::from_utf8_lossy(&tail).into_owned();
+                        *outcome.lock().unwrap() = Some(Outcome {
+                            exit_code: completion.exit_code,
+                            stderr,
+                        });
                         completed.cancel();
                         continue;
                     }

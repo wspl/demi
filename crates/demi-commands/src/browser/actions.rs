@@ -15,7 +15,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::{
     BrowserError, BrowserTab, Result, element, evaluation, keyboard,
-    navigation::{Navigation, NavigationObservation},
+    navigation::{Navigation, NavigationObservation, history_step},
     observation::{self, Observation, has_target_flags},
     operation::Operation,
     protocol::{BrowserCommand, BrowserTarget, DEFAULT_NODES, INLINE_BYTES, MAX_NODES},
@@ -184,25 +184,8 @@ impl BrowserTab {
                     Ok(self.completed_navigation(url).await)
                 }),
                 BrowserCommand::Back(_) | BrowserCommand::Forward(_) => Box::pin(async {
-                    let history = operation
-                        .run(async {
-                            Ok(self
-                                .page
-                                .execute(GetNavigationHistoryParams {})
-                                .await?
-                                .result)
-                        })
-                        .await?;
-                    let index = history.current_index
-                        + if matches!(command, BrowserCommand::Back(_)) {
-                            -1
-                        } else {
-                            1
-                        };
-                    let entry = usize::try_from(index)
-                        .ok()
-                        .and_then(|index| history.entries.get(index))
-                        .ok_or(BrowserError::HistoryBoundary)?;
+                    let back = matches!(command, BrowserCommand::Back(_));
+                    let entry = history_step(self, back, &operation).await?;
                     let load = match command {
                         BrowserCommand::Back(input) => input.load.as_deref(),
                         BrowserCommand::Forward(input) => input.load.as_deref(),

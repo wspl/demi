@@ -51,6 +51,7 @@ import { pipeRoutes } from './pipes'
 import { streamRoutes } from './stream'
 import { userStreamRoutes, type UserStreamDeclaration } from './user-streams'
 import { panelRoutes } from './panel'
+import { browserTabRoutes } from './browser-tabs'
 import type { ConversationTitles } from '../conversation/title'
 import { failureFactsReader } from '../conversation/failure-facts'
 import { usageRoutes } from './usage'
@@ -226,6 +227,19 @@ export function createApp(options: {
     }),
   )
   app.route('/api/conversations', panelRoutes({ control: options.control }))
+  // The browser's tab routes run the operations of the package its user stream declares.
+  const browser = options.userStreams.get('browser')
+  if (browser) {
+    app.route(
+      '/api/conversations',
+      browserTabRoutes({
+        control: options.control,
+        registry: options.runnerRegistry,
+        targets: options.targets,
+        browser,
+      }),
+    )
+  }
   app.route(
     '/api/conversations',
     streamRoutes({

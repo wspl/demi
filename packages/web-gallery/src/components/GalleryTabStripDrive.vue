@@ -2,7 +2,10 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
-import { addBrowserTab, closeBrowserTabs, workPanelTabs, type WorkTab } from '@demicodes/web-ui/agent/work-panel'
+import { workPanelTabs } from '@demicodes/web-ui/agent/work-panel'
+import { addTab, emptyPanelState, removeTabs, selectInPanel, type PanelState } from '@demicodes/web-ui/agent/panel-tabs'
+import { pageTabKind } from '@demicodes/web-ui/agent/panel-kinds/page'
+import { exposePageTab } from '@demicodes/web-ui/agent/panel-kinds/page-data'
 
 /**
  * The work panel's tab strip in a frame of the given width, with every motion
@@ -18,32 +21,29 @@ const TITLES = [
   'Design review', 'Error dashboard', 'Release notes', 'Issue tracker',
 ]
 
-const tabs = ref<WorkTab[]>([])
-const activeId = ref<string | null>(null)
+const views = workPanelTabs()
+const kinds = [pageTabKind]
+const panel = ref<PanelState>(emptyPanelState())
 let opened = 0
 
 function openPage(): void {
-  const title = TITLES[opened % TITLES.length]!
+  const address = TITLES[opened % TITLES.length]!
   opened += 1
-  // The body never shows here, so the page is never loaded.
-  const next = addBrowserTab(tabs.value, { url: 'about:blank', title, expose: false })
-  tabs.value = next.tabs
-  activeId.value = next.activeId
+  // The body never shows here, so the page is never loaded; the address names the tab.
+  panel.value = addTab(panel.value, { kind: pageTabKind.kind, data: exposePageTab({ url: 'https://example.test/', address }) }, { select: true }).state
 }
 
 function closeTabs(ids: string[]): void {
-  const next = closeBrowserTabs(tabs.value, activeId.value, ids)
-  tabs.value = next.tabs
-  activeId.value = next.activeId
+  panel.value = removeTabs(panel.value, ids)
 }
 
-/** Change and File, then six pages, the first selected. */
+/** Six pages beside Change and File, the first selected. */
 function reset(): void {
-  tabs.value = workPanelTabs()
+  panel.value = emptyPanelState()
   opened = 0
   for (let i = 0; i < 6; i++)
     openPage()
-  activeId.value = ids()[0] ?? null
+  selectAt(0)
 }
 reset()
 
@@ -52,15 +52,15 @@ const playing = ref(false)
 const step = ref('')
 let stopped = false
 
-/** The browser tabs in strip order: the only tabs the strip moves. */
+/** The tabs in strip order. */
 function ids(): string[] {
-  return tabs.value.filter((tab) => tab.kind === 'browser').map((tab) => tab.id)
+  return panel.value.tabs.map((tab) => tab.id)
 }
 
 function selectAt(index: number): void {
   const id = ids().at(index)
   if (id)
-    activeId.value = id
+    panel.value = selectInPanel(panel.value, id)
 }
 
 function selectMiddle(): void {
@@ -93,12 +93,11 @@ function closeAt(index: number): void {
 }
 
 function closeActive(): void {
-  if (activeId.value)
-    closeTabs([activeId.value])
+  closeTabs([panel.value.selection])
 }
 
 function closeOthers(): void {
-  closeTabs(ids().filter((id) => id !== activeId.value))
+  closeTabs(ids().filter((id) => id !== panel.value.selection))
 }
 
 const STEPS: [string, () => void][] = [
@@ -150,9 +149,10 @@ const count = computed(() => ids().length)
       :style="{ width: props.width }"
     >
       <WorkPanel
-        :tabs="tabs"
-        :active-id="activeId"
-        @select="activeId = $event"
+        :views="views"
+        :panel="panel"
+        :kinds="kinds"
+        @select="panel = selectInPanel(panel, $event)"
         @close-tabs="closeTabs"
         @close="reset"
       >

@@ -55,7 +55,16 @@ struct Site {
 }
 
 async fn site() -> Site {
-    let app = Router::new().route("/", get(|| async { Html(PAGE) }));
+    let app = Router::new()
+        .route("/", get(|| async { Html(PAGE) }))
+        // A page that does not answer while a test runs.
+        .route(
+            "/slow",
+            get(|| async {
+                tokio::time::sleep(Duration::from_secs(120)).await;
+                Html(PAGE)
+            }),
+        );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}/", listener.local_addr().unwrap());
     let task = AbortOnDropHandle::new(tokio::spawn(async move {
@@ -93,11 +102,10 @@ impl View {
         let stream = futures_util::stream::unfold(receiver, |mut receiver| async move {
             receiver.recv().await.map(|item| (item, receiver))
         });
-        let user: CommandCaller = serde_json::from_value(json!({"kind": "user"})).unwrap();
         let (mut records, invoke) = fixture.start(
             "browser.live",
             json!({}),
-            user,
+            user(),
             Input::from_stream(stream),
             CancellationToken::new(),
         );
@@ -294,13 +302,47 @@ async fn evaluate(fixture: &BrowserFixture, tab: &str, expression: &str) -> Valu
 /// Polls the page until `expression` is true.
 async fn eventually(fixture: &BrowserFixture, tab: &str, expression: &str) {
     for _ in 0..200 {
-        if evaluate(fixture, tab, expression).await == json!(true) {
+        // A document that is being replaced refuses the evaluation.
+        let (_, result) = fixture
+            .result(
+                "browser.eval",
+                json!({"tab": tab, "expression": expression}),
+                CancellationToken::new(),
+            )
+            .await;
+        if result["value"] == json!(true) {
             return;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     let events = evaluate(fixture, tab, "window.events").await;
     panic!("never true: {expression}; events: {events}");
+}
+
+/// The caller of the page's view and requests.
+fn user() -> CommandCaller {
+    serde_json::from_value(json!({"kind": "user"})).unwrap()
+}
+
+/// The exit code and answer of `operation` run as the page's request runs
+/// it: for a `user` caller (`web-api.md` § Conversation browser tabs).
+async fn user_result(fixture: &BrowserFixture, operation: &str, args: Value) -> (u8, Value) {
+    fixture
+        .result_for(
+            user(),
+            operation,
+            args,
+            CancellationToken::new(),
+            Vec::new(),
+        )
+        .await
+}
+
+/// The answer of a request that succeeds.
+async fn request(fixture: &BrowserFixture, operation: &str, args: Value) -> Value {
+    let (code, result) = user_result(fixture, operation, args).await;
+    assert_eq!(code, 0, "{operation}: {result}");
+    result
 }
 
 /// A viewer at ratio 2 in an 800 × 600 panel.
@@ -552,7 +594,7 @@ async fn dialogs_controls_files_and_the_clipboard_reach_the_viewer() {
 
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
-async fn a_view_starts_a_browser_and_ends_with_its_last_tab() {
+async fn a_view_waits_for_a_browser_and_ends_with_its_last_tab() {
     with_browser_fixture(|fixture| async move {
         let site = site().await;
         let mut view = View::open(&fixture);
@@ -562,59 +604,156 @@ async fn a_view_starts_a_browser_and_ends_with_its_last_tab() {
             state,
             json!({"type": "state", "running": false, "tabs": [], "watched": null})
         );
-        view.send(json!({"type": "open", "url": site.base}));
-        // The tab a viewer opens is the one it watches: its pictures start
-        // without the viewer asking for them. The running browser and its
-        // first stream are announced by different tasks, in either order.
-        let running = |message: &Value| {
-            message["type"] == "state"
-                && message["running"] == true
-                && !message["watched"].is_null()
-        };
-        let streaming = |message: &Value| message["type"] == "stream" && message["width"] == 1600;
-        let first = view
-            .until("a running browser or its stream", |message| {
-                running(message) || streaming(message)
+        // The page opens a tab with a request; the waiting view hears of the
+        // browser that request started, and watches nothing until it asks.
+        let opened = request(&fixture, "browser.open", json!({"url": site.base})).await;
+        let tab = opened["tab"].as_str().unwrap().to_owned();
+        let state = view
+            .until("the state listing the tab", |message| {
+                message["type"] == "state" && message["tabs"][0]["id"] == json!(tab)
             })
             .await;
-        let second = if first["type"] == "state" {
-            view.until("the stream of the tab it opened", streaming)
-                .await
-        } else {
-            view.until("the state naming the tab it opened", running)
-                .await
-        };
-        let (state, stream) = if first["type"] == "state" {
-            (first, second)
-        } else {
-            (second, first)
-        };
-        let tab = stream["tab"].as_str().unwrap().to_owned();
-        let (pictured, ..) = view.picture(stream["generation"].as_u64().unwrap()).await;
-        assert_eq!(pictured, tab, "the tab it opened is the one it sees");
+        assert_eq!(state["running"], true);
         assert_eq!(state["tabs"][0]["createdBy"], json!({"kind": "user"}));
+        assert_eq!(state["watched"], Value::Null);
+        watch(&mut view, &tab).await;
+        // Another tab while the first is watched: the view hears of it and
+        // keeps the tab it watches until the page asks for the other.
+        let second = request(&fixture, "browser.open", json!({"url": site.base})).await;
+        let second = second["tab"].as_str().unwrap().to_owned();
+        let state = view
+            .until("the state listing both tabs", |message| {
+                message["type"] == "state"
+                    && message["tabs"]
+                        .as_array()
+                        .is_some_and(|tabs| tabs.len() == 2)
+            })
+            .await;
         assert_eq!(state["watched"].as_str(), Some(tab.as_str()));
-        let tabs = fixture.call("browser.tabs", json!({})).await;
-        assert_eq!(tabs["tabs"][0]["id"], tab);
-        // Another tab while the first is watched: its capture is running, and
-        // the new tab arrives and takes the view over.
-        view.send(json!({"type": "open", "url": site.base}));
+        view.send(json!({"type": "watch", "tab": second}));
         let stream = view
             .until("a stream of the second tab", |message| {
                 message["type"] == "stream"
-                    && message["tab"] != json!(tab)
+                    && message["tab"] == json!(second)
                     && message["width"] == 1600
             })
             .await;
-        let opened = stream["tab"].as_str().unwrap().to_owned();
         let (pictured, ..) = view.picture(stream["generation"].as_u64().unwrap()).await;
-        assert_eq!(pictured, opened, "the second tab is the one it sees");
-        view.send(json!({"type": "close", "tab": opened}));
-        view.send(json!({"type": "close", "tab": tab}));
+        assert_eq!(pictured, second, "the second tab is the one it sees");
+        let closed = request(&fixture, "browser.close", json!({"tab": second})).await;
+        assert_eq!(closed, json!({"closed": second}));
+        let closed = request(&fixture, "browser.close", json!({"tab": tab})).await;
+        assert_eq!(closed, json!({"closed": tab}));
         let ended = view.message("ended").await;
         assert_eq!(ended["reason"], "browser_ended");
         assert_eq!(view.close().await.exit_code, 0);
         let tabs = fixture.call("browser.tabs", json!({})).await;
+        assert_eq!(tabs["tabs"], json!([]));
+        fixture
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn the_users_requests_answer_without_waiting_for_a_page() {
+    with_browser_fixture(|fixture| async move {
+        let site = site().await;
+        let slow = format!("{}slow", site.base);
+        let second = format!("{}?second", site.base);
+        // Far less than the slow page takes, and enough for a busy machine.
+        let prompt = Duration::from_secs(10);
+
+        let blank = request(&fixture, "browser.open", json!({"url": "about:blank"})).await;
+        let tab = blank["tab"].as_str().unwrap().to_owned();
+        assert_eq!(blank, json!({"tab": tab, "url": "about:blank"}));
+        let started = Instant::now();
+        let loading = request(&fixture, "browser.open", json!({"url": slow})).await;
+        assert!(started.elapsed() < prompt, "open waited for its page");
+        let other = loading["tab"].as_str().unwrap().to_owned();
+        assert_eq!(loading, json!({"tab": other, "url": slow}));
+        let tabs = request(&fixture, "browser.tabs", json!({})).await;
+        let listed: Vec<_> = tabs["tabs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| (row["id"].as_str().unwrap(), row["createdBy"].clone()))
+            .collect();
+        let user = json!({"kind": "user"});
+        assert_eq!(
+            listed,
+            [(tab.as_str(), user.clone()), (other.as_str(), user)]
+        );
+
+        // A blank tab has nowhere to go back to.
+        let (code, refused) = user_result(&fixture, "browser.back", json!({"tab": tab})).await;
+        assert_eq!(
+            (code, &refused["error"]["code"]),
+            (1, &json!("history_boundary"))
+        );
+        let (code, refused) = user_result(
+            &fixture,
+            "browser.goto",
+            json!({"tab": tab, "url": "javascript:1"}),
+        )
+        .await;
+        assert_eq!(
+            (code, &refused["error"]["code"]),
+            (2, &json!("invalid_input"))
+        );
+
+        let at = |url: &str| {
+            format!(
+                "location.href === {} && document.readyState === 'complete'",
+                json!(url)
+            )
+        };
+        let went = request(
+            &fixture,
+            "browser.goto",
+            json!({"tab": tab, "url": site.base}),
+        )
+        .await;
+        assert_eq!(went, json!({"tab": tab, "url": site.base}));
+        eventually(&fixture, &tab, &at(&site.base)).await;
+        let went = request(&fixture, "browser.goto", json!({"tab": tab, "url": second})).await;
+        assert_eq!(went, json!({"tab": tab, "url": second}));
+        eventually(&fixture, &tab, &at(&second)).await;
+        let back = request(&fixture, "browser.back", json!({"tab": tab})).await;
+        assert_eq!(back, json!({"tab": tab, "url": site.base}));
+        eventually(&fixture, &tab, &at(&site.base)).await;
+        let forward = request(&fixture, "browser.forward", json!({"tab": tab})).await;
+        assert_eq!(forward, json!({"tab": tab, "url": second}));
+        eventually(&fixture, &tab, &at(&second)).await;
+        let (code, refused) = user_result(&fixture, "browser.forward", json!({"tab": tab})).await;
+        assert_eq!(
+            (code, &refused["error"]["code"]),
+            (1, &json!("history_boundary"))
+        );
+        let origin = evaluate(&fixture, &tab, "performance.timeOrigin").await;
+        let reloaded = request(&fixture, "browser.reload", json!({"tab": tab})).await;
+        assert_eq!(reloaded, json!({"tab": tab, "url": second}));
+        // A new document starts its own clock.
+        let renewed =
+            format!("performance.timeOrigin > {origin} && document.readyState === 'complete'");
+        eventually(&fixture, &tab, &renewed).await;
+
+        let started = Instant::now();
+        let went = request(&fixture, "browser.goto", json!({"tab": tab, "url": slow})).await;
+        assert!(started.elapsed() < prompt, "goto waited for its page");
+        assert_eq!(went, json!({"tab": tab, "url": slow}));
+
+        let missing = "t_0000000000000000000000";
+        let (code, refused) = user_result(&fixture, "browser.close", json!({"tab": missing})).await;
+        assert_eq!(
+            (code, &refused["error"]["code"]),
+            (1, &json!("tab_not_found"))
+        );
+        for id in [&other, &tab] {
+            let closed = request(&fixture, "browser.close", json!({"tab": id})).await;
+            assert_eq!(closed, json!({"closed": id}));
+        }
+        let tabs = request(&fixture, "browser.tabs", json!({})).await;
         assert_eq!(tabs["tabs"], json!([]));
         fixture
     })

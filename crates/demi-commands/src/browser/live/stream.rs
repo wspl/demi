@@ -34,6 +34,8 @@ pub(super) enum Event {
     Frame(Frame),
     /// This Host cannot capture, for this reason.
     Unavailable(String),
+    /// The capture failed for this reason; the stream tries again.
+    Failed(String),
 }
 
 pub(super) enum Command {
@@ -107,6 +109,8 @@ async fn run(
     let mut retry = Duration::ZERO;
     let mut attempt = Instant::now();
     let mut unavailable: Option<String> = None;
+    // Why the viewers get no picture, as they were last told.
+    let mut failure: Option<String> = None;
     let stop = CancellationToken::new();
     let _stop = stop.clone().drop_guard();
     loop {
@@ -164,6 +168,7 @@ async fn run(
                 }
                 Err(error) => {
                     eprintln!("live view capture of {}: {error}", tab.id());
+                    report(&viewers, &mut failure, error.to_string());
                     retry = (retry * 2).clamp(Duration::from_millis(500), RETRY_LIMIT);
                     attempt = Instant::now() + retry;
                 }
@@ -192,6 +197,9 @@ async fn run(
                     Command::Join { viewer, events } => {
                         if let Some(reason) = &unavailable {
                             let _behind = events.try_send(Event::Unavailable(reason.clone()));
+                        }
+                        if let Some(reason) = &failure {
+                            let _behind = events.try_send(Event::Failed(reason.clone()));
                         }
                         if let Some(running) = &running {
                             let _behind = events.try_send(Event::Restart {
@@ -245,6 +253,7 @@ async fn run(
                     if let Some(running) = &mut running {
                         running.sequence = frame.sequence;
                     }
+                    failure = None;
                     for viewer in viewers.values() {
                         let _behind = viewer.events.try_send(Event::Frame(frame.clone()));
                     }
@@ -270,6 +279,7 @@ async fn run(
                 Some(CaptureEvent::Started) => {}
                 Some(CaptureEvent::Failed(message)) => {
                     eprintln!("live view capture of {}: {message}", tab.id());
+                    report(&viewers, &mut failure, message);
                     running = None;
                     retry = (retry * 2).clamp(Duration::from_millis(500), RETRY_LIMIT);
                     attempt = Instant::now() + retry;
@@ -282,4 +292,16 @@ async fn run(
             },
         }
     }
+}
+
+/// Tells the viewers why they get no picture, once per reason: the capture
+/// retries, and a repeated failure is not news.
+fn report(viewers: &HashMap<u64, Viewer>, failure: &mut Option<String>, reason: String) {
+    if failure.as_ref() == Some(&reason) {
+        return;
+    }
+    for viewer in viewers.values() {
+        let _behind = viewer.events.try_send(Event::Failed(reason.clone()));
+    }
+    *failure = Some(reason);
 }

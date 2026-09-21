@@ -85,10 +85,24 @@ impl BrowserFixture {
         cancel: CancellationToken,
         bytes: Vec<u8>,
     ) -> (u8, Value) {
+        let caller = CommandCaller::agent(self.caller.clone());
+        self.result_for(caller, operation, args, cancel, bytes)
+            .await
+    }
+
+    /// The exit code and JSON answer of `operation` run for `caller`.
+    pub async fn result_for(
+        &self,
+        caller: CommandCaller,
+        operation: &str,
+        args: Value,
+        cancel: CancellationToken,
+        bytes: Vec<u8>,
+    ) -> (u8, Value) {
         let (mut records, invoke) = self.start(
             operation,
             args,
-            CommandCaller::agent(self.caller.clone()),
+            caller,
             Input::from_stream(futures_util::stream::iter([Ok(bytes::Bytes::from(bytes))])),
             cancel,
         );

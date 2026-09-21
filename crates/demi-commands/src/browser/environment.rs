@@ -321,8 +321,8 @@ impl BrowserEnvironment {
         Ok((tab, url))
     }
 
-    /// A tab the user opens in the live view, blank or loading `url`; the
-    /// page shows its loading, so opening does not wait for it.
+    /// A tab the user opens in the work panel, blank or loading `url`; the
+    /// panel shows its loading, so opening does not wait for it.
     pub(super) async fn open_user(
         &self,
         url: Option<&str>,
@@ -340,7 +340,7 @@ impl BrowserEnvironment {
             .create_tab(created_by("user", None)?, &operation)
             .await?;
         if let Some(url) = url {
-            super::live::visit(&tab, url);
+            super::navigation::visit(&tab, url);
         }
         Ok(tab)
     }

@@ -11,7 +11,8 @@ import {
   type LiveViewerMessage,
   type LiveViewport,
 } from '@demicodes/browser-protocol/live'
-import { LiveSession, type OpenLiveStream, type LiveStreamHandlers } from '@demicodes/web-ui/browser/session'
+import type { OpenLiveStream, LiveStreamHandlers } from '@demicodes/web-ui/browser/session'
+import { BrowserTabsError, type BrowserTabInfo, type BrowserTabsApi } from '@demicodes/web-ui/browser/tabs'
 
 const CODEC = 'avc1.640033'
 const FPS = 10
@@ -65,9 +66,11 @@ const SELECT: LiveControl = {
   rect: { x: 24, y: 168, width: 180, height: 32 },
 }
 
-/** The gallery's own browser: two tabs, a page it draws, and its controls. */
-class GalleryBrowser {
-  private readonly tabs: LiveTab[] = [
+/** How long the gallery's browser takes over a request, as a Host takes a moment. */
+const REQUEST_DELAY_MS = 900
+
+function galleryTabs(): LiveTab[] {
+  return [
     {
       id: 't_galleryaaaaaaaaaaaaaa',
       title: 'Orders — Example',
@@ -83,7 +86,10 @@ class GalleryBrowser {
       viewport: { width: 800, height: 600, devicePixelRatio: 2, mode: 'web' },
     },
   ]
+}
 
+/** One view of the gallery's browser: a page it draws, and its controls. */
+class GalleryBrowser {
   private watched: string | null = null
   private generation = 0
   private sequence = 0
@@ -96,7 +102,11 @@ class GalleryBrowser {
   private pressed = false
   private status = 'open'
 
-  constructor(private readonly handlers: LiveStreamHandlers) {
+  constructor(
+    private readonly handlers: LiveStreamHandlers,
+    /** The browser's tabs, shared with its tab requests. */
+    private readonly tabs: LiveTab[],
+  ) {
     this.heartbeat = setInterval(() => this.send({ type: 'heartbeat' }), 250)
     queueMicrotask(() => this.state())
   }
@@ -105,7 +115,12 @@ class GalleryBrowser {
     this.handlers.data(message(value))
   }
 
-  private state(): void {
+  /** The tabs changed by a request: every view says so, and a view of a closed tab watches nothing. */
+  state(): void {
+    if (this.watched !== null && !this.tabs.some((tab) => tab.id === this.watched)) {
+      this.watched = null
+      this.restart()
+    }
     this.send({ type: 'state', running: true, tabs: this.tabs, watched: this.watched })
   }
 
@@ -157,35 +172,6 @@ class GalleryBrowser {
         }
         break
       }
-      case 'navigate': {
-        const chosen = this.tabs.find((item) => item.id === value.tab)
-        if (chosen) {
-          chosen.url = value.url
-          chosen.title = URL.parse(value.url)?.host ?? value.url
-          this.state()
-        }
-        break
-      }
-      case 'open':
-        this.tabs.push({
-          id: `t_gallery${Math.random().toString(36).slice(2).padEnd(14, '0').slice(0, 14)}`,
-          title: 'New tab',
-          url: value.url ?? 'about:blank',
-          createdBy: { kind: 'user' },
-          viewport: { width: 800, height: 600, devicePixelRatio: 2, mode: 'web' },
-        })
-        this.watched = this.tabs.at(-1)!.id
-        this.restart()
-        this.state()
-        break
-      case 'close':
-        this.tabs.splice(this.tabs.findIndex((item) => item.id === value.tab), 1)
-        if (this.watched === value.tab) {
-          this.watched = this.tabs[0]?.id ?? null
-          this.restart()
-        }
-        this.state()
-        break
       case 'pointer':
         if (value.action === 'down' && tab) {
           this.pressed = value.y > 96 && value.y < 136 && value.x > 24 && value.x < 160
@@ -343,23 +329,90 @@ class GalleryBrowser {
   }
 }
 
-export function galleryLiveStream(): OpenLiveStream {
-  return (handlers) => {
-    const browser = new GalleryBrowser(handlers)
-    return {
-      send: (bytes) => browser.receive(bytes),
-      close: () => browser.stop(),
+/**
+ * The gallery's conversation browser: the tab requests a `browser` tab kind
+ * makes and the view it opens, over one tab list, without a Host. Requests
+ * take a moment, as a Host does, so the content's waiting shows.
+ */
+export function galleryBrowserTabs(): BrowserTabsApi {
+  const tabs = galleryTabs()
+  const views = new Set<GalleryBrowser>()
+  // Each request's timer removes itself when it answers; none outlives its 900 ms.
+  const timers = new Set<ReturnType<typeof setTimeout>>()
+
+  function later<T>(answer: () => T): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        timers.delete(timer)
+        try {
+          resolve(answer())
+        } catch (error) {
+          reject(error)
+        }
+      }, REQUEST_DELAY_MS)
+      timers.add(timer)
+    })
+  }
+
+  function changed(): void {
+    for (const view of views) {
+      view.state()
     }
   }
-}
 
-/** A live view the gallery drives itself. */
-export function galleryLiveSession(): LiveSession {
-  const session = new LiveSession({
-    open: galleryLiveStream(),
-    platform: 'mac',
-    reconnect: () => null,
-  })
-  session.start()
-  return session
+  function info(tab: LiveTab): BrowserTabInfo {
+    return { id: tab.id, title: tab.title, url: tab.url, createdBy: tab.createdBy }
+  }
+
+  function found(id: string): LiveTab {
+    const tab = tabs.find((item) => item.id === id)
+    if (!tab) {
+      throw new BrowserTabsError('tab_not_found', 'The browser has no such tab')
+    }
+    return tab
+  }
+
+  const stream: OpenLiveStream = (handlers) => {
+    const browser = new GalleryBrowser(handlers, tabs)
+    views.add(browser)
+    return {
+      send: (bytes) => browser.receive(bytes),
+      close: () => {
+        views.delete(browser)
+        browser.stop()
+      },
+    }
+  }
+
+  return {
+    list: () => later(() => ({ tabs: tabs.map(info) })),
+    open: (url) => later(() => {
+      const tab: LiveTab = {
+        id: `t_gallery${Math.random().toString(36).slice(2).padEnd(14, '0').slice(0, 14)}`,
+        title: url === 'about:blank' ? '' : URL.parse(url)?.host ?? url,
+        url,
+        createdBy: { kind: 'user' },
+        viewport: { width: 800, height: 600, devicePixelRatio: 2, mode: 'web' },
+      }
+      tabs.push(tab)
+      changed()
+      return info(tab)
+    }),
+    close: (id) => later(() => {
+      const index = tabs.findIndex((item) => item.id === id)
+      if (index >= 0) {
+        tabs.splice(index, 1)
+        changed()
+      }
+    }),
+    navigate: (id, url) => later(() => {
+      const tab = found(id)
+      tab.url = url
+      tab.title = URL.parse(url)?.host ?? url
+      changed()
+    }),
+    // The gallery's pages have no history of their own; every action answers as done.
+    history: (id) => later(() => void found(id)),
+    stream,
+  }
 }
