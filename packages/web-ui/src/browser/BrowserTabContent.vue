@@ -159,12 +159,13 @@ function history(action: 'back' | 'forward' | 'reload'): void {
         </Tooltip>
       </template>
     </BrowserAddressBar>
+    <!-- What a request of this content, or the view itself, could not do, above a picture that still shows. -->
     <p
-      v-if="failure && live"
+      v-if="live && (failure || session?.state.notice)"
       class="border-t border-line px-3 py-1.5 text-[12px] text-on-danger"
       role="alert"
     >
-      {{ failure.message }}
+      {{ failure?.message ?? session?.state.notice?.message }}
     </p>
     <LiveView
       v-if="live && session"
@@ -195,7 +196,8 @@ function history(action: 'back' | 'forward' | 'reload'): void {
       <template v-else>
         <IndeterminateSpinner :size="16" class="text-fg-subtle" />
         <span>Connecting to the conversation's browser…</span>
-        <span v-if="session?.state.ended" class="text-[12px]">{{ session.state.ended }}</span>
+        <span v-if="session?.state.notice" class="text-[12px] text-on-danger" role="alert">{{ session.state.notice.message }}</span>
+        <span v-else-if="session?.state.ended" class="text-[12px]">{{ session.state.ended }}</span>
       </template>
     </div>
     <Popover
