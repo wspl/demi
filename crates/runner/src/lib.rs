@@ -11,7 +11,6 @@ pub mod state;
 pub mod connection;
 pub mod host;
 pub mod host_log;
-pub mod init;
 pub mod management;
 pub mod mode;
 pub mod net;

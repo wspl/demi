@@ -20,7 +20,7 @@ interface Guest {
 }
 
 /**
- * The provisioner seam over a local packed txiki.js runner: the "VM" is a
+ * The provisioner seam over a local native runner: the sandbox is a
  * process with the owner's `homeDir` as its `HOME`, started as a managed
  * host with the pre-issued token. Hibernate stops the process and keeps the
  * directory; wake starts a new process over it; a process that exits on its
@@ -38,6 +38,9 @@ export class FakeProvisioner implements ManagedHostProvisioner {
 
   async currentBaseVersion(): Promise<string> {
     return 'test-base'
+  }
+  async runtimeState(id: string) {
+    return this.running(id) ? 'running' as const : 'stopped' as const
   }
   async imageState(id: string) {
     return this.guests.has(id) ? {
@@ -100,7 +103,7 @@ export class FakeProvisioner implements ManagedHostProvisioner {
     this.deathListeners.push(listener)
   }
 
-  /** The guest dies on its own: what a crashed VM looks like from above. */
+  /** The guest dies on its own: what a crashed sandbox looks like from above. */
   async kill(owner: string): Promise<void> {
     const guest = this.guest(owner)
     const runner = guest.runner
@@ -110,7 +113,7 @@ export class FakeProvisioner implements ManagedHostProvisioner {
   }
 
   running(owner: string): boolean {
-    return this.guests.get(owner)?.runner !== null
+    return Boolean(this.guests.get(owner)?.runner)
   }
 
   homeOf(owner: string): string {

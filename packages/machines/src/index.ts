@@ -1,7 +1,9 @@
 export {
   imageStateSchema,
+  runtimeStateSchema,
   type BootArgs,
   type MachineImageState,
+  type MachineRuntimeState,
   type ManagedHostProvisioner,
   type ManagedVolume
 } from './provisioner'
@@ -17,10 +19,6 @@ export {
 } from './protocol'
 export { RemoteProvisioner } from './client'
 export { serveMachines, type MachineServer } from './server'
-export { FirecrackerProvisioner } from './firecracker/provisioner'
-export {
-  firecrackerConfigFromEnv,
-  MANAGED_ENV,
-  type FirecrackerConfig,
-  type LaunchMode
-} from './firecracker/config'
+export { GVisorProvisioner } from './gvisor/provisioner'
+export { gvisorConfigFromEnv, type GVisorConfig } from './gvisor/config'
+export { cloudImageManifestSchema, type CloudImageManifest } from './image-manifest'

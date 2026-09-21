@@ -1,9 +1,8 @@
 //! Managed volume growth and connection-owned filesystem flush work.
 
 use crate::connection::wire;
-use crate::process::{ChildProcess, SpawnOptions};
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::HashMap,
     io,
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -12,20 +11,18 @@ use tokio::sync::{Semaphore, mpsc};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 #[derive(Clone)]
-pub struct BlockVolume {
+pub struct ManagedVolume {
     pub name: String,
-    pub device: PathBuf,
     pub mount: PathBuf,
 }
 
 enum Pending {
     Checking,
     Requested(String),
-    Resizing,
 }
 
 pub struct Volumes {
-    blocks: Vec<BlockVolume>,
+    blocks: Vec<ManagedVolume>,
     pending: Arc<Mutex<HashMap<String, Pending>>>,
     tasks: TaskTracker,
     sync_capacity: Arc<Semaphore>,
@@ -50,7 +47,7 @@ pub fn growth_wanted(total: u64, available: u64) -> io::Result<Option<u64>> {
 
 impl Volumes {
     pub fn new(
-        blocks: Vec<BlockVolume>,
+        blocks: Vec<ManagedVolume>,
         output: mpsc::Sender<wire::Outbound>,
         stop: CancellationToken,
     ) -> Self {
@@ -89,7 +86,7 @@ impl Volumes {
         Ok(())
     }
 
-    /// At most one outstanding request per volume, including filesystem resize.
+    /// At most one outstanding request per volume, until the manager reports filesystem growth.
     pub fn poll(&self) {
         for volume in &self.blocks {
             let id = uuid::Uuid::new_v4().simple().to_string();
@@ -131,36 +128,19 @@ impl Volumes {
     }
 
     pub fn grown(&self, id: &str, name: &str, bytes: u64, error: Option<String>) -> io::Result<()> {
-        let volume = self
-            .blocks
-            .iter()
-            .find(|volume| volume.name == name)
-            .ok_or_else(|| io::Error::other("unknown managed volume"))?
-            .clone();
+        if !self.blocks.iter().any(|volume| volume.name == name) {
+            return Err(io::Error::other("unknown managed volume"));
+        }
         let mut pending = self.pending.lock().unwrap();
-        let Some(phase) = pending.get_mut(name) else {
-            return Err(io::Error::other("unexpected volume growth response"));
-        };
-        if !matches!(phase, Pending::Requested(request) if request == id) {
+        if !matches!(pending.get(name), Some(Pending::Requested(request)) if request == id) {
             return Err(io::Error::other("unexpected volume growth response"));
         }
-        *phase = Pending::Resizing;
-        drop(pending);
-        let pending = self.pending.clone();
-        let stop = self.stop.clone();
-        self.tasks.spawn(async move {
-            let result = match error {
-                Some(error) => Err(io::Error::other(error)),
-                None => resize(&volume, &stop).await,
-            };
-            pending.lock().unwrap().remove(&volume.name);
-            if let Err(error) = result {
-                crate::host_log::runner(format_args!(
-                    "{} resize to {bytes} bytes failed: {error}",
-                    volume.name
-                ));
-            }
-        });
+        pending.remove(name);
+        if let Some(error) = error {
+            crate::host_log::runner(format_args!(
+                "{name} growth to {bytes} bytes failed: {error}"
+            ));
+        }
         Ok(())
     }
 
@@ -256,59 +236,6 @@ fn usage(mount: &std::path::Path) -> io::Result<(u64, u64)> {
             io::ErrorKind::Unsupported,
             "managed block volumes require Linux",
         ))
-    }
-}
-
-async fn resize(volume: &BlockVolume, stop: &CancellationToken) -> io::Result<()> {
-    // The image grants the guest user exactly these resize2fs commands through
-    // sudo. The long-lived runner keeps no root privileges or capabilities.
-    if stop.is_cancelled() {
-        return Err(io::Error::new(
-            io::ErrorKind::Interrupted,
-            "volume resize cancelled",
-        ));
-    }
-    let mut child = ChildProcess::spawn(SpawnOptions {
-        command: "sudo".into(),
-        args: vec![
-            "-n".into(),
-            "resize2fs".into(),
-            volume.device.to_string_lossy().into_owned(),
-        ],
-        cwd: "/".into(),
-        env: BTreeMap::from([("PATH".into(), "/usr/sbin:/usr/bin:/sbin:/bin".into())]),
-        process_group: true,
-    })
-    .await
-    .map_err(|error| io::Error::other(error.message))?;
-    child
-        .input
-        .send(crate::process::ProcessInput::End)
-        .await
-        .map_err(io::Error::other)?;
-    let result = async {
-        let mut diagnostics = Vec::new();
-        while let Some(chunk) = child.output.recv().await {
-            let remaining = (16 * 1024_usize).saturating_sub(diagnostics.len());
-            diagnostics.extend_from_slice(&chunk.bytes[..chunk.bytes.len().min(remaining)]);
-        }
-        let exit = child.wait().await;
-        if exit.code == Some(0) {
-            Ok(())
-        } else {
-            Err(io::Error::other(format!(
-                "resize2fs failed: {}",
-                String::from_utf8_lossy(&diagnostics)
-            )))
-        }
-    };
-    tokio::select! {
-        result = result => result,
-        _ = stop.cancelled() => {
-            child.cancel();
-            child.wait().await;
-            Err(io::Error::new(io::ErrorKind::Interrupted, "volume resize cancelled"))
-        }
     }
 }
 

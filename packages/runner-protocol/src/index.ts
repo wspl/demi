@@ -47,3 +47,5 @@ export {
   logCursorSchema,
   logPageSchema
 } from './schemas'
+
+export { managedBootSchema, type ManagedBoot } from './managed-boot'

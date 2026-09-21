@@ -288,9 +288,9 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `@demicodes/machines`
 
-- Status: selected gVisor/systrap replacement contract; implementation pending
+- Status: implemented gVisor/systrap runtime
   ([Managed hosts](demi-next/managed-hosts.md#implementation-status)).
-- Production deps: `@demicodes/utils`, `@demicodes/runner-protocol`; external: `zod`.
+- Production deps: `@demicodes/utils`, `@demicodes/runner-protocol`, `@demicodes/command-protocol`; external: `zod`, `ipaddr.js`, `tar`.
 - Owns: `ManagedHostProvisioner`, `MachineImageState`, and the Cloud base manifest
   schema; `protocol.ts` and its single `machineOps` table for newline-delimited
   JSON requests, replies, and death events over a restricted Unix socket;
@@ -299,7 +299,7 @@ Test code may depend upward for integration coverage. Production code must not.
   mounts and loop devices, network namespaces and policy, cgroups, transient boot
   files); the machine-image store (paired generations, working recovery, pinned
   bases, publication and collection); and the `demi-machines` composition root.
-- Public boundary: provisioner types, `imageStateSchema`, base manifest schema,
+- Public boundary: provisioner types, `imageStateSchema`, `runtimeStateSchema`, base manifest schema,
   wire schemas, `RemoteProvisioner`, `serveMachines`, `GVisorProvisioner`, and
   `gvisorConfigFromEnv`; the `demi-machines` bin. Runtime-specific operations stay
   inside the provisioner, not in backend or Host APIs.
@@ -329,8 +329,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Conversation scope: jobs and service streams carry the
   [command context](demi-next/native-runtime.md#command-context);
   `conversation_release` is the one generic release message; no browser policy.
-- Status: runner wire implemented; managed-boot file schema pending with the
-  gVisor replacement.
+- Status: runner wire and managed-boot file schemas implemented.
 - Production deps: `@demicodes/command-protocol`, `@demicodes/shell` (the Host types the fs messages carry), `@demicodes/utils`, `@msgpack/msgpack` (the Bun end's codec).
 - Owns: the authoritative Zod backend runner wire contract — the message schemas (claim/auth handshake, liveness, the `fsOps` table from which the per-op fs requests and typed replies derive (file contents name a pipe and never ride a message, `docs/demi-next/runner.md` § File contents), streaming spawn, jobs, the rpc relay, the manifest push, transfers, the network stream `net_open` and its replies, the Host log read `log_read` and its replies), `createRunnerWire(codec)` (encode, and decode-with-validation per direction over an injected MessagePack codec: `msgpackCodec` under `@demicodes/runner-protocol/msgpack` used by Bun; Rust uses the generated contract and rmp-serde), the protocol constants (`RUNNER_PROTOCOL_VERSION`, `JOB_VIEW_BYTES`, the message size limit both ends enforce).
 - Public boundary: message types and schemas, `createRunnerWire`, the constants from root; `msgpackCodec` under `msgpack`; six-target runner release schemas under `release`; the managed-boot file schema (backend URL and device token), also consumed by machines and generated into the Rust runner. The backend consumes this package directly; the Rust runner generates bindings from its Zod schemas. It depends on neither endpoint.
@@ -352,7 +351,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `packages/guest-image` (not a workspace package)
 
-- Status: selected container-root pipeline; implementation pending.
+- Status: implemented container-root pipeline, verified on Linux arm64 and amd64.
 - Owns: the Linux Cloud image build, package inventory, standalone tools, init,
   `demi` user and sudo configuration, shell skeleton, and embedding verified native
   releases. Produces `rootfs.tar.zst` and its manifest per Linux architecture,
@@ -577,7 +576,7 @@ browser-protocol -> none
 command-protocol -> none
 command-loader -> command-protocol, shell, utils
 runner-protocol -> command-protocol, shell, utils
-machines -> runner-protocol, utils
+machines -> command-protocol, runner-protocol, utils
 host-remote -> command-loader, command-protocol, runner-protocol, shell, utils
 backend -> agent, browser-protocol, coding-agent, command-loader, command-protocol, core, host-remote, machines, provider, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shell, utils
 web-ui -> agent, browser-protocol, core, utils

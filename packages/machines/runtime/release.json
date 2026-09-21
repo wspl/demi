@@ -1,0 +1,9 @@
+{
+  "upstream": "20260914.0",
+  "commit": "95eb5d5930b0e7736826cc2cb949ba9d2c4d5d29",
+  "arm64Version": "release-20260914.0-demi.1",
+  "arm64PatchSha256": "b37760407ca62edc5f9a66f0f978ae55641d66e9dc8be327d5551226ebe64a3f",
+  "amd64ArchiveSha512": "ff1c0577c8daa0e3511aedad554c3d5e20fa184b4ddd422454f573d60a8b9774f972755ca5c7f56588c5b4f42345b60b2ead077f35d7d3235e23f57c0fa194ca",
+  "bazel": "8.3.1",
+  "bazelArm64Sha256": "52bb74f0880ee87b17e3a1aa41257d0dba9e9cb92df4e83f8f6c656a46df152d"
+}

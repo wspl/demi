@@ -122,7 +122,8 @@ Record startup phases, memory, and checkpoint I/O separately from functional
 assertions. A fake provisioner does not certify filesystem durability, sandbox
 isolation, or distributed writer fencing.
 
-Implementation of this suite is pending. Replace the old KVM-gated machine tests;
-the [Docker-based evaluation](../gvisor-evaluation.md) used pairing and is not
-managed-provisioner acceptance. Deployment prerequisites are in
-[Cloud setup](../managed-hosts-setup.md).
+`real-gvisor.e2e.test.ts` implements the managed functional suite; its invocation
+is documented in [Managed hosts](managed-hosts.md#implementation-status).
+The [evaluation report](../gvisor-evaluation.md) records real manager results and
+remaining acceptance limits separately from the earlier Docker experiment.
+Deployment prerequisites are in [Cloud setup](../managed-hosts-setup.md).

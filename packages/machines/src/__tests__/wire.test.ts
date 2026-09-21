@@ -46,6 +46,11 @@ class ScriptedProvisioner implements ManagedHostProvisioner {
     return this.state
   }
 
+  async runtimeState(deviceId: string) {
+    this.record('runtimeState', deviceId)
+    return 'stopped' as const
+  }
+
   async wake(deviceId: string, boot: BootArgs): Promise<void> {
     this.record('wake', deviceId, boot)
   }
@@ -113,6 +118,7 @@ test('every provisioner call crosses the socket with its arguments and result', 
   }
   expect(await remote.currentBaseVersion()).toBe('base-1')
   expect(await remote.imageState('dev-1')).toEqual(provisioner.state)
+  expect(await remote.runtimeState('dev-1')).toBe('stopped')
   await remote.wake('dev-1', { backendUrl: 'http://backend', deviceToken: 'tok' })
   await remote.checkpoint('dev-1')
   await remote.growVolume('dev-1', 'home', 4096)
@@ -121,6 +127,7 @@ test('every provisioner call crosses the socket with its arguments and result', 
   expect(provisioner.calls).toEqual([
     ['currentBaseVersion'],
     ['imageState', 'dev-1'],
+    ['runtimeState', 'dev-1'],
     ['wake', 'dev-1', { backendUrl: 'http://backend', deviceToken: 'tok' }],
     ['checkpoint', 'dev-1'],
     ['growVolume', 'dev-1', 'home', 4096],

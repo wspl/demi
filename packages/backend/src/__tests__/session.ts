@@ -43,7 +43,7 @@ export async function openBackend(
 ): Promise<TestBackend> {
   const backend = await createBackend({
     mode: 'shared',
-    nativeCommands: await nativePackageFixture(),
+    nativeCommands: options.nativeCommands ?? await nativePackageFixture(),
     // Every backend has Cloud; a test that does not use it never wakes a guest.
     managedHosts: { provisioner: new FakeProvisioner() },
     claudeReleases: fakeClaudeReleases(),
