@@ -1,7 +1,7 @@
 # gVisor systrap evaluation
 
 Evaluation performed on 2026-09-22. This is evidence for a deployment decision,
-not an implemented Cloud provisioner. The authoritative Cloud contract remains
+not an implemented Cloud provisioner. The replacement design is now selected in
 [Managed hosts](demi-next/managed-hosts.md).
 
 ## Result
@@ -14,8 +14,8 @@ PTY creation, outbound HTTPS, npm registry access, browser inspection,
 screenshots, live input, and Chinese/Japanese/Korean rendering worked after the
 configuration changes below.
 
-This supports proceeding to a gVisor-backed Cloud design. It does not establish
-production readiness, a multi-user isolation guarantee, or equivalent performance
+These results informed the selected gVisor-backed Cloud design. They do not
+establish production readiness, a multi-user isolation guarantee, or equivalent performance
 to Firecracker on a physical Linux host.
 
 ## Environment and method
@@ -139,8 +139,8 @@ DNS and egress policy, including the existing private/link-local restrictions.
 
 ## Decision boundary
 
-The next step is a `ManagedHostProvisioner` design and implementation for this
-runtime, keeping backend, agent and browser code on the existing Host contract.
+The selected [replacement design](demi-next/managed-hosts.md) keeps backend, agent,
+and browser code on the existing Host contract. Implementation is the next step.
 The evaluation does not justify silently falling back to another isolation mode.
 
 Before accepting that implementation, verify managed-token delivery, automatic
@@ -152,8 +152,10 @@ and workloads requiring additional kernel capabilities were not evaluated.
 
 The network rules used here are diagnostic connectivity, not the finished
 multi-user egress policy. No sandbox escape testing or independent security audit
-was performed. The existing Firecracker provisioner remains available; replacing
-its deployment contract requires a separate design decision.
+was performed. The design now removes the Firecracker provisioner. That
+replacement is not yet implemented; the historical measurements above do not
+validate its new storage, managed registration, network policy, or direct-OCI
+launch path.
 
 ## Evidence and reproduction inputs
 

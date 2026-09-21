@@ -391,11 +391,14 @@ the sender splits larger writes into ordered frames before sending EOF.
 
 ## Managed guests and verification
 
-In a managed guest, the runner performs Linux PID 1 initialization, mounts
-filesystems, configures networking, reaps children, and permanently drops to the
-guest account. Filesystem operations and jobs use that account. The VM provides
-the isolation boundary. [Managed hosts](managed-hosts.md) owns boot, volumes,
-provisioning, and reset policy.
+In the selected Cloud design, the runner is an ordinary UID 1000 process under
+init inside a gVisor/systrap sandbox. It reads an explicitly selected temporary
+managed-boot file using the runner-protocol schema and fails if credentials are
+missing or invalid; it never falls back to pairing. Filesystem operations and
+jobs use that account. The runner performs no PID 1 boot, host mount, or network
+setup. [Managed hosts](managed-hosts.md#container-initialization) owns that
+responsibility split, boot credentials, and lifecycle. Replacement of the old
+PID 1 path is pending with the Cloud implementation.
 
 The implementation belongs to `crates/runner`: connection and registration code
 owns transport lifetime; `host.rs` dispatches Host operations; `shell/` owns brush

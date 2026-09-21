@@ -281,20 +281,40 @@ Test code may depend upward for integration coverage. Production code must not.
   - `vault/` — instance secret, credential crypto, the typed provider vault over the control plane, and the provider scope (whose providers a caller works with under the instance mode).
   - `usage/` — enforcement (the provider-request rate limiter); the ledger rows live on the `ControlService`.
   - `lifecycle/` — the conversation idle clock (one window for Cloud stop and conversation release), retirement admission and shutdown. Domain modules supply activity facts; there is no domain-specific idle sweep.
-  - `managed/` — one managed device per user, Cloud policy and its lifecycle adapter, allocation/wake, paired system/home checkpointing, volume growth, external system reset, Cloud project directory creation. Every VM and disk operation goes to the `ManagedHostProvisioner` it is given; the backend never spawns a hypervisor or an image tool itself.
+  - `managed/` — one managed device per user, Cloud policy and its lifecycle adapter, allocation/wake, paired system/home checkpointing, volume growth, external system reset, Cloud project directory creation. Every sandbox and disk operation goes to the `ManagedHostProvisioner` it is given; the backend never spawns runsc or an image tool itself.
   - New modules get sibling directories — never new files at the root.
 
 - Execution coordination: authenticated live-job RPC routing, conversation target/file admission and user-device lifecycle admission. Managed operations persist allocation/reset intent and recover it before new work; every conversation using Cloud shares its device-wide operation gate.
 
 ### `@demicodes/machines`
 
-- Status: implemented (`docs/demi-next/managed-hosts.md` § Provisioning).
-- Production deps: `@demicodes/utils`; external: `zod`.
-- Owns: the machine manager — the `ManagedHostProvisioner` contract (reconcile, base version, image state, wake, hibernate, checkpoint, volume growth, reset, close, death events) and the `MachineImageState` schema; the machine wire (`protocol.ts`: the `machineOps` table from which the request union and the typed replies derive, newline-delimited JSON over a Unix socket); `serveMachines` (the service end: one socket, any number of backend connections, every request dispatched to one provisioner, deaths broadcast); `RemoteProvisioner` (the backend's end: a provisioner whose calls travel over the socket, reconnecting on the next call after a drop); the Firecracker implementation (`firecracker/`: the image tools over e2fsprogs, the VM process in its two launch modes, the Firecracker API over its socket, the tap slots, the per-VM kernel command line) and the machine-image store (paired system/home generations, pinned bases); the `demi-machines` bin (`main.ts`: `DEMI_MACHINES_SOCKET`, `DEMI_MACHINES_DATA`, `DEMI_MANAGED_*`).
-- Public boundary: the provisioner types and `imageStateSchema`, the protocol schemas, `RemoteProvisioner`, `serveMachines`, `FirecrackerProvisioner`, `firecrackerConfigFromEnv` from root; the `demi-machines` bin.
-- Deployment files: `scripts/install-managed-hosts.sh` (taps, forwarding, egress rules), `scripts/firecracker-jailer.sh` (the privileged jailer helper the manager invokes through `sudo -n`), `scripts/lima-machines.sh` and `lima/demi-machines.yaml` (the manager inside a Lima instance with nested virtualization, for macOS).
-- Spawning `firecracker`, the jailer and e2fsprogs is this package's transport — the intentional external-process exception.
-- Must not: listen on TCP (the socket file's permissions are the boundary; there is no authentication); know users, conversations or the control database (it receives device ids and boot arguments); import the backend.
+- Status: selected gVisor/systrap replacement contract; implementation pending
+  ([Managed hosts](demi-next/managed-hosts.md#implementation-status)).
+- Production deps: `@demicodes/utils`, `@demicodes/runner-protocol`; external: `zod`.
+- Owns: `ManagedHostProvisioner`, `MachineImageState`, and the Cloud base manifest
+  schema; `protocol.ts` and its single `machineOps` table for newline-delimited
+  JSON requests, replies, and death events over a restricted Unix socket;
+  `serveMachines` and `RemoteProvisioner`; the gVisor implementation in `gvisor/`
+  (validated configuration, OCI bundles, runsc process supervision, private
+  mounts and loop devices, network namespaces and policy, cgroups, transient boot
+  files); the machine-image store (paired generations, working recovery, pinned
+  bases, publication and collection); and the `demi-machines` composition root.
+- Public boundary: provisioner types, `imageStateSchema`, base manifest schema,
+  wire schemas, `RemoteProvisioner`, `serveMachines`, `GVisorProvisioner`, and
+  `gvisorConfigFromEnv`; the `demi-machines` bin. Runtime-specific operations stay
+  inside the provisioner, not in backend or Host APIs.
+- Deployment files: `scripts/install-managed-hosts.sh` installs/checks Linux
+  services and host resources; `scripts/lima-machines.sh` and
+  `lima/demi-machines.yaml` run the same service inside one Linux VM on macOS.
+  They implement [Cloud setup](managed-hosts-setup.md), not another lifecycle.
+- Process boundary: invoking runsc and Linux storage/network tools is the
+  intentional infrastructure external-process exception. Use file interfaces
+  and established libraries where available; no user command becomes a host
+  administration command. Docker/containerd are not manager dependencies.
+- Must not: listen on TCP; know users, conversations, or the control database;
+  import backend; execute image content on the host; offer alternative runtime
+  modes or a Firecracker compatibility path. Workload credentials use the
+  runner-protocol's managed-boot schema, not a separately maintained shape.
 
 ### `@demicodes/command-loader`
 
@@ -309,10 +329,11 @@ Test code may depend upward for integration coverage. Production code must not.
 - Conversation scope: jobs and service streams carry the
   [command context](demi-next/native-runtime.md#command-context);
   `conversation_release` is the one generic release message; no browser policy.
-- Status: implemented (the final wire: MessagePack frames, per-op fs messages, jobs, the rpc relay, the manifest push, transfers).
+- Status: runner wire implemented; managed-boot file schema pending with the
+  gVisor replacement.
 - Production deps: `@demicodes/command-protocol`, `@demicodes/shell` (the Host types the fs messages carry), `@demicodes/utils`, `@msgpack/msgpack` (the Bun end's codec).
 - Owns: the authoritative Zod backend runner wire contract — the message schemas (claim/auth handshake, liveness, the `fsOps` table from which the per-op fs requests and typed replies derive (file contents name a pipe and never ride a message, `docs/demi-next/runner.md` § File contents), streaming spawn, jobs, the rpc relay, the manifest push, transfers, the network stream `net_open` and its replies, the Host log read `log_read` and its replies), `createRunnerWire(codec)` (encode, and decode-with-validation per direction over an injected MessagePack codec: `msgpackCodec` under `@demicodes/runner-protocol/msgpack` used by Bun; Rust uses the generated contract and rmp-serde), the protocol constants (`RUNNER_PROTOCOL_VERSION`, `JOB_VIEW_BYTES`, the message size limit both ends enforce).
-- Public boundary: message types and schemas, `createRunnerWire`, the constants from root; `msgpackCodec` under `msgpack`; six-target runner release schemas under `release`. The backend consumes this package directly; the Rust runner generates bindings from its Zod schemas. It depends on neither endpoint.
+- Public boundary: message types and schemas, `createRunnerWire`, the constants from root; `msgpackCodec` under `msgpack`; six-target runner release schemas under `release`; the managed-boot file schema (backend URL and device token), also consumed by machines and generated into the Rust runner. The backend consumes this package directly; the Rust runner generates bindings from its Zod schemas. It depends on neither endpoint.
 - Must not: contain network IO, a Host implementation, a shell environment, the job table, credentials, claim policy, device registry, or conversation state.
 
 ### `@demicodes/host-remote`
@@ -331,7 +352,17 @@ Test code may depend upward for integration coverage. Production code must not.
 
 ### `packages/guest-image` (not a workspace package)
 
-- Owns: the guest image pipeline (`docs/demi-next/managed-hosts.md` § Images): the kernel build (Linux 6.1 on Firecracker's microvm config plus `kernel/extra.config`), the rootfs build (Ubuntu by debootstrap, the toolchain list, the guest user with sudo, the runner as `/demi-runner` with a command alias at `/usr/bin/demi`, `mke2fs -d`), and the runner packing for Linux musl. Shell scripts and a kernel config; runs on Linux with root at build time, never at backend runtime. Its outputs (`vmlinux`, `rootfs.ext4`) are release artifacts the backend is pointed at.
+- Status: selected container-root pipeline; implementation pending.
+- Owns: the Linux Cloud image build, package inventory, standalone tools, init,
+  `demi` user and sudo configuration, shell skeleton, and embedding verified native
+  releases. Produces `rootfs.tar.zst` and its manifest per Linux architecture,
+  using the machines package's release schema. The authoritative artifact and
+  build contract is [Cloud images](cloud-images.md).
+- Build boundary: Linux filesystem assembly runs at build time. Native binaries
+  come from the machine's cross tools in [Native builds](native-builds.md).
+  No guest kernel, bootloader, ext4 base release, or hypervisor configuration.
+- Must not: own runtime OCI policy, mounts, networking, device credentials,
+  lifecycle, or backend configuration.
 
 ### `@demicodes/browser-protocol`
 
@@ -353,7 +384,7 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Retained-resource scope: authoritative native resource lifecycle and
   scoped invocation/event wire schemas, following
-  [Native runtime](demi-next/native-runtime.md#retained-resources).
+  [Native runtime](demi-next/native-runtime.md#conversation-scoped-state).
 - Owns: authoritative Zod command-service wire and native package descriptor
   schemas, including the [command context](demi-next/native-runtime.md#command-context), derived TypeScript types, protocol constants and package identities.
   Package identities use canonical JSON and SHA-256.
@@ -454,13 +485,16 @@ Test code may depend upward for integration coverage. Production code must not.
   Cancellation preserves the runner and unrelated jobs; see
   [runner.md](demi-next/runner.md) for lifecycle behavior.
 - Local forwarding uses an owner-restricted Unix socket or Windows named pipe.
-  Guest initialization owns Linux PID 1 boot and volume operations.
+  Managed registration reads a validated temporary boot file. Init belongs to
+  the shipped image; mounts, networking, and volumes belong to machines. The
+  runner has no Linux PID 1 boot or kernel-command-line path.
 - First-party production dependency: command-service only. Vendored brush and
   utility libraries are external dependencies, not additional Demi workspace crates.
 - Public boundary: the executable. Native build/release scripts produce six
   target artifacts. TypeScript integration fixtures belong to host-remote/testing.
 - Must not: own conversations or model/provider implementations, execute
-  downloaded JavaScript, or link Demi command algorithms into the runner.
+  downloaded JavaScript, administer Cloud mounts or networking, or link Demi
+  command algorithms into the runner.
 
 ### `@demicodes/web-ui`
 
@@ -543,7 +577,7 @@ browser-protocol -> none
 command-protocol -> none
 command-loader -> command-protocol, shell, utils
 runner-protocol -> command-protocol, shell, utils
-machines -> utils
+machines -> runner-protocol, utils
 host-remote -> command-loader, command-protocol, runner-protocol, shell, utils
 backend -> agent, browser-protocol, coding-agent, command-loader, command-protocol, core, host-remote, machines, provider, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shell, utils
 web-ui -> agent, browser-protocol, core, utils

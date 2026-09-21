@@ -42,7 +42,7 @@ work that won admission first.
 
 | Resource | Idle predicate | Consequence |
 | --- | --- | --- |
-| Cloud device | No conversation [using this device](sessions-and-targets.md#how-a-conversation-uses-a-device), in any role, has been active within the window, and no running job | Save disks and stop the VM; everything inside it ends with the machine, and the device's exposes are destroyed |
+| Cloud device | No conversation [using this device](sessions-and-targets.md#how-a-conversation-uses-a-device), in any role, has been active within the window, and no running job | Save persistent volumes and stop the sandbox; everything inside it ends with the machine, and the device's exposes are destroyed |
 | Conversation on a paired device | This conversation has not been active within the window | Send the conversation release to that device |
 
 Idle retirement never interrupts active work. A retirement that loses the race
