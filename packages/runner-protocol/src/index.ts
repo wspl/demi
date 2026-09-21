@@ -6,6 +6,7 @@ export {
   STDIN_CHUNK_BYTES,
   FS_OPS,
   GIT_OPS,
+  LOG_READ_LINES,
   createRunnerWire,
   type BackendToRunnerMessage,
   type RunnerToBackendMessage,
@@ -27,6 +28,9 @@ export {
   type GitOp,
   type GitParams,
   type GitResult,
+  type LogCursor,
+  type LogLine,
+  type LogPage,
   type NetErrorCode,
   type ServiceErrorCode,
   type JobExitMessage,
@@ -39,5 +43,7 @@ export {
   backendToRunnerMessageSchema,
   fsOps,
   gitOps,
-  gitChangeSchema
+  gitChangeSchema,
+  logCursorSchema,
+  logPageSchema
 } from './schemas'

@@ -15,6 +15,9 @@ const UID: u32 = 1000;
 const GID: u32 = 1000;
 const HOME: &str = "/home/demi";
 const STATE: &str = "/run/demi";
+/// The Host's log lives on the system layer, not under `STATE`: it outlives a
+/// stop and a wake, and a reset starts it again (`runner.md` § Host log).
+const LOG: &str = "/var/log/demi";
 const PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
 
 pub struct Boot {
@@ -116,7 +119,9 @@ pub fn boot() -> io::Result<Boot> {
     }
     fs::create_dir_all(STATE)?;
     fs::create_dir_all(HOME)?;
+    fs::create_dir_all(LOG)?;
     chown(Path::new(STATE))?;
+    chown(Path::new(LOG))?;
     if config.first_boot {
         copy_skeleton(Path::new("/etc/skel"), Path::new(HOME))?;
     }
@@ -125,6 +130,7 @@ pub fn boot() -> io::Result<Boot> {
         options: Options {
             backend: config.backend,
             directory: STATE.into(),
+            log: LOG.into(),
             executable: std::env::current_exe()?,
             cwd: HOME.into(),
             env: BTreeMap::from([

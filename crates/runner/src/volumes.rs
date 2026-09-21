@@ -122,7 +122,7 @@ impl Volumes {
                     outcome => {
                         pending.lock().unwrap().remove(&volume.name);
                         if let Err(error) = outcome {
-                            eprintln!("demi-runner: volume capacity check: {error}");
+                            crate::host_log::runner(format_args!("volume capacity check: {error}"));
                         }
                     }
                 }
@@ -155,10 +155,10 @@ impl Volumes {
             };
             pending.lock().unwrap().remove(&volume.name);
             if let Err(error) = result {
-                eprintln!(
-                    "demi-runner: {} resize to {bytes} bytes failed: {error}",
+                crate::host_log::runner(format_args!(
+                    "{} resize to {bytes} bytes failed: {error}",
                     volume.name
-                );
+                ));
             }
         });
         Ok(())
@@ -194,7 +194,7 @@ async fn send(
             }
         }
         Err(error) => {
-            eprintln!("demi-runner: volume response encoding: {error}");
+            crate::host_log::runner(format_args!("volume response encoding: {error}"));
             stop.cancel();
         }
     }
