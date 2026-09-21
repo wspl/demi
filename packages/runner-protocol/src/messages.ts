@@ -25,7 +25,7 @@ import {
  * is the hardest component to update, so the backend must be able to tell an
  * incompatible runner apart from a broken one (`hello_error`).
  */
-export const RUNNER_PROTOCOL_VERSION = 17
+export const RUNNER_PROTOCOL_VERSION = 18
 
 /**
  * The largest message either end sends or accepts (`runner.md` § Connection
@@ -71,11 +71,14 @@ export type {
   GitOp,
   GitParams,
   GitResult,
+  LogCursor,
+  LogLine,
+  LogPage,
   NetErrorCode,
   PipeRef,
   ServiceErrorCode
 } from './schemas'
-export { FS_OPS, GIT_OPS } from './schemas'
+export { FS_OPS, GIT_OPS, LOG_READ_LINES } from './schemas'
 
 export type RunnerToBackendMessage = z.infer<typeof runnerToBackendMessageSchema>
 export type BackendToRunnerMessage = z.infer<typeof backendToRunnerMessageSchema>

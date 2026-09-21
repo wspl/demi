@@ -501,7 +501,7 @@ export class RunnerRegistry {
    * registry's conversation-less Host for a device — its own entry, not a
    * conversation in disguise — cached per device, admitted only while
    * connected, its calls marking no machine activity. It exists for the
-   * public relay alone; null while the device is offline.
+   * public relay and the device log; null while the device is offline.
    */
   deviceHost(deviceId: string): RemoteHost | null {
     const connection = this.connections.get(deviceId)

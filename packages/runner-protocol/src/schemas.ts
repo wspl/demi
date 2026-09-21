@@ -359,6 +359,38 @@ export const serviceErrorCodeSchema = z.enum([
 export type ServiceErrorCode = z.infer<typeof serviceErrorCodeSchema>
 
 /**
+ * One line of the Host's log (`runner.md` § Host log): when it was written,
+ * which source wrote it (`runner`, `service:<package>` or `stream:<operation>`),
+ * the conversation the work belonged to when there was one, and the text.
+ */
+export const logLineSchema = z.strictObject({
+  at: z.date(),
+  source: z.string().min(1),
+  conversationId: z.string().min(1).optional(),
+  text: z.string(),
+})
+export type LogLine = z.infer<typeof logLineSchema>
+
+/**
+ * Where a log read stopped: the `next` of one answer is the `since` of the
+ * following request. It stays valid across the log's file rotation and a
+ * runner restart; one whose lines are gone continues from the oldest line
+ * still kept.
+ */
+export const logCursorSchema = z.number().int().nonnegative()
+export type LogCursor = z.infer<typeof logCursorSchema>
+
+/** The most lines one `log_read` returns. */
+export const LOG_READ_LINES = 1000
+
+/** What a `log_read` answers: lines oldest first, and the cursor after them. */
+export const logPageSchema = z.strictObject({
+  lines: z.array(logLineSchema).max(LOG_READ_LINES),
+  next: logCursorSchema,
+})
+export type LogPage = z.infer<typeof logPageSchema>
+
+/**
  * Where a job's full output lives on the target, and the last bytes of each
  * stream.
  */
@@ -543,6 +575,15 @@ export const runnerToBackendMessageSchema = z.union([
     code: serviceErrorCodeSchema,
     message: z.string()
   }),
+  /** The lines a `log_read` asked for (`runner.md` § Host log). */
+  z.strictObject({ type: z.literal('log_lines'), id: z.string() })
+    .extend(logPageSchema.shape),
+  /** A `log_read` whose files could not be read. */
+  z.strictObject({
+    type: z.literal('log_error'),
+    id: z.string(),
+    message: z.string()
+  }),
 ])
 
 /**
@@ -695,6 +736,19 @@ export const backendToRunnerMessageSchema = z.union([
       cwd: z.string().min(1),
       input: pipeRefSchema,
       output: pipeRefSchema,
+    }),
+    /**
+     * Read the Host's log (`runner.md` § Host log): up to `limit` lines after
+     * `since`, oldest first, of one `source` when named. Without `since` the
+     * answer ends at the newest line. `log_lines` answers from the files at
+     * once, or `log_error`.
+     */
+    z.strictObject({
+      type: z.literal('log_read'),
+      id: z.string(),
+      since: logCursorSchema.optional(),
+      limit: z.number().int().min(1).max(LOG_READ_LINES),
+      source: z.string().min(1).optional(),
     }),
     /**
      * The command manifest for the runner's cache. Its shape is the loader's

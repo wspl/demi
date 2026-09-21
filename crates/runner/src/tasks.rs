@@ -154,7 +154,9 @@ impl TaskTable {
                         _ = table.output.send(message) => {},
                     }
                 }
-                Err(error) => eprintln!("runner task terminal encoding failed: {error}"),
+                Err(error) => {
+                    crate::host_log::runner(format_args!("task terminal encoding failed: {error}"))
+                }
             }
         });
         drop(entries);
@@ -313,7 +315,7 @@ impl TaskTable {
                     match demi_command_service::edits::Recorder::new(edit_context.clone()) {
                         Ok(recorder) => Some(recorder),
                         Err(error) => {
-                            eprintln!("edit recording failed: {error}");
+                            crate::host_log::runner(format_args!("edit recording failed: {error}"));
                             None
                         }
                     };
@@ -637,7 +639,7 @@ pub(crate) async fn report_pipe(
                 _ = output.send(message) => {},
             }
         }
-        Err(error) => eprintln!("runner pipe result encoding failed: {error}"),
+        Err(error) => crate::host_log::runner(format_args!("pipe result encoding failed: {error}")),
     }
 }
 

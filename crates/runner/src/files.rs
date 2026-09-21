@@ -311,7 +311,7 @@ async fn send(
     let message = match message {
         Ok(message) => message,
         Err(error) => {
-            eprintln!("demi-runner: file transfer reply encoding failed: {error}");
+            crate::host_log::runner(format_args!("file transfer reply encoding failed: {error}"));
             return false;
         }
     };

@@ -11,6 +11,7 @@ use crate::{
     commands::streams::ServiceStreams,
     connection::Connection,
     host::HostServer,
+    host_log::{self, HostLog},
     management::{Management, Phase},
     pipes::PipeClient,
     state::{ActiveRunner, RunnerConfig, RunnerState},
@@ -22,6 +23,8 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 pub struct Options {
     pub backend: String,
     pub directory: PathBuf,
+    /// Where the Host's log lives (`runner.md` § Host log).
+    pub log: PathBuf,
     pub executable: PathBuf,
     pub cwd: PathBuf,
     pub env: BTreeMap<String, String>,
@@ -42,6 +45,7 @@ struct Runtime {
     management: Arc<Management>,
     server: Server,
     pipes: PipeClient,
+    log: Arc<HostLog>,
 }
 
 pub async fn run(options: Options, stop: CancellationToken) -> io::Result<()> {
@@ -70,6 +74,11 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<()> {
         })
         .await?;
     let token = Arc::new(RwLock::new(token));
+    let log = HostLog::open(options.log.clone()).await?;
+    // An early return leaves the log to its last owner: the writer task ends
+    // with the queue. The ordinary end below flushes it first.
+    let _installed = host_log::install(log.clone());
+    host_log::event(format_args!("runner {} started", options.runner.version));
     let contexts = Contexts::new(state.root.join("commands"), options.executable.clone()).await?;
     let services = Services::new(
         state.root.join("artifacts"),
@@ -114,6 +123,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<()> {
         management,
         server,
         pipes,
+        log: log.clone(),
     };
     let outcome = runtime.reconnect().await;
     if runtime.management.draining.is_cancelled() && !runtime.management.stop.is_cancelled() {
@@ -124,6 +134,8 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<()> {
     runtime.artifacts.detach();
     runtime.services.close().await;
     let closed = runtime.server.close().await;
+    host_log::event("runner stopped");
+    log.close().await;
     let released = lease.release();
     outcome.and(closed).and(released)
 }
@@ -131,11 +143,17 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<()> {
 impl Runtime {
     async fn reconnect(&self) -> io::Result<()> {
         let mut delay = Duration::from_millis(250);
+        // A backend that stays away fails the same way every few seconds. The
+        // console hears each attempt; the log keeps one line per change.
+        let mut failure: Option<String> = None;
         loop {
             if self.management.stop.is_cancelled() || self.management.draining.is_cancelled() {
                 return Ok(());
             }
             self.management.set_phase(Phase::Connecting);
+            if failure.is_none() {
+                host_log::event(format_args!("connecting to {}", self.options.backend));
+            }
             let result = self.connection().await;
             match result {
                 Ok(End::Rejected) => {
@@ -145,8 +163,20 @@ impl Runtime {
                     ));
                 }
                 Ok(End::Stopped) => return Ok(()),
-                Ok(End::Disconnected) => delay = Duration::from_millis(250),
-                Err(error) => eprintln!("demi-runner: connection ended: {error}"),
+                Ok(End::Disconnected) => {
+                    host_log::runner("backend connection lost");
+                    failure = None;
+                    delay = Duration::from_millis(250);
+                }
+                Err(error) => {
+                    let text = format!("connection ended: {error}");
+                    if failure.as_ref() == Some(&text) {
+                        eprintln!("demi-runner: {text}");
+                    } else {
+                        host_log::runner(&text);
+                    }
+                    failure = Some(text);
+                }
             }
             tokio::select! {
                 _ = self.management.stop.cancelled() => return Ok(()),
@@ -236,13 +266,16 @@ impl Runtime {
                             })
                             .await?;
                         self.management.set_phase(Phase::Online);
-                        eprintln!("demi-runner: online");
+                        host_log::runner("online");
                     }
                     Inbound::ClaimPending { claim_token }
                         if self.management.phase() != Phase::Online =>
                     {
                         self.management.set_phase(Phase::ClaimPending);
+                        // The code is a secret for the person at the console;
+                        // the log only says that one is waiting.
                         eprintln!("demi-runner: pairing code: {claim_token}");
+                        host_log::event("waiting to be paired");
                     }
                     Inbound::Claimed { device_token }
                         if self.management.phase() != Phase::Online =>
@@ -250,10 +283,10 @@ impl Runtime {
                         self.state.write_token(&device_token).await?;
                         *self.token.write().await = Some(device_token);
                         self.management.set_phase(Phase::Online);
-                        eprintln!("demi-runner: online");
+                        host_log::runner("online");
                     }
                     Inbound::HelloError { code, reason } => {
-                        eprintln!("demi-runner: registration refused ({code}): {reason}");
+                        host_log::runner(format_args!("registration refused ({code}): {reason}"));
                         if code == "already_connected" {
                             return Ok(End::Disconnected);
                         }
@@ -330,9 +363,9 @@ impl Runtime {
                             // A disconnected backend no longer needs an acknowledgement.
                             let _ = output.send(reply).await;
                         }
-                        Err(error) => {
-                            eprintln!("demi-runner: invalid release acknowledgement: {error}")
-                        }
+                        Err(error) => host_log::runner(format_args!(
+                            "invalid release acknowledgement: {error}"
+                        )),
                     }
                 });
             }
@@ -355,6 +388,43 @@ impl Runtime {
             message if message.git_request_id().is_some() => host.handle_git(message)?,
             Inbound::NetOpen { .. } => host.handle_net(message)?,
             Inbound::ServiceOpen { .. } => streams.handle_open(message)?,
+            Inbound::LogRead {
+                id,
+                since,
+                limit,
+                source,
+            } => {
+                let log = self.log.clone();
+                let output = connection.control.clone();
+                let cancel = connection.cancellation();
+                lifecycle.spawn(async move {
+                    let query = host_log::Query {
+                        since,
+                        limit: limit as usize,
+                        source,
+                    };
+                    let reply = match log.read(query).await {
+                        Ok(page) => wire::log_lines(
+                            id.clone(),
+                            page.lines.into_iter().map(Into::into).collect(),
+                            page.next,
+                        ),
+                        Err(error) => wire::log_error(id.clone(), error.to_string()),
+                    };
+                    let reply = match reply {
+                        Ok(reply) => reply,
+                        Err(error) => {
+                            host_log::runner(format_args!("log reply encoding failed: {error}"));
+                            return;
+                        }
+                    };
+                    tokio::select! {
+                        _ = cancel.cancelled() => {},
+                        // A disconnected backend no longer waits for the lines.
+                        _ = output.send(reply) => {},
+                    }
+                });
+            }
             message => {
                 let started = matches!(message, Inbound::JobStart { .. } | Inbound::Spawn { .. });
                 let setup = async {
@@ -396,6 +466,7 @@ impl Runtime {
                 }
                 .await;
                 if let Err(error) = setup {
+                    host_log::runner(format_args!("backend work could not start: {error}"));
                     let reason = Some(error.to_string());
                     let failure = Some(wire::SpawnExitSpawnError {
                         kind: "other".into(),

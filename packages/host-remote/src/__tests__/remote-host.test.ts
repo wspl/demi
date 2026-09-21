@@ -9,7 +9,7 @@ import {
 } from '@demicodes/runner-protocol'
 import { memoryHostStore } from '@demicodes/shell/testing'
 import { PipeBroker, RemoteGitError, RemoteHost, devicePipes } from '../index'
-import { collectBytes, concatBytes, deferred } from '@demicodes/utils'
+import { collectBytes, concatBytes, deferred, delay } from '@demicodes/utils'
 
 const cleanup: (() => Promise<void>)[] = []
 afterEach(async () => {
@@ -432,5 +432,32 @@ test(
     const missing = await remote.git.show(dir, 'b.txt').catch((error: unknown) => error)
     expect(missing).toBeInstanceOf(RemoteGitError)
     expect((missing as RemoteGitError).code).toBe('ENOENT')
+  }
+)
+
+test(
+  'the log facet reads the newest lines, then only what came after the cursor',
+  async () => {
+    const { remote } = await connectedPair()
+    // The runner writes its start before it connects; the writer puts it in
+    // the files a moment later, and a read waits for no queued line.
+    let tail = await remote.log.read({ limit: 50, source: 'runner' })
+    for (let tries = 0; tries < 500 && !tail.lines.some(line => line.text === 'online'); tries += 1) {
+      await delay(10)
+      tail = await remote.log.read({ limit: 50, source: 'runner' })
+    }
+    expect(tail.lines.some(line => line.text === 'online')).toBe(true)
+    expect(tail.lines.every(line => line.source === 'runner')).toBe(true)
+    expect(tail.lines.every(line => line.at instanceof Date)).toBe(true)
+    expect(tail.lines.some(line => /^runner \S+ started$/.test(line.text))).toBe(true)
+    expect(tail.next).toBeGreaterThan(0)
+
+    const after = await remote.log.read({ since: tail.next, limit: 50 })
+    expect(after).toEqual({ lines: [], next: tail.next })
+    const one = await remote.log.read({ since: 0, limit: 1 })
+    expect(one.lines).toHaveLength(1)
+    expect(one.next).toBeLessThan(tail.next)
+    const other = await remote.log.read({ since: 0, limit: 50, source: 'service:none' })
+    expect(other).toEqual({ lines: [], next: tail.next })
   }
 )

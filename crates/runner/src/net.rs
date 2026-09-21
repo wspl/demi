@@ -87,7 +87,7 @@ impl NetStreams {
                     }
                 }
                 Err(error) => {
-                    eprintln!("demi-runner: net_opened encoding failed: {error}");
+                    crate::host_log::runner(format_args!("net_opened encoding failed: {error}"));
                     return;
                 }
             }
@@ -284,6 +284,6 @@ async fn send_net_error(
                 _ = output.send(message) => {},
             }
         }
-        Err(error) => eprintln!("demi-runner: net_error encoding failed: {error}"),
+        Err(error) => crate::host_log::runner(format_args!("net_error encoding failed: {error}")),
     }
 }
