@@ -50,6 +50,7 @@ import { runnerSocketRoutes } from './runner-socket'
 import { pipeRoutes } from './pipes'
 import { streamRoutes } from './stream'
 import { userStreamRoutes, type UserStreamDeclaration } from './user-streams'
+import { panelRoutes } from './panel'
 import type { ConversationTitles } from '../conversation/title'
 import { failureFactsReader } from '../conversation/failure-facts'
 import { usageRoutes } from './usage'
@@ -224,6 +225,7 @@ export function createApp(options: {
       ...(options.publicOrigin ? { publicOrigin: options.publicOrigin } : {}),
     }),
   )
+  app.route('/api/conversations', panelRoutes({ control: options.control }))
   app.route(
     '/api/conversations',
     streamRoutes({

@@ -245,6 +245,19 @@ CREATE UNIQUE INDEX idx_provider_credentials_identity ON provider_credentials(pr
 ALTER TABLE providers ADD COLUMN active_credential_id TEXT;
 `,
   },
+  {
+    id: 8,
+    name: 'conversation_panels',
+    // The work panel's saved state (web-api.md § Work panel state): one JSON
+    // document per conversation, which only the page interprets.
+    sql: `
+CREATE TABLE conversation_panels (
+  conversation_id TEXT PRIMARY KEY REFERENCES conversations(id) ON DELETE CASCADE,
+  document_json   TEXT NOT NULL,
+  updated_at      TEXT NOT NULL
+);
+`,
+  },
 ]
 
 /**

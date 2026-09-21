@@ -271,6 +271,10 @@ export interface ControlService {
     deviceId: string,
     cwd: string
   ): Promise<void>
+  /** The conversation's saved work panel document, as it was stored; null when it never saved. */
+  getConversationPanel(conversationId: string): Promise<string | null>
+  /** Replaces the conversation's work panel document whole; the last save wins. */
+  setConversationPanel(conversationId: string, documentJson: string): Promise<void>
   createConversation(
     userId: string,
     options?: { id?: string; title?: string }
@@ -1578,6 +1582,21 @@ export class LocalControlService implements ControlService {
       )
       return 'renamed'
     })
+  }
+
+  async getConversationPanel(conversationId: string): Promise<string | null> {
+    const row = this.db.get<{ document_json: string }>(
+      'SELECT document_json FROM conversation_panels WHERE conversation_id = ?',
+      [conversationId]
+    )
+    return row?.document_json ?? null
+  }
+
+  async setConversationPanel(conversationId: string, documentJson: string): Promise<void> {
+    this.db.run(
+      'INSERT INTO conversation_panels (conversation_id, document_json, updated_at) VALUES (?, ?, ?) ON CONFLICT (conversation_id) DO UPDATE SET document_json = excluded.document_json, updated_at = excluded.updated_at',
+      [conversationId, documentJson, new Date().toISOString()]
+    )
   }
 
   async setAttachedHostCwd(
