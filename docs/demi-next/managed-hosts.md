@@ -68,22 +68,37 @@ The manager is a trusted, privileged Linux service because it prepares mounts,
 loop devices, network namespaces, firewall rules, and cgroups. Its private mount
 namespace contains the storage mounts. Its data directory, runtime bundles, and
 control files are inaccessible to ordinary host users. No sandbox receives these
-infrastructure privileges.
+infrastructure privileges. Before mounting a working image, the manager pins its
+private mount namespace with a root-only namespace handle under its runtime
+directory, registered in the execution host's mount namespace. After a manager
+crash, the handle's owner record requires recovery with the same state directory;
+changing directories cannot abandon old writers. The replacement enters that saved namespace to thaw filesystems and fence
+the old runtimes before publishing storage. Only after recovery does it release
+the handle and register its own namespace. This keeps frozen mounts reachable
+even when the original manager process has gone; service shutdown recovery uses
+the same path.
 
 One manager holds an exclusive lock on its state directory. Each device's
-operations serialize under that manager. A durable working record identifies
-the device, generation, runtime instance, resource paths, and operation phase;
-it contains no device token. Runtime identity includes a unique boot id, so a
+operations serialize under that manager. The working manifest identifies the
+generation, and a separate runtime record identifies the unique boot and network
+slot; resource paths follow from these identities. The presence of these records
+determines which recovery steps are required. Neither contains a device token.
+Runtime identity includes a unique boot id, so a
 late death event cannot stop a replacement sandbox. Startup reconciles runtime
 state and removes old writers before accepting work. Losing the client socket
 does not establish that an operation failed: the backend queries/reconciles state
-before retrying. Repeated reset requests use the same operation id.
+before retrying. If a Cloud marked running has no connected runner, Host admission
+queries its runtime state. A stopped runtime starts again over saved storage;
+an existing runtime gets the bounded runner reconnect interval without rotating
+its credential or killing its work. Concurrent requests join that recovery.
+Repeated reset requests use the same operation id.
 
 `ManagedHostProvisioner` retains these operations:
 
 | Operation | Meaning |
 | --- | --- |
 | `currentBaseVersion`, `imageState` | Read the selected base and a device's committed generation. |
+| `runtimeState` | Read whether the manager owns an active runtime after serializing with its transitions. |
 | `reconcile` | Recover incomplete operations and establish saved, stopped devices. |
 | `wake` | Create first-use storage or recover existing storage, then start one sandbox with the supplied boot credential. |
 | `checkpoint` | Publish paired system/home storage while preserving the running processes. |
@@ -121,7 +136,8 @@ whiteouts and metadata, belong to the writable images, not the shared base.
 
 This retains bounded filesystem capacities and paired generations without
 requiring a guest kernel. The host storage filesystem can be XFS with reflinks,
-btrfs, or ext4; cloning is an optimization, not a correctness requirement. The
+btrfs, or ext4; cloning is an optimization, not a correctness requirement. Copies preserve
+sparse ranges so unused capacity does not become allocated host storage. The
 writable ext4 filesystems remain distinct from that host storage filesystem.
 Overlay layout and supported mount options are fixed by the image/storage
 format; they are not per-user configuration. See the Linux
@@ -307,9 +323,19 @@ manager, runsc distribution, and image builder. The product supports ordinary
 Linux development and browsers, not arbitrary kernel features or privileged
 nested Docker. Unsupported operations return errors; they never widen isolation.
 
-The initial supported runtime is `release-20260914.0`, with each architecture
-archive pinned by its verified release checksum. Runtime upgrades require the
-same acceptance matrix, but do not change user storage format.
+The runtime inputs are pinned in
+[the runtime release manifest](../../packages/machines/runtime/release.json).
+amd64 uses the verified upstream distribution. arm64 uses the same source with
+the shipped `SECCOMP_RET_TRAP` register fix: Linux preserves the first argument
+in X0 when delivering SIGSYS, while the upstream implementation overwrites it
+with the syscall number. Chrome's sandbox signal handler depends on that argument
+and crashes without the fix. The ARM build has its own version and a native-versus-
+sandbox ABI regression probe. It retains both gVisor isolation and Chrome's
+sandbox. See the upstream
+[trap handling](https://github.com/google/gvisor/blob/release-20260914.0/pkg/sentry/kernel/seccomp.go)
+and [Chrome's signal handler](https://github.com/chromium/chromium/blob/main/sandbox/linux/seccomp-bpf-helpers/sigsys_handlers.cc).
+Runtime upgrades require the same acceptance matrix, but do not change user
+storage format.
 
 The runtime profile fixes `--platform=systrap`, `--network=sandbox`, and
 `--allow-suid=true`. OCI `noNewPrivileges` is false so sudo can work. The
@@ -399,18 +425,19 @@ runtime-start duration into an end-to-end startup promise.
 
 ## Implementation status
 
-This is the selected replacement design. Implementation is deferred to the next
-checkpoint. The repository still contains the old Firecracker provisioner,
-launcher, kernel image build, and PID 1 runner path; these are to be removed,
-not retained behind a runtime selector. There is no old-state importer or dual
-storage-format support in this design. A deployment uses a new state directory;
-existing data is not silently discarded by a manager startup.
+The direct OCI manager, persistent volume store, ordinary runner boot, root
+archive pipeline, and Linux/Lima installers implement this contract. The old
+hypervisor launcher, guest kernel pipeline, and runner PID 1 boot path are
+removed. A deployment uses a new state directory and does not import old state.
 
-The [VPS evaluation](../gvisor-evaluation.md) established runner/browser viability
-and several configuration requirements. It did not validate this direct-OCI
-manager, host-mounted volume/freeze path, shared root mode, managed credentials,
-production egress policy, or Mac performance. Those remain implementation and
-acceptance work. The specified runtime/capability/process-limit profile and
-flush/freeze behavior must pass the real checks before enabling this design in
-the product; an unsupported primitive is a reason to revisit its responsible
-contract, not to substitute weaker persistence or isolation.
+The opt-in `real-gvisor.e2e.test.ts` runs a real manager and packaged image with a
+scripted model. It covers file ownership, shared device identity, browser frames
+and input, online growth, paired checkpoint, stop/wake, broken-system reset, and
+login-shell tool installation. Run it with `DEMI_GVISOR_E2E=1`, the manager's
+`DEMI_GVISOR_E2E_SOCKET`, an allowed `DEMI_GVISOR_E2E_PUBLIC` backend URL, and a
+local copy of the image manifest in `DEMI_GVISOR_E2E_MANIFEST`.
+
+The [evaluation report](../gvisor-evaluation.md) records measured environments and
+remaining acceptance limits separately from this design. Passing the functional
+suite does not establish production capacity, concurrent-load latency, or
+multi-worker failover.

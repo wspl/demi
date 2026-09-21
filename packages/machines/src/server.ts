@@ -2,7 +2,7 @@
 // connections, every request dispatched to one `ManagedHostProvisioner`.
 // Requests on a connection run concurrently; the provisioner serializes
 // per device itself. Deaths go to every connection. No authentication: the
-// socket file's permissions (owner only) are the boundary, and nothing
+// socket file's restricted owner/group permissions are the boundary, and nothing
 // listens on TCP.
 import { chmod, mkdir, rm } from 'node:fs/promises'
 import { dirname } from 'node:path'
@@ -17,6 +17,7 @@ import { encodeFrame, FrameWriter, LineReader } from './wire'
 
 export interface MachineServerOptions {
   socketPath: string
+  socketMode?: 0o600 | 0o660
   provisioner: ManagedHostProvisioner
   log?: (line: string) => void
 }
@@ -59,6 +60,7 @@ export async function serveMachines(
       const result = await dispatch(options.provisioner, request.value)
       send(socket, { type: 'ok', id: request.value.id, result })
     } catch (error) {
+      log(`machines: ${request.value.op} failed: ${error instanceof AggregateError ? error.errors.map(errorMessage).join('; ') : errorMessage(error)}`)
       send(socket, { type: 'error', id: request.value.id, message: errorMessage(error) })
     }
   }
@@ -96,7 +98,7 @@ export async function serveMachines(
       },
     },
   })
-  await chmod(options.socketPath, 0o600)
+  await chmod(options.socketPath, options.socketMode ?? 0o600)
 
   return {
     socketPath: options.socketPath,
@@ -138,6 +140,8 @@ async function dispatch(
       return provisioner.currentBaseVersion()
     case 'image_state':
       return provisioner.imageState(request.params.deviceId)
+    case 'runtime_state':
+      return provisioner.runtimeState(request.params.deviceId)
     case 'wake':
       await provisioner.wake(request.params.deviceId, request.params.boot)
       return null

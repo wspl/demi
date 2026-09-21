@@ -1,10 +1,81 @@
 # gVisor systrap evaluation
 
-Evaluation performed on 2026-09-22. This is evidence for a deployment decision,
-not an implemented Cloud provisioner. The replacement design is now selected in
-[Managed hosts](demi-next/managed-hosts.md).
+Evaluations performed on 2026-09-22. The direct manager results below follow the
+initial OCI feasibility experiment recorded later in this document. The runtime
+contract is [Managed hosts](demi-next/managed-hosts.md).
 
-## Result
+## Direct manager acceptance
+
+The replacement manager was exercised on native Linux arm64 inside Lima and
+native Linux amd64 on the VPS, with no Docker runtime and no KVM requirement.
+Both used the shipped two-CPU, 2 GiB sandbox profile, real managed runner
+credentials, the release root archive, and the backend's normal Host access.
+The arm64 execution VM had four CPUs and 8 GiB RAM; the amd64 VPS had two CPUs
+and 4 GiB RAM. State storage was XFS with reflinks on Lima and ext4 on the VPS.
+Automated model responses were scripted; runner, native commands, Chrome, storage,
+and networking were real.
+
+| Observation | Local arm64 | VPS amd64 |
+| --- | ---: | ---: |
+| First command through the managed runner | 0.32 s | 3.21 s |
+| Chrome open | 1.20 s | 5.82 s |
+| Viewer connection to first live frame | 0.21 s | 0.76 s |
+| Paired filesystem checkpoint | 0.076 s | 0.388 s |
+
+These are separate individual observations with the base already imported, not
+cold-image download timings or latency percentiles. The arm64 browser measurement
+came from the running development backend opening a blank page; the VPS suite
+opened its local HTML fixture and included the remote test connection. The arm64
+checkpoint used two 1 GiB filesystems; the VPS checkpoint followed growth to
+2 GiB each. No concurrent-user capacity or memory-peak benchmark is implied.
+
+Both architectures passed managed shell/native execution, UID/file ownership,
+sudo, browser frames and input, public HTTPS and private/metadata refusal,
+online growth, checkpoint, stop/wake persistence, reset after disabling bash,
+and rustup/nvm installation followed by later cargo/node commands. The updated
+Mac paired device also opened Chrome and delivered live frames through the
+running backend. The local development Cloud was reset onto the new base.
+
+Fault injection on arm64 froze a working filesystem and killed its manager;
+recovery preserved the newest system/home pair. A separate systemd test killed
+the manager with a frozen storage probe, then read a previously written Cloud
+file through the still-running backend. The saved mount namespace enabled thaw
+and cleanup; the backend queried runtime state and woke the recovered Cloud
+without requiring a backend restart. A separate amd64 checkpoint test read the
+immutable saved image while a live process still held dirty, unflushed mmap
+pages; the saved file contained the new bytes.
+
+### Defects found during implementation
+
+- Upstream ARM gVisor overwrote X0 in a `SECCOMP_RET_TRAP` signal frame. Chrome's
+  scheduler syscall handler expects the original first argument and crashed when
+  live capture started. A native-Linux versus systrap C probe demonstrated the
+  difference. The pinned ARM build restores the original argument; the probe and
+  live browser pass without disabling Chrome's sandbox. Pinned source, patch,
+  hashes, and build instructions live in
+  [runtime inputs](../packages/machines/runtime/README.md).
+- Bun's file-copy fallback allocated the empty ranges of the volume files on
+  ext4. A first command took 51.5 s in that run. Sparse-preserving GNU copies
+  reduced the later observed first-command time to 3.2 s on the same VPS;
+  reflink-capable filesystems still clone. A Linux regression test checks both
+  allocated blocks and data at the boundaries of a sparse image.
+- The service's restrictive umask also affected the sandbox root and resolver
+  files. New root directories and read-only configuration now receive explicit
+  sandbox-visible modes. Existing user root-directory modes remain unchanged.
+- The VPS's Docker firewall dropped forwarded traffic from the new interfaces.
+  Test-scoped integration rules allowed the manager-approved packets through
+  that existing firewall. Cloud's own private-destination rules remained active.
+  Deployment requirements are documented in [Cloud setup](managed-hosts-setup.md).
+
+The full managed lifecycle and login-tool acceptance is reproducible through
+`real-gvisor.e2e.test.ts`; Linux storage tests cover sparse copies and restrictive
+umasks. Host power-loss behavior and sustained concurrent-user capacity remain
+separate acceptance work. The runtime does not implement memory snapshots or
+multi-worker failover.
+
+## Initial OCI feasibility experiment
+
+### Result
 
 gVisor's systrap platform can run Demi's existing Linux runner, native browser
 driver and live browser capture on a VPS without KVM. The tested application
@@ -18,7 +89,7 @@ These results informed the selected gVisor-backed Cloud design. They do not
 establish production readiness, a multi-user isolation guarantee, or equivalent performance
 to Firecracker on a physical Linux host.
 
-## Environment and method
+### Environment and method
 
 - Execution host: an x86_64 VPS, two vCPUs, about 4 GiB RAM, Debian 13,
   kernel `6.12.95+deb13-cloud-amd64`; no `/dev/kvm` or exposed VMX.
@@ -32,10 +103,9 @@ to Firecracker on a physical Linux host.
   This is an OCI evaluation image, not a boot of the Firecracker ext4 image;
   the guest kernel/PID 1 initialization and standalone `uv` were not included.
 - Source revision: `272990f3bf6ed085d13ef1ddbb1fbc29587b9104`.
-- The test backend ran separately on the Mac, on port 3288 with a temporary
-  database and scripted provider. SSH reverse forwards and bridge-bound relays
-  carried the runner connection and fixture website. The ordinary backend on
-  port 3271 and the existing Cloud were not switched.
+- The diagnostic backend used a temporary database and scripted provider.
+  Temporary connections carried the runner and fixture website. The ordinary
+  development backend and existing Cloud were not switched in this experiment.
 - The existing runner used the paired-device registration path for this
   experiment. Browser commands and user streams used normal conversation Host
   access. This tested real runner/command-service/browser transports, not a new
@@ -48,7 +118,7 @@ was still enabled. The gVisor runs used neither setting, no privileged mode,
 no additional `SYS_ADMIN` capability, and no host-network mode. This is a native
 execution baseline, not a comparison between equivalent isolation boundaries.
 
-## Observations
+### Observations
 
 The complete corrected gVisor run passed all diagnostic commands, live input,
 frame delivery and font checks. The fixture animated at 10 Hz, at 800 by 600
@@ -84,9 +154,9 @@ hardware, architecture and nested virtualization. These results show that this
 VPS can support a usable browser through gVisor; they do not establish a numerical
 speedup over Firecracker or identify its low-level slowdown.
 
-## Required configuration discovered by the tests
+### Required configuration discovered by the tests
 
-### Preserve system writes
+#### Preserve system writes
 
 The default `--overlay2=root:self` failed the Cloud persistence requirement.
 After writing a marker under `/etc`, stopping the container and starting the same
@@ -105,7 +175,7 @@ gVisor's overlay does not by itself implement atomic generations, snapshots,
 quota growth, crash recovery or the backend's reset journal. See the
 [gVisor filesystem documentation](https://gvisor.dev/docs/user_guide/filesystem/).
 
-### Permit sudo within the sandbox
+#### Permit sudo within the sandbox
 
 Without `--allow-suid=true`, `sudo -n id` failed because effective UID did not
 become zero. Enabling it made the command return UID 0 inside the sandbox. This
@@ -114,18 +184,18 @@ access and does not grant every Linux capability. The deployed runtime's
 `runsc flags` documents this option and its interaction with OCI
 `no-new-privileges`.
 
-### Reap orphaned processes
+#### Reap orphaned processes
 
 Using `sleep` as container PID 1 left orphaned Chrome/crashpad zombies. Demi's
 process-tree cleanup then failed after about five seconds and retained the
 profile. Docker's `--init` reaped them: close succeeded in under one second and
 the subsequent process listing contained no Chrome or crashpad processes.
 
-A production container needs an explicit supervisor/init contract. The current
-runner treats Linux PID 1 as Firecracker guest initialization; using it unchanged
+A production container needs an explicit supervisor/init contract. At the time of this initial experiment, the
+runner treated Linux PID 1 as Firecracker guest initialization; using it unchanged
 as container PID 1 would enter the wrong boot path.
 
-### Supply reachable DNS
+#### Supply reachable DNS
 
 The Docker custom bridge's embedded loopback resolver was unreachable through
 gVisor's isolated network stack. `curl https://example.com` and `npm view` failed
@@ -137,27 +207,20 @@ An explicit resolver file with external DNS addresses, mounted read-only at
 describes the embedded-resolver limitation. Production needs its own reachable
 DNS and egress policy, including the existing private/link-local restrictions.
 
-## Decision boundary
+### Decision boundary
 
-The selected [replacement design](demi-next/managed-hosts.md) keeps backend, agent,
-and browser code on the existing Host contract. Implementation is the next step.
-The evaluation does not justify silently falling back to another isolation mode.
+The initial evaluation justified implementing the selected
+[replacement design](demi-next/managed-hosts.md) on the existing Host contract.
+It did not validate managed-token delivery, atomic disk generations, growth,
+abrupt manager failure, or the direct OCI launch path. Subsequent managed checks
+are recorded above. No fallback isolation mode follows from these measurements.
 
-Before accepting that implementation, verify managed-token delivery, automatic
-wake, stop/reset admission, retained home, atomic system/home generations,
-disk quota/growth, abrupt failure recovery, process/cgroup cleanup, and concurrent
-users. Exercise package installation, substantial repository/build workloads,
-and the product's browser panel at representative resolutions. Nested Docker
-and workloads requiring additional kernel capabilities were not evaluated.
+Nested Docker, workloads requiring additional kernel capabilities, sandbox escape
+testing, and an independent security audit were outside this experiment. Its
+network configuration was diagnostic connectivity, not the deployed manager's
+egress policy.
 
-The network rules used here are diagnostic connectivity, not the finished
-multi-user egress policy. No sandbox escape testing or independent security audit
-was performed. The design now removes the Firecracker provisioner. That
-replacement is not yet implemented; the historical measurements above do not
-validate its new storage, managed registration, network policy, or direct-OCI
-launch path.
-
-## Evidence and reproduction inputs
+### Evidence and reproduction inputs
 
 Local scripts and raw results are retained under `.cache/gvisor-eval/`:
 `evaluation.test.ts`, `guest.py`, `lifecycle.py`, `systrap.log`,

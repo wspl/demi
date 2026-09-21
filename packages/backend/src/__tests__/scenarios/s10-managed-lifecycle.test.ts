@@ -4,6 +4,27 @@ import { FakeProvisioner } from '../../testing/fake-provisioner'
 import { World } from './world'
 import { model } from './driver'
 
+test('Host access recovers a Cloud stopped by manager restart without a death event', async () => {
+  const fake = new FakeProvisioner()
+  const world = await World.create({ lifecycle: { idleMs: 600_000 }, managedHosts: { provisioner: fake } })
+  try {
+    const driver = await world.conversation('cloud')
+    await driver.turn({ model: [model.shell('save', 'echo retained > note'), model.say('saved')] })
+    const id = [...fake.guests.keys()][0]!
+    // A manager restart loses its old connection before it can report the stop.
+    await fake.hibernate(id)
+    const reads = await Promise.all([0, 1].map(() =>
+      world.backend.session.fetch(`/api/conversations/${driver.id}/fs/file?path=${encodeURIComponent(`${fake.homeOf(id)}/sessions/${driver.id}/note`)}`)))
+    for (const response of reads) {
+      expect(response.ok).toBe(true)
+      expect(await response.text()).toContain('retained')
+    }
+    expect(fake.calls.filter(call => call === `wake:${id}`)).toHaveLength(2)
+  } finally {
+    await world.close()
+  }
+}, 30_000)
+
 test(
   'concurrent Cloud first use joins one boot; idle saves once and the next command wakes it',
   async () => {

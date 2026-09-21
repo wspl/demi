@@ -30,7 +30,7 @@ pub struct Options {
     pub env: BTreeMap<String, String>,
     pub runner: wire::HelloRunner,
     pub token: Option<String>,
-    pub volumes: Vec<crate::volumes::BlockVolume>,
+    pub volumes: Vec<crate::volumes::ManagedVolume>,
 }
 
 struct Runtime {

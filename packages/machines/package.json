@@ -1,6 +1,6 @@
 {
   "name": "@demicodes/machines",
-  "description": "The Demi machine manager: the managed-host provisioner contract, the Firecracker implementation, and the Unix-socket service the backend talks to.",
+  "description": "The Demi gVisor/systrap Cloud manager and its Unix-socket provisioner contract.",
   "version": "0.20.0",
   "private": false,
   "type": "module",
@@ -20,13 +20,18 @@
   "files": [
     "dist",
     "scripts",
-    "lima"
+    "lima",
+    "runtime"
   ],
   "scripts": {
     "build": "tsdown"
   },
   "dependencies": {
+    "@demicodes/command-protocol": "workspace:^",
+    "@demicodes/runner-protocol": "workspace:^",
     "@demicodes/utils": "workspace:^",
+    "ipaddr.js": "^2.5.0",
+    "tar": "^7.5.22",
     "zod": "^4.0.0"
   },
   "license": "Apache-2.0",
