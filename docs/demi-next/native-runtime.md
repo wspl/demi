@@ -389,7 +389,10 @@ directory and its environment is empty.
 The same mechanism serves a one-shot user call: the backend opens a service
 stream on an operation that finishes by itself, passes the operation's `args`
 as a command's invocation does, asks for its JSON result, sends no input, and
-reads the output to its end. The
+reads the output to its end. A call whose invocation exits nonzero fails with
+what the operation wrote to its standard error, which a JSON invocation writes
+as `{ error: { code, message, details } }`
+([Service streams](runner.md#service-streams)). The
 [conversation browser tab routes](web-api.md#conversation-browser-tabs) call
 `browser.tabs`, `browser.open` and `browser.close` this way, so a tab the user
 opens is the tab the agent's `open` would have made, created by `user`.
