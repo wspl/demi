@@ -113,7 +113,6 @@ onBeforeUnmount(() => {
     :read-call-change="state.readCallChange"
     :history-root="conversation ? executionFor(conversation).path ?? undefined : undefined"
     @select="work.select(state, $event)"
-    @add-browser="work.addBrowser(state)"
     @close-tabs="work.closeTabs(state, $event)"
     @update-browser="work.updateBrowser(state, $event)"
     @show-change="(id, mode, path, selection) => work.showChange(state, id, mode, path, selection)"

@@ -9,7 +9,7 @@ const changePresentation = ref<'diff' | 'preview'>('diff')
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { File, FileDiff, Globe, MonitorDot, PanelRightClose, Plus, X } from '@lucide/vue'
+import { File, FileDiff, Globe, MonitorDot, PanelRightClose, X } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import { GlobePlus } from '../ui/GlobePlus'
 import { EXPOSE_ICON } from '../hosts/icons'
@@ -47,7 +47,6 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   select: [id: string]
-  addBrowser: []
   closeTabs: [ids: string[]]
   showChange: [id: string, mode: ChangeMode, path: string | null, selection?: { call: ChangeWorkTab['call']; edit: number }]
   updateBrowser: [tab: BrowserWorkTab]
@@ -182,11 +181,6 @@ function openFromTree(path: string): void {
         >
           <template #mark><component :is="tab.expose ? EXPOSE_ICON : Globe" :size="ICON_PX.markIn28" /></template>
         </TabItem>
-        <template #trailing>
-          <Tooltip content="New browser tab" class="ml-1 shrink-0">
-            <IconButton :icon="browserTabs.length > 0 ? Plus : GlobePlus" size="sm" variant="ghost" aria-label="New browser tab" @click="emit('addBrowser')" />
-          </Tooltip>
-        </template>
       </TabStrip>
       <Tooltip content="Close panel" class="shrink-0">
         <IconButton :icon="PanelRightClose" variant="ghost" aria-label="Close panel" @click="emit('close')" />

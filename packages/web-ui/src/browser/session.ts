@@ -134,10 +134,21 @@ export class LiveSession {
 
   start(): void {
     this.received = this.time()
-    this.stream = this.options.open({
-      data: (bytes) => this.receive(bytes),
-      closed: (reason) => this.end(reason),
+    // A view ends once: the module's `ended` and the socket's close both say so, and a
+    // stream this session already left says nothing about the one that followed it.
+    const stream = this.options.open({
+      data: (bytes) => {
+        if (this.stream === stream) {
+          this.receive(bytes)
+        }
+      },
+      closed: (reason) => {
+        if (this.stream === stream) {
+          this.end(reason)
+        }
+      },
     })
+    this.stream = stream
     this.send({ type: 'hello', platform: this.options.platform })
     // A view that opens again takes up where the page left off.
     if (this.panelReport) {
@@ -161,7 +172,9 @@ export class LiveSession {
 
   private end(reason: string): void {
     this.pictures?.stop()
+    const stream = this.stream
     this.stream = null
+    stream?.close()
     this.state.ended = reason
     this.state.dialog = null
     this.state.controls = []
