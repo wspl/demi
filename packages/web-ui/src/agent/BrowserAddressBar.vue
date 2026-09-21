@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { ArrowLeft, ArrowRight, RotateCw } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import TextInput from '../ui/TextInput.vue'
@@ -25,6 +26,31 @@ const emit = defineEmits<{
   forward: []
   reload: []
 }>()
+
+const field = ref<InstanceType<typeof TextInput> | null>(null)
+/** The pointer that is giving the field its focus; its release must not drop the selection the focus made. */
+let focusing = false
+
+// A click into the address selects it whole, as a browser's does: the next thing typed replaces it.
+function pointerDown(event: PointerEvent): void {
+  focusing = event.target !== document.activeElement
+}
+
+function pointerUp(event: MouseEvent): void {
+  if (!focusing) {
+    return
+  }
+  focusing = false
+  // The release would place a caret and end the selection.
+  event.preventDefault()
+  field.value?.select()
+}
+
+// The address is submitted and the field lets go, so keys reach the page again.
+function submit(): void {
+  emit('submit')
+  field.value?.el?.blur()
+}
 </script>
 
 <template>
@@ -56,12 +82,16 @@ const emit = defineEmits<{
       />
     </div>
     <TextInput
+      ref="field"
       class="ml-2 min-w-0 flex-1"
       :model-value="address"
       placeholder="Enter address"
       aria-label="Browser address"
       @update:model-value="emit('update:address', $event)"
-      @keydown.enter="emit('submit')"
+      @keydown.enter="submit"
+      @focus="field?.select()"
+      @pointerdown="pointerDown"
+      @mouseup="pointerUp"
     />
     <!-- A trailing control stands as far from the address as the navigation group does. -->
     <div v-if="$slots.trailing" class="ml-2 flex shrink-0 items-center">
