@@ -11,7 +11,7 @@ import Popover from '../ui/Popover.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import LiveView from './LiveView.vue'
-import { asTabsError, type BrowserTabData, type BrowserTabsController, type BrowserTabsError } from './tabs'
+import { NEW_TAB_URL, asTabsError, type BrowserTabData, type BrowserTabsController, type BrowserTabsError } from './tabs'
 import { viewportChoices, type ViewportChoice } from './view'
 
 /**
@@ -32,6 +32,8 @@ const emit = defineEmits<{ update: [data: BrowserTabData]; close: [] }>()
 const failure = ref<BrowserTabsError | null>(null)
 const opening = ref(false)
 const address = ref(props.data.url)
+/** A tab the user just made has nowhere to be yet: its address takes the focus. */
+const fresh = props.data.tab === undefined && props.data.url === NEW_TAB_URL
 const editing = ref(false)
 const menu = ref(false)
 const anchor = ref<HTMLElement | null>(null)
@@ -143,6 +145,7 @@ function history(action: 'back' | 'forward' | 'reload'): void {
     <BrowserAddressBar
       :address="address"
       :can-reload="live !== null"
+      :focused="fresh"
       @update:address="address = $event; editing = true"
       @submit="submit"
       @back="history('back')"
