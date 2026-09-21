@@ -4,7 +4,7 @@
  * requests that list, open, close and navigate the conversation browser's
  * tabs, and the one view a page keeps while a `browser` tab is shown.
  */
-import { shallowRef, type ShallowRef } from 'vue'
+import { nextTick, shallowRef, type ShallowRef } from 'vue'
 import { z } from 'zod'
 import { browserCreatedBySchema } from '@demicodes/browser-protocol'
 import { viewerClipboard } from './clipboard'
@@ -84,6 +84,8 @@ export class BrowserTabsController {
   readonly session: ShallowRef<LiveSession | null> = shallowRef(null)
   /** Opens in flight by panel tab, so a content shown twice asks once. */
   private readonly opening = new Map<string, Promise<BrowserTabInfo>>()
+  /** Browser tabs whose panel tab the user closed, until the browser has closed them too. */
+  private readonly leaving = new Set<string>()
   private readonly showing = new Set<string>()
   private closing: ReturnType<typeof setTimeout> | null = null
   private disposed = false
@@ -130,7 +132,8 @@ export class BrowserTabsController {
     }
     const bound = new Set(this.panel.bound().map((data) => data.tab))
     for (const tab of list.tabs) {
-      if (!bound.has(tab.id)) {
+      // A tab on its way out is still listed until the browser closes it; it is not the agent's.
+      if (!bound.has(tab.id) && !this.leaving.has(tab.id)) {
         this.panel.add({ url: tab.url, tab: tab.id })
       }
     }
@@ -169,12 +172,25 @@ export class BrowserTabsController {
     }
   }
 
-  /** The panel tab is gone; its browser tab goes with it. A tab the browser already lost is closed. */
+  /**
+   * The panel tab is gone; its browser tab goes with it. The request waits
+   * until the panel has shown its next selection: the view then watches that
+   * tab already, so closing this one takes nothing from under it, and a close
+   * moves the picture exactly as a click on the next tab does. A tab the
+   * browser already lost is closed.
+   */
   async close(tab: string): Promise<void> {
-    await this.api.close(tab)
-    const list = this.list.value
-    if (list) {
-      this.list.value = { ...list, tabs: list.tabs.filter((item) => item.id !== tab) }
+    this.leaving.add(tab)
+    try {
+      await nextTick()
+      await this.api.close(tab)
+      const list = this.list.value
+      if (list) {
+        this.list.value = { ...list, tabs: list.tabs.filter((item) => item.id !== tab) }
+      }
+    } finally {
+      // A close the Host refused leaves a browser tab, which the next list adds back.
+      this.leaving.delete(tab)
     }
   }
 

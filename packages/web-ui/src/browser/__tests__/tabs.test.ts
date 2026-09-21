@@ -82,3 +82,18 @@ test('a refused list keeps the last one and says why', async () => {
   expect(controller.list.value?.tabs).toEqual([AGENT_TAB])
   expect(controller.listError.value?.code).toBe('device_offline')
 })
+
+test('a tab the user closed is not taken for the agent\'s while the browser still lists it', async () => {
+  const closing = deferred<void>()
+  const { controller, panel } = harness({ close: () => closing.promise })
+  panel.push({ url: USER_TAB.url, tab: USER_TAB.id })
+  // The panel removed its tab and asks the browser to close its own.
+  panel.pop()
+  const closed = controller.close(USER_TAB.id)
+  controller.adopt({ tabs: [USER_TAB] })
+  expect(panel).toHaveLength(0)
+  closing.resolve()
+  await closed
+  controller.adopt({ tabs: [] })
+  expect(panel).toHaveLength(0)
+})
