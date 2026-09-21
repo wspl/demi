@@ -66,6 +66,9 @@ meaning and atomicity rather than duplicating every SQL column.
   last switch, Cloud reset marker, and provider/model identifiers. The full agent
   checkpoint belongs to the conversation database. `conversation_hosts` stores
   attached devices with a name unique within the conversation and their last cwd.
+  `conversation_panels` stores each conversation's
+  [work panel state](web-api.md#work-panel-state) as one JSON document, replaced
+  whole by every save and deleted with its conversation.
 - **Operations:** `conversation_fork_operations` reserves a destination ID and
   records source boundary, owner, target, full model selection, title, creation
   time, and attached hosts. `managed_operations` records reset intent and progress
