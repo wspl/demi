@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
+import { deferred } from '@demicodes/utils'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import { useSession } from '../auth/session'
@@ -84,4 +85,52 @@ test('opening a retained edit persists the panel and account changes isolate cho
   signIn('one')
   await nextTick()
   expect(state.open).toBe(true)
+})
+
+test('a read of the saved panel never takes back what the page changed meanwhile, and saves leave in order', async () => {
+  signIn('one')
+  const fetchDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'fetch')
+  let stored = { selection: 'change', tabs: [{ id: 'tab-1', kind: 'browser', data: { url: 'about:blank' } }] }
+  const puts: unknown[] = []
+  let heldRead: ReturnType<typeof deferred<void>> | null = null
+  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.method === 'PUT') {
+      const body = JSON.parse(String(init.body))
+      puts.push(body)
+      stored = body
+      return new Response(null, { status: 204 })
+    }
+    const answer = JSON.stringify(stored)
+    await heldRead?.promise
+    return new Response(answer, { status: 200, headers: { 'content-type': 'application/json' } })
+  }) as typeof fetch
+  try {
+    const work = useWorkPanel()
+    await work.load('a')
+    expect(work.stateFor('a').panel).toEqual(stored)
+
+    // A read is on its way while the tab's content binds its browser tab: the read is stale.
+    heldRead = deferred<void>()
+    const reading = work.load('a')
+    work.update('a', 'tab-1', { url: 'about:blank', tab: 't_bound' })
+    heldRead.resolve()
+    await reading
+    expect(work.stateFor('a').panel.tabs[0]!.data).toEqual({ url: 'about:blank', tab: 't_bound' })
+
+    // Changes made while a save is out leave afterwards, the latest last.
+    work.update('a', 'tab-1', { url: 'https://example.test/', tab: 't_bound' })
+    work.select('a', 'tab-1')
+    for (let turn = 0; turn < 10; turn++) {
+      await Promise.resolve()
+    }
+    expect(puts.at(-1)).toEqual({
+      selection: 'tab-1',
+      tabs: [{ id: 'tab-1', kind: 'browser', data: { url: 'https://example.test/', tab: 't_bound' } }],
+    })
+    expect(stored).toEqual(work.stateFor('a').panel)
+  } finally {
+    if (fetchDescriptor) {
+      Object.defineProperty(globalThis, 'fetch', fetchDescriptor)
+    }
+  }
 })
