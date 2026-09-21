@@ -82,6 +82,12 @@ export class BrowserTabsController {
   /** Why the last list could not be read, until one is. */
   readonly listError: ShallowRef<BrowserTabsError | null> = shallowRef(null)
   readonly session: ShallowRef<LiveSession | null> = shallowRef(null)
+  /**
+   * The browser tab this page opened for each panel tab. A panel tab that
+   * lost its binding, to a stale read of the saved panel for one, gets its own
+   * tab back instead of a second one.
+   */
+  private readonly opened = new Map<string, string>()
   /** Opens in flight by panel tab, so a content shown twice asks once. */
   private readonly opening = new Map<string, Promise<BrowserTabInfo>>()
   /** Browser tabs whose panel tab the user closed, until the browser has closed them too. */
@@ -148,6 +154,12 @@ export class BrowserTabsController {
     if (pending) {
       return pending
     }
+    const mine = this.opened.get(panelTabId)
+    const existing = this.list.value?.tabs.find((tab) => tab.id === mine)
+    if (existing) {
+      bind(existing)
+      return Promise.resolve(existing)
+    }
     const opened = this.request(panelTabId, url, bind)
     this.opening.set(panelTabId, opened)
     return opened
@@ -160,6 +172,7 @@ export class BrowserTabsController {
         // The browser has the tab now, whatever the last list said.
         const known = this.list.value?.tabs.filter((item) => item.id !== tab.id) ?? []
         this.list.value = { tabs: [...known, tab] }
+        this.opened.set(panelTabId, tab.id)
         bind(tab)
       }
       return tab

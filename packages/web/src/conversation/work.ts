@@ -33,8 +33,11 @@ export interface WorkState {
   panel: PanelState
   /** The saved panel has been read; nothing is saved over it before. */
   loaded: boolean
-  /** The user changed the panel before it was read; the read keeps those changes. */
-  changedBeforeLoad: boolean
+  /** Counts the page's own changes, so a read knows whether what it fetched is older than the page. */
+  revision: number
+  /** A save is on its way; `unsaved` says the panel changed again since it left. */
+  saving: boolean
+  unsaved: boolean
   readCallChange: ReadCallChange
   changes: WorkingTreeSource
 }
@@ -62,7 +65,9 @@ export const useWorkPanel = defineStore('work-panel', () => {
         views: workPanelTabs(),
         panel: emptyPanelState(),
         loaded: false,
-        changedBeforeLoad: false,
+        revision: 0,
+        saving: false,
+        unsaved: false,
         readCallChange: createCallChangeReader(conversationId),
         changes: createWorkingTreeSource(conversationId),
       })
@@ -71,38 +76,68 @@ export const useWorkPanel = defineStore('work-panel', () => {
     return states.get(conversationId)!
   }
 
-  /** Reads the saved panel once per page, and again when the page returns to it. */
+  /**
+   * Reads the saved panel: once per page, and again when the page returns to
+   * it. The page's own state is never older than what it saved, so a read
+   * replaces it only when the page changed nothing meanwhile and has nothing
+   * on its way out; otherwise the read is stale and is dropped. A panel
+   * changed before its first read keeps those changes beside the saved tabs.
+   */
   async function load(conversationId: string): Promise<void> {
     const state = stateFor(conversationId)
+    const revision = state.revision
+    let saved: PanelState
     try {
-      const saved = await loadPanel(conversationId)
-      const early = state.changedBeforeLoad ? state.panel : null
-      state.loaded = true
-      state.changedBeforeLoad = false
-      if (early === null) {
-        state.panel = saved
-        return
-      }
-      // What the user did while the read was on its way stands: their tabs join the saved ones.
-      const known = new Set(saved.tabs.map((tab) => tab.id))
-      const added = early.tabs.filter((tab) => !known.has(tab.id))
-      change(conversationId, { selection: early.selection, tabs: [...saved.tabs, ...added] })
+      saved = await loadPanel(conversationId)
     } catch (error) {
       reportError('Could not read the work panel', error, { userVisible: true })
+      return
+    }
+    const first = !state.loaded
+    state.loaded = true
+    if (state.revision === revision && !state.saving) {
+      state.panel = saved
+      return
+    }
+    if (first) {
+      const known = new Set(saved.tabs.map((tab) => tab.id))
+      const added = state.panel.tabs.filter((tab) => !known.has(tab.id))
+      change(conversationId, { selection: state.panel.selection, tabs: [...saved.tabs, ...added] })
     }
   }
 
-  /** Every change applies to the page first and is then saved whole; the last save wins. */
+  /** Every change applies to the page first and is then saved whole. */
   function change(conversationId: string, next: PanelState): void {
     const state = stateFor(conversationId)
     state.panel = next
-    if (!state.loaded) {
-      state.changedBeforeLoad = true
+    state.revision += 1
+    if (state.loaded) {
+      void save(conversationId)
+    }
+  }
+
+  /**
+   * One save at a time, always of the latest panel: saves that overlap could
+   * arrive out of order and leave an older panel as the saved one.
+   */
+  async function save(conversationId: string): Promise<void> {
+    const state = stateFor(conversationId)
+    state.unsaved = true
+    if (state.saving) {
       return
     }
-    savePanel(conversationId, next).catch((error: unknown) => {
+    state.saving = true
+    try {
+      while (state.unsaved) {
+        state.unsaved = false
+        await savePanel(conversationId, state.panel)
+      }
+    } catch (error) {
+      // The panel stays as the page has it; the next change saves it whole again.
       reportError('Could not save the work panel', error, { userVisible: true })
-    })
+    } finally {
+      state.saving = false
+    }
   }
 
   function setOpen(state: WorkState, open: boolean): void {

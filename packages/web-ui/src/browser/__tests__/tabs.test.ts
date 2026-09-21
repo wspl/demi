@@ -97,3 +97,23 @@ test('a tab the user closed is not taken for the agent\'s while the browser stil
   controller.adopt({ tabs: [] })
   expect(panel).toHaveLength(0)
 })
+
+test('a panel tab that lost its binding gets the tab this page opened for it, not a second one', async () => {
+  let opens = 0
+  const { controller } = harness({
+    open: async () => {
+      opens += 1
+      return USER_TAB
+    },
+  })
+  const bound: string[] = []
+  await controller.open('panel-1', 'about:blank', (tab) => void bound.push(tab.id))
+  // A stale read of the saved panel took the binding away: the content asks again.
+  await controller.open('panel-1', 'about:blank', (tab) => void bound.push(tab.id))
+  expect(opens).toBe(1)
+  expect(bound).toEqual([USER_TAB.id, USER_TAB.id])
+  // The browser lost the tab: asking again opens a new one.
+  controller.adopt({ tabs: [] })
+  await controller.open('panel-1', 'about:blank', (tab) => void bound.push(tab.id))
+  expect(opens).toBe(2)
+})
