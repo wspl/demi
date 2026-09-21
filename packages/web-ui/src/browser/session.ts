@@ -64,6 +64,10 @@ export interface LiveSessionOptions {
   onOperation?: () => void
   /** Text the watched tab copied, for the viewer's own clipboard. */
   onClipboard?: (text: string) => void
+  /** The browser's tabs, each time the view reports them. */
+  onTabs?: (tabs: LiveTab[]) => void
+  /** The view ended; it may open again by itself. */
+  onEnded?: (reason: string) => void
   /**
    * How long to wait before opening the view again after the stream ended,
    * or null to leave it ended. A Host that becomes reachable again, or a
@@ -176,6 +180,10 @@ export class LiveSession {
     this.stream = null
     stream?.close()
     this.state.ended = reason
+    // A view the page closed itself has nothing to tell.
+    if (!this.done) {
+      this.options.onEnded?.(reason)
+    }
     this.state.dialog = null
     this.state.controls = []
     const delay = this.done
@@ -235,6 +243,7 @@ export class LiveSession {
           this.state.connection = this.state.connection === 'opening' ? 'live' : this.state.connection
           this.state.running = message.running
           this.state.tabs = message.tabs
+          this.options.onTabs?.(message.tabs)
           if (this.state.watched !== message.watched) {
             this.state.controls = []
             this.state.watched = message.watched
@@ -327,22 +336,6 @@ export class LiveSession {
     this.state.dialog = null
     this.pictures?.stop()
     this.send({ type: 'watch', tab })
-  }
-
-  openTab(url?: string): void {
-    this.send(url === undefined ? { type: 'open' } : { type: 'open', url })
-  }
-
-  closeTab(tab: string): void {
-    this.send({ type: 'close', tab })
-  }
-
-  navigate(tab: string, url: string): void {
-    this.send({ type: 'navigate', tab, url })
-  }
-
-  history(tab: string, action: 'back' | 'forward' | 'reload'): void {
-    this.send({ type: 'history', tab, action })
   }
 
   mode(tab: string, mode: 'web' | 'mobile'): void {

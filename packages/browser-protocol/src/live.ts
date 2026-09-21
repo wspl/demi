@@ -117,11 +117,6 @@ export const liveViewerMessageSchema = z.union([
   /** The tab the view shows, or none. */
   z.strictObject({ type: z.literal('watch'), tab: tab.nullable() }),
   z.strictObject({ type: z.literal('mode'), tab, mode: browserViewportModeSchema.exclude(['custom']) }),
-  /** A new tab, at a URL or blank; it starts the browser when none runs. */
-  z.strictObject({ type: z.literal('open'), url: z.string().max(4096).optional() }),
-  z.strictObject({ type: z.literal('close'), tab }),
-  z.strictObject({ type: z.literal('navigate'), tab, url: z.string().max(4096) }),
-  z.strictObject({ type: z.literal('history'), tab, action: z.enum(['back', 'forward', 'reload']) }),
   z.strictObject({
     type: z.literal('pointer'),
     tab,

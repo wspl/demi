@@ -6,6 +6,8 @@ import type { ExposeMenuEntry } from '@demicodes/web-ui/hosts/types'
 import { useProduct } from '../state/product'
 import { useResources } from '../state/resources'
 import { useDeviceSettings } from '../settings/devices'
+import { pageTabKind } from '@demicodes/web-ui/agent/panel-kinds/page'
+import { exposePageTab } from '@demicodes/web-ui/agent/panel-kinds/page-data'
 import { useWorkPanel } from '../conversation/work'
 import { sessionToolsExposes } from './session-tools'
 
@@ -19,13 +21,9 @@ const entries = computed(() =>
   sessionToolsExposes(exposes.value, product.snapshot?.devices ?? []),
 )
 
-/** An expose opens in a new browser tab of this conversation's work panel. */
+/** An expose opens in a new `page` tab of this conversation's work panel. */
 function openExpose(expose: ExposeMenuEntry): void {
-  work.addBrowser(work.stateFor(props.conversationId), {
-    url: expose.url,
-    title: expose.address,
-    expose: true,
-  })
+  work.add(props.conversationId, pageTabKind.kind, exposePageTab(expose))
 }
 </script>
 

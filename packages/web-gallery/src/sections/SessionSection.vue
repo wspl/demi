@@ -13,13 +13,18 @@ import { provideEditSelection } from '@demicodes/web-ui/agent/edit-selection'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import type { ConversationFiles } from '@demicodes/web-ui/markdown/types'
 import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
-import { changeWorkTab, changeTabPath, workPanelTabs, addBrowserTab, closeBrowserTabs, findChangeWorkTab, goBackInTab, goForwardInTab, showChangeInTab, showCallEdit, showFileInTab, type BrowserPage, type BrowserWorkTab, type ChangeWorkTab, type WorkTab } from '@demicodes/web-ui/agent/work-panel'
+import { changeWorkTab, changeTabPath, workPanelTabs, findChangeWorkTab, goBackInTab, goForwardInTab, showChangeInTab, showCallEdit, showFileInTab, type ChangeWorkTab, type WorkTab } from '@demicodes/web-ui/agent/work-panel'
+import { addTab, emptyPanelState, removeTabs, selectInPanel, updateTab, type PanelState } from '@demicodes/web-ui/agent/panel-tabs'
+import type { PanelTabKind } from '@demicodes/web-ui/agent/panel-kinds/kind'
+import { pageTabKind } from '@demicodes/web-ui/agent/panel-kinds/page'
+import { exposePageTab } from '@demicodes/web-ui/agent/panel-kinds/page-data'
+import { browserTabKind } from '@demicodes/web-ui/browser/kind'
+import { BrowserTabsController, browserTabDataSchema } from '@demicodes/web-ui/browser/tabs'
 import { callChangeSource, type CallEditSelection, type ChangeMode, type ChangeSources } from '@demicodes/web-ui/files/changes'
 import ChangeView from '@demicodes/web-ui/files/ChangeView.vue'
 import FileView from '@demicodes/web-ui/files/FileView.vue'
 import { createGalleryChangeSet, createGalleryWorkspace } from '../fixtures/workspace'
-import { galleryLiveSession } from '../fixtures/live-browser'
-import { withHostTabs } from '@demicodes/web-ui/agent/work-panel'
+import { galleryBrowserTabs } from '../fixtures/live-browser'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import { ASIDE_SHARE, SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
@@ -123,48 +128,73 @@ const panelAsideOpen = ref(true)
 const panelProjects = ref(demoProjects())
 const panelConversations = ref(demoConversations())
 const panelActiveConversationId = ref<string | null>('c-login')
-/** Host-owned selections for the work-panel specimens. */
-function useWorkTabs(activeId: string | null, path = 'src/auth/cookie.ts') {
-  const tabs = ref(workPanelTabs(path))
-  const active = ref<string | null>(activeId)
-  function addBrowser(page?: BrowserPage) {
-    const next = addBrowserTab(tabs.value, page)
-    tabs.value = next.tabs
-    active.value = next.activeId
+/**
+ * One work-panel specimen's state, held by the gallery as the product's store
+ * holds it: the fixed views, the selection and tabs, and the `browser` kind
+ * over the gallery's own browser.
+ */
+function useWorkTabs(selection: string, path = 'src/auth/cookie.ts') {
+  const views = ref(workPanelTabs(path))
+  const panel = ref<PanelState>({ ...emptyPanelState(), selection })
+  const browser = new BrowserTabsController(galleryBrowserTabs(), {
+    bound: () => panel.value.tabs.flatMap((tab) => {
+      const parsed = tab.kind === 'browser' ? browserTabDataSchema.safeParse(tab.data) : null
+      return parsed?.success ? [parsed.data] : []
+    }),
+    add: (data) => {
+      panel.value = addTab(panel.value, { kind: 'browser', data }, { select: false }).state
+    },
+  })
+  onBeforeUnmount(() => browser.dispose())
+  const kinds: PanelTabKind[] = [browserTabKind(browser), pageTabKind]
+  function select(next: string) {
+    panel.value = selectInPanel(panel.value, next)
   }
+  function add(kind: string, data: unknown) {
+    panel.value = addTab(panel.value, { kind, data }, { select: true }).state
+  }
+  function update(id: string, data: unknown) {
+    panel.value = updateTab(panel.value, id, data)
+  }
+  /** A closed tab goes at once; its kind then does what a closed tab of it needs. */
   function closeTabs(ids: string[]) {
-    const next = closeBrowserTabs(tabs.value, active.value, ids)
-    tabs.value = next.tabs
-    active.value = next.activeId
-  }
-  function updateBrowser(tab: BrowserWorkTab) {
-    tabs.value = tabs.value.map((current) => current.id === tab.id ? tab : current)
+    const closing = panel.value.tabs.filter((tab) => ids.includes(tab.id))
+    panel.value = removeTabs(panel.value, ids)
+    for (const tab of closing) {
+      const kind = kinds.find((candidate) => candidate.kind === tab.kind)
+      const parsed = kind?.schema.safeParse(tab.data)
+      if (kind?.removed && parsed?.success) {
+        kind.removed(parsed.data)
+      }
+    }
   }
   function showChange(id: string, mode: ChangeMode, path: string | null, selection?: { call: ChangeWorkTab['call']; edit: number }) {
-    tabs.value = showChangeInTab(tabs.value, id, mode, path, selection)
+    views.value = showChangeInTab(views.value, id, mode, path, selection)
   }
-  /** A file by workspace path, shown in the active tab in place. */
+  /** A file by workspace path, shown in the File view in place. */
   function open(path: string) {
-    const next = showFileInTab(tabs.value, path)
-    tabs.value = next.tabs
-    active.value = next.activeId
+    const next = showFileInTab(views.value, path)
+    views.value = next.tabs
+    if (next.activeId !== null) {
+      select(next.activeId)
+    }
   }
   function back(id: string) {
-    tabs.value = goBackInTab(tabs.value, id)
+    views.value = goBackInTab(views.value, id)
   }
   function forward(id: string) {
-    tabs.value = goForwardInTab(tabs.value, id)
+    views.value = goForwardInTab(views.value, id)
   }
   function selectEdit(selection: CallEditSelection) {
-    const next = showCallEdit(tabs.value, selection)
-    tabs.value = next.tabs
-    active.value = next.activeId
+    const next = showCallEdit(views.value, selection)
+    views.value = next.tabs
+    select(next.activeId)
   }
   function reset() {
-    tabs.value = workPanelTabs(path)
-    active.value = activeId
+    views.value = workPanelTabs(path)
+    panel.value = { ...emptyPanelState(), selection }
   }
-  return { tabs, active, addBrowser, closeTabs, updateBrowser, open, showChange, selectEdit, back, forward, reset }
+  return { views, panel, kinds, browser, select, add, update, closeTabs, open, showChange, selectEdit, back, forward, reset }
 }
 const workspace = createGalleryWorkspace()
 const fileViewTree = ref(true)
@@ -234,9 +264,8 @@ const sessionFiles: ConversationFiles = {
 }
 const exhibitWork = useWorkTabs('file')
 const editWork = useWorkTabs('change')
-// The gallery's own browser: a live view without a Host.
-const live = galleryLiveSession()
-onBeforeUnmount(() => live.close())
+// The gallery's own browser stands behind every specimen's `browser` kind; this one lists its tabs.
+void editWork.browser.refresh()
 provideEditSelection(editWork.selectEdit)
 async function readCallChange(commandId: string, path: string, edit: number) {
   return {
@@ -268,14 +297,13 @@ const changeStale = useChangeTab('uncommitted', 'src/auth/cookie.ts', {
   conversation: null,
   uncommitted: createGalleryChangeSet(200, { truncated: true, failure: 'The device is offline.' }),
 })
-// One empty tab with the globe, then one opened the way an expose row opens it, with the expose glyph.
+// A page opened the way an expose row opens it, with the expose glyph, beside the browser's own tabs.
 const browserWork = useWorkTabs('change', '')
-browserWork.addBrowser()
-browserWork.addBrowser({
+void browserWork.browser.refresh()
+browserWork.add(pageTabKind.kind, exposePageTab({
   url: `data:text/html,${encodeURIComponent('<body style="font:14px system-ui;padding:24px"><h1>Dev server</h1><p>A page shown in the tab\'s sandboxed frame.</p><a href="https://example.com" target="_blank">A link that opens a popup</a></body>')}`,
-  title: '127.0.0.1:5173',
-  expose: true,
-})
+  address: '127.0.0.1:5173',
+}))
 let nextQueue = 3
 let nextSent = 1
 
@@ -1338,10 +1366,9 @@ function abortTerminal(id: string) {
       </GallerySection>
       <div class="h-[480px] overflow-hidden rounded-lg border border-line">
         <WorkPanel
-          :tabs="withHostTabs(editWork.tabs.value, live.state.tabs)" :active-id="editWork.active.value"
-          :live="live"
+          :views="editWork.views.value" :panel="editWork.panel.value" :kinds="editWork.kinds"
           :workspace="workspace" :read-call-change="readCallChange"
-          @select="editWork.active.value = $event" @close-tabs="editWork.closeTabs" @update-browser="editWork.updateBrowser" @show-change="editWork.showChange" @open="editWork.open"
+          @select="editWork.select" @add-tab="editWork.add" @update-tab="editWork.update" @close-tabs="editWork.closeTabs" @show-change="editWork.showChange" @open="editWork.open"
           @back="editWork.back" @forward="editWork.forward"
         />
       </div>
@@ -1712,11 +1739,10 @@ function abortTerminal(id: string) {
               <template #aside>
                 <WorkPanel
                   :read-call-change="readCallChange"
-                  :tabs="panelWork.tabs.value"
-                  :active-id="panelWork.active.value"
+                  :views="panelWork.views.value" :panel="panelWork.panel.value" :kinds="panelWork.kinds"
                   :workspace="workspace"
-                  @select="(id) => (panelWork.active.value = id)"
-                  @close-tabs="panelWork.closeTabs" @update-browser="panelWork.updateBrowser"
+                  @select="panelWork.select"
+                  @add-tab="panelWork.add" @update-tab="panelWork.update" @close-tabs="panelWork.closeTabs"
                   @show-change="panelWork.showChange"
                   @open="panelWork.open"
                   @back="panelWork.back"
@@ -1734,18 +1760,17 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="Work panel"
-        note="Change and File are content-sized buttons outside the browser tab strip. They never shrink or scroll with browser tabs; only the browser strip uses the remaining width. The add button uses globe-plus when no browser tabs exist and a regular plus otherwise; it adds browser tabs, using the same content-sized tabs capped at 160px, scrolling and close menus. Browser close menus affect only browser tabs. Change groups its added/removed counts with a 2px gap and shows uncommitted totals and returns to Uncommitted when clicked; file pills still open retained edits there. File uses a Lucide outline icon until a file is selected, then its file-type icon. Browser tabs use a globe. Selecting one shows Back, Forward, Refresh and its own address draft immediately below the strip; the same divider as File and Change separates the address row from page content. Browser and File navigation buttons have no extra gap between them; both address bars leave 12px after the navigation group. A browser tab frames its page in a sandbox: Refresh reloads it, the trailing control opens it in an ordinary browser tab, and Back and Forward stay unavailable because a framed page keeps its history to itself."
+        note="Change and File are fixed views, content-sized buttons outside the tab strip: they are not tabs, never shrink or scroll with them, and only compete with them for the selection. The strip holds the user's tabs, content-sized and capped at 160px, with scrolling and close menus that affect only tabs. The add control opens a tab in the conversation's browser: globe-plus while the strip is empty, a plain plus beside tabs. The new tab stands in the strip at once, selected, on about:blank, and its content says the browser is starting until its picture arrives; the gallery's browser takes about a second, as a Host takes a moment. A tab the browser lost stays and offers Reopen; a request the Host refuses shows its message with Retry. A page tab opens only from an expose, with the expose glyph and the exposed address as its name, and frames its page in a sandbox: Refresh reloads it, the trailing control opens it in an ordinary browser tab, and Back and Forward stay unavailable because a framed page keeps its history to itself. Change groups its added/removed counts with a 2px gap and shows uncommitted totals and returns to Uncommitted when clicked; file pills still open retained edits there. File uses a Lucide outline icon until a file is selected, then its file-type icon. Every tab content puts its address row immediately below the strip; the same divider as File and Change separates it from the page. Browser and File navigation buttons have no extra gap between them; both address bars leave 12px after the navigation group."
       >
         <div class="grid gap-6 md:grid-cols-2">
           <GallerySpecimen variant="tabs" wide>
             <div class="gallery-frame flex h-[24rem] overflow-hidden">
               <WorkPanel
                 class="w-full"
-                :tabs="exhibitWork.tabs.value"
-                :active-id="exhibitWork.active.value"
+                :views="exhibitWork.views.value" :panel="exhibitWork.panel.value" :kinds="exhibitWork.kinds"
                 :workspace="workspace"
-                @select="(id) => (exhibitWork.active.value = id)"
-                @close-tabs="exhibitWork.closeTabs" @update-browser="exhibitWork.updateBrowser"
+                @select="exhibitWork.select"
+                @add-tab="exhibitWork.add" @update-tab="exhibitWork.update" @close-tabs="exhibitWork.closeTabs"
                 @show-change="exhibitWork.showChange"
                 @open="exhibitWork.open"
                 @back="exhibitWork.back"
@@ -1754,15 +1779,14 @@ function abortTerminal(id: string) {
               />
             </div>
           </GallerySpecimen>
-          <GallerySpecimen variant="browser tabs · an empty tab and a page in the sandboxed frame" wide>
+          <GallerySpecimen variant="tabs · the conversation browser's tabs and a page an expose opened · live" wide>
             <div class="gallery-frame flex h-[24rem] overflow-hidden">
               <WorkPanel
                 class="w-full"
-                :tabs="browserWork.tabs.value"
-                :active-id="browserWork.active.value"
+                :views="browserWork.views.value" :panel="browserWork.panel.value" :kinds="browserWork.kinds"
                 :workspace="workspace"
-                @select="browserWork.active.value = $event"
-                @close-tabs="browserWork.closeTabs" @update-browser="browserWork.updateBrowser"
+                @select="browserWork.select"
+                @add-tab="browserWork.add" @update-tab="browserWork.update" @close-tabs="browserWork.closeTabs"
                 @show-change="browserWork.showChange"
                 @open="browserWork.open"
                 @back="browserWork.back"
