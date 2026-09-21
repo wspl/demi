@@ -55,8 +55,13 @@ export function apiUrl(path: string): string {
   return `/api${path}`
 }
 
+/** How long a request may take unless it says otherwise. */
+const REQUEST_TIMEOUT_MS = 60_000
+
 interface ApiRequestOptions extends RequestInit {
   allowNotModified?: boolean
+  /** For a request whose work is known to take longer than most, such as starting a browser on a Cloud. */
+  timeoutMs?: number
 }
 
 /** Same-origin requests use the backend's HttpOnly session cookie. */
@@ -64,8 +69,8 @@ export async function apiRequest(
   path: string,
   options: ApiRequestOptions = {},
 ): Promise<Response> {
-  const { allowNotModified, ...request } = options
-  const timeout = AbortSignal.timeout(60_000)
+  const { allowNotModified, timeoutMs, ...request } = options
+  const timeout = AbortSignal.timeout(timeoutMs ?? REQUEST_TIMEOUT_MS)
   const signal = options.signal
     ? AbortSignal.any([options.signal, timeout])
     : timeout

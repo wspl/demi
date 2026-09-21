@@ -338,6 +338,21 @@ test('a message the protocol refuses is never sent, so the module does not end t
   expect(view.live.state.connection).toBe('live')
 })
 
+test('the page decides what it watches: a tab that is still there is asked for again, a tab that went is let go', () => {
+  const OTHER: LiveTab = { ...TAB, id: 't_dddddddddddddddddddddd' }
+  const view = session()
+  view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB, OTHER], watched: null }))
+  view.live.watch(OTHER.id)
+  const asked = view.sent.length
+  // The module's answer to an older state of things crosses the page's wish.
+  view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB, OTHER], watched: null }))
+  expect(view.live.state.watched).toBe(OTHER.id)
+  expect(view.sent.slice(asked)).toEqual([{ type: 'watch', tab: OTHER.id }])
+  // The tab itself went away.
+  view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: null }))
+  expect(view.live.state.watched).toBeNull()
+})
+
 test('text the watched tab copies reaches the viewer', () => {
   const copied: string[] = []
   const view = session({ onClipboard: (text) => copied.push(text) })

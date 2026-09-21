@@ -58,10 +58,12 @@ export function browserTabKind(controller: BrowserTabsController): PanelTabKind<
     mark: BrowserTabMark,
     content,
     removed(data) {
-      if (data.tab !== undefined) {
-        // The panel tab is already gone; a close the Host refuses leaves a browser tab the next list adds back.
-        controller.close(data.tab).catch(() => {})
+      const tab = data.tab
+      if (tab === undefined) {
+        return
       }
+      // The panel tab is gone either way; the controller says what a refused close leaves.
+      controller.close(tab).catch(() => {})
     },
     create: {
       label: "New tab in the conversation's browser",

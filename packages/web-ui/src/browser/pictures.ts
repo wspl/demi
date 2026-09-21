@@ -35,11 +35,14 @@ export class CanvasPictures implements PictureSink {
     private readonly handlers: PictureHandlers,
   ) {}
 
-  start(generation: number, width: number, height: number): void {
+  /**
+   * Frames of `generation` follow. The canvas keeps what it shows until the
+   * first of them is painted, which also gives it their size: sizing or
+   * clearing it here would show a black frame between two pictures.
+   */
+  start(generation: number, _width: number, _height: number): void {
     this.generation = generation
     this.release()
-    this.canvas.width = width
-    this.canvas.height = height
   }
 
   show(frame: LiveVideoFrame): void {
@@ -73,10 +76,9 @@ export class CanvasPictures implements PictureSink {
     }))
   }
 
+  /** Nothing is watched: decoding ends. The last picture stays until its canvas goes or the next one is painted. */
   stop(): void {
     this.release()
-    const context = this.canvas.getContext('2d')
-    context?.clearRect(0, 0, this.canvas.width, this.canvas.height)
   }
 
   private decoded(picture: VideoFrame): void {
