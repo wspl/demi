@@ -14,7 +14,7 @@ import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import type { ConversationFiles } from '@demicodes/web-ui/markdown/types'
 import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
 import { changeWorkTab, changeTabPath, workPanelTabs, findChangeWorkTab, goBackInTab, goForwardInTab, showChangeInTab, showCallEdit, showFileInTab, type ChangeWorkTab, type WorkTab } from '@demicodes/web-ui/agent/work-panel'
-import { addTab, emptyPanelState, removeTabs, selectInPanel, updateTab, type PanelState } from '@demicodes/web-ui/agent/panel-tabs'
+import { addTab, emptyPanelState, removeTabs, selectInPanel, selectedTab, updateTab, type PanelState } from '@demicodes/web-ui/agent/panel-tabs'
 import type { PanelTabKind } from '@demicodes/web-ui/agent/panel-kinds/kind'
 import { pageTabKind } from '@demicodes/web-ui/agent/panel-kinds/page'
 import { exposePageTab } from '@demicodes/web-ui/agent/panel-kinds/page-data'
@@ -304,6 +304,21 @@ browserWork.add(pageTabKind.kind, exposePageTab({
   url: `data:text/html,${encodeURIComponent('<body style="font:14px system-ui;padding:24px"><h1>Dev server</h1><p>A page shown in the tab\'s sandboxed frame.</p><a href="https://example.com" target="_blank">A link that opens a popup</a></body>')}`,
   address: '127.0.0.1:5173',
 }))
+/** The browser tab the specimen shows, as its kind reads it. */
+const shownBrowserTab = computed(() => {
+  const tab = selectedTab(browserWork.panel.value)
+  const parsed = tab?.kind === 'browser' ? browserTabDataSchema.safeParse(tab.data) : null
+  return parsed?.success ? (parsed.data.tab ?? null) : null
+})
+/** Closes the page behind the panel's back, as the agent's `close` would, and reads the list the way a finished tool call does. */
+async function closeOnDevice() {
+  const tab = shownBrowserTab.value
+  if (tab === null) {
+    return
+  }
+  await browserWork.browser.api.close(tab)
+  await browserWork.browser.refresh()
+}
 let nextQueue = 3
 let nextSent = 1
 
@@ -1760,7 +1775,7 @@ function abortTerminal(id: string) {
       </GallerySection>
       <GallerySection
         title="Work panel"
-        note="Change and File are fixed views, content-sized buttons outside the tab strip: they are not tabs, never shrink or scroll with them, and only compete with them for the selection. The strip holds the user's tabs, content-sized and capped at 160px, with scrolling and close menus that affect only tabs. The add control opens a tab in the conversation's browser: globe-plus while the strip is empty, a plain plus beside tabs. The new tab stands in the strip at once, selected, on about:blank, and its content says the browser is starting until its picture arrives; the gallery's browser takes about a second, as a Host takes a moment. A tab the browser lost stays and offers Reopen; a request the Host refuses shows its message with Retry. A page tab opens only from an expose, with the expose glyph and the exposed address as its name, and frames its page in a sandbox: Refresh reloads it, the trailing control opens it in an ordinary browser tab, and Back and Forward stay unavailable because a framed page keeps its history to itself. Change groups its added/removed counts with a 2px gap and shows uncommitted totals and returns to Uncommitted when clicked; file pills still open retained edits there. File uses a Lucide outline icon until a file is selected, then its file-type icon. Every tab content puts its address row immediately below the strip; the same divider as File and Change separates it from the page. Browser and File navigation buttons have no extra gap between them; both address bars leave 12px after the navigation group."
+        note="Change and File are fixed views, content-sized buttons outside the tab strip: they are not tabs, never shrink or scroll with them, and only compete with them for the selection. The strip holds the user's tabs, content-sized and capped at 160px, with scrolling and close menus that affect only tabs. The add control opens a tab in the conversation's browser: globe-plus while the strip is empty, a plain plus beside tabs. The new tab stands in the strip at once, selected, on about:blank, and its content says the browser is starting until its picture arrives; the gallery's browser takes about a second, as a Host takes a moment. A page the device closed keeps its tab, which says so and offers Close tab and Reload; a request the Host refuses shows its message with Retry. While a view connects the content only says that it waits. The viewport control is a square icon button, a computer or a phone, as far from the address as the navigation group is; its menu rows carry the same icons. A page tab opens only from an expose, with the expose glyph and the exposed address as its name, and frames its page in a sandbox: Refresh reloads it, the trailing control opens it in an ordinary browser tab, and Back and Forward stay unavailable because a framed page keeps its history to itself. Change groups its added/removed counts with a 2px gap and shows uncommitted totals and returns to Uncommitted when clicked; file pills still open retained edits there. File uses a Lucide outline icon until a file is selected, then its file-type icon. Every tab content puts its address row immediately below the strip; the same divider as File and Change separates it from the page. Browser and File navigation buttons have no extra gap between them; both address bars leave 12px after the navigation group."
       >
         <div class="grid gap-6 md:grid-cols-2">
           <GallerySpecimen variant="tabs" wide>
@@ -1792,6 +1807,11 @@ function abortTerminal(id: string) {
                 @back="browserWork.back"
                 @forward="browserWork.forward"
               />
+            </div>
+            <!-- What the agent's close, or a browser that ended, does to the tab being shown. -->
+            <div class="mt-2 flex items-center gap-2 text-[12px] text-fg-muted">
+              <Button size="sm" :disabled="shownBrowserTab === null" @click="closeOnDevice">Close the page on the device</Button>
+              <span>the shown browser tab stays, and says so</span>
             </div>
           </GallerySpecimen>
         </div>

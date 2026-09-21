@@ -69,17 +69,18 @@ const SELECT: LiveControl = {
 /** How long the gallery's browser takes over a request, as a Host takes a moment. */
 const REQUEST_DELAY_MS = 900
 
+/** Tab ids as the protocol spells them: `t_` and 22 characters. */
 function galleryTabs(): LiveTab[] {
   return [
     {
-      id: 't_galleryaaaaaaaaaaaaaa',
+      id: 't_galleryaaaaaaaaaaaaaaa',
       title: 'Orders — Example',
       url: 'https://example.test/orders',
       createdBy: { kind: 'agent', nodeId: 'root' },
       viewport: { width: 800, height: 600, devicePixelRatio: 2, mode: 'web' },
     },
     {
-      id: 't_gallerybbbbbbbbbbbbbb',
+      id: 't_gallerybbbbbbbbbbbbbbb',
       title: 'Docs',
       url: 'https://example.test/docs',
       createdBy: { kind: 'user' },
@@ -388,7 +389,7 @@ export function galleryBrowserTabs(): BrowserTabsApi {
     list: () => later(() => ({ tabs: tabs.map(info) })),
     open: (url) => later(() => {
       const tab: LiveTab = {
-        id: `t_gallery${Math.random().toString(36).slice(2).padEnd(14, '0').slice(0, 14)}`,
+        id: `t_gallery${Math.random().toString(36).slice(2).padEnd(15, '0').slice(0, 15)}`,
         title: url === 'about:blank' ? '' : URL.parse(url)?.host ?? url,
         url,
         createdBy: { kind: 'user' },
