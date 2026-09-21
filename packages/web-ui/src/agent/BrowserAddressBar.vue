@@ -15,8 +15,10 @@ withDefaults(
     /** Why Back and Forward are unavailable, when they are. */
     historyReason?: string | null
     canReload?: boolean
+    /** Take focus on mount, the address selected: a new tab waits for where to go. */
+    focused?: boolean
   }>(),
-  { historyReason: null, canReload: true },
+  { historyReason: null, canReload: true, focused: false },
 )
 
 const emit = defineEmits<{
@@ -84,6 +86,7 @@ function submit(): void {
     <TextInput
       ref="field"
       class="ml-2 min-w-0 flex-1"
+      :focused="focused"
       :model-value="address"
       placeholder="Enter address"
       aria-label="Browser address"
