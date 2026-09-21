@@ -8,8 +8,16 @@ import { liveStreamAt } from '@demicodes/web-ui/transport/live-stream'
 import { reportActivity } from './activity'
 import { ApiError, apiRequest, apiUrl, jsonBody, readResponse } from './client'
 
+/**
+ * Opening a tab may start the browser, on a Cloud that was stopped: the
+ * operation allows itself five minutes (`browser.open`), and the request
+ * waits a little longer than that, so the operation's own answer is what ends
+ * the wait.
+ */
+const OPEN_TIMEOUT_MS = 310_000
+
 /** A refusal keeps the backend's own code and message for the tab's content to show. */
-async function request(path: string, init?: RequestInit): Promise<Response> {
+async function request(path: string, init?: Parameters<typeof apiRequest>[1]): Promise<Response> {
   try {
     return await apiRequest(path, init)
   } catch (error) {
@@ -29,7 +37,7 @@ export function browserTabsApi(conversationId: string): BrowserTabsApi {
   return {
     list: async () => readResponse(await request(tabs), browserTabListSchema),
     open: async (url) => readResponse(
-      await request(tabs, { method: 'POST', ...jsonBody({ url }) }),
+      await request(tabs, { method: 'POST', timeoutMs: OPEN_TIMEOUT_MS, ...jsonBody({ url }) }),
       browserTabInfoSchema,
     ),
     close: async (tab) => {
