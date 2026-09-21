@@ -284,6 +284,15 @@ test('a view that ends opens again, watching what the viewer watched', async () 
   expect(view.live.state.connection).toBe('ended')
 })
 
+test('a view the module ended and the socket then closed opens again once', async () => {
+  const view = session({ reconnect: () => 0 })
+  view.receive(moduleFrame({ type: 'ended', reason: 'browser_ended' }))
+  view.close('closed')
+  await Bun.sleep(5)
+  expect(view.sent.filter((message) => message.type === 'hello')).toHaveLength(2)
+  view.live.close()
+})
+
 test('text the watched tab copies reaches the viewer', () => {
   const copied: string[] = []
   const view = session({ onClipboard: (text) => copied.push(text) })

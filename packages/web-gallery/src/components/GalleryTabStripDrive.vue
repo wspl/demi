@@ -153,7 +153,6 @@ const count = computed(() => ids().length)
         :tabs="tabs"
         :active-id="activeId"
         @select="activeId = $event"
-        @add-browser="openPage"
         @close-tabs="closeTabs"
         @close="reset"
       >
