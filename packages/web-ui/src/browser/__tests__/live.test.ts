@@ -293,6 +293,19 @@ test('a view the module ended and the socket then closed opens again once', asyn
   view.live.close()
 })
 
+test('a picture ends the notice that capture failed, and no other', () => {
+  const view = session()
+  view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
+  view.receive(moduleFrame({ type: 'stream', tab: TAB.id, generation: 1, width: 1600, height: 1200 }))
+  view.receive(moduleFrame({ type: 'notice', code: 'capture_failed', message: 'the capture extension did not connect' }))
+  expect(view.live.state.notice?.code).toBe('capture_failed')
+  view.receive(video(TAB.id, 1, 1, true, [0, 0, 0, 1]))
+  expect(view.live.state.notice).toBeNull()
+  view.receive(moduleFrame({ type: 'notice', code: 'input_failed', message: 'the page went away' }))
+  view.receive(video(TAB.id, 1, 2, false, [0, 0, 0, 1]))
+  expect(view.live.state.notice?.code).toBe('input_failed')
+})
+
 test('text the watched tab copies reaches the viewer', () => {
   const copied: string[] = []
   const view = session({ onClipboard: (text) => copied.push(text) })
