@@ -204,7 +204,10 @@ stream is open. The input pipe ending ends the invocation's
 input; the invocation's completion ends the output pipe, which is how the
 backend learns the stream is over; a pipe failing or the connection to the
 backend closing cancels the invocation. The runner reports each pipe end with `pipe_done` like any other
-pipe. Like a network stream, the service stream is generic mechanism: the
+pipe. When the invocation completes, the runner also sends `service_done` with
+the stream, the invocation's exit code and the bounded tail of its standard
+error: a one-shot call has no page to tell, so its caller learns a failure
+and its words from this message, not from a stream that merely ended. Like a network stream, the service stream is generic mechanism: the
 runner does not parse what flows through it. The backend uses it for the
 [live browser view](browser-live-view.md).
 
@@ -222,14 +225,25 @@ with a time, a source and, when the work belongs to one, a conversation id.
 | --- | --- |
 | `runner` | Connecting and losing the backend, starting and stopping services, opening, refusing and ending streams, failed Host operations, guest boot |
 | `service:<package>` | Every line a resident service writes to its standard error, as it arrives |
-| `stream:<name>` | The standard error of a [service stream](#service-streams)'s invocation |
+| `stream:<operation>` | The standard error of a [service stream](#service-streams)'s invocation, for example `stream:browser.live` |
 
 - The log is bounded: two files of 4 MiB, the older replaced when the newer
   fills. It outlives a runner restart and, on a Cloud, a stop and a wake; a
-  reset starts it again.
-- A `log_read` request returns lines after a cursor, up to a limit, optionally
-  of one source, with the cursor to continue from. It reads the files and
-  waits for nothing. The backend serves it as the
+  reset starts it again. A paired device keeps it in `log/` under its
+  installation state. A managed guest's state directory is temporary, so the
+  guest keeps it in `/var/log/demi`, on the
+  [system layer](managed-hosts.md#images).
+- Writing never holds up the work it describes: a source queues its lines and
+  one writer owns the files. A line the queue has no room for is dropped and
+  counted, and a write the disk refuses loses that line alone.
+- A `log_read` request returns lines after a cursor, up to a limit of 1000,
+  optionally of one source; `log_lines` answers with the lines oldest first
+  and the cursor to continue from, or `log_error` when the files cannot be
+  read. Without a cursor the answer ends at the newest line. The cursor is a
+  line number that grows across both files and across restarts; one whose
+  lines are gone, or that comes from a log a reset removed, continues from
+  the oldest line still kept. The request reads the files and waits for
+  nothing, not even a line still queued. The backend serves it as the
   [device log route](web-api.md#device-log).
 - What a source writes is diagnostics: what it tried and why it failed. Page
   content, typed text, cookies, tokens and file contents never go to the log.
