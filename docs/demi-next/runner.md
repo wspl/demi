@@ -187,7 +187,8 @@ what flows through it. The backend uses it for the public relay of
 A `service_open` request asks the runner to open a
 [user stream](native-runtime.md#user-streams) and carry its bytes both ways.
 It names the stream, its [command context](native-runtime.md#command-context),
-the declared package and operation, the conversation's directory, which
+the declared package and operation, optional `args` and `json` that the
+invocation receives as a command's does, the conversation's directory, which
 becomes the invocation's `cwd`, and two pipes ([Pipes and output](#pipes-and-output)): `input`, whose bytes the
 runner delivers to the invocation as input chunks when the operation asks for
 them, and `output`, into which it writes the invocation's standard output. Its

@@ -386,6 +386,14 @@ service. Its [command context](#command-context) names the conversation and
 a `user` caller, with the user's locale. Its `cwd` is the conversation's
 directory and its environment is empty.
 
+The same mechanism serves a one-shot user call: the backend opens a service
+stream on an operation that finishes by itself, passes the operation's `args`
+as a command's invocation does, asks for its JSON result, sends no input, and
+reads the output to its end. The
+[conversation browser tab routes](web-api.md#conversation-browser-tabs) call
+`browser.tabs`, `browser.open` and `browser.close` this way, so a tab the user
+opens is the tab the agent's `open` would have made, created by `user`.
+
 The invocation's input is the bytes the page sends and its output is the bytes
 the page receives. The operation frames its own messages; the runner and the
 backend forward bytes without reading them. The stream ends when either side
