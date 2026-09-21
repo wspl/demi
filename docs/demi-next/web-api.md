@@ -27,7 +27,8 @@ Partial conversation mutations use the explicit outcomes described below.
 | Working tree | `GET /conversations/:id/changes`, `GET /conversations/:id/changes/file?path=...`, `GET /conversations/:id/changes/raw?path=...&download=true\|false` |
 | User streams | `WS /conversations/:id/streams/:name` opens a declared [user stream](#user-streams); `POST /conversations/:id/activity` reports a user operation |
 | Work panel | `GET/PUT /conversations/:id/panel` reads and saves the [work panel's state](#work-panel-state) |
-| Conversation browser | `GET/POST /conversations/:id/browser/tabs`, `DELETE /conversations/:id/browser/tabs/:tab`; see [Conversation browser tabs](#conversation-browser-tabs) |
+| Conversation browser | `GET/POST /conversations/:id/browser/tabs`, `DELETE /conversations/:id/browser/tabs/:tab`, `POST /conversations/:id/browser/tabs/:tab/navigate { url }`, `POST /conversations/:id/browser/tabs/:tab/history { action }`; see [Conversation browser tabs](#conversation-browser-tabs) |
+| Device log | `GET /devices/:id/log?since=<cursor>&limit=<n>&source=<source>` reads the [Host's log](runner.md#host-log) |
 | Sidebar | `POST /sidebar/reorder { kind, id, beforeId }` |
 | Models | `GET /models?refresh=true\|false` returns the account-wide catalog |
 | Providers | `GET /providers/catalog`, `GET/POST /providers`, `PATCH/DELETE /providers/:id`, `GET /providers/:id/status`, `POST /providers/:id/test`, `POST /providers/:id/quota`; account routes below |
@@ -185,10 +186,11 @@ read and refuse the save with 409 `conversation_archived`.
 
 ## Conversation browser tabs
 
-These routes are how the page opens, closes and lists the tabs of the
-[conversation browser](browser.md) on the conversation's main Host. Each runs
-the operation the agent's command runs, `browser.tabs`, `browser.open` or
-`browser.close`, with a `user` caller, as a
+These routes are how the page lists, opens, closes and navigates the tabs of
+the [conversation browser](browser.md) on the conversation's main Host. Each
+runs the operation the agent's command runs, `browser.tabs`, `browser.open`,
+`browser.close`, `browser.goto`, `browser.back`, `browser.forward` or
+`browser.reload`, with a `user` caller, as a
 [one-shot user call](native-runtime.md#user-streams) through the
 conversation's [host access](sessions-and-targets.md#host-operations).
 What happens inside a tab travels on the [`browser` user stream](#user-streams).
@@ -198,10 +200,23 @@ What happens inside a tab travels on the [`browser` user stream](#user-streams).
 | `GET …/browser/tabs` | Returns `{ running, tabs: [{ id, title, url, createdBy }] }` | Is not woken: answers `{ running: false, tabs: [] }` |
 | `POST …/browser/tabs { url? }` | Opens a tab, starting the environment when needed, and returns the tab; `url` defaults to `about:blank` | Is woken: opening a tab is ordinary demand |
 | `DELETE …/browser/tabs/:tab` | Closes the tab and answers 204, also when the browser no longer has it | Is not woken: answers 204 |
+| `POST …/browser/tabs/:tab/navigate { url }` | Loads the URL in the tab and returns the tab | Is not woken: answers 409 `host_stopped` |
+| `POST …/browser/tabs/:tab/history { action }` | `back`, `forward` or `reload`; returns the tab | Is not woken: answers 409 `host_stopped` |
 
-Refusals follow the user stream's: 409 `conversation_archived`,
+A tab the browser does not have answers 404 `tab_not_found`. Other refusals follow the user stream's: 409 `conversation_archived`,
 `device_offline` and `conversation_busy`, and 502 `browser_failed` with the
 operation's own code and message when the browser refuses or cannot start.
+
+## Device log
+
+`GET /api/devices/:id/log` returns lines of the [Host's log](runner.md#host-log)
+for a device the user owns, the user's Cloud included:
+`{ lines: [{ at, source, conversationId?, text }], next }`, oldest first.
+`since` is the `next` of an earlier answer; without it the answer ends at the
+newest line. `limit` defaults to 200 and is at most 1000. `source` keeps only
+the lines of one source. The route wakes nothing: a stopped Cloud or an offline
+device answers 409 as [Host operations](sessions-and-targets.md#host-operations)
+do, and its log is read when it runs again, since the log outlives a restart.
 
 ## Exposes
 
