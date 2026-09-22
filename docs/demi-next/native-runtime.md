@@ -539,8 +539,8 @@ execution-surface verification follow the
 ### Publish artifacts before enabling commands
 
 The backend artifact module, `packages/backend/src/runner/artifacts/`, owns S3
-and OSS publication through separate adapters. Before accepting application
-requests, the module completes these steps:
+publication. S3 is the only supported object-storage protocol. Before accepting
+application requests, the module completes these steps:
 
 1. Validate every release's descriptor, sizes, and hashes.
 2. Upload missing content-addressed blobs. Bound upload concurrency and suppress
@@ -575,16 +575,9 @@ against the configuration file's directory.
 ```
 
 S3 uses the AWS SDK credential provider chain and verifies SHA-256 upload
-checksums. Its configuration also accepts `forcePathStyle`.
-
-OSS uses `"provider": "oss"`, bucket, and region. It reads these credentials:
-
-- `ALIBABA_CLOUD_ACCESS_KEY_ID`
-- `ALIBABA_CLOUD_ACCESS_KEY_SECRET`
-- `ALIBABA_CLOUD_SECURITY_TOKEN` (optional)
-
-OSS verifies MD5 upload checksums and retains the descriptor's SHA-256 in metadata.
-Both adapters accept an optional HTTPS endpoint.
+checksums. Its configuration also accepts `forcePathStyle` and an optional HTTPS
+endpoint. An S3-compatible service must support the conditional writes, SHA-256
+checksums, metadata, and presigned GET requests required by publication.
 
 Backend assembly injects `nativeCommands: { packages, resolveArtifact }` into
 `createBackend`. Cross-host commands receive the calling session's catalog.
