@@ -20,9 +20,8 @@ version's `manifest.json`, which gives each platform's byte size and SHA-256,
 and keeps the answer for a while (hours, not requests); **Check for updates**
 reads it again at once.
 
-An entry can be **held** at one version instead, for the day a new CLI breaks
-what Demi expects of it. Holding is the only version a provider entry stores,
-and it is the exception: a held entry says so wherever its version is shown.
+Demi always follows the official newest release; provider entries store no
+CLI version and expose no version-selection or update-disable setting.
 The provider package names the newest version it was tested with; a newer one
 in use is worth a note in settings and a line in a failure report, never a
 refusal.
@@ -139,15 +138,7 @@ is the result of the action that asked, and an install that failed after an
 account was added does not undo the account: the settings page shows the
 account as added and the CLI as not installed, with **Install** to try again.
 
-Settings show, for a Claude Code entry: the vendor's newest version, whether
-the entry is held, and the version the user's Cloud has when it can be asked
-now.
-
-## Implementation limits
-
-None of this is implemented. The CLI is whatever `claude` the execution target
-has on `PATH`; nothing installs, verifies, reports or updates it, and
-**Test connection** is refused for this provider. The release scripts build and
-publish one crate (`demi-commands`); carrying a second package needs them to
-take the crate as a parameter. The runtime catalog, `service_open` and
-`DEMI_NATIVE_CONFIG.releases` already handle several packages.
+Settings show, for a Claude Code entry, the vendor's newest version and the
+version the user's Cloud has when it can be asked now. Updates are automatic;
+**Check for updates** refreshes the release information, and **Install** retries
+a failed installation.

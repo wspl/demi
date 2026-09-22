@@ -213,7 +213,7 @@ function checkCli(p: SettingsProviderEntry) {
   cliChecking.value = p.id
   window.setTimeout(() => {
     cliChecking.value = null
-    if (p.cli && !p.cli.held) {
+    if (p.cli) {
       p.cli.newest = { version: '2.1.279' }
     }
   }, 1200)
@@ -227,15 +227,9 @@ function installCli(p: SettingsProviderEntry) {
   window.setTimeout(() => {
     if (p.cli && 'version' in p.cli.newest) {
       p.cli.install = { state: 'installed' }
-      p.cli.machines[0]!.versions = [p.cli.held ?? p.cli.newest.version]
+      p.cli.machines[0]!.versions = [p.cli.newest.version]
     }
   }, 2000)
-}
-
-function holdCli(p: SettingsProviderEntry, version: string | null) {
-  if (p.cli) {
-    p.cli.held = version
-  }
 }
 
 function activateAccount(p: SettingsProviderEntry, id: string) {
@@ -413,7 +407,6 @@ function closeLogin() {
     @refresh-usage="refreshUsage"
     @check-cli="checkCli"
     @install-cli="installCli"
-    @hold-cli="holdCli"
     @activate-account="activateAccount"
     @remove-account="removeAccount"
     :save-model="saveModel"
