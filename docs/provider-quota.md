@@ -219,9 +219,11 @@ Guidance:
    Snapshot updates and ordinary rerenders do not trigger another probe. The shared
    `web-ui` quota display owns the visibility trigger and its quota refresh cache
    owns the TTL policy; the host supplies requests and retains that cache across views.
-3. Keep the last snapshot during refresh and on failure. Automatic failures stay
-   quiet and do not retry while the region remains visible. A manual Refresh usage
-   action bypasses the TTL and reports failure. Concurrent requests for the same
+3. Keep the last snapshot during refresh and on failure. Automatic requests run
+   silently, including on failure, and do not retry while the region remains visible.
+   A manual Refresh usage action bypasses the TTL and reports failure. If an automatic
+   request is already running, the manual action joins it and receives its outcome.
+   Concurrent requests for the same
    provider/account are coalesced; different accounts refresh independently. Closing
    a view lets its request finish and update the account cache; signing out or
    disposing the application cancels pending requests and clears the TTL cache. Adding an account relies on

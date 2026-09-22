@@ -105,6 +105,8 @@ export interface SettingsQuotaWindow {
   resets: string | null
 }
 
+export type SettingsQuotaRefresh = 'automatic' | 'manual'
+
 export interface SettingsProviderAccount {
   id: string
   label: string
