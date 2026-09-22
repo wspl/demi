@@ -4,6 +4,7 @@ import { useSession } from '../auth/session'
 import { z } from 'zod'
 import { SerialQueue } from '@demicodes/utils'
 import { reportError } from '@demicodes/web-ui/infra/errors'
+import { createQuotaRefreshCache } from '@demicodes/web-ui/settings/quota-refresh'
 import type { ProviderLoginPhase } from '@demicodes/web-ui/settings/types'
 import {
   defaultApiVendors,
@@ -35,6 +36,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   const manualDrafts = ref<Record<string, SettingsProviderModel[]>>({})
   const operations = ref<Record<string, SettingsProviderOperation>>({})
   const refreshingUsage = ref<Record<string, string[]>>({})
+  const quotaRefreshCache = createQuotaRefreshCache()
   const testing = computed(
     () =>
       Object.keys(operations.value).find(
@@ -593,7 +595,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     accountId: string,
     automatic = false,
   ): Promise<void> {
-    if (refreshingUsage.value[provider.id]?.includes(accountId)) {
+    if (refreshingUsage.value[provider.id]?.includes(accountId)
+      || (automatic && quotaRefreshCache.isFresh(provider.id, accountId))) {
       return
     }
     const current = lifetime
@@ -604,6 +607,9 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     } finally {
       if (current === lifetime) {
         const pending = refreshingUsage.value[provider.id]!
+        if (!current.signal.aborted) {
+          quotaRefreshCache.record(provider.id, accountId)
+        }
         pending.splice(pending.indexOf(accountId), 1)
         if (!pending.length) {
           delete refreshingUsage.value[provider.id]
@@ -870,11 +876,13 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       testResults.value = {}
       operations.value = {}
       refreshingUsage.value = {}
+      quotaRefreshCache.clear()
     },
   )
 
   onScopeDispose(() => {
     lifetime.abort()
+    quotaRefreshCache.clear()
     cancelLogin()
   })
 

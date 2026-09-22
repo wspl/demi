@@ -209,18 +209,22 @@ const probed = await provider.quota?.probe({ force: true })
 Guidance:
 
 1. Prefer **observation** during active chat (zero extra cost when headers/body carry windows).
-2. Every surface that displays an account's quota requests one fresh **free probe** when
-   that quota region becomes visible, including when no snapshot exists yet. Opening
-   settings, returning to a provider, or scrolling an account back into view refreshes
-   the displayed accounts. Snapshot updates and ordinary rerenders do not trigger
-   another probe. The shared `web-ui` quota display owns this visibility trigger;
-   its host supplies the request and state.
+2. Every surface that displays an account's quota checks a **one-minute TTL** when
+   that quota region becomes visible, including when no snapshot exists yet. Only an
+   account with no completed request or an expired TTL starts a new **free probe**.
+   Opening settings, returning to a provider, or scrolling an account back into view
+   reuses the result within that minute. The TTL starts when a request completes,
+   including a failed request, so switching views cannot repeatedly hit a failing
+   vendor. It is shared by provider/account across views in the current app session.
+   Snapshot updates and ordinary rerenders do not trigger another probe. The shared
+   `web-ui` quota display owns the visibility trigger and its quota refresh cache
+   owns the TTL policy; the host supplies requests and retains that cache across views.
 3. Keep the last snapshot during refresh and on failure. Automatic failures stay
    quiet and do not retry while the region remains visible. A manual Refresh usage
-   action remains available and reports failure. Concurrent requests for the same
+   action bypasses the TTL and reports failure. Concurrent requests for the same
    provider/account are coalesced; different accounts refresh independently. Closing
    a view lets its request finish and update the account cache; signing out or
-   disposing the application cancels pending requests. Adding an account relies on
+   disposing the application cancels pending requests and clears the TTL cache. Adding an account relies on
    its newly visible quota region, rather than issuing a second sign-in probe.
    Providers without a free probe only display observations until an explicit request.
 4. Do not poll `probe()` on a timer; use observations and visibility-triggered probes.
