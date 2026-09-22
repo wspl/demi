@@ -52,6 +52,11 @@ async function released(tabId) {
 
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (sender.id !== chrome.runtime.id) return false;
+  if (message.type === 'reset') {
+    respond({});
+    chrome.runtime.reload();
+    return false;
+  }
   const work = message.type === 'grant'
     ? tabOf(message.target).then(async tabId => ({ tabId, streamId: await streamId(tabId) }))
     : message.type === 'released'

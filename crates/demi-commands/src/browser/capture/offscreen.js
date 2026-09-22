@@ -84,6 +84,16 @@ async function open(message) {
         maxFrameRate: message.fps,
       },
     },
+  }).catch(error => {
+    // Chrome can retain a pending tabCapture request after getUserMedia aborts.
+    // There is no track or API to cancel that grant; unloading this extension
+    // clears Chrome's registry without replacing the user's tabs or documents.
+    if (error.name === 'AbortError') {
+      // Reload also closes the response port; the Host observes socket loss.
+      void ask({ type: 'reset' }).catch(error => console.warn(error));
+      socket.close();
+    }
+    throw error;
   });
   const track = stream.getVideoTracks()[0];
   track.contentHint = 'detail';
@@ -159,16 +169,10 @@ function encode(state) {
   state.nextEncode = Math.max(state.nextEncode + 1000 / state.fps, performance.now());
 }
 
-async function start(message, attempt = 0) {
+async function start(message) {
+  if (socket.readyState !== WebSocket.OPEN) return;
   await stop(message.capture);
-  let source;
-  try {
-    source = await open(message);
-  } catch (error) {
-    if (attempt >= 2) throw error;
-    await new Promise(resolve => setTimeout(resolve, 500));
-    return start(message, attempt + 1);
-  }
+  const source = await open(message);
   const state = {
     ...source,
     id: message.capture,
@@ -188,6 +192,11 @@ async function start(message, attempt = 0) {
     captured: 0,
   };
   captures.set(state.id, state);
+  // The socket may have closed while Chrome was opening this media source.
+  if (socket.readyState !== WebSocket.OPEN) {
+    await stop(state.id);
+    return;
+  }
   state.timer = setInterval(() => {
     try {
       encode(state);
@@ -221,17 +230,18 @@ async function start(message, attempt = 0) {
     }
   })();
   // A page that stopped painting before capture began delivers no frame:
-  // the module forces a repaint, and a second silence restarts the capture.
+  // the module forces a repaint, and owns retry after a second silence.
   state.watchdog = setTimeout(() => {
     if (captures.get(state.id) !== state || state.captured) return;
     send({ type: 'stalled', capture: state.id });
     state.watchdog = setTimeout(() => {
       if (captures.get(state.id) !== state || state.captured) return;
-      if (attempt >= 2) {
+      tasks = tasks.then(async () => {
+        // A stop queued before this failure may already have retired it.
+        if (captures.get(state.id) !== state) return;
         fail(state.id, 'tab capture produced no frames');
-        return;
-      }
-      tasks = tasks.then(() => start(message, attempt + 1)).catch(error => fail(message.capture, error));
+        await stop(state.id);
+      }).catch(error => fail(message.capture, error));
     }, 2000);
   }, 1500);
   send({ type: 'started', capture: state.id });

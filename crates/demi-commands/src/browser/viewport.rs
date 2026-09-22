@@ -2,18 +2,48 @@
 //! decides it, its size in CSS pixels, and the pixel ratio the page renders at.
 
 use chromiumoxide::{
+    Page,
     cdp::browser_protocol::{
         browser::{Bounds, GetWindowForTargetParams, SetWindowBoundsParams},
         emulation::{
             GetScreenInfosParams, ScreenId, SetDeviceMetricsOverrideParams,
             SetTouchEmulationEnabledParams, SetUserAgentOverrideParams, UserAgentMetadata,
         },
+        page::{CaptureScreenshotFormat, CaptureScreenshotParams},
     },
     types::{Command, Method, MethodId},
 };
 use serde_json::{Value, json};
 
 use super::{BrowserError, BrowserTab, Result, launch::WINDOW_CHROME_HEIGHT};
+
+/// Flush this page's layout to Chrome's painted view without resizing it.
+pub(super) async fn paint(page: &Page) -> Result<()> {
+    // View snapshots force a redraw without the surface screenshot's temporary
+    // device-emulation changes. The low-quality image is only a paint barrier.
+    let result = page
+        .execute(
+            CaptureScreenshotParams::builder()
+                .format(CaptureScreenshotFormat::Jpeg)
+                .quality(1)
+                .from_surface(false)
+                .capture_beyond_viewport(false)
+                .build(),
+        )
+        .await;
+    match result {
+        Ok(_) => Ok(()),
+        // Chrome reports an empty native-view snapshot for a background macOS
+        // tab only after its ForceRedraw callback. Painting is complete; this
+        // barrier does not need the image. Earlier protocol failures still fail.
+        Err(chromiumoxide::error::CdpError::Chrome(error))
+            if error.code == -32000 && error.message == "Unable to capture screenshot" =>
+        {
+            Ok(())
+        }
+        Err(error) => Err(error.into()),
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) enum Mode {
@@ -198,6 +228,9 @@ impl BrowserTab {
             touch.max_touch_points = mobile.then_some(5);
             self.page.execute(touch).await?;
         }
+        // Resizing the native window after the emulated viewport can leave
+        // macOS capture letterboxed at the old size, with mismatched input.
+        self.fit_window(viewport).await?;
         self.page
             .execute(SetDeviceMetricsOverrideParams::new(
                 i64::from(viewport.width),
@@ -206,7 +239,9 @@ impl BrowserTab {
                 mobile,
             ))
             .await?;
-        self.fit_window(viewport).await?;
+        // Metrics acknowledgement can precede the compositor's resized surface.
+        // Publish only after it has painted, so capture cannot scale the old one.
+        paint(&self.page).await?;
         self.state.viewport.send_modify(|viewports| {
             viewports.current = viewport;
             if viewport.mode == Mode::Web {

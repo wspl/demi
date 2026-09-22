@@ -391,7 +391,9 @@ stream on an operation that finishes by itself, passes the operation's `args`
 as a command's invocation does, asks for its JSON result, sends no input, and
 reads the output to its end. A call whose invocation exits nonzero fails with
 what the operation wrote to its standard error, which a JSON invocation writes
-as `{ error: { code, message, details } }`
+as `{ error: { code, message, details } }`. The failure also retains the bounded
+standard output, so a package whose contract puts its error document there can
+validate and report it without losing its cause
 ([Service streams](runner.md#service-streams)). The
 [conversation browser tab routes](web-api.md#conversation-browser-tabs) call
 `browser.tabs`, `browser.open` and `browser.close` this way, so a tab the user
