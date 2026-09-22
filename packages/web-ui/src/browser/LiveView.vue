@@ -251,7 +251,7 @@ watch(() => props.tab.id, (id) => {
   <div ref="frame" class="relative min-h-0 flex-1 overflow-hidden bg-surface-base">
     <canvas
       ref="canvas"
-      class="absolute origin-top-left"
+      class="absolute origin-top-left object-contain"
       :style="{
         left: `${placement.left}px`,
         top: `${placement.top}px`,
