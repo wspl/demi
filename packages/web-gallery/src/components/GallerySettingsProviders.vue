@@ -181,13 +181,17 @@ const usageTimers = ref<Record<string, Record<string, number>>>({})
 const refreshingUsage = computed(() => Object.fromEntries(
   Object.entries(usageTimers.value).map(([id, accounts]) => [id, Object.keys(accounts)]),
 ))
-function refreshUsage(p: SettingsProviderEntry, accountId: string) {
+function refreshUsage(p: SettingsProviderEntry, accountId: string, automatic = false) {
+  if (automatic && s.value.quotaRefreshCache.isFresh(p.id, accountId)) {
+    return
+  }
   usageTimers.value[p.id] ??= {}
   const timers = usageTimers.value[p.id]!
   if (timers[accountId] !== undefined) {
     return
   }
   timers[accountId] = window.setTimeout(() => {
+    s.value.quotaRefreshCache.record(p.id, accountId)
     delete timers[accountId]
     if (!Object.keys(timers).length) {
       delete usageTimers.value[p.id]

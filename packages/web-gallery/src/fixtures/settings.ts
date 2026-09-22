@@ -1,4 +1,5 @@
 import { reactive } from 'vue'
+import { createQuotaRefreshCache } from '@demicodes/web-ui/settings/quota-refresh'
 import type { ExposeMenuEntry } from '@demicodes/web-ui/hosts/types'
 import type {
   SettingsMcpServer,
@@ -543,6 +544,7 @@ export function mockProviders(): MockProvider[] {
 
 export function createSettingsState() {
   return reactive({
+    quotaRefreshCache: createQuotaRefreshCache(),
     general: {
       language: 'English',
       theme: 'system' as 'light' | 'dark' | 'system',
