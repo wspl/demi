@@ -136,7 +136,7 @@ test('quota refreshes coalesce per account and do not block other accounts or ed
     JSON.stringify({ credentialId: 'first' }),
     JSON.stringify({ credentialId: 'second' }),
   ])
-  expect(settings.refreshingUsage.configured).toEqual(['first', 'second'])
+  expect(settings.refreshingUsage.configured).toEqual({ first: 'automatic', second: 'automatic' })
   settings.change(provider, { name: 'While refreshing' })
   await idle()
   expect(writes).toBe(1)
@@ -198,6 +198,28 @@ test('automatic quota failures stay quiet; manual retries explain the error', as
   expect(requests).toBe(1)
   await settings.refreshUsage(provider, 'first')
   expect(requests).toBe(2)
+  expect(toasts.at(-1)).toMatchObject({ title: 'Could not refresh usage', message: 'Billing unavailable' })
+})
+
+test('a manual refresh joins an automatic request and shows its pending state and failure', async () => {
+  const settings = useProviderSettings()
+  const provider = settings.providers.find((entry) => entry.id === 'configured')!
+  const deferred = Promise.withResolvers<Response>()
+  let requests = 0
+  probe = () => {
+    requests++
+    return deferred.promise
+  }
+  const automatic = settings.refreshUsage(provider, 'first', true)
+  expect(settings.refreshingUsage.configured?.first).toBe('automatic')
+  await settings.refreshUsage(provider, 'first')
+  expect(settings.refreshingUsage.configured?.first).toBe('manual')
+  await settings.refreshUsage(provider, 'first', true)
+  expect(settings.refreshingUsage.configured?.first).toBe('manual')
+  expect(requests).toBe(1)
+  deferred.resolve(Response.json({ code: 'quota_unavailable', message: 'Billing unavailable' }, { status: 502 }))
+  await automatic
+  expect(settings.refreshingUsage).toEqual({})
   expect(toasts.at(-1)).toMatchObject({ title: 'Could not refresh usage', message: 'Billing unavailable' })
 })
 

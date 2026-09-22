@@ -13,6 +13,7 @@ import {
 import {
   WIRE_API_LABELS,
   type SettingsModelDraft,
+  type SettingsQuotaRefresh,
   type SettingsModelEditor,
   type SettingsProviderCli,
   type SettingsProviderEntry,
@@ -35,7 +36,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   const edits = ref<Record<string, Partial<SettingsProviderEntry>>>({})
   const manualDrafts = ref<Record<string, SettingsProviderModel[]>>({})
   const operations = ref<Record<string, SettingsProviderOperation>>({})
-  const refreshingUsage = ref<Record<string, string[]>>({})
+  const refreshingUsage = ref<Record<string, Record<string, SettingsQuotaRefresh>>>({})
   const quotaRefreshCache = createQuotaRefreshCache()
   const testing = computed(
     () =>
@@ -491,32 +492,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     })
   }
 
-  /**
-   * Asks the vendor for one account's usage (`provider-quota.md` § Guidance).
-   * The user's button says why it could not; the probe Demi makes by itself,
-   * when its quota becomes visible, stays quiet: the account works either way.
-   */
-  async function loadUsage(
-    providerId: string,
-    credentialId: string,
-    signal: AbortSignal,
-    quiet: boolean,
-  ): Promise<void> {
-    try {
-      await apiRequest(`/providers/${encodeURIComponent(providerId)}/quota`, {
-        method: 'POST',
-        signal,
-        ...jsonBody({ credentialId }),
-      })
-      signal.throwIfAborted()
-      await product.refresh()
-    } catch (error) {
-      if (!quiet && !signal.aborted) {
-        reportError('Could not refresh usage', error, { userVisible: true })
-      }
-    }
-  }
-
   const cliSchema = z.object({
     newest: z.union([z.object({ version: z.string() }), z.object({ error: z.string() })]),
     install: z.union([
@@ -595,23 +570,39 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     accountId: string,
     automatic = false,
   ): Promise<void> {
-    if (refreshingUsage.value[provider.id]?.includes(accountId)
-      || (automatic && quotaRefreshCache.isFresh(provider.id, accountId))) {
+    if (refreshingUsage.value[provider.id]?.[accountId]) {
+      if (!automatic) {
+        refreshingUsage.value[provider.id]![accountId] = 'manual'
+      }
+      return
+    }
+    if (automatic && quotaRefreshCache.isFresh(provider.id, accountId)) {
       return
     }
     const current = lifetime
-    refreshingUsage.value[provider.id] ??= []
-    refreshingUsage.value[provider.id]!.push(accountId)
+    refreshingUsage.value[provider.id] ??= {}
+    refreshingUsage.value[provider.id]![accountId] = automatic ? 'automatic' : 'manual'
     try {
-      await loadUsage(provider.id, accountId, current.signal, automatic)
+      await apiRequest(`/providers/${encodeURIComponent(provider.id)}/quota`, {
+        method: 'POST',
+        signal: current.signal,
+        ...jsonBody({ credentialId: accountId }),
+      })
+      current.signal.throwIfAborted()
+      await product.refresh()
+    } catch (error) {
+      // Automatic refresh stays silent unless the user explicitly joins it.
+      if (!current.signal.aborted && refreshingUsage.value[provider.id]?.[accountId] === 'manual') {
+        reportError('Could not refresh usage', error, { userVisible: true })
+      }
     } finally {
       if (current === lifetime) {
         const pending = refreshingUsage.value[provider.id]!
         if (!current.signal.aborted) {
           quotaRefreshCache.record(provider.id, accountId)
         }
-        pending.splice(pending.indexOf(accountId), 1)
-        if (!pending.length) {
+        delete pending[accountId]
+        if (!Object.keys(pending).length) {
           delete refreshingUsage.value[provider.id]
         }
       }

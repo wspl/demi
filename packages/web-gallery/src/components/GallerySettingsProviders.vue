@@ -12,6 +12,7 @@ import SettingsProvidersPage from '@demicodes/web-ui/settings/SettingsProvidersP
 import {
   WIRE_API_LABELS,
   type SettingsModelDraft,
+  type SettingsQuotaRefresh,
   type SettingsProviderEntry,
   type SettingsProviderOperation,
   type SettingsProviderModel,
@@ -177,9 +178,11 @@ const operations = computed<Record<string, SettingsProviderOperation>>(() =>
       }
     : {},
 )
-const usageTimers = ref<Record<string, Record<string, number>>>({})
+const usageTimers = ref<Record<string, Record<string, { timer: number; trigger: SettingsQuotaRefresh }>>>({})
 const refreshingUsage = computed(() => Object.fromEntries(
-  Object.entries(usageTimers.value).map(([id, accounts]) => [id, Object.keys(accounts)]),
+  Object.entries(usageTimers.value).map(([id, accounts]) => [id, Object.fromEntries(
+    Object.entries(accounts).map(([accountId, request]) => [accountId, request.trigger]),
+  )]),
 ))
 function refreshUsage(p: SettingsProviderEntry, accountId: string, automatic = false) {
   if (automatic && s.value.quotaRefreshCache.isFresh(p.id, accountId)) {
@@ -187,24 +190,31 @@ function refreshUsage(p: SettingsProviderEntry, accountId: string, automatic = f
   }
   usageTimers.value[p.id] ??= {}
   const timers = usageTimers.value[p.id]!
-  if (timers[accountId] !== undefined) {
+  const pending = timers[accountId]
+  if (pending) {
+    if (!automatic) {
+      pending.trigger = 'manual'
+    }
     return
   }
-  timers[accountId] = window.setTimeout(() => {
-    s.value.quotaRefreshCache.record(p.id, accountId)
-    delete timers[accountId]
-    if (!Object.keys(timers).length) {
-      delete usageTimers.value[p.id]
-    }
-    for (const window of p.accounts.find((account) => account.id === accountId)?.quota ?? []) {
-      window.used = Math.min(window.max, window.used + 1)
-    }
-  }, 1200)
+  timers[accountId] = {
+    trigger: automatic ? 'automatic' : 'manual',
+    timer: window.setTimeout(() => {
+      s.value.quotaRefreshCache.record(p.id, accountId)
+      delete timers[accountId]
+      if (!Object.keys(timers).length) {
+        delete usageTimers.value[p.id]
+      }
+      for (const window of p.accounts.find((account) => account.id === accountId)?.quota ?? []) {
+        window.used = Math.min(window.max, window.used + 1)
+      }
+    }, 1200),
+  }
 }
 onScopeDispose(() => {
   for (const accounts of Object.values(usageTimers.value)) {
-    for (const timer of Object.values(accounts)) {
-      window.clearTimeout(timer)
+    for (const request of Object.values(accounts)) {
+      window.clearTimeout(request.timer)
     }
   }
 })

@@ -45,6 +45,7 @@ import SettingsSplit from './SettingsSplit.vue'
 import {
   WIRE_API_LABELS,
   type SettingsModelDraft,
+  type SettingsQuotaRefresh,
   type SettingsModelEditor,
   type SettingsProviderEntry,
   type SettingsProviderOperation,
@@ -77,7 +78,7 @@ const props = defineProps<{
   testing?: string | null
   /** The provider whose model list is being fetched. */
   refreshing?: string | null
-  refreshingUsage?: Record<string, string[]>
+  refreshingUsage?: Record<string, Record<string, SettingsQuotaRefresh>>
 }>()
 
 const emit = defineEmits<{
@@ -517,8 +518,8 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                       :icon="RefreshCw"
                       aria-label="Refresh usage"
                       spin-on-click
-                      :spinning="refreshingUsage?.[selected.id]?.includes(account.id)"
-                      :disabled="!!operations?.[selected.id] || refreshingUsage?.[selected.id]?.includes(account.id)"
+                      :spinning="refreshingUsage?.[selected.id]?.[account.id] === 'manual'"
+                      :disabled="!!operations?.[selected.id] || refreshingUsage?.[selected.id]?.[account.id] === 'manual'"
                       @click="emit('refreshUsage', selected, account.id)"
                   /></Tooltip>
                   <!-- The test asks with this account, in use or not; its answer is a toast,

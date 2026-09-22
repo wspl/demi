@@ -89,7 +89,7 @@ const fullNarrowTab = ref<SettingsTab>('skills')
 
       <GallerySection
         title="Full agent settings"
-        note="A stress test: expiring auth, an unreachable local model, a crashed MCP server, a quota nearly spent, disabled entries, nested rows, long paths. Visible accounts reuse usage requests for one minute, including after switching providers or reopening settings. Once expired, displaying the account refreshes it again. Manual refresh bypasses the TTL; existing meters stay visible during refresh."
+        note="A stress test: expiring auth, an unreachable local model, a crashed MCP server, a quota nearly spent, disabled entries, nested rows, long paths. Visible accounts reuse usage requests for one minute. Automatic refresh keeps existing meters and buttons still and enabled. Only a manual refresh spins its button; it bypasses the TTL or joins an automatic request already running."
       >
         <GalleryOverlayWell size="tall">
           <SettingsDialog
