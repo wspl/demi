@@ -7,7 +7,6 @@ import { canonicalJson, NATIVE_TARGETS, nativePackageSchema } from '@demicodes/c
 import { publishPackages, type PackageRelease } from '../runner/artifacts/publish'
 import type { ArtifactStore, ObjectSource } from '../runner/artifacts/store'
 import { S3ArtifactStore } from '../runner/artifacts/s3'
-import { OssArtifactStore } from '../runner/artifacts/oss'
 
 class MemoryStore implements ArtifactStore {
   readonly objects = new Map<string, Buffer>()
@@ -18,7 +17,6 @@ class MemoryStore implements ArtifactStore {
     const body = Buffer.isBuffer(source.body) ? source.body : await readFile(source.body)
     expect(body.length).toBe(source.size)
     expect(createHash('sha256').update(body).digest('hex')).toBe(source.sha256)
-    expect(createHash('md5').update(body).digest('base64')).toBe(source.md5)
     if (this.objects.has(key) && !this.objects.get(key)!.equals(body))
       throw new Error('immutable conflict')
     this.objects.set(key, body)
@@ -94,19 +92,14 @@ test('a development release of fewer targets is not published', async () => {
   } finally { await rm(directory, { recursive: true, force: true }) }
 })
 
-test('S3 and OSS adapters produce HTTPS signed GET URLs without contacting storage', async () => {
+test('S3 adapter produces HTTPS signed GET URLs without contacting storage', async () => {
   const signal = new AbortController().signal
   const s3 = new S3ArtifactStore('fixture', { region: 'us-east-1', credentials: { accessKeyId: 'fixture', secretAccessKey: 'fixture' } })
-  const oss = new OssArtifactStore({ bucket: 'fixture', region: 'oss-cn-hangzhou', accessKeyId: 'fixture', accessKeySecret: 'fixture' })
   try {
     const s3Url = new URL(await s3.signGet('native/blobs/fixture', 300, signal))
-    const ossUrl = new URL(await oss.signGet('native/blobs/fixture', 300, signal))
     expect(s3Url.protocol).toBe('https:')
     expect(s3Url.searchParams.get('X-Amz-Expires')).toBe('300')
-    expect(ossUrl.protocol).toBe('https:')
-    expect(ossUrl.searchParams.has('x-oss-signature')).toBe(true)
   } finally {
     s3.close()
-    oss.close()
   }
 })

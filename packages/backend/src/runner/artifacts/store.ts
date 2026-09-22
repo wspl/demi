@@ -2,7 +2,6 @@ import type { NativeArtifact } from '@demicodes/command-protocol'
 
 export interface ObjectSource extends NativeArtifact {
   body: string | Buffer
-  md5: string
 }
 
 /** Storage belongs to the backend; runner responses contain only signed locations. */
