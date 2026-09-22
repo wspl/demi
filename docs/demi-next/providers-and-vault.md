@@ -212,12 +212,13 @@ Everything else names the account it means:
 |---|---|
 | Inference, model discovery | The active account |
 | Connection test | The account the user chose |
-| Usage probe, plan | The account the user chose |
+| Usage probe, plan | The account whose quota is requested |
 | Token refresh | The account being used |
 
 Usage is therefore known per account and stored with it. Selecting another
 account changes which record inference reads; it clears nothing, and the account
-left behind keeps its usage until someone refreshes it. Removing an account
+left behind keeps its usage until its next observation or
+[quota refresh](../provider-quota.md#6-product-usage). Removing an account
 removes its usage with it. Response-derived usage is written to the account that
 made the request, so a request that outlives a switch cannot credit the wrong
 account.
