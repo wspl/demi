@@ -47,14 +47,10 @@
     "@demicodes/runner-protocol": "workspace:^",
     "@demicodes/shell": "workspace:^",
     "@demicodes/utils": "workspace:^",
-    "ali-oss": "^6.23.0",
     "hono": "^4.13.5",
     "zod": "^4.0.0",
     "@demicodes/command-protocol": "workspace:^",
     "@demicodes/browser-protocol": "workspace:^"
-  },
-  "devDependencies": {
-    "@types/ali-oss": "^6.23.3"
   },
   "license": "Apache-2.0",
   "publishConfig": {

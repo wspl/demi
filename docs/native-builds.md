@@ -111,7 +111,7 @@ use `scripts/native/release-files.ts`: stage every artifact, verify copied size
 and SHA-256, publish once, and refuse conflicting metadata or corrupted existing
 bytes. Failed publication removes its temporary files and leaves the pointer.
 
-Backend `DEMI_NATIVE_CONFIG` selects complete package releases and an S3/OSS
+Backend `DEMI_NATIVE_CONFIG` selects complete package releases and an S3
 store. `DEMI_RUNNER_RELEASE_DIR` selects the runner download directory. See the
 [deployment configuration](demi-next/native-runtime.md#backend-deployment-configuration).
 The backend publishes command artifacts before accepting requests, while runners
