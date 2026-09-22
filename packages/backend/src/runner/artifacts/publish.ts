@@ -33,18 +33,16 @@ async function verify(release: PackageRelease, signal: AbortSignal): Promise<Ver
     if (!expected)
       throw new Error(`Native release lacks a target and cannot be published: ${target}`)
     const hash = createHash('sha256')
-    const md5 = createHash('md5')
     let size = 0
     for await (const bytes of createReadStream(path, { signal })) {
       size += bytes.length
       if (size > expected.size)
         throw new Error(`Native artifact exceeds declared size: ${target}`)
       hash.update(bytes)
-      md5.update(bytes)
     }
     if (size !== expected.size || hash.digest('hex') !== expected.sha256)
       throw new Error(`Native artifact does not match descriptor: ${target}`)
-    artifacts.push({ ...expected, body: path, md5: md5.digest('base64') })
+    artifacts.push({ ...expected, body: path })
   }
   return { descriptor, artifacts }
 }
@@ -78,7 +76,7 @@ export async function publishPackages(releases: readonly PackageRelease[], store
     const descriptor = release.descriptor
     const sha256 = await contentDigest(descriptor)
     const body = Buffer.from(canonicalJson(descriptor))
-    const source = { body, size: body.length, sha256, md5: createHash('md5').update(body).digest('base64') }
+    const source = { body, size: body.length, sha256 }
     await store.putImmutable(`${prefix}/descriptors/${sha256}.json`, source, signal)
     // This is the immutable package/version claim, published last. A conflicting
     // descriptor fails instead of changing which bytes that version names.
