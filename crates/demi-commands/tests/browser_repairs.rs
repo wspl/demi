@@ -368,7 +368,7 @@ async fn action_conditions_shadow_hits_and_shared_wait_states() {
             command(
                 &tab,
                 "click",
-                json!({"css": "#covered-button", "timeout": 500}),
+                json!({"css": "#covered-button", "timeout": 5000}),
             )
             .await,
             "not_actionable",
@@ -386,7 +386,7 @@ async fn action_conditions_shadow_hits_and_shared_wait_states() {
             ("#moving", "stable"),
         ] {
             let failure = error(
-                command(&tab, "click", json!({"css": css, "timeout": 500})).await,
+                command(&tab, "click", json!({"css": css, "timeout": 5000})).await,
                 "not_actionable",
                 "not_started",
             );
@@ -499,7 +499,7 @@ async fn action_conditions_shadow_hits_and_shared_wait_states() {
                 command(
                     &tab,
                     "fill",
-                    json!({"css": css, "text": "x", "timeout": 500}),
+                    json!({"css": css, "text": "x", "timeout": 5000}),
                 )
                 .await,
                 "not_actionable",
@@ -537,6 +537,15 @@ async fn label_text_and_accessible_name_are_distinct_and_ambiguity_is_explicit()
         let tab = browser
             .open(&base, &CancellationToken::new(), TIMEOUT)
             .await?;
+        for role in ["Date", "date", "DATE"] {
+            command(
+                &tab,
+                "fill",
+                json!({"role": role, "name": "Appointment date", "exact": true, "text": "2026-09-28"}),
+            )
+            .await?;
+            assert_eq!(value(&tab, "#date").await?, "2026-09-28");
+        }
         for (label, css) in [
             ("Appointment date", "#date"),
             ("Wrapped date", "#wrapped"),
@@ -1024,12 +1033,13 @@ async fn inspect_keeps_false_values_and_protects_passwords_and_handles_expire() 
 #[ignore = "round two: requires DEMI_TEST_CHROME; launches a real browser"]
 async fn input_and_animation_probes_clean_up_on_cancellation_and_dialogs() {
     with_fixture(|browser, base| async move {
-        let tab = browser.open(&base, &CancellationToken::new(), TIMEOUT).await?;
+        let tab = browser.open(&format!("{base}/#cancel-typing"), &CancellationToken::new(), TIMEOUT).await?;
         let cancel = CancellationToken::new();
         let (typing, ()) = tokio::join!(
             tab.execute("type", json!({"tab": tab.id(), "css": "#text", "text": "x".repeat(10_000), "timeout": 10_000}), &cancel),
             async {
-                tokio::time::sleep(Duration::from_secs(1)).await;
+                let _cancel_on_exit = cancel.clone().drop_guard();
+                tokio::time::timeout(TIMEOUT, reqwest::get(format!("{base}/wait-typing"))).await.unwrap().unwrap();
                 cancel.cancel();
             }
         );
@@ -1044,7 +1054,7 @@ async fn input_and_animation_probes_clean_up_on_cancellation_and_dialogs() {
         let events = tab.read_only("keys", &CancellationToken::new(), TIMEOUT).await?;
         let events = events.as_array().unwrap();
         assert_eq!(events.iter().filter(|event| event["type"] == "keydown" && event["key"] == "Control").count(), events.iter().filter(|event| event["type"] == "keyup" && event["key"] == "Control").count());
-        error(command(&tab, "click", json!({"css": "#moving", "timeout": 500})).await, "not_actionable", "not_started");
+        error(command(&tab, "click", json!({"css": "#moving", "timeout": 5000})).await, "not_actionable", "not_started");
         assert_eq!(tab.read_only("Object.getOwnPropertyNames(document.querySelector('#moving')).filter(name => name.startsWith('probe_'))", &CancellationToken::new(), TIMEOUT).await?, json!([]));
         Ok(())
     }).await;
@@ -1212,7 +1222,14 @@ async fn catalog_cross_origin_frames_scope_focus_and_references() {
         assert_eq!(command(&tab,"read",json!({"ref":input,"property":"value"})).await?["value"],"cross-focus");
         assert_eq!(command(&tab,"eval",json!({"ref":input,"expression":"element.value"})).await?["value"],"cross-focus");
         command(&tab,"click",json!({"frame":[outer],"css":"#cross-button"})).await?;
-        assert_eq!(command(&tab,"read",json!({"frame":[outer],"css":"#cross-button","property":"text"})).await?["value"],"Cross clicked");
+        let clicked = command(&tab,"read",json!({"frame":[outer],"css":"#cross-button","property":"text"})).await?["value"].clone();
+        if clicked != "Cross clicked" {
+            let parent = tab.read_only("JSON.stringify({events:window.pointerEvents,scroll:[scrollX,scrollY]})", &CancellationToken::new(), TIMEOUT).await?;
+            let child = command(&tab,"eval",json!({"frame":[outer],"css":"#cross-button","expression":"JSON.stringify({text:element.textContent,events:element.ownerDocument.defaultView.pointerEvents})"})).await?;
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            let later = command(&tab,"read",json!({"frame":[outer],"css":"#cross-button","property":"text"})).await?;
+            panic!("cross-frame click was not observed: initial={clicked}, parent={parent}, child={child}, later={later}");
+        }
         let logs = command(&tab, "logs", json!({"filter":"cross-frame console","level":["info"]})).await?;
         assert_eq!(logs["entries"].as_array().unwrap().len(), 1);
         click(&tab, "#toggle-frame").await?;
@@ -1235,6 +1252,70 @@ async fn catalog_cross_origin_frames_scope_focus_and_references() {
         error(command(&tab,"read",json!({"ref":input,"property":"value"})).await,"stale_ref","not_started");
         Ok(())
     }).await;
+}
+
+#[tokio::test]
+#[ignore = "requires DEMI_TEST_CHROME; launches a real browser"]
+async fn frame_pointer_actions_wait_for_composited_scroll() {
+    with_fixture(|browser, base| async move {
+        let tab = browser
+            .open(
+                &format!("{base}/catalog-frame"),
+                &CancellationToken::new(),
+                TIMEOUT,
+            )
+            .await?;
+        command(&tab, "wait", json!({"load": "load"})).await?;
+        let outer =
+            command(&tab, "find", json!({"css": "#cross-frame"})).await?["matches"][0]["ref"]
+                .clone();
+        let viewport = tab
+            .read_only(
+                "[innerWidth, innerHeight, devicePixelRatio]",
+                &CancellationToken::new(),
+                TIMEOUT,
+            )
+            .await?;
+        for count in 1..=20 {
+            // Centering these two controls moves their embedding page by 21px.
+            // A stale browser-process transform presses the input, then releases
+            // the button, even though each renderer reports stable DOM geometry.
+            command(
+                &tab,
+                "fill",
+                json!({"frame": [outer], "css": "#cross-input", "text": count.to_string()}),
+            )
+            .await?;
+            command(
+                &tab,
+                "click",
+                json!({"frame": [outer], "css": "#cross-button"}),
+            )
+            .await?;
+            let clicked = command(
+                &tab,
+                "read",
+                json!({"frame": [outer], "css": "#cross-button", "attribute": "data-clicks"}),
+            )
+            .await?;
+            assert_eq!(
+                clicked["value"],
+                count.to_string(),
+                "every press must click the button exactly once"
+            );
+        }
+        assert_eq!(
+            tab.read_only(
+                "[innerWidth, innerHeight, devicePixelRatio]",
+                &CancellationToken::new(),
+                TIMEOUT
+            )
+            .await?,
+            viewport
+        );
+        Ok(())
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -1276,11 +1357,13 @@ async fn catalog_load_wait_tracks_only_the_current_document() {
             .await?;
         command(&tab, "wait", json!({"load":"commit"})).await?;
         command(&tab, "wait", json!({"load":"domcontentloaded"})).await?;
-        error(
-            command(&tab, "wait", json!({"load":"load"})).await,
-            "navigation_failed",
-            "not_started",
-        );
+        let (waiting, ()) = tokio::join!(command(&tab, "wait", json!({"load":"load"})), async {
+            // Start replacement only after the earlier load checks and give
+            // this wait time to establish its baseline on a small Host.
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            reqwest::get(format!("{base}/release-load")).await.unwrap();
+        });
+        error(waiting, "navigation_failed", "not_started");
         command(&tab, "wait", json!({"load":"load"})).await?;
         Ok(())
     })

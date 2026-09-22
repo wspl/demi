@@ -12,6 +12,7 @@ import {
   type LiveViewport,
 } from '@demicodes/browser-protocol/live'
 import type { OpenLiveStream, LiveStreamHandlers } from '@demicodes/web-ui/browser/session'
+import { CONTROL, META } from '@demicodes/web-ui/browser/input'
 import { BrowserTabsError, type BrowserTabInfo, type BrowserTabsApi } from '@demicodes/web-ui/browser/tabs'
 
 const CODEC = 'avc1.640033'
@@ -100,6 +101,7 @@ class GalleryBrowser {
   private heartbeat: ReturnType<typeof setInterval> | null = null
   private started = performance.now()
   private typed = 'Ship it'
+  private selection: 'caret' | 'all' = 'caret'
   private pressed = false
   private status = 'open'
 
@@ -188,14 +190,21 @@ class GalleryBrowser {
         })
         break
       case 'key':
-        if (value.action === 'down' && value.text) {
-          this.typed += value.text
-        } else if (value.action === 'down' && value.key === 'Backspace') {
-          this.typed = this.typed.slice(0, -1)
+        if (value.action !== 'down') {
+          break
+        }
+        if ((value.modifiers & (CONTROL | META)) !== 0 && !value.altGraph && value.key.toLowerCase() === 'a') {
+          this.selection = 'all'
+        } else if (value.text) {
+          this.handle({ type: 'text', tab: value.tab, text: value.text })
+        } else if (value.key === 'Backspace') {
+          this.typed = this.selection === 'all' ? '' : this.typed.slice(0, -1)
+          this.selection = 'caret'
         }
         break
       case 'text':
-        this.typed += value.text
+        this.typed = (this.selection === 'all' ? '' : this.typed) + value.text
+        this.selection = 'caret'
         break
       case 'choice':
         this.status = value.value
@@ -229,8 +238,9 @@ class GalleryBrowser {
     this.sequence = 0
     this.canvas.width = size.width
     this.canvas.height = size.height
-    this.send({ type: 'stream', tab: tab.id, generation: this.generation, width: size.width, height: size.height })
     this.send({ type: 'controls', tab: tab.id, controls: [{ ...SELECT, value: this.status }] })
+    // A real Host can report controls before its encoder starts a generation.
+    this.send({ type: 'stream', tab: tab.id, generation: this.generation, width: size.width, height: size.height })
     const generation = this.generation
     this.encoder = new VideoEncoder({
       output: (chunk) => {
@@ -294,6 +304,11 @@ class GalleryBrowser {
     context.font = '14px system-ui, sans-serif'
     context.fillText(this.status === 'open' ? 'Open' : 'Shipped', 34, 189)
     context.strokeRect(24, 216, viewport.width - 48, 36)
+    if (this.selection === 'all') {
+      context.fillStyle = '#bfdbfe'
+      context.fillRect(32, 220, context.measureText(this.typed).width + 4, 28)
+      context.fillStyle = '#0f172a'
+    }
     context.fillText(this.typed, 34, 239)
     // A moving mark, so a still picture is told from a stalled one.
     const seconds = (performance.now() - this.started) / 1000

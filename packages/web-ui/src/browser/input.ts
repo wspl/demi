@@ -111,12 +111,13 @@ export interface KeyInput extends ModifierState {
   keyCode: number
   repeat: boolean
   location: number
-  altGraph: boolean
+  getModifierState(key: string): boolean
 }
 
 /** A key the page sends as it is, with the character it types. */
 export function keyMessage(tab: string, action: 'down' | 'up', event: KeyInput): LiveViewerMessage {
-  const shortcut = (event.ctrlKey || event.metaKey) && !event.altGraph
+  const altGraph = event.getModifierState('AltGraph')
+  const shortcut = (event.ctrlKey || event.metaKey) && !altGraph
   // One event carries its character, so the page gets keypress and can cancel it.
   const text = action === 'down' && [...event.key].length === 1 && !shortcut ? event.key : undefined
   return {
@@ -130,13 +131,13 @@ export function keyMessage(tab: string, action: 'down' | 'up', event: KeyInput):
     repeat: action === 'down' && event.repeat,
     location: Math.max(0, Math.min(3, event.location)),
     ...(text === undefined ? {} : { text }),
-    altGraph: event.altGraph,
+    altGraph,
   }
 }
 
 /** Keys the viewer's own browser keeps: its paste reaches the page as a paste. */
 export function localKey(event: KeyInput): boolean {
-  const shortcut = (event.ctrlKey || event.metaKey) && !event.altGraph
+  const shortcut = (event.ctrlKey || event.metaKey) && !event.getModifierState('AltGraph')
   return shortcut && event.key.toLowerCase() === 'v'
 }
 

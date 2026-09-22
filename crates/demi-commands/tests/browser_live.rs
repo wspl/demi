@@ -188,12 +188,20 @@ impl View {
     }
 
     fn send(&self, message: Value) {
+        self.try_send(message).unwrap();
+    }
+
+    /// Sends viewer control, retaining closure for buffered-frame acknowledgements.
+    fn try_send(
+        &self,
+        message: Value,
+    ) -> Result<(), mpsc::error::SendError<Result<Bytes, ServiceError>>> {
         let json = serde_json::to_vec(&message).unwrap();
         let mut frame = BytesMut::new();
         frame.put_u32(1 + json.len() as u32);
         frame.put_u8(1);
         frame.put_slice(&json);
-        self.raw(frame.freeze());
+        self.input.as_ref().unwrap().send(Ok(frame.freeze()))
     }
 
     fn raw(&self, bytes: Bytes) {
@@ -222,7 +230,9 @@ impl View {
             ..
         } = &frame
         {
-            self.send(json!({"type": "ack", "generation": generation, "sequence": sequence, "decodeQueue": 0}));
+            // Closing the last tab ends input before already-buffered pictures
+            // and the final `ended` control have drained. They need no ack.
+            let _ended = self.try_send(json!({"type": "ack", "generation": generation, "sequence": sequence, "decodeQueue": 0}));
         }
         frame
     }
@@ -248,9 +258,24 @@ impl View {
         self.until(kind, |message| message["type"] == kind).await
     }
 
-    /// The first video frame after the stream message of `generation`.
-    async fn picture(&mut self, generation: u64) -> (String, bool, u16, u16, Bytes) {
+    /// The first video frame, following a replacement generation as the viewer does.
+    async fn picture(&mut self, mut generation: u64) -> (String, bool, u16, u16, Bytes) {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        let mut seen = Vec::new();
         loop {
+            let frame = tokio::time::timeout_at(deadline, self.next())
+                .await
+                .unwrap_or_else(|_| {
+                    panic!("no picture for generation {generation}; controls: {seen:?}")
+                });
+            if let Frame::Control(message) = &frame
+                && message["type"] != "heartbeat"
+            {
+                if message["type"] == "stream" {
+                    generation = message["generation"].as_u64().unwrap();
+                }
+                seen.push(message.clone());
+            }
             if let Frame::Video {
                 tab,
                 generation: arrived,
@@ -259,7 +284,7 @@ impl View {
                 height,
                 data,
                 ..
-            } = self.next().await
+            } = frame
                 && u64::from(arrived) == generation
             {
                 return (tab, key, width, height, data);
@@ -546,7 +571,9 @@ async fn dialogs_controls_files_and_the_clipboard_reach_the_viewer() {
         let mut view = View::open(&fixture);
         hello(&view, "linux");
         view.message("state").await;
-        watch(&mut view, &tab).await;
+        // Controls may arrive before the first video stream. Do not discard them
+        // while waiting for video; capture delivery is tested separately.
+        view.send(json!({"type": "watch", "tab": tab}));
         // Native controls, with identities and revisions.
         let controls = view
             .until("the page's two controls", |message| message["type"] == "controls" && message["controls"].as_array().is_some_and(|controls| controls.len() == 2))
@@ -657,6 +684,12 @@ async fn a_view_waits_for_a_browser_and_ends_with_its_last_tab() {
         assert_eq!(state["tabs"][0]["createdBy"], json!({"kind": "user"}));
         assert_eq!(state["watched"], Value::Null);
         watch(&mut view, &tab).await;
+        fixture
+            .call(
+                "browser.fill",
+                json!({"tab": tab, "css": "#text", "text": "retained across capture recovery"}),
+            )
+            .await;
         // Another tab while the first is watched: the view hears of it and
         // keeps the tab it watches until the page asks for the other.
         let second = request(&fixture, "browser.open", json!({"url": site.base})).await;
@@ -680,6 +713,10 @@ async fn a_view_waits_for_a_browser_and_ends_with_its_last_tab() {
             .await;
         let (pictured, ..) = view.picture(stream["generation"].as_u64().unwrap()).await;
         assert_eq!(pictured, second, "the second tab is the one it sees");
+        assert_eq!(
+            evaluate(&fixture, &tab, "document.querySelector('#text').value").await,
+            "retained across capture recovery"
+        );
         let closed = request(&fixture, "browser.close", json!({"tab": second})).await;
         assert_eq!(closed, json!({"closed": second}));
         let closed = request(&fixture, "browser.close", json!({"tab": tab})).await;
@@ -689,6 +726,42 @@ async fn a_view_waits_for_a_browser_and_ends_with_its_last_tab() {
         assert_eq!(view.close().await.exit_code, 0);
         let tabs = fixture.call("browser.tabs", json!({})).await;
         assert_eq!(tabs["tabs"], json!([]));
+        fixture
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn the_user_can_immediately_close_the_first_loading_tab() {
+    with_browser_fixture(|fixture| async move {
+        let path = fixture.root.path().join("loading.html");
+        std::fs::write(&path, include_str!("browser_families/loading-form.html")).unwrap();
+        let url = url::Url::from_file_path(&path).unwrap();
+        for _ in 0..30 {
+            let opened = request(&fixture, "browser.open", json!({"url": url.as_str()})).await;
+            let tab = opened["tab"].as_str().unwrap();
+            let closed = request(
+                &fixture,
+                "browser.close",
+                json!({"tab": tab, "timeout": 3000}),
+            )
+            .await;
+            assert_eq!(closed, json!({"closed": tab}));
+        }
+        let keeper = request(&fixture, "browser.open", json!({"url": "about:blank"})).await;
+        for _ in 0..10 {
+            let opened = request(&fixture, "browser.open", json!({"url": url.as_str()})).await;
+            let tab = opened["tab"].as_str().unwrap();
+            let closed = request(
+                &fixture,
+                "browser.close",
+                json!({"tab": tab, "timeout": 3000}),
+            )
+            .await;
+            assert_eq!(closed, json!({"closed": tab}));
+        }
+        request(&fixture, "browser.close", json!({"tab": keeper["tab"]})).await;
         fixture
     })
     .await;
@@ -921,6 +994,50 @@ fn decoded(frame: &[u8]) -> (u32, Vec<u8>) {
     (info.width, pixels)
 }
 
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn a_narrow_still_picture_matches_the_page_coordinates() {
+    with_browser_fixture(|fixture| async move {
+        let path = fixture.root.path().join("still.html");
+        std::fs::write(&path, "<!doctype html><style>body{margin:0;background:white}</style><div style=\"position:fixed;left:10px;top:100px;width:100px;height:30px;background:red\"></div>").unwrap();
+        let tab = fixture
+            .call("browser.open", json!({"url": url::Url::from_file_path(path).unwrap().as_str()}))
+            .await["tab"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let mut view = View::open(&fixture);
+        view.send(json!({"type": "hello", "platform": "mac"}));
+        view.message("state").await;
+        view.send(json!({"type": "watch", "tab": tab}));
+        for (width, height) in [(409, 632), (800, 600), (409, 632)] {
+            view.send(json!({
+                "type": "panel", "width": width, "height": height, "devicePixelRatio": 2,
+                "screenWidth": 1280, "screenHeight": 720,
+            }));
+            let stream = view
+                .until("a resized stream", |message| {
+                    message["type"] == "stream"
+                        && message["width"] == width * 2
+                        && message["height"] == height * 2
+                })
+                .await;
+            let (_, key, _, _, frame) = view.picture(stream["generation"].as_u64().unwrap()).await;
+            assert!(key);
+            let (decoded_width, pixels) = decoded(&frame);
+            for (x, y) in [(4, 4), (width * 2 - 5, height * 2 - 5)] {
+                let at = ((y * decoded_width + x) * 3) as usize;
+                assert!(pixels[at..at + 3].iter().all(|value| *value > 230), "white page corner at {x},{y}: {:?}", &pixels[at..at + 3]);
+            }
+            let at = ((220 * decoded_width + 40) * 3) as usize;
+            assert!(pixels[at] > 220 && pixels[at + 1] < 35 && pixels[at + 2] < 35, "red rectangle at its CSS coordinates: {:?}", &pixels[at..at + 3]);
+        }
+        view.close().await;
+        fixture
+    })
+    .await;
+}
+
 /// The largest brightness step between neighbouring pixels of a row.
 fn contrast(width: u32, pixels: &[u8], row: u32, from: u32, to: u32) -> u8 {
     let stride = width as usize * 3;
@@ -966,7 +1083,8 @@ async fn a_watched_tab_arrives_with_the_detail_of_the_viewers_ratio() {
         assert_eq!(width, 800);
         let (decoded_width, pixels) = decoded(&frame);
         assert_eq!(decoded_width, 800, "the picture is the viewport at ratio 1");
-        let flat = contrast(decoded_width, &pixels, 400, 150, 350);
+        // Sample above the moving red marker, which crosses the lower stripes.
+        let flat = contrast(decoded_width, &pixels, 390, 150, 350);
 
         // The same page at the viewer's ratio 2, where every stripe is a pixel.
         view.send(json!({
@@ -985,7 +1103,7 @@ async fn a_watched_tab_arrives_with_the_detail_of_the_viewers_ratio() {
         assert_eq!((width, height), (1600, 1200));
         let (retina, pixels) = decoded(&frame);
         assert_eq!(retina, 1600, "the picture is twice the viewport at ratio 2");
-        let sharp = contrast(retina, &pixels, 800, 300, 700);
+        let sharp = contrast(retina, &pixels, 780, 300, 700);
         // At ratio 1 the stripes average into grey; at ratio 2 each one is its
         // own pixel, as sharp as the gradient's own antialiasing allows.
         assert!(flat < 40, "stripes at ratio 1 are flat grey, not {flat}");

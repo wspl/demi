@@ -27,7 +27,7 @@ const output = z.string().min(1).max(4096).optional().describe('New output file 
 /** Shared element grammar; native admission also checks mutually exclusive fields. */
 export const browserTargetShape = {
   ref: reference.optional().describe('A node reference returned by inspect or find'),
-  role: locator.optional().describe('Accessible role, such as button or textbox'),
+  role: locator.optional().describe('Accessible role, ASCII case-insensitive, such as button, textbox, or date'),
   name: locator.optional().describe('Accessible name, with --role'),
   'name-pattern': locator.optional().describe('Accessible-name regular expression, with --role'),
   'text-pattern': locator.optional().describe('Rendered-text regular expression'),

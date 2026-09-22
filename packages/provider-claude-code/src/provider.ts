@@ -43,13 +43,12 @@ import {
   type ClaudeStdoutMessage
 } from './output'
 import { createClaudeCodeQuota } from './quota'
-import type { ClaudeSpawn } from './spawn'
+import type { ClaudeSpawn, ClaudeProcessPlace } from './spawn'
 import { claudeCodeVendorPool, type ClaudeCodeVendorOptions } from './vendor'
 import {
   ClaudeCliTransportFactory,
   type ClaudeStdoutLine,
   type ClaudeTransport,
-  type ClaudeProcessPlace,
   type ClaudeTransportFactory
 } from './transport'
 
