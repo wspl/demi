@@ -45,8 +45,8 @@ User's browser (Demi web)      Backend                     Host (Cloud or paired
 | web-ui live view     |<====>| user stream route    |pipes| runner --/v1/invoke--> demi-     |
 | video, input,        |      | cookie, owner,       |<===>|                        commands  |
 | native controls,     |      | Origin; bytes only   |     |   browser environment            |
-| viewport menu        |      +----------------------+     |     tab registry (existing)      |
-+----------------------+                                   |     live view module (new)       |
+| viewport menu        |      +----------------------+     |     tab registry                 |
++----------------------+                                   |     live view module             |
                                                            |     Chrome: capture extension,   |
                                                            |     pages and their observers    |
                                                            +----------------------------------+
@@ -102,8 +102,10 @@ work panel tab state        browser kind                         backend / Host
   Cloud stopped, or the Host restarted. The panel tab stays: the kind never
   removes a tab. Its content says that the page was closed on the device and
   offers two ways on: Close tab, and Reload, which opens a new browser tab on
-  the saved URL and binds to it. The browser's storage outlives its tabs, so a reopened
-  page is still signed in ([Ownership](browser.md#ownership)).
+  the saved URL and binds to it. A reopened page shares storage only while the
+  same browser environment remains alive. Retirement removes its temporary
+  profile; a new environment starts with fresh storage
+  ([Lifetime](browser.md#lifetime)).
 - **A Host that cannot be reached.** A stopped Cloud, an offline device, or a
   lost connection changes no tab. The content of the shown tab says what is
   wrong, reconnects by itself where that can help, and offers Retry where it
@@ -210,6 +212,22 @@ commands, and CDP messages have a size limit.
 
 A tab is captured only while someone watches it. Viewers of the same tab share
 one capture and one encoding.
+Stopping a capture also invalidates its queued restart. A delayed recovery from
+an old capture must not reacquire the tab after its viewer has left or switched.
+The Host owns capture retries and their backoff. The extension reports a failed
+or persistently silent capture and releases it; it never starts an independent
+replacement that can outlive the Host's capture owner.
+If Chrome aborts stream creation after granting capture, it can retain a request
+that rejects every later capture even though the extension received no track to
+stop. Recreate the capture extension to release those Chrome-owned requests.
+This interrupts pictures in that browser environment; its Host resumes only the
+currently watched streams. Existing tabs, documents and form state remain alive,
+and no page action is repeated. A new extension connection retires the previous
+connection's captures before it admits replacement work. The environment's
+owned Chrome process permits its unpacked capture extension to reload;
+Chrome distinguishes the initial command-line load from a later unpacked reload.
+This permission belongs to the process configuration, not a developer-mode
+profile preference that Chrome's preference protection can reset.
 
 The pinned Chrome labels the BT.601 samples of Linux software capture as
 BT.709. The extension corrects the label for exactly that case, and every
@@ -288,8 +306,14 @@ Chrome paints a window at its screen's pixel ratio. The environment therefore
 sets the pixel ratio of its virtual screen with `Emulation.updateScreen`, with
 the viewer's screen size, and pins each tab's viewport with
 `Emulation.setDeviceMetricsOverride` at the same ratio. It sizes each window to
-the viewport plus the browser's own chrome, so a page never sees an outer size
-smaller than its inner size.
+the viewport plus the browser's own chrome before applying the page's metrics,
+so a page never sees an outer size smaller than its inner size. The picture
+must fill those metrics from its first frame; a window resize must not leave
+black bars that move the visible page away from its input coordinates.
+After setting the window and page metrics, wait for a surface repaint before
+publishing the viewport to capture. Chrome acknowledging the metrics does not
+mean its compositor has applied them; starting a new capture earlier can scale
+and letterbox the old surface into the new dimensions.
 
 - The screen is shared by the environment's windows. The ratio follows the
   viewer that operated most recently.
@@ -429,7 +453,7 @@ content, the [browser tab routes](web-api.md#conversation-browser-tabs), the
 product's stream source, tab requests and activity reports, the gallery's own
 browser, and the guest image's fonts for Chinese, Japanese and Korean.
 
-Verified against real Chrome on macOS and Linux arm64: watching a tab beside
+Verified against real Chrome on macOS arm64 and Linux arm64/amd64: watching a tab beside
 the agent, the viewport modes, the viewer's ratio in the picture it receives
 (half-CSS-pixel stripes, decoded from the capture), dialogs, native controls,
 chosen files, the clipboard, held input released with its viewer, a tab the
@@ -442,15 +466,13 @@ and viewer run against a real Cloud guest
 the viewer's input, the agent's commands on the same tab, the view ending with
 the browser, and the guest image drawing Chinese, Japanese and Korean text.
 
-A Cloud guest of the default size has two processors, and it composites and
-encodes its pictures in software in the same Chrome that serves the agent's
-commands. Watching such a guest leaves its browser little for anything else:
-its commands take far longer than on a paired device, and the short deadlines
-the module keeps for the steps around a command — releasing a mouse button
-after a click, closing a tab — expire, so a command whose work succeeded
-reports a cleanup timeout. The Cloud acceptance therefore watches at the ratio
-of an ordinary screen and stops watching while the agent works. Serving a view
-and an agent from one small guest at once is the open question here.
+Concurrent viewing and agent commands have also been exercised on paired Hosts
+and gVisor/systrap Clouds, including DPR 1/2/3, checkpoint during capture,
+reconnection, and repeated browser retirement. A small Host shares its CPU
+between Chrome, software compositing, H.264 encoding and commands. Capture can
+therefore increase command latency even when delivery is prompt; the current
+controller measures delivery pressure rather than an encoder or Host CPU budget.
+These functional checks do not establish capacity for every page or workload.
 
 Not verified yet: a Windows Host. The prototype and its measurements live in
 the separate Tab Lab repository (`browser-remote-lab`).

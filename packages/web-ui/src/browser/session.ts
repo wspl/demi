@@ -274,7 +274,7 @@ export class LiveSession {
           break
         case 'stream':
           this.generation = message.generation
-          this.state.controls = []
+          // Video generations change independently of the watched document's controls.
           this.pictures?.start(message.generation, message.width, message.height)
           break
         case 'heartbeat':

@@ -658,9 +658,22 @@ impl BrowserTab {
                     } else {
                         loop {
                             let observation = Observation::capture(&self.page, references).await?;
-                            let elements = observation
-                                .resolve_wait(&self.page, required_target(&target)?, references)
-                                .await?;
+                            let target = required_target(&target)?;
+                            let elements = match observation
+                                .resolve_wait(&self.page, target, references)
+                                .await
+                            {
+                                Ok(elements) => elements,
+                                Err(BrowserError::StaleReference)
+                                    if observation::can_resample(target) =>
+                                {
+                                    // A locator can find a node inserted after the DOM snapshot.
+                                    // Resample it without treating the race as disappearance.
+                                    tokio::time::sleep(Duration::from_millis(50)).await;
+                                    continue;
+                                }
+                                Err(error) => return Err(error),
+                            };
                             let state = input.state.as_deref().unwrap_or("visible");
                             let mut matched = false;
                             for element in &elements {

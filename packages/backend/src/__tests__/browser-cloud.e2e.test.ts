@@ -52,7 +52,7 @@ acceptance('Agent browser runs in real Cloud, ends with reset/idle shutdown, and
     const driver = await world.conversation('cloud')
     const first = await driver.turn({ model: [
       model.shell('cloud-browser', withCloudApplication(`set -euxo pipefail
-sudo -n sha256sum /proc/1/exe
+sha256sum /proc/$(pgrep -x demi-runner)/exe
 tab=$(demi browser open '${applicationUrl.href}' --json | jq -r .tab)
 printf '%s' "$tab" > browser-tab.txt
 printf retained > browser-marker.txt
@@ -66,7 +66,7 @@ test -s cloud-browser.png`), 600000),
     ] })
     expect(first.received[0]).toContain('exitCode: 0')
     expect(first.received[0]).toContain('Cloud signed in')
-    expect(first.received[0]).toContain(`${runnerHash}  /proc/1/exe`)
+    expect(first.received[0]).toMatch(new RegExp(`${runnerHash}  /proc/[0-9]+/exe`))
     console.info('Cloud browser login and screenshot passed')
     const reset = await world.api<{ operation: ManagedOperation }>('/api/cloud/reset', { operationId: crypto.randomUUID() })
     const resetDeadline = performance.now() + 90_000
@@ -99,12 +99,12 @@ demi browser open '${applicationUrl.href}' --json`), 360000),
     }
     expect(world.frames.some(frame => frame.message.type === 'conversation_release')).toBe(false)
     const woken = await driver.turn({ model: [
-      model.shell('cloud-browser-wake', 'set -e; sudo -n sha256sum /proc/1/exe; cat browser-marker.txt; demi browser tabs --json', 30000),
+      model.shell('cloud-browser-wake', 'set -e; sha256sum /proc/$(pgrep -x demi-runner)/exe; cat browser-marker.txt; demi browser tabs --json', 30000),
       model.say('Cloud woke without reviving expired browser tabs'),
     ] })
     expect(woken.received[0]).toContain('exitCode: 0')
     expect(woken.received[0]).toContain('retained')
-    expect(woken.received[0]).toContain(`${runnerHash}  /proc/1/exe`)
+    expect(woken.received[0]).toMatch(new RegExp(`${runnerHash}  /proc/[0-9]+/exe`))
     expect(woken.received[0]).toContain('"tabs":[]')
     console.info('Cloud idle shutdown and wake preserved files without restoring expired tabs')
   } finally {

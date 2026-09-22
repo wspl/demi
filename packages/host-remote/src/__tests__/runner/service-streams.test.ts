@@ -183,8 +183,10 @@ test(
     // `result` writes to both outputs and exits 17: the call fails with what it said on standard error.
     const failed = await call('result').then(() => null, (error: unknown) => error)
     expect(failed).toBeInstanceOf(RemoteServiceExit)
-    expect((failed as RemoteServiceExit).exitCode).toBe(17)
-    expect((failed as RemoteServiceExit).stderr).toBe('command diagnostic')
+    if (!(failed instanceof RemoteServiceExit)) throw new Error('Expected a service exit')
+    expect(failed.exitCode).toBe(17)
+    expect(failed.stderr).toBe('command diagnostic')
+    expect(decodeUtf8(failed.stdout)).toBe('command output')
   },
   60_000,
 )

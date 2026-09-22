@@ -5,6 +5,14 @@
  * directly assignable to `ClaudeSpawn`.
  */
 
+/** The executable and directories on the machine running the CLI. */
+export interface ClaudeProcessPlace {
+  command: string
+  cwd: string
+  /** The CLI's configuration home (`CLAUDE_CONFIG_DIR`). */
+  configDir: string
+}
+
 export interface ClaudeSpawnParams {
   command: string
   args?: string[]

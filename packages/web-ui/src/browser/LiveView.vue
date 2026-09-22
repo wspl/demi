@@ -125,27 +125,19 @@ function key(event: KeyboardEvent, action: 'down' | 'up'): void {
   if (composing || composingKey(event)) {
     return
   }
-  const input = {
-    ...event,
-    key: event.key,
-    code: event.code,
-    keyCode: event.keyCode,
-    repeat: event.repeat,
-    location: event.location,
-    altGraph: event.getModifierState('AltGraph'),
-  }
+  // DOM event fields are prototype getters; copying an event drops modifiers.
   // Paste is the viewer's own: the field's paste event carries its clipboard.
-  if (localKey(input)) {
+  if (localKey(event)) {
     return
   }
   if (action === 'down') {
     committed = undefined
     // A copy here is the viewer's own: its clipboard takes what the tab copies.
-    if ((event.ctrlKey || event.metaKey) && !input.altGraph && /^[cx]$/i.test(event.key)) {
+    if ((event.ctrlKey || event.metaKey) && !event.getModifierState('AltGraph') && /^[cx]$/i.test(event.key)) {
       viewerClipboard.expect()
     }
   }
-  props.session.input(keyMessage(props.tab.id, action, input))
+  props.session.input(keyMessage(props.tab.id, action, event))
   event.preventDefault()
 }
 

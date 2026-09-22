@@ -177,12 +177,23 @@ Its internal lifecycle uses one state:
 | User closes a tab in the live view | Same as `close <tab>`; closing the last tab retires the environment without asking |
 | Command or agent turn is cancelled | Stop current invocation work and temporary waits; retain completed page effects and other tabs |
 | `close <tab>` | Close that tab and release its commands, references, and debugging state |
-| Last tab closes | Retire the environment after the closing invocation completes; stop Chrome for Testing and remove its profile; the next `open` starts fresh |
+| Last tab closes | Stop Chrome for Testing and remove its profile before acknowledging closure; the next `open` starts fresh |
 | Conversation release arrives | Retire the environment the same way; the backend sends it when the conversation has been idle for the idle window, moves to another Host, or is archived |
 | Main Host or main directory changes | The old device receives the conversation release; nothing is copied to the new Host |
 | Conversation is archived | The device receives the conversation release; restoring the conversation starts fresh on demand |
 | Conversation is forked | Do not inherit the live browser or handles; IDs in copied history are historical text |
 | Chrome for Testing crashes, runner connection ends, backend restarts, or Cloud stops/resets | Invalidate the environment and fail affected calls; never replay page actions |
+
+Closing a tab cancels its detached address-bar navigation and stops loading before
+requesting its destruction. Closing the final tab
+retires the entire browser while excluding new tab admission; it does not depend
+on that page finishing its navigation before disappearing.
+
+After a failed startup or a lost browser has completed cleanup, the next explicit
+`open` may create a fresh environment. Previously failed operations are not
+retried and old tab IDs remain invalid. A release of an already failed browser
+acknowledges its completed cleanup; a failure to clean up still propagates and
+prevents starting another environment over the unresolved owner.
 
 A command still running when another command closes the last tab fails with
 `browser_lost`; a command still running when the conversation release arrives
@@ -290,7 +301,7 @@ the user test how real sites and applications behave for real visitors:
   its first byte: the time zone in Chrome's environment, the languages as the
   profile's language preference, and the first language as the application
   language, which sets a page's default formats (the launch argument on macOS,
-  the locale environment variable on Linux). Chrome itself tells pages only the
+  the locale environment on Linux, including inherited overrides). Chrome itself tells pages only the
   first language, as it does for any user. They do not change while the
   environment lives.
 - The Cloud guest ships fonts for Chinese, Japanese and Korean.
@@ -602,6 +613,8 @@ locator per call:
 
 The three text locators are three different computations. `--role` with
 `--name` matches the accessibility role and the computed accessible name.
+Role identifiers match without ASCII case distinctions: Chrome's `Date` role
+can be selected with `--role date`. This does not change name or text matching.
 `--label` matches the text of a form control's associated label: a `<label for>`,
 a wrapping `<label>`, or `aria-labelledby`; a labelled control is found through
 its label whatever its role, including native date and file inputs.
@@ -690,9 +703,18 @@ follows the element's shadow roots and frames, so a control inside a shadow root
 is not treated as obstructed by its host; an element that another element
 covers, or whose computed `pointer-events` is `none`, fails with `not_actionable`
 naming the intercepting element once the deadline expires. Conditions are
-rechecked after scrolling and before dispatch.
+rechecked after scrolling and before dispatch. When a pointer target is inside
+an embedded frame, scrolling must also reach Chrome's composited surface before
+its coordinates are dispatched. A stable DOM box alone does not establish that
+the browser process has updated the transform used to route input to the child
+renderer. Request a surface repaint before the final geometry and hit checks;
+this happens before input starts and remains inside the command deadline. It
+must not resize the page or replay a mouse press.
 
-An absent or not-yet-ready semantic target waits until the deadline. An
+An absent or not-yet-ready semantic target waits until the deadline. A locator
+that finds a node inserted after its DOM snapshot is sampled again before any
+input is dispatched. This does not apply to stored node, frame, or scope
+references, and it never replays input that has already been delivered. An
 explicitly stale reference, an ambiguous match, or a permanently inapplicable
 element type, such as filling a `<div>`, fails immediately. There is no implicit
 force or silent fallback from a failed element action to a coordinate action.
@@ -1044,7 +1066,9 @@ satisfied when no element matches or none is visible, which includes removal
 within the same document; `attached` and `detached` follow node connection;
 `enabled` follows the control and its ancestors. If navigation replaces a
 referenced document, return `stale_ref` rather than treating disappearance of
-the old page as a condition on the new page.
+the old page as a condition on the new page. A locator without stored node or
+frame references is sampled again if the page changes between capturing its
+structure and resolving the locator; that race does not make the locator stale.
 
 `wait --url` succeeds immediately when the current URL already matches. An
 action's `--wait-url` installs URL observation before delivering input, then
@@ -1302,6 +1326,12 @@ knows. Cancelling a `cdp send` or `cdp events` call in flight closes that
 caller's connection; cancelling only the bounded wait of `cdp events` does not.
 Tab-owned observations such as buffered logs are not debug state and remain
 until the tab is released.
+
+When Chrome or the debugging transport ends, pending debugging calls fail and
+the connection's actor is joined. Detaching an already disconnected session is
+complete: closing its socket releases its debugging state. Transport loss is
+not a cleanup failure that fences a later browser startup. Failure to join the
+actor or retire Chrome and its profile still fails cleanup.
 
 A caller that leaves interception or a pause behind blocks the page for every
 caller until it detaches. When a command on that tab times out while another
@@ -1710,7 +1740,7 @@ and isolated storage. Never run tests that call real models.
     Cloud guest. Verify Chrome for Testing provisioning on every platform
     offering the feature; success on the development Mac is insufficient.
     Paired-device acceptance runs on both a macOS and a Linux runner. Cloud
-    acceptance checks the guest PID 1 runner hash after boot and after wake,
+    acceptance checks the running runner's executable hash after boot and after wake,
     as [Managed hosts](managed-hosts.md#the-shipped-base) requires.
 15. Retirement leaves no Chrome process, helper, or profile directory behind,
     on the development Mac, a Linux paired device, and the Cloud guest.
@@ -1741,4 +1771,5 @@ acceptance remain release gates, as specified above.
 Job conversation identity, service residency, and the conversation release are
 part of the command path. A capability the driver, platform, or page
 cannot provide is reported unavailable with its reason and never advertised.
-The [live browser view](browser-live-view.md) is designed and not implemented.
+The [live browser view](browser-live-view.md#implementation-status) records its
+implementation and platform acceptance separately.

@@ -237,7 +237,9 @@ test(
       throw new Error('missing pipe body')
     const read = get.body.getReader().read()
     broker.fail(pipe.id, 'cancelled')
-    await expect(read).rejects.toThrow('cancelled')
+    // The HTTP body signals a broken connection; the pipe owns its diagnostic.
+    await expect(read).rejects.toBeUndefined()
+    await expect(pipe.done).rejects.toThrow('cancelled')
     expect((await put).status).toBe(409)
     expect(cancelled).toBe(true)
     broker.close()
@@ -376,7 +378,7 @@ test('source request abort interrupts a pending sink read; rejected requests can
       throw new Error('missing pipe body')
     const read = get.body.getReader().read()
     sourceAbort.abort()
-    await expect(read).rejects.toThrow('source HTTP request disconnected')
+    await expect(read).rejects.toBeUndefined()
     await expect(pipe.done).rejects.toThrow('source HTTP request disconnected')
     expect((await put).status).toBe(409)
     await delay(0)
@@ -400,7 +402,7 @@ test('cancelling a quiet process source wakes its pending iterator and rejects b
     await write
     const read = reader.read()
     broker.fail(pipe.id, 'transfer lost')
-    await expect(read).rejects.toThrow('transfer lost')
+    await expect(read).rejects.toBeUndefined()
     await expect(pipe.done).rejects.toThrow('transfer lost')
     await expect(writer.write(encodeUtf8('late'))).rejects.toThrow('not writable')
     reader.releaseLock()
