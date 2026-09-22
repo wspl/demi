@@ -276,9 +276,8 @@ onBeforeUnmount(() => {
       enter-from-class="opacity-0 scale-95"
       leave-to-class="opacity-0 scale-95"
     >
-      <!-- A hint describes whatever is under the pointer, so it sits above every other
-           layer: dialogs, popovers and toasts are z-50, and a tip inside one of them
-           would otherwise open behind it. -->
+      <!-- A hint describes whatever is under the pointer, so it sits above
+           dialogs, popovers and toasts, including hints opened from those surfaces. -->
       <div
         v-if="visible"
         ref="floatingRef"
