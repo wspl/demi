@@ -34,6 +34,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   const edits = ref<Record<string, Partial<SettingsProviderEntry>>>({})
   const manualDrafts = ref<Record<string, SettingsProviderModel[]>>({})
   const operations = ref<Record<string, SettingsProviderOperation>>({})
+  const refreshingUsage = ref<Record<string, string[]>>({})
   const testing = computed(
     () =>
       Object.keys(operations.value).find(
@@ -491,7 +492,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   /**
    * Asks the vendor for one account's usage (`provider-quota.md` § Guidance).
    * The user's button says why it could not; the probe Demi makes by itself,
-   * when an account is added, stays quiet: the account works either way.
+   * when its quota becomes visible, stays quiet: the account works either way.
    */
   async function loadUsage(
     providerId: string,
@@ -505,13 +506,12 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         signal,
         ...jsonBody({ credentialId }),
       })
+      signal.throwIfAborted()
+      await product.refresh()
     } catch (error) {
       if (!quiet && !signal.aborted) {
         reportError('Could not refresh usage', error, { userVisible: true })
       }
-    }
-    if (!signal.aborted) {
-      await product.refresh()
     }
   }
 
@@ -605,12 +605,28 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     })
   }
 
-  function refreshUsage(provider: SettingsProviderEntry, accountId: string): void {
-    perform(
-      provider.id,
-      { kind: 'account', accountId, action: 'usage' },
-      (signal) => loadUsage(provider.id, accountId, signal, false),
-    )
+  async function refreshUsage(
+    provider: SettingsProviderEntry,
+    accountId: string,
+    automatic = false,
+  ): Promise<void> {
+    if (refreshingUsage.value[provider.id]?.includes(accountId)) {
+      return
+    }
+    const current = lifetime
+    refreshingUsage.value[provider.id] ??= []
+    refreshingUsage.value[provider.id]!.push(accountId)
+    try {
+      await loadUsage(provider.id, accountId, current.signal, automatic)
+    } finally {
+      if (current === lifetime) {
+        const pending = refreshingUsage.value[provider.id]!
+        pending.splice(pending.indexOf(accountId), 1)
+        if (!pending.length) {
+          delete refreshingUsage.value[provider.id]
+        }
+      }
+    }
   }
 
   function refresh(provider: SettingsProviderEntry): void {
@@ -710,7 +726,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       }
       if (result.status === 'completed') {
         loginId = null
-        await loadUsage(result.providerId, result.credentialId, controller.signal, true)
+        await product.refresh()
         controller.signal.throwIfAborted()
         const provider = resources.providers.find(
           (entry) => entry.id === result.providerId,
@@ -870,6 +886,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       manualDrafts.value = {}
       testResults.value = {}
       operations.value = {}
+      refreshingUsage.value = {}
     },
   )
 
@@ -881,6 +898,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   return {
     modelEditor,
     operations,
+    refreshingUsage,
     providers,
     testing,
     refreshing,

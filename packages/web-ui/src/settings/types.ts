@@ -163,6 +163,8 @@ export interface SettingsProviderEntry {
   enabled: boolean
   models: SettingsProviderModel[]
   accounts: SettingsProviderAccount[]
+  /** The vendor supports a free quota request when an account becomes visible. */
+  autoRefreshUsage?: boolean
   /** The vendor mark; null falls back to an initial. */
   logo: string | null
 }
@@ -287,4 +289,4 @@ export type ProviderLoginPhase =
 
 export type SettingsProviderOperation =
   | { kind: 'saving' | 'testing' | 'refreshing' | 'removing' | 'cli' }
-  | { kind: 'account'; accountId: string; action: 'activate' | 'remove' | 'test' | 'usage' }
+  | { kind: 'account'; accountId: string; action: 'activate' | 'remove' | 'test' }

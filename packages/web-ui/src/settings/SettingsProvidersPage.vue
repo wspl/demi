@@ -24,7 +24,7 @@ import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
-import Meter from '@demicodes/web-ui/ui/Meter.vue'
+import ProviderQuota from './ProviderQuota.vue'
 import RelativeTime from '../ui/RelativeTime.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import Switch from '@demicodes/web-ui/ui/Switch.vue'
@@ -77,6 +77,7 @@ const props = defineProps<{
   testing?: string | null
   /** The provider whose model list is being fetched. */
   refreshing?: string | null
+  refreshingUsage?: Record<string, string[]>
 }>()
 
 const emit = defineEmits<{
@@ -99,7 +100,7 @@ const emit = defineEmits<{
   test: [provider: SettingsProviderEntry, accountId?: string]
   refresh: [provider: SettingsProviderEntry]
   /** Ask the vendor for one account's usage again. */
-  refreshUsage: [provider: SettingsProviderEntry, accountId: string]
+  refreshUsage: [provider: SettingsProviderEntry, accountId: string, automatic?: boolean]
   /** Read the CLI's newest version and the machines again. */
   checkCli: [provider: SettingsProviderEntry]
   /** Install the CLI on the user's Cloud again. */
@@ -490,29 +491,13 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                       >Limit reached</Tag
                     >
                   </template>
-                  <template v-if="account.quota.length" #description>
-                    <!-- The label column is as wide as the vendor's longest window name, which
-                         is "Weekly" for one and "Requests (short window)" for another. -->
-                    <div
-                      class="mt-1 grid max-w-96 grid-cols-[auto_minmax(4rem,1fr)_auto] items-center gap-x-2 gap-y-1 whitespace-nowrap text-[11px] tabular-nums"
-                    >
-                      <template
-                        v-for="window in account.quota"
-                        :key="window.id"
-                      >
-                        <span>{{ window.label }}</span>
-                        <Meter
-                          :value="window.used"
-                          :max="window.max"
-                          :label="window.label"
-                        />
-                        <span
-                          >{{ window.used }}%<template v-if="window.resets">
-                            · resets {{ window.resets }}</template
-                          ></span
-                        >
-                      </template>
-                    </div>
+                  <template #description>
+                    <ProviderQuota
+                      :key="`${selected.id}:${account.id}`"
+                      :windows="account.quota"
+                      :auto-refresh="selected.autoRefreshUsage === true"
+                      @refresh="emit('refreshUsage', selected, account.id, true)"
+                    />
                   </template>
                   <Button
                     size="sm"
@@ -527,16 +512,15 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                     @click="emit('activateAccount', selected, account.id)"
                     >Activate</Button
                   >
-                  <!-- Usage is the vendor's to report and is asked for, never polled: here, and once
-                       when an account is added. Each account keeps its own. -->
+                  <!-- Automatic refresh shares the same account request with this explicit retry. -->
                   <Tooltip content="Refresh usage"
                     ><IconButton
                       size="sm"
                       :icon="RefreshCw"
                       aria-label="Refresh usage"
                       spin-on-click
-                      :spinning="accountPending(selected.id, account.id, 'usage')"
-                      :disabled="!!operations?.[selected.id] && !accountPending(selected.id, account.id, 'usage')"
+                      :spinning="refreshingUsage?.[selected.id]?.includes(account.id)"
+                      :disabled="!!operations?.[selected.id] || refreshingUsage?.[selected.id]?.includes(account.id)"
                       @click="emit('refreshUsage', selected, account.id)"
                   /></Tooltip>
                   <!-- The test asks with this account, in use or not; its answer is a toast,

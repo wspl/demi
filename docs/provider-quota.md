@@ -209,12 +209,21 @@ const probed = await provider.quota?.probe({ force: true })
 Guidance:
 
 1. Prefer **observation** during active chat (zero extra cost when headers/body carry windows).
-2. Call **probe** when the user asks, and once when an account is added. The product's providers page has a
-   Refresh usage button on every account, in use or not, and probes once after a sign-in adds one. Selecting
-   another account probes nothing: each account keeps its own snapshot. Nothing probes on a timer or on opening a
-   page: the snapshot is kept (see Goals) and says when it was taken, and a vendor's usage API is rate limited
-   like any other.
-3. Do not poll `probe()` on a tight timer; use observe + sparse probe.
+2. Every surface that displays an account's quota requests one fresh **free probe** when
+   that quota region becomes visible, including when no snapshot exists yet. Opening
+   settings, returning to a provider, or scrolling an account back into view refreshes
+   the displayed accounts. Snapshot updates and ordinary rerenders do not trigger
+   another probe. The shared `web-ui` quota display owns this visibility trigger;
+   its host supplies the request and state.
+3. Keep the last snapshot during refresh and on failure. Automatic failures stay
+   quiet and do not retry while the region remains visible. A manual Refresh usage
+   action remains available and reports failure. Concurrent requests for the same
+   provider/account are coalesced; different accounts refresh independently. Closing
+   a view lets its request finish and update the account cache; signing out or
+   disposing the application cancels pending requests. Adding an account relies on
+   its newly visible quota region, rather than issuing a second sign-in probe.
+   Providers without a free probe only display observations until an explicit request.
+4. Do not poll `probe()` on a timer; use observations and visibility-triggered probes.
 
 ## 7. Implementation notes
 

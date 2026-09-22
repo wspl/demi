@@ -81,6 +81,7 @@ onUnmounted(closeLogin)
     :operations="settings.operations"
     :testing="testing"
     :refreshing="refreshing"
+    :refreshing-usage="settings.refreshingUsage"
     @change="change"
     @toggle-model="
       (provider, model, enabled) =>
