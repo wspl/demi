@@ -77,7 +77,8 @@ const cliOver = (vendor: ReturnType<typeof distribution>, now = () => 0) => new 
 
 test('the wanted version is the vendor\'s newest, read from its manifest and believed for a while', async () => {
   let now = 0
-  const vendor = distribution({ latest: '2.1.5', versions: ['2.1.5', '2.1.6'] })
+  const published = { latest: '2.1.5', versions: ['2.1.5', '2.1.6'] }
+  const vendor = distribution(published)
   const releases = new ClaudeReleases({ fetch: vendor.fetch, now: () => now })
   const release = await releases.latest()
   expect(release.version).toBe('2.1.5')
@@ -92,11 +93,21 @@ test('the wanted version is the vendor\'s newest, read from its manifest and bel
   vendor.requests.length = 0
   await releases.latest(true)
   expect(vendor.requests).toEqual(['/latest'])
+  published.latest = '2.1.6'
   now += 7 * 60 * 60_000
-  await releases.latest()
-  expect(vendor.requests).toEqual(['/latest', '/latest'])
-  await expect(releases.release('../etc')).rejects.toThrow('not a version')
-  await expect(releases.release('9.9.9')).rejects.toBeInstanceOf(ClaudeCliError)
+  expect((await releases.latest()).version).toBe('2.1.6')
+  expect(vendor.requests).toEqual(['/latest', '/latest', '/2.1.6/manifest.json'])
+})
+
+test('an invalid latest pointer or missing release fails instead of selecting another version', async () => {
+  const state = { latest: '../etc', versions: ['2.1.6'] }
+  const vendor = distribution(state)
+  const releases = new ClaudeReleases({ fetch: vendor.fetch })
+  await expect(releases.latest()).rejects.toThrow('the distribution named no version')
+  state.latest = '9.9.9'
+  await expect(releases.latest()).rejects.toBeInstanceOf(ClaudeCliError)
+  state.latest = '2.1.6'
+  expect((await releases.latest()).version).toBe('2.1.6')
 })
 
 test('a machine with no CLI waits for the install; one with an older CLI answers with it and updates beside it', async () => {
@@ -121,13 +132,8 @@ test('a machine with no CLI waits for the install; one with an older CLI answers
   expect(current.calls.map(call => call.operation)).toEqual(['claude.status'])
 })
 
-test('a held entry wants its version only, and a failed install says why with the version', async () => {
+test('a failed latest install says why with the version', async () => {
   const vendor = distribution({ latest: '2.1.6', versions: ['2.1.5', '2.1.6'] })
-  const held = machine(['2.1.6'])
-  expect(await cliOver(vendor).executable(held.target, { held: '2.1.5' }))
-    .toBe('/home/.demi/claude/2.1.5/claude')
-  expect(vendor.requests).toEqual(['/2.1.5/manifest.json'])
-
   const broken = machine([], { code: 'unsupported_platform', message: 'no build for plan9-x64' })
   const failure = await cliOver(vendor).executable(broken.target).catch(error => error)
   expect(failure).toBeInstanceOf(ClaudeCliError)
