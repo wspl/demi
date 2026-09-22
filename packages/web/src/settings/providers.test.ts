@@ -11,6 +11,7 @@ let pinia: ReturnType<typeof createPinia>
 let state: ProductState
 let writes: number
 let write: (body: Record<string, unknown>) => Promise<Response>
+let probe: (body: string, signal: AbortSignal | null | undefined) => Promise<Response>
 
 beforeEach(async () => {
   pinia = createPinia()
@@ -47,6 +48,7 @@ beforeEach(async () => {
     ],
   })
   writes = 0
+  probe = async () => Response.json({})
   write = async (body) => {
     if (typeof body.label === 'string') {
       state.providers[0]!.label = body.label
@@ -78,6 +80,9 @@ beforeEach(async () => {
     if (path === '/api/providers/configured' && init?.method === 'PATCH') {
       writes++
       return write(JSON.parse(String(init.body)))
+    }
+    if (path === '/api/providers/configured/quota' && init?.method === 'POST') {
+      return probe(String(init.body), init.signal)
     }
     throw new Error(`Unexpected request: ${path}`)
   }) as typeof fetch
@@ -113,6 +118,69 @@ test('reopening settings and revalidating preserve default provider IDs', async 
   expect(
     useProviderSettings().providers.map((provider) => provider.id),
   ).toEqual(ids)
+})
+
+test('quota refreshes coalesce per account and do not block other accounts or edits', async () => {
+  const settings = useProviderSettings()
+  const provider = settings.providers.find((entry) => entry.id === 'configured')!
+  const deferred = Promise.withResolvers<Response>()
+  const accounts: string[] = []
+  probe = (body) => {
+    accounts.push(body)
+    return deferred.promise
+  }
+  const first = settings.refreshUsage(provider, 'first', true)
+  await settings.refreshUsage(provider, 'first', true)
+  const second = settings.refreshUsage(provider, 'second', true)
+  expect(accounts).toEqual([
+    JSON.stringify({ credentialId: 'first' }),
+    JSON.stringify({ credentialId: 'second' }),
+  ])
+  expect(settings.refreshingUsage.configured).toEqual(['first', 'second'])
+  settings.change(provider, { name: 'While refreshing' })
+  await idle()
+  expect(writes).toBe(1)
+  deferred.resolve(Response.json({}))
+  await Promise.all([first, second])
+  expect(settings.refreshingUsage).toEqual({})
+  await settings.refreshUsage(provider, 'first', true)
+  expect(accounts).toHaveLength(3)
+})
+
+test('automatic quota failures stay quiet; manual retries explain the error', async () => {
+  const settings = useProviderSettings()
+  const provider = settings.providers.find((entry) => entry.id === 'configured')!
+  let requests = 0
+  probe = async () => {
+    requests++
+    return Response.json({ code: 'quota_unavailable', message: 'Billing unavailable' }, { status: 502 })
+  }
+  await settings.refreshUsage(provider, 'first', true)
+  expect(toasts).toHaveLength(0)
+  expect(settings.refreshingUsage).toEqual({})
+  await nextTick()
+  expect(requests).toBe(1)
+  await settings.refreshUsage(provider, 'first')
+  expect(requests).toBe(2)
+  expect(toasts.at(-1)).toMatchObject({ title: 'Could not refresh usage', message: 'Billing unavailable' })
+})
+
+test('disposing provider settings cancels quota requests without a toast', async () => {
+  const settings = useProviderSettings()
+  const provider = settings.providers.find((entry) => entry.id === 'configured')!
+  let requestSignal: AbortSignal | null | undefined
+  probe = (_body, signal) => {
+    requestSignal = signal
+    return new Promise((_resolve, reject) => {
+      signal?.addEventListener('abort', () => reject(signal.reason), { once: true })
+    })
+  }
+  const pending = settings.refreshUsage(provider, 'first')
+  settings.$dispose()
+  await pending
+  expect(requestSignal?.aborted).toBe(true)
+  expect(toasts).toHaveLength(0)
+  expect(settings.refreshingUsage).toEqual({})
 })
 
 test('provider writes become busy before dispatch and reject duplicate clicks', async () => {

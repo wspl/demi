@@ -89,7 +89,7 @@ const fullNarrowTab = ref<SettingsTab>('skills')
 
       <GallerySection
         title="Full agent settings"
-        note="A stress test: everything a coding agent might ask for, in its worst states at once. Expiring auth, an unreachable local model, a crashed MCP server, a quota nearly spent, disabled entries, nested rows, long paths."
+        note="A stress test: expiring auth, an unreachable local model, a crashed MCP server, a quota nearly spent, disabled entries, nested rows, long paths. Each visible account refreshes its usage once; switch providers and return to see another refresh. Existing meters stay visible while the refresh buttons spin."
       >
         <GalleryOverlayWell size="tall">
           <SettingsDialog

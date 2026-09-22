@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onScopeDispose, ref } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import ProviderLoginDialog, {
   type ProviderLoginPhase,
@@ -161,7 +161,7 @@ function refresh(p: SettingsProviderEntry) {
 const accountOperation = ref<{
   providerId: string
   accountId: string
-  action: 'test' | 'usage'
+  action: 'test'
 } | null>(null)
 const cliChecking = ref<string | null>(null)
 const operations = computed<Record<string, SettingsProviderOperation>>(() =>
@@ -177,15 +177,33 @@ const operations = computed<Record<string, SettingsProviderOperation>>(() =>
       }
     : {},
 )
+const usageTimers = ref<Record<string, Record<string, number>>>({})
+const refreshingUsage = computed(() => Object.fromEntries(
+  Object.entries(usageTimers.value).map(([id, accounts]) => [id, Object.keys(accounts)]),
+))
 function refreshUsage(p: SettingsProviderEntry, accountId: string) {
-  accountOperation.value = { providerId: p.id, accountId, action: 'usage' }
-  window.setTimeout(() => {
-    accountOperation.value = null
+  usageTimers.value[p.id] ??= {}
+  const timers = usageTimers.value[p.id]!
+  if (timers[accountId] !== undefined) {
+    return
+  }
+  timers[accountId] = window.setTimeout(() => {
+    delete timers[accountId]
+    if (!Object.keys(timers).length) {
+      delete usageTimers.value[p.id]
+    }
     for (const window of p.accounts.find((account) => account.id === accountId)?.quota ?? []) {
       window.used = Math.min(window.max, window.used + 1)
     }
   }, 1200)
 }
+onScopeDispose(() => {
+  for (const accounts of Object.values(usageTimers.value)) {
+    for (const timer of Object.values(accounts)) {
+      window.clearTimeout(timer)
+    }
+  }
+})
 
 // The product asks the vendor and the machines; here each action shows its own outcome.
 function checkCli(p: SettingsProviderEntry) {
@@ -382,6 +400,7 @@ function closeLogin() {
     :overlay-store="appOverlayStore"
     :testing="testing"
     :refreshing="refreshing"
+    :refreshing-usage="refreshingUsage"
     @change="changeProvider"
     @toggle-model="(_provider, model, enabled) => (model.enabled = enabled)"
     @add="addProvider"

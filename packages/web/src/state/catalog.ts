@@ -148,6 +148,9 @@ export function providerView(
           ]
         }) ?? [],
       })) ?? [],
+    autoRefreshUsage: details?.quotaCapability.mode === 'supported'
+      && details.quotaCapability.canProbe === true
+      && details.quotaCapability.probeCost === 'free',
     logo: null,
   }
 }

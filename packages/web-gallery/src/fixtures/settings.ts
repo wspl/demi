@@ -84,6 +84,7 @@ export function provider(
     enabled: true,
     models: [],
     accounts: [],
+    autoRefreshUsage: partial.kind === 'subscription',
     logo: null,
     ...partial,
   }
