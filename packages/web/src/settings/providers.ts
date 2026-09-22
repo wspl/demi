@@ -517,7 +517,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
 
   const cliSchema = z.object({
     newest: z.union([z.object({ version: z.string() }), z.object({ error: z.string() })]),
-    held: z.string().nullable(),
     install: z.union([
       z.object({ state: z.literal('installing') }),
       z.object({ state: z.literal('installed') }),
@@ -540,7 +539,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     signal.throwIfAborted()
     clis.value[providerId] = {
       newest: cli.newest,
-      held: cli.held,
       install: cli.install,
       machines: cli.machines.map((machine) => ({
         id: machine.deviceId,
@@ -584,21 +582,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       try {
         await apiRequest(`/providers/${encodeURIComponent(provider.id)}/cli/install`, { method: 'POST', signal })
         await readCli(provider.id, false, lifetime.signal)
-      } catch (error) {
-        report(error)
-      }
-    })
-  }
-
-  function holdCli(provider: SettingsProviderEntry, version: string | null): void {
-    perform(provider.id, { kind: 'cli' }, async (signal) => {
-      try {
-        await apiRequest(`/providers/${encodeURIComponent(provider.id)}/cli`, {
-          method: 'PUT',
-          signal,
-          ...jsonBody({ held: version }),
-        })
-        await readCli(provider.id, false, signal)
       } catch (error) {
         report(error)
       }
@@ -920,6 +903,5 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     loadCli,
     checkCli,
     installCli,
-    holdCli,
   }
 })

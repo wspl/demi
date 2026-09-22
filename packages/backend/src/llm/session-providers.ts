@@ -30,10 +30,7 @@ interface SessionProvidersOptions {
    */
   processHost: (conversationId: string) => Promise<Host>
   /** Where a Claude Code process runs on that machine, with Demi's CLI installed there. */
-  claudeProcess: (
-    conversationId: string,
-    held: string | undefined
-  ) => Promise<ClaudeProcessPlace>
+  claudeProcess: (conversationId: string) => Promise<ClaudeProcessPlace>
   rateLimiter: ProviderRateLimiter
 }
 
@@ -64,13 +61,7 @@ export function createSessionProviderResolver(
         const target = await host()
         return target.process.spawn({ ...params, inheritEnv: true })
       },
-      claudeProcess: async () => {
-        const entry = (await resolve())?.entry
-        return options.claudeProcess(
-          agentSessionId,
-          entry?.config.kind === 'subscription' ? entry.config.cliVersion : undefined
-        )
-      },
+      claudeProcess: () => options.claudeProcess(agentSessionId),
     }
     const meter: MeterOptions = {
       observe: usageAppender(options.control, {

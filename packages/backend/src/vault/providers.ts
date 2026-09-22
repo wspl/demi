@@ -24,11 +24,6 @@ const apiKeyConfigSchema = z.strictObject({
 const subscriptionConfigSchema = z.strictObject({
   kind: z.literal('subscription'),
   providerType: z.string().min(1),
-  /**
-   * The CLI version a process provider's entry is held at (`claude-cli.md`
-   * § Which version); absent, the vendor's newest.
-   */
-  cliVersion: z.string().min(1).optional(),
 })
 const providerConfigSchema = z.discriminatedUnion('kind', [
   apiKeyConfigSchema,

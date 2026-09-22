@@ -346,8 +346,7 @@ A subscription entry's CLI is read and managed under `/api/providers/:id/cli`:
 
 | Route | Meaning |
 |---|---|
-| `GET …/cli?refresh=` | `{ newest, held, install, machines }`: the vendor's newest version (`{ version }`, or `{ error }` when the vendor cannot be read; `refresh=true` asks it at once), the version the entry is held at or null, the last Cloud install (`installing`, `installed` with its path, `failed` with its message, or null), and the user's Cloud with its installed versions when it is running now (null when it did not answer). It wakes nothing: a stopped Cloud is simply absent. |
-| `PUT …/cli` | `{ held }`: hold the entry at a version the vendor publishes (`unknown_version` otherwise), or null to follow the newest. |
+| `GET …/cli?refresh=` | `{ newest, install, machines }`: the vendor's newest version (`{ version }`, or `{ error }` when the vendor cannot be read; `refresh=true` asks it at once), the last Cloud install (`installing`, `installed` with its path, `failed` with its message, or null), and the user's Cloud with its installed versions when it is running now (null when it did not answer). It wakes nothing: a stopped Cloud is simply absent. |
 | `POST …/cli/install` | Starts the Cloud install again; 202 with its state. |
 
 Adding an account to such an entry starts the same install; its failure is this
