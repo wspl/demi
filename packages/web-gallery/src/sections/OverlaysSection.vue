@@ -800,7 +800,7 @@ function itemLabel(id: string, list: {
 
       <GallerySection
         title="Dialog"
-        note="Modal confirm. The pinned one starts open."
+        note="Modal confirm. The pinned one starts open. Show toast keeps the live dialog open: the notification stays above its scrim and can be dismissed without closing the dialog."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="open">
@@ -850,6 +850,11 @@ function itemLabel(id: string, list: {
             <p class="text-[13px] leading-5 text-fg-muted">
             The expired-cookie case can wait. Keep the queued message for the next turn?
             </p>
+            <Button
+              size="md"
+              variant="ghost"
+              @click="showToast({ title: 'Could not refresh usage', message: 'The provider is temporarily unavailable.', tone: 'danger' })"
+            >Show toast</Button>
             <div class="flex justify-end gap-2">
               <Button
                 size="md"

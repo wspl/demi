@@ -29,7 +29,7 @@ function pinLeavingToast(el: Element) {
     <TransitionGroup
       v-bind="overlayMotion"
       tag="div"
-      class="pointer-events-none fixed inset-0 z-50 flex flex-col items-end justify-end gap-2 p-4"
+      class="pointer-events-none fixed inset-0 z-[55] flex flex-col items-end justify-end gap-2 p-4"
       @before-leave="pinLeavingToast"
     >
       <div
