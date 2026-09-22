@@ -289,6 +289,9 @@ of the tab being watched.
 - When the viewport and the panel differ, as in Mobile and Custom, the view
   scales the picture to fit and centers it. Input maps back to page
   coordinates.
+  During resize, the retained frame keeps its own aspect ratio until a frame
+  painted at the new viewport size replaces it; viewport metadata must not
+  stretch the old picture.
 - A Web tab nobody watches keeps its last size. A tab never watched is
   1280 × 720.
 - With several viewers, the viewer that operated most recently decides the Web
