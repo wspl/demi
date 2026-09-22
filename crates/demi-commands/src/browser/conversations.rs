@@ -64,6 +64,9 @@ impl Controller {
         if cancel.is_cancelled() {
             return Err(BrowserError::Cancelled);
         }
+        if start.is_some() && matches!(&*state, State::Live { owner, .. } if owner.is_finished()) {
+            Self::retire_locked(&mut state, State::Absent).await?;
+        }
         if let (State::Absent, Some(locale)) = (&*state, start) {
             let locale = locale.clone();
             let stop = CancellationToken::new();
@@ -141,18 +144,50 @@ impl Controller {
                 return Ok(());
             }
         }
-        let previous = std::mem::replace(&mut *state, State::Released);
+        Self::retire_locked(&mut state, next).await
+    }
+
+    /// Join the browser owner under the lifecycle gate before admitting a replacement.
+    async fn retire_locked(state: &mut State, next: State) -> Result<()> {
+        let previous = std::mem::replace(state, State::Released);
         // Keep the gate until retirement finishes: concurrent release acknowledgements
         // must not claim that Chrome has exited while the first caller is still waiting.
         if let State::Live { stop, owner, .. } = previous {
             stop.cancel();
             match owner.await? {
-                Ok(()) | Err(BrowserError::Cancelled) => {}
-                Err(error) => return Err(error),
+                Err(
+                    error @ (BrowserError::Cleanup { .. } | BrowserError::ProfileRetained { .. }),
+                ) => {
+                    return Err(error);
+                }
+                // Startup and transport failures were published to their callers.
+                // The joined owner has cleaned up; only cleanup failures fence reuse.
+                Ok(()) | Err(_) => {}
             }
         }
         *state = next;
         Ok(())
+    }
+
+    /// Close a conversation tab, retiring its entire browser when it is the last.
+    async fn close_tab(
+        &self,
+        environment: &BrowserEnvironment,
+        tab: &super::BrowserTab,
+        cancellation: &CancellationToken,
+        timeout: std::time::Duration,
+    ) -> Result<()> {
+        if let Ok(_admission) = environment.acquisition.clone().try_write_owned() {
+            let tabs = environment.tabs(cancellation, timeout).await?;
+            if tabs.len() == 1 && tabs[0].id() == tab.id() {
+                // CloseTarget can acknowledge while a concurrent navigation keeps
+                // the final page alive. Retire the owned browser directly, while
+                // admission prevents another caller from adding a tab to it.
+                return self.retire(State::Absent, Some(environment)).await;
+            }
+        }
+        tab.close(cancellation, timeout).await?;
+        self.retire_empty(environment).await
     }
 
     /// Watches for the next environment to start.
@@ -584,8 +619,9 @@ impl Conversations {
             ));
         }
         if matches!(command, BrowserCommand::Close(_)) {
-            tab.close(cancellation, command.timeout()).await?;
-            controller.retire_empty(&environment).await?;
+            controller
+                .close_tab(&environment, tab, cancellation, command.timeout())
+                .await?;
             return Ok(CommandOutput::Json(
                 serde_json::json!({ "closed": tab.id() }),
             ));

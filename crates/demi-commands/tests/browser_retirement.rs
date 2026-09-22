@@ -138,9 +138,7 @@ async fn chrome_process_tree_and_profile_retire_together() {
                 system.refresh_processes_specifics(
                     ProcessesToUpdate::All,
                     true,
-                    ProcessRefreshKind::nothing()
-                        .with_exe(UpdateKind::Always)
-                        .with_cmd(UpdateKind::Always),
+                    ProcessRefreshKind::nothing().with_exe(UpdateKind::Always),
                 );
                 let main = system
                     .processes()
@@ -151,13 +149,9 @@ async fn chrome_process_tree_and_profile_retire_together() {
                     })
                     .expect("the test owns Chrome's direct child");
                 let leader = i32::try_from(main.pid().as_u32()).unwrap();
-                let profile = PathBuf::from(
-                    main.cmd()
-                        .iter()
-                        .filter_map(|argument| argument.to_str())
-                        .find_map(|argument| argument.strip_prefix("--user-data-dir="))
-                        .unwrap(),
-                );
+                let profile = chrome_profiles()
+                    .remove(&leader)
+                    .expect("the test owns Chrome's profile");
                 assert!(profile.is_dir());
                 let snapshot = processes();
                 assert_eq!(
@@ -196,10 +190,11 @@ async fn chrome_process_tree_and_profile_retire_together() {
                     .filter(|process| process.environ().contains(&marker))
                     .map(|process| i32::try_from(process.pid().as_u32()).unwrap())
                     .collect();
-                assert!(
-                    descendants.contains(&leader),
-                    "Chrome's ownership marker must be observable"
-                );
+                // Linux Chrome rewrites its original argv/envp memory as its
+                // process title, so /proc may no longer expose its marker. The
+                // direct child and SingletonLock already identify the leader;
+                // inherited markers additionally identify detached helpers.
+                descendants.insert(leader);
                 loop {
                     let previous = descendants.len();
                     for process in &snapshot {
@@ -288,30 +283,44 @@ async fn wait_until_busy(fixture: &browser_families::BrowserFixture, tab: &str) 
 
 /// Locate the test service's browser profiles without exposing diagnostic product APIs.
 fn chrome_profiles() -> std::collections::BTreeMap<i32, PathBuf> {
-    let mut system = System::new();
-    system.refresh_processes_specifics(
-        ProcessesToUpdate::All,
-        true,
-        ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always),
-    );
-    system
-        .processes()
-        .values()
-        .filter_map(|process| {
-            if process.parent() != Some(sysinfo::Pid::from_u32(std::process::id())) {
-                return None;
-            }
-            let profile = process
-                .cmd()
-                .iter()
-                .filter_map(|arg| arg.to_str())
-                .find_map(|arg| arg.strip_prefix("--user-data-dir="))?;
-            Some((
-                i32::try_from(process.pid().as_u32()).unwrap(),
-                PathBuf::from(profile),
-            ))
-        })
-        .collect()
+    let parent = i32::try_from(std::process::id()).unwrap();
+    let children: HashSet<_> = processes()
+        .into_iter()
+        .filter(|process| process.parent == parent)
+        .map(|process| process.pid)
+        .collect();
+    let mut profiles = std::collections::BTreeMap::new();
+    // Chrome can replace its Linux argv with a single process-title string.
+    // Its singleton lock records the profile owner without parsing that title.
+    for entry in std::fs::read_dir(std::env::temp_dir()).unwrap() {
+        let path = entry.unwrap().path();
+        if !path
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("demi-browser-")
+        {
+            continue;
+        }
+        let lock = match std::fs::read_link(path.join("SingletonLock")) {
+            Ok(lock) => lock,
+            // A profile that has not started, or has retired, owns no browser.
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => panic!("read Chrome profile owner: {error}"),
+        };
+        let owner: i32 = lock
+            .to_str()
+            .unwrap()
+            .rsplit_once('-')
+            .unwrap()
+            .1
+            .parse()
+            .unwrap();
+        if children.contains(&owner) {
+            profiles.insert(owner, path);
+        }
+    }
+    profiles
 }
 
 #[tokio::test]
@@ -544,6 +553,65 @@ async fn last_tab_close_fails_its_running_command_as_browser_lost() {
             fixture.lifecycle("status").await,
             json!({"conversations":[]})
         );
+        fixture
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "requires installed pinned Chrome for Testing release"]
+async fn a_new_open_recovers_after_chrome_crashes_without_replaying_old_tabs() {
+    use serde_json::json;
+    browser_families::with_browser_fixture(|fixture| async move {
+        let old = fixture.open("cdp.html").await;
+        fixture
+            .call(
+                "browser.cdp.send",
+                json!({"tab":old,"method":"Debugger.enable","params":"{}"}),
+            )
+            .await;
+        fixture
+            .call(
+                "browser.cdp.send",
+                json!({"tab":old,"method":"Fetch.enable","params":"{}"}),
+            )
+            .await;
+        let executable = PathBuf::from(std::env::var_os("DEMI_TEST_CHROME").unwrap());
+        let mut system = System::new();
+        system.refresh_processes_specifics(
+            ProcessesToUpdate::All,
+            true,
+            ProcessRefreshKind::nothing().with_exe(UpdateKind::Always),
+        );
+        let main = system
+            .processes()
+            .values()
+            .find(|process| {
+                process.parent() == Some(sysinfo::Pid::from_u32(std::process::id()))
+                    && process.exe() == Some(executable.as_path())
+            })
+            .expect("the fixture owns its Chrome child");
+        let leader = i32::try_from(main.pid().as_u32()).unwrap();
+        let profile = chrome_profiles()
+            .remove(&leader)
+            .expect("the fixture owns Chrome's profile");
+        assert_eq!(unsafe { libc::kill(leader, libc::SIGKILL) }, 0);
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while profile.exists() {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("crash retirement removes the profile");
+        let new = fixture.open("cdp.html").await;
+        assert_ne!(new, old);
+        let tabs = fixture.call("browser.tabs", json!({})).await;
+        assert_eq!(tabs["tabs"].as_array().unwrap().len(), 1);
+        assert_eq!(tabs["tabs"][0]["id"], new);
+        let (_, error) = fixture
+            .result("browser.info", json!({"tab":old}), CancellationToken::new())
+            .await;
+        assert_eq!(error["error"]["code"], "tab_not_found", "{error}");
         fixture
     })
     .await;

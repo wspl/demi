@@ -1,5 +1,5 @@
 import type { CommandContext, NativePackage, ArtifactResolver } from '@demicodes/command-protocol'
-import type { RemoteHost } from '@demicodes/host-remote'
+import { RemoteServiceExit, type RemoteHost } from '@demicodes/host-remote'
 import { errorMessage } from '@demicodes/utils'
 import { z } from 'zod'
 
@@ -24,9 +24,10 @@ export interface ClaudeRelease {
   platforms: Record<string, { url: string; size: number; sha256: string }>
 }
 
+const failedSchema = z.strictObject({ ok: z.literal(false), code: z.string(), message: z.string() })
 const ensuredSchema = z.discriminatedUnion('ok', [
   z.strictObject({ ok: z.literal(true), version: z.string(), path: z.string().min(1) }),
-  z.strictObject({ ok: z.literal(false), code: z.string(), message: z.string() }),
+  failedSchema,
 ])
 const statusSchema = z.discriminatedUnion('ok', [
   z.strictObject({
@@ -34,7 +35,7 @@ const statusSchema = z.discriminatedUnion('ok', [
     platform: z.string(),
     installed: z.array(z.strictObject({ version: z.string(), path: z.string().min(1) })),
   }),
-  z.strictObject({ ok: z.literal(false), code: z.string(), message: z.string() }),
+  failedSchema,
 ])
 
 /** Why a machine has no usable CLI, with the version that was wanted. */
@@ -267,6 +268,8 @@ export class ClaudeCli {
     } catch (error) {
       if (signal?.aborted)
         throw error
+      if (error instanceof RemoteServiceExit && error.stdout.byteLength > 0)
+        return failedSchema.parse(JSON.parse(new TextDecoder().decode(error.stdout)))
       throw new ClaudeCliError('service_failed', null, errorMessage(error))
     }
     const text = new TextDecoder().decode(bytes).trim()

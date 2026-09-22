@@ -1,0 +1,32 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Loading form</title>
+<style>
+  body { margin: 0; font: 16px sans-serif; height: 2400px; }
+  #spin {
+    position: absolute;
+    top: 350px;
+    width: 50px;
+    height: 50px;
+    background: red;
+    animation: move 2s linear infinite alternate;
+  }
+  @keyframes move { to { transform: translateX(600px); } }
+</style>
+<label>Name <input id="name"></label>
+<label>Date <input id="date" type="date"></label>
+<label>Purpose <select id="purpose"><option>测试</option><option>培训</option></select></label>
+<label>Confirm <input id="confirm" type="checkbox"></label>
+<button id="submit">Save</button>
+<pre id="result"></pre>
+<div id="spin"></div>
+<script>
+  document.querySelector('#submit').onclick = () => {
+    if (!document.querySelector('#confirm').checked) return;
+    document.querySelector('#result').textContent = JSON.stringify({
+      name: document.querySelector('#name').value,
+      date: document.querySelector('#date').value,
+      purpose: document.querySelector('#purpose').value,
+    });
+  };
+</script>

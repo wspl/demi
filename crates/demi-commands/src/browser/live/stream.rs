@@ -5,9 +5,6 @@
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use chromiumoxide::cdp::browser_protocol::page::{
-    CaptureScreenshotFormat, CaptureScreenshotParams,
-};
 use tokio::{sync::mpsc, time::Instant};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
@@ -157,7 +154,6 @@ async fn run(
                         encoding: (bitrate, fps),
                         sequence: 0,
                     });
-                    retry = Duration::ZERO;
                 }
                 // Waiting changes nothing on a Host that cannot capture.
                 Err(BrowserError::UnsupportedCapability(reason)) => {
@@ -250,6 +246,8 @@ async fn run(
             }
             event = event => match event {
                 Some(CaptureEvent::Frame(frame)) => {
+                    // Enqueuing a start does not mean Chrome acquired its stream.
+                    retry = Duration::ZERO;
                     if let Some(running) = &mut running {
                         running.sequence = frame.sequence;
                     }
@@ -265,13 +263,7 @@ async fn run(
                     tokio::spawn(async move {
                         let _painted = tokio::time::timeout(
                             Duration::from_secs(5),
-                            page.execute(
-                                CaptureScreenshotParams::builder()
-                                    .format(CaptureScreenshotFormat::Jpeg)
-                                    .quality(1)
-                                    .from_surface(true)
-                                    .build(),
-                            ),
+                            crate::browser::viewport::paint(&page),
                         )
                         .await;
                     });

@@ -21,6 +21,8 @@ use std::{
 
 /// How long a navigation nobody waits for may load.
 const DETACHED_LOAD_TIMEOUT: Duration = Duration::from_secs(60);
+/// A page and its child frames can emit a burst while the baseline is read.
+const NAVIGATION_EVENT_CAPACITY: usize = 256;
 
 pub(super) enum Navigation {
     Url(String),
@@ -59,12 +61,24 @@ impl NavigationObservation {
     }
 
     pub async fn subscribe(page: &Page) -> Result<Self> {
-        let requests = page.event_listener_with_capacity(256).await?;
-        let failures = page.event_listener_with_capacity(256).await?;
-        let frames = page.event_listener_with_capacity(256).await?;
-        let same_document = page.event_listener_with_capacity(256).await?;
-        let lifecycle = page.event_listener_with_capacity(256).await?;
-        let loading = page.event_listener_with_capacity(256).await?;
+        let requests = page
+            .event_listener_with_capacity(NAVIGATION_EVENT_CAPACITY)
+            .await?;
+        let failures = page
+            .event_listener_with_capacity(NAVIGATION_EVENT_CAPACITY)
+            .await?;
+        let frames = page
+            .event_listener_with_capacity(NAVIGATION_EVENT_CAPACITY)
+            .await?;
+        let same_document = page
+            .event_listener_with_capacity(NAVIGATION_EVENT_CAPACITY)
+            .await?;
+        let lifecycle = page
+            .event_listener_with_capacity(NAVIGATION_EVENT_CAPACITY)
+            .await?;
+        let loading = page
+            .event_listener_with_capacity(NAVIGATION_EVENT_CAPACITY)
+            .await?;
         let frame = page
             .execute(GetFrameTreeParams {})
             .await?
@@ -316,8 +330,12 @@ impl BrowserTab {
 
 /// Wait for the document current at subscription, never for a future navigation.
 pub(super) async fn wait_current_load(page: &Page, load: &str) -> Result<()> {
-    let mut lifecycle = page.event_listener::<EventLifecycleEvent>().await?;
-    let mut navigated = page.event_listener::<EventFrameNavigated>().await?;
+    let mut lifecycle = page
+        .event_listener_with_capacity::<EventLifecycleEvent>(NAVIGATION_EVENT_CAPACITY)
+        .await?;
+    let mut navigated = page
+        .event_listener_with_capacity::<EventFrameNavigated>(NAVIGATION_EVENT_CAPACITY)
+        .await?;
     let frame = page
         .execute(GetFrameTreeParams {})
         .await?
@@ -408,9 +426,15 @@ where
     C::Response: Send,
 {
     let page = tab.page.clone();
+    let ended = tab.ended.clone();
     tokio::spawn(async move {
-        // The user sees a load that fails or never ends; nobody waits for this answer.
-        let _loaded = tokio::time::timeout(DETACHED_LOAD_TIMEOUT, page.execute(command)).await;
+        // A closing tab must not receive a late address-bar navigation. The user
+        // sees load failures in Chrome; there is no command waiting for an answer.
+        tokio::select! {
+            biased;
+            _ = ended.cancelled() => {},
+            _ = tokio::time::timeout(DETACHED_LOAD_TIMEOUT, page.execute(command)) => {},
+        }
     });
 }
 

@@ -11,7 +11,7 @@ use chromiumoxide::{
             DispatchKeyEventParams, DispatchMouseEventParams, DispatchMouseEventType,
             InsertTextParams, MouseButton,
         },
-        page::{EventJavascriptDialogOpening, HandleJavaScriptDialogParams},
+        page::{EventJavascriptDialogOpening, HandleJavaScriptDialogParams, StopLoadingParams},
         target::{CloseTargetParams, EventTargetDestroyed},
     },
 };
@@ -22,7 +22,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{
     BrowserError, Result, element, evaluation, keyboard,
-    observation::{Observation, References},
+    observation::{Observation, References, can_resample},
     operation::{CONTROL_TIMEOUT, Operation},
     protocol::BrowserCreatedBy,
     protocol::BrowserTarget,
@@ -337,6 +337,19 @@ impl BrowserTab {
                 {
                     return Err(BrowserError::TabNotFound);
                 }
+                loop {
+                    match self.page.execute(StopLoadingParams {}).await {
+                        Ok(_) => break,
+                        // A navigation briefly replaces the active renderer. Wait
+                        // for its session before stopping the load and closing it.
+                        Err(chromiumoxide::error::CdpError::Chrome(error))
+                            if error.message == "Not attached to an active page" =>
+                        {
+                            tokio::time::sleep(Duration::from_millis(20)).await;
+                        }
+                        Err(error) => return Err(error.into()),
+                    }
+                }
                 browser
                     .execute(CloseTargetParams::new(self.page.target_id().clone()))
                     .await?;
@@ -379,9 +392,16 @@ impl BrowserTab {
                 let observation = operation
                     .run(Observation::capture(&self.page, references))
                     .await?;
-                let matches = operation
+                let matches = match operation
                     .run(observation.resolve(&self.page, target, references))
-                    .await?;
+                    .await
+                {
+                    Ok(matches) => matches,
+                    // The locator can see an insertion after its DOM snapshot.
+                    // No input has been delivered; the readiness loop resamples.
+                    Err(BrowserError::StaleReference) if can_resample(target) => Vec::new(),
+                    Err(error) => return Err(error),
+                };
                 let selected = operation.run(element::single(&self.page, matches)).await?;
                 if let Some(element) = selected {
                     last_failure.get_or_insert_with(|| BrowserError::NotActionable {

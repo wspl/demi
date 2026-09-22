@@ -267,6 +267,10 @@ pub(super) async fn prepared_state(
                 .await?;
         }
     }
+    if scroll && !frames.is_empty() && conditions.contains(&"geometry") {
+        // DOM animation frames do not flush the browser process's OOPIF transform.
+        operation.run(super::viewport::paint(page)).await?;
+    }
     for frame in frames.iter().rev() {
         let mut frame_conditions = vec!["geometry"];
         for condition in ["visible", "enabled", "stable"] {

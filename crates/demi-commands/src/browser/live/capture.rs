@@ -175,10 +175,16 @@ impl Captures {
         let (mut sink, mut stream) = socket.split();
         let (commands, mut outgoing) = mpsc::unbounded_channel::<Value>();
         let generation = self.generations.fetch_add(1, Ordering::Relaxed);
-        *self.connection.lock().expect("capture lock poisoned") = Some(Connection {
-            commands,
-            generation,
-        });
+        {
+            let mut connection = self.connection.lock().expect("capture lock poisoned");
+            // Retire the previous connection's streams before publishing a new
+            // sender. Its delayed teardown must not retire replacement streams.
+            self.disconnect_captures();
+            *connection = Some(Connection {
+                commands,
+                generation,
+            });
+        }
         self.connected.notify_waiters();
         let writer = async {
             while let Some(command) = outgoing.recv().await {
@@ -212,9 +218,12 @@ impl Captures {
             .is_some_and(|current| current.generation == generation)
         {
             *connection = None;
+            self.disconnect_captures();
         }
-        drop(connection);
-        // The extension lost its captures with its socket.
+    }
+
+    /// Release streams owned by the disconnected extension, under the connection lock.
+    fn disconnect_captures(&self) {
         let captures: Vec<_> = self
             .captures
             .lock()

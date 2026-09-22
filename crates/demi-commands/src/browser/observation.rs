@@ -528,7 +528,7 @@ impl Observation {
                         && target
                             .role
                             .as_ref()
-                            .is_none_or(|role| ax_text(&node.ax.role) == role)
+                            .is_none_or(|role| ax_text(&node.ax.role).eq_ignore_ascii_case(role))
                         && target.name.as_ref().is_none_or(|name| {
                             text_matches(ax_text(&node.ax.name), name, target.exact == Some(true))
                         })
@@ -944,6 +944,11 @@ pub(super) fn locator_count(target: &BrowserTarget) -> usize {
     .into_iter()
     .filter(|value| *value)
     .count()
+}
+
+/// A locator can be sampled again; stored node and scope references cannot.
+pub(super) fn can_resample(target: &BrowserTarget) -> bool {
+    target.r#ref.is_none() && target.within.is_none() && target.frame.is_none()
 }
 
 /// URL and coordinate targets cannot silently ignore supplied element flags.

@@ -223,11 +223,16 @@ async fn exercise_browser(
         },);
     assert!(matches!(waiting, Err(BrowserError::Cancelled)));
     assert_eq!(independent?, json!(2));
+    // Allow the Host to observe the disabled control before its wait expires.
+    // A 100 ms budget can expire during the first snapshot on a small Cloud.
     let (waiting, busy) = tokio::join!(
-        tab.click_css("#disabled", &live, Duration::from_millis(100)),
+        tab.click_css("#disabled", &live, DEADLINE),
         tab.read_only("1", &live, DEADLINE),
     );
-    assert!(matches!(waiting, Err(BrowserError::NotActionable { .. })));
+    assert!(
+        matches!(waiting, Err(BrowserError::NotActionable { .. })),
+        "{waiting:?}"
+    );
     assert!(matches!(busy, Err(BrowserError::Busy)));
 
     tab.close(&live, DEADLINE).await?;

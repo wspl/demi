@@ -57,9 +57,12 @@ fn switches(version: &str) -> Vec<(String, Option<String>)> {
         ("enable-features", "NetworkService,NetworkServiceInProcess"),
         // Headless automation has no browser toolbar or omnibox. Avoid their
         // WebUI renderers and preload work, including Chrome's overhead trial.
+        // Reload reclassifies the capture extension as unpacked. Allow it in
+        // this owned process without relying on a protected developer-mode
+        // preference that Chrome can reset on macOS and Windows.
         (
             "disable-features",
-            "TranslateUI,InitialWebUI,WebUIToolbarProcessOverheadExperiment,PreloadTopChromeWebUI,WebUIOmniboxPopup,WebUIOmniboxAimPopup",
+            "TranslateUI,InitialWebUI,WebUIToolbarProcessOverheadExperiment,PreloadTopChromeWebUI,WebUIOmniboxPopup,WebUIOmniboxAimPopup,ExtensionDisableUnsupportedDeveloper",
         ),
         ("force-color-profile", "srgb"),
         ("password-store", "basic"),
@@ -166,10 +169,11 @@ fn environment(locale: &CommandLocale) -> Vec<(String, String)> {
     if cfg!(target_os = "linux")
         && let Some(language) = locale.languages.first()
     {
-        environment.push((
-            "LANG".to_owned(),
-            format!("{}.UTF-8", language.replace('-', "_")),
-        ));
+        let system_locale = format!("{}.UTF-8", language.replace('-', "_"));
+        // An inherited LC_ALL or LANGUAGE overrides LANG on paired Linux Hosts.
+        environment.push(("LANG".to_owned(), system_locale.clone()));
+        environment.push(("LC_ALL".to_owned(), system_locale));
+        environment.push(("LANGUAGE".to_owned(), locale.languages.join(":")));
     }
     environment
 }

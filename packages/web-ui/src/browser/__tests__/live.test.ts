@@ -124,17 +124,40 @@ test('pointer, wheel and key events carry what the page needs', () => {
   expect(lines).toMatchObject({ deltaY: 48 })
   const pages = wheelMessage('t_a', { x: 0, y: 0 }, { ...none, deltaX: 0, deltaY: -1, deltaMode: 2 }, 600)
   expect(pages).toMatchObject({ deltaY: -600 })
-  const typed = keyMessage('t_a', 'down', { ...none, key: 'a', code: 'KeyA', keyCode: 65, repeat: false, location: 0, altGraph: false })
+  const typed = keyMessage('t_a', 'down', { ...none, key: 'a', code: 'KeyA', keyCode: 65, repeat: false, location: 0, getModifierState: () => false })
   expect(typed).toMatchObject({ type: 'key', action: 'down', text: 'a', modifiers: 0 })
-  const shortcut = keyMessage('t_a', 'down', { ...none, ctrlKey: true, key: 'c', code: 'KeyC', keyCode: 67, repeat: false, location: 0, altGraph: false })
+  const shortcut = keyMessage('t_a', 'down', { ...none, ctrlKey: true, key: 'c', code: 'KeyC', keyCode: 67, repeat: false, location: 0, getModifierState: () => false })
   expect(shortcut).not.toHaveProperty('text')
   expect(shortcut.type === 'key' && shortcut.modifiers).toBe(2)
-  const released = keyMessage('t_a', 'up', { ...none, key: 'a', code: 'KeyA', keyCode: 65, repeat: true, location: 0, altGraph: false })
+  const released = keyMessage('t_a', 'up', { ...none, key: 'a', code: 'KeyA', keyCode: 65, repeat: true, location: 0, getModifierState: () => false })
   expect(released).toMatchObject({ action: 'up', repeat: false })
   expect(modifiers({ altKey: true, ctrlKey: false, metaKey: true, shiftKey: true })).toBe(1 | 4 | 8)
   // The viewer's own paste reaches the page as a paste event.
-  expect(localKey({ ...none, metaKey: true, key: 'v', code: 'KeyV', keyCode: 86, repeat: false, location: 0, altGraph: false })).toBe(true)
-  expect(localKey({ ...none, metaKey: true, key: 'c', code: 'KeyC', keyCode: 67, repeat: false, location: 0, altGraph: false })).toBe(false)
+  expect(localKey({ ...none, metaKey: true, key: 'v', code: 'KeyV', keyCode: 86, repeat: false, location: 0, getModifierState: () => false })).toBe(true)
+  expect(localKey({ ...none, metaKey: true, key: 'c', code: 'KeyC', keyCode: 67, repeat: false, location: 0, getModifierState: () => false })).toBe(false)
+})
+
+test('keyboard prototype getters preserve shortcuts and AltGraph text', () => {
+  class Key {
+    constructor(readonly value: string, readonly altGraph = false) {}
+    get key() { return this.value }
+    get code() { return `Key${this.value.toUpperCase()}` }
+    get keyCode() { return this.value.toUpperCase().charCodeAt(0) }
+    get repeat() { return false }
+    get location() { return 0 }
+    get altKey() { return this.altGraph }
+    get ctrlKey() { return this.altGraph }
+    get metaKey() { return !this.altGraph }
+    get shiftKey() { return false }
+    getModifierState(name: string) { return name === 'AltGraph' && this.altGraph }
+  }
+  const select = keyMessage(TAB.id, 'down', new Key('a'))
+  expect(select).toMatchObject({ type: 'key', modifiers: 4, altGraph: false })
+  expect(select).not.toHaveProperty('text')
+  expect(localKey(new Key('v'))).toBe(true)
+  expect(localKey(new Key('v', true))).toBe(false)
+  expect(keyMessage(TAB.id, 'down', new Key('v', true)))
+    .toMatchObject({ text: 'v', modifiers: 3, altGraph: true })
 })
 
 /** A session over a stream the test drives, with a clock it controls. */
@@ -231,10 +254,10 @@ test('operating is activity, at most every thirty seconds, and moving is not', (
   expect(operations).toHaveLength(0)
   view.live.input(pointerMessage(TAB.id, 'down', { x: 1, y: 1 }, { ...none, button: 0, buttons: 1, detail: 1 }))
   view.advance(10_000)
-  view.live.input(keyMessage(TAB.id, 'down', { ...none, key: 'a', code: 'KeyA', keyCode: 65, repeat: false, location: 0, altGraph: false }))
+  view.live.input(keyMessage(TAB.id, 'down', { ...none, key: 'a', code: 'KeyA', keyCode: 65, repeat: false, location: 0, getModifierState: () => false }))
   expect(operations).toHaveLength(1)
   view.advance(21_000)
-  view.live.input(keyMessage(TAB.id, 'down', { ...none, key: 'b', code: 'KeyB', keyCode: 66, repeat: false, location: 0, altGraph: false }))
+  view.live.input(keyMessage(TAB.id, 'down', { ...none, key: 'b', code: 'KeyB', keyCode: 66, repeat: false, location: 0, getModifierState: () => false }))
   expect(operations).toHaveLength(2)
 })
 
@@ -252,6 +275,12 @@ test('a choice names the revision the viewer saw, and a dialog is answered once'
     options: [],
     rect: { x: 0, y: 0, width: 10, height: 10 },
   }
+  // Rejoining a live tab sends its unchanged controls before the first stream.
+  view.receive(moduleFrame({ type: 'controls', tab: TAB.id, controls: [control] }))
+  for (const generation of [1, 2]) {
+    view.receive(moduleFrame({ type: 'stream', tab: TAB.id, generation, width: 1600, height: 1200 }))
+    expect(view.live.state.controls).toEqual([control])
+  }
   view.live.choose(control, 'b', [1])
   expect(view.sent.at(-1)).toMatchObject({ type: 'choice', token: control.token, revision: 3, value: 'b', indices: [1] })
   view.receive(moduleFrame({ type: 'dialog', tab: TAB.id, dialog: { type: 'prompt', message: 'name?', defaultText: '' } }))
@@ -262,6 +291,8 @@ test('a choice names the revision the viewer saw, and a dialog is answered once'
   const after = view.sent.length
   view.live.answerDialog(false)
   expect(view.sent).toHaveLength(after)
+  view.live.watch(null)
+  expect(view.live.state.controls).toEqual([])
 })
 
 test('the view ends with the reason the module or the backend gave', () => {

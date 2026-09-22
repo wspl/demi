@@ -1,3 +1,4 @@
+import { buildManifest } from '@demicodes/command-loader'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -461,3 +462,55 @@ test(
     expect(other).toEqual({ lines: [], next: tail.next })
   }
 )
+
+
+test('jobs reuse the selected manifest only within one ordered connection', async () => {
+  const host = new RemoteHost({
+    defaultCwd: '/work',
+    identity: { uid: 1, gid: 1, hostname: 'test', homeDir: '/work' },
+    store: memoryHostStore(),
+    pipes: devicePipes(new PipeBroker(), TEST_RUNNER_DEVICE),
+  })
+  cleanup.push(async () => host.detach())
+  const first = await buildManifest([], { packages: [] })
+  const second = await buildManifest([{
+    name: 'example', summary: 'Example command', kind: 'rpc',
+    run: () => ({ exitCode: 0 }),
+  }], { packages: [] })
+  const frames: BackendToRunnerMessage[] = []
+  const send = (message: BackendToRunnerMessage) => { frames.push(message) }
+  const start = (manifest: typeof first) => host.startJob({
+    script: 'true', cwd: '/work', env: {}, context: TEST_COMMAND_CONTEXT,
+    commands: { manifest, resolveArtifact: async () => { throw new Error('no native artifacts') } },
+  })
+  host.attach(send)
+  start(first)
+  start(first)
+  start(second)
+  start(first)
+  expect(frames.map(frame => frame.type)).toEqual([
+    'manifest', 'job_start', 'job_start', 'manifest', 'job_start', 'manifest', 'job_start',
+  ])
+  expect(frames.flatMap(frame => frame.type === 'manifest' ? [frame.manifest] : []))
+    .toEqual([first, second, first])
+  host.detach()
+  frames.length = 0
+  host.attach(send)
+  start(first)
+  expect(frames.map(frame => frame.type)).toEqual(['manifest', 'job_start'])
+  host.detach()
+  frames.length = 0
+  let refused = true
+  host.attach(message => {
+    if (message.type === 'manifest' && message.manifest === second && refused) {
+      refused = false
+      throw new Error('send refused')
+    }
+    send(message)
+  })
+  start(first)
+  frames.length = 0
+  expect(() => start(second)).toThrow('send refused')
+  start(first)
+  expect(frames.map(frame => frame.type)).toEqual(['manifest', 'job_start'])
+})

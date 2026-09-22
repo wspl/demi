@@ -3,4 +3,10 @@
 <title>CDP scope fixture</title>
 <script>
 const worker = new Worker(URL.createObjectURL(new Blob(['self.answer = 42; self.onmessage = () => postMessage(answer);'], {type:'text/javascript'})));
+worker.onmessage = () => {
+  const ready = document.createElement('div');
+  ready.id = 'worker-ready';
+  document.documentElement.append(ready);
+};
+worker.postMessage('ready');
 </script>

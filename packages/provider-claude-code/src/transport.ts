@@ -8,7 +8,8 @@ import type {
   ClaudeSpawn,
   ClaudeSpawnExit,
   ClaudeSpawnHandle,
-  ClaudeSpawnParams
+  ClaudeSpawnParams,
+  ClaudeProcessPlace
 } from './spawn'
 import { createClaudeWireLog, type ClaudeWireLog } from './wire-log'
 
@@ -45,14 +46,6 @@ export interface ClaudeTransport {
 
 export interface ClaudeTransportFactory {
   start(request: InferenceRequest): Promise<ClaudeTransport>
-}
-
-/** The executable and the directories of one CLI process, on the machine that runs it. */
-export interface ClaudeProcessPlace {
-  command: string
-  cwd: string
-  /** The CLI's configuration home (`CLAUDE_CONFIG_DIR`). */
-  configDir: string
 }
 
 export interface ClaudeCliTransportFactoryOptions {

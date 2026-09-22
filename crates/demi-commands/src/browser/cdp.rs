@@ -390,7 +390,12 @@ impl DebugConnection {
     async fn close(self) -> Result<()> {
         self.handle.stop.cancel();
         match tokio::time::timeout(CONTROL_TIMEOUT, self.task).await {
-            Ok(result) => result?,
+            Ok(result) => match result? {
+                // The actor failed pending calls and dropped its owned socket.
+                // Its transport loss is not a failure to release debug state.
+                Err(BrowserError::Closed | BrowserError::Connection(_)) => Ok(()),
+                other => other,
+            },
             Err(_) => Err(BrowserError::Timeout),
         }
     }
@@ -524,6 +529,9 @@ async fn pump(
             .await
             .map(|_| ());
             let detached = match detached {
+                // No detach acknowledgement is possible after transport loss.
+                // Dropping this private socket releases all of its sessions.
+                Err(BrowserError::Closed | BrowserError::Connection(_)) => Ok(()),
                 // Tab retirement may have detached this session before the actor
                 // receives its target event. An absent session is already released.
                 Err(BrowserError::Cdp(chromiumoxide::error::CdpError::Chrome(error)))
@@ -820,4 +828,116 @@ fn object_schema(properties: &[Shape], domain: &str) -> std::result::Result<Valu
     Ok(
         json!({"type":"object","properties":members,"required":required,"additionalProperties":false}),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chromiumoxide::cdp::browser_protocol::target::GetTargetsParams;
+    use demi_command_service::protocol::CommandLocale;
+    use futures_util::FutureExt;
+    use std::{path::PathBuf, time::Duration};
+
+    /// Inject extension failure through a private CDP connection; the public
+    /// tab-scoped debugger deliberately cannot address this worker.
+    #[tokio::test]
+    #[ignore = "requires pinned real Chrome for Testing"]
+    async fn capture_extension_reload_preserves_pages_and_recreates_its_worker() {
+        let executable = PathBuf::from(std::env::var_os("DEMI_TEST_CHROME").unwrap());
+        let options = super::super::LaunchOptions::pinned(
+            executable,
+            CommandLocale {
+                time_zone: "UTC".into(),
+                languages: vec!["en-US".into()],
+            },
+        )
+        .unwrap();
+        let exercise = |environment: BrowserEnvironment| async move {
+            let work = async move {
+                let cancel = CancellationToken::new();
+                let timeout = Duration::from_secs(30);
+                let tab = environment.open("about:blank", &cancel, timeout).await?;
+                let browser = environment.browser.upgrade().ok_or(BrowserError::Closed)?;
+                let address = browser.lock().await.websocket_address().clone();
+                let mut socket = Connection::<WireEvent>::connect(address).await?;
+                let worker_url = format!(
+                    "chrome-extension://{}/background.js",
+                    super::super::launch::CAPTURE_EXTENSION_ID
+                );
+                let mut previous = None;
+                for round in 0..4 {
+                    let target = tokio::time::timeout(timeout, async {
+                        loop {
+                            let targets = browser
+                                .lock()
+                                .await
+                                .execute(GetTargetsParams::default())
+                                .await?;
+                            // Target discovery precedes worker initialization. The
+                            // offscreen document proves its startup code has run.
+                            if !targets.result.target_infos.iter().any(|target| {
+                                target.url == worker_url.replace("background.js", "offscreen.html")
+                            }) {
+                                tokio::time::sleep(Duration::from_millis(50)).await;
+                                continue;
+                            }
+                            if let Some(target) =
+                                targets.result.target_infos.into_iter().find(|target| {
+                                    target.url == worker_url
+                                        && previous.as_ref() != Some(&target.target_id)
+                                })
+                            {
+                                return Ok::<_, BrowserError>(target.target_id);
+                            }
+                            tokio::time::sleep(Duration::from_millis(50)).await;
+                        }
+                    })
+                    .await
+                    .expect("the capture worker returns after every reload")?;
+                    assert_eq!(environment.tabs(&cancel, timeout).await?.len(), 1);
+                    assert_eq!(
+                        tab.read_only("document.URL", &cancel, timeout).await?,
+                        json!("about:blank")
+                    );
+                    if round == 3 {
+                        break;
+                    }
+                    let attached = roundtrip(
+                        &mut socket,
+                        "Target.attachToTarget",
+                        json!({"targetId":target,"flatten":true}),
+                        None,
+                    )
+                    .await?;
+                    let attached: AttachToTargetReturns = serde_json::from_value(attached).unwrap();
+                    let evaluated = roundtrip(
+                        &mut socket,
+                        "Runtime.evaluate",
+                        json!({
+                            "expression": "setTimeout(() => chrome.runtime.reload(), 100); true",
+                            "returnByValue": true,
+                        }),
+                        Some(attached.session_id),
+                    )
+                    .await?;
+                    assert_eq!(evaluated["result"]["value"], true, "{evaluated}");
+                    previous = Some(target);
+                }
+                Ok::<(), BrowserError>(())
+            };
+            // Join Chrome retirement before reporting an assertion or deadline.
+            Ok(
+                std::panic::AssertUnwindSafe(tokio::time::timeout(Duration::from_secs(60), work))
+                    .catch_unwind()
+                    .await,
+            )
+        };
+        let outcome = super::super::with_browser(options, CancellationToken::new(), exercise)
+            .await
+            .unwrap();
+        match outcome {
+            Ok(result) => result.expect("extension reload deadline").unwrap(),
+            Err(panic) => std::panic::resume_unwind(panic),
+        }
+    }
 }

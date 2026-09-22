@@ -111,6 +111,16 @@ Dispatcher -------- application RPC -----> Embedding application
 
 The execution adapter creates a validated manifest from the command tree and
 startup package catalog. Each job pins that manifest and receives a live context.
+On a live runner connection, send the manifest before the first job that uses it
+and whenever the selected manifest hash changes. Consecutive jobs with the same
+hash use the already validated immutable manifest. Switching A → B → A sends
+all three selections; existing jobs retain their own pinned manifest. A new
+connection sends its first manifest again, even when its hash matches the
+previous connection. Ordered delivery installs a manifest before its job; this
+avoids revalidating the same command schemas before every shell invocation.
+A failed send makes the selection uncertain; the next job sends its manifest
+again, even if it was selected before the failed send.
+
 External aliases forward raw argv and context to the runner. The runner validates
 the context, resolves the command, parses input, and dispatches the selected leaf.
 A native package never receives an unvalidated CLI request.

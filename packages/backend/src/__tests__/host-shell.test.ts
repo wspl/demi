@@ -318,7 +318,8 @@ test(
     )
     {
       const { of, types } = audit(beforePush)
-      expect(types(a.deviceId, 'out')).toEqual(new Set(['manifest', 'job_start']))
+      // This connection already installed the identical manifest for the first job.
+      expect(types(a.deviceId, 'out')).toEqual(new Set(['job_start']))
       expect(types(a.deviceId, 'in'))
         .toEqual(new Set(['job_exit', 'pipe_done']))
       const pipes = of(b.deviceId, 'out').find((m) => m.type === 'rpc_pipes')

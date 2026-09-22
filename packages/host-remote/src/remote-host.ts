@@ -165,6 +165,7 @@ export class RemoteServiceExit extends Error {
   constructor(
     readonly exitCode: number,
     readonly stderr: string,
+    readonly stdout: Uint8Array,
   ) {
     super(`Service call exited with ${exitCode}${stderr.trim() ? `: ${stderr.trim()}` : ''}`)
     this.name = 'RemoteServiceExit'
@@ -260,6 +261,8 @@ export class RemoteHost implements Host {
   readonly services: RemoteServices
 
   private send: ((message: BackendToRunnerMessage) => void) | null = null
+  /** The last manifest queued on this connection, not across reconnects. */
+  private sentManifestHash: string | null = null
   private currentIdentity: HostIdentity
   private readonly pendingCalls = new Map<string, Deferred<unknown>>()
   private readonly pendingNet = new Map<string, Deferred<void>>()
@@ -319,6 +322,7 @@ export class RemoteHost implements Host {
     identity?: HostIdentity,
   ): void {
     this.send = send
+    this.sentManifestHash = null
     if (identity)
       this.currentIdentity = identity
   }
@@ -328,6 +332,7 @@ export class RemoteHost implements Host {
    */
   detach(reason = 'runner disconnected'): void {
     this.send = null
+    this.sentManifestHash = null
     const pending = [...this.pendingCalls.values()]
     this.pendingCalls.clear()
     for (const call of pending) {
@@ -451,8 +456,10 @@ export class RemoteHost implements Host {
     }
     this.activeJobs.set(jobId, job)
     try {
-      if (params.commands)
+      if (params.commands && this.sentManifestHash !== params.commands.manifest.hash) {
         this.send({ type: 'manifest', manifest: params.commands.manifest })
+        this.sentManifestHash = params.commands.manifest.hash
+      }
       this.send({
         type: 'job_start',
         ...(params.commands ? { manifestHash: params.commands.manifest.hash } : {}),
@@ -465,6 +472,8 @@ export class RemoteHost implements Host {
         ...(params.stdout ? { stdout: params.stdout } : {}),
       })
     } catch (error) {
+      // A throwing transport may have queued a partial send; select again next time.
+      this.sentManifestHash = null
       this.activeJobs.delete(jobId)
       job.finish({ files: [], filesTruncated: false, exitCode: null, signal: errorMessage(error), spawnError: { kind: 'other' } })
       throw error
@@ -938,14 +947,14 @@ export class RemoteHost implements Host {
       }
       signal?.throwIfAborted()
       const outcome = await stream.done
-      if (outcome.exitCode !== 0)
-        throw new RemoteServiceExit(outcome.exitCode, outcome.stderr)
       const answer = new Uint8Array(size)
       let offset = 0
       for (const chunk of chunks) {
         answer.set(chunk, offset)
         offset += chunk.length
       }
+      if (outcome.exitCode !== 0)
+        throw new RemoteServiceExit(outcome.exitCode, outcome.stderr, answer)
       return answer
     } catch (error) {
       abandon('service call failed')
