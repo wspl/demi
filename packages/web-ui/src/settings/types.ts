@@ -118,8 +118,6 @@ export interface SettingsProviderAccount {
 export interface SettingsProviderCli {
   /** The vendor's newest version, or why it could not be read. */
   newest: { version: string } | { error: string }
-  /** The version the entry is held at instead of following the newest. */
-  held: string | null
   /** The last install on the user's Cloud, which adding an account starts. */
   install: { state: 'installing' } | { state: 'installed' } | { state: 'failed'; message: string } | null
   /** The machines that could be asked now, and what each has; null when one did not answer. */

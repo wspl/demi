@@ -105,8 +105,6 @@ const emit = defineEmits<{
   checkCli: [provider: SettingsProviderEntry]
   /** Install the CLI on the user's Cloud again. */
   installCli: [provider: SettingsProviderEntry]
-  /** Hold the entry at a version, or follow the newest with null. */
-  holdCli: [provider: SettingsProviderEntry, version: string | null]
   activateAccount: [provider: SettingsProviderEntry, accountId: string]
   removeAccount: [provider: SettingsProviderEntry, accountId: string]
   removeModel: [provider: SettingsProviderEntry, model: SettingsProviderModel]
@@ -687,18 +685,13 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
             <SettingsGroup v-if="selected.cli" title="Command-line tool">
               <SettingsRow
                 label="Version"
-                :description="
-                  selected.cli.held
-                    ? 'Held at this version; updates are not installed.'
-                    : 'Follows the newest version; updates install by themselves.'
-                "
+                description="Follows the newest version; updates install by themselves."
               >
                 <span
-                  v-if="'version' in selected.cli.newest || selected.cli.held"
+                  v-if="'version' in selected.cli.newest"
                   class="text-[13px] tabular-nums text-fg-muted"
-                  >{{ selected.cli.held ?? ('version' in selected.cli.newest ? selected.cli.newest.version : '') }}</span
+                  >{{ selected.cli.newest.version }}</span
                 >
-                <Tag v-if="selected.cli.held" tone="warning">Held</Tag>
                 <Tooltip content="Check for updates"
                   ><IconButton
                     size="sm"
@@ -709,20 +702,6 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                     :disabled="!!operations?.[selected.id] && operations[selected.id]?.kind !== 'cli'"
                     @click="emit('checkCli', selected)"
                 /></Tooltip>
-                <Button
-                  v-if="selected.cli.held"
-                  size="sm"
-                  :disabled="!!operations?.[selected.id]"
-                  @click="emit('holdCli', selected, null)"
-                  >Follow newest</Button
-                >
-                <Button
-                  v-else-if="'version' in selected.cli.newest"
-                  size="sm"
-                  :disabled="!!operations?.[selected.id]"
-                  @click="emit('holdCli', selected, selected.cli.newest.version)"
-                  >Hold</Button
-                >
               </SettingsRow>
               <SettingsRow
                 v-if="'error' in selected.cli.newest"

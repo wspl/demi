@@ -30,7 +30,6 @@ const {
   loadCli,
   checkCli,
   installCli,
-  holdCli,
 } = settings
 
 // The vendor catalog's failure is the page's region state, with its own Retry.
@@ -96,7 +95,6 @@ onUnmounted(closeLogin)
     @refresh-usage="refreshUsage"
     @check-cli="checkCli"
     @install-cli="installCli"
-    @hold-cli="holdCli"
     @activate-account="
       (provider, id) => accountAction(provider, id, 'activate')
     "

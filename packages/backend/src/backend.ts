@@ -302,10 +302,10 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
       placed.release()
       return placed.host
     },
-    claudeProcess: async (conversationId, held) => {
+    claudeProcess: async (conversationId) => {
       const placed = await placement.place({ kind: 'inference', conversationId })
       try {
-        return await claudeCli().place(placed, { held })
+        return await claudeCli().place(placed)
       } finally {
         placed.release()
       }
@@ -394,12 +394,7 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
       session: {
         spawn: (params: Parameters<SessionProviderContext['spawn']>[0]) =>
           placed.host.process.spawn({ ...params, inheritEnv: true }),
-        claudeProcess: () => claudeCli().place(placed, {
-          held: entry.config.kind === 'subscription'
-            ? entry.config.cliVersion
-            : undefined,
-          signal
-        }),
+        claudeProcess: () => claudeCli().place(placed, { signal }),
       } satisfies SessionProviderContext,
     }
   }
@@ -408,9 +403,6 @@ export async function createBackend(options: BackendOptions): Promise<Backend> {
     installs: cliInstalls,
     newest: async (refresh: boolean) =>
       (await claudeCli().releases.latest(refresh)).version,
-    verify: async (version: string) => {
-      await claudeCli().releases.release(version)
-    },
     machines: async (userId: string, signal: AbortSignal) => Promise.all(
       (await placement.online(userId, 'provider-cli')).map(async machine => ({
         deviceId: machine.deviceId,

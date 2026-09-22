@@ -3,7 +3,6 @@ import { World } from './world'
 
 interface CliState {
   newest: { version?: string; error?: string }
-  held: string | null
   install: { state: string; message?: string } | null
   machines: Array<{ name: string; versions: string[] | null }>
 }
@@ -21,7 +20,8 @@ test(
       // A paired device is never asked: the CLI runs on Cloud.
       const first = await world.api<CliState>(path)
       expect(first.newest).toEqual({ version: '9.9.9' })
-      expect(first.held).toBeNull()
+      expect(Object.keys(first).sort()).toEqual(['install', 'machines', 'newest'])
+      expect((await world.backend.session.fetch(path, { method: 'PUT' })).status).toBe(404)
       expect(first.machines.map(machine => machine.name)).not.toContain('laptop')
 
       // Adding the account started the install on the user's Cloud, which the
@@ -36,13 +36,6 @@ test(
       expect(state.machines.map(machine => machine.versions)).toEqual([[]])
       expect((await world.api<{ accounts: unknown[] }>(`/api/providers/${provider.id}/accounts`)).accounts)
         .toHaveLength(1)
-
-      // A version the vendor does not publish cannot be held; one it does can.
-      await expect(world.api(path, { held: '1.2.3' }, 'PUT')).rejects.toThrow('unknown_version')
-      await world.api(path, { held: '9.9.9' }, 'PUT')
-      expect((await world.api<CliState>(path)).held).toBe('9.9.9')
-      await world.api(path, { held: null }, 'PUT')
-      expect((await world.api<CliState>(path)).held).toBeNull()
     } finally {
       await world.close()
     }

@@ -82,8 +82,6 @@ export function providerRoutes(options: {
     installs: CliInstalls
     /** The vendor's newest version; `refresh` asks the vendor at once. */
     newest(refresh: boolean): Promise<string>
-    /** Refuses a version the vendor does not publish. */
-    verify(version: string): Promise<void>
     /** What each machine that can be asked now has installed. */
     machines(userId: string, signal: AbortSignal): Promise<Array<{
       deviceId: string
@@ -574,36 +572,9 @@ export function providerRoutes(options: {
     ])
     return c.json({
       newest,
-      held: entry.config.cliVersion ?? null,
       install: options.cli.installs.state(c.get('user').id, entry.id),
       machines,
     })
-  })
-
-  app.put('/:id/cli', async (c) => {
-    const entry = await scoped(c)
-    if (!entry || entry.config.kind !== 'subscription')
-      return c.json({
-        code: 'provider_not_found',
-        message: 'No such provider'
-      }, 404)
-    const parsed = z.strictObject({ held: z.string().min(1).max(64).nullable() })
-      .safeParse(await c.req.json().catch(() => null))
-    if (!parsed.success)
-      return invalidBody(c, parsed.error)
-    if (parsed.data.held) {
-      try {
-        await options.cli.verify(parsed.data.held)
-      } catch (error) {
-        return c.json({ code: 'unknown_version', message: errorMessage(error) }, 400)
-      }
-    }
-    const { cliVersion: _held, ...config } = entry.config
-    await vault.update(entry.id, {
-      config: parsed.data.held ? { ...config, cliVersion: parsed.data.held } : config
-    })
-    await assembly.invalidate(entry.id)
-    return c.json({ held: parsed.data.held })
   })
 
   app.post('/:id/cli/install', async (c) => {

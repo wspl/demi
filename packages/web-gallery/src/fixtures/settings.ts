@@ -196,7 +196,6 @@ export function mockProviders(): MockProvider[] {
       // state here that asks the user for anything.
       cli: {
         newest: { version: '2.1.278' },
-        held: null,
         install: { state: 'failed', message: 'Claude Code 2.1.278 could not be installed: the download stopped after 120 MB' },
         machines: [
           { id: 'cloud', name: 'Cloud', versions: ['2.1.267'] },

@@ -56,7 +56,7 @@ export class ClaudeCliError extends Error {
 export class ClaudeReleases {
   private newest: { release: ClaudeRelease; readAt: number } | null = null
   private reading: Promise<ClaudeRelease> | null = null
-  private readonly held = new Map<string, ClaudeRelease>()
+  private readonly manifests = new Map<string, ClaudeRelease>()
 
   constructor(private readonly options: {
     fetch?: typeof fetch
@@ -84,10 +84,8 @@ export class ClaudeReleases {
   }
 
   /** One version's release record. A release never changes once published. */
-  async release(version: string): Promise<ClaudeRelease> {
-    if (!VERSION.test(version))
-      throw new ClaudeCliError('invalid_release', null, `"${version}" is not a version`)
-    const known = this.held.get(version)
+  private async release(version: string): Promise<ClaudeRelease> {
+    const known = this.manifests.get(version)
     if (known)
       return known
     let manifest: z.infer<typeof manifestSchema>
@@ -112,7 +110,7 @@ export class ClaudeReleases {
         }]
       )),
     }
-    this.held.set(version, release)
+    this.manifests.set(version, release)
     return release
   }
 
@@ -171,19 +169,16 @@ export class ClaudeCli {
   /**
    * The executable to start on `target`. A machine with a usable version
    * answers with it at once and installs the newest beside it; only a machine
-   * with none waits for an install. `held` names the version an entry is held
-   * at, which is then the only one wanted.
+   * with none waits for an install.
    */
   async executable(
     target: ClaudeCliTarget,
-    options: { held?: string; signal?: AbortSignal } = {}
+    options: { signal?: AbortSignal } = {}
   ): Promise<string> {
-    const wanted = options.held
-      ? await this.options.releases.release(options.held)
-      : await this.options.releases.latest()
+    const wanted = await this.options.releases.latest()
     const installed = await this.installed(target, options.signal)
     const usable = installed.find(entry => entry.version === wanted.version)
-      ?? (options.held ? undefined : installed[0])
+      ?? installed[0]
     if (!usable)
       return this.ensure(target, wanted, options.signal)
     if (usable.version !== wanted.version)
@@ -198,7 +193,7 @@ export class ClaudeCli {
    */
   async place(
     target: ClaudeCliTarget,
-    options: { held?: string; signal?: AbortSignal } = {}
+    options: { signal?: AbortSignal } = {}
   ): Promise<{ command: string; cwd: string; configDir: string }> {
     const command = await this.executable(target, options)
     const cwd = `${target.cwd}/.demi/claude/run`
