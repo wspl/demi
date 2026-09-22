@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, test } from 'bun:test'
+import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import { productStateSchema, type ProductState } from '../api/contracts'
@@ -144,7 +144,42 @@ test('quota refreshes coalesce per account and do not block other accounts or ed
   await Promise.all([first, second])
   expect(settings.refreshingUsage).toEqual({})
   await settings.refreshUsage(provider, 'first', true)
-  expect(accounts).toHaveLength(3)
+  expect(accounts).toHaveLength(2)
+})
+
+test('automatic quota refresh uses a one-minute TTL; manual refresh bypasses and renews it', async () => {
+  const clock = spyOn(Date, 'now').mockReturnValue(1_000)
+  try {
+    const settings = useProviderSettings()
+    const provider = settings.providers.find((entry) => entry.id === 'configured')!
+    let requests = 0
+    const deferred = Promise.withResolvers<Response>()
+    probe = async () => {
+      requests++
+      return requests === 1 ? deferred.promise : Response.json({})
+    }
+    const initial = settings.refreshUsage(provider, 'first', true)
+    clock.mockReturnValue(11_000)
+    deferred.resolve(Response.json({}))
+    await initial
+    clock.mockReturnValue(70_999)
+    await settings.refreshUsage(provider, 'first', true)
+    expect(requests).toBe(1)
+    clock.mockReturnValue(71_000)
+    await settings.refreshUsage(provider, 'first', true)
+    expect(requests).toBe(2)
+    clock.mockReturnValue(72_000)
+    await settings.refreshUsage(provider, 'first')
+    expect(requests).toBe(3)
+    clock.mockReturnValue(131_999)
+    await settings.refreshUsage(provider, 'first', true)
+    expect(requests).toBe(3)
+    clock.mockReturnValue(132_000)
+    await settings.refreshUsage(provider, 'first', true)
+    expect(requests).toBe(4)
+  } finally {
+    clock.mockRestore()
+  }
 })
 
 test('automatic quota failures stay quiet; manual retries explain the error', async () => {
@@ -159,6 +194,7 @@ test('automatic quota failures stay quiet; manual retries explain the error', as
   expect(toasts).toHaveLength(0)
   expect(settings.refreshingUsage).toEqual({})
   await nextTick()
+  await settings.refreshUsage(provider, 'first', true)
   expect(requests).toBe(1)
   await settings.refreshUsage(provider, 'first')
   expect(requests).toBe(2)
