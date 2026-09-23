@@ -23,6 +23,34 @@ use crate::commands::{contexts::ExecutionContext, dispatch::Dispatcher};
 #[error("shell job cancelled")]
 pub struct Cancelled;
 
+/// A pipe that becomes readable when a token is cancelled: a task closes its
+/// write end then. It lives as long as the scope that made it.
+#[cfg(unix)]
+struct Interrupt {
+    reader: std::io::PipeReader,
+    _closer: tokio_util::task::AbortOnDropHandle<()>,
+}
+
+#[cfg(unix)]
+impl Interrupt {
+    /// Made on a shell thread, inside the shell runtime; out of open files
+    /// it waits for one (`runner.md` § Load).
+    fn new(cancellation: &CancellationToken) -> io::Result<Self> {
+        let (reader, writer) = demi_command_service::descriptors::retry_blocking(std::io::pipe)?;
+        let cancelled = cancellation.clone();
+        let closer = tokio::runtime::Handle::try_current()
+            .map_err(io::Error::other)?
+            .spawn(async move {
+                cancelled.cancelled().await;
+                drop(writer);
+            });
+        Ok(Self {
+            reader,
+            _closer: tokio_util::task::AbortOnDropHandle::new(closer),
+        })
+    }
+}
+
 #[derive(Clone)]
 pub struct CommandContext {
     pub dispatcher: Arc<Dispatcher>,
@@ -35,6 +63,11 @@ pub struct Scope {
     pub tasks: TaskTracker,
     pub commands: Option<CommandContext>,
     pub edits: Option<demi_command_service::edits::Recorder>,
+    /// Readable once `cancellation` is, so blocking IO polls it with its
+    /// file; made when blocking IO first needs it. A std mutex: the job's
+    /// unit threads share it for the moment it takes to make.
+    #[cfg(unix)]
+    interrupt: Arc<Mutex<Option<Arc<Interrupt>>>>,
     /// The paths of the files the job opened for writing, by identity. A std
     /// mutex: the synchronous hooks of the job's interpreter and utility
     /// threads share it for short sections that never await.
@@ -49,6 +82,8 @@ impl Scope {
             commands,
             edits: None,
             files: Arc::new(Mutex::new(HashMap::new())),
+            #[cfg(unix)]
+            interrupt: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -69,8 +104,22 @@ impl Scope {
     pub fn with_cancellation(&self, cancellation: CancellationToken) -> Self {
         Self {
             cancellation,
+            #[cfg(unix)]
+            interrupt: Arc::new(Mutex::new(None)),
             ..self.clone()
         }
+    }
+
+    /// The pipe that tells blocking IO about cancellation.
+    #[cfg(unix)]
+    fn interrupt(&self) -> io::Result<Arc<Interrupt>> {
+        let mut slot = self.interrupt.lock().expect("the interrupt slot is intact");
+        if let Some(interrupt) = &*slot {
+            return Ok(interrupt.clone());
+        }
+        let interrupt = Arc::new(Interrupt::new(&self.cancellation)?);
+        *slot = Some(interrupt.clone());
+        Ok(interrupt)
     }
 
     pub fn read(&self, file: &File, buffer: &mut [u8]) -> io::Result<usize> {
@@ -98,7 +147,13 @@ impl Scope {
         if tracking && let (Some(edits), Some(path)) = (&self.edits, self.file_path(file)) {
             return edits.record(&path, || (&*file).write(buffer));
         }
-        (&*file).write(&buffer[..buffer.len().min(512)])
+        // A pipe that polls writable takes this much without blocking, so
+        // cancellation stays observable under backpressure.
+        #[cfg(unix)]
+        let bound = libc::PIPE_BUF;
+        #[cfg(windows)]
+        let bound = 512;
+        (&*file).write(&buffer[..buffer.len().min(bound)])
     }
 
     fn open_file(
@@ -146,25 +201,28 @@ impl Scope {
         Some(Box::new(recording))
     }
 
+    /// Waits until `file` can be read or written, or the scope is cancelled.
     #[cfg(unix)]
     fn ready(&self, file: &File, writing: bool) -> io::Result<()> {
-        use std::os::fd::AsRawFd;
+        use rustix::event::{PollFd, PollFlags};
+        self.check()?;
+        let interrupt = self.interrupt()?;
+        let events = if writing { PollFlags::OUT } else { PollFlags::IN };
         loop {
-            self.check()?;
-            let mut descriptor = libc::pollfd {
-                fd: file.as_raw_fd(),
-                events: if writing { libc::POLLOUT } else { libc::POLLIN },
-                revents: 0,
-            };
-            let count = unsafe { libc::poll(&mut descriptor, 1, 25) };
-            if count > 0 {
-                return Ok(());
+            let mut descriptors = [
+                PollFd::new(file, events),
+                PollFd::new(&interrupt.reader, PollFlags::IN),
+            ];
+            match rustix::event::poll(&mut descriptors, None) {
+                Ok(_) => {}
+                Err(rustix::io::Errno::INTR) => continue,
+                Err(error) => return Err(error.into()),
             }
-            if count < 0 {
-                let error = io::Error::last_os_error();
-                if error.kind() != io::ErrorKind::Interrupted {
-                    return Err(error);
-                }
+            if !descriptors[1].revents().is_empty() {
+                return Err(io::Error::other(Cancelled));
+            }
+            if !descriptors[0].revents().is_empty() {
+                return Ok(());
             }
         }
     }
@@ -250,6 +308,29 @@ impl Scope {
         Ok(guard)
     }
 
+    /// Sleeps for `duration` unless the scope is cancelled first.
+    #[cfg(unix)]
+    pub fn sleep(&self, duration: Duration) -> io::Result<()> {
+        use rustix::event::{PollFd, PollFlags, Timespec};
+        self.check()?;
+        let interrupt = self.interrupt()?;
+        let deadline = std::time::Instant::now() + duration;
+        loop {
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            if remaining.is_zero() {
+                return Ok(());
+            }
+            let timeout = Timespec::try_from(remaining).map_err(io::Error::other)?;
+            let mut descriptors = [PollFd::new(&interrupt.reader, PollFlags::IN)];
+            match rustix::event::poll(&mut descriptors, Some(&timeout)) {
+                Ok(0) | Err(rustix::io::Errno::INTR) => {}
+                Ok(_) => return Err(io::Error::other(Cancelled)),
+                Err(error) => return Err(error.into()),
+            }
+        }
+    }
+
+    #[cfg(windows)]
     pub fn sleep(&self, duration: Duration) -> io::Result<()> {
         let started = std::time::Instant::now();
         loop {
