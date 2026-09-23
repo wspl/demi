@@ -1,7 +1,7 @@
 # Codex Provider
 
 The Codex provider owns the client version used to request the backend model
-catalog. Its default is Codex CLI 0.153.4. Applications use this default without
+catalog. Its default is Codex CLI 0.156.1. Applications use this default without
 installing or spawning the Codex CLI; `clientVersion` remains an explicit override
 for integrations that need a different catalog version. Backend model visibility
 also depends on the authenticated account.
