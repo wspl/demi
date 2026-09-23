@@ -48,10 +48,9 @@ pub(super) async fn execute(
         .operations
         .try_lock()
         .map_err(|_| operation.failure(BrowserError::Busy, tab.id().as_str(), None))?;
-    let browser = environment.browser.upgrade().ok_or(BrowserError::Closed)?;
     let (mut beginnings, mut progress) = operation
         .run(async {
-            let browser = browser.lock().await;
+            let browser = environment.browser.call()?;
             Ok((
                 browser.event_listener::<EventDownloadWillBegin>().await?,
                 browser.event_listener::<EventDownloadProgress>().await?,
@@ -183,9 +182,9 @@ pub(super) async fn execute(
             let source = spool_path(environment, &download.guid)?;
             let stopping = if matches!(phase, Phase::Active(_)) {
                 tokio::time::timeout(CONTROL_TIMEOUT, async {
-                    browser
-                        .lock()
-                        .await
+                    environment
+                        .browser
+                        .call()?
                         .execute(CancelDownloadParams::new(download.guid.clone()))
                         .await?;
                     while let Some(event) = progress.next().await {
