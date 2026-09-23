@@ -449,7 +449,9 @@ Each crate implements the provider contract for one vendor family.
     runner jobs, and its factory;
   - building manifests from a command set.
 - **Public boundary:** the items above; `host_remote::testing` supplies a real
-  runner for one device (`RunnerFixture`), an in-process fake runner
+  runner process for a backend at any address, with a home and state of its
+  own (`RunnerProcess`), such a runner connected to a backend end of the
+  fixture's own for one device (`RunnerFixture`), an in-process fake runner
   (`TestDevice`, whose connections are `TestLink`s), the runner's native
   fixture package (`NativeFixture`) and a policy that runs every call in one
   command set (`CommandPolicy`). Behavior: [Runner](../execution/runner.md) and
