@@ -1234,7 +1234,6 @@ dependencies = [
  "gix",
  "hostname",
  "jaq",
- "jsonschema",
  "libc",
  "notify",
  "process-wrap",

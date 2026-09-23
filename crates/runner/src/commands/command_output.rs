@@ -2,7 +2,7 @@
 
 use bytes::Bytes;
 use demi_command_service::{Output, OutputSink, ServiceError};
-use std::collections::BTreeMap;
+use demi_command_tree::Schema;
 
 /// The most JSON output a command may produce.
 const JSON_BYTES: usize = 1024 * 1024;
@@ -46,11 +46,7 @@ impl CommandOutput {
         self.output.clone()
     }
 
-    pub async fn finish(
-        self,
-        exit_code: u8,
-        schema: Option<&BTreeMap<String, serde_json::Value>>,
-    ) -> Result<(), ServiceError> {
+    pub async fn finish(self, exit_code: u8, schema: Option<&Schema>) -> Result<(), ServiceError> {
         if exit_code != 0 {
             return Ok(());
         }
@@ -58,9 +54,7 @@ impl CommandOutput {
             let value: serde_json::Value = serde_json::from_slice(&bytes)?;
             let schema =
                 schema.ok_or_else(|| ServiceError::Handler("missing JSON output schema".into()))?;
-            let validator = jsonschema::validator_for(&serde_json::to_value(schema)?)
-                .map_err(|error| ServiceError::Handler(error.to_string()))?;
-            validator.validate(&value).map_err(|error| {
+            schema.check(&value).map_err(|error| {
                 ServiceError::Handler(format!("JSON output failed validation: {error}"))
             })?;
             self.output.stdout(bytes.into()).await?;
