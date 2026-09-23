@@ -6,7 +6,6 @@ use crate::{
     commands::contexts::Contexts,
     commands::dispatch::Dispatcher,
     commands::local::Server,
-    commands::native::{self, Services},
     commands::rpc::Calls,
     commands::streams::ServiceStreams,
     connection::Connection,
@@ -14,6 +13,7 @@ use crate::{
     host_log::{self, HostLog},
     management::{Management, Phase},
     pipes::PipeClient,
+    services::{ServiceHandle, ServiceRegistry},
     state::{ActiveRunner, RunnerConfig, RunnerState},
 };
 use std::{collections::BTreeMap, io, path::PathBuf, sync::Arc, time::Duration};
@@ -39,7 +39,7 @@ struct Runtime {
     state: RunnerState,
     token: Arc<RwLock<Option<String>>>,
     contexts: Contexts,
-    services: Arc<Services>,
+    services: ServiceHandle,
     artifacts: Arc<Artifacts>,
     calls: Arc<Calls>,
     management: Arc<Management>,
@@ -79,16 +79,21 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<()> {
     // with the queue. The ordinary end below flushes it first.
     let _installed = host_log::install(log.clone());
     host_log::event(format_args!("runner {} started", options.runner.version));
-    let contexts = Contexts::new(state.root.join("commands"), options.executable.clone()).await?;
-    let services = Services::new(
+    let registry = ServiceRegistry::new(
         state.root.join("artifacts"),
-        native::target().into(),
         options.cwd.clone(),
         options.env.clone(),
     )
     .await
     .map_err(io::Error::other)?;
-    let artifacts = Artifacts::new(contexts.clone(), native::target().into());
+    let services = registry.handle();
+    let contexts = Contexts::new(
+        state.root.join("commands"),
+        options.executable.clone(),
+        services.clone(),
+    )
+    .await?;
+    let artifacts = Artifacts::new(contexts.clone(), crate::services::target().into());
     let pipes = PipeClient::new(&options.backend, token.clone())?;
     let calls = Calls::new(pipes.clone());
     let secret = uuid::Uuid::new_v4().simple().to_string();
@@ -132,7 +137,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<()> {
     runtime.contexts.close();
     runtime.calls.detach();
     runtime.artifacts.detach();
-    runtime.services.close().await;
+    registry.close().await;
     let closed = runtime.server.close().await;
     host_log::event("runner stopped");
     log.close().await;
@@ -206,9 +211,7 @@ impl Runtime {
             self.pipes.clone(),
             self.services.clone(),
             self.artifacts.clone(),
-            native::target().into(),
             self.management.draining.clone(),
-            self.contexts.clone(),
             connection.cancellation().child_token(),
         );
         let volumes = crate::volumes::Volumes::new(
@@ -244,12 +247,6 @@ impl Runtime {
                     } => return Ok(End::Stopped),
                     _ = volume_tick.tick(), if self.management.phase() == Phase::Online => {
                         if host.tasks.job_count() == 0 { volumes.poll(); }
-                        continue;
-                    },
-                    _ = self.contexts.changed() => {
-                        let mut retained = self.contexts.retained_artifacts(native::target());
-                        retained.extend(streams.retained_artifacts());
-                        self.services.retain(&retained).await;
                         continue;
                     },
                     message = connection.input.recv() => match message {
@@ -322,7 +319,7 @@ impl Runtime {
         self.calls.detach();
         self.artifacts.detach();
         tokio::join!(host.close(), streams.close(), volumes.close());
-        self.services.disconnect().await;
+        self.services.stop_all().await;
         lifecycle.close();
         lifecycle.wait().await;
         self.management.detach();
@@ -351,7 +348,6 @@ impl Runtime {
                 conversation_id,
             } => {
                 let services = self.services.clone();
-                let contexts = self.contexts.clone();
                 let output = connection.control.clone();
                 let cancel = connection.cancellation();
                 lifecycle.spawn(async move {
@@ -359,7 +355,6 @@ impl Runtime {
                         _ = cancel.cancelled() => return,
                         result = services.release_conversation(&conversation_id) => result,
                     };
-                    contexts.refresh();
                     match wire::encode(&wire::Outbound::ConversationReleased {
                         id,
                         error: result.err(),

@@ -3,26 +3,25 @@
 //! (`runner.md` § Load): native calls and commands the backend implements are
 //! not counted, and bounded Host work waits for a slot.
 
-use demi_command_service::{
-    Client,
-    protocol::{
-        CommandCaller, CommandContext, CommandLocale, Invocation, LocalInvocation, PackageArtifact,
-        PackageDescriptor, Record,
-    },
+use demi_command_service::protocol::{
+    CommandCaller, CommandContext, CommandLocale, Invocation, LocalInvocation, PackageArtifact,
+    PackageDescriptor, Record,
 };
 use demi_runner::{
     commands::artifacts::Artifacts,
-    commands::cache::{ArtifactResolver, ArtifactSource, RuntimeError},
     commands::command_client::{RawCommand, Stdio, forward},
     commands::contexts::Contexts,
     commands::dispatch::Dispatcher,
     commands::local::Server,
-    commands::native::{self, Services},
     commands::rpc::Calls,
     connection::wire::Inbound,
     host::HostServer,
     management::Management,
     pipes::PipeClient,
+    services::{
+        ArtifactResolver, ArtifactSource, Resident, RuntimeError, ServiceLease, ServiceRegistry,
+        target,
+    },
 };
 use futures_util::future::BoxFuture;
 use serde_json::json;
@@ -75,15 +74,12 @@ fn invocation(operation: &str, conversation: &str) -> Invocation {
     }
 }
 
-async fn resident(root: &Path) -> (Arc<Services>, Arc<Client>) {
-    let services = Services::new(
-        root.join("cache"),
-        native::target().into(),
-        root.into(),
-        BTreeMap::new(),
-    )
-    .await
-    .unwrap();
+/// A running fixture service and the lease that keeps it, as a job's context
+/// would.
+async fn resident(root: &Path) -> (ServiceRegistry, ServiceLease, Resident) {
+    let services = ServiceRegistry::new(root.join("cache"), root.into(), BTreeMap::new())
+        .await
+        .unwrap();
     let bytes = tokio::fs::read(env!("CARGO_BIN_EXE_demi-native-fixture"))
         .await
         .unwrap();
@@ -93,18 +89,22 @@ async fn resident(root: &Path) -> (Arc<Services>, Arc<Client>) {
         id: "fixture".into(),
         version: "1.0.0".into(),
         protocol_version: 1,
-        operations: ["where", "echo", "first", "spin", "result", "retain"]
+        operations: ["where", "echo", "first", "spin", "result", "retain", "crash"]
             .map(String::from)
             .to_vec(),
         targets: BTreeMap::from([(
-            native::target().into(),
+            target().into(),
             PackageArtifact {
                 sha256: format!("{:x}", Sha256::digest(&bytes)),
                 size: bytes.len() as u64,
             },
         )]),
     };
-    let client = services
+    let lease = services
+        .handle()
+        .lease(descriptor.targets[target()].sha256.clone());
+    let resident = services
+        .handle()
         .acquire(
             &descriptor,
             Arc::new(Local(path)),
@@ -112,7 +112,7 @@ async fn resident(root: &Path) -> (Arc<Services>, Arc<Client>) {
         )
         .await
         .unwrap();
-    (services, client)
+    (services, lease, resident)
 }
 
 /// Native calls held open, then a cancel and a conversation release at once:
@@ -121,7 +121,8 @@ async fn resident(root: &Path) -> (Arc<Services>, Arc<Client>) {
 async fn native_calls_are_never_turned_away() {
     tokio::time::timeout(Duration::from_secs(60), async {
         let root = tempfile::tempdir().unwrap();
-        let (services, client) = resident(root.path()).await;
+        let (services, _lease, resident) = resident(root.path()).await;
+        let client = resident.client();
         let mut held = Vec::new();
         for _ in 0..128 {
             held.push(client.invoke(&invocation("echo", "running")).await.unwrap());
@@ -130,6 +131,7 @@ async fn native_calls_are_never_turned_away() {
             let (mut input, _output) = held.remove(0);
             input.cancel();
             services
+                .handle()
                 .release_conversation(&format!("archived-{attempt}"))
                 .await
                 .unwrap();
@@ -156,9 +158,16 @@ async fn backend_commands_are_never_turned_away() {
     tokio::time::timeout(Duration::from_secs(60), async {
         let directory = tempfile::tempdir().unwrap();
         let cwd = directory.path().to_owned();
-        let contexts = Contexts::new(cwd.join("manifests"), std::env::current_exe().unwrap())
+        let services = ServiceRegistry::new(cwd.join("artifacts"), cwd.clone(), BTreeMap::new())
             .await
             .unwrap();
+        let contexts = Contexts::new(
+            cwd.join("manifests"),
+            std::env::current_exe().unwrap(),
+            services.handle(),
+        )
+        .await
+        .unwrap();
         let body = json!({"roots": {"fixture": {"tree": {
             "name": "fixture", "summary": "Test callback.", "kind": "rpc", "runningHint": "Working",
             "input": {"type": "object", "properties": {"body": {"type": "string"}}, "required": ["body"]}, "stdinField": "body"
@@ -167,15 +176,7 @@ async fn backend_commands_are_never_turned_away() {
         let mut manifest = body;
         manifest["hash"] = hash.clone().into();
         contexts.install(manifest).await.unwrap();
-        let services = Services::new(
-            cwd.join("artifacts"),
-            native::target().into(),
-            cwd.clone(),
-            BTreeMap::new(),
-        )
-        .await
-        .unwrap();
-        let resolver = Artifacts::new(contexts.clone(), native::target().into());
+        let resolver = Artifacts::new(contexts.clone(), target().into());
         let calls =
             Calls::new(PipeClient::new("http://127.0.0.1:1", Arc::new(RwLock::new(None))).unwrap());
         let (output, mut outgoing) = mpsc::channel(32);
@@ -195,7 +196,7 @@ async fn backend_commands_are_never_turned_away() {
         let management = Management::new("a".repeat(32), "test".into(), CancellationToken::new());
         let dispatcher = Arc::new(Dispatcher {
             contexts: contexts.clone(),
-            services: services.clone(),
+            services: services.handle(),
             resolver,
             calls: calls.clone(),
             management,

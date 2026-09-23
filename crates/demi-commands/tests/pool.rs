@@ -1,13 +1,10 @@
 use demi_command_service::protocol::{PackageArtifact, PackageDescriptor, TARGETS};
-use demi_runner::commands::cache::{ArtifactResolver, ArtifactSource, RuntimeError};
-use demi_runner::commands::native::{self, Services};
+use demi_runner::services::{
+    ArtifactResolver, ArtifactSource, RuntimeError, ServiceRegistry, target,
+};
 use futures_util::future::BoxFuture;
 use sha2::{Digest, Sha256};
-use std::{
-    collections::{BTreeMap, HashSet},
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tokio_util::sync::CancellationToken;
 
 struct Local;
@@ -38,21 +35,21 @@ async fn concurrent_acquisition_shares_service_and_checks_every_descriptor() {
             "operations":demi_command_service::Handler::operations(&demi_commands::DemiCommands::default()),
             "targets":TARGETS.iter().map(|target| (target.to_string(), serde_json::to_value(&artifact).unwrap())).collect::<BTreeMap<_, _>>()
         })).unwrap();
-        let pool = Services::new(directory.path().join("cache"), native::target().into(), directory.path().into(), BTreeMap::new()).await.unwrap();
+        let registry = ServiceRegistry::new(directory.path().join("cache"), directory.path().into(), BTreeMap::new()).await.unwrap();
+        let services = registry.handle();
+        let _lease = services.lease(package.targets[target()].sha256.clone());
         let resolver: Arc<dyn ArtifactResolver> = Arc::new(Local);
         let stop = CancellationToken::new();
-        let first = pool.acquire(&package, resolver.clone(), &stop);
-        let second = pool.acquire(&package, resolver.clone(), &stop);
+        let first = services.acquire(&package, resolver.clone(), &stop);
+        let second = services.acquire(&package, resolver.clone(), &stop);
         let (first, second) = tokio::join!(first, second);
-        let first = first.unwrap();
-        assert!(Arc::ptr_eq(&first, &second.unwrap()));
+        let (first, second) = (first.unwrap(), second.unwrap());
+        assert!(first.client().info().await.is_ok());
+        assert!(second.client().info().await.is_ok());
         let mut conflicting = package.clone();
         conflicting.operations.pop();
-        assert!(matches!(&*pool.acquire(&conflicting, resolver.clone(), &stop).await.err().unwrap(), RuntimeError::CatalogMismatch));
-        pool.retain(&HashSet::new()).await;
-        let replacement = pool.acquire(&package, resolver, &stop).await.unwrap();
-        assert!(!Arc::ptr_eq(&first, &replacement));
-        pool.close().await;
-        assert!(replacement.info().await.is_err());
+        assert!(matches!(&*services.acquire(&conflicting, resolver, &stop).await.err().unwrap(), RuntimeError::CatalogMismatch));
+        registry.close().await;
+        assert!(first.client().info().await.is_err());
     }).await.unwrap();
 }

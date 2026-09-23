@@ -1,6 +1,7 @@
 //! Live command authority and immutable declaration snapshots for runner-owned jobs.
 
 use crate::commands::command_client::{CONTEXT_ENV, ENDPOINT_ENV};
+use crate::services::{ServiceHandle, ServiceLease};
 use demi_runner_protocol::manifest::Manifest;
 use demi_command_service::protocol::CommandContext;
 use std::{
@@ -29,12 +30,19 @@ pub struct Contexts {
     state: Arc<Mutex<State>>,
     directory: PathBuf,
     executable: PathBuf,
-    changed: Arc<tokio::sync::Notify>,
+    services: ServiceHandle,
 }
 
 struct State {
-    current: Option<Arc<Manifest>>,
-    entries: HashMap<String, Arc<ExecutionContext>>,
+    current: Option<Leased>,
+    entries: HashMap<String, Leased<Arc<ExecutionContext>>>,
+}
+
+/// A manifest or a live context with the leases that keep its services
+/// resident (`native-runtime.md` § Keep a service resident).
+struct Leased<T = Arc<Manifest>> {
+    value: T,
+    _leases: Vec<ServiceLease>,
 }
 
 /// The task owner drops this after its process and streams finish, including errors.
@@ -45,15 +53,19 @@ pub struct Lease {
 
 impl Drop for Lease {
     fn drop(&mut self) {
-        if let Some(context) = self.contexts.state.lock().unwrap().entries.remove(&self.id) {
-            context.cancel.cancel();
-            self.contexts.changed.notify_one();
+        let removed = self.contexts.state.lock().unwrap().entries.remove(&self.id);
+        if let Some(live) = removed {
+            live.value.cancel.cancel();
         }
     }
 }
 
 impl Contexts {
-    pub async fn new(directory: PathBuf, executable: PathBuf) -> io::Result<Self> {
+    pub async fn new(
+        directory: PathBuf,
+        executable: PathBuf,
+        services: ServiceHandle,
+    ) -> io::Result<Self> {
         tokio::fs::create_dir_all(&directory).await?;
         crate::fs::chmod(&directory, 0o700).await?;
         Ok(Self {
@@ -63,8 +75,18 @@ impl Contexts {
             })),
             directory,
             executable,
-            changed: Arc::new(tokio::sync::Notify::new()),
+            services,
         })
+    }
+
+    /// Leases on the services of `manifest`'s packages for this host.
+    fn leases(&self, manifest: &Manifest) -> Vec<ServiceLease> {
+        manifest
+            .packages
+            .values()
+            .filter_map(|package| package.targets.get(crate::services::target()))
+            .map(|artifact| self.services.lease(artifact.sha256.clone()))
+            .collect()
     }
 
     pub async fn install(&self, value: serde_json::Value) -> io::Result<Arc<Manifest>> {
@@ -104,8 +126,14 @@ impl Contexts {
             }
             Err(error) => return Err(error),
         }
-        self.state.lock().unwrap().current = Some(manifest.clone());
-        self.changed.notify_one();
+        let installed = Leased {
+            _leases: self.leases(&manifest),
+            value: manifest.clone(),
+        };
+        // The new manifest's leases count before the old one's end, so a
+        // service both name stays resident.
+        let replaced = self.state.lock().unwrap().current.replace(installed);
+        drop(replaced);
         Ok(manifest)
     }
 
@@ -120,7 +148,8 @@ impl Contexts {
             .lock()
             .unwrap()
             .current
-            .clone()
+            .as_ref()
+            .map(|installed| installed.value.clone())
             .filter(|manifest| manifest.hash == manifest_hash)
             .ok_or_else(|| io::Error::other("job manifest is not installed"))?;
         let aliases = tempfile::Builder::new()
@@ -155,15 +184,22 @@ impl Contexts {
             edits: OnceLock::new(),
             aliases,
         });
+        let leases = self.leases(&context.manifest);
         let mut state = self.state.lock().unwrap();
         if state
             .entries
             .values()
-            .any(|entry| entry.owner == context.owner)
+            .any(|entry| entry.value.owner == context.owner)
         {
             return Err(io::Error::other("duplicate live execution owner"));
         }
-        state.entries.insert(id.clone(), context.clone());
+        state.entries.insert(
+            id.clone(),
+            Leased {
+                value: context.clone(),
+                _leases: leases,
+            },
+        );
         Ok((
             context,
             Lease {
@@ -179,7 +215,7 @@ impl Contexts {
             .unwrap()
             .entries
             .get(id)
-            .cloned()
+            .map(|entry| entry.value.clone())
             .ok_or_else(|| {
                 io::Error::new(
                     io::ErrorKind::PermissionDenied,
@@ -194,6 +230,7 @@ impl Contexts {
             .unwrap()
             .entries
             .values()
+            .map(|entry| &entry.value)
             .find(|context| {
                 !context.cancel.is_cancelled()
                     && context.manifest.packages.values().any(|package| {
@@ -206,22 +243,6 @@ impl Contexts {
             .cloned()
     }
 
-    pub fn retained_artifacts(&self, target: &str) -> std::collections::HashSet<String> {
-        let state = self.state.lock().unwrap();
-        state
-            .current
-            .iter()
-            .chain(state.entries.values().map(|context| &context.manifest))
-            .flat_map(|manifest| manifest.packages.values())
-            .filter_map(|package| {
-                package
-                    .targets
-                    .get(target)
-                    .map(|artifact| artifact.sha256.clone())
-            })
-            .collect()
-    }
-
     pub fn cancel_owner(&self, owner: &str) {
         for context in self
             .state
@@ -229,25 +250,18 @@ impl Contexts {
             .unwrap()
             .entries
             .values()
+            .map(|entry| &entry.value)
             .filter(|context| context.owner == owner)
         {
             context.cancel.cancel();
         }
     }
 
-    pub fn refresh(&self) {
-        self.changed.notify_one();
-    }
-
-    pub async fn changed(&self) {
-        self.changed.notified().await;
-    }
-
     pub fn close(&self) {
-        for (_, context) in self.state.lock().unwrap().entries.drain() {
-            context.cancel.cancel();
+        let closed: Vec<_> = self.state.lock().unwrap().entries.drain().collect();
+        for (_, live) in closed {
+            live.value.cancel.cancel();
         }
-        self.changed.notify_one();
     }
 }
 

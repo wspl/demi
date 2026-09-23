@@ -4,7 +4,6 @@
 //! request named.
 
 use std::{
-    collections::HashMap,
     io,
     sync::{Arc, Mutex},
 };
@@ -19,10 +18,12 @@ use tokio::sync::mpsc;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
-    commands::{artifacts::Artifacts, contexts::Contexts, native::Services},
+    commands::artifacts::Artifacts,
     connection::wire::{self, ServiceErrorCode},
     host_log::{self, LineSplitter},
     pipes::PipeClient,
+    services::ServiceHandle,
+    tail::TailBuffer,
     tasks::report_pipe,
 };
 
@@ -33,15 +34,9 @@ const OUTPUT_QUEUE: usize = 4;
 pub struct ServiceStreams {
     output: mpsc::Sender<wire::Frame>,
     pipes: PipeClient,
-    services: Arc<Services>,
+    services: ServiceHandle,
     artifacts: Arc<Artifacts>,
-    target: String,
     draining: CancellationToken,
-    /// How many open streams run on each artifact digest: an open stream
-    /// keeps its service resident.
-    live: Arc<Mutex<HashMap<String, usize>>>,
-    /// Refreshed when a stream ends, so its service is reconsidered.
-    contexts: Contexts,
     streams: TaskTracker,
     /// Ends every open stream: cancelled by `close` and by the host
     /// connection's shutdown.
@@ -49,15 +44,12 @@ pub struct ServiceStreams {
 }
 
 impl ServiceStreams {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         output: mpsc::Sender<wire::Frame>,
         pipes: PipeClient,
-        services: Arc<Services>,
+        services: ServiceHandle,
         artifacts: Arc<Artifacts>,
-        target: String,
         draining: CancellationToken,
-        contexts: Contexts,
         cancel: CancellationToken,
     ) -> Self {
         Self {
@@ -65,24 +57,10 @@ impl ServiceStreams {
             pipes,
             services,
             artifacts,
-            target,
             draining,
-            live: Arc::new(Mutex::new(HashMap::new())),
-            contexts,
             streams: TaskTracker::new(),
             cancel,
         }
-    }
-
-    /// The artifacts open streams run from; their services stay resident.
-    pub fn retained_artifacts(&self) -> impl Iterator<Item = String> {
-        self.live
-            .lock()
-            .unwrap()
-            .keys()
-            .cloned()
-            .collect::<Vec<_>>()
-            .into_iter()
     }
 
     /// Starts one stream; connection cancellation (or `close`) ends every
@@ -113,11 +91,9 @@ impl ServiceStreams {
         let resolver = self.artifacts.for_stream(stream_id.clone());
         let digest = package
             .targets
-            .get(&self.target)
+            .get(crate::services::target())
             .map(|artifact| artifact.sha256.clone());
         let draining = self.draining.clone();
-        let live = self.live.clone();
-        let contexts = self.contexts.clone();
         let log = StreamLog {
             source: format!("stream:{operation}"),
             conversation: context.conversation.clone(),
@@ -133,11 +109,11 @@ impl ServiceStreams {
                 send_error(&reply, stream_id, ServiceErrorCode::UnknownOperation, message, &stream, &log).await;
                 return;
             }
-            // The stream holds its service from the start: acquiring one no
-            // job retains must not race its retirement.
-            let _live = digest.map(|digest| Live::hold(live, digest, contexts));
+            // The stream holds its service from the start
+            // (`native-runtime.md` § Keep a service resident).
+            let _lease = digest.map(|digest| services.lease(digest));
             let opened = async {
-                let client = services
+                let mut resident = services
                     .acquire(&package, resolver, &stream)
                     .await
                     .map_err(|error| error.to_string())?;
@@ -151,10 +127,10 @@ impl ServiceStreams {
                     edits: None,
                     json,
                 };
-                client
-                    .invoke(&invocation)
-                    .await
-                    .map_err(|error| error.to_string())
+                match resident.client().invoke(&invocation).await {
+                    Ok(exchange) => Ok(exchange),
+                    Err(error) => Err(resident.failure(error).await),
+                }
             };
             let (command_input, command_output) = tokio::select! {
                 _ = stream.cancelled() => return,
@@ -286,38 +262,6 @@ impl StreamLog {
     }
 }
 
-/// One open stream's claim on its service's artifact.
-struct Live {
-    live: Arc<Mutex<HashMap<String, usize>>>,
-    digest: String,
-    contexts: Contexts,
-}
-
-impl Live {
-    fn hold(live: Arc<Mutex<HashMap<String, usize>>>, digest: String, contexts: Contexts) -> Self {
-        *live.lock().unwrap().entry(digest.clone()).or_default() += 1;
-        Self {
-            live,
-            digest,
-            contexts,
-        }
-    }
-}
-
-impl Drop for Live {
-    fn drop(&mut self) {
-        let mut live = self.live.lock().unwrap();
-        if let Some(count) = live.get_mut(&self.digest) {
-            *count -= 1;
-            if *count == 0 {
-                live.remove(&self.digest);
-            }
-        }
-        drop(live);
-        self.contexts.refresh();
-    }
-}
-
 /// Delivers the page's bytes to the invocation as it asks for them, each
 /// chunk within the protocol's record limit.
 async fn pump_input(
@@ -367,16 +311,6 @@ struct Outcome {
     stderr: String,
 }
 
-/// The most of an invocation's standard error its `service_done` carries.
-const STDERR_TAIL_BYTES: usize = 16 * 1024;
-
-/// Keeps the last `STDERR_TAIL_BYTES` of `tail` after `bytes` join it.
-fn keep_tail(tail: &mut Vec<u8>, bytes: &[u8]) {
-    tail.extend_from_slice(bytes);
-    let excess = tail.len().saturating_sub(STDERR_TAIL_BYTES);
-    tail.drain(..excess);
-}
-
 /// Uploads the invocation's standard output until its completion ends the
 /// pipe; input pulls go to the input pump, standard error to the log.
 async fn pump_output(
@@ -391,7 +325,8 @@ async fn pump_output(
 ) -> io::Result<()> {
     let (sender, receiver) = mpsc::channel::<io::Result<Bytes>>(OUTPUT_QUEUE);
     let records = async move {
-        let mut tail = Vec::new();
+        // A byte is at most one UTF-16 unit of the text `service_done` carries.
+        let mut tail = TailBuffer::new(wire::SERVICE_STDERR_CHARS);
         let mut lines = LineSplitter::default();
         let stderr = &mut lines;
         let pump = async move {
@@ -403,7 +338,7 @@ async fn pump_output(
                 let item = match record {
                     Ok(Some(Record::Stdout(bytes))) => Ok(bytes),
                     Ok(Some(Record::Stderr(bytes))) => {
-                        keep_tail(&mut tail, &bytes);
+                        tail.push(&bytes);
                         for line in stderr.push(&bytes) {
                             log.stderr(&line);
                         }
@@ -424,8 +359,7 @@ async fn pump_output(
                         if let Some(error) = &completion.error {
                             log.event(&format!("failed: {}: {}", error.code, error.message));
                         }
-                        // A tail cut inside a character loses that character, not the words after it.
-                        let stderr = String::from_utf8_lossy(&tail).into_owned();
+                        let stderr = tail.text();
                         *outcome.lock().unwrap() = Some(Outcome {
                             exit_code: completion.exit_code,
                             stderr,
