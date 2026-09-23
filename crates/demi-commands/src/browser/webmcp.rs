@@ -57,11 +57,7 @@ pub(super) async fn execute(
 ) -> Result<Value> {
     let tab = tab.ok_or(BrowserError::TabNotFound)?;
     let operation = Operation::for_tab(tab, cancel, deadline);
-    let _guard = tab
-        .state
-        .operations
-        .try_lock()
-        .map_err(|_| BrowserError::Busy)?;
+    let mut session = tab.state.gate.try_checkout().ok_or(BrowserError::Busy)?;
     let capability = operation.run(capability(&tab.page)).await?;
     if !capability.available {
         return Err(BrowserError::UnsupportedCapability(
@@ -70,7 +66,7 @@ pub(super) async fn execute(
                 .unwrap_or_else(|| "WebMCP is unavailable".into()),
         ));
     }
-    let mut state = tab.state.webmcp.lock().await;
+    let state = &mut session.webmcp;
     let document = operation
         .run(async {
             Ok(tab

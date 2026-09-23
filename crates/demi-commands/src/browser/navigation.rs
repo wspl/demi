@@ -431,7 +431,7 @@ where
 {
     let page = tab.page.clone();
     let ended = tab.ended.clone();
-    tokio::spawn(async move {
+    tab.state.tasks.spawn(async move {
         // A closing tab must not receive a late address-bar navigation. The user
         // sees load failures in Chrome; there is no command waiting for an answer.
         tokio::select! {

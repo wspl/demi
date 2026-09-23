@@ -147,7 +147,7 @@ The user's Stop sends `abort`. Each `abort` stops one thing, in this order:
 4. Otherwise, nothing is stopped.
 
 The `abort_result` frame says what was stopped and whether another `abort`
-would stop something more.
+would have stopped something more at the moment the stop was recorded.
 
 A stopped action records the stop itself. It writes the human steers still
 pending, completes each running tool call as an error
@@ -168,7 +168,9 @@ Dispose does the following:
 2. Stops the running action as a shutdown. Running tool calls complete as
    `Tool call aborted: <tool>`, and an `error` block with the code
    `interrupted` and the message "The agent session was shut down while this
-   turn was running." says why the turn is unfinished.
+   turn was running." says why the turn is unfinished. A message whose turn
+   has not written its `user` block yet is not interrupted: it goes back to
+   the front of the queue.
 3. Keeps the queued messages and the scheduled yield wakeups in the
    checkpoint.
 4. Waits for a save in progress, then writes the final checkpoint. Its phase
@@ -430,6 +432,9 @@ the five completes as an error `Tool not found: <name>`.
 - Tools run one at a time, in the order the model requested them. Waiting
   input is written after each call ([Input](#input)).
 - A tool that fails completes its call as an error `Tool failed: <message>`.
+- An action that fails before its calls ran, such as when the save before
+  dispatch fails, completes them as `Tool call aborted: <tool>`, as a stop
+  does, so the next request replays no call without a result.
 - A tool never reaches into its session. It returns its result and, for
   `yield`, an effect that the session applies.
 

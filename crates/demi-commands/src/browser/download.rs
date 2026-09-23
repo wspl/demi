@@ -43,15 +43,15 @@ pub(super) async fn execute(
         unreachable!("download dispatch accepts only download");
     };
     let operation = Operation::for_tab(tab, cancel, deadline);
-    let mut references = tab
+    let mut session = tab
         .state
-        .operations
-        .try_lock()
-        .map_err(|_| operation.failure(BrowserError::Busy, tab.id().as_str(), None))?;
-    let browser = environment.browser.upgrade().ok_or(BrowserError::Closed)?;
+        .gate
+        .try_checkout()
+        .ok_or_else(|| operation.failure(BrowserError::Busy, tab.id().as_str(), None))?;
+    let references = &mut session.references;
     let (mut beginnings, mut progress) = operation
         .run(async {
-            let browser = browser.lock().await;
+            let browser = environment.browser.call()?;
             Ok((
                 browser.event_listener::<EventDownloadWillBegin>().await?,
                 browser.event_listener::<EventDownloadProgress>().await?,
@@ -76,7 +76,7 @@ pub(super) async fn execute(
             Some(xy) => operation.run(tab.coordinates(xy)).await?,
             None => {
                 let target = target.as_ref().ok_or_else(|| BrowserError::Configuration("download requires an element or --xy".into()))?;
-                tab.ready_element(target, &mut references, element::CLICK, &operation).await?.1.point()
+                tab.ready_element(target, references, element::CLICK, &operation).await?.1.point()
             }
         };
         if input.xy.is_some() {
@@ -183,9 +183,9 @@ pub(super) async fn execute(
             let source = spool_path(environment, &download.guid)?;
             let stopping = if matches!(phase, Phase::Active(_)) {
                 tokio::time::timeout(CONTROL_TIMEOUT, async {
-                    browser
-                        .lock()
-                        .await
+                    environment
+                        .browser
+                        .call()?
                         .execute(CancelDownloadParams::new(download.guid.clone()))
                         .await?;
                     while let Some(event) = progress.next().await {

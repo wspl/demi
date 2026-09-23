@@ -2,8 +2,10 @@
 //! (`crates-and-packages.md` § core): transcript blocks, user and tool
 //! content, models and their selection, token usage, tool views, agent
 //! messages, the session's phase, queue and pending steers, provider failure
-//! facts, the file-type table, model media sniffing, and the JSON forms of
-//! bytes and times. It holds types, their checks and pure lookups; no IO.
+//! facts, what the product shows of a provider entry (its model catalog,
+//! authentication and runtime states, accounts and quota snapshots), the
+//! file-type table, model media sniffing, the JSON forms of bytes and times,
+//! and the wall clock. It holds types, their checks and pure lookups; no IO.
 //!
 //! Every type follows the encoding conventions of `contracts.md`: camelCase
 //! fields, enums tagged by `type` (`kind` for views), optional fields that
@@ -14,12 +16,15 @@
 mod agent_message;
 mod block;
 mod bytes;
+mod catalog;
 mod content;
 mod failure;
 mod file_types;
 mod ids;
 mod media;
 mod model;
+mod provider_state;
+mod quota;
 mod schema;
 mod session;
 mod time;
@@ -35,24 +40,32 @@ pub use block::{
     WakeupPlacement,
 };
 pub use bytes::B64Bytes;
+pub use catalog::{ModelCost, ProviderModel, ProviderModelList, ServiceTier};
 pub use content::{
     Attachment, BlobRef, DocumentSource, MediaSource, ToolMediaSource, ToolResultContentBlock,
-    UserContentBlock, attachment_tag, is_blank,
+    UserContentBlock, attachment_tag, is_blank, trim,
 };
 pub use failure::{FailureSource, ProviderErrorDiagnostics, ProviderFailureFacts};
 pub use file_types::{PREVIEW_TYPES, PreviewType, preview_media_type, shows_in_place};
+#[doc(hidden)]
+pub use ids::__private;
 pub use ids::{BlockId, CommandId, EmptyId, NodeId, OperationId, ShellId, TurnId, WakeupId};
 pub use media::{
     MODEL_MEDIA_TYPES, ModelMediaKind, ModelMediaType, model_accepts_media_type,
     model_media_type_for, sniff_model_media_type,
 };
 pub use model::{
-    FileExtension, Model, ModelSelection, ThinkingCapability, ThinkingConfig, ThinkingSummary,
-    TokenUsage, VIDEO_FILE_EXTENSIONS, file_extension_support, model_accepts_video,
+    ATTACHMENT_FILE_EXTENSIONS, FileExtension, Model, ModelSelection, ThinkingCapability,
+    ThinkingConfig, ThinkingSummary, TokenUsage, VIDEO_FILE_EXTENSIONS, file_extension_support,
+    model_accepts_video,
+};
+pub use provider_state::{AccountInfo, AuthState, LoginPending, RuntimeState};
+pub use quota::{
+    QuotaPlan, QuotaScope, QuotaSeverity, QuotaSnapshot, QuotaUnit, QuotaWindow, SnapshotSource,
 };
 pub use schema::Nullable;
 pub use session::{PendingSteer, QueuedMessage, SessionPhase};
-pub use time::{Timestamp, TimestampError};
+pub use time::{Clock, SystemClock, Timestamp, TimestampError};
 pub use view::{
     BinaryStdout, EditKind, EditedFile, KeptEdit, OutputChunk, OutputView, ShellToolView,
     ShellViewStatus, StreamKind, StreamView, ToolView,
