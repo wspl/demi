@@ -16,6 +16,7 @@ futures-util.workspace = true
 garde.workspace = true
 h2.workspace = true
 http.workspace = true
+schemars.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
