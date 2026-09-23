@@ -217,8 +217,9 @@ fn unique(operations: &[String], _: &()) -> garde::Result {
     }
 }
 
-/// Each key is a known target and each artifact is valid.
-fn target_artifacts(targets: &BTreeMap<String, PackageArtifact>, _: &()) -> garde::Result {
+/// A garde rule: each key is a known target and each artifact is valid, as
+/// in a release's map of target artifacts.
+pub fn target_artifacts(targets: &BTreeMap<String, PackageArtifact>, _: &()) -> garde::Result {
     for (name, artifact) in targets {
         target(name, &())?;
         garde::Validate::validate(artifact)
