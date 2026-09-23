@@ -27,15 +27,21 @@ pub fn exhausted(error: &(dyn Error + 'static)) -> bool {
     false
 }
 
-/// `io::ErrorKind::TooManyOpenFiles` is not stable, so the kind comes from the
-/// code the system reports. Wrappers that keep the kind, such as tempfile's
-/// path errors, are recognized too.
-fn too_many_open_files() -> io::ErrorKind {
+/// The error a failure for want of an open file stands as, for a copy of one
+/// whose cause cannot be copied.
+pub fn exhaustion() -> io::Error {
     #[cfg(unix)]
     let code = libc::EMFILE;
     #[cfg(windows)]
     let code = windows_sys::Win32::Foundation::ERROR_TOO_MANY_OPEN_FILES as i32;
-    io::Error::from_raw_os_error(code).kind()
+    io::Error::from_raw_os_error(code)
+}
+
+/// `io::ErrorKind::TooManyOpenFiles` is not stable, so the kind comes from the
+/// code the system reports. Wrappers that keep the kind, such as tempfile's
+/// path errors, are recognized too.
+fn too_many_open_files() -> io::ErrorKind {
+    exhaustion().kind()
 }
 
 /// Nothing tells a process when a descriptor closes, so attempts are spaced
