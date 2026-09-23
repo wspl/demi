@@ -2,6 +2,7 @@
 resolver = "3"
 exclude = ["vendor/*", "vendor/chromiumoxide", "vendor/chromiumoxide_cdp"]
 members = [
+  "crates/agent",
   "crates/agent-protocol",
   "crates/artifact",
   "crates/backend",
@@ -13,10 +14,13 @@ members = [
   "crates/demi-claude",
   "crates/demi-commands",
   "crates/gates",
+  "crates/host-remote",
   "crates/machines",
   "crates/machines-protocol",
   "crates/provider",
   "crates/provider-anthropic-api",
+  "crates/provider-google",
+  "crates/provider-openai-api",
   "crates/runner",
   "crates/runner-protocol",
   "crates/shell",

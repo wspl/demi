@@ -228,7 +228,10 @@ pub trait HostFs {
     /// The metadata of a symbolic link itself.
     fn lstat<'a>(&'a self, path: &'a str) -> LocalBoxFuture<'a, Result<FileStat, HostError>>;
 
-    fn read_dir<'a>(&'a self, path: &'a str) -> LocalBoxFuture<'a, Result<Vec<DirEntry>, HostError>>;
+    fn read_dir<'a>(
+        &'a self,
+        path: &'a str,
+    ) -> LocalBoxFuture<'a, Result<Vec<DirEntry>, HostError>>;
 
     fn mkdir<'a>(
         &'a self,
@@ -236,7 +239,11 @@ pub trait HostFs {
         options: MkdirOptions,
     ) -> LocalBoxFuture<'a, Result<(), HostError>>;
 
-    fn rm<'a>(&'a self, path: &'a str, options: RmOptions) -> LocalBoxFuture<'a, Result<(), HostError>>;
+    fn rm<'a>(
+        &'a self,
+        path: &'a str,
+        options: RmOptions,
+    ) -> LocalBoxFuture<'a, Result<(), HostError>>;
 
     fn cp<'a>(
         &'a self,
@@ -245,15 +252,27 @@ pub trait HostFs {
         options: CpOptions,
     ) -> LocalBoxFuture<'a, Result<(), HostError>>;
 
-    fn mv<'a>(&'a self, path: &'a str, destination: &'a str) -> LocalBoxFuture<'a, Result<(), HostError>>;
+    fn mv<'a>(
+        &'a self,
+        path: &'a str,
+        destination: &'a str,
+    ) -> LocalBoxFuture<'a, Result<(), HostError>>;
 
     fn chmod<'a>(&'a self, path: &'a str, mode: u32) -> LocalBoxFuture<'a, Result<(), HostError>>;
 
     /// Makes `path` a symbolic link to `target`, which is written as given.
-    fn symlink<'a>(&'a self, target: &'a str, path: &'a str) -> LocalBoxFuture<'a, Result<(), HostError>>;
+    fn symlink<'a>(
+        &'a self,
+        target: &'a str,
+        path: &'a str,
+    ) -> LocalBoxFuture<'a, Result<(), HostError>>;
 
     /// Makes `path` a hard link to `existing`.
-    fn link<'a>(&'a self, existing: &'a str, path: &'a str) -> LocalBoxFuture<'a, Result<(), HostError>>;
+    fn link<'a>(
+        &'a self,
+        existing: &'a str,
+        path: &'a str,
+    ) -> LocalBoxFuture<'a, Result<(), HostError>>;
 
     fn readlink<'a>(&'a self, path: &'a str) -> LocalBoxFuture<'a, Result<String, HostError>>;
 
@@ -368,4 +387,17 @@ pub enum SpawnErrorKind {
     CwdUnusable,
     IsDirectory,
     Other,
+}
+
+impl fmt::Display for SpawnErrorKind {
+    /// The kind as the runner names it, which a shell's message quotes.
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::ExecutableNotFound => "executable_not_found",
+            Self::PermissionDenied => "permission_denied",
+            Self::CwdUnusable => "cwd_unusable",
+            Self::IsDirectory => "is_directory",
+            Self::Other => "other",
+        })
+    }
 }
