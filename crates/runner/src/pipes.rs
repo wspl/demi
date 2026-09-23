@@ -4,6 +4,12 @@ use std::{io, sync::Arc};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
+/// How long a pipe's connection may take to open.
+const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+/// The most of a pipe's answer the runner reads: a confirmation, or the words
+/// of a refusal.
+const ANSWER_BYTES: usize = 16 * 1024;
+
 #[derive(Clone)]
 pub struct PipeClient {
     http: reqwest::Client,
@@ -28,7 +34,7 @@ impl PipeClient {
         origin.set_query(None);
         let http = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
-            .connect_timeout(std::time::Duration::from_secs(15))
+            .connect_timeout(CONNECT_TIMEOUT)
             .build()
             .map_err(io::Error::other)?;
         Ok(Self {
@@ -94,7 +100,7 @@ impl PipeClient {
                 let mut size = 0usize;
                 while let Some(chunk) = response.chunk().await.map_err(io::Error::other)? {
                     size += chunk.len();
-                    if size > 16 * 1024 { return Err(io::Error::new(io::ErrorKind::InvalidData, "oversized pipe confirmation")); }
+                    if size > ANSWER_BYTES { return Err(io::Error::new(io::ErrorKind::InvalidData, "oversized pipe confirmation")); }
                 }
                 Ok(())
             } => result,
@@ -132,9 +138,9 @@ async fn expect_ok(mut response: reqwest::Response) -> io::Result<reqwest::Respo
     let status = response.status();
     let mut body = Vec::new();
     while let Some(chunk) = response.chunk().await.map_err(io::Error::other)? {
-        let count = (16 * 1024 - body.len()).min(chunk.len());
+        let count = (ANSWER_BYTES - body.len()).min(chunk.len());
         body.extend_from_slice(&chunk[..count]);
-        if body.len() == 16 * 1024 {
+        if body.len() == ANSWER_BYTES {
             break;
         }
     }

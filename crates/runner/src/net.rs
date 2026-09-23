@@ -4,10 +4,9 @@
 
 use std::{io, time::Duration};
 
-use bytes::Bytes;
 use futures_util::StreamExt;
 use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
+    io::AsyncWriteExt,
     net::TcpStream,
     sync::mpsc,
 };
@@ -20,9 +19,9 @@ use crate::{
 };
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-/// Reads feed the upload through a bounded channel, so the socket backs off
-/// behind the output pipe rather than buffering without limit.
-const READ_QUEUE: usize = 4;
+/// The most one socket read takes; the upload reads the socket only as it
+/// sends, so the socket backs off behind the output pipe.
+const READ_BYTES: usize = 64 * 1024;
 
 pub struct NetStreams {
     output: mpsc::Sender<wire::Frame>,
@@ -207,51 +206,15 @@ async fn pump_input(
 async fn pump_output(
     pipes: PipeClient,
     url: &str,
-    mut reader: tokio::net::tcp::OwnedReadHalf,
+    reader: tokio::net::tcp::OwnedReadHalf,
     cancel: &CancellationToken,
 ) -> io::Result<()> {
-    // Read errors ride the channel as items, so a reset socket fails the
-    // upload instead of ending it like a clean EOF.
-    let (sender, receiver) = mpsc::channel::<io::Result<Bytes>>(READ_QUEUE);
-    let reads = CancellationToken::new();
-    let read_cancel = reads.clone();
-    let reader = tokio::spawn(async move {
-        let mut buffer = vec![0u8; 64 * 1024];
-        loop {
-            tokio::select! {
-                _ = read_cancel.cancelled() => break,
-                result = reader.read(&mut buffer) => match result {
-                    Ok(0) => break,
-                    Ok(count) => {
-                        let chunk = Bytes::copy_from_slice(&buffer[..count]);
-                        if sender.send(Ok(chunk)).await.is_err() {
-                            break;
-                        }
-                    }
-                    Err(error) => {
-                        let _ = sender.send(Err(error)).await;
-                        break;
-                    }
-                },
-            }
-        }
-    });
-    let body_cancel = cancel.clone();
-    let body = futures_util::stream::unfold(receiver, move |mut receiver| {
-        let cancel = body_cancel.clone();
-        async move {
-            tokio::select! {
-                biased;
-                _ = cancel.cancelled() => None,
-                chunk = receiver.recv() => chunk.map(|chunk| (chunk, receiver)),
-            }
-        }
-    });
-    let result = pipes.put(url, body, cancel).await;
-    reads.cancel();
-    // A completed pipe means the read half is released: the socket is closed.
-    let _ = reader.await;
-    result
+    // A read error fails the upload instead of ending it like a clean EOF;
+    // the connection's end ends it cleanly. The finished upload drops the read
+    // half, which closes that side of the socket.
+    let body = tokio_util::io::ReaderStream::with_capacity(reader, READ_BYTES)
+        .take_until(cancel.clone().cancelled_owned());
+    pipes.put(url, body, cancel).await
 }
 
 async fn send_net_error(

@@ -582,7 +582,11 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex.lock().expect("the watch's record is intact")
 }
 
-/// Runs `work` on a blocking thread; a panic there answers `internal`.
+/// Runs `work` on a blocking thread; a panic there answers `internal`. Only
+/// short work goes here (finding the repository, starting a watch, reading
+/// one blob), so a cancelled request returns at once and leaves the thread to
+/// finish alone; a computation, which can take long, goes through
+/// `interruptible`.
 async fn blocking<T: Send + 'static>(
     cancel: &CancellationToken,
     work: impl FnOnce() -> Result<T, GitError> + Send + 'static,

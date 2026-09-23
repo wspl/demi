@@ -1,4 +1,4 @@
-use demi_runner::shell::utilities::{Context, NAMES, run};
+use demi_runner::shell::utilities::{Context, UTILITIES, run};
 use std::{collections::BTreeMap, path::Path, sync::Arc};
 
 fn invoke(root: &Path, name: &'static str, args: &[&str]) -> (i32, String, String) {
@@ -31,7 +31,7 @@ fn invoke(root: &Path, name: &'static str, args: &[&str]) -> (i32, String, Strin
 #[test]
 fn every_utility_routes_help_to_the_invocation_stream() {
     let root = tempfile::tempdir().unwrap();
-    for &name in NAMES {
+    for &(name, _) in UTILITIES {
         let (code, output, error) = invoke(root.path(), name, &["--help"]);
         assert_eq!(code, 0, "{name}: {error}");
         assert!(

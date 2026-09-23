@@ -255,23 +255,12 @@ async fn open_range(
 }
 
 /// The upload body: one chunk per read, taken only when the upload asks for
-/// it, so a slow reader of the pipe paces the file reads.
+/// it, so a slow reader of the pipe paces the file reads. A read error fails
+/// the upload instead of ending it like EOF.
 fn chunks(
     file: impl AsyncRead + Unpin + Send + 'static,
 ) -> impl futures_util::Stream<Item = io::Result<Bytes>> + Send + 'static {
-    futures_util::stream::unfold(Some(file), |state| async move {
-        let mut file = state?;
-        let mut buffer = vec![0u8; CHUNK_BYTES];
-        match file.read(&mut buffer).await {
-            Ok(0) => None,
-            Ok(count) => {
-                buffer.truncate(count);
-                Some((Ok(Bytes::from(buffer)), Some(file)))
-            }
-            // A read error fails the upload instead of ending it like EOF.
-            Err(error) => Some((Err(error), None)),
-        }
-    })
+    tokio_util::io::ReaderStream::with_capacity(file, CHUNK_BYTES)
 }
 
 /// Streams the pipe into a file staged beside `target` and publishes it there

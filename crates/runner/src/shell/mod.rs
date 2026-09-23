@@ -85,7 +85,7 @@ pub async fn execute(
         (2, OpenFile::File(options.stderr)),
     ]);
     let mut registrations = brush_builtins::default_builtins(brush_builtins::BuiltinSet::BashMode);
-    for &name in crate::shell::utilities::NAMES {
+    for &(name, _) in crate::shell::utilities::UTILITIES {
         registrations.insert(
             name.to_owned(),
             builtins::Registration {
@@ -188,9 +188,9 @@ fn execute_utility(
     args: Vec<CommandArg>,
 ) -> builtins::BoxFuture<'_, Result<ExecutionResult, brush_core::Error>> {
     Box::pin(async move {
-        let name = crate::shell::utilities::NAMES
+        let name = crate::shell::utilities::UTILITIES
             .iter()
-            .copied()
+            .map(|(name, _)| *name)
             .find(|name| *name == context.command_name)
             .ok_or_else(|| io::Error::other("unregistered native utility"))?;
         let env = context

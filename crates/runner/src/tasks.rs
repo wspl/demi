@@ -42,6 +42,8 @@ pub enum WorkId {
 const INPUT_QUEUE: usize = 64;
 /// Signals a task has not taken yet.
 const SIGNAL_QUEUE: usize = 16;
+/// How long a task's pipe transfers may run on after its process ended.
+const PIPE_GRACE: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// A connection's jobs and raw processes. The connection owns the table,
 /// registers each task before its setup runs so that its input and signals
@@ -191,8 +193,7 @@ impl JobTable {
 
     /// Live stdin is bounded; bulk streams use the independently flowing HTTP pipe.
     pub fn input(&self, id: &WorkId, bytes: Bytes) -> io::Result<()> {
-        // docs/execution/runner.md § Pipes and output: the native stdin chunk limit.
-        if bytes.len() > 64 * 1024 {
+        if bytes.len() > wire::STDIN_CHUNK_BYTES {
             return Err(io::Error::other("live stdin chunk exceeds 64 KiB"));
         }
         self.send(id, TaskInput::Bytes(bytes))
@@ -557,7 +558,7 @@ impl JobConfig {
         let finished = tokio::select! {
             _ = pipe_tasks.wait() => true,
             _ = cancel.cancelled() => false,
-            _ = tokio::time::sleep(std::time::Duration::from_secs(30)) => false,
+            _ = tokio::time::sleep(PIPE_GRACE) => false,
         };
         if !finished {
             io_cancel.cancel();
