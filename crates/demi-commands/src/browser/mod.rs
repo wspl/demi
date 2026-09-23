@@ -37,6 +37,6 @@ mod viewport;
 mod webmcp;
 
 pub(crate) use conversations::Conversations;
-pub use environment::{BrowserEnvironment, LaunchOptions, with_browser};
+pub use environment::{BrowserEnvironment, LaunchOptions, sweep_orphans, with_browser};
 pub use operation::{BrowserError, Result};
 pub use tab::BrowserTab;

@@ -14,6 +14,8 @@ use super::{BrowserError, Result};
 /// Where the Cloud image preinstalls the release.
 #[cfg(unix)]
 const IMAGE_ROOT: &str = "/opt/demi/browsers";
+/// Where the service installs it, under the user's home.
+const HOME_ROOT: &str = ".demi/browsers";
 /// The most bytes an installed executable may have, for its digest.
 const EXECUTABLE_BYTES: u64 = 1024 * 1024 * 1024;
 
@@ -75,7 +77,7 @@ async fn install(cancel: &CancellationToken) -> Result<PathBuf> {
                 "{version} needs an absolute home directory to install into"
             ))
         })?;
-    let root = home.join(".demi/browsers");
+    let root = home.join(HOME_ROOT);
     tokio::fs::create_dir_all(&root).await?;
     let _lock = InstallLock::acquire(&root.join(format!("{}.lock", record.sha256)), cancel)
         .await
@@ -128,6 +130,17 @@ async fn install(cancel: &CancellationToken) -> Result<PathBuf> {
         .await
         .map_err(|error| failed(&version, error))?;
     Ok(destination.join(&record.executable))
+}
+
+/// Where any release's Chrome executables live, for finding its processes.
+pub(super) fn roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    #[cfg(unix)]
+    roots.push(PathBuf::from(IMAGE_ROOT));
+    if let Some(home) = std::env::home_dir().filter(|home| home.is_absolute()) {
+        roots.push(home.join(HOME_ROOT));
+    }
+    roots
 }
 
 /// The installation at `destination`, checked against its receipt; none
