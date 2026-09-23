@@ -2,12 +2,14 @@
 resolver = "3"
 exclude = ["vendor/*", "vendor/chromiumoxide", "vendor/chromiumoxide_cdp"]
 members = [
+  "crates/artifact",
   "crates/builtin-protocol",
   "crates/claude-protocol",
   "crates/command-service",
   "crates/command-tree",
   "crates/demi-claude",
   "crates/demi-commands",
+  "crates/gates",
   "crates/runner",
   "crates/runner-protocol",
 ]
