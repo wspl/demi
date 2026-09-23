@@ -90,17 +90,25 @@ next to the wire's types, so that a command program depends on one crate.
     `Resume` and `Abort`; provider output; `CompactionBoundary` and
     `CompactionMarker`;
   - user and tool content (`UserContentBlock`, `MediaSource`,
-    `ToolResultContentBlock`);
+    `ToolResultContentBlock`), the blob references stored media travels by
+    (`BlobRef`), the tag that names an attachment to a model
+    (`attachment_tag`), and the one test of a blank text (`is_blank`);
   - models and their selection (`Model`, `ModelSelection`, `ThinkingConfig`)
     and token usage (`TokenUsage`);
-  - tool views (`ToolView`, `ShellToolView`, `OutputChunk`, `EditedFile`);
+  - tool views (`ToolView`, `ShellToolView`, `OutputChunk`, `EditedFile`) and
+    a command's output views, which the shell status frame and the shell
+    contract are built from (`StreamView`, `OutputView`, `BinaryStdout`);
   - agent messages (`AgentMessage`, `CompletionId`);
   - the session phase, queued messages and pending steers;
   - provider failure facts (`ProviderFailureFacts`, `ProviderErrorDiagnostics`);
+  - the identities blocks and frames name (`BlockId`, `TurnId`, `NodeId`,
+    `WakeupId`, `ShellId`, `CommandId`, `OperationId`);
   - the file-type table the product previews by (`preview_media_type`,
     `shows_in_place`), and the media types a model accepts with their sniffing
     (`sniff_model_media_type`);
-  - base64 bytes (`B64Bytes`).
+  - base64 bytes (`B64Bytes`), times (`Timestamp`), the schema marker of
+    nullable fields (`Nullable`), and the decode function of every boundary
+    that receives these types (`decode`).
 - **Public boundary:** the types and functions above.
 - **Must not:** contain concrete provider names, catalog source names, shell
   runtime details, Host details, user-interface concepts, transport URLs or
@@ -109,11 +117,16 @@ next to the wire's types, so that a command program depends on one crate.
 #### `agent-protocol`
 
 - **Owns:** the conversation WebSocket's frames: `ClientFrame` and its content
-  (`ClientContent`, whose `upload`, `remote_file` and `attachment` variants
-  refer to files rather than carry them), `ServerFrame`, `TranscriptPatch`,
-  `TranscriptVersion`, the nested edit and steer outcomes (`EditOutcome`,
-  `SteerOutcome`), `SubagentJob` and `ShellStatus`.
-- **Public boundary:** the types above. The protocol's behavior is in
+  (`ClientContent`, whose `upload`, `remote_file`, `media` and `attachment`
+  variants refer to files rather than carry them) with the edit request
+  (`EditRequest`), `ServerFrame`, `TranscriptPatch`, `TranscriptVersion`, the
+  nested edit and steer outcomes (`EditOutcome`, `SteerOutcome`),
+  `SubagentJob` and `ShellStatus`; and the decode function of client frames
+  (`decode_client_frame`), which tells a message that is not JSON from an
+  invalid frame.
+- **Public boundary:** the types above. `ClientFrame` is generic over its
+  content, so the backend hands the agent the frame with the content it
+  resolved (`ClientFrame::map_content`). The protocol's behavior is in
   [Frame protocol](../agent/runtime.md#frame-protocol).
 - **Must not:** hold session logic or a transport, or carry file bytes inside a
   frame.
