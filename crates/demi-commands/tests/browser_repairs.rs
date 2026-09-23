@@ -35,10 +35,15 @@ async fn click(tab: &BrowserTab, css: &str) -> Result<()> {
     Ok(())
 }
 
+/// A failure's details as the JSON its output carries.
+fn details(error: &BrowserError) -> Value {
+    serde_json::to_value(error.details()).unwrap()
+}
+
 fn error(result: Result<Value>, code: &str, action: &str) -> BrowserError {
     let error = result.expect_err(code);
-    assert_eq!(error.code(), code, "{error:?}");
-    assert_eq!(error.details()["action"], action, "{error:?}");
+    assert_eq!(error.code().to_string(), code, "{error:?}");
+    assert_eq!(details(&error)["action"], action, "{error:?}");
     error
 }
 
@@ -216,7 +221,7 @@ async fn targeted_keyboard_preserves_selection_and_stops_on_focus_loss() {
             "not_actionable",
             "completed",
         );
-        assert_eq!(failed.details()["delivered"], 1);
+        assert_eq!(details(&failed)["delivered"], 1);
         assert_eq!(value(&tab, "#other").await?, "elsewhere");
         command(&tab, "goto", json!({"url": base})).await?;
         click(&tab, "#replace-target").await?;
@@ -225,7 +230,7 @@ async fn targeted_keyboard_preserves_selection_and_stops_on_focus_loss() {
             "not_actionable",
             "completed",
         );
-        assert_eq!(failed.details()["delivered"], 1);
+        assert_eq!(details(&failed)["delivered"], 1);
         Ok(())
     })
     .await;
@@ -375,7 +380,7 @@ async fn action_conditions_shadow_hits_and_shared_wait_states() {
             "not_started",
         );
         assert!(
-            covered.details()["interceptor"]
+            details(&covered)["interceptor"]
                 .as_str()
                 .unwrap()
                 .contains("button-overlay")
@@ -390,7 +395,7 @@ async fn action_conditions_shadow_hits_and_shared_wait_states() {
                 "not_actionable",
                 "not_started",
             );
-            assert_eq!(failure.details()["condition"], condition);
+            assert_eq!(details(&failure)["condition"], condition);
         }
         command(&tab, "move", json!({"css": "#disabled-button"})).await?;
         assert_eq!(
@@ -809,8 +814,8 @@ async fn explicit_navigation_tracks_documents_failures_and_history_boundaries() 
             Ok(_) => panic!("stalled open succeeded"),
             Err(error) => error,
         };
-        assert_eq!(failed_open.code(), "timeout");
-        assert!(failed_open.details()["tab"].as_str().is_some());
+        assert_eq!(failed_open.code().to_string(), "timeout");
+        assert!(details(&failed_open)["tab"].as_str().is_some());
         Ok(())
     })
     .await;
@@ -872,8 +877,8 @@ async fn url_observation_delivers_input_and_observes_transient_matches() {
             "timeout",
             "completed",
         );
-        assert_eq!(failed.details()["tab"], tab.id());
-        assert!(failed.details()["url"].as_str().unwrap().starts_with(&base));
+        assert_eq!(details(&failed)["tab"], tab.id().as_str());
+        assert!(details(&failed)["url"].as_str().unwrap().starts_with(&base));
         command(
             &tab,
             "key",
@@ -928,7 +933,7 @@ async fn inspect_keeps_false_values_and_protects_passwords_and_handles_expire() 
         assert!(
             regex::Regex::new(r"^t_[A-Za-z0-9_-]{22}$")
                 .unwrap()
-                .is_match(&tab.id())
+                .is_match(tab.id().as_str())
         );
         let tree = command(&tab, "inspect", json!({"limit": 1000})).await?;
         let mut nodes: Vec<&Value> = tree["tree"].as_array().unwrap().iter().collect();
@@ -997,7 +1002,7 @@ async fn inspect_keeps_false_values_and_protects_passwords_and_handles_expire() 
             "stale_ref",
             "not_started",
         );
-        *saved.lock().unwrap() = Some((tab.id(), reference));
+        *saved.lock().unwrap() = Some((tab.id().clone(), reference));
         Ok(())
     })
     .await;
@@ -1006,13 +1011,13 @@ async fn inspect_keeps_false_values_and_protects_passwords_and_handles_expire() 
         let tab = browser
             .open(&base, &CancellationToken::new(), TIMEOUT)
             .await?;
-        assert_ne!(tab.id(), old_tab);
+        assert_ne!(tab.id(), &old_tab);
         assert!(
             browser
                 .tabs(&CancellationToken::new(), TIMEOUT)
                 .await?
                 .iter()
-                .all(|tab| tab.id() != old_tab)
+                .all(|tab| tab.id() != &old_tab)
         );
         error(
             command(&tab, "fill", json!({"ref": old_ref, "text": "stale"})).await,
@@ -1023,7 +1028,7 @@ async fn inspect_keeps_false_values_and_protects_passwords_and_handles_expire() 
             .execute("info", json!({"tab": old_tab}), &CancellationToken::new())
             .await
             .unwrap_err();
-        assert_eq!(failed.code(), "tab_not_found");
+        assert_eq!(failed.code().to_string(), "tab_not_found");
         Ok(())
     })
     .await;
@@ -1043,13 +1048,13 @@ async fn input_and_animation_probes_clean_up_on_cancellation_and_dialogs() {
                 cancel.cancel();
             }
         );
-        assert_eq!(typing.unwrap_err().code(), "cancelled");
+        assert_eq!(typing.unwrap_err().code().to_string(), "cancelled");
         let events = tab.read_only("keys", &CancellationToken::new(), TIMEOUT).await?;
         let events = events.as_array().unwrap();
         assert!(!events.is_empty());
         assert_eq!(events.iter().filter(|event| event["type"] == "keydown").count(), events.iter().filter(|event| event["type"] == "keyup").count());
         let dialog = command(&tab, "key", json!({"css": "#key-dialog", "key": "Control+x"})).await.unwrap_err();
-        assert_eq!(dialog.code(), "dialog_blocked");
+        assert_eq!(dialog.code().to_string(), "dialog_blocked");
         command(&tab, "dialog.dismiss", json!({})).await?;
         let events = tab.read_only("keys", &CancellationToken::new(), TIMEOUT).await?;
         let events = events.as_array().unwrap();

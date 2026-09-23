@@ -5,7 +5,7 @@ use std::{collections::HashMap, sync::Arc};
 use bytes::Bytes;
 use demi_command_service::{
     ConversationContext, InvocationContext, ServiceError,
-    protocol::{CommandLocale, Completion, ConversationRequest},
+    protocol::{CommandLocale, Completion, ConversationRequest, ConversationStatus},
 };
 use tokio::sync::{Mutex, watch};
 use tokio_util::{
@@ -14,8 +14,16 @@ use tokio_util::{
 };
 
 use super::{
-    BrowserEnvironment, BrowserError, LaunchOptions, Result, installation::Installation,
-    protocol::BrowserCommand, with_browser,
+    BrowserEnvironment, BrowserError, LaunchOptions, Result,
+    actions::TabResult,
+    installation::Installation,
+    output,
+    protocol::{
+        self, ActionProgress, BrowserErrorCode, BrowserFailure, BrowserOperation, CloseResult,
+        ContentReadResult, DEFAULT_NODES, FailureDocument, ImageMime, OpenResult,
+        ScreenshotResult, TabsResult,
+    },
+    with_browser,
 };
 
 enum CommandOutput {
@@ -307,7 +315,7 @@ impl Conversations {
             .ok_or_else(|| ServiceError::Handler("not a browser operation".into()))?
             .to_owned();
         let result = async {
-            let command = BrowserCommand::parse(&operation, context.request.args.clone())
+            let command = BrowserOperation::parse(&operation, context.request.args.clone())
                 .map_err(|error| BrowserError::Configuration(error.to_string()))?;
             let cancellation = context.cancellation.child_token();
             let _cancel_on_drop = cancellation.clone().drop_guard();
@@ -322,7 +330,12 @@ impl Conversations {
                     // Dropping the invocation here could strand a pressed button.
                     cancellation.cancel();
                     match invocation.await {
-                        Err(error) if matches!(error.code(), "cancelled" | "timeout") => {
+                        Err(error)
+                            if matches!(
+                                error.code(),
+                                BrowserErrorCode::Cancelled | BrowserErrorCode::Timeout
+                            ) =>
+                        {
                             Err(BrowserError::Action {
                                 details: error.details(),
                                 source: Box::new(BrowserError::Timeout),
@@ -335,9 +348,7 @@ impl Conversations {
         }
         .await
         .and_then(|value| match value {
-            CommandOutput::Json(value) => {
-                super::output::render(&operation, value, context.request.json == Some(true))
-            }
+            CommandOutput::Json(value) => output::render(value, context.request.json == Some(true)),
             CommandOutput::Png(bytes) => Ok(bytes),
         });
         match result {
@@ -353,43 +364,42 @@ impl Conversations {
                 let code = error.code();
                 let message = error.to_string();
                 let mut details = error.details();
-                if details.get("action").is_none() {
-                    details["action"] = serde_json::json!("not_started");
-                }
-                if details.get("tab").is_none()
-                    && let Some(tab) = context
+                details.action.get_or_insert(ActionProgress::NotStarted);
+                if details.tab.is_none() {
+                    details.tab = context
                         .request
                         .args
                         .get("tab")
                         .and_then(serde_json::Value::as_str)
-                {
-                    details["tab"] = serde_json::json!(tab);
+                        .map(str::to_owned);
                 }
-                if code == "timeout"
-                    && let Some(tab) = details["tab"].as_str()
+                if code == BrowserErrorCode::Timeout
+                    && let Some(tab) = details.tab.as_deref()
                 {
                     let callers = controller
                         .debugging_callers(tab, context.request.context.caller.node())
                         .await;
                     if !callers.is_empty() {
-                        details["debuggingCallers"] = serde_json::json!(callers);
+                        details.debugging_callers = Some(callers);
                     }
                 }
                 let bytes = if context.request.json == Some(true) {
-                    serde_json::to_vec(
-                        &serde_json::json!({ "error": { "code": code, "message": message, "details": details } }),
-                    )?
+                    serde_json::to_vec(&FailureDocument {
+                        error: BrowserFailure {
+                            code,
+                            message,
+                            details: Some(details),
+                        },
+                    })?
                 } else {
-                    super::output::render_error(code, &message, &details).into_bytes()
+                    output::render_error(code, &message, &details).into_bytes()
                 };
                 context.output.stderr(Bytes::from(bytes)).await?;
                 Ok(Completion {
-                    exit_code: if code == "invalid_input" {
-                        2
-                    } else if code == "cancelled" {
-                        130
-                    } else {
-                        1
+                    exit_code: match code {
+                        BrowserErrorCode::InvalidInput => 2,
+                        BrowserErrorCode::Cancelled => 130,
+                        _ => 1,
                     },
                     error: None,
                 })
@@ -401,13 +411,13 @@ impl Conversations {
         &self,
         controller: &Controller,
         context: &mut InvocationContext,
-        command: &BrowserCommand,
+        command: &BrowserOperation,
         cancellation: &CancellationToken,
         deadline: tokio::time::Instant,
     ) -> Result<CommandOutput> {
         let starts = matches!(
             command,
-            BrowserCommand::Open(_) | BrowserCommand::ContentFetch(_)
+            BrowserOperation::Open(_) | BrowserOperation::ContentFetch(_)
         );
         let environment = controller
             .environment(
@@ -416,31 +426,34 @@ impl Conversations {
             )
             .await?;
         let Some(environment) = environment else {
-            if matches!(command, BrowserCommand::Tabs(_)) {
-                return Ok(CommandOutput::Json(
-                    serde_json::json!({ "tabs": [], "truncated": false }),
-                ));
+            if matches!(command, BrowserOperation::Tabs(_)) {
+                return Ok(CommandOutput::Json(output::value(TabsResult {
+                    tabs: Vec::new(),
+                    truncated: false,
+                })?));
             }
             return Err(BrowserError::TabNotFound);
         };
-        if let BrowserCommand::Open(input) = command
+        if let BrowserOperation::Open(input) = command
             && context.request.context.caller.node().is_none()
         {
             // The user's new tab (`web-api.md` § Conversation browser tabs): the
             // work panel shows its loading, so opening does not wait for the page.
             let url = (input.url != "about:blank").then_some(input.url.as_str());
             let tab = environment.open_user(url, cancellation, deadline).await?;
-            let shown = url.unwrap_or("about:blank");
-            return Ok(CommandOutput::Json(
-                serde_json::json!({"tab": tab.id(), "url": shown}),
-            ));
+            return Ok(CommandOutput::Json(output::value(OpenResult {
+                tab: tab.id().clone(),
+                url: url.unwrap_or("about:blank").to_owned(),
+                title: None,
+                viewport: None,
+            })?));
         }
-        if let BrowserCommand::Open(input) = command {
+        if let BrowserOperation::Open(input) = command {
             let (tab, url) = environment
                 .open_for(
                     &input.url,
                     agent(context)?,
-                    input.load.as_deref().unwrap_or("domcontentloaded"),
+                    input.load.unwrap_or_default(),
                     cancellation,
                     deadline,
                 )
@@ -453,12 +466,22 @@ impl Conversations {
                 )
                 .await
             {
-                Ok(metadata) if metadata["url"] == url => metadata,
-                _ => serde_json::json!({"tab": tab.id(), "url": url}),
+                Ok(metadata) if metadata.url == url => OpenResult {
+                    tab: metadata.tab,
+                    url: metadata.url,
+                    title: Some(metadata.title),
+                    viewport: Some(metadata.viewport),
+                },
+                _ => OpenResult {
+                    tab: tab.id().clone(),
+                    url,
+                    title: None,
+                    viewport: None,
+                },
             };
-            return Ok(CommandOutput::Json(result));
+            return Ok(CommandOutput::Json(output::value(result)?));
         }
-        if matches!(command, BrowserCommand::ContentFetch(_)) {
+        if matches!(command, BrowserOperation::ContentFetch(_)) {
             let result =
                 super::fetch::execute(context, &environment, None, command, cancellation, deadline)
                     .await;
@@ -469,48 +492,46 @@ impl Conversations {
             .map(CommandOutput::Json);
         }
         let tabs = environment.tabs(cancellation, command.timeout()).await?;
-        if let BrowserCommand::Tabs(input) = command {
-            let offset = input.offset.unwrap_or(0) as usize;
-            let limit = input
-                .limit
-                .map_or(super::protocol::DEFAULT_NODES, |limit| limit as usize);
+        if let BrowserOperation::Tabs(input) = command {
+            let offset = input.offset.unwrap_or(0);
+            let limit = input.limit.unwrap_or(DEFAULT_NODES);
             let mut rows = Vec::new();
             for tab in tabs.iter().skip(offset).take(limit) {
-                let mut row = tab.metadata(cancellation, command.timeout()).await?;
-                let metadata = row.as_object_mut().expect("metadata is an object");
-                metadata.remove("viewport");
-                metadata.remove("tab");
-                row["id"] = serde_json::json!(tab.id());
-                row["createdBy"] = serde_json::to_value(&tab.created_by)
-                    .map_err(|error| BrowserError::InvalidResult(error.to_string()))?;
-                rows.push(row);
+                let metadata = tab.metadata(cancellation, command.timeout()).await?;
+                // The tab's record as the list shows it, not the tab itself.
+                rows.push(protocol::BrowserTab {
+                    id: tab.id().clone(),
+                    title: metadata.title,
+                    url: metadata.url,
+                    created_by: tab.created_by.clone(),
+                });
             }
-            return Ok(CommandOutput::Json(
-                serde_json::json!({ "tabs": rows, "truncated": tabs.len() > offset.saturating_add(limit) }),
-            ));
+            return Ok(CommandOutput::Json(output::value(TabsResult {
+                tabs: rows,
+                truncated: tabs.len() > offset.saturating_add(limit),
+            })?));
         }
         let tab = tabs
             .iter()
-            .find(|tab| Some(tab.id().as_str()) == command.tab())
+            .find(|tab| Some(tab.id()) == command.tab())
             .ok_or(BrowserError::TabNotFound)?;
         if context.request.context.caller.node().is_none()
             && matches!(
                 command,
-                BrowserCommand::Goto(_)
-                    | BrowserCommand::Reload(_)
-                    | BrowserCommand::Back(_)
-                    | BrowserCommand::Forward(_)
+                BrowserOperation::Goto(_)
+                    | BrowserOperation::Reload(_)
+                    | BrowserOperation::Back(_)
+                    | BrowserOperation::Forward(_)
             )
         {
             let operation = super::operation::Operation::for_tab(tab, cancellation, deadline);
-            return super::navigation::steer(tab, command, &operation)
-                .await
-                .map(CommandOutput::Json);
+            let result = super::navigation::steer(tab, command, &operation).await?;
+            return Ok(CommandOutput::Json(output::value(result)?));
         }
         {
             let family: Option<futures_util::future::BoxFuture<'_, Result<serde_json::Value>>> =
                 match command {
-                    BrowserCommand::Upload(_) => Some(Box::pin(super::upload::execute(
+                    BrowserOperation::Upload(_) => Some(Box::pin(super::upload::execute(
                         context,
                         &environment,
                         Some(tab),
@@ -518,7 +539,7 @@ impl Conversations {
                         cancellation,
                         deadline,
                     ))),
-                    BrowserCommand::Download(_) => Some(Box::pin(super::download::execute(
+                    BrowserOperation::Download(_) => Some(Box::pin(super::download::execute(
                         context,
                         &environment,
                         Some(tab),
@@ -526,7 +547,7 @@ impl Conversations {
                         cancellation,
                         deadline,
                     ))),
-                    BrowserCommand::ClipboardRead(_) | BrowserCommand::ClipboardWrite(_) => {
+                    BrowserOperation::ClipboardRead(_) | BrowserOperation::ClipboardWrite(_) => {
                         Some(Box::pin(super::clipboard::execute(
                             context,
                             &environment,
@@ -536,10 +557,10 @@ impl Conversations {
                             deadline,
                         )))
                     }
-                    BrowserCommand::CdpTargets(_)
-                    | BrowserCommand::CdpDetach(_)
-                    | BrowserCommand::CdpSend(_)
-                    | BrowserCommand::CdpEvents(_) => Some(Box::pin(super::cdp::execute(
+                    BrowserOperation::CdpTargets(_)
+                    | BrowserOperation::CdpDetach(_)
+                    | BrowserOperation::CdpSend(_)
+                    | BrowserOperation::CdpEvents(_) => Some(Box::pin(super::cdp::execute(
                         context,
                         &environment,
                         Some(tab),
@@ -547,7 +568,7 @@ impl Conversations {
                         cancellation,
                         deadline,
                     ))),
-                    BrowserCommand::AssetsList(_) | BrowserCommand::AssetsExport(_) => {
+                    BrowserOperation::AssetsList(_) | BrowserOperation::AssetsExport(_) => {
                         Some(Box::pin(super::assets::execute(
                             context,
                             &environment,
@@ -557,7 +578,7 @@ impl Conversations {
                             deadline,
                         )))
                     }
-                    BrowserCommand::WebmcpList(_) | BrowserCommand::WebmcpCall(_) => {
+                    BrowserOperation::WebmcpList(_) | BrowserOperation::WebmcpCall(_) => {
                         Some(Box::pin(super::webmcp::execute(
                             context,
                             &environment,
@@ -573,7 +594,7 @@ impl Conversations {
                 return family.await.map(CommandOutput::Json);
             }
         }
-        if let BrowserCommand::Screenshot(input) = command {
+        if let BrowserOperation::Screenshot(input) = command {
             if input.output.is_none() && context.request.json == Some(true) {
                 return Err(BrowserError::Configuration(
                     "screenshot --json requires --output".into(),
@@ -614,71 +635,87 @@ impl Conversations {
                 deadline,
             )
             .await?;
-            return Ok(CommandOutput::Json(
-                serde_json::json!({ "path": path, "mimeType": "image/png", "width": width, "height": height, "viewport": metadata["viewport"] }),
-            ));
+            return Ok(CommandOutput::Json(output::value(ScreenshotResult {
+                path,
+                mime_type: ImageMime::Png,
+                width,
+                height,
+                viewport: metadata.viewport,
+            })?));
         }
-        if matches!(command, BrowserCommand::Close(_)) {
+        if matches!(command, BrowserOperation::Close(_)) {
             controller
                 .close_tab(&environment, tab, cancellation, command.timeout())
                 .await?;
-            return Ok(CommandOutput::Json(
-                serde_json::json!({ "closed": tab.id() }),
-            ));
+            return Ok(CommandOutput::Json(output::value(CloseResult {
+                closed: tab.id().clone(),
+            })?));
         }
-        if let BrowserCommand::Probe(input) = command
-            && let Some(output) = &input.output
+        if let BrowserOperation::Probe(input) = command
+            && let Some(file) = &input.output
         {
-            super::output::preflight(&context.request.cwd, output, input.overwrite == Some(true))
-                .await?;
+            output::preflight(&context.request.cwd, file, input.overwrite == Some(true)).await?;
             let mut references = tab
                 .state
                 .operations
                 .try_lock()
                 .map_err(|_| BrowserError::Busy)?;
-            let mut result = tab
+            let TabResult::Probe(mut result) = tab
                 .command_admitted(command, cancellation, deadline, &mut references)
-                .await?;
+                .await?
+            else {
+                return Err(BrowserError::InvalidResult("probe returned another result".into()));
+            };
             let bytes = super::operation::Operation::for_tab(tab, cancellation, deadline)
                 .run(tab.screenshot_bytes(false, None))
                 .await?;
             let bytes = super::probe::annotate(bytes, &result)?;
-            result["path"] = serde_json::json!(
-                super::output::save_with_overwrite(
+            result.path = Some(
+                output::save_with_overwrite(
                     &context.request.cwd,
-                    output,
+                    file,
                     bytes,
                     input.overwrite == Some(true),
                     cancellation,
-                    deadline
+                    deadline,
                 )
-                .await?
+                .await?,
             );
-            return Ok(CommandOutput::Json(result));
+            return Ok(CommandOutput::Json(output::value(result)?));
         }
-        let mut result = tab.command(command, cancellation, deadline).await?;
-        if let BrowserCommand::ContentRead(input) = command
-            && let Some(output) = &input.output
+        let result = tab.command(command, cancellation, deadline).await?;
+        if let BrowserOperation::ContentRead(input) = command
+            && let Some(file) = &input.output
         {
-            let content = result["content"].as_str().ok_or_else(|| {
-                BrowserError::InvalidResult("content export did not return text".into())
-            })?;
-            let path = super::output::save_with_overwrite(
+            let TabResult::ContentRead(ContentReadResult::Inline {
+                url,
+                title,
+                format,
+                content,
+                ..
+            }) = result
+            else {
+                return Err(BrowserError::InvalidResult(
+                    "content export did not return text".into(),
+                ));
+            };
+            let path = output::save_with_overwrite(
                 &context.request.cwd,
-                output,
-                content.as_bytes().to_vec(),
+                file,
+                content.into_bytes(),
                 input.overwrite == Some(true),
                 cancellation,
                 deadline,
             )
             .await?;
-            result["path"] = serde_json::json!(path);
-            if let Some(result) = result.as_object_mut() {
-                result.remove("content");
-                result.remove("truncated");
-            }
+            return Ok(CommandOutput::Json(output::value(ContentReadResult::File {
+                url,
+                title,
+                format,
+                path,
+            })?));
         }
-        Ok(CommandOutput::Json(result))
+        Ok(CommandOutput::Json(output::value(result)?))
     }
 
     /// Release only the trusted conversation selected by the parent service port.
@@ -702,7 +739,7 @@ impl Conversations {
                     }
                 }
                 conversations.sort();
-                serde_json::json!({"conversations": conversations})
+                serde_json::to_value(ConversationStatus { conversations })?
             }
             ConversationRequest::Release { conversation } => {
                 let controller = {

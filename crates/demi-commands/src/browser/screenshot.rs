@@ -19,7 +19,7 @@ impl BrowserTab {
             ));
         }
         let viewport = self.viewport();
-        let scale = 1.0 / viewport.ratio;
+        let scale = 1.0 / viewport.device_pixel_ratio;
         // An explicit rectangle or the whole page may lie beyond the viewport.
         let beyond_viewport = full_page || clip.is_some();
         let clip = if let Some(clip) = clip {

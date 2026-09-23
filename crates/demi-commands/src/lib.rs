@@ -8,6 +8,7 @@ mod patch;
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use bytes::Bytes;
+use demi_builtin_protocol::file::FileOperation;
 use demi_command_service::protocol::{CommandError, Completion, Invocation};
 use demi_command_service::{ConversationContext, Handler, InvocationContext, ServiceError};
 use tokio::{io::AsyncReadExt, sync::Mutex};
@@ -35,12 +36,7 @@ impl Handler for DemiCommands {
     }
 
     fn operations(&self) -> Vec<String> {
-        ["file.read", "file.create", "file.edit", "file.patch"]
-            .into_iter()
-            .chain(browser::OPERATIONS.iter().copied())
-            .chain([browser::LIVE_OPERATION])
-            .map(String::from)
-            .collect()
+        demi_builtin_protocol::operations().map(String::from).collect()
     }
 
     fn invoke(
@@ -103,12 +99,12 @@ impl Handler for DemiCommands {
 }
 
 async fn read(context: &InvocationContext) -> Result<(), ServiceError> {
-    #[derive(serde::Deserialize)]
-    #[serde(deny_unknown_fields)]
-    struct Args {
-        path: String,
-    }
-    let args: Args = serde_json::from_value(context.request.args.clone())?;
+    let FileOperation::Read(args) =
+        FileOperation::parse(&context.request.operation, context.request.args.clone())
+            .map_err(|error| ServiceError::Handler(error.to_string()))?
+    else {
+        return Err(ServiceError::Handler("not a file read".into()));
+    };
     let path =
         files::resolve_path(&context.request.cwd, &args.path).map_err(ServiceError::Handler)?;
     let mut file = tokio::fs::File::open(path)

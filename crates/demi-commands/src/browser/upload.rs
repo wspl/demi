@@ -6,13 +6,13 @@ use chromiumoxide::cdp::browser_protocol::{
 };
 use demi_command_service::InvocationContext;
 use futures_util::StreamExt;
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
 use super::{
     BrowserEnvironment, BrowserError, BrowserTab, Result, element,
     operation::{CONTROL_TIMEOUT, Operation, after_cleanup},
-    protocol::BrowserCommand,
+    protocol::{BrowserOperation, UploadResult},
 };
 
 /// Attach Host files only after all paths have passed validation.
@@ -20,12 +20,12 @@ pub(super) async fn execute(
     context: &InvocationContext,
     _environment: &BrowserEnvironment,
     tab: Option<&BrowserTab>,
-    command: &BrowserCommand,
+    command: &BrowserOperation,
     cancel: &CancellationToken,
     deadline: tokio::time::Instant,
 ) -> Result<Value> {
     let tab = tab.ok_or(BrowserError::TabNotFound)?;
-    let BrowserCommand::Upload(input) = command else {
+    let BrowserOperation::Upload(input) = command else {
         unreachable!("upload dispatch accepts only upload");
     };
     let operation = Operation::for_tab(tab, cancel, deadline);
@@ -33,7 +33,7 @@ pub(super) async fn execute(
         .state
         .operations
         .try_lock()
-        .map_err(|_| operation.failure(BrowserError::Busy, &tab.id(), None))?;
+        .map_err(|_| operation.failure(BrowserError::Busy, tab.id().as_str(), None))?;
     let work = async {
         let mut files = Vec::with_capacity(input.file.len());
         for file in &input.file {
@@ -150,12 +150,15 @@ pub(super) async fn execute(
             };
             after_cleanup(chooser_work, cleanup)?;
         }
-        Ok(json!({"files": files, "attached": files.len()}))
+        super::output::value(UploadResult {
+            attached: files.len(),
+            files,
+        })
     }
     .await;
     // The shared object-group cleanup also handles dialogs and destroyed targets.
     let result = after_cleanup(work, tab.release_objects().await);
-    result.map_err(|error| operation.failure(error, &tab.id(), None))
+    result.map_err(|error| operation.failure(error, tab.id().as_str(), None))
 }
 
 /// Set and verify the file list on an enabled browser file input.

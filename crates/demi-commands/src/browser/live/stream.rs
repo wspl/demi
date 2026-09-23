@@ -120,7 +120,7 @@ async fn run(
             .values()
             .map(|viewer| viewer.scale)
             .fold(SCALES[0], f64::min);
-        let size = viewport.borrow_and_update().current.pixels(scale);
+        let size = crate::browser::viewport::pixels(&viewport.borrow_and_update().current, scale);
         // The slowest viewer's budget; before any measured one, the budget a
         // sharp picture of this size needs.
         let bitrate = viewers

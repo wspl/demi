@@ -5,6 +5,7 @@ use std::{
 };
 
 use chromiumoxide::error::CdpError;
+use demi_builtin_protocol::browser::{ActionProgress, AssetsExportResult, BrowserErrorCode, ErrorDetails};
 use thiserror::Error;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
@@ -26,7 +27,7 @@ pub enum BrowserError {
     #[error("CDP method is denied: {0}")]
     CdpMethodDenied(String),
     #[error("some browser items failed")]
-    PartialFailure { details: serde_json::Value },
+    PartialFailure { export: AssetsExportResult },
     #[error("read-only evaluation rejected a possible side effect")]
     SideEffectRejected,
     #[error("browser environment is closed")]
@@ -59,7 +60,7 @@ pub enum BrowserError {
     #[error("{source}")]
     Action {
         source: Box<BrowserError>,
-        details: serde_json::Value,
+        details: ErrorDetails,
     },
     #[error("browser operation was cancelled")]
     Cancelled,
@@ -168,21 +169,15 @@ impl<'a> Operation<'a> {
             error
         };
         let action = match progress {
-            0 => "not_started",
-            2 => "completed",
-            _ => "unknown",
+            0 => ActionProgress::NotStarted,
+            2 => ActionProgress::Completed,
+            _ => ActionProgress::Unknown,
         };
         let mut details = error.details();
-        if details.get("action").is_none() {
-            details["action"] = serde_json::json!(action);
-        }
-        if details.get("tab").is_none() {
-            details["tab"] = serde_json::json!(tab);
-        }
-        if details.get("url").is_none()
-            && let Some(url) = url
-        {
-            details["url"] = serde_json::json!(url);
+        details.action.get_or_insert(action);
+        details.tab.get_or_insert_with(|| tab.to_owned());
+        if details.url.is_none() {
+            details.url = url.map(str::to_owned);
         }
         BrowserError::Action {
             source: Box::new(error),
@@ -253,10 +248,10 @@ impl BrowserError {
     }
 
     pub(super) fn is_deadline(&self) -> bool {
-        self.code() == "timeout"
+        self.code() == BrowserErrorCode::Timeout
     }
 
-    pub fn code(&self) -> &'static str {
+    pub fn code(&self) -> BrowserErrorCode {
         match self {
             Self::Action { source, .. } => source.code(),
             Self::Cleanup {
@@ -265,47 +260,50 @@ impl BrowserError {
             } => error.code(),
             Self::Cleanup { cleanup, .. } => cleanup.code(),
             Self::ProfileRetained { source, .. } => source.code(),
-            Self::Closed | Self::Connection(_) => "browser_lost",
-            Self::OutcomeUnknown { .. } => "outcome_unknown",
-            Self::TabNotFound => "tab_not_found",
-            Self::StaleInventory => "stale_inventory",
-            Self::StaleTools => "stale_tools",
-            Self::StaleCursor => "stale_cursor",
-            Self::SideEffectRejected => "side_effect_rejected",
-            Self::CdpMethodDenied(_) => "cdp_method_denied",
-            Self::PartialFailure { .. } => "partial_failure",
-            Self::TargetNotFound => "target_not_found",
-            Self::NotActionable { .. } => "not_actionable",
-            Self::HistoryBoundary => "history_boundary",
-            Self::NavigationFailed(_) => "navigation_failed",
-            Self::OutputExists(_) => "output_exists",
-            Self::ResultTooLarge => "result_too_large",
-            Self::UnsupportedCapability(_) => "unsupported_capability",
-            Self::ProtectedValue => "protected_value",
-            Self::Unavailable(_) => "browser_unavailable",
-            Self::Cancelled => "cancelled",
-            Self::Timeout => "timeout",
-            Self::Busy => "tab_busy",
-            Self::DialogBlocked => "dialog_blocked",
-            Self::DialogNotFound => "dialog_not_found",
-            Self::InvalidDialogAction => "invalid_dialog_action",
-            Self::Ambiguous(_) => "ambiguous_target",
-            Self::StaleReference => "stale_ref",
-            Self::InvalidResult(_) => "unsupported_result",
-            Self::Configuration(_) => "invalid_input",
-            Self::Io(_) => "io_error",
-            Self::Cdp(_) | Self::Events(_) | Self::Task(_) => "driver_error",
+            Self::Closed | Self::Connection(_) => BrowserErrorCode::BrowserLost,
+            Self::OutcomeUnknown { .. } => BrowserErrorCode::OutcomeUnknown,
+            Self::TabNotFound => BrowserErrorCode::TabNotFound,
+            Self::StaleInventory => BrowserErrorCode::StaleInventory,
+            Self::StaleTools => BrowserErrorCode::StaleTools,
+            Self::StaleCursor => BrowserErrorCode::StaleCursor,
+            Self::SideEffectRejected => BrowserErrorCode::SideEffectRejected,
+            Self::CdpMethodDenied(_) => BrowserErrorCode::CdpMethodDenied,
+            Self::PartialFailure { .. } => BrowserErrorCode::PartialFailure,
+            Self::TargetNotFound => BrowserErrorCode::TargetNotFound,
+            Self::NotActionable { .. } => BrowserErrorCode::NotActionable,
+            Self::HistoryBoundary => BrowserErrorCode::HistoryBoundary,
+            Self::NavigationFailed(_) => BrowserErrorCode::NavigationFailed,
+            Self::OutputExists(_) => BrowserErrorCode::OutputExists,
+            Self::ResultTooLarge => BrowserErrorCode::ResultTooLarge,
+            Self::UnsupportedCapability(_) => BrowserErrorCode::UnsupportedCapability,
+            Self::ProtectedValue => BrowserErrorCode::ProtectedValue,
+            Self::Unavailable(_) => BrowserErrorCode::BrowserUnavailable,
+            Self::Cancelled => BrowserErrorCode::Cancelled,
+            Self::Timeout => BrowserErrorCode::Timeout,
+            Self::Busy => BrowserErrorCode::TabBusy,
+            Self::DialogBlocked => BrowserErrorCode::DialogBlocked,
+            Self::DialogNotFound => BrowserErrorCode::DialogNotFound,
+            Self::InvalidDialogAction => BrowserErrorCode::InvalidDialogAction,
+            Self::Ambiguous(_) => BrowserErrorCode::AmbiguousTarget,
+            Self::StaleReference => BrowserErrorCode::StaleRef,
+            Self::InvalidResult(_) => BrowserErrorCode::UnsupportedResult,
+            Self::Configuration(_) => BrowserErrorCode::InvalidInput,
+            Self::Io(_) => BrowserErrorCode::IoError,
+            Self::Cdp(_) | Self::Events(_) | Self::Task(_) => BrowserErrorCode::DriverError,
         }
     }
 
-    pub fn details(&self) -> serde_json::Value {
+    pub fn details(&self) -> ErrorDetails {
         match self {
-            Self::Action { details, .. } | Self::PartialFailure { details } => details.clone(),
-            Self::OutcomeUnknown { source } => {
-                let mut details = source.details();
-                details["action"] = serde_json::json!("unknown");
-                details
-            }
+            Self::Action { details, .. } => details.clone(),
+            Self::PartialFailure { export } => ErrorDetails {
+                export: Some(export.clone()),
+                ..ErrorDetails::default()
+            },
+            Self::OutcomeUnknown { source } => ErrorDetails {
+                action: Some(ActionProgress::Unknown),
+                ..source.details()
+            },
             Self::Cleanup {
                 operation: Some(error),
                 ..
@@ -313,15 +311,16 @@ impl BrowserError {
             Self::NotActionable {
                 condition,
                 interceptor,
-            } => {
-                let mut result = serde_json::json!({"condition": condition});
-                if let Some(interceptor) = interceptor {
-                    result["interceptor"] = serde_json::json!(interceptor);
-                }
-                result
-            }
-            Self::Ambiguous(count) => serde_json::json!({"count": count}),
-            _ => serde_json::json!({}),
+            } => ErrorDetails {
+                condition: Some(condition.clone()),
+                interceptor: interceptor.clone(),
+                ..ErrorDetails::default()
+            },
+            Self::Ambiguous(count) => ErrorDetails {
+                count: Some(*count),
+                ..ErrorDetails::default()
+            },
+            _ => ErrorDetails::default(),
         }
     }
 }
@@ -355,9 +354,9 @@ mod tests {
             condition: "hit".into(),
             interceptor: Some("overlay".into()),
         });
-        assert_eq!(failure.code(), "not_actionable");
-        assert_eq!(failure.details()["condition"], "hit");
-        assert_eq!(failure.details()["interceptor"], "overlay");
+        assert_eq!(failure.code(), BrowserErrorCode::NotActionable);
+        assert_eq!(failure.details().condition.as_deref(), Some("hit"));
+        assert_eq!(failure.details().interceptor.as_deref(), Some("overlay"));
         assert!(
             matches!(failure, BrowserError::Cleanup { cleanup, .. } if matches!(*cleanup, BrowserError::Timeout))
         );
@@ -395,7 +394,7 @@ mod tests {
             .unwrap_err();
         assert_eq!(
             operation.failure(closed, "tab", None).code(),
-            "browser_lost"
+            BrowserErrorCode::BrowserLost
         );
         failure.send_replace(Some("transport ended".into()));
         let lost = operation
@@ -403,8 +402,8 @@ mod tests {
             .await
             .unwrap_err();
         let error = operation.failure(lost, "tab", None);
-        assert_eq!(error.code(), "outcome_unknown");
-        assert_eq!(error.details()["action"], "unknown");
+        assert_eq!(error.code(), BrowserErrorCode::OutcomeUnknown);
+        assert_eq!(error.details().action, Some(ActionProgress::Unknown));
     }
 
     #[test]
@@ -414,8 +413,8 @@ mod tests {
         let operation = Operation::new(&ended, &cancelled, CONTROL_TIMEOUT);
         let lost = || BrowserError::Connection("transport disconnected".into());
         let before = operation.failure(lost(), "tab", Some("https://example.test"));
-        assert_eq!(before.code(), "browser_lost");
-        assert_eq!(before.details()["action"], "not_started");
+        assert_eq!(before.code(), BrowserErrorCode::BrowserLost);
+        assert_eq!(before.details().action, Some(ActionProgress::NotStarted));
         operation.begin_input();
         for completed in [false, true] {
             if completed {
@@ -423,23 +422,26 @@ mod tests {
             }
             let cause = after_cleanup::<()>(Err(lost()), Err(BrowserError::Closed)).unwrap_err();
             let after = operation.failure(cause, "tab", Some("https://example.test"));
-            assert_eq!(after.code(), "outcome_unknown");
+            assert_eq!(after.code(), BrowserErrorCode::OutcomeUnknown);
             assert_eq!(
                 after.details(),
-                serde_json::json!({
-                    "action": "unknown", "tab": "tab", "url": "https://example.test"
-                })
+                ErrorDetails {
+                    action: Some(ActionProgress::Unknown),
+                    tab: Some("tab".into()),
+                    url: Some("https://example.test".into()),
+                    ..ErrorDetails::default()
+                }
             );
             assert!(after.to_string().contains("transport disconnected"));
             assert_eq!(
                 operation.failure(BrowserError::Closed, "tab", None).code(),
-                "browser_lost"
+                BrowserErrorCode::BrowserLost
             );
             assert_eq!(
                 operation
                     .failure(BrowserError::Cancelled, "tab", None)
                     .code(),
-                "cancelled"
+                BrowserErrorCode::Cancelled
             );
         }
     }
@@ -469,30 +471,16 @@ mod tests {
                 "invalid_input",
             ),
         ] {
-            assert_eq!(error.code(), code);
+            assert_eq!(error.code().to_string(), code);
         }
         let ended = CancellationToken::new();
         let cancelled = CancellationToken::new();
         let operation = Operation::new(&ended, &cancelled, CONTROL_TIMEOUT);
-        assert_eq!(
-            operation
-                .failure(BrowserError::Timeout, "tab", None)
-                .details()["action"],
-            "not_started"
-        );
+        let progress = |error| operation.failure(error, "tab", None).details().action;
+        assert_eq!(progress(BrowserError::Timeout), Some(ActionProgress::NotStarted));
         operation.begin_input();
-        assert_eq!(
-            operation
-                .failure(BrowserError::Closed, "tab", None)
-                .details()["action"],
-            "unknown"
-        );
+        assert_eq!(progress(BrowserError::Closed), Some(ActionProgress::Unknown));
         operation.complete_input();
-        assert_eq!(
-            operation
-                .failure(BrowserError::Timeout, "tab", None)
-                .details()["action"],
-            "completed"
-        );
+        assert_eq!(progress(BrowserError::Timeout), Some(ActionProgress::Completed));
     }
 }

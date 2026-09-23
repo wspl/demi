@@ -13,10 +13,9 @@ use sha2::{Digest, Sha256};
 use tokio::{io::AsyncWriteExt, sync::Mutex};
 use tokio_util::sync::CancellationToken;
 
-use super::{
-    BrowserError, Result,
-    protocol::{BrowserInstallation, BrowserRelease, BrowserRuntimeConfig},
-};
+use demi_builtin_protocol::release::{BrowserInstallation, BrowserRelease, BrowserRuntimeConfig};
+
+use super::{BrowserError, Result};
 
 #[derive(Default)]
 pub(super) struct Installation {
@@ -25,7 +24,7 @@ pub(super) struct Installation {
 
 /// The pinned Chrome for Testing release (`browser.md` § Browser distribution).
 fn release() -> Result<BrowserRelease> {
-    serde_json::from_str(include_str!("releases/chrome.json"))
+    BrowserRelease::parse(include_str!("releases/chrome.json"))
         .map_err(|error| BrowserError::Configuration(error.to_string()))
 }
 
@@ -70,9 +69,8 @@ impl Installation {
         }
         let home = std::env::var(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
             .map_err(|error| BrowserError::Configuration(error.to_string()))?;
-        let config: BrowserRuntimeConfig =
-            serde_json::from_value(serde_json::json!({ "home": home }))
-                .map_err(|error| BrowserError::Configuration(error.to_string()))?;
+        let config = BrowserRuntimeConfig::new(home)
+            .map_err(|error| BrowserError::Configuration(error.to_string()))?;
         let home = PathBuf::from(config.home);
         if !home.is_absolute() {
             return Err(BrowserError::Configuration(
@@ -200,7 +198,7 @@ async fn verify_installation(
     if !tokio::fs::try_exists(destination).await? {
         return Ok(None);
     }
-    let receipt: BrowserInstallation = serde_json::from_slice(
+    let receipt = BrowserInstallation::parse(
         &tokio::fs::read(destination.join("receipt.json")).await?,
     )
     .map_err(|error| {
