@@ -11,10 +11,11 @@ use crate::{
     services::ServiceHandle,
 };
 use bytes::Bytes;
-use demi_command_service::protocol::{Completion, Invocation, LocalInvocation, Record};
-use demi_command_service::{Handler, Input, InvocationContext, ServiceError};
+use demi_command_service::protocol::{Completion, Invocation, LocalInvocation};
+use demi_command_service::{
+    Exchange, ExchangeError, Handler, Input, InvocationContext, ServiceError,
+};
 use std::{future::Future, pin::Pin, sync::Arc};
-use tokio::sync::mpsc;
 
 /// Runs the declared commands of live contexts, for the local endpoint and
 /// for declared builtins alike.
@@ -154,7 +155,7 @@ impl Dispatcher {
                         .invoke(&request)
                         .await
                         .map_err(Failed::Service)?;
-                    native_exchange(input, response, invocation.input, &mut output).await
+                    native_exchange(input, response, &mut invocation.input, &mut output).await
                 };
                 match exchange.await {
                     Ok(code) => code,
@@ -209,50 +210,25 @@ enum Failed {
 /// Drives one native call: the caller's input goes to the service one chunk
 /// per pull, and the service's records come back to the caller.
 async fn native_exchange(
-    mut sender: demi_command_service::CommandInput,
-    mut response: demi_command_service::CommandOutput,
-    mut input: Input,
+    sender: demi_command_service::CommandInput,
+    response: demi_command_service::CommandOutput,
+    input: &mut Input,
     output: &mut CommandOutput,
 ) -> Result<u8, Failed> {
-    let (pull, mut demanded) = mpsc::channel::<()>(1);
-    let send = async {
-        while demanded.recv().await.is_some() {
-            match input.next().await.map_err(Failed::Caller)? {
-                Some(bytes) => sender.write(bytes).await.map_err(Failed::Service)?,
-                None => {
-                    sender.end().map_err(Failed::Service)?;
-                    return std::future::pending::<Result<u8, Failed>>().await;
-                }
-            }
-        }
-        std::future::pending::<Result<u8, Failed>>().await
-    };
-    let receive = async {
-        let mut completion = None;
-        while let Some(record) = response.next().await.map_err(Failed::Service)? {
-            match record {
-                Record::Stdout(bytes) => output.stdout(bytes).await.map_err(Failed::Caller)?,
-                Record::Stderr(bytes) => output.stderr(bytes).await.map_err(Failed::Caller)?,
-                Record::InputPull => pull
-                    .try_send(())
-                    .map_err(|_| Failed::Service(handler("overlapping native input demands")))?,
-                Record::Completion(value) => completion = Some(value),
-            }
-        }
-        let completion = completion
-            .ok_or_else(|| Failed::Service(handler("native command has no completion")))?;
-        if let Some(error) = completion.error {
-            output
-                .stderr(Bytes::from(format!("{}: {}\n", error.code, error.message)))
-                .await
-                .map_err(Failed::Caller)?;
-        }
-        Ok(completion.exit_code)
-    };
-    tokio::select! {
-        result = send => result,
-        result = receive => result,
+    let completion = Exchange::new(sender, response)
+        .run(input, output)
+        .await
+        .map_err(|error| match error {
+            ExchangeError::Service(error) => Failed::Service(error),
+            ExchangeError::Input(error) | ExchangeError::Output(error) => Failed::Caller(error),
+        })?;
+    if let Some(error) = completion.error {
+        output
+            .stderr(Bytes::from(format!("{}: {}\n", error.code, error.message)))
+            .await
+            .map_err(Failed::Caller)?;
     }
+    Ok(completion.exit_code)
 }
 
 fn completed(exit_code: u8) -> Completion {
