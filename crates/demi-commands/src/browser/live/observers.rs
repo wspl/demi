@@ -1,4 +1,4 @@
-//! The page observers of watched tabs (`browser-live-view.md` § Input): an
+//! The page observers of watched tabs (`live-view.md` § Input): an
 //! isolated world in each of the tab's documents reports the cursor, the
 //! native form controls and copied text, and applies the viewer's choices.
 

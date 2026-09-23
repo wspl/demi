@@ -1,4 +1,4 @@
-//! The live view against real Chrome (`browser-live-view.md` § Acceptance):
+//! The live view against real Chrome (`live-view.md` § Acceptance):
 //! a viewer drives `browser.live` as the page does, beside the agent's
 //! commands on the same tabs.
 

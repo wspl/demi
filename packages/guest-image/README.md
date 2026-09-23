@@ -2,8 +2,8 @@
 
 The selected pipeline produces an architecture-specific Linux root archive and
 manifest for gVisor/systrap. Build inputs, artifact format, import, and acceptance
-are defined in [Cloud images](../../docs/cloud-images.md). Deployment is described
-in [Cloud setup](../../docs/managed-hosts-setup.md).
+are defined in [Cloud images](../../docs/cloud/images.md). Deployment is described
+in [Cloud setup](../../docs/cloud/setup.md).
 
 Build the runner and command packages with the native cross tools first. On a
 matching Linux builder with Bun, debootstrap, Python, zstd, tar, and util-linux:

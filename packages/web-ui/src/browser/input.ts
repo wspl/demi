@@ -1,6 +1,6 @@
 /**
  * The viewer's input as the live protocol carries it
- * (`browser-live-view.md` § Input): the events of the user's own browser,
+ * (`live-view.md` § Input): the events of the user's own browser,
  * in the watched tab's CSS coordinates.
  */
 import type { LiveViewerMessage } from '@demicodes/browser-protocol/live'

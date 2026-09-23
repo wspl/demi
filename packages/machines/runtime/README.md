@@ -2,7 +2,7 @@
 
 `release.json` pins the upstream source, amd64 distribution checksum, ARM patch,
 and Bazel bootstrap. The runtime profile belongs to
-[Managed hosts](../../../docs/demi-next/managed-hosts.md#isolation-and-joining).
+[Managed hosts](../../../docs/cloud/managed-hosts.md#isolation-and-joining).
 
 The ARM patch corrects the signal frame for `SECCOMP_RET_TRAP`. Linux preserves
 X0, which holds the first syscall argument. Upstream gVisor writes the syscall
