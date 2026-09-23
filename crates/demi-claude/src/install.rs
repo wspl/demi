@@ -2,25 +2,21 @@
 
 use std::{
     collections::HashSet,
-    fs::File,
     path::{Path, PathBuf},
-    sync::{Mutex, PoisonError},
-    time::Duration,
+    sync::Mutex,
 };
 
-use demi_command_service::{ServiceError, integrity::artifact_digest};
-use futures_util::StreamExt;
+use demi_artifact::{Digest, InstallLock};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
-use tokio::io::AsyncWriteExt;
 use tokio_util::sync::CancellationToken;
 
-use demi_claude_protocol::{Artifact, ErrorCode, Installed, Release, Status, is_version};
+use demi_claude_protocol::{
+    Artifact, ErrorCode, Installed, Release, Status, is_version, parse_version,
+};
 
 use crate::{
     platform,
     release::{self, Transport},
-    version,
 };
 
 /// The executable's file name inside a version directory.
@@ -29,7 +25,6 @@ const BINARY: &str = if cfg!(windows) {
 } else {
     "claude"
 };
-const RECEIPT: &str = "receipt.json";
 
 /// Why an operation failed. `code` is what the caller branches on; a
 /// cancellation ends the invocation without an answer.
@@ -70,6 +65,15 @@ impl From<std::io::Error> for EnsureError {
     }
 }
 
+impl From<demi_artifact::Error> for EnsureError {
+    fn from(error: demi_artifact::Error) -> Self {
+        match error {
+            demi_artifact::Error::Cancelled => Self::Cancelled,
+            error => Self::InstallFailed(error.to_string()),
+        }
+    }
+}
+
 /// Where installations live.
 #[derive(Clone, Debug)]
 pub struct Roots {
@@ -81,9 +85,9 @@ pub struct Roots {
 
 impl Default for Roots {
     fn default() -> Self {
-        let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
-            .filter(|home| !home.is_empty())
-            .map(|home| PathBuf::from(home).join(".demi/claude"));
+        let home = std::env::home_dir()
+            .filter(|home| !home.as_os_str().is_empty())
+            .map(|home| home.join(".demi/claude"));
         let image = cfg!(unix).then(|| PathBuf::from("/opt/demi/claude"));
         Self { home, image }
     }
@@ -103,7 +107,9 @@ struct Receipt {
 pub struct Installer {
     roots: Roots,
     transport: Transport,
-    /// Executables whose full digest this process has checked, by path and SHA-256.
+    /// Executables whose full digest this process has checked, by path and
+    /// SHA-256. A `std` mutex: each section only looks up or inserts, never
+    /// awaiting.
     verified: Mutex<HashSet<(PathBuf, String)>>,
 }
 
@@ -178,28 +184,32 @@ impl Installer {
                 continue;
             };
             while let Ok(Some(entry)) = entries.next_entry().await {
-                let Some(version) = entry.file_name().to_str().map(String::from) else {
+                let Some(name) = entry.file_name().to_str().map(String::from) else {
+                    continue;
+                };
+                // A directory whose name is not a version is not an installation.
+                let Some(version) = parse_version(&name) else {
                     continue;
                 };
                 let path = entry.path().join(BINARY);
-                let usable = is_version(&version)
-                    && read_receipt(&entry.path())
-                        .await
-                        .is_some_and(|receipt| receipt.version == version)
+                let usable = read_receipt(&entry.path())
+                    .await
+                    .is_some_and(|receipt| receipt.version == name)
                     && tokio::fs::metadata(&path)
                         .await
                         .is_ok_and(|metadata| metadata.is_file());
                 if usable {
-                    installed.push(Installed { version, path });
+                    installed.push((version, Installed { version: name, path }));
                 }
             }
         }
-        installed.sort_by(|left, right| {
-            version::compare(&right.version, &left.version).then_with(|| left.path.cmp(&right.path))
+        // Newest first, the image's before the user's for one version.
+        installed.sort_by(|(left, left_installed), (right, right_installed)| {
+            right.cmp(left).then_with(|| left_installed.path.cmp(&right_installed.path))
         });
         Ok(Status {
             platform: platform.into(),
-            installed,
+            installed: installed.into_iter().map(|(_, installed)| installed).collect(),
         })
     }
 
@@ -238,24 +248,7 @@ impl Installer {
     ) -> Result<PathBuf, EnsureError> {
         let root = self.home()?;
         tokio::fs::create_dir_all(root).await?;
-        let lock = File::options()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(root.join(format!("{}.lock", expected.version)))?;
-        loop {
-            match lock.try_lock() {
-                Ok(()) => break,
-                Err(std::fs::TryLockError::WouldBlock) => {
-                    tokio::select! {
-                        _ = cancel.cancelled() => return Err(EnsureError::Cancelled),
-                        _ = tokio::time::sleep(Duration::from_millis(50)) => {},
-                    }
-                }
-                Err(std::fs::TryLockError::Error(error)) => return Err(error.into()),
-            }
-        }
+        let _lock = InstallLock::acquire(&root.join(format!("{}.lock", expected.version)), cancel).await?;
         let destination = root.join(&expected.version);
         if let Some(path) = self.usable(&destination, expected, cancel).await? {
             return Ok(path);
@@ -265,29 +258,71 @@ impl Installer {
             .tempdir_in(root)?;
         let staged = temporary.path().join(&expected.version);
         tokio::fs::create_dir(&staged).await?;
-        download(
-            artifact,
-            expected,
-            &staged.join(BINARY),
-            self.transport,
-            cancel,
-        )
-        .await?;
-        let receipt = serde_json::to_vec(expected)
-            .map_err(|error| EnsureError::InstallFailed(error.to_string()))?;
-        tokio::fs::write(staged.join(RECEIPT), receipt).await?;
+        self.download(artifact, expected, &staged.join(BINARY), cancel)
+            .await?;
+        demi_artifact::receipt::write(&staged, expected).await?;
         if cancel.is_cancelled() {
             return Err(EnsureError::Cancelled);
         }
-        match tokio::fs::remove_dir_all(&destination).await {
-            Err(error) if error.kind() != std::io::ErrorKind::NotFound => return Err(error.into()),
-            _ => {}
-        }
-        tokio::fs::rename(&staged, &destination).await?;
+        demi_artifact::publish_directory(&staged, &destination).await?;
         let path = destination.join(BINARY);
         self.verified()
             .insert((path.clone(), expected.sha256.clone()));
         Ok(path)
+    }
+
+    /// Stream the artifact into `path`, enforcing its size and SHA-256, and
+    /// make it executable. The caller owns the directory and removes it on
+    /// any failure.
+    async fn download(
+        &self,
+        artifact: &Artifact,
+        expected: &Receipt,
+        path: &Path,
+        cancel: &CancellationToken,
+    ) -> Result<(), EnsureError> {
+        let version = &expected.version;
+        let host = release::host(artifact);
+        let client = match self.transport {
+            Transport::Https => demi_artifact::client(),
+            #[cfg(test)]
+            Transport::HttpsOrLoopbackHttp => demi_artifact::testing::loopback_client(),
+        }
+        .map_err(|error| EnsureError::DownloadFailed(error.to_string()))?;
+        let declared = Digest {
+            size: expected.size,
+            sha256: expected.sha256.clone(),
+        };
+        let mut output = tokio::fs::File::create(path).await?;
+        let downloaded =
+            demi_artifact::download(&client, &artifact.url, &declared, &mut output, cancel).await;
+        match downloaded {
+            Ok(()) => {}
+            Err(demi_artifact::Error::Cancelled) => return Err(EnsureError::Cancelled),
+            Err(demi_artifact::Error::Download(reason)) => {
+                return Err(EnsureError::DownloadFailed(format!(
+                    "Claude Code {version} download from {host} failed: {reason}"
+                )));
+            }
+            Err(
+                error @ (demi_artifact::Error::TooLarge { .. }
+                | demi_artifact::Error::Size { .. }
+                | demi_artifact::Error::Digest),
+            ) => {
+                return Err(EnsureError::VerificationFailed(format!(
+                    "Claude Code {version} from {host}: {error}"
+                )));
+            }
+            Err(error) => return Err(error.into()),
+        }
+        output.sync_all().await?;
+        drop(output);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).await?;
+        }
+        Ok(())
     }
 
     /// The executable in `directory` when its receipt equals `expected`, its
@@ -313,18 +348,20 @@ impl Installer {
         if self.verified().contains(&key) {
             return Ok(Some(key.0));
         }
-        match artifact_digest(&key.0, expected.size, cancel).await {
+        match demi_artifact::digest(&key.0, expected.size, cancel).await {
             Ok(digest) if digest.sha256 == expected.sha256 => {
                 self.verified().insert(key.clone());
                 Ok(Some(key.0))
             }
-            Err(ServiceError::Cancelled) => Err(EnsureError::Cancelled),
+            Err(demi_artifact::Error::Cancelled) => Err(EnsureError::Cancelled),
             _ => Ok(None),
         }
     }
 
     fn verified(&self) -> std::sync::MutexGuard<'_, HashSet<(PathBuf, String)>> {
-        self.verified.lock().unwrap_or_else(PoisonError::into_inner)
+        self.verified
+            .lock()
+            .expect("a panic interrupted an update of the verified set")
     }
 }
 
@@ -338,88 +375,11 @@ fn current_platform() -> Result<&'static str, EnsureError> {
     })
 }
 
+/// The receipt in `directory`; none when it has none or one that does not
+/// decode, which makes the installation unusable.
 async fn read_receipt(directory: &Path) -> Option<Receipt> {
-    let bytes = tokio::fs::read(directory.join(RECEIPT)).await.ok()?;
+    let bytes = demi_artifact::receipt::read(directory).await.ok()??;
     serde_json::from_slice(&bytes).ok()
-}
-
-/// Stream the artifact into `path`, enforcing its size and SHA-256, and make it
-/// executable. The caller owns the directory and removes it on any failure.
-async fn download(
-    artifact: &Artifact,
-    expected: &Receipt,
-    path: &Path,
-    transport: Transport,
-    cancel: &CancellationToken,
-) -> Result<(), EnsureError> {
-    let version = &expected.version;
-    let host = release::host(artifact);
-    let failed = |error: reqwest::Error| {
-        EnsureError::DownloadFailed(format!(
-            "Claude Code {version} download from {host} failed: {}",
-            error.without_url()
-        ))
-    };
-    let http = reqwest::Client::builder()
-        .https_only(transport == Transport::Https)
-        .redirect(reqwest::redirect::Policy::none())
-        .connect_timeout(Duration::from_secs(15))
-        .read_timeout(Duration::from_secs(60))
-        .build()
-        .map_err(failed)?;
-    let response = tokio::select! {
-        _ = cancel.cancelled() => return Err(EnsureError::Cancelled),
-        response = http.get(&artifact.url).send() => response.map_err(failed)?,
-    };
-    if !response.status().is_success() {
-        return Err(EnsureError::DownloadFailed(format!(
-            "Claude Code {version} download from {host} failed: HTTP status {}",
-            response.status().as_u16()
-        )));
-    }
-    let mut stream = response.bytes_stream();
-    let mut output = tokio::fs::File::create(path).await?;
-    let mut hash = Sha256::new();
-    let mut size = 0_u64;
-    loop {
-        let chunk = tokio::select! {
-            _ = cancel.cancelled() => return Err(EnsureError::Cancelled),
-            chunk = stream.next() => chunk,
-        };
-        let Some(chunk) = chunk else {
-            break;
-        };
-        let chunk = chunk.map_err(failed)?;
-        size += chunk.len() as u64;
-        if size > expected.size {
-            return Err(EnsureError::VerificationFailed(format!(
-                "Claude Code {version} from {host} exceeds its declared size of {} bytes",
-                expected.size
-            )));
-        }
-        hash.update(&chunk);
-        output.write_all(&chunk).await?;
-    }
-    output.flush().await?;
-    output.sync_all().await?;
-    drop(output);
-    if size != expected.size {
-        return Err(EnsureError::VerificationFailed(format!(
-            "Claude Code {version} from {host} has {size} bytes, not the declared {}",
-            expected.size
-        )));
-    }
-    if format!("{:x}", hash.finalize()) != expected.sha256 {
-        return Err(EnsureError::VerificationFailed(format!(
-            "Claude Code {version} from {host} does not match its declared SHA-256"
-        )));
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).await?;
-    }
-    Ok(())
 }
 
 /// Remove every other version directory. A failure leaves that version for a

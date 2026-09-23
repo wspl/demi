@@ -20,7 +20,7 @@ use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 
 use crate::connection::wire::{self as wire, Frame, Inbound};
-use crate::paths::resolve;
+use demi_command_service::paths::resolve;
 use crate::tree_watch::{TreeWatch, WatchEvent};
 
 /// The list stops here and reports `truncated`.
@@ -1098,7 +1098,7 @@ async fn call(
 ) -> Result<Frame, GitError> {
     match message {
         Inbound::GitChanges { id, root } => {
-            let root = resolve(root, default_cwd).map_err(GitError::Io)?;
+            let root = resolve(default_cwd, root).map_err(GitError::Io)?;
             let changes = service.changes(&root, cancel).await?;
             wire::encode(&wire::Outbound::GitOk(wire::GitOk {
                 id: id.clone(),

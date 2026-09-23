@@ -10,6 +10,7 @@ name = "demi-commands"
 path = "src/main.rs"
 
 [dependencies]
+demi-artifact = { path = "../artifact" }
 chromiumoxide = "=0.9.1"
 futures-util.workspace = true
 garde.workspace = true
