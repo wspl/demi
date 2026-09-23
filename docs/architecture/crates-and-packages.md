@@ -439,8 +439,9 @@ Each crate implements the provider contract for one vendor family.
 #### `host-remote`
 
 - **Owns:** the backend's end of a runner:
-  - the connection engine (`LinkEngine`): routing replies by id, liveness and
-    rpc plumbing;
+  - the connection engine (`Link`, served by its `LinkDriver`): routing
+    replies by id, liveness and rpc plumbing, with the product's decisions on
+    calls behind `LinkPolicy`;
   - `RemoteHost`, a `Host` over a runner connection whose file contents travel
     through pipes, with job, working-tree, network, log and service facets;
   - pipe records (`Pipes`) and their `Send` ends;
@@ -448,8 +449,10 @@ Each crate implements the provider contract for one vendor family.
     runner jobs, and its factory;
   - building manifests from a command set.
 - **Public boundary:** the items above; `host_remote::testing` supplies a real
-  runner for one device (`RunnerFixture`) and an in-process fake runner
-  (`TestLink`). Behavior: [Runner](../execution/runner.md) and
+  runner for one device (`RunnerFixture`), an in-process fake runner
+  (`TestDevice`, whose connections are `TestLink`s), the runner's native
+  fixture package (`NativeFixture`) and a policy that runs every call in one
+  command set (`CommandPolicy`). Behavior: [Runner](../execution/runner.md) and
   [Native command execution](../execution/native-runtime.md), which owns
   [artifact-location admission](../execution/native-runtime.md#install-the-selected-executable).
 - **Must not:** own sockets or HTTP routes (the backend's connection tasks and
@@ -694,7 +697,7 @@ provider-claude-code -> provider, shell
 shell -> command-service, command-tree, core
 agent -> agent-protocol, core, gates, provider, shell
 coding-agent -> agent, builtin-protocol, command-tree, core, shell
-host-remote -> command-service, command-tree, gates, runner-protocol, shell
+host-remote -> command-service, command-tree, core, gates, runner-protocol, shell
 backend -> agent, agent-protocol, artifact, builtin-protocol, claude-protocol, coding-agent, command-service, command-tree, core, gates, host-remote, machines-protocol, provider, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shell, web-api
 machines -> artifact, machines-protocol, runner-protocol
 runner -> artifact, command-service, command-tree, gates, runner-protocol
