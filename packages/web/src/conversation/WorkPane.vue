@@ -50,7 +50,7 @@ const workspace = computed(() => {
 })
 
 /**
- * The conversation's `browser` tab kind (`browser-live-view.md` § A browser tab
+ * The conversation's `browser` tab kind (`live-view.md` § A browser tab
  * in the panel), for as long as the panel is open beside this conversation. A
  * closed panel reads no tab list and holds no view.
  */

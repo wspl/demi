@@ -1,7 +1,7 @@
 /**
  * Finds outlined elements that a scroll region would clip. A region with
  * `overflow-y: auto` clips the x axis too, so a ring, focus ring or corner badge on
- * a child flush with the region's edge is cut off. See docs/demi-next/web-prototype.md.
+ * a child flush with the region's edge is cut off.
  */
 export interface ClipFinding {
   region: Element

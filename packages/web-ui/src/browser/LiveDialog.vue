@@ -5,7 +5,7 @@ import Button from '../ui/Button.vue'
 import TextInput from '../ui/TextInput.vue'
 
 /**
- * A dialog the watched page opened (`browser-live-view.md` § Input). It shows
+ * A dialog the watched page opened (`live-view.md` § Input). It shows
  * over the picture without blocking the page: the agent may answer it first,
  * and then it goes away on its own.
  */

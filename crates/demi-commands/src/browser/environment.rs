@@ -110,7 +110,7 @@ pub struct BrowserEnvironment {
     /// Files the user chose in the live view, until the browser retires.
     pub(super) upload_directory: PathBuf,
     pub(super) acquisition: Arc<RwLock<()>>,
-    /// The live view of this browser (`browser-live-view.md`).
+    /// The live view of this browser (`live-view.md`).
     pub(super) live: Arc<super::live::Hub>,
 }
 

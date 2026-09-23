@@ -1,4 +1,4 @@
-//! A viewer's input (`browser-live-view.md` § Input), delivered to the tab it
+//! A viewer's input (`live-view.md` § Input), delivered to the tab it
 //! watches in the order it arrives, beside the agent's commands. Keys and
 //! buttons held down are this viewer's own: its end releases only them.
 

@@ -1,5 +1,5 @@
 /**
- * The live view's frames on the page's side (`browser-live-view.md` §
+ * The live view's frames on the page's side (`live-view.md` §
  * Framing and versions): the stream carries bytes, so each message is a
  * length, a kind and a payload.
  */

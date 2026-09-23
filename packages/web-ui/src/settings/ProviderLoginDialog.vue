@@ -17,7 +17,7 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 /**
  * A subscription sign-in, as the vendor's own flow: a device code confirmed in a
  * browser, or a token the vendor's CLI hands out after its own login
- * (`providers-and-vault.md`). Owns nothing; the host drives the phase.
+ * (`providers.md`). Owns nothing; the host drives the phase.
  */
 import type { ProviderLoginPhase } from './types'
 export type { ProviderLoginPhase } from './types'

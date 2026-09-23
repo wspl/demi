@@ -2,7 +2,7 @@
  * Finds settings cards whose controls mix height families within a kind. Text
  * inputs share one family (28px in settings cards) and buttons, icon buttons and
  * segmented controls share another (24px there); two buttons of different heights
- * in one card, or two inputs, is a mistake. See docs/demi-next/web-prototype.md.
+ * in one card, or two inputs, is a mistake.
  */
 export interface SizeFinding {
   card: Element

@@ -61,7 +61,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       }
     >
   >({})
-  /** Each process provider's CLI, as last read (`claude-cli.md` § What the user sees). */
+  /** Each process provider's CLI, as last read (`claude-code.md` § What the user sees). */
   const clis = ref<Record<string, SettingsProviderCli>>({})
   let lifetime = new AbortController()
   const writes = new SerialQueue()

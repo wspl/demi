@@ -1,5 +1,5 @@
 //! What a viewer does to the tab it watches besides input
-//! (`browser-live-view.md` § The stream): choosing its mode and answering its
+//! (`live-view.md` § The stream): choosing its mode and answering its
 //! dialogs, as the agent's commands do and beside them.
 
 use std::sync::Weak;

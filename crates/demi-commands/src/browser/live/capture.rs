@@ -1,5 +1,5 @@
 //! The loopback socket the capture extension connects to
-//! (`browser-live-view.md` § Capture): the module starts and steers tab
+//! (`live-view.md` § Capture): the module starts and steers tab
 //! captures over it, and receives their encoded frames. It binds before Chrome
 //! starts, since the extension learns its address from its own files, and
 //! accepts only this environment's token.
@@ -33,7 +33,7 @@ const FRAME_HEADER: usize = 32;
 /// is behind and the newest frames are dropped until it asks for a key frame.
 const FRAME_QUEUE: usize = 8;
 
-/// Why this Host cannot capture, or none (`browser-live-view.md` §
+/// Why this Host cannot capture, or none (`live-view.md` §
 /// Capture). On Linux arm64, Chrome's SME code faults on a CPU that reports
 /// SME without SVE, until the GPU process gives up and Chrome exits.
 pub(crate) fn unavailable() -> Option<&'static str> {

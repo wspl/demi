@@ -165,7 +165,7 @@ impl TaskTable {
 
     /// Live stdin is bounded; bulk streams use the independently flowing HTTP pipe.
     pub fn input(&self, kind: TaskKind, id: &str, bytes: Bytes) -> io::Result<()> {
-        // docs/demi-next/runner.md § Pipes and output: the native stdin chunk limit.
+        // docs/execution/runner.md § Pipes and output: the native stdin chunk limit.
         if bytes.len() > 64 * 1024 {
             return Err(io::Error::other("live stdin chunk exceeds 64 KiB"));
         }

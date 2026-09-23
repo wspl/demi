@@ -1,79 +1,64 @@
 # Demi
 
-Demi is a hosted coding-agent product and the TypeScript packages it is
-built from: a provider-agnostic agent runtime, a command system with one
-manifest for every execution surface, and a runner that
-turns any machine into an execution target. The design is recorded under
-[docs/demi-next/](docs/demi-next/overview.md); the package contract is
-[docs/package-boundaries.md](docs/package-boundaries.md).
+Demi is a hosted coding-agent product that people use in a web browser. A user
+talks to an agent in a conversation. The agent runs in the backend and works on
+the user's files through a runner, either on a device the user paired or on the
+user's Cloud, a gVisor sandbox on a Linux host. The backend, the runner, the
+native command programs and the Cloud machine manager are Rust programs in one
+Cargo workspace; the browser application is Vue and TypeScript.
 
-- **Provider-agnostic** — one inference contract (`@demicodes/provider`) with
-  adapters for Claude Code, Codex, the Anthropic API, the OpenAI API, Google
-  Gemini and Grok Build.
-- **One backend, many targets** — a conversation runs on its user’s managed
-  Cloud or a connected device, through the same runner; switching targets is a first-class operation.
-- **One command manifest** — every root command (`demi …`) is defined once in
-  the backend and served to every surface; the runner caches it and makes the
-  roots real executables.
-- **Protocols carry references, never bulk bytes** — output stays on the
-  target, media reaches the browser by reference, transfers are brokered HTTP
-  streams.
+- **Provider-agnostic.** One provider contract, with providers for Claude
+  Code, Codex, the Anthropic API, the OpenAI API, Google Gemini and Grok Build.
+- **One backend, many targets.** A conversation runs on its user's Cloud or on
+  a paired device, through the same runner; switching targets is a first-class
+  operation.
+- **One command manifest.** Every root command (`demi …`) is declared once in
+  the backend and served to every surface; the runner caches the manifest and
+  makes the roots real executables.
+- **Protocols carry references, never bulk bytes.** Output stays on the target,
+  media reaches the browser by reference, and file contents travel as brokered
+  HTTP streams.
 
-> Status: pre-1.0, delivered milestone by milestone
-> ([docs/demi-next/roadmap.md](docs/demi-next/roadmap.md)).
-
-## Architecture
-
-Package responsibilities and allowed dependencies are defined in
-[package boundaries](docs/package-boundaries.md) and enforced by boundary tests.
-The backend and agent SDK run TypeScript. Execution targets run a native Rust
-runner with an embedded shell and standard utilities. Agent commands select
-application callbacks or independently distributed resident native services.
-See [native execution](docs/demi-next/native-runtime.md).
-
-Cloud uses the selected [gVisor/systrap design](docs/demi-next/managed-hosts.md).
-The replacement implementation is pending. Start with [Cloud images](docs/cloud-images.md)
-and [Cloud setup](docs/managed-hosts-setup.md) for the build and deployment contracts.
-
-Notable design records outside `docs/demi-next/`:
-
-- [Provider quota](docs/provider-quota.md) — unified probe/observe for subscription rate limits
-- [Provider global credentials](docs/provider-global-credentials.md) — multi-account pool + global `setActive`
-- [Provider / session clone](docs/provider-session-clone.md) — required `.clone()` for isolated forks
-- [Subagents](docs/subagent.md) — child sessions as `demi agent`, subagent events on the parent `AgentClient`
-- [Provider errors & retries](docs/provider-errors-and-retries.md) — classified failures and resume recovery
-
-Temporary investigation:
-
-- [gVisor systrap evaluation](docs/gvisor-evaluation.md) — VPS browser measurements, persistence findings, and the remaining Cloud integration work
+The design is documented under [docs/](docs/README.md). Start with the
+[overview](docs/overview.md);
+[Crates and packages](docs/architecture/crates-and-packages.md) defines what
+every crate and package owns.
 
 ## Development
 
+You need:
+
+- Rust through rustup. `rust-toolchain.toml` pins the toolchain and lists its
+  targets, which rustup installs with it. Host builds also need a C compiler.
+- The cross tools, to build for a platform other than your own
+  ([Toolchain](docs/delivery/builds-and-releases.md#toolchain)).
+- Bun, for the browser packages.
+
 ```sh
+cargo xtask check       # formatting, clippy, the Rust tests and the crate boundary check
+cargo xtask test        # build the programs the tests start, then run the Rust tests
+cargo xtask contracts   # generate the browser's TypeScript contracts from the Rust types
+
 bun install
-bun run typecheck      # type-check all packages
-bun run typecheck:web  # type-check the Vue UI packages
-bun run test           # run the test suite
-bun run build          # build every library package to dist/ (tsdown)
-bun run llms           # regenerate llms-full.txt from the docs
+bun run contracts       # run cargo xtask contracts for the browser packages
+bun run typecheck:web   # type-check web-ui, web-gallery and web
+bun run test            # the browser packages' tests
+bun run web:dev         # the web application, against a running backend
+bun run web:gallery     # the component gallery
 ```
 
-Install Rust through rustup (the repository pins its toolchain), a C/C++ compiler
-and CMake. Tests build the native runner automatically and use scripted providers.
-`cargo test --workspace` runs the Rust protocol, service and runner tests.
-Six-target release commands and SDK requirements are in
-[native builds](docs/native-builds.md).
-
-Workspaces resolve `@demicodes/*` from source in dev/test (the `development` export
-condition); a build is only needed to publish.
+The generated TypeScript is not committed; the frontend scripts that need it
+generate it first. [Web application](docs/product/web-application.md#development-and-checks)
+describes running the product locally, and
+[Builds and releases](docs/delivery/builds-and-releases.md) covers cross builds
+and release packages. [CONTRIBUTING.md](CONTRIBUTING.md) lists the rules a
+change must follow.
 
 ## Extending
 
-- **A new provider** — implement the `@demicodes/provider` contract (`run()` returning a
-  `ProviderRun` of `ProviderEvent`s) and export a `createXProvider()` factory.
-  See [docs/guides/add-a-provider.md](docs/guides/add-a-provider.md).
-- **A new UI** — consume an `AgentClient` and render `Block`s per
-  [docs/tool-rendering-spec.md](docs/tool-rendering-spec.md).
+- **A new provider.** Add a provider crate that implements the provider
+  contract for one vendor family; see
+  [Add a provider](docs/guides/add-a-provider.md).
 
 ## License
 

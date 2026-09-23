@@ -1,4 +1,4 @@
-//! A tab's viewport (`browser-live-view.md` § Viewport and pixel ratio): who
+//! A tab's viewport (`live-view.md` § Viewport and pixel ratio): who
 //! decides it, its size in CSS pixels, and the pixel ratio the page renders at.
 
 use chromiumoxide::{

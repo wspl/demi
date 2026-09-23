@@ -10,7 +10,7 @@ use demi_command_service::protocol::CommandLocale;
 use super::Result;
 
 /// The capture extension's ID, fixed by the public key in its manifest so that
-/// tab capture can allowlist it (`browser-live-view.md` § Capture).
+/// tab capture can allowlist it (`live-view.md` § Capture).
 pub(super) const CAPTURE_EXTENSION_ID: &str = "ekadkclcinpnbbdeloemlmaimcklplko";
 
 const CAPTURE_EXTENSION: &[(&str, &str)] = &[

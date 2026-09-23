@@ -1,4 +1,4 @@
-//! Fits a viewer's picture to its path (`browser-live-view.md` § Delivery).
+//! Fits a viewer's picture to its path (`live-view.md` § Delivery).
 //! End-to-end acknowledgement delay is the main signal: queueing anywhere on
 //! the path shows as a round trip above the smallest one seen. Under
 //! congestion the bit rate falls first, then the frame rate, then the

@@ -1,4 +1,4 @@
-//! Files a viewer chooses for a file input (`browser-live-view.md` § Input).
+//! Files a viewer chooses for a file input (`live-view.md` § Input).
 //! Their bytes travel through the stream itself into a directory of the
 //! environment, then attach to the input the viewer saw.
 

@@ -6,8 +6,8 @@
 - Do not keep a second value that can be calculated from existing data. For mutually exclusive phases, use one status such as `idle | running | finished`, rather than separate `running` and `finished` flags that can contradict each other.
 - Whenever you create a timer, listener, stream, or worker, check where it is stopped or released on success, failure, and cancellation. Share cleanup code when those paths need the same cleanup. If you ignore an error, make clear why it is safe to ignore.
 - Implement the intended final design. Do not add compatibility layers or legacy-data migration, cleanup, or normalization paths.
-- Before writing a helper, state its purpose in one generic sentence. If that sentence does not mention this project's domain, the helper almost certainly exists: search the standard library, the package's declared dependencies, `@demicodes/utils`, and the workspace, in that order. Write it only when the search fails, and place it where the next caller will find it. Small size is not a reason to write a local copy.
-- Use a library from its installed types and documentation, not from memory. Any cast, `as unknown as`, `any`, or type-only import used to get around a library's types means you do not know its API: stop and read it. If the library genuinely lacks the capability, say so in a comment at the workaround.
+- Before writing a helper, state its purpose in one generic sentence. If that sentence does not mention this project's domain, the helper almost certainly exists: search the standard library, the crate's declared dependencies, and the workspace, in that order (in the frontend: the package's declared dependencies, `@demicodes/utils`, and the workspace). Write it only when the search fails, and place it where the next caller will find it. Small size is not a reason to write a local copy.
+- Use a library from its installed types and documentation, not from memory. Any cast (`as unknown as`, `any` or a type-only import in TypeScript; `unsafe`, `transmute` or a downcast in Rust) used to get around a library's types means you do not know its API: stop and read it. If the library genuinely lacks the capability, say so in a comment at the workaround.
 - When a library is adopted for a job, use the whole of it for that job. Using it for one step and hand-writing the adjacent step it also covers (its coercion, its introspection, its error reporting) is a defect.
 - A type assertion is not a check. A value from outside the process (network, file, socket, environment, storage, model output, child process) is validated against a schema at the point of entry; the type is derived from the schema, never asserted onto the value. Do not silently repair corrupt data.
 - Two implementations of the same one-sentence purpose are a defect regardless of length or package. Consolidate to one owner and import.
@@ -26,8 +26,8 @@
 - Write separate steps on separate lines. Do not squeeze several assignments, branches, or cleanup actions into one line. A helper function should have a clear job; moving a complicated block into a vaguely named helper does not simplify it.
 - Before committing, reread the complete functions you changed, not just the added lines. Check for repeated conditions, duplicate or unused values, ignored errors, and code in the wrong package. Fix those problems before calling the work complete, even when tests pass.
 - When a batch of changes is ready for acceptance, restart every locally running process that serves it on the new code before reporting (the backend on port 3271 and the web front end); do not hand the restart to the user. Restart once per batch, after the whole batch is complete, not after every edit.
-- The Cloud and a paired device are the same thing: a Host behind a runner. Code never distinguishes them except where the design says they differ (pairing, revocation, lifecycle). Anything that reaches a conversation's Host goes through the conversation's host access (`withHost`, see `docs/demi-next/sessions-and-targets.md` § Host operations), which resolves the target, wakes a stopped Cloud, and holds the file gate. There is no second way to a Host; if `withHost` does not fit, change the design first.
-- Build native code with the machine's own cross tools, not the build container, and in development build and package only the targets of the Hosts in use (`docs/native-builds.md`). All six targets are for a published release.
+- The Cloud and a paired device are the same thing: a Host behind a runner. Code never distinguishes them except where the design says they differ (pairing, revocation, lifecycle). Anything that reaches a conversation's Host goes through the conversation's host access (`Shard::with_host`, see `docs/execution/sessions-and-targets.md` § Host operations), which resolves the target, wakes a stopped Cloud, and holds the file gate. There is no other way to a conversation's Host, and every other way to a Host is named in that section; if the host access does not fit, change the design first.
+- Build native code with the machine's own cross tools, not the build container, and in development build and package only the targets of the Hosts in use (`docs/delivery/builds-and-releases.md`). All six targets are for a published release.
 - A change to the runner reaches every runtime that carries it: every build target, the paired device, and the Cloud guest image. Acceptance of anything that touches a Host is done on both a paired device and the Cloud.
 - Keep the local Cloud guest image current yourself, without being asked: whenever the runner or a native command package changes (`demi-commands`, `demi-claude`, any crate the guest carries), cross-compile it for the guest, embed it in the rootfs, restart the machine manager, and reset the local Cloud onto the new base before acceptance. The local Cloud is a development environment: rebuild its image, restart its manager and reset it freely. A feature that runs on the Cloud is not accepted until it has run on the updated image.
 - Commit completed checkpoints with Conventional Commit subjects and push after each commit.
@@ -55,6 +55,7 @@
 
 # Coding Standards
 
+- Rust: Rust API Guidelines, `rustfmt` defaults and the workspace clippy lints.
 - TypeScript: Google TypeScript Style Guide.
 - JavaScript: Google JavaScript Style Guide.
 - Vue: Vue Style Guide.
@@ -69,4 +70,4 @@
 
 # Project References
 
-- `docs/package-boundaries.md` is the authoritative contract for package responsibilities, dependencies, and module layout.
+- `docs/architecture/crates-and-packages.md` is the authoritative contract for crate and package responsibilities, dependencies, and module layout.

@@ -5,16 +5,13 @@ import { parseSync, Visitor } from 'oxc-parser'
 
 const repoRoot = resolve(import.meta.dir, '../../../..')
 
-// What exists and what it exports comes from the workspace manifests; what may
-// depend on what comes from `docs/package-boundaries.md` § Production Dependency
-// Graph. Both are read here so the guard and its documents cannot drift apart.
+// What exists and what it exports comes from the workspace manifests.
 const rootManifest = await readPackageManifest(resolveRepoPath('package.json'))
 const workspaces = await readWorkspacePackages(rootManifest)
 const manifests = new Map([...workspaces].map(([name, pkg]) => [
   name,
   pkg.manifest
 ]))
-const documentedDependencyGraph = await readDocumentedDependencyGraph()
 
 // `web-ui` and `web-gallery` are Vite/Vue packages: the `.ts`-only source scans
 // below do not cover them, and their boundary is enforced at the manifest level.
@@ -54,8 +51,8 @@ function entryFile(specifier: string): string {
   return file
 }
 
-// The packages whose root entry runs on every runtime (`docs/package-boundaries.md`, each
-// registry entry's `Entries`): no Node builtin anywhere in the static closure of the root.
+// The packages whose root entry runs on every runtime: no Node builtin anywhere
+// in the static closure of the root.
 const platformNeutralEntries = [
   '@demicodes/utils',
   '@demicodes/core',
@@ -306,46 +303,10 @@ test(
   }
 )
 
-test(
-  'the documented production dependency graph is the workspace manifests\' graph',
-  () => {
-    expect([...documentedDependencyGraph.keys()].sort())
-      .toEqual([...workspaces.keys()].sort())
-
-    const violations: string[] = []
-    for (const [name, pkg] of workspaces) {
-      const declared = productionDependencyNames(pkg.manifest)
-        .filter((dependency) => dependency.startsWith('@demicodes/'))
-      const documented = documentedDependencyGraph.get(name) ?? []
-      if (declared.join(', ') !== documented.join(', ')) {
-        violations.push(
-          `${name} declares [${declared.join(', ')}] but docs/package-boundaries.md says [${documented.join(', ')}]`
-        )
-      }
-    }
-
-    expect(violations).toEqual([])
-  }
-)
-
-test(
-  'production source dependency graph follows documented package boundaries',
-  async () => {
-    const edges = await collectProductionWorkspaceImportEdges()
-    const violations: string[] = []
-
-    for (const edge of edges) {
-      const allowed = documentedDependencyGraph.get(edge.fromPackage) ?? []
-      if (!allowed.includes(edge.toPackage))
-        violations.push(
-          `${edge.file} imports ${edge.specifier} (${edge.fromPackage} -> ${edge.toPackage})`
-        )
-    }
-
-    expect([...new Set(violations)].sort()).toEqual([])
-    expect(findPackageDependencyCycle(edges)).toBeNull()
-  }
-)
+test('production source dependency graph is acyclic', async () => {
+  const edges = await collectProductionWorkspaceImportEdges()
+  expect(findPackageDependencyCycle(edges)).toBeNull()
+})
 
 test(
   'production workspace imports are declared as package dependencies',
@@ -812,39 +773,6 @@ async function readWorkspacePackages(
     packages.set(manifest.name, { directory, manifest, developmentExports })
   }
   return packages
-}
-
-// The ```text block under "## Production Dependency Graph": one `name -> dep, dep` line per package, `none` for a leaf.
-async function readDocumentedDependencyGraph(): Promise<Map<string, readonly string[]>> {
-  const doc = await readFile(
-    resolveRepoPath('docs/package-boundaries.md'),
-    'utf8'
-  )
-  const section = doc.split(/^## Production Dependency Graph$/m)[1]
-  const block = section
-    ? /```text\n([\s\S]*?)```/.exec(section)?.[1]
-    : undefined
-  if (!block)
-    throw new Error(
-      'docs/package-boundaries.md has no ```text graph under "## Production Dependency Graph"'
-    )
-
-  const graph = new Map<string, readonly string[]>()
-  for (const line of block.trim().split('\n')) {
-    const match = /^([\w-]+) -> (.+)$/.exec(line.trim())
-    if (!match)
-      throw new Error(`Unreadable dependency graph line: ${line}`)
-    const [, name, dependencies] = match
-    graph.set(
-      `@demicodes/${name}`,
-      dependencies === 'none'
-        ? []
-        : dependencies!.split(',')
-          .map((dependency) => `@demicodes/${dependency.trim()}`)
-          .sort()
-    )
-  }
-  return graph
 }
 
 async function hasTestFiles(directory: string): Promise<boolean> {

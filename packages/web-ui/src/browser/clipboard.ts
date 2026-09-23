@@ -1,5 +1,5 @@
 /**
- * The viewer's own clipboard (`browser-live-view.md` § Input). A copy in the
+ * The viewer's own clipboard (`live-view.md` § Input). A copy in the
  * watched tab is the viewer's copy: the page starts the write while the
  * keystroke still carries the viewer's activation, and finishes it with the
  * text the Host sends back.

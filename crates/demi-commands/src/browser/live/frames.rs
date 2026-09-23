@@ -1,4 +1,4 @@
-//! The live protocol's frames over a user stream (`browser-live-view.md`
+//! The live protocol's frames over a user stream (`live-view.md`
 //! § Framing and versions): a four-byte big-endian length, a kind, then the
 //! payload. The stream itself has no message boundaries.
 

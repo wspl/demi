@@ -15,7 +15,7 @@ import { NEW_TAB_URL, asTabsError, type BrowserTabData, type BrowserTabsControll
 import { viewportChoices, type ViewportChoice } from './view'
 
 /**
- * A `browser` tab's content (`browser-live-view.md` § A browser tab in the
+ * A `browser` tab's content (`live-view.md` § A browser tab in the
  * panel). The tab is only `{ url, tab? }`; opening its browser tab, showing it
  * live, and saying why it cannot be shown all happen here and are never
  * written to the tab.

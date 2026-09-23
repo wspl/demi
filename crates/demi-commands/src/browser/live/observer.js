@@ -1,4 +1,4 @@
-// The live view's page observer (`browser-live-view.md` § Input). It runs in
+// The live view's page observer (`live-view.md` § Input). It runs in
 // an isolated world of each watched tab's documents, where the page can
 // neither see nor call it, and reports through the world's own binding: the
 // cursor under the viewer's pointer, the page's native form controls, and
