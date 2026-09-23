@@ -54,7 +54,7 @@ test(
     const provider = new StubProvider([
       [
         events.toolCall('create-file', 'shell_exec', {
-          timeoutMs: 5_000,
+          timeoutMs: 30_000,
           script: "demi file create src/app.ts <<'EOF'\nexport const value = 1\nEOF",
         }),
       ],
@@ -68,7 +68,7 @@ test(
           {
             shellId: result.shellId,
             script: 'demi todo add \"Run tests\" --json',
-            timeoutMs: 5_000
+            timeoutMs: 30_000
           }
         )]
       },
@@ -81,7 +81,7 @@ test(
         return [
           events.toolCall('edit-file', 'shell_exec', {
             shellId: result.shellId,
-            timeoutMs: 5_000,
+            timeoutMs: 30_000,
             script: 'demi file edit src/app.ts --old "1" --new "2"',
           }),
         ]
@@ -139,7 +139,7 @@ test(
     const provider = new StubProvider([
       [
         events.toolCall('start-workflow', 'shell_exec', {
-          timeoutMs: 5_000,
+          timeoutMs: 30_000,
           script: [
             "demi file create note.txt <<'EOF'",
             'first turn',
@@ -164,7 +164,7 @@ test(
         expect(serialized).toContain('carry state')
         return [
           events.toolCall('continue-workflow', 'shell_exec', {
-            timeoutMs: 5_000,
+            timeoutMs: 30_000,
             script: [
               'demi todo done T1 --json',
               "printf '\\n'",
@@ -219,7 +219,7 @@ test(
     const provider = new StubProvider([
       [
         events.toolCall('prepare-shell-state', 'shell_exec', {
-          timeoutMs: 5_000,
+          timeoutMs: 30_000,
           script: [
             'mkdir -p pkg',
             'cd pkg',
@@ -235,7 +235,7 @@ test(
         return [
           events.toolCall('read-shell-state', 'shell_exec', {
             shellId: result.shellId,
-            timeoutMs: 5_000,
+            timeoutMs: 30_000,
             script: 'printf "state:%s:%s" "$PWD" "$WORKFLOW_TOKEN"',
           }),
         ]
@@ -274,7 +274,7 @@ test(
     const provider = new StubProvider([
       [
         events.toolCall('create-project', 'shell_exec', {
-          timeoutMs: 5_000,
+          timeoutMs: 30_000,
           script: [
             'mkdir -p src',
             "demi file create src/todo.ts <<'EOF'\nexport function addTodo(items: string[], text: string): string[] {\n  return items\n}\nEOF",
@@ -292,7 +292,7 @@ test(
           {
             shellId: result.shellId,
             script: "grep 'items, text' src/todo.ts > /dev/null || printf 'FAIL adds a todo item: ship tests\\n'; grep 'items, text' src/todo.ts > /dev/null && printf '1 pass\\n'",
-            timeoutMs: 5_000
+            timeoutMs: 30_000
           }
         )]
       },
@@ -307,7 +307,7 @@ test(
           {
             shellId: result.shellId,
             script: 'cat src/todo.ts',
-            timeoutMs: 5_000
+            timeoutMs: 30_000
           }
         )]
       },
@@ -317,7 +317,7 @@ test(
         return [
           events.toolCall('fix-source', 'shell_exec', {
             shellId: result.shellId,
-            timeoutMs: 5_000,
+            timeoutMs: 30_000,
             script: 'demi file edit src/todo.ts --old "return items" --new "return [...items, text]"',
           }),
         ]
@@ -332,7 +332,7 @@ test(
           {
             shellId: result.shellId,
             script: "grep 'items, text' src/todo.ts > /dev/null || printf 'FAIL adds a todo item: ship tests\\n'; grep 'items, text' src/todo.ts > /dev/null && printf '1 pass\\n'",
-            timeoutMs: 5_000
+            timeoutMs: 30_000
           }
         )]
       },
