@@ -171,6 +171,23 @@ impl BrowserFixture {
         value
     }
 
+    /// Waits until a concurrent command holds `tab`'s operation lock.
+    pub async fn wait_until_busy(&self, tab: &str) {
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                let (_, result) = self
+                    .result("browser.info", json!({"tab": tab}), CancellationToken::new())
+                    .await;
+                if result["error"]["code"] == "tab_busy" {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the tab becomes busy");
+    }
+
     pub async fn open(&self, name: &str) -> String {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("tests/browser")

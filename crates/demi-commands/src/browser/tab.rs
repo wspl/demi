@@ -1,18 +1,14 @@
-use std::{
-    sync::{Arc, Weak},
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
 use chromiumoxide::layout::Point;
 use chromiumoxide::{
-    Browser, Page,
+    Page,
     cdp::browser_protocol::{
         input::{
             DispatchKeyEventParams, DispatchMouseEventParams, DispatchMouseEventType,
             InsertTextParams, MouseButton,
         },
-        page::{EventJavascriptDialogOpening, HandleJavaScriptDialogParams, StopLoadingParams},
-        target::{CloseTargetParams, EventTargetDestroyed},
+        page::{EventJavascriptDialogOpening, HandleJavaScriptDialogParams},
     },
 };
 use futures_util::StreamExt;
@@ -21,10 +17,13 @@ use tokio::sync::{Mutex, watch};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{
-    BrowserError, Result, element, evaluation, keyboard,
+    BrowserError, Result, element,
+    environment::BrowserHandle,
+    evaluation, keyboard,
     observation::{Observation, References, can_resample},
     operation::{CONTROL_TIMEOUT, Operation},
     protocol::{BrowserCreatedBy, BrowserTarget, TabId},
+    registry::{Closed, Tabs},
 };
 
 /// The element target of a CSS selector.
@@ -127,9 +126,10 @@ impl TabState {
 #[derive(Clone)]
 pub struct BrowserTab {
     pub(super) page: Page,
-    pub(super) browser: Weak<Mutex<Browser>>,
+    pub(super) browser: BrowserHandle,
+    /// The registry that lists the tab and closes it.
+    registry: Tabs,
     pub(super) ended: CancellationToken,
-    environment_ended: CancellationToken,
     pub(super) state: Arc<TabState>,
     id: TabId,
     pub(super) created_by: BrowserCreatedBy,
@@ -138,9 +138,9 @@ pub struct BrowserTab {
 impl BrowserTab {
     pub(super) fn new(
         page: Page,
-        browser: Weak<Mutex<Browser>>,
+        browser: BrowserHandle,
+        registry: Tabs,
         ended: CancellationToken,
-        environment_ended: CancellationToken,
         state: Arc<TabState>,
         id: TabId,
         created_by: BrowserCreatedBy,
@@ -148,8 +148,8 @@ impl BrowserTab {
         Self {
             page,
             browser,
+            registry,
             ended,
-            environment_ended,
             state,
             id,
             created_by,
@@ -338,55 +338,31 @@ impl BrowserTab {
         Ok(())
     }
 
-    /// A tab owner closes the target without running beforeunload hooks.
+    /// Closes the tab without running its `beforeunload` hooks; the
+    /// registry no longer lists it once this returns. Closing the last tab
+    /// retires the environment instead (`browser.md` § Lifetime), which the
+    /// environment's owner does when it has emptied.
     pub async fn close(&self, cancellation: &CancellationToken, timeout: Duration) -> Result<()> {
-        self.ended.cancel();
-        let cleanup = super::cdp::release(self).await;
-        let closed = Operation::new(&self.environment_ended, cancellation, timeout)
-            .run(async {
-                let browser = self.browser.upgrade().ok_or(BrowserError::Closed)?;
-                let browser = browser.lock().await;
-                let mut events = browser.event_listener::<EventTargetDestroyed>().await?;
-                let targets = browser
-                    .execute(
-                        chromiumoxide::cdp::browser_protocol::target::GetTargetsParams::default(),
-                    )
-                    .await?
-                    .result
-                    .target_infos;
-                if !targets
-                    .iter()
-                    .any(|target| target.target_id == *self.page.target_id())
-                {
-                    return Err(BrowserError::TabNotFound);
-                }
-                loop {
-                    match self.page.execute(StopLoadingParams {}).await {
-                        Ok(_) => break,
-                        // A navigation briefly replaces the active renderer. Wait
-                        // for its session before stopping the load and closing it.
-                        Err(chromiumoxide::error::CdpError::Chrome(error))
-                            if error.message == "Not attached to an active page" =>
-                        {
-                            tokio::time::sleep(Duration::from_millis(20)).await;
-                        }
-                        Err(error) => return Err(error.into()),
-                    }
-                }
-                browser
-                    .execute(CloseTargetParams::new(self.page.target_id().clone()))
-                    .await?;
-                drop(browser);
-                while let Some(event) = events.next().await {
-                    let event = event?;
-                    if event.target_id == *self.page.target_id() {
-                        return Ok(());
-                    }
-                }
-                Err(BrowserError::Closed)
-            })
-            .await;
-        super::operation::after_cleanup(closed, cleanup)
+        self.close_request(cancellation, timeout).await.map(|_| ())
+    }
+
+    pub(super) async fn close_request(
+        &self,
+        cancellation: &CancellationToken,
+        timeout: Duration,
+    ) -> Result<Closed> {
+        let deadline = tokio::time::Instant::now() + timeout;
+        let close = self.registry.close(self.page.target_id().clone(), deadline);
+        // Not raced with the environment's end: closing the last tab ends the
+        // environment, and the close's answer says so. An environment that
+        // ends otherwise drops the request, which answers `Closed`.
+        tokio::select! {
+            biased;
+            _ = cancellation.cancelled() => Err(BrowserError::Cancelled),
+            closed = tokio::time::timeout_at(deadline, close) => {
+                closed.map_err(|_| BrowserError::Timeout)?
+            }
+        }
     }
 
     /// Resolve afresh while waiting; ambiguity is never an implicit first match.
