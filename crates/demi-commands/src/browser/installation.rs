@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-use demi_command_service::{integrity::artifact_digest, protocol::host_target};
+use demi_command_service::protocol::host_target;
 use futures_util::StreamExt;
 use sha2::{Digest, Sha256};
 use tokio::{io::AsyncWriteExt, sync::Mutex};
@@ -161,7 +161,7 @@ impl Installation {
                 archive.extract(extract_to).map_err(std::io::Error::other)
             })
             .await??;
-            let digest = artifact_digest(
+            let digest = demi_artifact::digest(
                 &extraction.join(&record.executable),
                 1024 * 1024 * 1024,
                 cancel,
@@ -205,7 +205,7 @@ async fn verify_installation(
         BrowserError::Configuration(format!("invalid Chrome installation receipt: {error}"))
     })?;
     let executable = destination.join(executable);
-    let actual = artifact_digest(&executable, 1024 * 1024 * 1024, cancel)
+    let actual = demi_artifact::digest(&executable, 1024 * 1024 * 1024, cancel)
         .await
         .map_err(|error| BrowserError::Configuration(error.to_string()))?;
     if receipt.archive_hash != archive_hash || receipt.executable_hash != actual.sha256 {

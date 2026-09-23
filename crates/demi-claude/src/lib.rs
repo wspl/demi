@@ -4,7 +4,6 @@
 pub mod install;
 pub mod platform;
 pub mod release;
-pub mod version;
 
 #[cfg(test)]
 mod tests;

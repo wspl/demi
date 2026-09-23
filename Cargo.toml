@@ -26,6 +26,7 @@ futures-util = "0.3"
 garde = { version = "0.23", features = ["derive", "regex", "url"] }
 h2 = "0.4"
 http = "1"
+semver = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 serde_plain = "1"

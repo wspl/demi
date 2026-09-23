@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-#[tokio::main]
+// Invocations are rare and wait on the network and the disk
+// (`concurrency.md` § demi-claude and the command-service SDK).
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
     if std::env::args().nth(1).as_deref() != Some("--command-service") {
         eprintln!("Usage: demi-claude --command-service");

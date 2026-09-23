@@ -27,8 +27,6 @@ pub enum ServiceError {
     Handler(String),
     #[error("conversation cleanup failed; retire the service process: {0}")]
     ConversationCleanup(String),
-    #[error("invalid service operation catalog")]
-    InvalidCatalog,
     #[error("handler exceeded cancellation deadline; retire the service process")]
     CancellationDeadline,
     #[error("HTTP/2 service handshake timed out")]
@@ -45,14 +43,16 @@ type LocalInput =
 
 enum InputSource {
     Http(HttpInput),
-    Local(std::sync::Mutex<LocalInput>),
+    /// `SyncWrapper` makes the boxed stream `Sync` by only ever lending it
+    /// mutably, which `next` does.
+    Local(sync_wrapper::SyncWrapper<LocalInput>),
 }
 
 impl Input {
     pub fn from_stream(
         stream: impl futures_util::Stream<Item = Result<Bytes, ServiceError>> + Send + 'static,
     ) -> Self {
-        Self(InputSource::Local(std::sync::Mutex::new(Box::pin(stream))))
+        Self(InputSource::Local(sync_wrapper::SyncWrapper::new(Box::pin(stream))))
     }
 
     pub(crate) fn new(stream: RecvStream) -> Self {
@@ -79,15 +79,9 @@ impl Input {
     pub async fn next(&mut self) -> Result<Option<Bytes>, ServiceError> {
         match &mut self.0 {
             InputSource::Http(input) => input.next().await,
-            InputSource::Local(input) => poll_fn(|cx| {
-                input
-                    .get_mut()
-                    .expect("local input lock poisoned")
-                    .as_mut()
-                    .poll_next(cx)
-            })
-            .await
-            .transpose(),
+            InputSource::Local(input) => poll_fn(|cx| input.get_mut().as_mut().poll_next(cx))
+                .await
+                .transpose(),
         }
     }
 }

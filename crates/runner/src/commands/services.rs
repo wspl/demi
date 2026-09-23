@@ -176,11 +176,7 @@ impl ResidentService {
             Ok(result) => result?,
             Err(_) => return Err(RuntimeError::Deadline("catalog")),
         };
-        let mut actual = info.operations;
-        let mut expected = descriptor.operations.clone();
-        actual.sort();
-        expected.sort();
-        if info.protocol_version != descriptor.protocol_version || actual != expected {
+        if !descriptor.serves(&info) {
             return Err(RuntimeError::CatalogMismatch);
         }
         Ok(service)

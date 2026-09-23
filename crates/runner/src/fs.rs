@@ -9,7 +9,7 @@ use futures_util::future::BoxFuture;
 use tokio::fs;
 use tokio_util::sync::CancellationToken;
 
-use crate::paths::resolve;
+use demi_command_service::paths::resolve;
 
 /// Returns None for messages owned by other runner subsystems. A file's
 /// contents are not answered here: they travel through pipes
@@ -47,7 +47,7 @@ async fn call(
     use Inbound::*;
     check_cancelled(cancel)?;
     let path = |path: &str, cwd: &Option<String>| {
-        resolve(path, cwd.as_deref().map(Path::new).unwrap_or(default_cwd))
+        resolve(cwd.as_deref().map(Path::new).unwrap_or(default_cwd), path)
     };
     Ok(match message {
         FsExists {

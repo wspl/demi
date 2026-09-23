@@ -19,11 +19,12 @@ use tokio::{
 };
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
+use demi_command_service::paths::resolve;
+
 use crate::{
     connection::wire::{self, Inbound},
     fs::error_code,
     git::GitService,
-    paths::resolve,
     pipes::PipeClient,
     tasks::report_pipe,
 };
@@ -68,7 +69,7 @@ impl FileTransfers {
             return Err(io::Error::other("not a file read"));
         };
         self.admit()?;
-        let target = resolve(&path, cwd.as_deref().map(Path::new).unwrap_or(default_cwd));
+        let target = resolve(cwd.as_deref().map(Path::new).unwrap_or(default_cwd), &path);
         let reply = self.output.clone();
         let pipes = self.pipes.clone();
         let transfer = self.cancel.child_token();
@@ -111,7 +112,7 @@ impl FileTransfers {
             return Err(io::Error::other("not a file write"));
         };
         self.admit()?;
-        let target = resolve(&path, cwd.as_deref().map(Path::new).unwrap_or(default_cwd));
+        let target = resolve(cwd.as_deref().map(Path::new).unwrap_or(default_cwd), &path);
         let reply = self.output.clone();
         let pipes = self.pipes.clone();
         let transfer = self.cancel.child_token();
@@ -167,7 +168,7 @@ impl FileTransfers {
             return Err(io::Error::other("not a git show"));
         };
         self.admit()?;
-        let root = resolve(&root, default_cwd);
+        let root = resolve(default_cwd, &root);
         let reply = self.output.clone();
         let pipes = self.pipes.clone();
         let transfer = self.cancel.child_token();

@@ -2,7 +2,7 @@
 
 pub mod descriptors;
 pub mod edits;
-pub mod integrity;
+pub mod paths;
 pub mod protocol;
 
 mod client;

@@ -359,13 +359,10 @@ async fn verify_file(path: &Path, artifact: &PackageArtifact) -> Result<(), Runt
             "cached artifact size or file type mismatch".into(),
         ));
     }
-    let actual = demi_command_service::integrity::artifact_digest(
-        path,
-        artifact.size,
-        &CancellationToken::new(),
-    )
-    .await?;
-    if actual != *artifact {
+    let actual = demi_artifact::digest(path, artifact.size, &CancellationToken::new())
+        .await
+        .map_err(|error| RuntimeError::Artifact(error.to_string()))?;
+    if actual.size != artifact.size || actual.sha256 != artifact.sha256 {
         return Err(RuntimeError::Artifact(
             "artifact size or SHA-256 mismatch".into(),
         ));

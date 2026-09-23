@@ -366,7 +366,7 @@ impl Contents {
     fn text_or_missing(&self) -> bool {
         match self {
             Self::Missing => true,
-            Self::Bytes(bytes, _) => !bytes.contains(&0) && std::str::from_utf8(bytes).is_ok(),
+            Self::Bytes(bytes, _) => is_text(bytes),
             _ => false,
         }
     }
@@ -388,6 +388,13 @@ fn publish_file(path: &Path, bytes: &[u8]) -> io::Result<()> {
     temporary.write_all(bytes)?;
     temporary.persist(path).map_err(|error| error.error)?;
     Ok(())
+}
+
+/// Whether `bytes` are text, which edit tracking and line counts read:
+/// UTF-8 without a NUL byte. Binary and non-UTF-8 content are treated alike
+/// (`edit-tracking.md` § Scope).
+pub fn is_text(bytes: &[u8]) -> bool {
+    !bytes.contains(&0) && std::str::from_utf8(bytes).is_ok()
 }
 
 fn normalize(path: &Path) -> PathBuf {

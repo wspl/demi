@@ -32,7 +32,7 @@ fn versions_are_three_numbers_and_an_optional_prerelease() {
     for valid in ["1.0.0", "10.20.30-rc.1", "0.0.1-alpha-2"] {
         assert!(is_version(valid), "{valid}");
     }
-    for invalid in ["1.0", "1.0.0-", "1.0.0+build", "v1.0.0", "1..0", "../1.0.0"] {
+    for invalid in ["1.0", "1.0.0-", "1.0.0+build", "v1.0.0", "1..0", "../1.0.0", "01.0.0"] {
         assert!(!is_version(invalid), "{invalid}");
     }
 }

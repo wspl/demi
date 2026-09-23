@@ -1,4 +1,4 @@
-use std::{collections::HashSet, future::Future, pin::Pin, sync::Arc, time::Duration};
+use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 
 use bytes::Bytes;
 use futures_util::future::poll_fn;
@@ -14,8 +14,8 @@ use tokio_util::task::AbortOnDropHandle;
 
 use crate::protocol::{
     CONVERSATION_PATH, CommandError, Completion, ConversationRequest, INFO_PATH, INVOKE_PATH,
-    Invocation, MAX_METADATA_BYTES, MAX_RECORD_BYTES, Metadata, Record, SHUTDOWN_PATH, ServiceInfo,
-    VERSION,
+    Invocation, MAX_METADATA_BYTES, MAX_RECORD_BYTES, Metadata, ProtocolError, Record, SHUTDOWN_PATH,
+    ServiceInfo, VERSION,
 };
 use crate::{
     Input, ServiceError,
@@ -151,21 +151,16 @@ where
     T: AsyncRead + AsyncWrite + Unpin,
     H: Handler + ?Sized,
 {
-    let operations = handler.operations();
-    let unique: HashSet<_> = operations.iter().collect();
-    if operations.is_empty()
-        || operations.iter().any(String::is_empty)
-        || unique.len() != operations.len()
-    {
-        return Err(ServiceError::InvalidCatalog);
-    }
-    let info = Bytes::from(serde_json::to_vec(&ServiceInfo {
+    let catalog = ServiceInfo {
         protocol_version: VERSION,
-        operations: operations.clone(),
-    })?);
+        operations: handler.operations(),
+    };
+    catalog.validate()?;
+    let info = Bytes::from(serde_json::to_vec(&catalog)?);
     if info.len() > MAX_METADATA_BYTES {
-        return Err(ServiceError::InvalidCatalog);
+        return Err(ProtocolError::TooLarge.into());
     }
+    let operations = catalog.operations;
     // Invocations are not counted (`native-runtime.md` § Validation and flow
     // control). The runner may abandon any number of requests it just sent,
     // which h2's guard against a flood of resets would otherwise answer by

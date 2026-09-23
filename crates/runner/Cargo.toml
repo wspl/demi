@@ -6,6 +6,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+demi-artifact = { path = "../artifact" }
 brush-core = "0.5"
 brush-builtins = "0.2"
 demi-command-service = { path = "../command-service" }
