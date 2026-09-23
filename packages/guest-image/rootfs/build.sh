@@ -80,8 +80,9 @@ bun --conditions development "$here/../../scripts/native/install-browser.ts" "$w
 in_chroot groupadd -g 1000 demi
 in_chroot useradd -m -u 1000 -g 1000 -s /bin/bash demi
 # The runner's Host log lives on the system layer, so it outlives a stop and
-# a wake (runner.md § Host log).
-install -d -m 0700 -o 1000 -g 1000 "$work/var/log/demi"
+# a wake (runner.md § Host log). Made inside the tree, where `demi` is a
+# name: uutils' install on the build host refuses a numeric owner.
+in_chroot install -d -m 0700 -o demi -g demi /var/log/demi
 cp -a --no-preserve=ownership "$here/rootfs/overlay/." "$work/"
 chmod 0440 "$work/etc/sudoers.d/demi"
 echo demi > "$work/etc/hostname"
