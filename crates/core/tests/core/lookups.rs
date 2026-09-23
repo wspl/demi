@@ -5,7 +5,7 @@
 use demi_core::{
     Attachment, FileExtension, Model, ModelMediaKind, attachment_tag, file_extension_support,
     is_blank, model_accepts_media_type, model_accepts_video, preview_media_type, shows_in_place,
-    sniff_model_media_type,
+    sniff_model_media_type, trim,
 };
 
 #[test]
@@ -131,4 +131,11 @@ fn blank_text_is_white_space_as_javascript_trims_it() {
     assert!(is_blank("\u{feff}\u{3000}\u{a0}"));
     assert!(!is_blank("\u{85}"));
     assert!(!is_blank(" a "));
+}
+
+#[test]
+fn a_trim_removes_the_white_space_javascript_trims() {
+    assert_eq!(trim("\u{feff}  New name \t\r\n\u{3000}"), "New name");
+    assert_eq!(trim("\u{85}name\u{85}"), "\u{85}name\u{85}");
+    assert_eq!(trim(" \t "), "");
 }
