@@ -1,4 +1,4 @@
-//! One watched tab's pictures (`browser-live-view.md` § Capture): viewers of
+//! One watched tab's pictures (`live-view.md` § Capture): viewers of
 //! the same tab share one capture and one encoding. The capture follows the
 //! tab's viewport, and its pace and encoding follow the viewer with the least
 //! room.

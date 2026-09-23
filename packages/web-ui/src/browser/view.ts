@@ -1,6 +1,6 @@
 /**
  * Where a watched tab's picture sits in the panel, and what the viewer's
- * pointer means in the tab (`browser-live-view.md` § Modes). A Web tab is the
+ * pointer means in the tab (`live-view.md` § Modes). A Web tab is the
  * panel's own size; Mobile and Custom keep theirs, scaled to fit and centred.
  */
 import type { LiveTab, LiveViewport } from '@demicodes/browser-protocol/live'

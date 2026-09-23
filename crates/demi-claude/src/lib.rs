@@ -1,5 +1,5 @@
 //! The `demi.claude` command package: Demi's own verified copy of the Claude
-//! Code CLI on the machine that runs it (`claude-cli.md` § The package).
+//! Code CLI on the machine that runs it (`claude-code.md` § The package).
 
 pub mod install;
 pub mod platform;

@@ -1,4 +1,4 @@
-// The live view's capture extension (`browser-live-view.md` § Capture). The
+// The live view's capture extension (`live-view.md` § Capture). The
 // service worker keeps the offscreen document that captures and encodes tabs,
 // and does what only it may: map a CDP target to its tab and grant capture.
 

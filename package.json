@@ -31,7 +31,6 @@
     "typecheck": "tsgo --noEmit",
     "typecheck:web": "bun run --cwd packages/web-ui typecheck && bun run --cwd packages/web-gallery typecheck && bun run --cwd packages/web typecheck",
     "build": "bun --filter '!@demicodes/web' build && bun run web:build",
-    "llms": "bun run scripts/build-llms.ts",
     "changeset": "changeset",
     "changeset:version": "changeset version",
     "release": "bun run scripts/release.ts",

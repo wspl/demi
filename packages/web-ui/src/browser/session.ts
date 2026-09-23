@@ -1,5 +1,5 @@
 /**
- * One live view of the conversation's browser (`browser-live-view.md` § The
+ * One live view of the conversation's browser (`live-view.md` § The
  * stream): the page's side of the protocol. It keeps what the view shows,
  * hands pictures to a decoder, acknowledges what the viewer saw, and sends
  * the viewer's input while the stream is alive.

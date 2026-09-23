@@ -1,4 +1,4 @@
-//! What a viewer's page receives (`browser-live-view.md` § Delivery): control
+//! What a viewer's page receives (`live-view.md` § Delivery): control
 //! messages before video, video only while the path takes it, and a heartbeat
 //! whenever nothing else was sent for a while.
 

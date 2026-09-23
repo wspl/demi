@@ -10,7 +10,7 @@ import { keyMessage, localKey, composingKey, pointerMessage, wheelMessage } from
 import { deviceSnap, panelSize, placePicture, tabPoint, type PanelSize } from './view'
 
 /**
- * A tab of the conversation's browser, live (`browser-live-view.md`): its
+ * A tab of the conversation's browser, live (`live-view.md`): its
  * pictures on a canvas, the viewer's input on its way to the page, and the
  * page's own native controls and dialogs over it.
  */

@@ -29,7 +29,7 @@ function browserTabTitle(controller: BrowserTabsController, data: BrowserTabData
 }
 
 /**
- * The `browser` tab kind of one conversation (`browser-live-view.md` § A
+ * The `browser` tab kind of one conversation (`live-view.md` § A
  * browser tab in the panel). Its content reaches the conversation's browser
  * through `controller`; the panel sees only this registration.
  */
