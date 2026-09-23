@@ -171,7 +171,11 @@ lies outside it, which records only the paths changed since: reading a file
 changes nothing, and neither does metadata alone under `.git`. On macOS the
 watch is an FSEvents stream, which covers a tree of any size with one
 subscription; notify's kqueue backend there would hold a file descriptor for
-every file, more than a repository and the usual limit of 256 allow.
+every file, more than a repository and the usual limit of 256 allow. No
+request waits for the watch to start: FSEvents can take seconds to start a
+stream when the system is busy. The first request that finds the watch
+running walks the whole tree once more, since the watch saw nothing before
+it ran.
 
 The next request re-examines the recorded paths, with the other path of any staged
 rename among them so that the two still pair, and merges them into the

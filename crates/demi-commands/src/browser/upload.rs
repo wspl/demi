@@ -29,11 +29,12 @@ pub(super) async fn execute(
         unreachable!("upload dispatch accepts only upload");
     };
     let operation = Operation::for_tab(tab, cancel, deadline);
-    let mut references = tab
+    let mut session = tab
         .state
-        .operations
-        .try_lock()
-        .map_err(|_| operation.failure(BrowserError::Busy, tab.id().as_str(), None))?;
+        .gate
+        .try_checkout()
+        .ok_or_else(|| operation.failure(BrowserError::Busy, tab.id().as_str(), None))?;
+    let references = &mut session.references;
     let work = async {
         let mut files = Vec::with_capacity(input.file.len());
         for file in &input.file {
@@ -58,7 +59,7 @@ pub(super) async fn execute(
             .target()
             .ok_or_else(|| BrowserError::Configuration("upload requires a target".into()))?;
         let (control, _) = tab
-            .ready_element(&target, &mut references, &["enabled"], &operation)
+            .ready_element(&target, references, &["enabled"], &operation)
             .await?;
         let is_input: bool = operation
             .run(element::call(
