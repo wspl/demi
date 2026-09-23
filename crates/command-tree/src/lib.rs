@@ -8,9 +8,13 @@ mod parse;
 
 pub use parse::{Parsed, Selected, UsageError};
 
-use std::collections::{BTreeMap, HashSet};
+use std::{
+    collections::{BTreeMap, HashSet},
+    fmt,
+    sync::Arc,
+};
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 use serde_with::rust::unwrap_or_skip;
 
@@ -49,7 +53,7 @@ pub struct Leaf {
     pub success_output: Option<String>,
     pub failure_output: Option<String>,
     pub running_hint: Option<String>,
-    pub input: Option<BTreeMap<String, Value>>,
+    pub input: Option<Schema>,
     pub positionals: Option<Vec<String>>,
     pub stdin_field: Option<String>,
     pub rest_field: Option<String>,
@@ -62,7 +66,64 @@ pub struct Leaf {
 #[serde(deny_unknown_fields)]
 pub struct LeafOutput {
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-    pub json: Option<BTreeMap<String, Value>>,
+    pub json: Option<Schema>,
+}
+
+/// A JSON Schema a declaration carries, compiled once when the declaration is
+/// read, so every invocation validates against the compiled form.
+#[derive(Clone)]
+pub struct Schema {
+    value: BTreeMap<String, Value>,
+    validator: Arc<jsonschema::Validator>,
+}
+
+impl Schema {
+    pub fn new(value: BTreeMap<String, Value>) -> Result<Self, DeclarationError> {
+        let document = serde_json::to_value(&value).map_err(|error| invalid(error.to_string()))?;
+        let validator =
+            jsonschema::validator_for(&document).map_err(|error| invalid(error.to_string()))?;
+        Ok(Self {
+            value,
+            validator: Arc::new(validator),
+        })
+    }
+
+    /// The schema as the declaration wrote it.
+    pub fn value(&self) -> &BTreeMap<String, Value> {
+        &self.value
+    }
+
+    /// The first way `instance` breaks the schema, if any.
+    pub fn check(&self, instance: &Value) -> Result<(), String> {
+        self.validator
+            .validate(instance)
+            .map_err(|error| error.to_string())
+    }
+}
+
+impl PartialEq for Schema {
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value
+    }
+}
+
+impl fmt::Debug for Schema {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.value.fmt(formatter)
+    }
+}
+
+impl Serialize for Schema {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Schema {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = BTreeMap::deserialize(deserializer)?;
+        Schema::new(value).map_err(serde::de::Error::custom)
+    }
 }
 
 /// How a command runs: as a call to the backend, or as an operation of a
@@ -163,27 +224,26 @@ impl Leaf {
 
     /// The input object's properties, when the leaf declares an input.
     pub fn properties(&self) -> Option<&serde_json::Map<String, Value>> {
-        self.input.as_ref()?.get("properties")?.as_object()
+        self.input.as_ref()?.value().get("properties")?.as_object()
     }
 
     pub fn required(&self, field: &str) -> bool {
         self.input
             .as_ref()
-            .and_then(|schema| schema.get("required"))
+            .and_then(|schema| schema.value().get("required"))
             .and_then(Value::as_array)
             .is_some_and(|fields| fields.iter().any(|name| name.as_str() == Some(field)))
     }
 
-    pub fn json_output(&self) -> Option<&BTreeMap<String, Value>> {
+    pub fn json_output(&self) -> Option<&Schema> {
         self.output.as_ref()?.json.as_ref()
     }
 
     fn validate(&self) -> Result<(), DeclarationError> {
-        if let Some(schema) = &self.input {
-            if schema.get("type").and_then(Value::as_str) != Some("object") {
-                return Err(invalid("command input must describe an object".into()));
-            }
-            compile_schema(schema)?;
+        if let Some(schema) = &self.input
+            && schema.value().get("type").and_then(Value::as_str) != Some("object")
+        {
+            return Err(invalid("command input must describe an object".into()));
         }
         let mut fields = HashSet::new();
         let sources = self
@@ -236,9 +296,6 @@ impl Leaf {
             }
             optional |= !self.required(field);
         }
-        if let Some(schema) = self.json_output() {
-            compile_schema(schema)?;
-        }
         Ok(())
     }
 
@@ -254,12 +311,6 @@ pub fn is_command_name(name: &str) -> bool {
     let mut bytes = name.bytes();
     bytes.next().is_some_and(|byte| byte.is_ascii_alphanumeric())
         && bytes.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
-}
-
-fn compile_schema(schema: &BTreeMap<String, Value>) -> Result<(), DeclarationError> {
-    let schema = serde_json::to_value(schema).map_err(|error| invalid(error.to_string()))?;
-    jsonschema::validator_for(&schema).map_err(|error| invalid(error.to_string()))?;
-    Ok(())
 }
 
 fn invalid(message: String) -> DeclarationError {
@@ -280,7 +331,7 @@ struct RawLeaf {
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     running_hint: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-    input: Option<BTreeMap<String, Value>>,
+    input: Option<Schema>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     positionals: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
