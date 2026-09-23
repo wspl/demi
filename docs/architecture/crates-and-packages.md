@@ -383,20 +383,26 @@ Each crate implements the provider contract for one vendor family.
   - `AgentServer`, one per user shard, which holds each open conversation's
     `Tree`; `Tree`, a conversation's live nodes, its attachment to a
     connection and the supervisor operations on its subagents; `Node`;
+  - `Connection`, the frame handling of one conversation socket: the backend
+    hands it each decoded client frame, and its bounded outbox (`FrameRx`)
+    carries every server frame back;
   - `AgentSession`, a handle over one session's `SessionCore`;
   - the transcript and its estimates (`transcript::estimate`) and compaction;
   - the standard tools (`StandardTool`: `shell_exec`, `shell_status`,
     `shell_write`, `shell_abort` and `yield`), with the durable dispatch of
     every tool call;
   - the `demi agent` command group;
-  - the harness trait (`AgentHarness`) and the tree store contract
-    (`AgentTreeStore`, `SessionStore`).
+  - the harness trait (`AgentHarness`), where a session's provider runtimes
+    come from (`ProviderResolver`), and the tree store contract
+    (`AgentTreeStore`, `SessionStore`, with the node records and checkpoints
+    they carry in `store`).
 - **Public boundary:** the items above; `agent::testing` supplies an in-memory
-  tree store (`MemoryTreeStore`) and a test client that drives a connection. A
-  product supplies the harness, the providers, a
-  shell environment per Host and a tree store; the agent never knows which
-  shell engine runs. Behavior: [Agent runtime](../agent/runtime.md),
-  [Subagents](../agent/subagents.md) and [Compaction](../agent/compaction.md).
+  tree store (`MemoryTreeStore`), predictable identities (`SequentialIds`) and
+  a test client that drives a connection (`TestClient`). A product supplies
+  the harness, the providers, a shell environment per Host and a tree store;
+  the agent never knows which shell engine runs. Behavior:
+  [Agent runtime](../agent/runtime.md), [Subagents](../agent/subagents.md)
+  and [Compaction](../agent/compaction.md).
 - **Rules:** the node assembly is the one place that creates a node's session;
   the supervisor asks it for a child and never builds one. Media persistence
   goes through the tree store: the product's store decides where media bytes
