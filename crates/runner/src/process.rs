@@ -296,18 +296,27 @@ async fn pump<T: AsyncRead + Unpin>(
 pub(crate) fn kill(child: &mut dyn ChildWrapper) -> io::Result<()> {
     match child.start_kill() {
         #[cfg(unix)]
-        Err(error) if error.raw_os_error() == Some(rustix::io::Errno::SRCH.raw_os_error()) => Ok(()),
+        Err(error) if gone(&error) => Ok(()),
         result => result,
     }
+}
+
+/// Whether signalling a child's process group failed only because the group
+/// is already ending: ESRCH when it is gone, and on macOS EPERM, which XNU's
+/// `killpg` returns while only exiting members remain. Its exit is still
+/// reaped and reported.
+#[cfg(unix)]
+fn gone(error: &io::Error) -> bool {
+    let code = error.raw_os_error();
+    code == Some(rustix::io::Errno::SRCH.raw_os_error())
+        || (cfg!(target_os = "macos") && code == Some(rustix::io::Errno::PERM.raw_os_error()))
 }
 
 fn send_signal(child: &mut dyn ChildWrapper, signal: Signal) -> io::Result<()> {
     #[cfg(unix)]
     {
         match child.signal(number(signal).as_raw()) {
-            Err(error) if error.raw_os_error() == Some(rustix::io::Errno::SRCH.raw_os_error()) => {
-                Ok(())
-            }
+            Err(error) if gone(&error) => Ok(()),
             result => result,
         }
     }
