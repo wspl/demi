@@ -4,6 +4,7 @@ use crate::connection::wire;
 use crate::{
     pipes::PipeClient,
     process::{ChildProcess, OutputStream, ProcessInput, SpawnOptions},
+    shell::ShellRuntime,
 };
 use bytes::Bytes;
 use futures_util::{FutureExt, StreamExt};
@@ -33,6 +34,7 @@ pub struct TaskTable {
     dispatcher: Option<Arc<crate::commands::dispatch::Dispatcher>>,
     output_dir: PathBuf,
     pipes: PipeClient,
+    shell: ShellRuntime,
 }
 
 struct Shared {
@@ -80,6 +82,7 @@ impl TaskTable {
         dispatcher: Option<Arc<crate::commands::dispatch::Dispatcher>>,
         output_dir: PathBuf,
         pipes: PipeClient,
+        shell: ShellRuntime,
     ) -> Self {
         Self {
             shared: Arc::new(Shared {
@@ -92,6 +95,7 @@ impl TaskTable {
             dispatcher,
             output_dir,
             pipes,
+            shell,
         }
     }
 
@@ -287,16 +291,8 @@ impl TaskTable {
                 stdin,
                 stdout,
             } => {
-                // Wire IDs are not paths. Each job receives a runner-owned directory.
-                tokio::fs::create_dir_all(&self.output_dir).await?;
-                let directory = tempfile::Builder::new()
-                    .prefix("job-")
-                    .tempdir_in(&self.output_dir)?;
-                let path = directory.keep();
-                crate::fs::chmod(&path, 0o700).await?;
-                let scratch = tempfile::Builder::new()
-                    .prefix(".work-")
-                    .tempdir_in(&path)?;
+                let JobDirectory { path, scratch } =
+                    JobDirectory::create(self.output_dir.clone()).await?;
                 env.insert(
                     "TMPDIR".into(),
                     scratch.path().to_string_lossy().into_owned(),
@@ -311,14 +307,19 @@ impl TaskTable {
                         .to_string_lossy()
                         .into_owned(),
                 };
-                let recorder =
-                    match demi_command_service::edits::Recorder::new(edit_context.clone()) {
-                        Ok(recorder) => Some(recorder),
-                        Err(error) => {
-                            tracing::warn!("edit recording failed: {error}");
-                            None
-                        }
-                    };
+                let recording = edit_context.clone();
+                let recorder = tokio::task::spawn_blocking(move || {
+                    demi_command_service::edits::Recorder::new(recording)
+                })
+                .await
+                .map_err(io::Error::other)?;
+                let recorder = match recorder {
+                    Ok(recorder) => Some(recorder),
+                    Err(error) => {
+                        tracing::warn!("edit recording failed: {error}");
+                        None
+                    }
+                };
                 let logs = Logs::new(path, &cancel).await?;
                 job = Some((logs, scratch, recorder.clone()));
                 let commands = match (
@@ -343,8 +344,15 @@ impl TaskTable {
                 }
                 let mut scope = crate::shell::scope::Scope::new(cancel.child_token(), commands);
                 scope.edits = recorder;
-                let child =
-                    crate::shell::job::Job::start(script, spec.cwd, env, stdin.is_none(), scope)?;
+                let child = crate::shell::job::Job::start(
+                    script,
+                    spec.cwd,
+                    env,
+                    stdin.is_none(),
+                    scope,
+                    &self.shell,
+                )
+                .await?;
                 (Execution::shell(child), stdin, stdout)
             }
         };
@@ -497,12 +505,12 @@ impl TaskTable {
         match job {
             Some((logs, scratch, recorder)) => {
                 let output = logs.finish().await?;
-                scratch.close()?;
                 let (files, files_truncated) = tokio::task::spawn_blocking(move || {
-                    crate::shell::edit_report::finish(recorder.as_ref())
+                    scratch.close()?;
+                    Ok::<_, io::Error>(crate::shell::edit_report::finish(recorder.as_ref()))
                 })
                 .await
-                .map_err(io::Error::other)?;
+                .map_err(io::Error::other)??;
                 wire::encode(&wire::Outbound::JobExit {
                     job_id: id,
                     exit_code: exit.code,
@@ -649,6 +657,36 @@ pub(crate) async fn report_pipe(
             }
         }
         Err(error) => tracing::warn!("pipe result encoding failed: {error}"),
+    }
+}
+
+/// A job's runner-owned directory for its logs and change records, and the
+/// scratch directory its `TMPDIR` names. Wire ids are not paths.
+struct JobDirectory {
+    path: PathBuf,
+    scratch: tempfile::TempDir,
+}
+
+impl JobDirectory {
+    /// Made in one blocking call, off the control thread.
+    async fn create(root: PathBuf) -> io::Result<Self> {
+        tokio::task::spawn_blocking(move || {
+            std::fs::create_dir_all(&root)?;
+            let mut builder = tempfile::Builder::new();
+            builder.prefix("job-");
+            // For the owner alone; Windows directories take their access
+            // from the parent's ACL.
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                builder.permissions(std::fs::Permissions::from_mode(0o700));
+            }
+            let path = builder.tempdir_in(&root)?.keep();
+            let scratch = tempfile::Builder::new().prefix(".work-").tempdir_in(&path)?;
+            Ok(Self { path, scratch })
+        })
+        .await
+        .map_err(io::Error::other)?
     }
 }
 

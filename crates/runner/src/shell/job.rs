@@ -1,6 +1,6 @@
 //! Resident shell job with bounded input/output and an owned completion task.
 
-use super::{ShellOptions, scope::Scope};
+use super::{ShellOptions, ShellRuntime, scope::Scope};
 use crate::process::{OutputChunk, OutputStream, ProcessExit, ProcessInput};
 use bytes::Bytes;
 use std::{
@@ -21,21 +21,63 @@ pub struct Job {
     requested_signal: Arc<OnceLock<String>>,
 }
 
+/// A job's three pipes: the ends the interpreter uses and the runner's.
+struct Pipes {
+    stdin: File,
+    input_writer: File,
+    output_reader: File,
+    stdout: File,
+    error_reader: File,
+    stderr: File,
+    /// Kept open until every interpreter task finishes.
+    input_reference: File,
+}
+
+impl Pipes {
+    /// Out of open files, this waits for one on a shell thread
+    /// (`runner.md` § Load).
+    async fn open(shell: &ShellRuntime) -> io::Result<Self> {
+        shell
+            .spawn_blocking(|| {
+                let (stdin, input_writer) = pipe()?;
+                let (output_reader, stdout) = pipe()?;
+                let (error_reader, stderr) = pipe()?;
+                let input_reference =
+                    demi_command_service::descriptors::retry_blocking(|| stdin.try_clone())?;
+                Ok(Self {
+                    stdin,
+                    input_writer,
+                    output_reader,
+                    stdout,
+                    error_reader,
+                    stderr,
+                    input_reference,
+                })
+            })
+            .await
+            .map_err(io::Error::other)?
+    }
+}
+
 impl Job {
-    pub fn start(
+    pub async fn start(
         script: String,
         cwd: PathBuf,
         mut env: BTreeMap<String, String>,
         live: bool,
         mut scope: Scope,
+        shell: &ShellRuntime,
     ) -> io::Result<Self> {
-        let (stdin, input_writer) = pipe()?;
-        let (output_reader, stdout) = pipe()?;
-        let (error_reader, stderr) = pipe()?;
+        let Pipes {
+            stdin,
+            input_writer,
+            output_reader,
+            stdout,
+            error_reader,
+            stderr,
+            input_reference,
+        } = Pipes::open(shell).await?;
         env.remove(crate::stdio::LIVE_INPUT_ENV);
-        // Keep the reference handle alive until every interpreter task finishes.
-        let input_reference =
-            demi_command_service::descriptors::retry_blocking(|| stdin.try_clone())?;
         if live {
             env.insert(
                 crate::stdio::LIVE_INPUT_ENV.into(),
@@ -52,7 +94,7 @@ impl Job {
         scope.cancellation = cancel.child_token();
         let input_scope = Scope::new(cancel.child_token(), None);
         let writer_scope = input_scope.clone();
-        let writer = tokio::task::spawn_blocking(move || -> io::Result<()> {
+        let writer = shell.spawn_blocking(move || -> io::Result<()> {
             let runtime = tokio::runtime::Handle::current();
             loop {
                 let item = runtime.block_on(async {
@@ -77,14 +119,15 @@ impl Job {
         });
         let readers = [
             pump(
+                shell,
                 output_reader,
                 OutputStream::Stdout,
                 sender.clone(),
                 cancel.clone(),
             ),
-            pump(error_reader, OutputStream::Stderr, sender, cancel.clone()),
+            pump(shell, error_reader, OutputStream::Stderr, sender, cancel.clone()),
         ];
-        let worker = tokio::task::spawn_blocking(move || {
+        let worker = shell.spawn_blocking(move || {
             let _input_reference = input_reference;
             let runtime = tokio::runtime::Handle::current();
             let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -229,12 +272,13 @@ impl Drop for Job {
 }
 
 fn pump(
+    shell: &ShellRuntime,
     file: File,
     stream: OutputStream,
     sender: mpsc::Sender<OutputChunk>,
     cancel: CancellationToken,
 ) -> tokio::task::JoinHandle<io::Result<()>> {
-    tokio::task::spawn_blocking(move || {
+    shell.spawn_blocking(move || {
         let scope = Scope::new(cancel.clone(), None);
         let runtime = tokio::runtime::Handle::current();
         let mut buffer = vec![0; 64 * 1024];

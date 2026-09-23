@@ -31,6 +31,8 @@ pub struct Options {
     pub runner: wire::RunnerInfo,
     pub token: Option<String>,
     pub volumes: Vec<crate::volumes::ManagedVolume>,
+    /// Where shell jobs run (`concurrency.md` § Runner).
+    pub shell: crate::shell::ShellRuntime,
 }
 
 struct Runtime {
@@ -199,6 +201,7 @@ impl Runtime {
             self.options.cwd.clone(),
             self.options.env.clone(),
             self.pipes.clone(),
+            self.options.shell.clone(),
         );
         self.management.attach(host.tasks.clone());
         let streams = ServiceStreams::new(
