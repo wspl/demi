@@ -32,6 +32,16 @@
 - Keep the local Cloud guest image current yourself, without being asked: whenever the runner or a native command package changes (`demi-commands`, `demi-claude`, any crate the guest carries), cross-compile it for the guest, embed it in the rootfs, restart the machine manager, and reset the local Cloud onto the new base before acceptance. The local Cloud is a development environment: rebuild its image, restart its manager and reset it freely. A feature that runs on the Cloud is not accepted until it has run on the updated image.
 - Commit completed checkpoints with Conventional Commit subjects and push after each commit.
 
+# Rust Migration
+
+While the Rust migration in `docs/internal/rust-migration/plan.md` is under way, reread its § Working method and § Checkpoint checks at the start of every session and after every context compaction, before any other migration work, and follow them. In short:
+
+- Work the critical path: port the TypeScript. In Rust that already works, fix only the high findings; leave its medium and low findings for when that module next changes, or for the sweep after phase 7.
+- One work package is one checkpoint, committed and pushed once. While writing, run only `cargo check` and the test that covers the code; run the work package's checks once at its end. The Host acceptance (native builds for the Hosts in use, the refreshed Cloud image and a reset, a paired device and the Cloud, restarted processes, a real message) runs once per phase and before a batch is reported for acceptance.
+- Build and test with one Cargo selection everywhere: `cargo check --workspace --all-targets --features demi-runner/test-fixtures` and `cargo test --workspace --features demi-runner/test-fixtures`, adding `--test <name>` for one target. Never `-p <crate>` for a test build: each selection keeps its own copy of the dependencies, and switching has cost 140 s a time.
+- Work in large steps: read what a step needs in one call, write the whole step, then compile once. Start long builds and tests in the background and keep working meanwhile.
+- zsh does not split an unquoted variable into words; pass argument lists as arrays, or run scripts with bash.
+
 # Writing and Communication
 
 - Make the first explanation understandable without requiring the reader to ask for a simpler version. Start with what happens in a concrete example, then explain the rule. Use familiar words; introduce a technical term only when needed and explain it on first use.
