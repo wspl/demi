@@ -265,8 +265,9 @@ next to the wire's types, so that a command program depends on one crate.
   `ConversationPatch` and `ProviderDto`; the error body (`ErrorBody`) and
   `ErrorCode`, the one list of every error code the browser can see; and the
   identifier and text types those bodies use. It reuses the runner's
-  working-tree change and log-line types and `builtin-protocol`'s browser tab
-  types instead of declaring them again.
+  working-tree change and log-line types, `builtin-protocol`'s browser tab
+  types and `command-service`'s command locale (`CommandLocale`, which the
+  browser reports as a preference) instead of declaring them again.
 - **Public boundary:** the types above; their TypeScript form is generated into
   `web`. Behavior: [Web API](../product/web-api.md).
 - **Must not:** hold route handling or domain logic.
@@ -667,7 +668,7 @@ builtin-protocol -> none
 claude-protocol -> none
 runner-protocol -> command-service, command-tree
 machines-protocol -> command-service, runner-protocol
-web-api -> agent-protocol, builtin-protocol, core, runner-protocol
+web-api -> agent-protocol, builtin-protocol, command-service, core, runner-protocol
 gates -> none
 artifact -> none
 provider -> core
