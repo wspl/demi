@@ -291,8 +291,13 @@ and never with product routes. Lifetime, relay behavior and the
 `PATCH /api/users/:id` resets a lower-ranked account with `{ password }`.
 Setup creates the only master account and answers 404 `already_set_up` after
 setup is complete. HTTP validation trims and lowercases addresses; storage
-uniqueness and lookups are case-insensitive. User responses expose `id`,
-`email`, `nickname`, `role` and `createdAt`, never the password hash.
+uniqueness and lookups are case-insensitive. A password being set, at setup,
+for a new account, by a reset or as the `next` password, has 8 to 1024
+characters; a password checked against the account's, at login, as the
+`current` password or to start an email change, only has to be nonempty, so
+a wrong one answers 401 `invalid_credentials` rather than a validation error.
+User responses expose `id`, `email`, `nickname`, `role` and `createdAt`, never
+the password hash.
 
 - `PATCH /api/auth/me` takes `{ nickname }` (1–80 characters after trimming).
 - `PUT /api/auth/password` takes `{ current, next }` and checks the current password.
