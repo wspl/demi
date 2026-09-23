@@ -79,12 +79,9 @@ pub async fn http_failure(
 ) -> ProviderFailure {
     let status = response.status();
     let headers = response.headers().clone();
-    let body = match response.text().await {
-        Ok(body) => body,
-        // The status and headers still say what failed; the record keeps an
-        // empty body.
-        Err(_) => String::new(),
-    };
+    // The status and headers still say what failed; the record keeps an
+    // empty body.
+    let body = response.text().await.unwrap_or_default();
     ProviderFailure::refused(label, status, &headers, body, reader, clock.now())
 }
 

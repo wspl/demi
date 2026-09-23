@@ -224,7 +224,7 @@ reset time.
 | Part | Behavior |
 |---|---|
 | Probe | `GET /wham/usage` on the ChatGPT backend, with the authorization and `ChatGPT-Account-Id` headers a request carries. It reads `plan_type` and the `rate_limit` object's `primary_window` and `secondary_window`: `used_percent`, `limit_window_seconds` and `reset_at`. This is the request the Codex CLI makes for its own status. |
-| Observation | The `x-codex-primary-*` and `x-codex-secondary-*` headers, `used-percent`, `window-minutes` and `reset-at`, on every response of Codex's service, a refusal included. |
+| Observation | The `x-codex-primary-*` and `x-codex-secondary-*` headers, `used-percent`, `window-minutes` and `reset-at`, on every response of Codex's service, the answer to a WebSocket handshake and a refusal included. |
 | Windows | `primary` and `secondary`, as percentages, labeled by their length: `Weekly` for one week and `Daily` for one day, otherwise the length in the largest unit that divides it evenly, such as `5-hour`, `3-day`, `2-week` or `90-minute`, and `Primary` or `Secondary` when the length is unknown. Both paths use the same labels, so a window keeps its name whichever path saw it last. |
 | Plan | `plan_type`, such as `plus`, `pro` or `team`, shown with underscores as spaces and a capital first letter. |
 | Account label | The account's label. |

@@ -7,11 +7,11 @@ use demi_core::{FailureSource, ProviderErrorDiagnostics, TokenUsage};
 use demi_provider::{
     ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ToolCall, encode_body,
     http_failure, read_http_failure,
-    wire::{ReportedString, decode_untagged, sse_data, undecodable},
+    wire::{NonEmpty, ReportedString, decode_untagged, sse_data, undecodable},
 };
 use futures_util::{Stream, StreamExt};
 use reqwest::header::{ACCEPT, CONTENT_TYPE};
-use serde::{Deserialize, Deserializer, de};
+use serde::Deserialize;
 
 use crate::{SIGNATURE_TAG, Shared, request};
 
@@ -157,16 +157,19 @@ impl Mapper {
                 if !self.thinking_open {
                     out.push(ProviderEvent::ThinkingStart);
                 }
-                out.push(ProviderEvent::ThinkingSignature(format!("{SIGNATURE_TAG}{signature}")));
+                out.push(ProviderEvent::ThinkingSignature(format!(
+                    "{SIGNATURE_TAG}{signature}"
+                )));
             }
             // A call without an id gets a unique one, so it never repeats an
             // id already in the transcript.
+            let name = call.name.0;
             let tool_use_id = call
                 .id
-                .unwrap_or_else(|| format!("{}_{}", call.name, uuid::Uuid::new_v4()));
+                .unwrap_or_else(|| format!("{name}_{}", uuid::Uuid::new_v4()));
             out.push(ProviderEvent::ToolCall(ToolCall {
                 tool_use_id,
-                tool_name: call.name,
+                tool_name: name,
                 input: call.args.unwrap_or_else(|| serde_json::json!({})),
             }));
             self.thinking_open = false;
@@ -183,7 +186,9 @@ impl Mapper {
             return;
         }
         if let Some(signature) = part.thought_signature.filter(|_| self.thinking_open) {
-            out.push(ProviderEvent::ThinkingSignature(format!("{SIGNATURE_TAG}{signature}")));
+            out.push(ProviderEvent::ThinkingSignature(format!(
+                "{SIGNATURE_TAG}{signature}"
+            )));
         }
         if let Some(text) = part.text.filter(|text| !text.is_empty()) {
             self.thinking_open = false;
@@ -260,8 +265,7 @@ struct ResponsePart {
 
 #[derive(Deserialize)]
 struct FunctionCallPart {
-    #[serde(deserialize_with = "nonempty")]
-    name: String,
+    name: NonEmpty,
     #[serde(default)]
     args: Option<serde_json::Value>,
     #[serde(default)]
@@ -287,7 +291,8 @@ impl UsageMetadata {
     fn token_usage(&self) -> TokenUsage {
         TokenUsage {
             input_tokens: self.prompt_token_count.unwrap_or(0),
-            output_tokens: self.candidates_token_count.unwrap_or(0) + self.thoughts_token_count.unwrap_or(0),
+            output_tokens: self.candidates_token_count.unwrap_or(0)
+                + self.thoughts_token_count.unwrap_or(0),
             cache_read_tokens: self.cached_content_token_count.unwrap_or(0),
             cache_write_tokens: 0,
         }
@@ -300,12 +305,4 @@ struct ChunkError {
     status: ReportedString,
     #[serde(default)]
     message: ReportedString,
-}
-
-fn nonempty<'de, D: Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
-    let text = String::deserialize(deserializer)?;
-    if text.is_empty() {
-        return Err(de::Error::invalid_length(0, &"a nonempty string"));
-    }
-    Ok(text)
 }
