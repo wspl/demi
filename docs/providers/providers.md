@@ -138,11 +138,11 @@ over server-sent events instead; a failure after the first event is the run's
 failure. A WebSocket that cannot connect at all, because its connection fails
 or times out, sends the provider's later requests over server-sent events at
 once, so that a network that blocks WebSockets does not cost every request a
-failed connect. The WebSocket connect waits at most 10 seconds, and a server-sent
-events request waits at most 20 seconds for its response headers. The WebSocket
-client is tokio-tungstenite, because the handshake must carry Codex's own
-headers. Grok Build sends Chat Completions through the chat proxy that Grok's
-own CLI uses.
+failed connect. The WebSocket connect waits at most 10 seconds, and a
+server-sent events request waits at most 20 seconds for its response headers.
+The WebSocket client is tokio-tungstenite, because the handshake must carry
+Codex's own headers. Grok Build sends Chat Completions through the chat proxy
+that Grok's own CLI uses.
 
 ## Provider contract
 
@@ -479,11 +479,11 @@ refresh turn only saves needless vendor calls within one backend.
 |---|---|
 | `codex` | A request was refused with HTTP 401 and its access token is still the stored one, or the stored access token expires within 5 minutes, or the sign-in was last refreshed 8 or more days ago |
 | `grok-build` | A request was refused with HTTP 401 and its access token is still the stored one, or the stored access token expires within 5 minutes; a sign-in without a refresh token is used as it is |
+| `claude-code` | Never: a setup token is used as it is |
 
 A refused request names the token it was refused with, so a refresher that
 waited behind another finds the other's new tokens no longer due and uses
 them.
-| `claude-code` | Never: a setup token is used as it is |
 
 ### An account is the unit
 
@@ -537,8 +537,8 @@ which refuses the vendors' token responses: they omit `token_type` and state
   once a second, continues on `authorization_pending`, waits 5 seconds longer
   after `slow_down`, and ends the login on any other error. Once the user
   confirms, it reads the user's ID and email from the chat proxy's `/v1/user`
-  when that answers. Tokens that act for a team or organization make it the
-  account's user, without an email.
+  when that answers. When the tokens act for a team or organization, the team
+  or organization is the account's user, and the account has no email.
 
 A flow authenticates against a staged pool held in memory; nothing is stored
 until it completes. Completion is one control-store transaction:
@@ -556,8 +556,9 @@ its OAuth client.
 
 A flow that loses the uniqueness check, fails or is cancelled has stored
 nothing, so there is nothing to clean up. A device login expires after ten
-minutes, whatever the vendor's code allows. Cancelling a login stops it at once, even while it waits between
-polls, and backend shutdown cancels and drains active flows. Logging into an
+minutes, whatever the vendor's code allows. Cancelling a login stops it at
+once, even while it waits between polls, and backend shutdown cancels and
+drains active flows. Logging into an
 existing entry reserves the entry until the login completes or fails; another
 change to the entry meanwhile is refused as busy. A failed token import answers
 with a fixed message that never contains the supplied token.
