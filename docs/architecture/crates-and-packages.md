@@ -686,8 +686,8 @@ gates -> none
 artifact -> none
 provider -> core, gates
 provider-anthropic-api -> core, provider
-provider-openai-api -> provider
-provider-google -> provider
+provider-openai-api -> core, provider
+provider-google -> core, provider
 provider-codex -> provider
 provider-grok-build -> provider
 provider-claude-code -> provider, shell
