@@ -196,3 +196,19 @@ async fn an_error_event_ends_the_run_with_its_classified_failure() {
         assert_eq!((failure.message.as_str(), failure.code.clone()), (message, code), "{frame}");
     }
 }
+
+#[tokio::test]
+async fn every_stop_reason_ends_the_run_with_its_response() {
+    // A stop reason says why the model stopped; it is not a failure, and the
+    // calls a stopped turn made are still the turn's calls.
+    for reason in ["end_turn", "tool_use", "max_tokens", "stop_sequence", "refusal", "pause_turn"] {
+        let events = events_of(recorded(&[
+            delta(0, json!({ "type": "text_delta", "text": "done" })),
+            json!({ "type": "message_delta", "delta": { "stop_reason": reason }, "usage": { "output_tokens": 2 } }),
+            message_stop(),
+        ]))
+        .await;
+        let usage = TokenUsage { output_tokens: 2, ..TokenUsage::default() };
+        assert_eq!(events, [ProviderEvent::TextDelta("done".into()), ProviderEvent::Response(usage)], "{reason}");
+    }
+}
