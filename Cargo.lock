@@ -1073,6 +1073,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "demi-artifact"
+version = "0.1.3"
+dependencies = [
+ "bytes",
+ "demi-artifact",
+ "futures-util",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "zip",
+]
+
+[[package]]
 name = "demi-builtin-protocol"
 version = "0.1.3"
 dependencies = [
@@ -1179,6 +1197,13 @@ dependencies = [
  "url",
  "uuid",
  "zip",
+]
+
+[[package]]
+name = "demi-gates"
+version = "0.1.3"
+dependencies = [
+ "tokio",
 ]
 
 [[package]]
