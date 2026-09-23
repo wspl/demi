@@ -36,7 +36,11 @@ pub struct RpcInvocation {
     pub stdin: bool,
     /// The pipes relayed for the call's standard input and output, which a
     /// handler that starts a job elsewhere can hand to it.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     pub pipes: Option<RelayedPipes>,
 }
 
@@ -44,7 +48,11 @@ pub struct RpcInvocation {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RelayedPipes {
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     pub stdin: Option<String>,
     pub stdout: String,
 }
@@ -52,7 +60,11 @@ pub struct RelayedPipes {
 /// The handler of an `rpc` leaf. Its exit code follows the call's standard
 /// output: the caller has read everything before the call exits.
 pub trait RpcHandler {
-    fn call(&self, invocation: RpcInvocation, port: RpcPort) -> LocalBoxFuture<'_, Result<u8, RpcError>>;
+    fn call(
+        &self,
+        invocation: RpcInvocation,
+        port: RpcPort,
+    ) -> LocalBoxFuture<'_, Result<u8, RpcError>>;
 }
 
 /// Why a handler gave up.
@@ -98,13 +110,19 @@ pub enum PortError {
 pub enum PortRequest {
     /// Standard output, which reaches the caller through the call's relayed
     /// pipe: the reply waits until the caller has read enough.
-    Stdout { bytes: B64Bytes },
-    Stderr { bytes: B64Bytes },
+    Stdout {
+        bytes: B64Bytes,
+    },
+    Stderr {
+        bytes: B64Bytes,
+    },
     /// The next chunk of a finite standard input.
     ReadStdin {},
     /// The next interactive write to the calling job, until it ends.
     ReadLiveStdin {},
-    Storage { op: StorageOp },
+    Storage {
+        op: StorageOp,
+    },
 }
 
 /// The reply to a [`PortRequest`].
@@ -123,7 +141,9 @@ pub enum PortResponse {
         #[serde(deserialize_with = "Option::deserialize")]
         bytes: Option<B64Bytes>,
     },
-    Storage { reply: StorageReply },
+    Storage {
+        reply: StorageReply,
+    },
 }
 
 /// An operation on the invoking agent node's command storage
@@ -146,7 +166,11 @@ pub enum StorageOp {
         key: String,
         #[serde(deserialize_with = "Option::deserialize")]
         value: Option<Value>,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
         expected: Option<Revision>,
     },
 }
@@ -165,11 +189,17 @@ pub enum StorageReply {
         value: Option<Value>,
         revision: Revision,
     },
-    Keys { keys: Vec<String> },
+    Keys {
+        keys: Vec<String>,
+    },
     /// The write is the node's current version, `revision`.
-    Committed { revision: Revision },
+    Committed {
+        revision: Revision,
+    },
     /// Another write came first; the node is at `revision`.
-    Conflict { revision: Revision },
+    Conflict {
+        revision: Revision,
+    },
 }
 
 /// The version a node's command storage is at. Every committed write of any
@@ -215,13 +245,18 @@ impl RpcPort {
     /// The next chunk of the call's finite standard input; none at its end,
     /// or when the calling process has no pipe there.
     pub async fn read_stdin(&self) -> Result<Option<Bytes>, PortError> {
-        input(self.transport.request(PortRequest::ReadStdin {}).await?, "read_stdin")
+        input(
+            self.transport.request(PortRequest::ReadStdin {}).await?,
+            "read_stdin",
+        )
     }
 
     /// The next interactive write to the calling job; none once it ended.
     pub async fn read_live_stdin(&self) -> Result<Option<Bytes>, PortError> {
         input(
-            self.transport.request(PortRequest::ReadLiveStdin {}).await?,
+            self.transport
+                .request(PortRequest::ReadLiveStdin {})
+                .await?,
             "read_live_stdin",
         )
     }
@@ -244,14 +279,17 @@ impl RpcPort {
         F: FnMut(Option<T>) -> Result<T, RpcError>,
     {
         loop {
-            let (stored, revision) = match self.storage(StorageOp::Read { key: key.into() }).await? {
+            let (stored, revision) = match self.storage(StorageOp::Read { key: key.into() }).await?
+            {
                 StorageReply::Value { value, revision } => (value, revision),
                 other => return Err(unexpected_reply("read", &other).into()),
             };
             let current = stored
                 .map(serde_json::from_value::<T>)
                 .transpose()
-                .map_err(|error| RpcError::Failed(format!("stored {key} is unreadable: {error}")))?;
+                .map_err(|error| {
+                    RpcError::Failed(format!("stored {key} is unreadable: {error}"))
+                })?;
             let next = change(current)?;
             let value = serde_json::to_value(&next)
                 .map_err(|error| RpcError::Failed(format!("{key} cannot be stored: {error}")))?;
