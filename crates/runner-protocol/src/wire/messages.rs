@@ -80,7 +80,7 @@ pub enum Inbound {
     SpawnKill {
         spawn_id: String,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-        signal: Option<String>,
+        signal: Option<Signal>,
     },
     /// One job: `bash -c script` in `cwd` with exactly `env`. Its declared
     /// commands receive `context`; `stdin` and `stdout` attach the job's fd 0
@@ -110,7 +110,7 @@ pub enum Inbound {
     JobKill {
         job_id: String,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-        signal: Option<String>,
+        signal: Option<Signal>,
     },
     RpcStdinPull {
         call_id: String,
@@ -549,6 +549,30 @@ pub enum HelloErrorCode {
     Internal,
 }
 
+/// A signal a kill request names (`runner.md` § Host operations): one
+/// closed set that raw processes and jobs share.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Signal {
+    #[serde(rename = "SIGTERM")]
+    Terminate,
+    #[serde(rename = "SIGKILL")]
+    Kill,
+    #[serde(rename = "SIGINT")]
+    Interrupt,
+    #[serde(rename = "SIGHUP")]
+    Hangup,
+    #[serde(rename = "SIGQUIT")]
+    Quit,
+    #[serde(rename = "SIGUSR1")]
+    User1,
+    #[serde(rename = "SIGUSR2")]
+    User2,
+    #[serde(rename = "SIGSTOP")]
+    Stop,
+    #[serde(rename = "SIGCONT")]
+    Continue,
+}
+
 /// A managed guest's writable volume.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -801,6 +825,7 @@ pub struct LogLine {
 
 // Closed sets display as the wire spells them, for logs.
 serde_plain::derive_display_from_serialize!(HelloErrorCode);
+serde_plain::derive_display_from_serialize!(Signal);
 serde_plain::derive_display_from_serialize!(VolumeName);
 serde_plain::derive_display_from_serialize!(OutputStream);
 serde_plain::derive_display_from_serialize!(NetErrorCode);

@@ -6,7 +6,7 @@ use std::{collections::BTreeMap, time::Duration};
 
 use demi_command_service::protocol::{CommandCaller, CommandContext, CommandLocale};
 use demi_runner::{
-    connection::wire::{FsResult, Inbound, OutputStream, Outbound},
+    connection::wire::{FsResult, Inbound, OutputStream, Outbound, Signal},
     testing::Host,
 };
 
@@ -39,7 +39,7 @@ async fn filesystem_requests_and_kill_remain_available_during_job() {
         );
         host.send(Inbound::JobKill {
             job_id: "live".into(),
-            signal: Some("SIGKILL".into()),
+            signal: Some(Signal::Kill),
         })
         .await;
         let exit = host.frame().await;

@@ -21,6 +21,9 @@ tokio-util.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+clap = { version = "4", features = ["derive", "env"] }
+hostname = "0.4"
+subtle = "2"
 process-wrap.workspace = true
 jsonschema = { version = "0.56", default-features = false }
 filetime = "0.2"

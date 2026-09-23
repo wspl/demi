@@ -1,4 +1,4 @@
-use demi_runner::connection::wire::{RetainedOutput, WireBytes};
+use demi_runner::connection::wire::{RetainedOutput, Signal, WireBytes};
 use demi_runner::{
     pipes::PipeClient,
     tasks::{JobConfig, JobTable, TaskCommand, TaskSpec, WorkId},
@@ -186,7 +186,7 @@ async fn cancellation_terminates_a_blocking_native_builtin() {
         Reply::Output { .. }
     ));
     table
-        .signal(&WorkId::Job("job".into()), "SIGKILL".into())
+        .signal(&WorkId::Job("job".into()), Signal::Kill)
         .unwrap();
     tokio::time::timeout(Duration::from_secs(3), async {
         while let Some(message) = receiver.recv().await {
@@ -211,11 +211,11 @@ async fn shell_cancellation_reports_the_requesting_signal() {
     use tokio_util::sync::CancellationToken;
 
     for signal in [
-        Some("SIGTERM"),
-        Some("SIGINT"),
-        Some("SIGHUP"),
-        Some("SIGQUIT"),
-        Some("SIGKILL"),
+        Some(Signal::Terminate),
+        Some(Signal::Interrupt),
+        Some(Signal::Hangup),
+        Some(Signal::Quit),
+        Some(Signal::Kill),
         None,
     ] {
         let root = tempfile::tempdir().unwrap();
@@ -230,20 +230,21 @@ async fn shell_cancellation_reports_the_requesting_signal() {
             .await
         .unwrap();
         wait_for_job_ready(&mut job).await;
-        assert!(job.signal("SIGUSR1").await.is_err());
+        assert!(job.signal(Signal::User1).await.is_err());
         assert!(!job.is_cancelled());
         if let Some(signal) = signal {
             job.signal(signal).await.unwrap();
             // Cleanup or repeated requests cannot replace the original cause.
-            job.signal("SIGKILL").await.unwrap();
+            job.signal(Signal::Kill).await.unwrap();
         } else {
             job.cancel();
-            job.signal("SIGTERM").await.unwrap();
+            job.signal(Signal::Terminate).await.unwrap();
         }
         let (exit, _) = tokio::time::timeout(Duration::from_secs(3), job.wait())
             .await
             .unwrap();
-        assert_eq!(exit.signal.as_deref(), Some(signal.unwrap_or("SIGKILL")));
+        let expected = signal.map_or("SIGKILL".to_owned(), |signal| signal.to_string());
+        assert_eq!(exit.signal, Some(expected));
         assert!(exit.error.is_none());
         assert_eq!(scope.tasks.len(), 0);
     }

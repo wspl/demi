@@ -558,13 +558,13 @@ impl Owner<'_> {
             Inbound::JobStdinEnd { job_id } => self.jobs.end_input(&WorkId::Job(job_id.clone())),
             Inbound::SpawnKill { spawn_id, signal } => self.jobs.signal(
                 &WorkId::Spawn(spawn_id.clone()),
-                signal.clone().unwrap_or_else(|| "SIGTERM".into()),
+                signal.unwrap_or(wire::Signal::Terminate),
             ),
             Inbound::JobKill { job_id, signal } => {
                 self.contexts.cancel(job_id);
                 self.jobs.signal(
                     &WorkId::Job(job_id.clone()),
-                    signal.clone().unwrap_or_else(|| "SIGTERM".into()),
+                    signal.unwrap_or(wire::Signal::Terminate),
                 )
             }
             _ => Err(io::Error::other("unexpected backend message")),
