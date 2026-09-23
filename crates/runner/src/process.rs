@@ -7,13 +7,17 @@ use std::{
 
 use bytes::Bytes;
 use process_wrap::tokio::{ChildWrapper, CommandWrap, KillOnDrop};
+use futures_util::StreamExt;
 use tokio::{
-    io::{AsyncRead, AsyncReadExt, AsyncWriteExt},
+    io::{AsyncRead, AsyncWriteExt},
     process::Command,
     sync::mpsc,
     task::JoinSet,
 };
 use tokio_util::sync::CancellationToken;
+
+/// The most one read of a process's output takes.
+const OUTPUT_CHUNK_BYTES: usize = 64 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct SpawnOptions {
@@ -256,24 +260,36 @@ impl Drop for ChildProcess {
     }
 }
 
+/// Sends one of the process's output streams to its owner, a chunk per read.
+/// Cancellation stops a read and a send alike, since the owner may have
+/// stopped taking chunks.
 async fn pump<T: AsyncRead + Unpin>(
-    mut input: T,
+    input: T,
     stream: OutputStream,
     output: mpsc::Sender<OutputChunk>,
     cancel: CancellationToken,
 ) -> io::Result<()> {
-    tokio::select! {
-        _ = cancel.cancelled() => Ok(()),
-        result = async {
-            let mut buffer = vec![0; 64 * 1024];
-            loop {
-                let count = input.read(&mut buffer).await?;
-                if count == 0 { return Ok(()); }
-                if output.send(OutputChunk { stream, bytes: Bytes::copy_from_slice(&buffer[..count]) }).await.is_err() {
-                    return Err(io::Error::new(io::ErrorKind::BrokenPipe, "process output consumer closed"));
+    let chunks = tokio_util::io::ReaderStream::with_capacity(input, OUTPUT_CHUNK_BYTES);
+    tokio::pin!(chunks);
+    loop {
+        let bytes = tokio::select! {
+            _ = cancel.cancelled() => return Ok(()),
+            bytes = chunks.next() => match bytes {
+                Some(bytes) => bytes?,
+                None => return Ok(()),
+            },
+        };
+        tokio::select! {
+            _ = cancel.cancelled() => return Ok(()),
+            sent = output.send(OutputChunk { stream, bytes }) => {
+                if sent.is_err() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::BrokenPipe,
+                        "process output consumer closed",
+                    ));
                 }
             }
-        } => result,
+        }
     }
 }
 
