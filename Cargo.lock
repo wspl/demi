@@ -1654,6 +1654,7 @@ dependencies = [
  "demi-command-tree",
  "garde",
  "rmp-serde",
+ "schemars",
  "serde",
  "serde_bytes",
  "serde_json",

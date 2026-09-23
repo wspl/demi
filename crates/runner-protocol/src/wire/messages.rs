@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use demi_command_service::protocol::{
     ArtifactLocation, CommandContext, EditCopies, EditKind, PackageDescriptor, digest, without_nul,
 };
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
@@ -722,13 +723,17 @@ pub enum Readdir {
     Entries(Vec<DirEntry>),
 }
 
-/// A working tree's changes, as `git status` lists them.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+/// A working tree's changes, as `git status` lists them. The browser
+/// receives it too, beside the directory it lists (`web-api.md` § File text
+/// and working tree changes).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[garde(allow_unvalidated)]
 pub struct GitChanges {
     pub repository: bool,
+    /// Always written, null before the first commit.
     #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(required)]
     pub head: Option<String>,
     #[garde(dive)]
     pub files: Vec<GitChange>,
@@ -737,7 +742,7 @@ pub struct GitChanges {
 }
 
 /// One path `git status` lists in a working tree.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[garde(allow_unvalidated)]
 pub struct GitChange {
@@ -749,12 +754,13 @@ pub struct GitChange {
     pub kind: ChangeKind,
     /// The path before a rename.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
     pub from: Option<String>,
     pub added: u64,
     pub removed: u64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ChangeKind {
     Added,
