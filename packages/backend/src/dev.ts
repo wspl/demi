@@ -3,9 +3,11 @@ import { nativePackageFixture } from '@demicodes/host-remote/testing'
 // master account set up, and one scripted provider whose model echoes the
 // message back. A message containing "fail" ends its turn with a provider
 // error, so the transcript's error record and its Retry can be exercised
-// without a real model. Run it with `bun run --conditions development
-// packages/backend/src/dev.ts`; the web dev server proxies to its URL through
-// `DEMI_BACKEND_URL`.
+// without a real model. Build the programs it starts with
+// `cargo build --workspace --all-targets --features demi-runner/test-fixtures`,
+// then run it with `DEMI_TEST_PROGRAMS=target/debug bun run --conditions
+// development packages/backend/src/dev.ts`; the web dev server proxies to its
+// URL through `DEMI_BACKEND_URL`.
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
