@@ -37,13 +37,16 @@ struct Fixture {
 impl Fixture {
     async fn new() -> Self {
         let directory = tempfile::tempdir().unwrap();
-        let body = json!({"roots": {"fixture": {"tree": {
+        let tree = json!({
             "name": "fixture", "summary": "Test callback.", "kind": "rpc", "runningHint": "Working",
             "input": {"type": "object", "properties": {"body": {"type": "string"}}, "required": ["body"]}, "stdinField": "body"
-        }}}, "packages": {}});
-        let hash = demi_command_service::protocol::canonical_digest(&body).unwrap();
-        let mut manifest = body;
-        manifest["hash"] = hash.into();
+        });
+        let manifest = demi_runner_protocol::manifest::Manifest::build(
+            [serde_json::from_value(tree).unwrap()],
+            [],
+        )
+        .unwrap();
+        let manifest = serde_json::to_value(manifest).unwrap();
         let pipes = PipeClient::new(&"http://127.0.0.1:1".parse().unwrap(), watch::Sender::new(None).subscribe()).unwrap();
         let dispatch = Dispatch::new(directory.path(), manifest, pipes).await;
         Self { directory, dispatch }

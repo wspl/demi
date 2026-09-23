@@ -153,13 +153,16 @@ async fn backend_commands_are_never_turned_away() {
     tokio::time::timeout(Duration::from_secs(60), async {
         let directory = tempfile::tempdir().unwrap();
         let cwd = directory.path().to_owned();
-        let body = json!({"roots": {"fixture": {"tree": {
+        let tree = json!({
             "name": "fixture", "summary": "Test callback.", "kind": "rpc", "runningHint": "Working",
             "input": {"type": "object", "properties": {"body": {"type": "string"}}, "required": ["body"]}, "stdinField": "body"
-        }}}, "packages": {}});
-        let hash = demi_command_service::protocol::canonical_digest(&body).unwrap();
-        let mut manifest = body;
-        manifest["hash"] = hash.into();
+        });
+        let manifest = demi_runner_protocol::manifest::Manifest::build(
+            [serde_json::from_value(tree).unwrap()],
+            [],
+        )
+        .unwrap();
+        let manifest = serde_json::to_value(manifest).unwrap();
         let pipes = PipeClient::new(&"http://127.0.0.1:1".parse().unwrap(), tokio::sync::watch::Sender::new(None).subscribe()).unwrap();
         let mut dispatch = Dispatch::new(&cwd, manifest, pipes).await;
         let mut outgoing = std::mem::replace(&mut dispatch.outgoing, mpsc::channel(1).1);
