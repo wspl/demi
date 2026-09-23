@@ -89,10 +89,11 @@ pub enum ServerFrame {
         #[garde(dive)]
         result: AbortResult,
     },
-    /// A running command's status and output, live.
+    /// A running command's status and output, live. Boxed because it is
+    /// the largest frame by far.
     ShellOutput {
         #[garde(dive)]
-        status: ShellStatus,
+        status: Box<ShellStatus>,
     },
     /// Acknowledges `shell_write`, after the `shell_output` it caused.
     ShellWriteResult {
