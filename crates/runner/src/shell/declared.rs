@@ -40,16 +40,12 @@ pub(super) fn execute(
         let stdin = Arc::new(invocation_file(&context, 0)?);
         let stdout = Arc::new(invocation_file(&context, 1)?);
         let stderr = Arc::new(invocation_file(&context, 2)?);
-        let raw = RawCommand {
-            context: commands.execution.id.clone(),
-            root: context.command_name,
-            argv: args
-                .into_iter()
-                .skip(1)
-                .map(|arg| arg.to_string())
-                .collect(),
-            live: crate::stdio::is_live(&stdin, &env)?,
-        };
+        let raw = RawCommand::new(
+            commands.execution.id.clone(),
+            context.command_name,
+            args.into_iter().skip(1).map(|arg| arg.to_string()).collect(),
+            crate::stdio::is_live(&stdin, &env)?,
+        )?;
         let cancellation = scope.cancellation.child_token();
         let _cancel_on_return = cancellation.drop_guard_ref();
         let input_scope = scope.with_cancellation(cancellation.clone());

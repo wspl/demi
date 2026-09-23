@@ -13,8 +13,12 @@ use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 pub const ENDPOINT_ENV: &str = "DEMI_RUNNER_ENDPOINT";
 pub const CONTEXT_ENV: &str = "DEMI_CONTEXT_ID";
 
+/// A command line a client forwards to the runner (`commands.md` § External
+/// command clients): the execution context it runs in, its root command and
+/// arguments, and whether its input is the job's live terminal. A request
+/// that breaks these rules is refused as it is read.
 #[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(deny_unknown_fields, try_from = "Request")]
 pub struct RawCommand {
     pub context: String,
     pub root: String,
@@ -22,20 +26,45 @@ pub struct RawCommand {
     pub live: bool,
 }
 
+/// A request as it arrives, before its check.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Request {
+    context: String,
+    root: String,
+    argv: Vec<String>,
+    live: bool,
+}
+
+impl TryFrom<Request> for RawCommand {
+    type Error = io::Error;
+
+    fn try_from(request: Request) -> io::Result<Self> {
+        RawCommand::new(request.context, request.root, request.argv, request.live)
+    }
+}
+
 impl RawCommand {
-    pub fn validate(&self) -> io::Result<()> {
-        if self.context.len() != 32
-            || !self.context.bytes().all(|byte| byte.is_ascii_hexdigit())
-            || self.root.is_empty()
-            || self.root.contains(['/', '\\', '\0'])
-            || self.argv.iter().any(|arg| arg.contains('\0'))
+    /// A request whose context is a context id, whose root is a single
+    /// command name, and whose arguments hold no NUL.
+    pub fn new(context: String, root: String, argv: Vec<String>, live: bool) -> io::Result<Self> {
+        if context.len() != 32
+            || !context.bytes().all(|byte| byte.is_ascii_hexdigit())
+            || root.is_empty()
+            || root.contains(['/', '\\', '\0'])
+            || argv.iter().any(|arg| arg.contains('\0'))
         {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "invalid local command request",
             ));
         }
-        Ok(())
+        Ok(Self {
+            context,
+            root,
+            argv,
+            live,
+        })
     }
 }
 

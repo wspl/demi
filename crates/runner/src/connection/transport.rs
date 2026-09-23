@@ -6,6 +6,7 @@
 use std::{io, time::Duration};
 
 use super::wire::{self, Frame, Inbound};
+use demi_runner_protocol::values::BackendUrl;
 use futures_util::{SinkExt, StreamExt};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -32,8 +33,10 @@ pub struct Transport {
     owner: Option<JoinHandle<io::Result<()>>>,
 }
 
-pub fn socket_url(backend: &str) -> io::Result<reqwest::Url> {
-    let mut url = crate::state::backend_url(backend)?;
+/// The backend's runner socket: its `ws`/`wss` form, at `/api/runner` unless
+/// the URL names another path.
+pub fn socket_url(backend: &BackendUrl) -> io::Result<reqwest::Url> {
+    let mut url = backend.url().clone();
     let scheme = match url.scheme() {
         "http" | "ws" => "ws",
         _ => "wss",
@@ -47,7 +50,7 @@ pub fn socket_url(backend: &str) -> io::Result<reqwest::Url> {
 }
 
 impl Transport {
-    pub async fn connect(backend: &str, cancel: CancellationToken) -> io::Result<Self> {
+    pub async fn connect(backend: &BackendUrl, cancel: CancellationToken) -> io::Result<Self> {
         let url = socket_url(backend)?;
         let config = WebSocketConfig::default()
             .max_message_size(Some(wire::MAX_MESSAGE_BYTES))

@@ -255,16 +255,7 @@ impl Relay {
                 (call_id, CallEvent::Stderr(bytes.0.clone().into()))
             }
             Inbound::RpcStdinPull { call_id } => (call_id, CallEvent::Pull),
-            Inbound::RpcExit { call_id, exit_code } => match u8::try_from(*exit_code) {
-                Ok(exit_code) => (call_id, CallEvent::Exit(exit_code)),
-                // A status no command can exit with ends the call.
-                Err(_) => {
-                    if let Some(call) = self.calls.get(call_id) {
-                        call.ended.cancel();
-                    }
-                    return true;
-                }
-            },
+            Inbound::RpcExit { call_id, exit_code } => (call_id, CallEvent::Exit(*exit_code)),
             Inbound::ArtifactLocation {
                 id,
                 location,
