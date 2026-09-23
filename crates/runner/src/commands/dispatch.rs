@@ -119,7 +119,7 @@ impl Dispatcher {
                 None
             };
             let parsed = parsed.validate(leaf, body).map_err(handler)?;
-            let output = CommandOutput::new(invocation.output, parsed.json);
+            let mut output = CommandOutput::new(invocation.output, parsed.json);
             let _hint = rpc::running_hint(
                 &context.connection,
                 &context.job_id,
@@ -154,7 +154,7 @@ impl Dispatcher {
                         .invoke(&request)
                         .await
                         .map_err(Failed::Service)?;
-                    native_exchange(input, response, invocation.input, output.clone()).await
+                    native_exchange(input, response, invocation.input, &mut output).await
                 };
                 match exchange.await {
                     Ok(code) => code,
@@ -183,7 +183,7 @@ impl Dispatcher {
                         finite: !raw.live && leaf.stdin_field.is_none(),
                     },
                     invocation.input,
-                    output.clone(),
+                    &mut output,
                     invocation.cancellation.clone(),
                 )
                 .await?
@@ -212,7 +212,7 @@ async fn native_exchange(
     mut sender: demi_command_service::CommandInput,
     mut response: demi_command_service::CommandOutput,
     mut input: Input,
-    output: CommandOutput,
+    output: &mut CommandOutput,
 ) -> Result<u8, Failed> {
     let (pull, mut demanded) = mpsc::channel::<()>(1);
     let send = async {

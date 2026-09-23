@@ -3,19 +3,25 @@
 use demi_command_service::{Handler, ServiceError, protocol::LocalInvocation};
 use std::io;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::watch,
+};
 use tokio_util::sync::CancellationToken;
 
-struct Activity {
-    count: AtomicUsize,
-    changed: tokio::sync::Notify,
+/// Counts one open client connection while it lives.
+struct ActiveConnection(watch::Sender<usize>);
+
+impl ActiveConnection {
+    fn new(active: &watch::Sender<usize>) -> Self {
+        active.send_modify(|count| *count += 1);
+        Self(active.clone())
+    }
 }
-struct ActiveConnection(Arc<Activity>);
+
 impl Drop for ActiveConnection {
     fn drop(&mut self) {
-        self.0.count.fetch_sub(1, Ordering::SeqCst);
-        self.0.changed.notify_waiters();
+        self.0.send_modify(|count| *count -= 1);
     }
 }
 
@@ -23,7 +29,8 @@ pub struct Server {
     endpoint: String,
     cancel: CancellationToken,
     owner: Option<tokio::task::JoinHandle<io::Result<()>>>,
-    activity: Arc<Activity>,
+    /// How many client connections are open.
+    active: watch::Sender<usize>,
 }
 
 impl Server {
@@ -32,11 +39,8 @@ impl Server {
         let endpoint = listener.endpoint().to_owned();
         let cancel = CancellationToken::new();
         let stop = cancel.clone();
-        let activity = Arc::new(Activity {
-            count: AtomicUsize::new(0),
-            changed: tokio::sync::Notify::new(),
-        });
-        let active = activity.clone();
+        let active = watch::Sender::new(0);
+        let counted = active.clone();
         let owner = tokio::spawn(async move {
             let mut connections = tokio::task::JoinSet::new();
             let mut backoff = demi_command_service::descriptors::Backoff::default();
@@ -47,8 +51,7 @@ impl Server {
                         match socket {
                             Ok(socket) => {
                                 backoff = demi_command_service::descriptors::Backoff::default();
-                                active.count.fetch_add(1, Ordering::SeqCst);
-                                let registration = ActiveConnection(active.clone());
+                                let registration = ActiveConnection::new(&counted);
                                 let handler = handler.clone();
                                 let cancel = stop.child_token();
                                 connections.spawn(async move {
@@ -90,7 +93,7 @@ impl Server {
             endpoint,
             cancel,
             owner: Some(owner),
-            activity,
+            active,
         })
     }
 
@@ -99,13 +102,9 @@ impl Server {
     }
 
     pub async fn wait_idle(&self) {
-        loop {
-            let changed = self.activity.changed.notified();
-            if self.activity.count.load(Ordering::SeqCst) == 0 {
-                return;
-            }
-            changed.await;
-        }
+        let mut active = self.active.subscribe();
+        // The server holds the sender, so the wait ends only at zero.
+        let _idle = active.wait_for(|count| *count == 0).await;
     }
 
     pub async fn close(mut self) -> io::Result<()> {

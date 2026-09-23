@@ -132,7 +132,7 @@ pub async fn invoke(
     pipes: &PipeClient,
     request: Request,
     input: Input,
-    output: CommandOutput,
+    output: &mut CommandOutput,
     cancel: CancellationToken,
 ) -> Result<u8, ServiceError> {
     let connection = request.context.connection.clone();
@@ -200,9 +200,10 @@ async fn exchange(
     request: &Request,
     mut events: mpsc::Receiver<CallEvent>,
     input: Input,
-    output: CommandOutput,
+    output: &mut CommandOutput,
     transport: &CallTransport<'_>,
 ) -> Result<u8, ServiceError> {
+    let errors = output.errors();
     let &CallTransport {
         id,
         output: connection,
@@ -231,7 +232,7 @@ async fn exchange(
                         .send(Some(stdout))
                         .map_err(|_| ServiceError::Cancelled)?;
                 }
-                CallEvent::Stderr(bytes) => output.stderr(bytes).await?,
+                CallEvent::Stderr(bytes) => errors.stderr(bytes).await?,
                 CallEvent::Pull if request.live => pull.try_send(()).map_err(|_| {
                     ServiceError::Handler("overlapping RPC stdin demands".into())
                 })?,

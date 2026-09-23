@@ -148,31 +148,36 @@ fn cancelled() -> io::Error {
     io::Error::new(io::ErrorKind::Interrupted, "pipe cancelled")
 }
 
-/// A request body that each connection attempt borrows. An attempt that fails
-/// before reading any of it leaves it whole for the next.
-struct RetryableBody<S>(Arc<Shared<S>>);
+/// A request body that connection attempts share: the first poll of an
+/// attempt takes the body, so an attempt that failed before reading any of it
+/// leaves it whole for the next, and one that read some leaves none.
+struct RetryableBody<S>(Arc<Slot<S>>);
 
-struct BodyAttempt<S>(Arc<Shared<S>>);
+/// The body until an attempt takes it. A std mutex: hyper polls the body on
+/// its connection's task while the retry loop checks the slot between
+/// attempts, and the lock is held only to take the body, once per attempt.
+type Slot<S> = std::sync::Mutex<Option<std::pin::Pin<Box<S>>>>;
 
-struct Shared<S> {
-    body: std::sync::Mutex<std::pin::Pin<Box<S>>>,
-    read: std::sync::atomic::AtomicBool,
+struct BodyAttempt<S> {
+    slot: Arc<Slot<S>>,
+    body: Option<std::pin::Pin<Box<S>>>,
 }
 
 impl<S> RetryableBody<S> {
     fn new(body: S) -> Self {
-        Self(Arc::new(Shared {
-            body: std::sync::Mutex::new(Box::pin(body)),
-            read: std::sync::atomic::AtomicBool::new(false),
-        }))
+        Self(Arc::new(std::sync::Mutex::new(Some(Box::pin(body)))))
     }
 
     fn attempt(&self) -> BodyAttempt<S> {
-        BodyAttempt(self.0.clone())
+        BodyAttempt {
+            slot: self.0.clone(),
+            body: None,
+        }
     }
 
+    /// Whether no attempt has read the body yet.
     fn unread(&self) -> bool {
-        !self.0.read.load(std::sync::atomic::Ordering::SeqCst)
+        self.0.lock().expect("the body slot is intact").is_some()
     }
 }
 
@@ -183,7 +188,14 @@ impl<S: Stream<Item = io::Result<Bytes>>> Stream for BodyAttempt<S> {
         self: std::pin::Pin<&mut Self>,
         context: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
-        self.0.read.store(true, std::sync::atomic::Ordering::SeqCst);
-        self.0.body.lock().unwrap().as_mut().poll_next(context)
+        let attempt = self.get_mut();
+        if attempt.body.is_none() {
+            attempt.body = attempt.slot.lock().expect("the body slot is intact").take();
+        }
+        match &mut attempt.body {
+            Some(body) => body.as_mut().poll_next(context),
+            // Attempts follow one another, and none follows one that read.
+            None => std::task::Poll::Ready(None),
+        }
     }
 }
