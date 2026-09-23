@@ -1,6 +1,6 @@
 //! Filesystem, working-tree and network requests for one backend connection.
 
-use std::{io, path::PathBuf, sync::Arc};
+use std::{future::Future, io, path::PathBuf, sync::Arc};
 
 use crate::connection::wire::{self as wire, Inbound};
 use tokio::sync::{Semaphore, mpsc};
@@ -54,73 +54,67 @@ impl HostServer {
         if message.fs_request_id().is_none() {
             return Err(io::Error::other("not a filesystem request"));
         }
-        if self.cancel.is_cancelled() {
-            return Err(io::Error::other("host connection closed"));
-        }
-        // Past the capacity a request waits for a slot (`runner.md` § Load).
-        let capacity = self.filesystem_capacity.clone();
-        let cancel = self.cancel.clone();
-        let output = self.output.clone();
         let cwd = self.default_cwd.clone();
-        self.filesystem.spawn(async move {
-            let _permit = tokio::select! {
-                permit = capacity.acquire_owned() => permit.expect("filesystem capacity is never closed"),
-                _ = cancel.cancelled() => return,
-            };
-            match crate::fs::handle(&message, &cwd, &cancel)
+        let cancel = self.cancel.clone();
+        self.admit(&self.filesystem_capacity, "filesystem", async move {
+            crate::fs::handle(&message, &cwd, &cancel)
                 .await
                 .expect("validated filesystem request")
-            {
-                Ok(reply) => {
-                    tokio::select! {
-                        _ = cancel.cancelled() => {},
-                        result = output.send(reply) => {
-                            if result.is_err() {
-                                // The connection owner has closed its receiver.
-                                cancel.cancel();
-                            }
-                        }
-                    }
-                }
-                Err(error) => {
-                    tracing::warn!(
-                        "filesystem response encoding failed: {error}"
-                    );
-                    cancel.cancel();
-                }
-            }
-        });
-        Ok(())
+        })
     }
 
-    /// Working-tree work rides the filesystem tracker with its own admission:
-    /// past eight requests in flight, later ones wait for a slot.
+    /// Working-tree work has its own admission: past eight requests in
+    /// flight, later ones wait for a slot.
     pub fn handle_git(&self, message: Inbound) -> io::Result<()> {
         if message.git_request_id().is_none() {
             return Err(io::Error::other("not a working-tree request"));
         }
+        if let Inbound::GitShow { .. } = message {
+            if self.cancel.is_cancelled() {
+                return Err(io::Error::other("host connection closed"));
+            }
+            return self.files.show(
+                message,
+                &self.default_cwd,
+                self.git.clone(),
+                self.git_capacity.clone(),
+            );
+        }
+        let cwd = self.default_cwd.clone();
+        let cancel = self.cancel.clone();
+        let git = self.git.clone();
+        self.admit(&self.git_capacity, "working-tree", async move {
+            crate::git::handle(&git, &message, &cwd, &cancel)
+                .await
+                .expect("validated working-tree request")
+        })
+    }
+
+    /// Runs `reply` once `capacity` has a slot (`runner.md` § Load) and sends
+    /// what it answers; a request whose connection closes while it waits or
+    /// runs ends without an answer.
+    fn admit(
+        &self,
+        capacity: &Arc<Semaphore>,
+        work: &'static str,
+        reply: impl Future<Output = Result<wire::Frame, wire::WireError>> + Send + 'static,
+    ) -> io::Result<()> {
         if self.cancel.is_cancelled() {
             return Err(io::Error::other("host connection closed"));
         }
-        let capacity = self.git_capacity.clone();
-        if let Inbound::GitShow { .. } = message {
-            return self
-                .files
-                .show(message, &self.default_cwd, self.git.clone(), capacity);
-        }
+        let capacity = capacity.clone();
         let cancel = self.cancel.clone();
         let output = self.output.clone();
-        let cwd = self.default_cwd.clone();
-        let git = self.git.clone();
         self.filesystem.spawn(async move {
             let _permit = tokio::select! {
-                permit = capacity.acquire_owned() => permit.expect("working-tree capacity is never closed"),
+                permit = capacity.acquire_owned() => permit.expect("request capacity is never closed"),
                 _ = cancel.cancelled() => return,
             };
-            match crate::git::handle(&git, &message, &cwd, &cancel)
-                .await
-                .expect("validated working-tree request")
-            {
+            let reply = tokio::select! {
+                _ = cancel.cancelled() => return,
+                reply = reply => reply,
+            };
+            match reply {
                 Ok(reply) => {
                     tokio::select! {
                         _ = cancel.cancelled() => {},
@@ -133,9 +127,7 @@ impl HostServer {
                     }
                 }
                 Err(error) => {
-                    tracing::warn!(
-                        "working-tree response encoding failed: {error}"
-                    );
+                    tracing::warn!("{work} response encoding failed: {error}");
                     cancel.cancel();
                 }
             }

@@ -24,6 +24,9 @@ pub struct Job {
     requested_signal: Arc<OnceLock<String>>,
 }
 
+/// The most one read of a job's output takes.
+const OUTPUT_CHUNK_BYTES: usize = 64 * 1024;
+
 /// A job's three pipes: the ends the interpreter uses and the runner's.
 struct Pipes {
     stdin: File,
@@ -331,7 +334,7 @@ fn pump(
         let _ = shell;
         tokio::spawn(async move {
             let mut pipe = tokio::net::unix::pipe::Receiver::from_file(file)?;
-            let mut buffer = vec![0; 64 * 1024];
+            let mut buffer = vec![0; OUTPUT_CHUNK_BYTES];
             loop {
                 let count = tokio::select! {
                     _ = cancel.cancelled() => return Err(cancelled()),
@@ -356,7 +359,7 @@ fn pump(
         shell.spawn_blocking(move || {
             let scope = Scope::new(cancel.clone(), None);
             let runtime = tokio::runtime::Handle::current();
-            let mut buffer = vec![0; 64 * 1024];
+            let mut buffer = vec![0; OUTPUT_CHUNK_BYTES];
             let result = (|| {
                 loop {
                     let count = scope.read(&file, &mut buffer)?;

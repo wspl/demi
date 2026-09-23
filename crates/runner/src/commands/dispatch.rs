@@ -17,6 +17,9 @@ use demi_command_service::{
 };
 use std::{future::Future, pin::Pin, sync::Arc};
 
+/// The most a command's body read from its standard input may hold.
+const BODY_BYTES: usize = 1024 * 1024;
+
 /// Runs the declared commands of live contexts, for the local endpoint and
 /// for declared builtins alike.
 #[derive(Clone)]
@@ -109,7 +112,7 @@ impl Dispatcher {
                 let mut bytes = Vec::new();
                 if !raw.live {
                     while let Some(chunk) = invocation.input.next().await? {
-                        if bytes.len() + chunk.len() > 1024 * 1024 {
+                        if bytes.len() + chunk.len() > BODY_BYTES {
                             return Err(handler("command body exceeds 1 MiB"));
                         }
                         bytes.extend_from_slice(&chunk);

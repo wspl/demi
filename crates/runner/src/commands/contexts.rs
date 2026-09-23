@@ -248,7 +248,7 @@ pub async fn install(
     >(brush_builtins::BuiltinSet::BashMode);
     for name in manifest.roots.keys() {
         if name == "demi-runner"
-            || crate::shell::utilities::NAMES.contains(&name.as_str())
+            || crate::shell::utilities::is_utility(name)
             || builtins.contains_key(name)
         {
             return Err(io::Error::other(format!("reserved root command: {name}")));
