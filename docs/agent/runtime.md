@@ -626,9 +626,12 @@ Content in `send`, `steer` and `edit_and_send` is typed. It is text, a
 `reference`, an `upload` of a file the page already uploaded
 (`{ type: "upload", ref, fileName }`), a `remote_file` on a paired device
 (`{ type: "remote_file", deviceId, path }`), or, in `edit_and_send`, what the
-edited message already holds: its `media` by blob reference and its
-attachment records by path (`{ type: "attachment", path }`)
-([Files the edit keeps](message-editing.md#files-the-edit-keeps)). No frame
+edited message already holds: its native media by blob reference
+(`{ type: "media", media: { type: "image", ref, mediaType } }`, a `video`
+alike, and a `document` with its `fileName`) and its attachment records by
+path (`{ type: "attachment", path }`)
+([Files the edit keeps](message-editing.md#files-the-edit-keeps)). A `send`
+or `steer` that holds `media` or `attachment` is an invalid frame. No frame
 carries file bytes. The backend
 resolves uploads and remote files before the session sees the content
 ([Media by reference](../backend/backend.md#media-by-reference),

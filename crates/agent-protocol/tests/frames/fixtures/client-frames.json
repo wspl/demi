@@ -1,0 +1,193 @@
+[
+  {
+    "type": "open",
+    "model": {
+      "providerId": "stub",
+      "model": {
+        "id": "stub-model",
+        "name": "Stub",
+        "contextWindow": 1000,
+        "inputLimit": null,
+        "outputLimit": null,
+        "thinking": [],
+        "acceptedExtensions": []
+      },
+      "thinking": null,
+      "serviceTierId": null
+    }
+  },
+  {
+    "type": "send",
+    "messageId": "msg-1",
+    "content": [
+      {
+        "type": "text",
+        "text": "Summarize the attached report."
+      },
+      {
+        "type": "reference",
+        "reference": "https://example.test/issue/7"
+      },
+      {
+        "type": "upload",
+        "ref": "0f8b8b8e-5a2e-4c1d-9b1e-2f0a8a3c6d10",
+        "fileName": "report.pdf"
+      },
+      {
+        "type": "remote_file",
+        "deviceId": "dev-1",
+        "path": "/home/me/notes.md"
+      }
+    ]
+  },
+  {
+    "type": "edit_and_send",
+    "request": {
+      "operationId": "edit-1",
+      "targetBlockId": "u1",
+      "version": {
+        "epoch": "epoch-1",
+        "revision": 12
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "Use the chart instead."
+        },
+        {
+          "type": "attachment",
+          "path": "/home/demi/.demi/attachments/c1/notes.txt"
+        },
+        {
+          "type": "media",
+          "media": {
+            "type": "image",
+            "ref": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+            "mediaType": "image/png"
+          }
+        },
+        {
+          "type": "media",
+          "media": {
+            "type": "video",
+            "ref": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+            "mediaType": "video/mp4"
+          }
+        },
+        {
+          "type": "media",
+          "media": {
+            "type": "document",
+            "ref": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+            "mediaType": "application/pdf",
+            "fileName": "spec.pdf"
+          }
+        },
+        {
+          "type": "upload",
+          "ref": "0f8b8b8e-5a2e-4c1d-9b1e-2f0a8a3c6d11",
+          "fileName": ".env.example"
+        }
+      ]
+    }
+  },
+  {
+    "type": "steer",
+    "steerId": "steer-1",
+    "content": [
+      {
+        "type": "text",
+        "text": "skip the flaky e2e suite"
+      }
+    ]
+  },
+  {
+    "type": "cancel_pending_steer",
+    "steerId": "steer-1"
+  },
+  {
+    "type": "dequeue_message",
+    "messageId": "msg-2"
+  },
+  {
+    "type": "send_queued_message",
+    "messageId": "msg-2"
+  },
+  {
+    "type": "steer_queued_message",
+    "messageId": "msg-2",
+    "steerId": "steer-2"
+  },
+  {
+    "type": "clear_message_queue"
+  },
+  {
+    "type": "set_provider",
+    "model": {
+      "providerId": "stub",
+      "model": {
+        "id": "stub-model",
+        "name": "Stub",
+        "contextWindow": 1000,
+        "inputLimit": null,
+        "outputLimit": null,
+        "thinking": [],
+        "acceptedExtensions": []
+      },
+      "thinking": null,
+      "serviceTierId": null
+    },
+    "apply": "immediate"
+  },
+  {
+    "type": "set_provider",
+    "model": {
+      "providerId": "stub",
+      "model": {
+        "id": "stub-model",
+        "name": "Stub",
+        "contextWindow": 1000,
+        "inputLimit": null,
+        "outputLimit": null,
+        "thinking": [],
+        "acceptedExtensions": []
+      },
+      "thinking": null,
+      "serviceTierId": null
+    }
+  },
+  {
+    "type": "abort"
+  },
+  {
+    "type": "abort_subagents"
+  },
+  {
+    "type": "abort_subagent",
+    "subagentId": "child-1"
+  },
+  {
+    "type": "retry"
+  },
+  {
+    "type": "resume"
+  },
+  {
+    "type": "compact"
+  },
+  {
+    "type": "shell_write",
+    "commandId": "cmd-1",
+    "stdin": "y\n"
+  },
+  {
+    "type": "shell_abort",
+    "commandId": "cmd-1"
+  },
+  {
+    "type": "sync_transcript"
+  },
+  {
+    "type": "close"
+  }
+]

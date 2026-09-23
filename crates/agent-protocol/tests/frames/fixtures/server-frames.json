@@ -1,0 +1,523 @@
+[
+  {
+    "type": "opened"
+  },
+  {
+    "type": "edit_result",
+    "operationId": "edit-1",
+    "outcome": {
+      "status": "accepted",
+      "turnId": "turn-9"
+    }
+  },
+  {
+    "type": "edit_result",
+    "operationId": "edit-2",
+    "outcome": {
+      "status": "rejected",
+      "reason": "The transcript changed since the edit began"
+    }
+  },
+  {
+    "type": "rejected",
+    "command": "retry",
+    "reason": "Session is busy (running)"
+  },
+  {
+    "type": "transcript_reset",
+    "blocks": [
+      {
+        "type": "text",
+        "id": "t1",
+        "createdAt": "2026-09-21T14:13:20.000Z",
+        "model": {
+          "providerId": "stub",
+          "model": {
+            "id": "stub-model",
+            "name": "Stub",
+            "contextWindow": 1000,
+            "inputLimit": null,
+            "outputLimit": null,
+            "thinking": [],
+            "acceptedExtensions": []
+          },
+          "thinking": null,
+          "serviceTierId": null
+        },
+        "text": "Hello"
+      },
+      {
+        "type": "error",
+        "id": "e1",
+        "createdAt": "2026-09-21T14:13:20.000Z",
+        "model": {
+          "providerId": "stub",
+          "model": {
+            "id": "stub-model",
+            "name": "Stub",
+            "contextWindow": 1000,
+            "inputLimit": null,
+            "outputLimit": null,
+            "thinking": [],
+            "acceptedExtensions": []
+          },
+          "thinking": null,
+          "serviceTierId": null
+        },
+        "message": "Usage limit reached",
+        "code": "rate_limit",
+        "diagnostics": {
+          "source": "stream",
+          "upstream": "{\"type\":\"error\",\"resets_in_seconds\":60}"
+        }
+      }
+    ],
+    "version": {
+      "epoch": "epoch-1",
+      "revision": 3
+    },
+    "failures": {
+      "e1": {
+        "retryAt": "2026-09-21T14:14:20.000Z"
+      }
+    }
+  },
+  {
+    "type": "transcript_reset",
+    "blocks": [],
+    "version": {
+      "epoch": "epoch-2",
+      "revision": 0
+    }
+  },
+  {
+    "type": "transcript_patch",
+    "patches": [
+      {
+        "op": "add",
+        "index": 1,
+        "value": {
+          "type": "text",
+          "id": "t2",
+          "createdAt": "2026-09-21T14:13:20.000Z",
+          "model": {
+            "providerId": "stub",
+            "model": {
+              "id": "stub-model",
+              "name": "Stub",
+              "contextWindow": 1000,
+              "inputLimit": null,
+              "outputLimit": null,
+              "thinking": [],
+              "acceptedExtensions": []
+            },
+            "thinking": null,
+            "serviceTierId": null
+          },
+          "text": ""
+        }
+      },
+      {
+        "op": "append_text",
+        "index": 1,
+        "delta": "Running the tests"
+      },
+      {
+        "op": "replace_block",
+        "index": 0,
+        "value": {
+          "type": "text",
+          "id": "t1",
+          "createdAt": "2026-09-21T14:13:20.000Z",
+          "model": {
+            "providerId": "stub",
+            "model": {
+              "id": "stub-model",
+              "name": "Stub",
+              "contextWindow": 1000,
+              "inputLimit": null,
+              "outputLimit": null,
+              "thinking": [],
+              "acceptedExtensions": []
+            },
+            "thinking": null,
+            "serviceTierId": null
+          },
+          "text": "Hello!"
+        }
+      },
+      {
+        "op": "remove",
+        "index": 1
+      },
+      {
+        "op": "replace",
+        "value": [
+          {
+            "type": "text",
+            "id": "t1",
+            "createdAt": "2026-09-21T14:13:20.000Z",
+            "model": {
+              "providerId": "stub",
+              "model": {
+                "id": "stub-model",
+                "name": "Stub",
+                "contextWindow": 1000,
+                "inputLimit": null,
+                "outputLimit": null,
+                "thinking": [],
+                "acceptedExtensions": []
+              },
+              "thinking": null,
+              "serviceTierId": null
+            },
+            "text": "Hello!"
+          }
+        ]
+      }
+    ],
+    "revision": 4
+  },
+  {
+    "type": "transcript_patch",
+    "patches": [
+      {
+        "op": "add",
+        "index": 2,
+        "value": {
+          "type": "error",
+          "id": "e1",
+          "createdAt": "2026-09-21T14:13:20.000Z",
+          "model": {
+            "providerId": "stub",
+            "model": {
+              "id": "stub-model",
+              "name": "Stub",
+              "contextWindow": 1000,
+              "inputLimit": null,
+              "outputLimit": null,
+              "thinking": [],
+              "acceptedExtensions": []
+            },
+            "thinking": null,
+            "serviceTierId": null
+          },
+          "message": "Usage limit reached",
+          "code": "rate_limit",
+          "diagnostics": {
+            "source": "stream",
+            "upstream": "{\"type\":\"error\",\"resets_in_seconds\":60}"
+          }
+        }
+      }
+    ],
+    "revision": 5,
+    "failures": {
+      "e1": {
+        "retryAt": null
+      }
+    }
+  },
+  {
+    "type": "phase",
+    "phase": "running"
+  },
+  {
+    "type": "queue",
+    "queue": [
+      {
+        "id": "msg-2",
+        "content": [
+          {
+            "type": "text",
+            "text": "next"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "pending_steers",
+    "pendingSteers": [
+      {
+        "id": "steer-1",
+        "turnId": "turn-1",
+        "model": {
+          "providerId": "stub",
+          "model": {
+            "id": "stub-model",
+            "name": "Stub",
+            "contextWindow": 1000,
+            "inputLimit": null,
+            "outputLimit": null,
+            "thinking": [],
+            "acceptedExtensions": []
+          },
+          "thinking": null,
+          "serviceTierId": null
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "skip it"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "steer_result",
+    "steerId": "steer-1",
+    "outcome": {
+      "status": "accepted"
+    }
+  },
+  {
+    "type": "steer_result",
+    "steerId": "steer-2",
+    "outcome": {
+      "status": "rejected",
+      "reason": "Queued message not found"
+    }
+  },
+  {
+    "type": "abort_result",
+    "result": {
+      "target": "active_tool",
+      "canAbortAgain": true
+    }
+  },
+  {
+    "type": "abort_result",
+    "result": {
+      "target": null,
+      "canAbortAgain": false
+    }
+  },
+  {
+    "type": "shell_output",
+    "status": {
+      "status": "running",
+      "shellId": "sh-1",
+      "commandId": "cmd-1",
+      "outputDir": "/home/demi/.demi/output/cmd-1",
+      "stdout": {
+        "path": "/home/demi/.demi/output/cmd-1/stdout",
+        "offset": 12,
+        "delta": "ok 12 tests\n",
+        "tail": "ok 12 tests\n",
+        "bytes": 12,
+        "truncated": false
+      },
+      "stderr": {
+        "offset": 0,
+        "delta": "",
+        "tail": "",
+        "bytes": 0,
+        "truncated": false
+      },
+      "output": {
+        "path": "/home/demi/.demi/output/cmd-1",
+        "offset": 12,
+        "text": "ok 12 tests\n",
+        "tail": "ok 12 tests\n",
+        "chunks": [
+          {
+            "stream": "stdout",
+            "text": "ok 12 tests\n"
+          }
+        ],
+        "bytes": 12,
+        "truncated": false
+      },
+      "runningMs": 1200,
+      "idleMs": 15,
+      "runningHint": "The server keeps running; read its log with shell_status."
+    }
+  },
+  {
+    "type": "shell_output",
+    "status": {
+      "status": "exited",
+      "shellId": "sh-1",
+      "commandId": "cmd-1",
+      "outputDir": "/home/demi/.demi/output/cmd-1",
+      "stdout": {
+        "path": "/home/demi/.demi/output/cmd-1/stdout",
+        "offset": 12,
+        "delta": "ok 12 tests\n",
+        "tail": "ok 12 tests\n",
+        "bytes": 12,
+        "truncated": false
+      },
+      "stderr": {
+        "offset": 0,
+        "delta": "",
+        "tail": "",
+        "bytes": 0,
+        "truncated": false
+      },
+      "output": {
+        "path": "/home/demi/.demi/output/cmd-1",
+        "offset": 12,
+        "text": "ok 12 tests\n",
+        "tail": "ok 12 tests\n",
+        "chunks": [
+          {
+            "stream": "stdout",
+            "text": "ok 12 tests\n"
+          }
+        ],
+        "bytes": 12,
+        "truncated": false
+      },
+      "runningMs": 1200,
+      "idleMs": 15,
+      "exitCode": 0,
+      "binaryStdout": {
+        "truncated": true,
+        "totalBytes": 20000000,
+        "limitBytes": 16777216
+      }
+    }
+  },
+  {
+    "type": "shell_output",
+    "status": {
+      "status": "aborted",
+      "shellId": "sh-1",
+      "commandId": "cmd-1",
+      "outputDir": "/home/demi/.demi/output/cmd-1",
+      "stdout": {
+        "path": "/home/demi/.demi/output/cmd-1/stdout",
+        "offset": 12,
+        "delta": "ok 12 tests\n",
+        "tail": "ok 12 tests\n",
+        "bytes": 12,
+        "truncated": false
+      },
+      "stderr": {
+        "offset": 0,
+        "delta": "",
+        "tail": "",
+        "bytes": 0,
+        "truncated": false
+      },
+      "output": {
+        "path": "/home/demi/.demi/output/cmd-1",
+        "offset": 12,
+        "text": "ok 12 tests\n",
+        "tail": "ok 12 tests\n",
+        "chunks": [
+          {
+            "stream": "stdout",
+            "text": "ok 12 tests\n"
+          }
+        ],
+        "bytes": 12,
+        "truncated": false
+      },
+      "runningMs": 1200,
+      "idleMs": 15
+    }
+  },
+  {
+    "type": "shell_write_result",
+    "commandId": "cmd-1"
+  },
+  {
+    "type": "retry_scheduled",
+    "attempt": 1,
+    "delayMs": 2000,
+    "code": "overloaded",
+    "diagnostics": {
+      "source": "http",
+      "httpStatus": 529
+    }
+  },
+  {
+    "type": "retry_scheduled",
+    "attempt": 2,
+    "delayMs": 4000,
+    "code": null
+  },
+  {
+    "type": "error",
+    "message": "invalid frame: unknown field `cwd`",
+    "code": "invalid_frame"
+  },
+  {
+    "type": "error",
+    "message": "The checkpoint could not be saved"
+  },
+  {
+    "type": "subagent",
+    "event": "started",
+    "job": {
+      "subagentId": "child-1",
+      "parentSessionId": "root",
+      "description": "Runs the tests",
+      "profile": null,
+      "phase": "running",
+      "startedAt": "2026-09-21T14:13:20.000Z",
+      "endedAt": null
+    }
+  },
+  {
+    "type": "subagent",
+    "event": "closed",
+    "job": {
+      "subagentId": "child-1",
+      "parentSessionId": "root",
+      "description": "Runs the tests",
+      "profile": null,
+      "phase": "completed",
+      "startedAt": "2026-09-21T14:13:20.000Z",
+      "endedAt": "2026-09-21T14:15:00.000Z",
+      "result": "All 12 tests pass."
+    }
+  },
+  {
+    "type": "subagent_transcript_reset",
+    "subagentId": "child-1",
+    "blocks": [
+      {
+        "type": "text",
+        "id": "ct1",
+        "createdAt": "2026-09-21T14:13:20.000Z",
+        "model": {
+          "providerId": "stub",
+          "model": {
+            "id": "stub-model",
+            "name": "Stub",
+            "contextWindow": 1000,
+            "inputLimit": null,
+            "outputLimit": null,
+            "thinking": [],
+            "acceptedExtensions": []
+          },
+          "thinking": null,
+          "serviceTierId": null
+        },
+        "text": "Working"
+      }
+    ],
+    "revision": 1
+  },
+  {
+    "type": "subagent_transcript_patch",
+    "subagentId": "child-1",
+    "patches": [
+      {
+        "op": "append_text",
+        "index": 0,
+        "delta": " on it"
+      }
+    ],
+    "revision": 2,
+    "failures": {}
+  },
+  {
+    "type": "closed"
+  }
+]

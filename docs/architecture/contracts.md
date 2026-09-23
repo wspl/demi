@@ -64,8 +64,10 @@ convention:
   `unwrap_or_skip`). A nullable field is always written, as `null` when empty,
   and its absence is refused (`Option<T>` decoded with `Option::deserialize`).
   The generated Zod schemas refuse the same values, so both ends agree.
-- Bytes are base64 strings (`B64Bytes`), and times are RFC 3339 strings
-  (`jiff::Timestamp`).
+- Bytes are base64 strings (`B64Bytes`). Times are RFC 3339 strings in UTC
+  with three fractional digits, such as `2026-09-21T14:13:20.000Z`, so that
+  the text of two times orders as the times do (`core`'s `Timestamp`, whole
+  milliseconds of a `jiff::Timestamp`); a finer time is refused.
 - Integers are integer types. An integer the browser reads is bounded to
   JavaScript's safe integer range.
 
@@ -169,6 +171,11 @@ Zod source and z.infer types
 - **Strict and tolerant objects.** A type the backend receives refuses unknown
   fields (`deny_unknown_fields`), and its schema is a strict object. A type the
   browser receives accepts unknown fields, and its schema is a tolerant object.
+  A type both ends receive is strict, because the backend's check guards
+  state: a model selection arrives in `open` and travels in every block, and
+  a block is read back from the conversation database and sent to the page.
+  So the server frames and their outcomes are tolerant, while the blocks and
+  selections they carry are strict.
 - **Checked on arrival.** `agent-client` validates every frame it receives, and
   `web` validates every REST response before applying it to state.
 - **One patch applier.** Transcript patches have one applier,

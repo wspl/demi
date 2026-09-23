@@ -1,0 +1,1796 @@
+[
+  {
+    "type": "user",
+    "id": "u1",
+    "createdAt": "2026-09-21T14:13:20.000Z",
+    "model": {
+      "providerId": "anthropic",
+      "model": {
+        "id": "claude-sonnet-4-5",
+        "name": "Claude Sonnet 4.5",
+        "contextWindow": 200000,
+        "inputLimit": null,
+        "outputLimit": 64000,
+        "thinking": [
+          {
+            "type": "adaptive",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "defaultEffort": "medium"
+          },
+          {
+            "type": "budget",
+            "minBudgetTokens": 1024,
+            "maxBudgetTokens": null,
+            "defaultBudgetTokens": null
+          },
+          {
+            "type": "effort",
+            "efforts": [
+              "low",
+              "high"
+            ],
+            "defaultEffort": null,
+            "summaries": [
+              "auto",
+              "detailed"
+            ],
+            "defaultSummary": "auto"
+          },
+          {
+            "type": "disabled"
+          }
+        ],
+        "acceptedExtensions": [
+          "png",
+          "jpg",
+          "jpeg",
+          "gif",
+          "webp",
+          "pdf"
+        ]
+      },
+      "thinking": {
+        "type": "adaptive",
+        "effort": "high"
+      },
+      "serviceTierId": null
+    },
+    "turnId": "turn-1",
+    "content": [
+      {
+        "type": "text",
+        "text": "Fix the failing test in the attached log."
+      },
+      {
+        "type": "image",
+        "source": {
+          "type": "binary",
+          "data": "iVBORw0KGgo=",
+          "mediaType": "image/png"
+        }
+      },
+      {
+        "type": "image",
+        "source": {
+          "type": "ref",
+          "ref": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "mediaType": "image/png"
+        }
+      },
+      {
+        "type": "image",
+        "source": {
+          "type": "url",
+          "url": "https://example.test/chart.png"
+        }
+      },
+      {
+        "type": "video",
+        "source": {
+          "type": "ref",
+          "ref": "60303ae22b998861bce3b28f33eec1be758a213c86c93c076dbe9f558c11c752",
+          "mediaType": "video/mp4"
+        }
+      },
+      {
+        "type": "document",
+        "source": {
+          "type": "binary",
+          "data": "JVBERi0xLjc=",
+          "mediaType": "application/pdf",
+          "fileName": "spec.pdf"
+        }
+      },
+      {
+        "type": "document",
+        "source": {
+          "type": "ref",
+          "ref": "60303ae22b998861bce3b28f33eec1be758a213c86c93c076dbe9f558c11c752",
+          "mediaType": "application/pdf",
+          "fileName": "spec.pdf"
+        }
+      },
+      {
+        "type": "reference",
+        "reference": "file:///home/demi/notes.md?host=laptop"
+      },
+      {
+        "type": "attachment",
+        "name": "build.log",
+        "path": "/home/demi/.demi/attachments/c1/build.log",
+        "mediaType": "text/plain",
+        "sizeBytes": 4096,
+        "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "snippet": "error: test failed"
+      }
+    ],
+    "preamble": "You are the root session."
+  },
+  {
+    "type": "user",
+    "id": "u2",
+    "createdAt": "2026-09-21T14:13:20.000Z",
+    "model": {
+      "providerId": "codex",
+      "model": {
+        "id": "gpt-5.5",
+        "name": "GPT-5.5",
+        "contextWindow": 272000,
+        "inputLimit": 272000,
+        "outputLimit": null,
+        "thinking": [
+          {
+            "type": "effort",
+            "efforts": [
+              "low",
+              "xhigh"
+            ],
+            "defaultEffort": "low",
+            "summaries": [],
+            "defaultSummary": null
+          }
+        ],
+        "acceptedExtensions": null
+      },
+      "thinking": {
+        "type": "effort",
+        "effort": "xhigh",
+        "summary": "concise"
+      },
+      "serviceTierId": "priority"
+    },
+    "turnId": "turn-2",
+    "content": [
+      {
+        "type": "attachment",
+        "name": "data.bin",
+        "path": "/home/demi/.demi/attachments/c1/data.bin",
+        "mediaType": "application/octet-stream",
+        "sizeBytes": 0,
+        "sha256": "60303ae22b998861bce3b28f33eec1be758a213c86c93c076dbe9f558c11c752"
+      }
+    ],
+    "preamble": null
+  },
+  {
+    "type": "context",
+    "id": "c1",
+    "createdAt": "2026-09-21T14:13:20.000Z",
+    "model": {
+      "providerId": "codex",
+      "model": {
+        "id": "gpt-5.5",
+        "name": "GPT-5.5",
+        "contextWindow": 272000,
+        "inputLimit": 272000,
+        "outputLimit": null,
+        "thinking": [
+          {
+            "type": "effort",
+            "efforts": [
+              "low",
+              "xhigh"
+            ],
+            "defaultEffort": "low",
+            "summaries": [],
+            "defaultSummary": null
+          }
+        ],
+        "acceptedExtensions": null
+      },
+      "thinking": {
+        "type": "budget",
+        "budgetTokens": 8000
+      },
+      "serviceTierId": null
+    },
+    "turnId": "turn-3",
+    "text": "The conversation now runs on the Cloud."
+  },
+  {
+    "type": "wakeup",
+    "id": "w1",
+    "createdAt": "2026-09-21T14:13:20.000Z",
+    "model": {
+      "providerId": "codex",
+      "model": {
+        "id": "gpt-5.5",
+        "name": "GPT-5.5",
+        "contextWindow": 272000,
+        "inputLimit": 272000,
+        "outputLimit": null,
+        "thinking": [
+          {
+            "type": "effort",
+            "efforts": [
+              "low",
+              "xhigh"
+            ],
+            "defaultEffort": "low",
+            "summaries": [],
+            "defaultSummary": null
+          }
+        ],
+        "acceptedExtensions": null
+      },
+      "thinking": {
+        "type": "disabled"
+      },
+      "serviceTierId": "priority"
+    },
+    "turnId": "turn-4",
+    "placement": "new_turn"
+  },
+  {
+    "type": "wakeup",
+    "id": "w2",
+    "createdAt": "2026-09-21T14:13:20.000Z",
+    "model": {
+      "providerId": "anthropic",
+      "model": {
+        "id": "claude-sonnet-4-5",
+        "name": "Claude Sonnet 4.5",
+        "contextWindow": 200000,
+        "inputLimit": null,
+        "outputLimit": 64000,
+        "thinking": [
+          {
+            "type": "adaptive",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "defaultEffort": "medium"
+          },
+          {
+            "type": "budget",
+            "minBudgetTokens": 1024,
+            "maxBudgetTokens": null,
+            "defaultBudgetTokens": null
+          },
+          {
+            "type": "effort",
+            "efforts": [
+              "low",
+              "high"
+            ],
+            "defaultEffort": null,
+            "summaries": [
+              "auto",
+              "detailed"
+            ],
+            "defaultSummary": "auto"
+          },
+          {
+            "type": "disabled"
+          }
+        ],
+        "acceptedExtensions": [
+          "png",
+          "jpg",
+          "jpeg",
+          "gif",
+          "webp",
+          "pdf"
+        ]
+      },
+      "thinking": {
+        "type": "adaptive",
+        "effort": "high"
+      },
+      "serviceTierId": null
+    },
+    "turnId": "turn-4",
+    "placement": "steer"
+  },
+  {
+    "type": "steer",
+    "id": "s1",
+    "createdAt": "2026-09-21T14:13:20.000Z",
+    "model": {
+      "providerId": "anthropic",
+      "model": {
+        "id": "claude-sonnet-4-5",
+        "name": "Claude Sonnet 4.5",
+        "contextWindow": 200000,
+        "inputLimit": null,
+        "outputLimit": 64000,
+        "thinking": [
+          {
+            "type": "adaptive",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "defaultEffort": "medium"
+          },
+          {
+            "type": "budget",
+            "minBudgetTokens": 1024,
+            "maxBudgetTokens": null,
+            "defaultBudgetTokens": null
+          },
+          {
+            "type": "effort",
+            "efforts": [
+              "low",
+              "high"
+            ],
+            "defaultEffort": null,
+            "summaries": [
+              "auto",
+              "detailed"
+            ],
+            "defaultSummary": "auto"
+          },
+          {
+            "type": "disabled"
+          }
+        ],
+        "acceptedExtensions": [
+          "png",
+          "jpg",
+          "jpeg",
+          "gif",
+          "webp",
+          "pdf"
+        ]
+      },
+      "thinking": {
+        "type": "adaptive",
+        "effort": "high"
+      },
+      "serviceTierId": null
+    },
+    "turnId": "turn-4",
+    "content": [
+      {
+        "type": "text",
+        "text": "skip the flaky e2e suite"
+      }
+    ]
+  },
+  {
+    "type": "agent_message",
+    "id": "m1",
+    "createdAt": "2026-09-21T14:13:20.000Z",
+    "model": {
+      "providerId": "anthropic",
+      "model": {
+        "id": "claude-sonnet-4-5",
+        "name": "Claude Sonnet 4.5",
+        "contextWindow": 200000,
+        "inputLimit": null,
+        "outputLimit": 64000,
+        "thinking": [
+          {
+            "type": "adaptive",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "defaultEffort": "medium"
+          },
+          {
+            "type": "budget",
+            "minBudgetTokens": 1024,
+            "maxBudgetTokens": null,
+            "defaultBudgetTokens": null
+          },
+          {
+            "type": "effort",
+            "efforts": [
+              "low",
+              "high"
+            ],
+            "defaultEffort": null,
+            "summaries": [
+              "auto",
+              "detailed"
+            ],
+            "defaultSummary": "auto"
+          },
+          {
+            "type": "disabled"
+          }
+        ],
+        "acceptedExtensions": [
+          "png",
+          "jpg",
+          "jpeg",
+          "gif",
+          "webp",
+          "pdf"
+        ]
+      },
+      "thinking": {
+        "type": "adaptive",
+        "effort": "high"
+      },
+      "serviceTierId": null
+    },
+    "turnId": "turn-4",
+    "message": {
+      "id": "m1",
+      "sender": {
+        "id": "child-1",
+        "description": "Runs the tests",
+        "round": 1790000000000
+      },
+      "recipientId": "root",
+      "timestamp": "2026-09-21T14:13:20.000Z",
+      "content": "The unit tests pass.",
+      "event": {
+        "type": "message"
+      }
+    }
+  },
+  {
+    "type": "agent_message",
+    "id": "subagent:child-1:1790000000000",
+    "createdAt": "2026-09-21T14:13:20.000Z",
+    "model": {
+      "providerId": "anthropic",
+      "model": {
+        "id": "claude-sonnet-4-5",
+        "name": "Claude Sonnet 4.5",
+        "contextWindow": 200000,
+        "inputLimit": null,
+        "outputLimit": 64000,
+        "thinking": [
+          {
+            "type": "adaptive",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "defaultEffort": "medium"
+          },
+          {
+            "type": "budget",
+            "minBudgetTokens": 1024,
+            "maxBudgetTokens": null,
+            "defaultBudgetTokens": null
+          },
+          {
+            "type": "effort",
+            "efforts": [
+              "low",
+              "high"
+            ],
+            "defaultEffort": null,
+            "summaries": [
+              "auto",
+              "detailed"
+            ],
+            "defaultSummary": "auto"
+          },
+          {
+            "type": "disabled"
+          }
+        ],
+        "acceptedExtensions": [
+          "png",
+          "jpg",
+          "jpeg",
+          "gif",
+          "webp",
+          "pdf"
+        ]
+      },
+      "thinking": {
+        "type": "adaptive",
+        "effort": "high"
+      },
+      "serviceTierId": null
+    },
+    "turnId": "turn-4",
+    "message": {
+      "id": "subagent:child-1:1790000000000",
+      "sender": {
+        "id": "child-1",
+        "description": "Runs the tests",
+        "round": 1790000000000
+      },
+      "recipientId": "root",
+      "timestamp": "2026-09-21T14:13:20.000Z",
+      "content": "",
+      "event": {
+        "type": "completion",
+        "outcome": "failed"
+      }
+    }
+  },
+  {
+    "type": "resume",
+    "id": "r1",
+    "createdAt": "2026-09-21T14:13:20.000Z",
+    "model": {
+      "providerId": "anthropic",
+      "model": {
+        "id": "claude-sonnet-4-5",
+        "name": "Claude Sonnet 4.5",
+        "contextWindow": 200000,
+        "inputLimit": null,
+        "outputLimit": 64000,
+        "thinking": [
+          {
+            "type": "adaptive",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "defaultEffort": "medium"
+          },
+          {
+            "type": "budget",
+            "minBudgetTokens": 1024,
+            "maxBudgetTokens": null,
+            "defaultBudgetTokens": null
+          },
+          {
+            "type": "effort",
+            "efforts": [
+              "low",
+              "high"
+            ],
+            "defaultEffort": null,
+            "summaries": [
+              "auto",
+              "detailed"
+            ],
+            "defaultSummary": "auto"
+          },
+          {
+            "type": "disabled"
+          }
+        ],
+        "acceptedExtensions": [
+          "png",
+          "jpg",
+          "jpeg",
+          "gif",
+          "webp",
+          "pdf"
+        ]
+      },
+      "thinking": {
+        "type": "adaptive",
+        "effort": "high"
+      },
+      "serviceTierId": null
+    },
+    "turnId": "turn-4"
+  },
+  {
+    "type": "abort",
+    "id": "a1",
+    "createdAt": "2026-09-21T14:13:20.000Z",
+    "model": {
+      "providerId": "anthropic",
+      "model": {
+        "id": "claude-sonnet-4-5",
+        "name": "Claude Sonnet 4.5",
+        "contextWindow": 200000,
+        "inputLimit": null,
+        "outputLimit": 64000,
+        "thinking": [
+          {
+            "type": "adaptive",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "defaultEffort": "medium"
+          },
+          {
+            "type": "budget",
+            "minBudgetTokens": 1024,
+            "maxBudgetTokens": null,
+            "defaultBudgetTokens": null
+          },
+          {
+            "type": "effort",
+            "efforts": [
+              "low",
+              "high"
+            ],
+            "defaultEffort": null,
+            "summaries": [
+              "auto",
+              "detailed"
+            ],
+            "defaultSummary": "auto"
+          },
+          {
+            "type": "disabled"
+          }
+        ],
+        "acceptedExtensions": [
+          "png",
+          "jpg",
+          "jpeg",
+          "gif",
+          "webp",
+          "pdf"
+        ]
+      },
+      "thinking": {
+        "type": "adaptive",
+        "effort": "high"
+      },
+      "serviceTierId": null
+    },
+    "isResumed": false
+  },
+  {
+    "type": "thinking",
+    "id": "th1",
+    "createdAt": "2026-09-21T14:13:20.000Z",
+    "model": {
+      "providerId": "anthropic",
+      "model": {
+        "id": "claude-sonnet-4-5",
+        "name": "Claude Sonnet 4.5",
+        "contextWindow": 200000,
+        "inputLimit": null,
+        "outputLimit": 64000,
+        "thinking": [
+          {
+            "type": "adaptive",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "defaultEffort": "medium"
+          },
+          {
+            "type": "budget",
+            "minBudgetTokens": 1024,
+            "maxBudgetTokens": null,
+            "defaultBudgetTokens": null
+          },
+          {
+            "type": "effort",
+            "efforts": [
+              "low",
+              "high"
+            ],
+            "defaultEffort": null,
+            "summaries": [
+              "auto",
+              "detailed"
+            ],
+            "defaultSummary": "auto"
+          },
+          {
+            "type": "disabled"
+          }
+        ],
+        "acceptedExtensions": [
+          "png",
+          "jpg",
+          "jpeg",
+          "gif",
+          "webp",
+          "pdf"
+        ]
+      },
+      "thinking": {
+        "type": "adaptive",
+        "effort": "high"
+      },
+      "serviceTierId": null
+    },
+    "text": "The test times out.",
+    "signature": "EqoBCkgIARABGAIiQL"
+  },
+  {
+    "type": "thinking",
+    "id": "th2",
+    "createdAt": "2026-09-21T14:13:20.000Z",
+    "model": {
+      "providerId": "anthropic",
+      "model": {
+        "id": "claude-sonnet-4-5",
+        "name": "Claude Sonnet 4.5",
+        "contextWindow": 200000,
+        "inputLimit": null,
+        "outputLimit": 64000,
+        "thinking": [
+          {
+            "type": "adaptive",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "defaultEffort": "medium"
+          },
+          {
+            "type": "budget",
+            "minBudgetTokens": 1024,
+            "maxBudgetTokens": null,
+            "defaultBudgetTokens": null
+          },
+          {
+            "type": "effort",
+            "efforts": [
+              "low",
+              "high"
+            ],
+            "defaultEffort": null,
+            "summaries": [
+              "auto",
+              "detailed"
+            ],
+            "defaultSummary": "auto"
+          },
+          {
+            "type": "disabled"
+          }
+        ],
+        "acceptedExtensions": [
+          "png",
+          "jpg",
+          "jpeg",
+          "gif",
+          "webp",
+          "pdf"
+        ]
+      },
+      "thinking": {
+        "type": "adaptive",
+        "effort": "high"
+      },
+      "serviceTierId": null
+    },
+    "text": "",
+    "signature": null
+  },
+  {
+    "type": "redacted_thinking",
+    "id": "rt1",
+    "createdAt": "2026-09-21T14:13:20.000Z",
+    "model": {
+      "providerId": "anthropic",
+      "model": {
+        "id": "claude-sonnet-4-5",
+        "name": "Claude Sonnet 4.5",
+        "contextWindow": 200000,
+        "inputLimit": null,
+        "outputLimit": 64000,
+        "thinking": [
+          {
+            "type": "adaptive",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "defaultEffort": "medium"
+          },
+          {
+            "type": "budget",
+            "minBudgetTokens": 1024,
+            "maxBudgetTokens": null,
+            "defaultBudgetTokens": null
+          },
+          {
+            "type": "effort",
+            "efforts": [
+              "low",
+              "high"
+            ],
+            "defaultEffort": null,
+            "summaries": [
+              "auto",
+              "detailed"
+            ],
+            "defaultSummary": "auto"
+          },
+          {
+            "type": "disabled"
+          }
+        ],
+        "acceptedExtensions": [
+          "png",
+          "jpg",
+          "jpeg",
+          "gif",
+          "webp",
+          "pdf"
+        ]
+      },
+      "thinking": {
+        "type": "adaptive",
+        "effort": "high"
+      },
+      "serviceTierId": null
+    },
+    "data": "EmwKAhgBEgy3va3pzix"
+  },
+  {
+    "type": "text",
+    "id": "t1",
+    "createdAt": "2026-09-21T14:13:20.000Z",
+    "model": {
+      "providerId": "anthropic",
+      "model": {
+        "id": "claude-sonnet-4-5",
+        "name": "Claude Sonnet 4.5",
+        "contextWindow": 200000,
+        "inputLimit": null,
+        "outputLimit": 64000,
+        "thinking": [
+          {
+            "type": "adaptive",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "defaultEffort": "medium"
+          },
+          {
+            "type": "budget",
+            "minBudgetTokens": 1024,
+            "maxBudgetTokens": null,
+            "defaultBudgetTokens": null
+          },
+          {
+            "type": "effort",
+            "efforts": [
+              "low",
+              "high"
+            ],
+            "defaultEffort": null,
+            "summaries": [
+              "auto",
+              "detailed"
+            ],
+            "defaultSummary": "auto"
+          },
+          {
+            "type": "disabled"
+          }
+        ],
+        "acceptedExtensions": [
+          "png",
+          "jpg",
+          "jpeg",
+          "gif",
+          "webp",
+          "pdf"
+        ]
+      },
+      "thinking": {
+        "type": "adaptive",
+        "effort": "high"
+      },
+      "serviceTierId": null
+    },
+    "text": "I will run the tests.",
+    "forkable": true
+  },
+  {
+    "type": "text",
+    "id": "t2",
+    "createdAt": "2026-09-21T14:13:20.000Z",
+    "model": {
+      "providerId": "anthropic",
+      "model": {
+        "id": "claude-sonnet-4-5",
+        "name": "Claude Sonnet 4.5",
+        "contextWindow": 200000,
+        "inputLimit": null,
+        "outputLimit": 64000,
+        "thinking": [
+          {
+            "type": "adaptive",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "defaultEffort": "medium"
+          },
+          {
+            "type": "budget",
+            "minBudgetTokens": 1024,
+            "maxBudgetTokens": null,
+            "defaultBudgetTokens": null
+          },
+          {
+            "type": "effort",
+            "efforts": [
+              "low",
+              "high"
+            ],
+            "defaultEffort": null,
+            "summaries": [
+              "auto",
+              "detailed"
+            ],
+            "defaultSummary": "auto"
+          },
+          {
+            "type": "disabled"
+          }
+        ],
+        "acceptedExtensions": [
+          "png",
+          "jpg",
+          "jpeg",
+          "gif",
+          "webp",
+          "pdf"
+        ]
+      },
+      "thinking": {
+        "type": "adaptive",
+        "effort": "high"
+      },
+      "serviceTierId": null
+    },
+    "text": "Running"
+  },
+  {
+    "type": "tool_call",
+    "id": "tc1",
+    "createdAt": "2026-09-21T14:13:20.000Z",
+    "model": {
+      "providerId": "anthropic",
+      "model": {
+        "id": "claude-sonnet-4-5",
+        "name": "Claude Sonnet 4.5",
+        "contextWindow": 200000,
+        "inputLimit": null,
+        "outputLimit": 64000,
+        "thinking": [
+          {
+            "type": "adaptive",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "defaultEffort": "medium"
+          },
+          {
+            "type": "budget",
+            "minBudgetTokens": 1024,
+            "maxBudgetTokens": null,
+            "defaultBudgetTokens": null
+          },
+          {
+            "type": "effort",
+            "efforts": [
+              "low",
+              "high"
+            ],
+            "defaultEffort": null,
+            "summaries": [
+              "auto",
+              "detailed"
+            ],
+            "defaultSummary": "auto"
+          },
+          {
+            "type": "disabled"
+          }
+        ],
+        "acceptedExtensions": [
+          "png",
+          "jpg",
+          "jpeg",
+          "gif",
+          "webp",
+          "pdf"
+        ]
+      },
+      "thinking": {
+        "type": "adaptive",
+        "effort": "high"
+      },
+      "serviceTierId": null
+    },
+    "toolUseId": "toolu_01",
+    "toolName": "shell_exec",
+    "input": "{\"script\":\"npm test\"",
+    "status": "executing",
+    "output": [],
+    "view": null
+  },
+  {
+    "type": "tool_call",
+    "id": "tc2",
+    "createdAt": "2026-09-21T14:13:20.000Z",
+    "model": {
+      "providerId": "anthropic",
+      "model": {
+        "id": "claude-sonnet-4-5",
+        "name": "Claude Sonnet 4.5",
+        "contextWindow": 200000,
+        "inputLimit": null,
+        "outputLimit": 64000,
+        "thinking": [
+          {
+            "type": "adaptive",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "defaultEffort": "medium"
+          },
+          {
+            "type": "budget",
+            "minBudgetTokens": 1024,
+            "maxBudgetTokens": null,
+            "defaultBudgetTokens": null
+          },
+          {
+            "type": "effort",
+            "efforts": [
+              "low",
+              "high"
+            ],
+            "defaultEffort": null,
+            "summaries": [
+              "auto",
+              "detailed"
+            ],
+            "defaultSummary": "auto"
+          },
+          {
+            "type": "disabled"
+          }
+        ],
+        "acceptedExtensions": [
+          "png",
+          "jpg",
+          "jpeg",
+          "gif",
+          "webp",
+          "pdf"
+        ]
+      },
+      "thinking": {
+        "type": "adaptive",
+        "effort": "high"
+      },
+      "serviceTierId": null
+    },
+    "toolUseId": "toolu_02",
+    "toolName": "shell_exec",
+    "input": "{\"script\":\"npm test\",\"description\":\"Tests pass\"}",
+    "status": "completed",
+    "output": [
+      {
+        "type": "text",
+        "text": "status: exited\nexitCode: 0"
+      },
+      {
+        "type": "image",
+        "source": {
+          "type": "binary",
+          "data": "iVBORw0KGgo=",
+          "mediaType": "image/png"
+        }
+      },
+      {
+        "type": "video",
+        "source": {
+          "type": "ref",
+          "ref": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "mediaType": "video/webm"
+        }
+      }
+    ],
+    "view": {
+      "kind": "shell",
+      "status": "exited",
+      "shellId": "sh-1",
+      "commandId": "cmd-1",
+      "exitCode": 0,
+      "runningMs": 1200,
+      "idleMs": 15,
+      "chunks": [
+        {
+          "stream": "stdout",
+          "text": "ok 12 tests\n"
+        },
+        {
+          "stream": "stderr",
+          "text": "warning: slow\n"
+        }
+      ],
+      "viewTruncated": false,
+      "files": [
+        {
+          "path": "/work/src/app.ts",
+          "kind": "modified",
+          "added": 3,
+          "removed": 1,
+          "edits": [
+            {
+              "kept": true
+            },
+            {
+              "kept": false
+            }
+          ]
+        },
+        {
+          "path": "/work/src/new.ts",
+          "kind": "added",
+          "added": 10,
+          "removed": 0,
+          "edits": [
+            {
+              "kept": true
+            }
+          ]
+        }
+      ],
+      "filesTruncated": false
+    }
+  },
+  {
+    "type": "tool_call",
+    "id": "tc3",
+    "createdAt": "2026-09-21T14:13:20.000Z",
+    "model": {
+      "providerId": "anthropic",
+      "model": {
+        "id": "claude-sonnet-4-5",
+        "name": "Claude Sonnet 4.5",
+        "contextWindow": 200000,
+        "inputLimit": null,
+        "outputLimit": 64000,
+        "thinking": [
+          {
+            "type": "adaptive",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "defaultEffort": "medium"
+          },
+          {
+            "type": "budget",
+            "minBudgetTokens": 1024,
+            "maxBudgetTokens": null,
+            "defaultBudgetTokens": null
+          },
+          {
+            "type": "effort",
+            "efforts": [
+              "low",
+              "high"
+            ],
+            "defaultEffort": null,
+            "summaries": [
+              "auto",
+              "detailed"
+            ],
+            "defaultSummary": "auto"
+          },
+          {
+            "type": "disabled"
+          }
+        ],
+        "acceptedExtensions": [
+          "png",
+          "jpg",
+          "jpeg",
+          "gif",
+          "webp",
+          "pdf"
+        ]
+      },
+      "thinking": {
+        "type": "adaptive",
+        "effort": "high"
+      },
+      "serviceTierId": null
+    },
+    "toolUseId": "toolu_03",
+    "toolName": "shell_exec",
+    "input": "{\"script\":\"make\"}",
+    "status": "error",
+    "output": [
+      {
+        "type": "text",
+        "text": "Repeated identical shell_exec suppressed."
+      }
+    ],
+    "view": {
+      "kind": "repeated_shell_exec",
+      "script": "make",
+      "count": 7
+    }
+  },
+  {
+    "type": "tool_call",
+    "id": "tc4",
+    "createdAt": "2026-09-21T14:13:20.000Z",
+    "model": {
+      "providerId": "anthropic",
+      "model": {
+        "id": "claude-sonnet-4-5",
+        "name": "Claude Sonnet 4.5",
+        "contextWindow": 200000,
+        "inputLimit": null,
+        "outputLimit": 64000,
+        "thinking": [
+          {
+            "type": "adaptive",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "defaultEffort": "medium"
+          },
+          {
+            "type": "budget",
+            "minBudgetTokens": 1024,
+            "maxBudgetTokens": null,
+            "defaultBudgetTokens": null
+          },
+          {
+            "type": "effort",
+            "efforts": [
+              "low",
+              "high"
+            ],
+            "defaultEffort": null,
+            "summaries": [
+              "auto",
+              "detailed"
+            ],
+            "defaultSummary": "auto"
+          },
+          {
+            "type": "disabled"
+          }
+        ],
+        "acceptedExtensions": [
+          "png",
+          "jpg",
+          "jpeg",
+          "gif",
+          "webp",
+          "pdf"
+        ]
+      },
+      "thinking": {
+        "type": "adaptive",
+        "effort": "high"
+      },
+      "serviceTierId": null
+    },
+    "toolUseId": "toolu_04",
+    "toolName": "shell_status",
+    "input": "{\"commandId\":\"cmd-2\"}",
+    "status": "completed",
+    "output": [
+      {
+        "type": "text",
+        "text": "status: running"
+      }
+    ],
+    "view": {
+      "kind": "shell",
+      "status": "running",
+      "shellId": "sh-1",
+      "commandId": "cmd-2",
+      "runningMs": 60000,
+      "idleMs": 2000,
+      "chunks": [],
+      "viewTruncated": true
+    }
+  },
+  {
+    "type": "tool_call",
+    "id": "tc5",
+    "createdAt": "2026-09-21T14:13:20.000Z",
+    "model": {
+      "providerId": "anthropic",
+      "model": {
+        "id": "claude-sonnet-4-5",
+        "name": "Claude Sonnet 4.5",
+        "contextWindow": 200000,
+        "inputLimit": null,
+        "outputLimit": 64000,
+        "thinking": [
+          {
+            "type": "adaptive",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "defaultEffort": "medium"
+          },
+          {
+            "type": "budget",
+            "minBudgetTokens": 1024,
+            "maxBudgetTokens": null,
+            "defaultBudgetTokens": null
+          },
+          {
+            "type": "effort",
+            "efforts": [
+              "low",
+              "high"
+            ],
+            "defaultEffort": null,
+            "summaries": [
+              "auto",
+              "detailed"
+            ],
+            "defaultSummary": "auto"
+          },
+          {
+            "type": "disabled"
+          }
+        ],
+        "acceptedExtensions": [
+          "png",
+          "jpg",
+          "jpeg",
+          "gif",
+          "webp",
+          "pdf"
+        ]
+      },
+      "thinking": {
+        "type": "adaptive",
+        "effort": "high"
+      },
+      "serviceTierId": null
+    },
+    "toolUseId": "toolu_05",
+    "toolName": "yield",
+    "input": "{\"durationMs\":120000}",
+    "status": "completed",
+    "output": [
+      {
+        "type": "text",
+        "text": "yield scheduled"
+      }
+    ],
+    "view": {
+      "kind": "yield_wakeup",
+      "wakeupId": "wk-1",
+      "durationMs": 120000
+    }
+  },
+  {
+    "type": "response",
+    "id": "re1",
+    "createdAt": "2026-09-21T14:13:20.000Z",
+    "model": {
+      "providerId": "anthropic",
+      "model": {
+        "id": "claude-sonnet-4-5",
+        "name": "Claude Sonnet 4.5",
+        "contextWindow": 200000,
+        "inputLimit": null,
+        "outputLimit": 64000,
+        "thinking": [
+          {
+            "type": "adaptive",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "defaultEffort": "medium"
+          },
+          {
+            "type": "budget",
+            "minBudgetTokens": 1024,
+            "maxBudgetTokens": null,
+            "defaultBudgetTokens": null
+          },
+          {
+            "type": "effort",
+            "efforts": [
+              "low",
+              "high"
+            ],
+            "defaultEffort": null,
+            "summaries": [
+              "auto",
+              "detailed"
+            ],
+            "defaultSummary": "auto"
+          },
+          {
+            "type": "disabled"
+          }
+        ],
+        "acceptedExtensions": [
+          "png",
+          "jpg",
+          "jpeg",
+          "gif",
+          "webp",
+          "pdf"
+        ]
+      },
+      "thinking": {
+        "type": "adaptive",
+        "effort": "high"
+      },
+      "serviceTierId": null
+    },
+    "usage": {
+      "inputTokens": 1200,
+      "outputTokens": 340,
+      "cacheReadTokens": 1000,
+      "cacheWriteTokens": 0
+    }
+  },
+  {
+    "type": "error",
+    "id": "e1",
+    "createdAt": "2026-09-21T14:13:20.000Z",
+    "model": {
+      "providerId": "anthropic",
+      "model": {
+        "id": "claude-sonnet-4-5",
+        "name": "Claude Sonnet 4.5",
+        "contextWindow": 200000,
+        "inputLimit": null,
+        "outputLimit": 64000,
+        "thinking": [
+          {
+            "type": "adaptive",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "defaultEffort": "medium"
+          },
+          {
+            "type": "budget",
+            "minBudgetTokens": 1024,
+            "maxBudgetTokens": null,
+            "defaultBudgetTokens": null
+          },
+          {
+            "type": "effort",
+            "efforts": [
+              "low",
+              "high"
+            ],
+            "defaultEffort": null,
+            "summaries": [
+              "auto",
+              "detailed"
+            ],
+            "defaultSummary": "auto"
+          },
+          {
+            "type": "disabled"
+          }
+        ],
+        "acceptedExtensions": [
+          "png",
+          "jpg",
+          "jpeg",
+          "gif",
+          "webp",
+          "pdf"
+        ]
+      },
+      "thinking": {
+        "type": "adaptive",
+        "effort": "high"
+      },
+      "serviceTierId": null
+    },
+    "message": "Rate limited",
+    "code": "rate_limit",
+    "diagnostics": {
+      "source": "http",
+      "clientRequestId": "req-1",
+      "providerRequestId": "req_01",
+      "httpStatus": 429,
+      "upstream": "{\"status\":429,\"headers\":[[\"retry-after\",\"120\"]],\"body\":\"{}\"}"
+    }
+  },
+  {
+    "type": "error",
+    "id": "e2",
+    "createdAt": "2026-09-21T14:13:20.000Z",
+    "model": {
+      "providerId": "anthropic",
+      "model": {
+        "id": "claude-sonnet-4-5",
+        "name": "Claude Sonnet 4.5",
+        "contextWindow": 200000,
+        "inputLimit": null,
+        "outputLimit": 64000,
+        "thinking": [
+          {
+            "type": "adaptive",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "defaultEffort": "medium"
+          },
+          {
+            "type": "budget",
+            "minBudgetTokens": 1024,
+            "maxBudgetTokens": null,
+            "defaultBudgetTokens": null
+          },
+          {
+            "type": "effort",
+            "efforts": [
+              "low",
+              "high"
+            ],
+            "defaultEffort": null,
+            "summaries": [
+              "auto",
+              "detailed"
+            ],
+            "defaultSummary": "auto"
+          },
+          {
+            "type": "disabled"
+          }
+        ],
+        "acceptedExtensions": [
+          "png",
+          "jpg",
+          "jpeg",
+          "gif",
+          "webp",
+          "pdf"
+        ]
+      },
+      "thinking": {
+        "type": "adaptive",
+        "effort": "high"
+      },
+      "serviceTierId": null
+    },
+    "message": "The agent session was shut down while this turn was running.",
+    "code": "interrupted"
+  },
+  {
+    "type": "error",
+    "id": "e3",
+    "createdAt": "2026-09-21T14:13:20.000Z",
+    "model": {
+      "providerId": "anthropic",
+      "model": {
+        "id": "claude-sonnet-4-5",
+        "name": "Claude Sonnet 4.5",
+        "contextWindow": 200000,
+        "inputLimit": null,
+        "outputLimit": 64000,
+        "thinking": [
+          {
+            "type": "adaptive",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "defaultEffort": "medium"
+          },
+          {
+            "type": "budget",
+            "minBudgetTokens": 1024,
+            "maxBudgetTokens": null,
+            "defaultBudgetTokens": null
+          },
+          {
+            "type": "effort",
+            "efforts": [
+              "low",
+              "high"
+            ],
+            "defaultEffort": null,
+            "summaries": [
+              "auto",
+              "detailed"
+            ],
+            "defaultSummary": "auto"
+          },
+          {
+            "type": "disabled"
+          }
+        ],
+        "acceptedExtensions": [
+          "png",
+          "jpg",
+          "jpeg",
+          "gif",
+          "webp",
+          "pdf"
+        ]
+      },
+      "thinking": {
+        "type": "adaptive",
+        "effort": "high"
+      },
+      "serviceTierId": null
+    },
+    "message": "Something failed",
+    "code": null,
+    "diagnostics": {
+      "source": "transport"
+    }
+  },
+  {
+    "type": "compaction_boundary",
+    "id": "cb1",
+    "createdAt": "2026-09-21T14:13:20.000Z",
+    "model": {
+      "providerId": "anthropic",
+      "model": {
+        "id": "claude-sonnet-4-5",
+        "name": "Claude Sonnet 4.5",
+        "contextWindow": 200000,
+        "inputLimit": null,
+        "outputLimit": 64000,
+        "thinking": [
+          {
+            "type": "adaptive",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "defaultEffort": "medium"
+          },
+          {
+            "type": "budget",
+            "minBudgetTokens": 1024,
+            "maxBudgetTokens": null,
+            "defaultBudgetTokens": null
+          },
+          {
+            "type": "effort",
+            "efforts": [
+              "low",
+              "high"
+            ],
+            "defaultEffort": null,
+            "summaries": [
+              "auto",
+              "detailed"
+            ],
+            "defaultSummary": "auto"
+          },
+          {
+            "type": "disabled"
+          }
+        ],
+        "acceptedExtensions": [
+          "png",
+          "jpg",
+          "jpeg",
+          "gif",
+          "webp",
+          "pdf"
+        ]
+      },
+      "thinking": {
+        "type": "adaptive",
+        "effort": "high"
+      },
+      "serviceTierId": null
+    },
+    "summary": "The user asked to fix the tests.",
+    "summaryTokens": 120
+  },
+  {
+    "type": "compaction_marker",
+    "id": "cm1",
+    "createdAt": "2026-09-21T14:13:20.000Z",
+    "model": {
+      "providerId": "anthropic",
+      "model": {
+        "id": "claude-sonnet-4-5",
+        "name": "Claude Sonnet 4.5",
+        "contextWindow": 200000,
+        "inputLimit": null,
+        "outputLimit": 64000,
+        "thinking": [
+          {
+            "type": "adaptive",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "defaultEffort": "medium"
+          },
+          {
+            "type": "budget",
+            "minBudgetTokens": 1024,
+            "maxBudgetTokens": null,
+            "defaultBudgetTokens": null
+          },
+          {
+            "type": "effort",
+            "efforts": [
+              "low",
+              "high"
+            ],
+            "defaultEffort": null,
+            "summaries": [
+              "auto",
+              "detailed"
+            ],
+            "defaultSummary": "auto"
+          },
+          {
+            "type": "disabled"
+          }
+        ],
+        "acceptedExtensions": [
+          "png",
+          "jpg",
+          "jpeg",
+          "gif",
+          "webp",
+          "pdf"
+        ]
+      },
+      "thinking": {
+        "type": "adaptive",
+        "effort": "high"
+      },
+      "serviceTierId": null
+    },
+    "boundaryId": "cb1",
+    "compactedTokens": 180000
+  }
+]
