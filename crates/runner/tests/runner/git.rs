@@ -345,8 +345,9 @@ async fn wait_for(service: &GitService, root: &Path, expected: &[(&str, ChangeKi
 async fn later_requests_follow_the_watch_and_a_commit_starts_over() {
     let (_dir, repo) = committed_repo();
     let service = GitService::default();
-    let first = changes(&service, &repo).await;
-    assert!(first.watched, "the watch starts with the first request");
+    // The first request starts the watch without waiting for it; a later one
+    // answers from it once it runs.
+    let first = poll(&service, &repo, |result| result.watched).await;
     assert!(first.files.is_empty());
 
     std::fs::write(repo.join("a.txt"), "1\n2\n3\nmore\n").unwrap();
@@ -421,8 +422,7 @@ async fn a_staged_rename_stays_one_entry_across_watched_requests() {
     let (_dir, repo) = committed_repo();
     git(&repo, &["mv", "a.txt", "moved.txt"]);
     let service = GitService::default();
-    let first = changes(&service, &repo).await;
-    assert!(first.watched);
+    let first = poll(&service, &repo, |result| result.watched).await;
     assert_eq!(statuses(&first), git_status(&repo));
 
     // Only the new path changes.
