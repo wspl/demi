@@ -1,13 +1,11 @@
 //! Managed volume growth and connection-owned filesystem flush work.
 
 use crate::connection::wire::{self, VolumeName};
-use std::{
-    collections::HashMap,
-    io,
-    path::PathBuf,
-    sync::{Arc, Mutex},
+use std::{collections::HashMap, io, path::PathBuf, sync::Arc};
+use tokio::{
+    sync::{Semaphore, mpsc},
+    task::JoinSet,
 };
-use tokio::sync::{Semaphore, mpsc};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 #[derive(Clone)]
@@ -21,10 +19,16 @@ enum Pending {
     Requested(String),
 }
 
+/// A connection's managed volumes (`managed-hosts.md` § Volume growth): at
+/// most one growth request per volume is outstanding. The connection owns
+/// this and drives the capacity checks it starts through `checked`.
 pub struct Volumes {
     blocks: Vec<ManagedVolume>,
-    pending: Arc<Mutex<HashMap<VolumeName, Pending>>>,
-    tasks: TaskTracker,
+    pending: HashMap<VolumeName, Pending>,
+    /// Capacity checks, each ending with its volume and the size to grow it
+    /// to, if it runs short.
+    checks: JoinSet<(VolumeName, Option<u64>)>,
+    syncs: TaskTracker,
     sync_capacity: Arc<Semaphore>,
     stop: CancellationToken,
     output: mpsc::Sender<wire::Frame>,
@@ -55,8 +59,9 @@ impl Volumes {
             blocks,
             output,
             stop,
-            pending: Arc::new(Mutex::new(HashMap::new())),
-            tasks: TaskTracker::new(),
+            pending: HashMap::new(),
+            checks: JoinSet::new(),
+            syncs: TaskTracker::new(),
             sync_capacity: Arc::new(Semaphore::new(4)),
         }
     }
@@ -70,7 +75,7 @@ impl Volumes {
             .collect();
         let output = self.output.clone();
         let stop = self.stop.clone();
-        self.tasks.spawn(async move {
+        self.syncs.spawn(async move {
             // Past the capacity a sync waits for a slot (`runner.md` § Load).
             let _permit = tokio::select! {
                 permit = capacity.acquire_owned() => permit.expect("sync capacity is never closed"),
@@ -89,21 +94,16 @@ impl Volumes {
         Ok(())
     }
 
-    /// At most one outstanding request per volume, until the manager reports filesystem growth.
-    pub fn poll(&self) {
+    /// Checks each volume without an outstanding request, and asks the
+    /// manager to grow one that runs short.
+    pub fn poll(&mut self) {
         for volume in &self.blocks {
-            let id = uuid::Uuid::new_v4().simple().to_string();
-            let mut pending = self.pending.lock().unwrap();
-            if pending.contains_key(&volume.name) {
+            if self.pending.contains_key(&volume.name) {
                 continue;
             }
-            pending.insert(volume.name.clone(), Pending::Checking);
-            drop(pending);
-            let pending = self.pending.clone();
-            let output = self.output.clone();
-            let stop = self.stop.clone();
+            self.pending.insert(volume.name.clone(), Pending::Checking);
             let volume = volume.clone();
-            self.tasks.spawn(async move {
+            self.checks.spawn(async move {
                 let mount = volume.mount.clone();
                 let result = tokio::task::spawn_blocking(move || {
                     usage(&mount).and_then(|(total, available)| growth_wanted(total, available))
@@ -111,31 +111,37 @@ impl Volumes {
                 .await
                 .map_err(io::Error::other)
                 .and_then(|result| result);
-                match result {
-                    Ok(Some(bytes)) => {
-                        pending
-                            .lock()
-                            .unwrap()
-                            .insert(volume.name.clone(), Pending::Requested(id.clone()));
-                        send(&output, wire::encode(&wire::Outbound::VolumeGrow {
-                            id,
-                            volume: volume.name,
-                            bytes,
-                        }), &stop).await;
-                    }
-                    outcome => {
-                        pending.lock().unwrap().remove(&volume.name);
-                        if let Err(error) = outcome {
-                            tracing::warn!("volume capacity check: {error}");
-                        }
-                    }
-                }
+                let wanted = result.unwrap_or_else(|error| {
+                    tracing::warn!("volume capacity check: {error}");
+                    None
+                });
+                (volume.name, wanted)
             });
         }
     }
 
+    /// Takes the next capacity check that ended and asks for growth when it
+    /// found the volume short, recording the request before sending it so
+    /// its answer finds it; `None` while no check runs.
+    pub async fn checked(&mut self) -> Option<()> {
+        let (volume, wanted) = self
+            .checks
+            .join_next()
+            .await?
+            .expect("capacity checks do not panic");
+        let Some(bytes) = wanted else {
+            self.pending.remove(&volume);
+            return Some(());
+        };
+        let id = uuid::Uuid::new_v4().simple().to_string();
+        self.pending.insert(volume.clone(), Pending::Requested(id.clone()));
+        let request = wire::encode(&wire::Outbound::VolumeGrow { id, volume, bytes });
+        send(&self.output, request, &self.stop).await;
+        Some(())
+    }
+
     pub fn grown(
-        &self,
+        &mut self,
         id: &str,
         name: VolumeName,
         bytes: u64,
@@ -144,31 +150,29 @@ impl Volumes {
         if !self.blocks.iter().any(|volume| volume.name == name) {
             return Err(io::Error::other("unknown managed volume"));
         }
-        let mut pending = self.pending.lock().unwrap();
-        if !matches!(pending.get(&name), Some(Pending::Requested(request)) if request == id) {
+        if !matches!(self.pending.get(&name), Some(Pending::Requested(request)) if request == id) {
             return Err(io::Error::other("unexpected volume growth response"));
         }
-        pending.remove(&name);
+        self.pending.remove(&name);
         if let Some(error) = error {
-            tracing::warn!(
-                "{name} growth to {bytes} bytes failed: {error}"
-            );
+            tracing::warn!("{name} growth to {bytes} bytes failed: {error}");
         }
         Ok(())
     }
 
-    pub async fn close(&self) {
+    pub async fn close(&mut self) {
         self.stop.cancel();
-        self.tasks.close();
-        self.tasks.wait().await;
-        self.pending.lock().unwrap().clear();
+        self.syncs.close();
+        self.checks.shutdown().await;
+        self.syncs.wait().await;
+        self.pending.clear();
     }
 }
 
 impl Drop for Volumes {
     fn drop(&mut self) {
         self.stop.cancel();
-        self.tasks.close();
+        self.syncs.close();
     }
 }
 

@@ -35,6 +35,9 @@ pub struct Scope {
     pub tasks: TaskTracker,
     pub commands: Option<CommandContext>,
     pub edits: Option<demi_command_service::edits::Recorder>,
+    /// The paths of the files the job opened for writing, by identity. A std
+    /// mutex: the synchronous hooks of the job's interpreter and utility
+    /// threads share it for short sections that never await.
     files: Arc<Mutex<HashMap<FileIdentity, PathBuf>>>,
 }
 
