@@ -5,6 +5,7 @@
 //! `shards.of(user).call(..)`: the closure is `Send`, the future it starts
 //! runs on the shard and need not be, and the answer is `Send`.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::future::Future;
 use std::io;
@@ -20,6 +21,7 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 use crate::backend::Services;
+use crate::usage::rate_limit::{REQUESTS_PER_WINDOW, RequestRateLimit};
 
 /// Where the shards run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,6 +42,12 @@ const QUEUE: usize = 256;
 pub(crate) struct Shard {
     user: UserId,
     services: Arc<Services>,
+    /// The HTTP client of the shard's thread, which the runtimes built here
+    /// send with: hyper ties a pooled connection to the runtime that made it.
+    http: reqwest::Client,
+    /// The user's request rate limit, which every runtime of the user's
+    /// conversations counts against.
+    rate_limit: Rc<RefCell<RequestRateLimit>>,
 }
 
 impl Shard {
@@ -49,6 +57,15 @@ impl Shard {
 
     pub(crate) fn services(&self) -> &Services {
         &self.services
+    }
+
+    pub(crate) fn http(&self) -> &reqwest::Client {
+        &self.http
+    }
+
+    #[expect(dead_code, reason = "the conversations' metered runtimes count against it")]
+    pub(crate) fn rate_limit(&self) -> &Rc<RefCell<RequestRateLimit>> {
+        &self.rate_limit
     }
 }
 
@@ -282,6 +299,7 @@ async fn spawn_thread(
 /// call and runs every call as a task of its own until the pool closes.
 async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
     let calls = TaskTracker::new();
+    let http = reqwest::Client::new();
     let mut shards: HashMap<UserId, Rc<Shard>> = HashMap::new();
     let mut closer = None;
     while let Some(message) = queue.recv().await {
@@ -293,6 +311,8 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
                         Rc::new(Shard {
                             user: user.clone(),
                             services: services.clone(),
+                            http: http.clone(),
+                            rate_limit: Rc::new(RefCell::new(RequestRateLimit::new(REQUESTS_PER_WINDOW))),
                         })
                     })
                     .clone();

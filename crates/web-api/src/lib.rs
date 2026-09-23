@@ -11,6 +11,9 @@
 pub mod auth;
 pub mod error;
 pub mod ids;
+pub mod providers;
+pub mod query;
 pub mod settings;
 pub mod state;
 pub mod text;
+pub mod usage;

@@ -57,7 +57,7 @@ impl ControlService {
 
     /// Runs `work` on the database thread with the time of the operation, in
     /// the whole milliseconds storage keeps.
-    async fn call<T: Send + 'static>(
+    pub(super) async fn call<T: Send + 'static>(
         &self,
         work: impl FnOnce(&mut Connection, Timestamp) -> Result<T, StorageError> + Send + 'static,
     ) -> Result<T, StorageError> {
@@ -465,10 +465,39 @@ fn later(now: Timestamp, by: SignedDuration) -> Result<Timestamp, StorageError> 
         .map_err(StorageError::Time)
 }
 
+/// What the tests of other modules start from.
+#[cfg(test)]
+pub(crate) mod testing {
+    use super::*;
+
+    /// The instance's master account, created in `control`.
+    pub(crate) async fn master(control: &ControlService) -> UserDto {
+        let hash = PasswordHash::parse(
+            "$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0$0mUbQTTMhhaEBFGMq7WTZxOlVoS9sY3qVqLiV7Q1Izo".to_owned(),
+        )
+        .unwrap();
+        let email = EmailAddress::try_from("master@example.test".to_owned()).unwrap();
+        control.create_master(email, hash).await.unwrap().unwrap()
+    }
+
+    /// Runs `sql` on the control database with text parameters, for a test
+    /// that changes a row behind the service's back.
+    pub(crate) async fn execute(control: &ControlService, sql: &'static str, parameters: Vec<String>) {
+        control
+            .call(move |connection, _| {
+                connection.execute(sql, rusqlite::params_from_iter(parameters))?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
 
+    use super::testing::master;
     use super::*;
     use crate::auth::sessions::{SESSION_POLICY, TokenHash};
 
@@ -486,15 +515,6 @@ mod tests {
             let mut now = self.0.lock().unwrap();
             *now = now.checked_add(by).unwrap();
         }
-    }
-
-    async fn master(control: &ControlService) -> UserDto {
-        let hash = PasswordHash::parse(
-            "$argon2id$v=19$m=19456,t=2,p=1$c2FsdHNhbHRzYWx0$0mUbQTTMhhaEBFGMq7WTZxOlVoS9sY3qVqLiV7Q1Izo".to_owned(),
-        )
-        .unwrap();
-        let email = EmailAddress::try_from("master@example.test".to_owned()).unwrap();
-        control.create_master(email, hash).await.unwrap().unwrap()
     }
 
     #[tokio::test]

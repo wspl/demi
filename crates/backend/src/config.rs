@@ -9,8 +9,12 @@ use demi_core::{Clock, SystemClock};
 use demi_web_api::settings::InstanceMode;
 use url::Url;
 
+use demi_provider::models_dev::ModelsDevClient;
+
 use crate::auth::email_change::AccountMail;
+use crate::llm::families::FamilyRegistry;
 use crate::shard::ShardPlacement;
+use crate::vault::logins::LoginTiming;
 use crate::vault::secret::InstanceSecret;
 
 /// The configuration as flags or `DEMI_*` variables. Each value's name in
@@ -121,10 +125,18 @@ pub struct BackendConfig {
     pub account_mail: Option<Arc<dyn AccountMail>>,
     pub clock: Arc<dyn Clock>,
     pub shards: ShardPlacement,
+    /// The provider families entries are assembled with.
+    pub families: FamilyRegistry,
+    /// Where the models.dev document is read.
+    pub models_dev_url: Url,
+    /// How long a device login waits for its user, and how long its result
+    /// is kept.
+    pub logins: LoginTiming,
 }
 
 impl BackendConfig {
-    /// A configuration on the system clock with one shard thread, no web
+    /// A configuration on the system clock with one shard thread, the
+    /// built-in families, the published models.dev document, no web
     /// directory and no mail sender.
     pub fn new(data_dir: PathBuf, address: SocketAddr, mode: InstanceMode) -> Self {
         Self {
@@ -136,6 +148,9 @@ impl BackendConfig {
             account_mail: None,
             clock: Arc::new(SystemClock),
             shards: ShardPlacement::Threads(NonZeroUsize::MIN),
+            families: FamilyRegistry::builtin(),
+            models_dev_url: ModelsDevClient::DEFAULT_URL.parse().expect("the models.dev address parses"),
+            logins: LoginTiming::default(),
         }
     }
 }
