@@ -3,16 +3,11 @@
 use std::borrow::Cow;
 use std::sync::LazyLock;
 
+use demi_core::trim;
 use garde::rules::length::utf16::HasUtf16CodeUnits;
 use regex::Regex;
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Serialize};
-
-/// `text` without the white space around it, as JavaScript's `trim` counts
-/// white space: `core`'s one test of blank text decides each character.
-fn trim(text: &str) -> &str {
-    text.trim_matches(|character: char| demi_core::is_blank(character.encode_utf8(&mut [0; 4])))
-}
 
 /// An email address as the product keeps it: trimmed and lowercased, at most
 /// 254 UTF-16 code units, and of the form the browser's schema accepts. The
