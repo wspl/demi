@@ -136,6 +136,12 @@ new message or for an edited one, shows the media type and the snippet on the
 file's capsule ([Attachments](product.md#attachments)), so the capsule shows
 what the backend determined.
 
+`GET /blobs/:sha256` serves a blob of the caller's own namespace, under the
+headers [Media by reference](../backend/backend.md#media-by-reference)
+gives it. A name that is not a SHA-256 in lowercase hexadecimal, or that the
+caller's namespace does not hold, answers 404 `not_found`, whoever else holds
+that name.
+
 Uploading alone stores a backend blob. A send, steer or edit frame names an
 upload in its content as `{ type: "upload", ref, fileName }`; the backend
 resolves the upload and writes the file to the selected Host's Demi
@@ -334,8 +340,12 @@ zone and languages the user's browser last reported, as
 `{ timeZone, languages }` with an IANA zone name and BCP 47 tags in preference
 order; the product sends it whenever either changes. A time zone the backend
 does not know, a malformed language tag, or more than 16 languages is
-rejected. The backend keeps each tag in its canonical form and each language
-once, in the reported order. Commands receive it in their
+rejected. The backend keeps the time zone in its IANA spelling, each tag in
+its canonical form and each language once, in the reported order: the report
+`{ timeZone: "asia/shanghai", languages: ["zh-cn", "EN", "zh-CN", "iw"] }` is
+kept as `{ timeZone: "Asia/Shanghai", languages: ["zh-CN", "en", "he"] }`,
+as the browser's `Intl.getCanonicalLocales` would write the tags. Commands
+receive it in their
 [command context](../execution/native-runtime.md#command-context), and the
 [conversation browser](../browser/browser.md#native-driver) starts with it.
 The backend reads, merges and writes in one transaction, preserving

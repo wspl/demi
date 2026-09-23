@@ -4,16 +4,16 @@
 
 mod auth;
 mod backend;
-mod clock;
 mod config;
 mod edge;
+mod settings;
 mod shard;
 mod storage;
+mod sync;
 mod vault;
 
 pub use auth::email_change::{AccountMail, MailError, VerificationMail};
 pub use backend::{Backend, ShutdownError, ShutdownErrors, StartError};
-pub use clock::{Clock, SystemClock};
 pub use config::{BackendConfig, Config, ConfigError};
 pub use shard::ShardPlacement;
 pub use vault::secret::{InstanceSecret, SecretError};
