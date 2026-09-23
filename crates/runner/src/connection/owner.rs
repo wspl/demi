@@ -185,6 +185,9 @@ impl Owner<'_> {
                         self.volumes.poll();
                     }
                 }
+                // Before the backend's messages: a call registers before it
+                // sends the call, so a reply queued beside its registration
+                // finds the call.
                 Some(request) = requests.recv() => self.request(request).await?,
                 Some(id) = self.jobs.finished() => self.finished(&id),
                 Some(ended) = self.watches.join_next() => {
