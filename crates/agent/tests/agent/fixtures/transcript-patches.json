@@ -1,0 +1,564 @@
+[
+  {
+    "name": "a turn with signed thinking, streamed text and a tool call",
+    "reset": {
+      "type": "transcript_reset",
+      "blocks": [],
+      "version": {
+        "epoch": "id-1",
+        "revision": 0
+      }
+    },
+    "patches": [
+      {
+        "type": "transcript_patch",
+        "patches": [
+          {
+            "op": "add",
+            "index": 0,
+            "value": {
+              "type": "user",
+              "id": "id-2",
+              "turnId": "m1",
+              "createdAt": "2026-09-24T12:00:00.000Z",
+              "model": {
+                "providerId": "stub",
+                "model": {
+                  "id": "test-model",
+                  "name": "test-model",
+                  "contextWindow": 100000,
+                  "inputLimit": null,
+                  "outputLimit": null,
+                  "thinking": [],
+                  "acceptedExtensions": []
+                },
+                "thinking": null,
+                "serviceTierId": null
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "List the files"
+                }
+              ],
+              "preamble": null
+            }
+          }
+        ],
+        "revision": 1
+      },
+      {
+        "type": "transcript_patch",
+        "patches": [
+          {
+            "op": "add",
+            "index": 1,
+            "value": {
+              "type": "thinking",
+              "id": "id-4",
+              "createdAt": "2026-09-24T12:00:00.000Z",
+              "model": {
+                "providerId": "stub",
+                "model": {
+                  "id": "test-model",
+                  "name": "test-model",
+                  "contextWindow": 100000,
+                  "inputLimit": null,
+                  "outputLimit": null,
+                  "thinking": [],
+                  "acceptedExtensions": []
+                },
+                "thinking": null,
+                "serviceTierId": null
+              },
+              "text": "Let me look.",
+              "signature": null
+            }
+          }
+        ],
+        "revision": 2
+      },
+      {
+        "type": "transcript_patch",
+        "patches": [
+          {
+            "op": "replace_block",
+            "index": 1,
+            "value": {
+              "type": "thinking",
+              "id": "id-4",
+              "createdAt": "2026-09-24T12:00:00.000Z",
+              "model": {
+                "providerId": "stub",
+                "model": {
+                  "id": "test-model",
+                  "name": "test-model",
+                  "contextWindow": 100000,
+                  "inputLimit": null,
+                  "outputLimit": null,
+                  "thinking": [],
+                  "acceptedExtensions": []
+                },
+                "thinking": null,
+                "serviceTierId": null
+              },
+              "text": "Let me look.",
+              "signature": "anthropic:sig-1"
+            }
+          }
+        ],
+        "revision": 3
+      },
+      {
+        "type": "transcript_patch",
+        "patches": [
+          {
+            "op": "add",
+            "index": 2,
+            "value": {
+              "type": "text",
+              "id": "id-5",
+              "createdAt": "2026-09-24T12:00:00.000Z",
+              "model": {
+                "providerId": "stub",
+                "model": {
+                  "id": "test-model",
+                  "name": "test-model",
+                  "contextWindow": 100000,
+                  "inputLimit": null,
+                  "outputLimit": null,
+                  "thinking": [],
+                  "acceptedExtensions": []
+                },
+                "thinking": null,
+                "serviceTierId": null
+              },
+              "text": "Checking "
+            }
+          }
+        ],
+        "revision": 4
+      },
+      {
+        "type": "transcript_patch",
+        "patches": [
+          {
+            "op": "append_text",
+            "index": 2,
+            "delta": "the files."
+          }
+        ],
+        "revision": 5
+      },
+      {
+        "type": "transcript_patch",
+        "patches": [
+          {
+            "op": "replace_block",
+            "index": 2,
+            "value": {
+              "type": "text",
+              "id": "id-5",
+              "createdAt": "2026-09-24T12:00:00.000Z",
+              "model": {
+                "providerId": "stub",
+                "model": {
+                  "id": "test-model",
+                  "name": "test-model",
+                  "contextWindow": 100000,
+                  "inputLimit": null,
+                  "outputLimit": null,
+                  "thinking": [],
+                  "acceptedExtensions": []
+                },
+                "thinking": null,
+                "serviceTierId": null
+              },
+              "text": "Checking the files.",
+              "forkable": true
+            }
+          }
+        ],
+        "revision": 6
+      },
+      {
+        "type": "transcript_patch",
+        "patches": [
+          {
+            "op": "add",
+            "index": 3,
+            "value": {
+              "type": "tool_call",
+              "id": "id-6",
+              "createdAt": "2026-09-24T12:00:00.000Z",
+              "model": {
+                "providerId": "stub",
+                "model": {
+                  "id": "test-model",
+                  "name": "test-model",
+                  "contextWindow": 100000,
+                  "inputLimit": null,
+                  "outputLimit": null,
+                  "thinking": [],
+                  "acceptedExtensions": []
+                },
+                "thinking": null,
+                "serviceTierId": null
+              },
+              "toolUseId": "call-1",
+              "toolName": "shell_exec",
+              "input": "{\"script\":\"ls\"}",
+              "status": "executing",
+              "output": [],
+              "view": null
+            }
+          }
+        ],
+        "revision": 7
+      },
+      {
+        "type": "transcript_patch",
+        "patches": [
+          {
+            "op": "add",
+            "index": 4,
+            "value": {
+              "type": "response",
+              "id": "id-7",
+              "createdAt": "2026-09-24T12:00:00.000Z",
+              "model": {
+                "providerId": "stub",
+                "model": {
+                  "id": "test-model",
+                  "name": "test-model",
+                  "contextWindow": 100000,
+                  "inputLimit": null,
+                  "outputLimit": null,
+                  "thinking": [],
+                  "acceptedExtensions": []
+                },
+                "thinking": null,
+                "serviceTierId": null
+              },
+              "usage": {
+                "inputTokens": 12,
+                "outputTokens": 8,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 0
+              }
+            }
+          }
+        ],
+        "revision": 8
+      },
+      {
+        "type": "transcript_patch",
+        "patches": [
+          {
+            "op": "replace_block",
+            "index": 3,
+            "value": {
+              "type": "tool_call",
+              "id": "id-6",
+              "createdAt": "2026-09-24T12:00:00.000Z",
+              "model": {
+                "providerId": "stub",
+                "model": {
+                  "id": "test-model",
+                  "name": "test-model",
+                  "contextWindow": 100000,
+                  "inputLimit": null,
+                  "outputLimit": null,
+                  "thinking": [],
+                  "acceptedExtensions": []
+                },
+                "thinking": null,
+                "serviceTierId": null
+              },
+              "toolUseId": "call-1",
+              "toolName": "shell_exec",
+              "input": "{\"script\":\"ls\"}",
+              "status": "error",
+              "output": [
+                {
+                  "type": "text",
+                  "text": "Tool not found: shell_exec"
+                }
+              ],
+              "view": null
+            }
+          }
+        ],
+        "revision": 9
+      },
+      {
+        "type": "transcript_patch",
+        "patches": [
+          {
+            "op": "add",
+            "index": 5,
+            "value": {
+              "type": "text",
+              "id": "id-9",
+              "createdAt": "2026-09-24T12:00:00.000Z",
+              "model": {
+                "providerId": "stub",
+                "model": {
+                  "id": "test-model",
+                  "name": "test-model",
+                  "contextWindow": 100000,
+                  "inputLimit": null,
+                  "outputLimit": null,
+                  "thinking": [],
+                  "acceptedExtensions": []
+                },
+                "thinking": null,
+                "serviceTierId": null
+              },
+              "text": "There are two files."
+            }
+          }
+        ],
+        "revision": 10
+      },
+      {
+        "type": "transcript_patch",
+        "patches": [
+          {
+            "op": "replace_block",
+            "index": 5,
+            "value": {
+              "type": "text",
+              "id": "id-9",
+              "createdAt": "2026-09-24T12:00:00.000Z",
+              "model": {
+                "providerId": "stub",
+                "model": {
+                  "id": "test-model",
+                  "name": "test-model",
+                  "contextWindow": 100000,
+                  "inputLimit": null,
+                  "outputLimit": null,
+                  "thinking": [],
+                  "acceptedExtensions": []
+                },
+                "thinking": null,
+                "serviceTierId": null
+              },
+              "text": "There are two files.",
+              "forkable": true
+            }
+          }
+        ],
+        "revision": 11
+      },
+      {
+        "type": "transcript_patch",
+        "patches": [
+          {
+            "op": "add",
+            "index": 6,
+            "value": {
+              "type": "response",
+              "id": "id-10",
+              "createdAt": "2026-09-24T12:00:00.000Z",
+              "model": {
+                "providerId": "stub",
+                "model": {
+                  "id": "test-model",
+                  "name": "test-model",
+                  "contextWindow": 100000,
+                  "inputLimit": null,
+                  "outputLimit": null,
+                  "thinking": [],
+                  "acceptedExtensions": []
+                },
+                "thinking": null,
+                "serviceTierId": null
+              },
+              "usage": {
+                "inputTokens": 30,
+                "outputTokens": 6,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 0
+              }
+            }
+          }
+        ],
+        "revision": 12
+      }
+    ],
+    "transcript": [
+      {
+        "type": "user",
+        "id": "id-2",
+        "turnId": "m1",
+        "createdAt": "2026-09-24T12:00:00.000Z",
+        "model": {
+          "providerId": "stub",
+          "model": {
+            "id": "test-model",
+            "name": "test-model",
+            "contextWindow": 100000,
+            "inputLimit": null,
+            "outputLimit": null,
+            "thinking": [],
+            "acceptedExtensions": []
+          },
+          "thinking": null,
+          "serviceTierId": null
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "List the files"
+          }
+        ],
+        "preamble": null
+      },
+      {
+        "type": "thinking",
+        "id": "id-4",
+        "createdAt": "2026-09-24T12:00:00.000Z",
+        "model": {
+          "providerId": "stub",
+          "model": {
+            "id": "test-model",
+            "name": "test-model",
+            "contextWindow": 100000,
+            "inputLimit": null,
+            "outputLimit": null,
+            "thinking": [],
+            "acceptedExtensions": []
+          },
+          "thinking": null,
+          "serviceTierId": null
+        },
+        "text": "Let me look.",
+        "signature": "anthropic:sig-1"
+      },
+      {
+        "type": "text",
+        "id": "id-5",
+        "createdAt": "2026-09-24T12:00:00.000Z",
+        "model": {
+          "providerId": "stub",
+          "model": {
+            "id": "test-model",
+            "name": "test-model",
+            "contextWindow": 100000,
+            "inputLimit": null,
+            "outputLimit": null,
+            "thinking": [],
+            "acceptedExtensions": []
+          },
+          "thinking": null,
+          "serviceTierId": null
+        },
+        "text": "Checking the files.",
+        "forkable": true
+      },
+      {
+        "type": "tool_call",
+        "id": "id-6",
+        "createdAt": "2026-09-24T12:00:00.000Z",
+        "model": {
+          "providerId": "stub",
+          "model": {
+            "id": "test-model",
+            "name": "test-model",
+            "contextWindow": 100000,
+            "inputLimit": null,
+            "outputLimit": null,
+            "thinking": [],
+            "acceptedExtensions": []
+          },
+          "thinking": null,
+          "serviceTierId": null
+        },
+        "toolUseId": "call-1",
+        "toolName": "shell_exec",
+        "input": "{\"script\":\"ls\"}",
+        "status": "error",
+        "output": [
+          {
+            "type": "text",
+            "text": "Tool not found: shell_exec"
+          }
+        ],
+        "view": null
+      },
+      {
+        "type": "response",
+        "id": "id-7",
+        "createdAt": "2026-09-24T12:00:00.000Z",
+        "model": {
+          "providerId": "stub",
+          "model": {
+            "id": "test-model",
+            "name": "test-model",
+            "contextWindow": 100000,
+            "inputLimit": null,
+            "outputLimit": null,
+            "thinking": [],
+            "acceptedExtensions": []
+          },
+          "thinking": null,
+          "serviceTierId": null
+        },
+        "usage": {
+          "inputTokens": 12,
+          "outputTokens": 8,
+          "cacheReadTokens": 0,
+          "cacheWriteTokens": 0
+        }
+      },
+      {
+        "type": "text",
+        "id": "id-9",
+        "createdAt": "2026-09-24T12:00:00.000Z",
+        "model": {
+          "providerId": "stub",
+          "model": {
+            "id": "test-model",
+            "name": "test-model",
+            "contextWindow": 100000,
+            "inputLimit": null,
+            "outputLimit": null,
+            "thinking": [],
+            "acceptedExtensions": []
+          },
+          "thinking": null,
+          "serviceTierId": null
+        },
+        "text": "There are two files.",
+        "forkable": true
+      },
+      {
+        "type": "response",
+        "id": "id-10",
+        "createdAt": "2026-09-24T12:00:00.000Z",
+        "model": {
+          "providerId": "stub",
+          "model": {
+            "id": "test-model",
+            "name": "test-model",
+            "contextWindow": 100000,
+            "inputLimit": null,
+            "outputLimit": null,
+            "thinking": [],
+            "acceptedExtensions": []
+          },
+          "thinking": null,
+          "serviceTierId": null
+        },
+        "usage": {
+          "inputTokens": 30,
+          "outputTokens": 6,
+          "cacheReadTokens": 0,
+          "cacheWriteTokens": 0
+        }
+      }
+    ]
+  }
+]

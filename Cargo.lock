@@ -1178,6 +1178,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "demi-agent"
+version = "0.1.3"
+dependencies = [
+ "demi-agent",
+ "demi-agent-protocol",
+ "demi-core",
+ "demi-gates",
+ "demi-provider",
+ "demi-shell",
+ "futures-util",
+ "garde",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "demi-agent-protocol"
 version = "0.1.3"
 dependencies = [
