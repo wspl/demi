@@ -76,11 +76,13 @@ impl PackageDescriptor {
 }
 
 /// A URL the runner downloads an artifact from, valid until `expires_at`
-/// (milliseconds since the Unix epoch) when set.
+/// (milliseconds since the Unix epoch) when set. It is an HTTPS URL without
+/// credentials: the backend signs it, and nothing secret rides in it but the
+/// signature (`native-runtime.md` § Install the selected executable).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ArtifactUrl {
-    #[garde(url)]
+    #[garde(custom(download_url))]
     pub url: String,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[garde(skip)]
@@ -120,6 +122,16 @@ impl ServiceInfo {
         garde::Validate::validate(self)?;
         Ok(())
     }
+}
+
+fn download_url(value: &str, _: &()) -> garde::Result {
+    let url = url::Url::parse(value).map_err(|error| garde::Error::new(error.to_string()))?;
+    if url.scheme() != "https" || !url.username().is_empty() || url.password().is_some() {
+        return Err(garde::Error::new(
+            "artifact downloads require an HTTPS URL without credentials",
+        ));
+    }
+    Ok(())
 }
 
 /// Whether `value` is a SHA-256 digest in lowercase hexadecimal, the form of

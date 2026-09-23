@@ -3,47 +3,23 @@
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+use crate::values::{BackendUrl, DeviceToken};
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ManagedBoot {
-    #[garde(custom(http_url))]
-    pub backend_url: String,
-    #[garde(length(utf16, min = 1, max = 4096), custom(without_whitespace))]
-    pub device_token: String,
+    pub backend_url: BackendUrl,
+    pub device_token: DeviceToken,
 }
 
+/// A boot file that is not a valid boot record.
 #[derive(Debug, thiserror::Error)]
-pub enum BootError {
-    #[error(transparent)]
-    Json(#[from] serde_json::Error),
-    #[error("invalid managed boot file: {0}")]
-    Invalid(String),
-}
+#[error("invalid managed boot file: {0}")]
+pub struct BootError(#[from] serde_json::Error);
 
 impl ManagedBoot {
-    /// Decodes and validates a boot file's JSON.
+    /// Decodes a boot file's JSON; its values are checked as they are read.
     pub fn decode(bytes: &[u8]) -> Result<Self, BootError> {
-        let boot: Self = serde_json::from_slice(bytes)?;
-        garde::Validate::validate(&boot).map_err(|report| BootError::Invalid(report.to_string()))?;
-        Ok(boot)
+        Ok(serde_json::from_slice(bytes)?)
     }
-}
-
-/// `http://` or `https://`, then at least one character and no whitespace.
-fn http_url(value: &str, context: &()) -> garde::Result {
-    let rest = value
-        .strip_prefix("https://")
-        .or_else(|| value.strip_prefix("http://"))
-        .ok_or_else(|| garde::Error::new("is not an http or https URL"))?;
-    if rest.is_empty() {
-        return Err(garde::Error::new("names no host"));
-    }
-    without_whitespace(rest, context)
-}
-
-fn without_whitespace(value: &str, _: &()) -> garde::Result {
-    if value.chars().any(char::is_whitespace) {
-        return Err(garde::Error::new("contains whitespace"));
-    }
-    Ok(())
 }

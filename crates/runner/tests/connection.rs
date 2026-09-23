@@ -21,17 +21,13 @@ async fn pair() -> (Transport, WebSocketStream<tokio::io::DuplexStream>) {
 
 #[test]
 fn backend_url_preserves_explicit_path_and_query() {
+    let url = |value: &str| socket_url(&value.parse().unwrap()).unwrap();
+    assert_eq!(url("https://example.test").as_str(), "wss://example.test/api/runner");
     assert_eq!(
-        socket_url("https://example.test").unwrap().as_str(),
-        "wss://example.test/api/runner"
-    );
-    assert_eq!(
-        socket_url("http://example.test/custom?x=1")
-            .unwrap()
-            .as_str(),
+        url("http://example.test/custom?x=1").as_str(),
         "ws://example.test/custom?x=1"
     );
-    assert!(socket_url("https://user:pass@example.test").is_err());
+    assert!("https://user:pass@example.test".parse::<demi_runner_protocol::values::BackendUrl>().is_err());
 }
 
 #[tokio::test]

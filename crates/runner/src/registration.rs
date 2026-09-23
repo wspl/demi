@@ -15,12 +15,13 @@ use crate::{
     services::ServiceRegistry,
     state::{ActiveRunner, RunnerConfig, RunnerState},
 };
+use demi_runner_protocol::values::{BackendUrl, DeviceToken};
 use std::{collections::BTreeMap, io, path::PathBuf, sync::Arc, time::Duration};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
 pub struct Options {
-    pub backend: String,
+    pub backend: BackendUrl,
     pub directory: PathBuf,
     /// The Host's log, which `main` opened (`runner.md` § Host log).
     pub log: HostLogReader,
@@ -28,7 +29,7 @@ pub struct Options {
     pub cwd: PathBuf,
     pub env: BTreeMap<String, String>,
     pub runner: wire::RunnerInfo,
-    pub token: Option<String>,
+    pub token: Option<DeviceToken>,
     pub volumes: Vec<crate::volumes::ManagedVolume>,
     /// Where shell jobs run (`concurrency.md` § Runner).
     pub shell: crate::shell::ShellRuntime,
@@ -39,8 +40,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<()> {
     let mut lease = state.lock()?;
     let saved = state.config().await?;
     if let Some(saved) = &saved
-        && crate::state::instance_id(&saved.backend_url)?
-            != crate::state::instance_id(&options.backend)?
+        && crate::state::instance_id(&saved.backend_url) != crate::state::instance_id(&options.backend)
     {
         return Err(io::Error::other(
             "installation is registered to another backend",

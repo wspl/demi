@@ -196,8 +196,8 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
     // Pipes.
     let port = backend().await;
     let pipes = PipeClient::new(
-        &format!("http://127.0.0.1:{port}"),
-        tokio::sync::watch::Sender::new(Some("token".into())).subscribe(),
+        &format!("http://127.0.0.1:{port}").parse().unwrap(),
+        tokio::sync::watch::Sender::new(Some("token".parse().unwrap())).subscribe(),
     )
     .unwrap();
     {

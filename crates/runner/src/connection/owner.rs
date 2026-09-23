@@ -33,6 +33,7 @@ use crate::{
     tasks::{Commands, JobConfig, JobTable, TaskCommand, TaskSpec, WorkId},
     volumes::{ManagedVolume, Volumes},
 };
+use demi_runner_protocol::values::{BackendUrl, DeviceToken};
 use wire::Inbound;
 
 /// How a connection ended.
@@ -44,10 +45,10 @@ pub enum End {
 
 /// What each connection takes from its registration.
 pub struct Registered {
-    pub backend: String,
+    pub backend: BackendUrl,
     pub runner: wire::RunnerInfo,
     pub state: Arc<RunnerState>,
-    pub token: watch::Sender<Option<String>>,
+    pub token: watch::Sender<Option<DeviceToken>>,
     pub management: Arc<Management>,
     pub services: ServiceHandle,
     pub dispatcher: Arc<Dispatcher>,
@@ -283,7 +284,7 @@ impl Owner<'_> {
                 let state = registered.state.clone();
                 let config = RunnerConfig {
                     backend_url: registered.backend.clone(),
-                    device_id: Some(device_id),
+                    device_id: Some(device_id.try_into().map_err(io::Error::other)?),
                 };
                 self.work
                     .spawn(async move { Work::Stored(state.write_config(&config).await) });

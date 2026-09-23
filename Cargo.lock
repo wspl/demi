@@ -1155,6 +1155,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "url",
  "windows-sys 0.61.2",
 ]
 
@@ -1306,6 +1307,7 @@ dependencies = [
  "serde_plain",
  "serde_with",
  "thiserror",
+ "url",
 ]
 
 [[package]]

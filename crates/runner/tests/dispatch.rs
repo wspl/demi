@@ -44,7 +44,7 @@ impl Fixture {
         let hash = demi_command_service::protocol::canonical_digest(&body).unwrap();
         let mut manifest = body;
         manifest["hash"] = hash.into();
-        let pipes = PipeClient::new("http://127.0.0.1:1", watch::Sender::new(None).subscribe()).unwrap();
+        let pipes = PipeClient::new(&"http://127.0.0.1:1".parse().unwrap(), watch::Sender::new(None).subscribe()).unwrap();
         let dispatch = Dispatch::new(directory.path(), manifest, pipes).await;
         Self { directory, dispatch }
     }

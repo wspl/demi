@@ -87,19 +87,12 @@ pub enum ArtifactSource {
 }
 
 impl ArtifactSource {
-    /// A location the backend returned, checked the way downloads require:
-    /// an HTTPS URL without credentials, or an absolute local path.
+    /// A location the backend returned: an HTTPS URL, which the wire checked
+    /// as it was read, or a local path, which this machine's rules make
+    /// absolute or not.
     pub fn from_location(location: ArtifactLocation) -> Result<Self, RuntimeError> {
         match location {
             ArtifactLocation::Url(location) => {
-                let url = reqwest::Url::parse(&location.url)
-                    .map_err(|error| RuntimeError::Location(error.to_string()))?;
-                if url.scheme() != "https" || !url.username().is_empty() || url.password().is_some()
-                {
-                    return Err(RuntimeError::Location(
-                        "artifact downloads require an HTTPS URL without credentials".into(),
-                    ));
-                }
                 let expires_at = location
                     .expires_at
                     .map(|millis| {
@@ -115,7 +108,7 @@ impl ArtifactSource {
                     })
                     .transpose()?;
                 Ok(ArtifactSource::Https {
-                    url: url.into(),
+                    url: location.url,
                     expires_at,
                 })
             }

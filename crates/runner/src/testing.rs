@@ -5,6 +5,7 @@
 use std::{collections::BTreeMap, path::Path, sync::Arc};
 
 use demi_command_service::protocol::{CommandContext, EditContext};
+use demi_runner_protocol::values::{BackendUrl, DeviceToken};
 use demi_runner_protocol::manifest::Manifest;
 use tokio::{
     sync::{mpsc, watch},
@@ -218,9 +219,11 @@ impl Host {
             .await
             .expect("service registry");
         let (log, _layer) = crate::host_log::open(root.join("log")).await.expect("host log");
-        let token = watch::Sender::new(Some("test-token".into()));
-        let pipes =
-            PipeClient::new("http://127.0.0.1:1", token.subscribe()).expect("pipe client");
+        let backend: BackendUrl = "http://127.0.0.1:1".parse().expect("backend URL");
+        let token = watch::Sender::new(Some(
+            DeviceToken::try_from("test-token".to_owned()).expect("device token"),
+        ));
+        let pipes = PipeClient::new(&backend, token.subscribe()).expect("pipe client");
         let index = watch::Sender::new(Arc::default());
         let management = Management::new("a".repeat(32), "test".into(), stop.clone());
         let dispatcher = Arc::new(Dispatcher {
@@ -231,7 +234,7 @@ impl Host {
         });
         let server = Server::start(dispatcher.clone()).await.expect("local endpoint");
         let registered = crate::connection::Registered {
-            backend: "http://127.0.0.1:1".into(),
+            backend,
             runner: wire::RunnerInfo {
                 native_target: Some(crate::services::target().into()),
                 name: "test".into(),

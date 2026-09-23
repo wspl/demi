@@ -64,13 +64,13 @@ async fn backend_job_invokes_same_binary_alias_and_drain_releases_installation()
             tracing_subscriber::registry().with(layer).init();
         }
         let options = Options {
-            backend,
+            backend: backend.parse().unwrap(),
             directory: state_dir.clone(),
             log: log.reader(),
             executable: env!("CARGO_BIN_EXE_demi-runner").into(),
             cwd: directory.path().into(),
             env: BTreeMap::from([("HOME".into(), home.clone())]),
-            token: Some("test-token".into()),
+            token: Some("test-token".parse().unwrap()),
             volumes: vec![],
             shell: demi_runner::shell::ShellRuntime::current(),
             runner: RunnerInfo {

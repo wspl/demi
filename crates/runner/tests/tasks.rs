@@ -29,8 +29,8 @@ fn table(
     mpsc::Receiver<demi_runner::connection::wire::Frame>,
 ) {
     let (output, receiver) = mpsc::channel(capacity);
-    let token = tokio::sync::watch::Sender::new(Some("test-token".into())).subscribe();
-    let pipes = PipeClient::new("http://127.0.0.1:1", token).unwrap();
+    let token = tokio::sync::watch::Sender::new(Some("test-token".parse().unwrap())).subscribe();
+    let pipes = PipeClient::new(&"http://127.0.0.1:1".parse().unwrap(), token).unwrap();
     (
         JobTable::new(JobConfig {
             output,

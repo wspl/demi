@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
 use super::{FsOk, GitOk, LOG_READ_LINES, SERVICE_STDERR_CHARS, Timestamp, WireBytes};
+use crate::values::DeviceToken;
 
 /// A message from the backend to the runner.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, garde::Validate)]
@@ -34,7 +35,8 @@ pub enum Inbound {
         claim_token: String,
     },
     Claimed {
-        device_token: String,
+        #[garde(skip)]
+        device_token: DeviceToken,
     },
     HelloError {
         code: HelloErrorCode,
@@ -131,7 +133,7 @@ pub enum Inbound {
     /// before it exits with the code.
     RpcExit {
         call_id: String,
-        exit_code: i32,
+        exit_code: u8,
     },
     /// Open a TCP stream on the device's network between the socket and the
     /// two pipes.
@@ -389,7 +391,8 @@ pub enum Outbound {
         protocol: u32,
         /// Absent on an unclaimed first start.
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-        device_token: Option<String>,
+        #[garde(skip)]
+        device_token: Option<DeviceToken>,
         #[garde(dive)]
         runner: RunnerInfo,
     },

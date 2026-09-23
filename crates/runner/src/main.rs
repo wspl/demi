@@ -6,7 +6,7 @@ use demi_runner::{
     state::{self, RunnerState},
     stdio::{self, standard_file},
 };
-use demi_runner_protocol::boot::ManagedBoot;
+use demi_runner_protocol::{boot::ManagedBoot, values::BackendUrl};
 use tracing_subscriber::{
     Layer as _, filter::LevelFilter, layer::SubscriberExt as _, util::SubscriberInitExt as _,
 };
@@ -28,13 +28,7 @@ async fn command(root: String, argv: Vec<String>) -> io::Result<u8> {
         .ok_or_else(|| io::Error::other("missing command context"))?
         .clone();
     let stdin = standard_file(0)?;
-    let request = RawCommand {
-        context,
-        root,
-        argv,
-        live: stdio::is_live(&stdin, &env)?,
-    };
-    request.validate()?;
+    let request = RawCommand::new(context, root, argv, stdio::is_live(&stdin, &env)?)?;
     let invocation = LocalInvocation {
         operation: "raw".into(),
         invocation_id: uuid::Uuid::new_v4().simple().to_string(),
@@ -118,11 +112,11 @@ fn directory(installation: &Installation, boot: Option<&ManagedBoot>) -> io::Res
     }
     let backend = installation
         .backend
-        .as_deref()
+        .as_ref()
         .ok_or_else(|| io::Error::other("pass --backend <url> to select an installation"))?;
     Ok(home()?
         .join(".demi/instances")
-        .join(state::instance_id(backend)?))
+        .join(state::instance_id(backend)))
 }
 
 fn home() -> io::Result<PathBuf> {
@@ -174,7 +168,7 @@ enum Action {
 struct Installation {
     /// The backend the installation belongs to.
     #[arg(long)]
-    backend: Option<String>,
+    backend: Option<BackendUrl>,
     /// The installation's directory; one per backend under
     /// `~/.demi/instances` by default.
     #[arg(long = "home", env = "DEMI_HOME", hide = true)]
@@ -208,7 +202,6 @@ async fn runner(cli: Cli, shell: demi_runner::shell::ShellRuntime) -> io::Result
             let bytes = tokio::fs::read(path).await?;
             let boot = ManagedBoot::decode(&bytes)
                 .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-            state::backend_url(&boot.backend_url)?;
             Some(boot)
         }
         None => None,

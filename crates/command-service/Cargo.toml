@@ -23,6 +23,7 @@ sync_wrapper = "1"
 sha2 = "0.10"
 serde_json_canonicalizer = "0.3"
 tempfile = "3"
+url = "2"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
