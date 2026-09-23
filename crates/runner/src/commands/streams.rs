@@ -7,8 +7,8 @@ use std::{io, sync::Arc};
 
 use bytes::Bytes;
 use demi_command_service::{
-    CommandInput, CommandOutput,
-    protocol::{Invocation, MAX_RECORD_BYTES, Record},
+    Exchange, ExchangeError, InputSource, OutputSink,
+    protocol::{Invocation, MAX_RECORD_BYTES},
 };
 use futures_util::{StreamExt, stream::BoxStream};
 use tokio::sync::mpsc;
@@ -161,43 +161,69 @@ impl ServiceStreams {
                 }
             }
             log.event("opened");
-            let (pulls, demanded) = mpsc::channel(1);
-            let completed = CancellationToken::new();
-            // Input pipe → the invocation's input, one chunk per pull; input
-            // EOF ends the invocation's input.
-            let feed_pipes = pipes.clone();
-            let feed = async {
+            // Input pipe → the invocation, one chunk per pull; its standard
+            // output → the output pipe, which only its completion ends cleanly.
+            let (uploads, uploaded) = mpsc::channel::<io::Result<Bytes>>(OUTPUT_QUEUE);
+            let mut source = PipeSource {
+                pipes: pipes.clone(),
+                url: input.url.clone(),
+                cancel: stream.clone(),
+                body: None,
+                pending: Bytes::new(),
+            };
+            let mut sink = StreamSink {
+                uploads,
+                log: log.clone(),
+                lines: LineSplitter::default(),
+                // A byte is at most one UTF-16 unit of the text `service_done` carries.
+                tail: TailBuffer::new(wire::SERVICE_STDERR_CHARS),
+            };
+            let cancelled = stream.clone();
+            let exchange = async move {
+                let exchange = Exchange::new(command_input, command_output);
                 let result = tokio::select! {
-                    biased;
-                    // The invocation is over; it asks for no more input.
-                    _ = completed.cancelled() => Ok(()),
-                    result = pump_input(feed_pipes, &input.url, command_input, demanded, &stream) => result,
+                    // Dropping the exchange resets its invocation.
+                    _ = cancelled.cancelled() => Err(None),
+                    result = exchange.run(&mut source, &mut sink) => result.map_err(Some),
                 };
                 if result.is_err() {
-                    stream.cancel();
+                    // The upload must not end as if the invocation completed.
+                    let ended = io::Error::other("service stream ended before its completion");
+                    let _closed = sink.uploads.send(Err(ended)).await;
                 }
-                report_pipe(&reply, input.id, result, &reporting).await;
+                (result, sink.finish())
             };
-            // The invocation's standard output → output pipe; its completion
-            // ends the upload.
-            let drain = async {
-                let (result, outcome) = pump_output(
-                    pipes,
-                    &output.url,
-                    command_output,
-                    pulls,
-                    &completed,
-                    &stream,
-                    &log,
-                )
-                .await;
-                if result.is_err() {
-                    stream.cancel();
+            let body = futures_util::stream::unfold(uploaded, |mut uploaded| async move {
+                uploaded.recv().await.map(|item| (item, uploaded))
+            });
+            let ((result, stderr), upload) =
+                tokio::join!(exchange, pipes.put(&output.url, body, &stream));
+            let (done, input_result) = match result {
+                Ok(completion) => {
+                    if let Some(error) = &completion.error {
+                        log.event(&format!("failed: {}: {}", error.code, error.message));
+                    }
+                    let outcome = Outcome {
+                        exit_code: completion.exit_code,
+                        stderr,
+                    };
+                    (Some(outcome), Ok(()))
                 }
-                report_pipe(&reply, output.id, result, &reporting).await;
-                outcome
+                Err(Some(ExchangeError::Input(error))) => (None, Err(error)),
+                Err(Some(ExchangeError::Service(error))) => {
+                    log.event(&format!("failed: {error}"));
+                    (None, Err(io::Error::other("the service stream's invocation failed")))
+                }
+                Err(Some(ExchangeError::Output(_)) | None) => (
+                    None,
+                    Err(io::Error::new(io::ErrorKind::Interrupted, "service stream cancelled")),
+                ),
             };
-            let ((), done) = tokio::join!(feed, drain);
+            if upload.is_err() || input_result.is_err() {
+                stream.cancel();
+            }
+            report_pipe(&reply, input.id, input_result, &reporting).await;
+            report_pipe(&reply, output.id, upload, &reporting).await;
             // A one-shot call has no page to tell: its caller learns the
             // exit code and the operation's own words from this message.
             if let Some(Outcome { exit_code, stderr }) = done {
@@ -246,46 +272,36 @@ impl StreamLog {
     }
 }
 
-/// Delivers the page's bytes to the invocation as it asks for them, each
-/// chunk within the protocol's record limit.
-async fn pump_input(
+/// The page's bytes as the invocation asks for them, each chunk within the
+/// protocol's record limit; the pipe opens at the first pull.
+struct PipeSource {
     pipes: PipeClient,
-    url: &str,
-    mut input: CommandInput,
-    mut demanded: mpsc::Receiver<()>,
-    cancel: &CancellationToken,
-) -> io::Result<()> {
-    let result = async {
-        let mut body: BoxStream<'static, io::Result<Bytes>> =
-            pipes.get(url, cancel.clone()).await?;
-        let mut pending = Bytes::new();
-        while demanded.recv().await.is_some() {
-            if pending.is_empty() {
-                match body.next().await {
-                    Some(chunk) => pending = chunk?,
-                    None => {
-                        input.end().map_err(io::Error::other)?;
-                        return Ok(());
-                    }
-                }
+    url: String,
+    cancel: CancellationToken,
+    body: Option<BoxStream<'static, io::Result<Bytes>>>,
+    pending: Bytes,
+}
+
+impl InputSource for PipeSource {
+    type Error = io::Error;
+
+    async fn next(&mut self) -> io::Result<Option<Bytes>> {
+        let body = match &mut self.body {
+            Some(body) => body,
+            None => self
+                .body
+                .insert(self.pipes.get(&self.url, self.cancel.clone()).await?),
+        };
+        while self.pending.is_empty() {
+            match body.next().await {
+                Some(chunk) => self.pending = chunk?,
+                None => return Ok(None),
             }
-            let chunk = pending.split_to(pending.len().min(MAX_RECORD_BYTES));
-            input.write(chunk).await.map_err(io::Error::other)?;
         }
-        // The invocation's output ended without completing it.
-        Err(io::Error::other("service stream invocation ended"))
-    };
-    tokio::select! {
-        _ = cancel.cancelled() => {
-            input.cancel();
-            Err(io::Error::new(io::ErrorKind::Interrupted, "service stream cancelled"))
-        }
-        result = result => {
-            if result.is_err() {
-                input.cancel();
-            }
-            result
-        }
+        Ok(Some(
+            self.pending
+                .split_to(self.pending.len().min(MAX_RECORD_BYTES)),
+        ))
     }
 }
 
@@ -295,109 +311,44 @@ struct Outcome {
     stderr: String,
 }
 
-/// Uploads the invocation's standard output until its completion ends the
-/// pipe; input pulls go to the input pump, standard error to the log.
-async fn pump_output(
-    pipes: PipeClient,
-    url: &str,
-    mut output: CommandOutput,
-    pulls: mpsc::Sender<()>,
-    completed: &CancellationToken,
-    cancel: &CancellationToken,
-    log: &StreamLog,
-) -> (io::Result<()>, Option<Outcome>) {
-    let mut outcome = None;
-    let slot = &mut outcome;
-    let (sender, receiver) = mpsc::channel::<io::Result<Bytes>>(OUTPUT_QUEUE);
-    let records = async move {
-        // A byte is at most one UTF-16 unit of the text `service_done` carries.
-        let mut tail = TailBuffer::new(wire::SERVICE_STDERR_CHARS);
-        let mut lines = LineSplitter::default();
-        let stderr = &mut lines;
-        let pump = async move {
-            loop {
-                let record = tokio::select! {
-                    _ = cancel.cancelled() => return,
-                    record = output.next() => record,
-                };
-                let item = match record {
-                    Ok(Some(Record::Stdout(bytes))) => Ok(bytes),
-                    Ok(Some(Record::Stderr(bytes))) => {
-                        tail.push(&bytes);
-                        for line in stderr.push(&bytes) {
-                            log.stderr(&line);
-                        }
-                        continue;
-                    }
-                    Ok(Some(Record::InputPull)) => {
-                        if pulls.try_send(()).is_err() {
-                            let _ = sender
-                                .send(Err(io::Error::other(
-                                    "overlapping service stream input demands",
-                                )))
-                                .await;
-                            return;
-                        }
-                        continue;
-                    }
-                    Ok(Some(Record::Completion(completion))) => {
-                        if let Some(error) = &completion.error {
-                            log.event(&format!("failed: {}: {}", error.code, error.message));
-                        }
-                        let stderr = tail.text();
-                        *slot = Some(Outcome {
-                            exit_code: completion.exit_code,
-                            stderr,
-                        });
-                        completed.cancel();
-                        continue;
-                    }
-                    // The response ended: complete only after a completion record.
-                    Ok(None) if completed.is_cancelled() => return,
-                    Ok(None) => Err(io::Error::other(
-                        "service stream invocation has no completion",
-                    )),
-                    Err(error) => Err(io::Error::other(error)),
-                };
-                let failed = item.is_err();
-                tokio::select! {
-                    _ = cancel.cancelled() => return,
-                    result = sender.send(item) => {
-                        if result.is_err() || failed {
-                            return;
-                        }
-                    }
-                }
-            }
-        };
-        pump.await;
-        // The words a last chunk left without a newline, however the
-        // invocation ended.
-        if let Some(line) = lines.finish() {
-            log.stderr(&line);
+/// Standard output goes up the output pipe; standard error goes to the log
+/// line by line, and its end is kept for `service_done`.
+struct StreamSink {
+    uploads: mpsc::Sender<io::Result<Bytes>>,
+    log: StreamLog,
+    lines: LineSplitter,
+    tail: TailBuffer,
+}
+
+impl StreamSink {
+    /// Logs what a last chunk left without a newline, however the invocation
+    /// ended, and returns the end of standard error. Dropping the uploads
+    /// ends the output pipe.
+    fn finish(self) -> String {
+        if let Some(line) = self.lines.finish() {
+            self.log.stderr(&line);
         }
-    };
-    // The upload's end tells the backend the stream is over: only a
-    // completed invocation ends it cleanly.
-    let finished = completed.clone();
-    let body = futures_util::stream::unfold(Some(receiver), move |receiver| {
-        let finished = finished.clone();
-        async move {
-            let mut receiver = receiver?;
-            match receiver.recv().await {
-                Some(item) => Some((item, Some(receiver))),
-                None if finished.is_cancelled() => None,
-                None => Some((
-                    Err(io::Error::other(
-                        "service stream ended before its completion",
-                    )),
-                    None,
-                )),
-            }
+        self.tail.text()
+    }
+}
+
+impl OutputSink for StreamSink {
+    type Error = io::Error;
+
+    async fn stdout(&mut self, bytes: Bytes) -> io::Result<()> {
+        self.uploads
+            .send(Ok(bytes))
+            .await
+            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "the output pipe closed"))
+    }
+
+    async fn stderr(&mut self, bytes: Bytes) -> io::Result<()> {
+        self.tail.push(&bytes);
+        for line in self.lines.push(&bytes) {
+            self.log.stderr(&line);
         }
-    });
-    let (result, ()) = tokio::join!(pipes.put(url, body, cancel), records);
-    (result, outcome)
+        Ok(())
+    }
 }
 
 async fn send_error(
