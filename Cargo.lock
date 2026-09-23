@@ -1305,6 +1305,8 @@ dependencies = [
  "demi-gates",
  "demi-provider",
  "demi-provider-anthropic-api",
+ "demi-provider-google",
+ "demi-provider-openai-api",
  "demi-web-api",
  "futures-util",
  "garde",
