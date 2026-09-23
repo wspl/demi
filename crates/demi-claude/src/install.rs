@@ -15,9 +15,11 @@ use sha2::{Digest, Sha256};
 use tokio::io::AsyncWriteExt;
 use tokio_util::sync::CancellationToken;
 
+use demi_claude_protocol::{Artifact, ErrorCode, Installed, Release, Status, is_version};
+
 use crate::{
     platform,
-    release::{Artifact, Release, Transport},
+    release::{self, Transport},
     version,
 };
 
@@ -48,15 +50,17 @@ pub enum EnsureError {
 }
 
 impl EnsureError {
-    pub fn code(&self) -> &'static str {
-        match self {
-            Self::InvalidRelease(_) => "invalid_release",
-            Self::UnsupportedPlatform(_) => "unsupported_platform",
-            Self::DownloadFailed(_) => "download_failed",
-            Self::VerificationFailed(_) => "verification_failed",
-            Self::InstallFailed(_) => "install_failed",
-            Self::Cancelled => "cancelled",
-        }
+    /// The code the caller branches on; a cancellation has none, since it
+    /// ends the invocation without a document.
+    pub fn code(&self) -> Option<ErrorCode> {
+        Some(match self {
+            Self::InvalidRelease(_) => ErrorCode::InvalidRelease,
+            Self::UnsupportedPlatform(_) => ErrorCode::UnsupportedPlatform,
+            Self::DownloadFailed(_) => ErrorCode::DownloadFailed,
+            Self::VerificationFailed(_) => ErrorCode::VerificationFailed,
+            Self::InstallFailed(_) => ErrorCode::InstallFailed,
+            Self::Cancelled => return None,
+        })
     }
 }
 
@@ -95,20 +99,6 @@ struct Receipt {
     size: u64,
 }
 
-/// One usable executable.
-#[derive(Debug, PartialEq, Eq, Serialize)]
-pub struct Installed {
-    pub version: String,
-    pub path: PathBuf,
-}
-
-/// This machine's platform key and its installations, newest version first.
-#[derive(Debug, Serialize)]
-pub struct Status {
-    pub platform: String,
-    pub installed: Vec<Installed>,
-}
-
 #[derive(Default)]
 pub struct Installer {
     roots: Roots,
@@ -137,7 +127,7 @@ impl Installer {
 
     /// Parse and validate the input of `claude.ensure`.
     pub fn release(&self, input: &[u8]) -> Result<Release, EnsureError> {
-        Release::parse(input, self.transport)
+        release::parse(input, self.transport)
     }
 
     /// Answer the release's executable for this machine, installing it when no
@@ -192,7 +182,7 @@ impl Installer {
                     continue;
                 };
                 let path = entry.path().join(BINARY);
-                let usable = version::is_valid(&version)
+                let usable = is_version(&version)
                     && read_receipt(&entry.path())
                         .await
                         .is_some_and(|receipt| receipt.version == version)
@@ -363,7 +353,7 @@ async fn download(
     cancel: &CancellationToken,
 ) -> Result<(), EnsureError> {
     let version = &expected.version;
-    let host = artifact.host();
+    let host = release::host(artifact);
     let failed = |error: reqwest::Error| {
         EnsureError::DownloadFailed(format!(
             "Claude Code {version} download from {host} failed: {}",
@@ -442,7 +432,7 @@ async fn remove_other_versions(root: &Path, keep: &str) {
         let other = entry
             .file_name()
             .to_str()
-            .is_some_and(|name| name != keep && version::is_valid(name));
+            .is_some_and(|name| name != keep && is_version(name));
         if other && entry.file_type().await.is_ok_and(|kind| kind.is_dir()) {
             let _unremovable = tokio::fs::remove_dir_all(entry.path()).await;
         }

@@ -1073,10 +1073,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "demi-builtin-protocol"
+version = "0.1.3"
+dependencies = [
+ "base64 0.22.1",
+ "garde",
+ "serde",
+ "serde_json",
+ "serde_plain",
+ "serde_with",
+ "thiserror",
+]
+
+[[package]]
 name = "demi-claude"
 version = "0.1.3"
 dependencies = [
  "bytes",
+ "demi-claude-protocol",
  "demi-command-service",
  "futures-util",
  "reqwest 0.12.28",
@@ -1087,6 +1101,17 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-util",
+]
+
+[[package]]
+name = "demi-claude-protocol"
+version = "0.1.3"
+dependencies = [
+ "garde",
+ "serde",
+ "serde_json",
+ "serde_plain",
+ "thiserror",
 ]
 
 [[package]]
@@ -1130,9 +1155,11 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "chromiumoxide",
+ "demi-builtin-protocol",
  "demi-command-service",
  "demi-runner",
  "futures-util",
+ "garde",
  "getrandom 0.4.3",
  "globset",
  "jsonschema",
@@ -1238,6 +1265,7 @@ dependencies = [
  "serde",
  "serde_bytes",
  "serde_json",
+ "serde_plain",
  "serde_with",
  "thiserror",
 ]
@@ -5044,6 +5072,15 @@ dependencies = [
  "itoa",
  "serde",
  "serde_core",
+]
+
+[[package]]
+name = "serde_plain"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ce1fc6db65a611022b23a0dec6975d63fb80a302cb3388835ff02c097258d50"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

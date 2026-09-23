@@ -15,7 +15,9 @@ use tokio_util::sync::CancellationToken;
 use super::{
     BrowserEnvironment, BrowserError, BrowserTab, Result,
     operation::{CONTROL_TIMEOUT, Operation, after_cleanup},
-    protocol::{BrowserCommand, INLINE_BYTES, WebmcpListResultEntriesItem},
+    protocol::{
+        BrowserOperation, Capability, INLINE_BYTES, WebmcpCallResult, WebmcpListResult, WebmcpTool,
+    },
 };
 
 #[derive(Default)]
@@ -27,17 +29,20 @@ pub(super) struct State {
 
 struct ToolSet {
     handle: String,
-    entries: Vec<WebmcpListResultEntriesItem>,
+    entries: Vec<WebmcpTool>,
 }
 
 /// Report native WebMCP availability in this document, including permissions.
-pub(super) async fn capability(page: &Page) -> Result<Value> {
+pub(super) async fn capability(page: &Page) -> Result<Capability> {
     let available: bool = page.evaluate_expression("Boolean(document.modelContext && typeof document.modelContext.getTools === 'function' && typeof document.modelContext.executeTool === 'function')").await?
         .into_value().map_err(|error| BrowserError::InvalidResult(error.to_string()))?;
-    Ok(if available {
-        json!({"id": "webmcp", "available": true, "schema": {"help": "demi browser webmcp --help"}})
-    } else {
-        json!({"id": "webmcp", "available": false, "reason": "this browser release or document does not expose document.modelContext"})
+    Ok(Capability {
+        id: "webmcp".into(),
+        available,
+        reason: (!available).then(|| {
+            "this browser release or document does not expose document.modelContext".into()
+        }),
+        schema: available.then(|| json!({"help": "demi browser webmcp --help"})),
     })
 }
 
@@ -46,7 +51,7 @@ pub(super) async fn execute(
     _context: &InvocationContext,
     _environment: &BrowserEnvironment,
     tab: Option<&BrowserTab>,
-    command: &BrowserCommand,
+    command: &BrowserOperation,
     cancel: &CancellationToken,
     deadline: tokio::time::Instant,
 ) -> Result<Value> {
@@ -58,12 +63,11 @@ pub(super) async fn execute(
         .try_lock()
         .map_err(|_| BrowserError::Busy)?;
     let capability = operation.run(capability(&tab.page)).await?;
-    if capability["available"] != true {
+    if !capability.available {
         return Err(BrowserError::UnsupportedCapability(
-            capability["reason"]
-                .as_str()
-                .unwrap_or("WebMCP is unavailable")
-                .into(),
+            capability
+                .reason
+                .unwrap_or_else(|| "WebMCP is unavailable".into()),
         ));
     }
     let mut state = tab.state.webmcp.lock().await;
@@ -119,7 +123,7 @@ pub(super) async fn execute(
     }
     let key = state.key.as_ref().expect("observer installed").clone();
     match command {
-        BrowserCommand::WebmcpList(_) => {
+        BrowserOperation::WebmcpList(_) => {
             let handle = super::handles::fresh("tools")?;
             let script = format!(
                 r#"(async () => {{
@@ -172,7 +176,11 @@ pub(super) async fn execute(
                         })?;
                 }
             }
-            let result = json!({"tools": handle, "entries": entries, "truncated": false});
+            let result = super::output::value(WebmcpListResult {
+                tools: handle.clone(),
+                entries: entries.clone(),
+                truncated: false,
+            })?;
             if serde_json::to_vec(&result)
                 .map_err(|error| BrowserError::InvalidResult(error.to_string()))?
                 .len()
@@ -183,7 +191,7 @@ pub(super) async fn execute(
             state.tools = Some(ToolSet { handle, entries });
             Ok(result)
         }
-        BrowserCommand::WebmcpCall(input) => {
+        BrowserOperation::WebmcpCall(input) => {
             let tools = state
                 .tools
                 .as_ref()
@@ -265,7 +273,10 @@ pub(super) async fn execute(
                                         BrowserError::InvalidResult(error.to_string())
                                     })?;
                             }
-                            Ok(json!({"name": input.tool, "result": result}))
+                            super::output::value(WebmcpCallResult {
+                                name: input.tool.clone(),
+                                result,
+                            })
                         }
                     }
                 })
@@ -288,7 +299,8 @@ pub(super) async fn execute(
                 ) => Ok(()),
                 result => result,
             };
-            after_cleanup(work, cleanup).map_err(|error| operation.failure(error, &tab.id(), None))
+            after_cleanup(work, cleanup)
+                .map_err(|error| operation.failure(error, tab.id().as_str(), None))
         }
         _ => unreachable!("WebMCP dispatch accepts only list/call"),
     }
@@ -299,7 +311,7 @@ pub(super) async fn execute(
 enum Snapshot {
     Stale,
     Ready {
-        entries: Vec<WebmcpListResultEntriesItem>,
+        entries: Vec<WebmcpTool>,
         handle: String,
     },
 }

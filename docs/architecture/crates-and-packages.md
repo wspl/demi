@@ -171,8 +171,9 @@ next to the wire's types, so that a command program depends on one crate.
   of `file.*` and `browser.*`, the package's operation list, browser targets,
   queries, tab state, observations and resource event payloads, the live
   view's messages and frame header, the capture extension's events and
-  commands, and the pinned Chrome release and receipt records. Limits and
-  default timeouts are constants on the input types.
+  commands, and the pinned Chrome release and receipt records. Limits are
+  the crate's constants, shared by the inputs they bound; each input type
+  carries its default timeout.
 - **Public boundary:** the types above. `coding-agent` declares the commands
   from these types, `demi-commands` decodes invocations with them, the backend
   uses them for the conversation browser tab routes, and the page reads the

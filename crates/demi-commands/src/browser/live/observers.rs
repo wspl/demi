@@ -22,7 +22,9 @@ use serde_json::{Value, json};
 use tokio::sync::{broadcast, watch};
 use tokio_util::task::TaskTracker;
 
-use super::super::{BrowserError, BrowserTab, Result, protocol::LiveOutboundControlsControlsItem};
+use demi_builtin_protocol::live::{ControlToken, LiveControl};
+
+use super::super::{BrowserError, BrowserTab, Result};
 
 /// The isolated world's name, shared by its script and its binding.
 const WORLD: &str = "demi-live";
@@ -31,7 +33,7 @@ const SOURCE: &str = include_str!("observer.js");
 
 /// What the observer of one tab last reported.
 pub(crate) struct Observed {
-    pub controls: watch::Sender<Vec<LiveOutboundControlsControlsItem>>,
+    pub controls: watch::Sender<Vec<LiveControl>>,
     /// The CSS cursor under the pointer, and whether it is over editable text.
     pub cursor: watch::Sender<(String, bool)>,
     /// Text the page copied.
@@ -49,7 +51,7 @@ enum Report {
         editable: bool,
     },
     Controls {
-        controls: Vec<LiveOutboundControlsControlsItem>,
+        controls: Vec<LiveControl>,
     },
     Copy {
         text: String,
@@ -196,10 +198,10 @@ async fn call(tab: &BrowserTab, expression: &str, by_value: bool) -> Result<Remo
 /// control to the revision the viewer saw.
 pub(super) async fn choose(
     tab: &BrowserTab,
-    token: &str,
+    token: &ControlToken,
     revision: u64,
     value: &str,
-    indices: &[u64],
+    indices: &[u32],
 ) -> Result<bool> {
     let message = json!({"token": token, "revision": revision, "value": value, "indices": indices});
     let result = call(tab, &format!("globalThis.demiLive.commit({message})"), true).await?;
@@ -210,7 +212,7 @@ pub(super) async fn choose(
 /// viewer saw.
 pub(super) async fn attach(
     tab: &BrowserTab,
-    token: &str,
+    token: &ControlToken,
     revision: u64,
     files: Vec<String>,
 ) -> Result<bool> {
@@ -263,7 +265,7 @@ pub(super) async fn attach(
 /// Puts the viewer's clipboard on the browser's own clipboard, when the Host
 /// keeps that apart from its user's clipboard; false when it does not.
 pub(super) async fn write_clipboard(tab: &BrowserTab, text: &str, html: &str) -> Result<bool> {
-    if super::super::clipboard::capability(&tab.page).await?["available"] != true {
+    if !super::super::clipboard::capability(&tab.page).await?.available {
         return Ok(false);
     }
     super::super::clipboard::grant(&tab.browser).await?;

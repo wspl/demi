@@ -11,17 +11,32 @@ use chromiumoxide::cdp::{
     js_protocol::runtime::EvaluateParams,
 };
 use demi_command_service::InvocationContext;
-use serde_json::{Value, json};
+use serde::Serialize;
+use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
 use super::{
     BrowserEnvironment, BrowserError, BrowserTab, Result,
     operation::Operation,
     protocol::{
-        AssetsListResult, AssetsListResultAssetsItem, AssetsListResultInlineSvgsItem,
-        BrowserCommand, INLINE_BYTES, MAX_NODES,
+        AssetKind, AssetsExportResult, AssetsListResult, BrowserFailure, BrowserOperation,
+        ExportedAsset, INLINE_BYTES, InlineSvg, MAX_NODES,
     },
 };
+
+/// The manifest an export writes beside the files: what it saved and what failed.
+#[derive(Serialize)]
+struct Manifest<'a> {
+    inventory: &'a str,
+    files: &'a [ExportedAsset],
+    failures: &'a [ExportFailure],
+}
+
+#[derive(Serialize)]
+struct ExportFailure {
+    id: String,
+    error: BrowserFailure,
+}
 
 #[derive(Default)]
 pub(super) struct State {
@@ -35,7 +50,7 @@ struct Inventory {
 
 struct Asset {
     id: String,
-    kind: String,
+    kind: AssetKind,
     mime: String,
     source: Source,
 }
@@ -54,7 +69,7 @@ pub(super) async fn execute(
     context: &InvocationContext,
     _environment: &BrowserEnvironment,
     tab: Option<&BrowserTab>,
-    command: &BrowserCommand,
+    command: &BrowserOperation,
     cancel: &CancellationToken,
     deadline: tokio::time::Instant,
 ) -> Result<Value> {
@@ -76,7 +91,7 @@ pub(super) async fn execute(
         state.documents = documents;
     }
     match command {
-        BrowserCommand::AssetsList(_) => {
+        BrowserOperation::AssetsList(_) => {
             let handle = super::handles::fresh("assets")?;
             let mut result = AssetsListResult {
                 inventory: handle.clone(),
@@ -89,16 +104,18 @@ pub(super) async fn execute(
             for (page, frame) in frames {
                 for resource in frame.resources {
                     let kind = match resource.r#type {
-                        ResourceType::Font => "font",
-                        ResourceType::Image => "image",
-                        ResourceType::Stylesheet => "stylesheet",
-                        ResourceType::Media if resource.mime_type.starts_with("video/") => "video",
+                        ResourceType::Font => AssetKind::Font,
+                        ResourceType::Image => AssetKind::Image,
+                        ResourceType::Stylesheet => AssetKind::Stylesheet,
+                        ResourceType::Media if resource.mime_type.starts_with("video/") => {
+                            AssetKind::Video
+                        }
                         _ => continue,
                     };
                     let id = super::handles::fresh("asset")?;
-                    let entry = AssetsListResultAssetsItem {
+                    let entry = super::protocol::Asset {
                         id: id.clone(),
-                        kind: kind.into(),
+                        kind,
                         url: resource.url.clone(),
                         mime_type: Some(resource.mime_type.clone()),
                     };
@@ -113,7 +130,7 @@ pub(super) async fn execute(
                     result.assets.push(entry);
                     inventory.assets.push(Asset {
                         id,
-                        kind: kind.into(),
+                        kind,
                         mime: resource.mime_type,
                         source: Source::Resource {
                             page: page.clone(),
@@ -144,23 +161,22 @@ pub(super) async fn execute(
                     }
                     size += html.len();
                     let id = super::handles::fresh("asset")?;
-                    result.inline_svgs.push(AssetsListResultInlineSvgsItem {
+                    result.inline_svgs.push(InlineSvg {
                         id: id.clone(),
                         html: html.clone(),
                     });
                     inventory.assets.push(Asset {
                         id,
-                        kind: "image".into(),
+                        kind: AssetKind::Image,
                         mime: "image/svg+xml".into(),
                         source: Source::Svg(html),
                     });
                 }
             }
             state.inventories.insert(handle, inventory);
-            serde_json::to_value(result)
-                .map_err(|error| BrowserError::InvalidResult(error.to_string()))
+            super::output::value(result)
         }
-        BrowserCommand::AssetsExport(input) => {
+        BrowserOperation::AssetsExport(input) => {
             if input.id.is_some() == input.kind.is_some() {
                 return Err(BrowserError::Configuration(
                     "asset export requires either --id or --kind".into(),
@@ -225,19 +241,41 @@ pub(super) async fn execute(
                         let count = bytes.len();
                         let path =
                             directory.join(format!("{}.{}", asset.id, extension(&asset.mime)));
-                        super::output::save_with_overwrite(&context.request.cwd, &path.to_string_lossy(), bytes, overwrite, cancel, deadline).await
-                            .map(|path| json!({"id": asset.id, "path": path, "bytes": count, "mimeType": asset.mime}))
+                        super::output::save_with_overwrite(
+                            &context.request.cwd,
+                            &path.to_string_lossy(),
+                            bytes,
+                            overwrite,
+                            cancel,
+                            deadline,
+                        )
+                        .await
+                        .map(|path| ExportedAsset {
+                            id: asset.id.clone(),
+                            path,
+                            bytes: count,
+                            mime_type: asset.mime.clone(),
+                        })
                     }
                     Err(error) => Err(error),
                 };
                 match saved {
                     Ok(file) => files.push(file),
-                    Err(error) => failures.push(json!({"id": asset.id, "error": {"code": error.code(), "message": error.to_string()}})),
+                    Err(error) => failures.push(ExportFailure {
+                        id: asset.id.clone(),
+                        error: BrowserFailure {
+                            code: error.code(),
+                            message: error.to_string(),
+                            details: None,
+                        },
+                    }),
                 }
             }
-            let manifest = serde_json::to_vec_pretty(
-                &json!({"inventory": input.inventory, "files": files, "failures": failures}),
-            )
+            let manifest = serde_json::to_vec_pretty(&Manifest {
+                inventory: &input.inventory,
+                files: &files,
+                failures: &failures,
+            })
             .map_err(|error| BrowserError::InvalidResult(error.to_string()))?;
             // The manifest is cleanup for a partial export; publish it with its own
             // bounded cleanup token even when collection was cancelled.
@@ -251,7 +289,11 @@ pub(super) async fn execute(
                 tokio::time::Instant::now() + super::operation::CONTROL_TIMEOUT,
             )
             .await?;
-            let result = json!({"directory": directory, "manifest": manifest, "files": files});
+            let result = AssetsExportResult {
+                directory: directory.to_string_lossy().into_owned(),
+                manifest,
+                files,
+            };
             if cancel.is_cancelled() || tokio::time::Instant::now() >= deadline {
                 let cause = if tokio::time::Instant::now() >= deadline {
                     BrowserError::Timeout
@@ -260,13 +302,16 @@ pub(super) async fn execute(
                 };
                 return Err(BrowserError::Action {
                     source: Box::new(cause),
-                    details: result,
+                    details: super::protocol::ErrorDetails {
+                        export: Some(result),
+                        ..super::protocol::ErrorDetails::default()
+                    },
                 });
             }
             if !failures.is_empty() {
-                return Err(BrowserError::PartialFailure { details: result });
+                return Err(BrowserError::PartialFailure { export: result });
             }
-            Ok(result)
+            super::output::value(result)
         }
         _ => unreachable!("asset dispatch accepts only asset commands"),
     }

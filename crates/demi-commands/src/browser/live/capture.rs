@@ -12,9 +12,12 @@ use std::{
     },
 };
 
-use bytes::{Buf, Bytes};
+use bytes::Bytes;
+use demi_builtin_protocol::{
+    DecodeError,
+    capture::{self as extension, CaptureCommand},
+};
 use futures_util::{SinkExt, StreamExt};
-use serde_json::{Value, json};
 use tokio::{net::TcpListener, sync::mpsc};
 use tokio_tungstenite::tungstenite::{
     Message,
@@ -25,10 +28,6 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::super::{BrowserError, Result};
 
-/// A frame's header from the extension: capture (u32), sequence (u32), flags
-/// (u8, 1 = key frame), three reserved bytes, timestamp in microseconds
-/// (f64), width and height (u16 each), eight reserved bytes.
-const FRAME_HEADER: usize = 32;
 /// Frames a capture's consumer has not taken yet; beyond them the consumer
 /// is behind and the newest frames are dropped until it asks for a key frame.
 const FRAME_QUEUE: usize = 8;
@@ -152,7 +151,7 @@ impl CaptureServer {
 }
 
 struct Connection {
-    commands: mpsc::UnboundedSender<Value>,
+    commands: mpsc::UnboundedSender<CaptureCommand>,
     generation: u64,
 }
 
@@ -173,7 +172,7 @@ impl Captures {
         ended: CancellationToken,
     ) {
         let (mut sink, mut stream) = socket.split();
-        let (commands, mut outgoing) = mpsc::unbounded_channel::<Value>();
+        let (commands, mut outgoing) = mpsc::unbounded_channel::<CaptureCommand>();
         let generation = self.generations.fetch_add(1, Ordering::Relaxed);
         {
             let mut connection = self.connection.lock().expect("capture lock poisoned");
@@ -188,22 +187,26 @@ impl Captures {
         self.connected.notify_waiters();
         let writer = async {
             while let Some(command) = outgoing.recv().await {
-                if sink.send(Message::text(command.to_string())).await.is_err() {
+                let text = serde_json::to_string(&command).expect("capture commands serialize");
+                if sink.send(Message::text(text)).await.is_err() {
                     break;
                 }
             }
         };
         let reader = async {
             while let Some(Ok(message)) = stream.next().await {
-                match message {
+                let received = match message {
                     Message::Binary(bytes) => self.frame(bytes),
-                    Message::Text(text) => {
-                        if let Ok(event) = serde_json::from_str::<Value>(&text) {
-                            self.event(&event);
-                        }
-                    }
+                    Message::Text(text) => extension::CaptureEvent::decode(&text)
+                        .map(|event| self.event(event)),
                     Message::Close(_) => break,
-                    _ => {}
+                    _ => Ok(()),
+                };
+                // A message that does not decode fails the connection and its
+                // captures (`live-view.md` § Capture).
+                if let Err(error) = received {
+                    eprintln!("capture extension message refused: {error}");
+                    break;
                 }
             }
         };
@@ -237,18 +240,39 @@ impl Captures {
         }
     }
 
-    fn frame(&self, mut bytes: Bytes) {
-        if bytes.len() < FRAME_HEADER {
-            return;
+    fn frame(&self, bytes: Bytes) -> std::result::Result<(), DecodeError> {
+        let (header, data) = extension::FrameHeader::split(&bytes)?;
+        let frame = Frame {
+            sequence: header.sequence,
+            key: header.key,
+            timestamp: header.timestamp,
+            width: header.width,
+            height: header.height,
+            data: bytes.slice_ref(data),
+        };
+        // A consumer that is behind loses the newest pictures, not the socket.
+        self.deliver(header.capture, CaptureEvent::Frame(frame));
+        Ok(())
+    }
+
+    fn event(&self, event: extension::CaptureEvent) {
+        match event {
+            extension::CaptureEvent::Ready {} | extension::CaptureEvent::Stopped { .. } => {}
+            extension::CaptureEvent::Started { capture } => {
+                self.deliver(capture, CaptureEvent::Started)
+            }
+            extension::CaptureEvent::Stalled { capture } => {
+                self.deliver(capture, CaptureEvent::Stalled)
+            }
+            extension::CaptureEvent::Error { capture, message } => {
+                self.deliver(capture, CaptureEvent::Failed(message))
+            }
         }
-        let mut header = bytes.split_to(FRAME_HEADER);
-        let capture = header.get_u32();
-        let sequence = header.get_u32();
-        let key = header.get_u8() & 1 == 1;
-        header.advance(3);
-        let timestamp = header.get_f64();
-        let width = header.get_u16();
-        let height = header.get_u16();
+    }
+
+    /// Hands an event to the capture's consumer, if it still runs; one that
+    /// is behind loses it.
+    fn deliver(&self, capture: u32, event: CaptureEvent) {
         let events = self
             .captures
             .lock()
@@ -256,47 +280,11 @@ impl Captures {
             .get(&capture)
             .cloned();
         if let Some(events) = events {
-            // A consumer that is behind loses the newest pictures, not the socket.
-            let _behind = events.try_send(CaptureEvent::Frame(Frame {
-                sequence,
-                key,
-                timestamp,
-                width,
-                height,
-                data: bytes,
-            }));
+            let _behind = events.try_send(event);
         }
     }
 
-    fn event(&self, event: &Value) {
-        let Some(capture) = event["capture"]
-            .as_u64()
-            .and_then(|id| u32::try_from(id).ok())
-        else {
-            return;
-        };
-        let events = self
-            .captures
-            .lock()
-            .expect("capture lock poisoned")
-            .get(&capture)
-            .cloned();
-        let Some(events) = events else { return };
-        let delivered = match event["type"].as_str() {
-            Some("started") => CaptureEvent::Started,
-            Some("stalled") => CaptureEvent::Stalled,
-            Some("error") => CaptureEvent::Failed(
-                event["message"]
-                    .as_str()
-                    .unwrap_or("capture failed")
-                    .to_owned(),
-            ),
-            _ => return,
-        };
-        let _behind = events.try_send(delivered);
-    }
-
-    fn command(&self, command: Value) -> Result<()> {
+    fn command(&self, command: CaptureCommand) -> Result<()> {
         self.connection
             .lock()
             .expect("capture lock poisoned")
@@ -355,10 +343,14 @@ impl Captures {
             captures: self.clone(),
             events,
         };
-        self.command(json!({
-            "type": "start", "capture": id, "target": target,
-            "width": width, "height": height, "fps": fps, "bitrate": bitrate,
-        }))?;
+        self.command(CaptureCommand::Start {
+            capture: id,
+            target: target.into(),
+            width,
+            height,
+            fps,
+            bitrate,
+        })?;
         Ok(capture)
     }
 }
@@ -373,21 +365,25 @@ pub(crate) struct Capture {
 impl Capture {
     /// The consumer has these frames; up to `window` may be in flight.
     pub fn ack(&self, sequence: u32, window: u32) {
-        let _gone = self.captures.command(
-            json!({"type": "ack", "capture": self.id, "sequence": sequence, "window": window}),
-        );
+        let _gone = self.captures.command(CaptureCommand::Ack {
+            capture: self.id,
+            sequence,
+            window,
+        });
     }
 
     pub fn key_frame(&self) {
         let _gone = self
             .captures
-            .command(json!({"type": "keyframe", "capture": self.id}));
+            .command(CaptureCommand::Keyframe { capture: self.id });
     }
 
     pub fn encoding(&self, bitrate: u32, fps: u32) {
-        let _gone = self.captures.command(
-            json!({"type": "encoding", "capture": self.id, "bitrate": bitrate, "fps": fps}),
-        );
+        let _gone = self.captures.command(CaptureCommand::Encoding {
+            capture: self.id,
+            bitrate,
+            fps,
+        });
     }
 }
 
@@ -400,7 +396,7 @@ impl Drop for Capture {
             .remove(&self.id);
         let _gone = self
             .captures
-            .command(json!({"type": "stop", "capture": self.id}));
+            .command(CaptureCommand::Stop { capture: self.id });
     }
 }
 

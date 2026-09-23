@@ -13,9 +13,13 @@ use chromiumoxide::{
     },
     types::{Command, Method, MethodId},
 };
-use serde_json::{Value, json};
+use serde_json::Value;
 
-use super::{BrowserError, BrowserTab, Result, launch::WINDOW_CHROME_HEIGHT};
+use super::{
+    BrowserError, BrowserTab, Result,
+    launch::WINDOW_CHROME_HEIGHT,
+    protocol::{BrowserViewport, ViewportMode},
+};
 
 /// Flush this page's layout to Chrome's painted view without resizing it.
 pub(super) async fn paint(page: &Page) -> Result<()> {
@@ -45,75 +49,37 @@ pub(super) async fn paint(page: &Page) -> Result<()> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(super) enum Mode {
-    /// The user's panel decides the size and the viewer's screen the ratio.
-    Web,
-    /// A phone: a fixed size, touch, and a phone's user agent.
-    Mobile,
-    /// The agent set the size and the ratio.
-    Custom,
-}
+/// A tab nobody has watched.
+pub(super) const UNWATCHED: BrowserViewport = BrowserViewport {
+    width: 1280,
+    height: 720,
+    device_pixel_ratio: 1.0,
+    mode: ViewportMode::Web,
+};
+/// Mobile mode's size in CSS pixels.
+pub(super) const PHONE: (u32, u32) = (390, 844);
 
-impl Mode {
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Web => "web",
-            Self::Mobile => "mobile",
-            Self::Custom => "custom",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(super) struct Viewport {
-    pub mode: Mode,
-    pub width: u32,
-    pub height: u32,
-    pub ratio: f64,
-}
-
-impl Viewport {
-    /// A tab nobody has watched.
-    pub const UNWATCHED: Self = Self {
-        mode: Mode::Web,
-        width: 1280,
-        height: 720,
-        ratio: 1.0,
+/// A viewport's picture size in device pixels at `scale`, even for the encoder.
+pub(super) fn pixels(viewport: &BrowserViewport, scale: f64) -> (u32, u32) {
+    let even = |length: u32| {
+        ((f64::from(length) * viewport.device_pixel_ratio * scale / 2.0).ceil() as u32) * 2
     };
-    /// Mobile mode's size in CSS pixels.
-    pub const PHONE: (u32, u32) = (390, 844);
-
-    /// The result field every command that reports a viewport shares.
-    pub fn report(&self) -> Value {
-        json!({
-            "width": self.width,
-            "height": self.height,
-            "devicePixelRatio": self.ratio,
-            "mode": self.mode.name(),
-        })
-    }
-
-    /// The picture's size in device pixels at `scale`, even for the encoder.
-    pub fn pixels(&self, scale: f64) -> (u32, u32) {
-        let even = |length: u32| ((f64::from(length) * self.ratio * scale / 2.0).ceil() as u32) * 2;
-        (even(self.width), even(self.height))
-    }
+    (even(viewport.width), even(viewport.height))
 }
 
 /// A tab's viewport, and the Web viewport it returns to when the agent's
 /// setting is reset.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct Viewports {
-    pub current: Viewport,
-    pub web: Viewport,
+    pub current: BrowserViewport,
+    pub web: BrowserViewport,
 }
 
 impl Default for Viewports {
     fn default() -> Self {
         Self {
-            current: Viewport::UNWATCHED,
-            web: Viewport::UNWATCHED,
+            current: UNWATCHED,
+            web: UNWATCHED,
         }
     }
 }
@@ -201,12 +167,12 @@ fn phone(version: &str) -> SetUserAgentOverrideParams {
 }
 
 impl BrowserTab {
-    pub(super) fn viewport(&self) -> Viewport {
+    pub(super) fn viewport(&self) -> BrowserViewport {
         self.state.viewport.borrow().current
     }
 
     /// The Web viewport the tab last had, which `viewport reset` returns to.
-    pub(super) fn web_viewport(&self) -> Viewport {
+    pub(super) fn web_viewport(&self) -> BrowserViewport {
         self.state.viewport.borrow().web
     }
 
@@ -214,9 +180,9 @@ impl BrowserTab {
     /// own chrome, so the page never sees an outer size smaller than its inner
     /// size. Entering or leaving Mobile mode turns the phone's touch and user
     /// agent on or off.
-    pub(super) async fn set_viewport(&self, viewport: Viewport) -> Result<()> {
-        let mobile = viewport.mode == Mode::Mobile;
-        if mobile != (self.viewport().mode == Mode::Mobile) {
+    pub(super) async fn set_viewport(&self, viewport: BrowserViewport) -> Result<()> {
+        let mobile = viewport.mode == ViewportMode::Mobile;
+        if mobile != (self.viewport().mode == ViewportMode::Mobile) {
             let agent = if mobile {
                 phone(&super::installation::pinned_version()?)
             } else {
@@ -235,7 +201,7 @@ impl BrowserTab {
             .execute(SetDeviceMetricsOverrideParams::new(
                 i64::from(viewport.width),
                 i64::from(viewport.height),
-                viewport.ratio,
+                viewport.device_pixel_ratio,
                 mobile,
             ))
             .await?;
@@ -244,7 +210,7 @@ impl BrowserTab {
         paint(&self.page).await?;
         self.state.viewport.send_modify(|viewports| {
             viewports.current = viewport;
-            if viewport.mode == Mode::Web {
+            if viewport.mode == ViewportMode::Web {
                 viewports.web = viewport;
             }
         });
@@ -252,7 +218,7 @@ impl BrowserTab {
         Ok(())
     }
 
-    async fn fit_window(&self, viewport: Viewport) -> Result<()> {
+    async fn fit_window(&self, viewport: BrowserViewport) -> Result<()> {
         let browser = self.browser.upgrade().ok_or(BrowserError::Closed)?;
         let browser = browser.lock().await;
         let window = browser
@@ -320,13 +286,13 @@ mod tests {
 
     #[test]
     fn a_picture_has_even_device_pixels() {
-        let viewport = Viewport {
-            mode: Mode::Web,
+        let viewport = BrowserViewport {
+            mode: ViewportMode::Web,
             width: 701,
             height: 401,
-            ratio: 1.5,
+            device_pixel_ratio: 1.5,
         };
-        assert_eq!(viewport.pixels(1.0), (1052, 602));
-        assert_eq!(viewport.pixels(0.5), (526, 302));
+        assert_eq!(pixels(&viewport, 1.0), (1052, 602));
+        assert_eq!(pixels(&viewport, 0.5), (526, 302));
     }
 }

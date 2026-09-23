@@ -8,22 +8,18 @@ use bytes::Bytes;
 use tokio::{io::AsyncWriteExt, sync::mpsc};
 use tokio_util::task::AbortOnDropHandle;
 
-use super::{
-    super::protocol::{LiveInboundUploadFilesItem, LiveOutbound},
-    commands::find,
-    hub::Membership,
-    observers,
-    writer::Writer,
-};
-use crate::browser::{BrowserEnvironment, BrowserError, Result, handles};
+use demi_builtin_protocol::live::{ControlToken, LiveModuleMessage, UploadFile};
+
+use super::{commands::find, hub::Membership, observers, writer::Writer};
+use crate::browser::{BrowserEnvironment, BrowserError, Result, handles, protocol::TabId};
 
 pub(super) enum Item {
     Start {
-        tab: String,
-        token: String,
+        tab: TabId,
+        token: ControlToken,
         revision: u64,
-        upload: u64,
-        files: Vec<LiveInboundUploadFilesItem>,
+        upload: u32,
+        files: Vec<UploadFile>,
     },
     Data {
         upload: u32,
@@ -40,9 +36,9 @@ struct File {
 }
 
 struct Upload {
-    id: u64,
-    tab: String,
-    token: String,
+    id: u32,
+    tab: TabId,
+    token: ControlToken,
     revision: u64,
     files: Vec<File>,
     /// The file whose bytes arrive next.
@@ -103,7 +99,7 @@ pub(super) fn start(
                         continue;
                     };
                     // Bytes of an upload already refused or replaced.
-                    if current.id != u64::from(upload) {
+                    if current.id != upload {
                         continue;
                     }
                     receive(current, file, data).await
@@ -136,7 +132,7 @@ pub(super) fn start(
                 match accepted {
                     Ok(accepted) => {
                         writer
-                            .control(&LiveOutbound::Choice {
+                            .control(&LiveModuleMessage::Choice {
                                 token: done.token,
                                 accepted,
                             })
@@ -151,11 +147,11 @@ pub(super) fn start(
 
 async fn prepare(
     environment: &BrowserEnvironment,
-    id: u64,
-    tab: String,
-    token: String,
+    id: u32,
+    tab: TabId,
+    token: ControlToken,
     revision: u64,
-    files: Vec<LiveInboundUploadFilesItem>,
+    files: Vec<UploadFile>,
 ) -> Result<Upload> {
     let directory = environment.upload_directory.join(handles::fresh("u")?);
     tokio::fs::create_dir(&directory).await?;
@@ -215,10 +211,10 @@ async fn receive(upload: &mut Upload, file: u32, data: Bytes) -> Result<()> {
     Ok(())
 }
 
-async fn refuse(writer: &Writer, token: String, error: &BrowserError) {
+async fn refuse(writer: &Writer, token: ControlToken, error: &BrowserError) {
     writer.notice(error.code(), &error.to_string()).await;
     writer
-        .control(&LiveOutbound::Choice {
+        .control(&LiveModuleMessage::Choice {
             token,
             accepted: false,
         })

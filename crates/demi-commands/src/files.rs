@@ -4,8 +4,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use demi_builtin_protocol::file::{CreateArgs, EditArgs, FileOperation, PatchArgs};
 use demi_command_service::protocol::Invocation;
-use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
 use crate::patch;
@@ -74,62 +74,33 @@ pub fn mutate(
     recording: Option<&mut demi_command_service::edits::Recording>,
 ) -> Result<String, String> {
     check_cancelled(cancellation)?;
-    match request.operation.as_str() {
-        "file.create" => {
-            #[derive(Deserialize)]
-            #[serde(deny_unknown_fields)]
-            struct Args {
-                path: String,
-                content: String,
-            }
-            let args: Args =
-                serde_json::from_value(request.args.clone()).map_err(|error| error.to_string())?;
-            let path = resolve_path(&request.cwd, &args.path)?;
+    let operation = FileOperation::parse(&request.operation, request.args.clone())
+        .map_err(|error| error.to_string())?;
+    match operation {
+        FileOperation::Create(CreateArgs { path: name, content }) => {
+            let path = resolve_path(&request.cwd, &name)?;
             if let Some(recording) = recording {
                 recording.track(&path);
             }
             check_cancelled(cancellation)?;
-            atomic_write(&path, args.content.as_bytes(), true)?;
-            Ok(format!("Created {}\n", args.path))
+            atomic_write(&path, content.as_bytes(), true)?;
+            Ok(format!("Created {name}\n"))
         }
-        "file.edit" => edit(request, cancellation, recording),
-        "file.patch" => {
-            #[derive(Deserialize)]
-            #[serde(deny_unknown_fields)]
-            struct Args {
-                patch: String,
-            }
-            let args: Args =
-                serde_json::from_value(request.args.clone()).map_err(|error| error.to_string())?;
-            patch::apply(&request.cwd, &args.patch, cancellation, recording)
+        FileOperation::Edit(args) => edit(&request.cwd, &args, cancellation, recording),
+        FileOperation::Patch(PatchArgs { patch }) => {
+            patch::apply(&request.cwd, &patch, cancellation, recording)
         }
-        _ => Err("Unknown builtin operation".into()),
+        FileOperation::Read(_) => Err("file.read does not mutate a file".into()),
     }
 }
 
 fn edit(
-    request: &Invocation,
+    cwd: &str,
+    args: &EditArgs,
     cancellation: &CancellationToken,
     recording: Option<&mut demi_command_service::edits::Recording>,
 ) -> Result<String, String> {
-    #[derive(Deserialize)]
-    #[serde(deny_unknown_fields)]
-    struct Args {
-        path: String,
-        old: String,
-        new: String,
-        occurrence: Option<usize>,
-        context: Option<usize>,
-    }
-    let args: Args =
-        serde_json::from_value(request.args.clone()).map_err(|error| error.to_string())?;
-    if args.old.is_empty() {
-        return Err("Old text must not be empty".into());
-    }
-    if args.occurrence == Some(0) || args.context == Some(0) {
-        return Err("Occurrence and context must be positive".into());
-    }
-    let path = resolve_path(&request.cwd, &args.path)?;
+    let path = resolve_path(cwd, &args.path)?;
     let content = fs::read_to_string(&path).map_err(|error| error.to_string())?;
     let matches: Vec<_> = content
         .match_indices(&args.old)

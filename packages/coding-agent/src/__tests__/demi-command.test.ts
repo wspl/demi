@@ -304,7 +304,7 @@ test(
     if (failed.status !== 'exited')
       throw new Error('expected exited result')
     expect(failed.exitCode).toBe(1)
-    expect(failed.stderr.delta).toContain('Old text must not be empty')
+    expect(failed.stderr.delta).toContain('old: length is lower than 1')
 
     const unchanged = await env.exec({
       shellId: created.shellId,

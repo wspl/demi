@@ -3,10 +3,10 @@ use super::{
     BrowserError, BrowserTab, Result, element,
     observation::References,
     operation::Operation,
-    protocol::{BrowserTarget, SelectTextInput},
+    protocol::{ActionResult, BrowserTarget, SelectTextInput},
 };
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::json;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -22,7 +22,7 @@ impl BrowserTab {
         refs: &mut References,
         input: &SelectTextInput,
         operation: &Operation<'_>,
-    ) -> Result<Value> {
+    ) -> Result<ActionResult> {
         if input.text.is_empty() {
             return Err(BrowserError::Configuration(
                 "select-text requires nonempty text".into(),
@@ -60,7 +60,8 @@ impl BrowserTab {
                 match selected.status.as_str() {
                     "selected" => {
                         operation.complete_input();
-                        Ok(Some(json!({"operation": "select-text", "result": input.cursor.as_deref().unwrap_or("selected")})))
+                        let result = input.cursor.map_or("selected".to_owned(), |cursor| cursor.to_string());
+                        Ok(Some(ActionResult::new("select-text", json!(result))))
                     }
                     "missing" => {
                         last_failure = Some(BrowserError::NotActionable {

@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 bytes.workspace = true
+demi-claude-protocol = { path = "../claude-protocol" }
 demi-command-service = { path = "../command-service" }
 futures-util.workspace = true
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }

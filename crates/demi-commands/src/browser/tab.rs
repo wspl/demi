@@ -24,9 +24,29 @@ use super::{
     BrowserError, Result, element, evaluation, keyboard,
     observation::{Observation, References, can_resample},
     operation::{CONTROL_TIMEOUT, Operation},
-    protocol::BrowserCreatedBy,
-    protocol::BrowserTarget,
+    protocol::{BrowserCreatedBy, BrowserTarget, TabId},
 };
+
+/// The element target of a CSS selector.
+fn css_target(selector: &str) -> BrowserTarget {
+    BrowserTarget {
+        css: Some(selector.to_owned()),
+        ..BrowserTarget::default()
+    }
+}
+
+/// A JavaScript dialog's type as results and the live view name it.
+pub(super) fn dialog_type(
+    kind: &chromiumoxide::cdp::browser_protocol::page::DialogType,
+) -> super::protocol::DialogType {
+    use chromiumoxide::cdp::browser_protocol::page::DialogType as Cdp;
+    match kind {
+        Cdp::Alert => super::protocol::DialogType::Alert,
+        Cdp::Confirm => super::protocol::DialogType::Confirm,
+        Cdp::Prompt => super::protocol::DialogType::Prompt,
+        Cdp::Beforeunload => super::protocol::DialogType::BeforeUnload,
+    }
+}
 
 pub(super) enum InputRelease {
     Mouse(DispatchMouseEventParams),
@@ -110,7 +130,7 @@ pub struct BrowserTab {
     pub(super) ended: CancellationToken,
     environment_ended: CancellationToken,
     pub(super) state: Arc<TabState>,
-    id: Arc<str>,
+    id: TabId,
     pub(super) created_by: BrowserCreatedBy,
 }
 
@@ -121,7 +141,7 @@ impl BrowserTab {
         ended: CancellationToken,
         environment_ended: CancellationToken,
         state: Arc<TabState>,
-        id: Arc<str>,
+        id: TabId,
         created_by: BrowserCreatedBy,
     ) -> Self {
         Self {
@@ -176,8 +196,8 @@ impl BrowserTab {
         self.page.target_id().as_ref()
     }
 
-    pub fn id(&self) -> String {
-        self.id.to_string()
+    pub fn id(&self) -> &TabId {
+        &self.id
     }
 
     pub async fn read_only(
@@ -234,8 +254,7 @@ impl BrowserTab {
             .map_err(|_| BrowserError::Busy)?;
         let operation =
             Operation::for_tab(self, cancellation, tokio::time::Instant::now() + timeout);
-        let target = serde_json::from_value(json!({ "css": selector }))
-            .map_err(|error| BrowserError::Configuration(error.to_string()))?;
+        let target = css_target(selector);
         let (_, state) = self
             .ready_element(&target, &mut references, element::CLICK, &operation)
             .await?;
@@ -257,8 +276,7 @@ impl BrowserTab {
             .map_err(|_| BrowserError::Busy)?;
         let operation =
             Operation::for_tab(self, cancellation, tokio::time::Instant::now() + timeout);
-        let target = serde_json::from_value(json!({ "css": selector }))
-            .map_err(|error| BrowserError::Configuration(error.to_string()))?;
+        let target = css_target(selector);
         self.fill(&target, &mut references, text, &operation).await
     }
 

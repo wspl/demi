@@ -2,16 +2,20 @@
 use super::{
     BrowserError, BrowserTab, Result, keyboard,
     operation::{CONTROL_TIMEOUT, Operation, after_cleanup},
-    protocol::DragInput,
+    protocol::{ActionResult, DragInput},
     tab::InputRelease,
 };
 use chromiumoxide::cdp::browser_protocol::input::{
     DispatchMouseEventParams, DispatchMouseEventType, MouseButton,
 };
-use serde_json::{Value, json};
+use serde_json::json;
 
 impl BrowserTab {
-    pub(super) async fn drag(&self, input: &DragInput, operation: &Operation<'_>) -> Result<Value> {
+    pub(super) async fn drag(
+        &self,
+        input: &DragInput,
+        operation: &Operation<'_>,
+    ) -> Result<ActionResult> {
         let mut points = Vec::new();
         for point in &input.point {
             points.push(operation.run(self.coordinates(point)).await?);
@@ -73,7 +77,7 @@ impl BrowserTab {
             .map_err(BrowserError::Configuration)?;
         self.release_mouse(result, release).await?;
         operation.complete_input();
-        Ok(json!({"operation": "drag", "result": true}))
+        Ok(ActionResult::new("drag", json!(true)))
     }
 
     /// The retained browser tab owns any mouse release blocked by a dialog.

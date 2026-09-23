@@ -18,7 +18,7 @@ use chromiumoxide::{
 use super::{
     BrowserError, Result,
     element::TargetElement,
-    protocol::{BrowserNode, BrowserTarget},
+    protocol::{BrowserNode, BrowserTarget, BrowserTreeNode, NodeRef},
 };
 
 pub(super) type DomIdentity = (TargetId, BackendNodeId);
@@ -32,8 +32,8 @@ struct Reference {
 
 #[derive(Default)]
 pub(super) struct References {
-    by_id: HashMap<String, Reference>,
-    by_node: HashMap<Reference, String>,
+    by_id: HashMap<NodeRef, Reference>,
+    by_node: HashMap<Reference, NodeRef>,
 }
 
 struct Node {
@@ -46,7 +46,7 @@ struct Node {
 #[derive(Default)]
 pub(super) struct Observation {
     nodes: Vec<Node>,
-    order: Vec<(usize, u64)>,
+    order: Vec<(usize, usize)>,
     dom: Vec<(DomNode, FrameId)>,
     loaders: HashMap<FrameId, LoaderId>,
     dom_index: HashMap<DomIdentity, usize>,
@@ -152,7 +152,7 @@ impl Observation {
                 order.push((index, depth));
             }
             for child in node.children.iter().rev() {
-                pending.push((*child, depth + u64::from(visible)));
+                pending.push((*child, depth + usize::from(visible)));
             }
         }
         let (document, _) = documents_by_session
@@ -238,8 +238,8 @@ impl Observation {
     /// Enter explicit browser frame references in order and validate an optional container.
     fn target_scope(
         &self,
-        within: Option<&str>,
-        frames: Option<&[String]>,
+        within: Option<&NodeRef>,
+        frames: Option<&[NodeRef]>,
         refs: &References,
     ) -> Result<Option<DomIdentity>> {
         let mut scope = None;
@@ -295,8 +295,8 @@ impl Observation {
 
     pub(super) fn restrict(
         &mut self,
-        within: Option<&str>,
-        frames: Option<&[String]>,
+        within: Option<&NodeRef>,
+        frames: Option<&[NodeRef]>,
         refs: &References,
     ) -> Result<()> {
         self.scope = self.target_scope(within, frames, refs)?;
@@ -308,7 +308,7 @@ impl Observation {
         &self,
         refs: &mut References,
         limit: usize,
-    ) -> Result<(serde_json::Value, bool)> {
+    ) -> Result<(Vec<BrowserTreeNode>, bool)> {
         let mut nodes = Vec::new();
         let mut truncated = false;
         for (dom, frame) in &self.dom {
@@ -351,25 +351,28 @@ impl Observation {
                 frame: frame.clone(),
                 loader: loader.clone(),
             })?;
-            let mut value = json!({"ref": reference, "tag": dom.local_name, "children": []});
+            let mut node = BrowserTreeNode {
+                r#ref: Some(reference),
+                tag: Some(dom.local_name.clone()),
+                children: Some(Vec::new()),
+                ..BrowserTreeNode::default()
+            };
             if let Some(index) = self
                 .ax_index
                 .get(&(self.pages[frame].target_id().clone(), dom.backend_node_id))
             {
                 let described = self.describe(*index, 0, refs)?;
-                value["role"] = json!(described.role);
-                value["name"] = json!(described.name);
-                value["states"] = json!(described.states);
-                if let Some(current) = described.value {
-                    value["value"] = json!(current);
-                }
+                node.role = Some(described.role);
+                node.name = Some(described.name);
+                node.states = Some(described.states);
+                node.value = described.value;
             }
-            nodes.push((depth, value));
+            nodes.push((depth, node));
         }
-        Ok((hierarchy_values(nodes), truncated))
+        Ok((nest(nodes), truncated))
     }
 
-    fn describe(&self, index: usize, depth: u64, refs: &mut References) -> Result<BrowserNode> {
+    fn describe(&self, index: usize, depth: usize, refs: &mut References) -> Result<BrowserNode> {
         let node = &self.nodes[index];
         let reference = match node.ax.backend_dom_node_id {
             Some(backend) => Some(refs.issue(Reference {
@@ -491,7 +494,7 @@ impl Observation {
         refs: &References,
     ) -> Result<Vec<TargetElement>> {
         validate_target(target)?;
-        let within = self.target_scope(target.within.as_deref(), target.frame.as_deref(), refs)?;
+        let within = self.target_scope(target.within.as_ref(), target.frame.as_deref(), refs)?;
         let mut matches = if let Some(reference) = &target.r#ref {
             vec![
                 self.resolve_identity(&self.reference(reference, refs)?)
@@ -798,7 +801,7 @@ impl Observation {
             .collect()
     }
 
-    pub(super) fn reference(&self, id: &str, refs: &References) -> Result<DomIdentity> {
+    pub(super) fn reference(&self, id: &NodeRef, refs: &References) -> Result<DomIdentity> {
         let reference = refs.by_id.get(id).ok_or(BrowserError::StaleReference)?;
         if self.loaders.get(&reference.frame) != Some(&reference.loader) {
             return Err(BrowserError::StaleReference);
@@ -836,7 +839,7 @@ impl References {
         self.by_node.clear();
     }
 
-    fn issue(&mut self, reference: Reference) -> Result<String> {
+    fn issue(&mut self, reference: Reference) -> Result<NodeRef> {
         if let Some(id) = self.by_node.get(&reference) {
             return Ok(id.clone());
         }
@@ -845,7 +848,7 @@ impl References {
                 "browser reference limit reached for this document".into(),
             ));
         }
-        let id = super::handles::fresh("e")?;
+        let id = NodeRef::from_random(super::handles::random()?);
         self.by_id.insert(id.clone(), reference.clone());
         self.by_node.insert(reference, id.clone());
         Ok(id)
@@ -853,26 +856,30 @@ impl References {
 }
 
 /// Preserve the observed browser hierarchy in the public inspect result.
-pub(super) fn hierarchy(nodes: Vec<BrowserNode>) -> Result<serde_json::Value> {
-    let nodes = nodes
-        .into_iter()
-        .map(|node| {
-            let depth = node.depth;
-            let mut value = serde_json::to_value(node)
-                .map_err(|error| BrowserError::InvalidResult(error.to_string()))?;
-            let object = value.as_object_mut().expect("browser node is an object");
-            object.remove("depth");
-            object.remove("bounds");
-            Ok((depth, value))
-        })
-        .collect::<Result<Vec<_>>>()?;
-    Ok(hierarchy_values(nodes))
+pub(super) fn hierarchy(nodes: Vec<BrowserNode>) -> Vec<BrowserTreeNode> {
+    nest(
+        nodes
+            .into_iter()
+            .map(|node| {
+                let tree = BrowserTreeNode {
+                    r#ref: node.r#ref,
+                    role: Some(node.role),
+                    name: Some(node.name),
+                    value: node.value,
+                    tag: None,
+                    states: Some(node.states),
+                    children: None,
+                };
+                (node.depth, tree)
+            })
+            .collect(),
+    )
 }
 
 /// Nest observed browser nodes in document order from their captured depths.
-fn hierarchy_values(nodes: Vec<(u64, serde_json::Value)>) -> serde_json::Value {
-    let mut roots: Vec<(u64, serde_json::Value)> = Vec::new();
-    for (depth, mut value) in nodes.into_iter().rev() {
+fn nest(nodes: Vec<(usize, BrowserTreeNode)>) -> Vec<BrowserTreeNode> {
+    let mut roots: Vec<(usize, BrowserTreeNode)> = Vec::new();
+    for (depth, mut node) in nodes.into_iter().rev() {
         let mut children = Vec::new();
         while roots
             .last()
@@ -881,17 +888,11 @@ fn hierarchy_values(nodes: Vec<(u64, serde_json::Value)>) -> serde_json::Value {
             children.push(roots.pop().expect("child exists").1);
         }
         if !children.is_empty() {
-            value["children"] = json!(children);
+            node.children = Some(children);
         }
-        roots.push((depth, value));
+        roots.push((depth, node));
     }
-    json!(
-        roots
-            .into_iter()
-            .rev()
-            .map(|(_, node)| node)
-            .collect::<Vec<_>>()
-    )
+    roots.into_iter().rev().map(|(_, node)| node).collect()
 }
 
 // Chrome AX values carry optional JSON; absent name/role means empty text.

@@ -2,16 +2,18 @@
 use super::{
     Result,
     history::Buffer,
-    protocol::{CONSOLE_BYTES, CONSOLE_ENTRIES, DEFAULT_NODES, LogsInput},
+    protocol::{
+        CONSOLE_BYTES, CONSOLE_ENTRIES, DEFAULT_NODES, LogEntry, LogLevel, LogsInput, LogsResult,
+    },
 };
 use chromiumoxide::{Page, cdp::js_protocol::runtime::EventConsoleApiCalled};
 use futures_util::StreamExt;
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio::sync::Mutex;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 pub(super) struct Console {
-    buffer: Buffer,
+    buffer: Buffer<LogEntry>,
 }
 
 impl Console {
@@ -38,24 +40,27 @@ impl Console {
             .collect::<Vec<_>>()
             .join(" ");
         let level = match event.r#type.as_ref() {
-            "debug" => "debug",
-            "info" => "info",
-            "warning" => "warning",
-            "error" | "assert" => "error",
-            _ => "log",
+            "debug" => LogLevel::Debug,
+            "info" => LogLevel::Info,
+            "warning" => LogLevel::Warning,
+            "error" | "assert" => LogLevel::Error,
+            _ => LogLevel::Log,
         };
-        let mut entry = json!({"level": level, "text": text, "timestamp": event.timestamp});
-        if let Some(frame) = event
+        let url = event
             .stack_trace
             .as_ref()
             .and_then(|stack| stack.call_frames.first())
-        {
-            entry["url"] = json!(frame.url);
-        }
-        self.buffer.push(entry)
+            .map(|frame| frame.url.clone());
+        self.buffer.push(LogEntry {
+            sequence: 0,
+            level,
+            text,
+            url,
+            timestamp: *event.timestamp.inner(),
+        })
     }
 
-    pub fn read(&self, input: &LogsInput) -> Result<Value> {
+    pub fn read(&self, input: &LogsInput) -> Result<LogsResult> {
         let after = input
             .after
             .as_deref()
@@ -64,45 +69,45 @@ impl Console {
         let entries: Vec<_> = self
             .buffer
             .entries()
-            .filter(|entry| {
-                after.is_none_or(|after| {
-                    entry["sequence"]
-                        .as_u64()
-                        .is_some_and(|sequence| sequence >= after)
-                })
-            })
+            .filter(|entry| after.is_none_or(|after| entry.sequence >= after))
             .filter(|entry| {
                 input
                     .level
                     .as_ref()
-                    .is_none_or(|levels| levels.iter().any(|level| entry["level"] == *level))
+                    .is_none_or(|levels| levels.contains(&entry.level))
             })
             .filter(|entry| {
-                input.filter.as_ref().is_none_or(|filter| {
-                    entry["text"]
-                        .as_str()
-                        .is_some_and(|text| text.contains(filter))
-                })
+                input
+                    .filter
+                    .as_ref()
+                    .is_none_or(|filter| entry.text.contains(filter))
             })
             .collect();
-        let limit = input.limit.map_or(DEFAULT_NODES, |limit| limit as usize);
+        let limit = input.limit.unwrap_or(DEFAULT_NODES);
         let start = if after.is_none() {
             entries.len().saturating_sub(limit)
         } else {
             0
         };
-        let page: Vec<_> = entries.iter().skip(start).take(limit).copied().collect();
+        let page: Vec<LogEntry> = entries
+            .iter()
+            .skip(start)
+            .take(limit)
+            .map(|entry| (*entry).clone())
+            .collect();
         let has_more = start + page.len() < entries.len();
         let next = if has_more {
             page.last()
-                .and_then(|entry| entry["sequence"].as_u64())
-                .map_or(self.buffer.next(), |sequence| sequence + 1)
+                .map_or(self.buffer.next(), |entry| entry.sequence + 1)
         } else {
             self.buffer.next()
         };
-        Ok(
-            json!({"entries": page, "cursor": self.buffer.cursor(next), "hasMore": has_more, "truncated": self.buffer.has_evicted()}),
-        )
+        Ok(LogsResult {
+            entries: page,
+            cursor: self.buffer.cursor(next),
+            has_more,
+            truncated: self.buffer.has_evicted(),
+        })
     }
 }
 

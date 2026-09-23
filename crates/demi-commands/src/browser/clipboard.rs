@@ -15,7 +15,10 @@ use tokio_util::sync::CancellationToken;
 use super::{
     BrowserEnvironment, BrowserError, BrowserTab, Result,
     operation::Operation,
-    protocol::{BrowserCommand, CLIPBOARD_PNG_BYTES, CLIPBOARD_PNG_PIXELS, STDIN_BYTES},
+    protocol::{
+        BrowserOperation, CLIPBOARD_PNG_BYTES, CLIPBOARD_PNG_PIXELS, Capability, ClipboardItem,
+        ClipboardMime, ClipboardReadResult, ClipboardWriteResult, STDIN_BYTES,
+    },
 };
 
 /// Why the pinned headless clipboard may not be the browser's own, or none
@@ -33,7 +36,7 @@ pub(super) fn unisolated() -> Option<&'static str> {
 }
 
 /// Publish the pinned headless clipboard's verified platform isolation policy.
-pub(super) async fn capability(page: &chromiumoxide::Page) -> Result<Value> {
+pub(super) async fn capability(page: &chromiumoxide::Page) -> Result<Capability> {
     let reason = match unisolated() {
         Some(reason) => Some(reason),
         None => {
@@ -49,11 +52,13 @@ pub(super) async fn capability(page: &chromiumoxide::Page) -> Result<Value> {
             )
         }
     };
-    Ok(match reason {
-        Some(reason) => json!({"id": "clipboard", "available": false, "reason": reason}),
-        None => {
-            json!({"id": "clipboard", "available": true, "schema": {"mimeTypes": ["text/plain", "text/html", "image/png"], "help": "demi browser clipboard --help"}})
-        }
+    Ok(Capability {
+        id: "clipboard".into(),
+        available: reason.is_none(),
+        reason: reason.map(str::to_owned),
+        schema: reason.is_none().then(|| {
+            json!({"mimeTypes": ["text/plain", "text/html", "image/png"], "help": "demi browser clipboard --help"})
+        }),
     })
 }
 
@@ -76,19 +81,18 @@ pub(super) async fn execute(
     context: &mut InvocationContext,
     environment: &BrowserEnvironment,
     tab: Option<&BrowserTab>,
-    command: &BrowserCommand,
+    command: &BrowserOperation,
     cancel: &CancellationToken,
     deadline: tokio::time::Instant,
 ) -> Result<Value> {
     let tab = tab.ok_or(BrowserError::TabNotFound)?;
     let operation = Operation::for_tab(tab, cancel, deadline);
     let capability = operation.run(capability(&tab.page)).await?;
-    if capability["available"] != true {
+    if !capability.available {
         return Err(BrowserError::UnsupportedCapability(
-            capability["reason"]
-                .as_str()
-                .unwrap_or("clipboard unavailable")
-                .into(),
+            capability
+                .reason
+                .unwrap_or_else(|| "clipboard unavailable".into()),
         ));
     }
     let _guard = tab
@@ -98,9 +102,9 @@ pub(super) async fn execute(
         .map_err(|_| BrowserError::Busy)?;
     operation.run(grant(&environment.browser)).await?;
     match command {
-        BrowserCommand::ClipboardWrite(input) => {
-            let mime = input.mime.as_deref().unwrap_or("text/plain");
-            let maximum = if mime == "image/png" {
+        BrowserOperation::ClipboardWrite(input) => {
+            let mime = input.mime.unwrap_or_default();
+            let maximum = if mime == ClipboardMime::ImagePng {
                 CLIPBOARD_PNG_BYTES
             } else {
                 STDIN_BYTES
@@ -162,12 +166,15 @@ pub(super) async fn execute(
                         ));
                     }
                     operation.complete_input();
-                    Ok(json!({"mimeType": mime, "bytes": bytes.len()}))
+                    super::output::value(ClipboardWriteResult {
+                        mime_type: mime,
+                        bytes: bytes.len(),
+                    })
                 })
                 .await
-                .map_err(|error| operation.failure(error, &tab.id(), None))
+                .map_err(|error| operation.failure(error, tab.id().as_str(), None))
         }
-        BrowserCommand::ClipboardRead(input) => {
+        BrowserOperation::ClipboardRead(input) => {
             if input.format.is_some() == input.output_dir.is_some() {
                 return Err(BrowserError::Configuration(
                     "clipboard read requires --format text or --output-dir".into(),
@@ -193,7 +200,7 @@ pub(super) async fn execute(
                 if text.len() > STDIN_BYTES {
                     return Err(BrowserError::ResultTooLarge);
                 }
-                return Ok(json!({"text": text}));
+                return super::output::value(ClipboardReadResult::Text { text });
             }
             let script = format!(
                 r#"(async () => {{
@@ -251,10 +258,11 @@ pub(super) async fn execute(
                 let bytes = base64::engine::general_purpose::STANDARD
                     .decode(item.data)
                     .map_err(|error| BrowserError::InvalidResult(error.to_string()))?;
-                let (mime, extension) = match item.mime_type {
-                    Mime::Text => ("text/plain", "txt"),
-                    Mime::Html => ("text/html", "html"),
-                    Mime::Png => ("image/png", "png"),
+                let mime = item.mime_type;
+                let extension = match mime {
+                    ClipboardMime::TextPlain => "txt",
+                    ClipboardMime::TextHtml => "html",
+                    ClipboardMime::ImagePng => "png",
                 };
                 let bytes = validate_payload(mime, bytes).await?;
                 let path = directory.join(format!("item-{index}.{extension}"));
@@ -278,17 +286,21 @@ pub(super) async fn execute(
                     deadline,
                 )
                 .await?;
-                saved.push(json!({"mimeType": mime, "path": path, "bytes": count}));
+                saved.push(ClipboardItem {
+                    mime_type: mime,
+                    path,
+                    bytes: count,
+                });
             }
-            Ok(json!({"items": saved}))
+            super::output::value(ClipboardReadResult::Items { items: saved })
         }
         _ => unreachable!("clipboard dispatch accepts only read/write"),
     }
 }
 
 /// Validate browser clipboard bytes before replacing data or exporting a file.
-async fn validate_payload(mime: &str, bytes: Vec<u8>) -> Result<Vec<u8>> {
-    let maximum = if mime == "image/png" {
+async fn validate_payload(mime: ClipboardMime, bytes: Vec<u8>) -> Result<Vec<u8>> {
+    let maximum = if mime == ClipboardMime::ImagePng {
         CLIPBOARD_PNG_BYTES
     } else {
         STDIN_BYTES
@@ -296,7 +308,7 @@ async fn validate_payload(mime: &str, bytes: Vec<u8>) -> Result<Vec<u8>> {
     if bytes.len() > maximum {
         return Err(BrowserError::ResultTooLarge);
     }
-    if mime != "image/png" {
+    if mime != ClipboardMime::ImagePng {
         std::str::from_utf8(&bytes).map_err(|error| {
             BrowserError::Configuration(format!("clipboard text is not UTF-8: {error}"))
         })?;
@@ -336,16 +348,7 @@ async fn validate_payload(mime: &str, bytes: Vec<u8>) -> Result<Vec<u8>> {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct Entry {
-    mime_type: Mime,
+    mime_type: ClipboardMime,
     data: String,
 }
 
-#[derive(Deserialize)]
-enum Mime {
-    #[serde(rename = "text/plain")]
-    Text,
-    #[serde(rename = "text/html")]
-    Html,
-    #[serde(rename = "image/png")]
-    Png,
-}

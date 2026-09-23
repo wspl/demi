@@ -3,6 +3,7 @@
 use super::{
     BrowserError, BrowserTab, Result, element,
     operation::{CONTROL_TIMEOUT, Operation, after_cleanup},
+    protocol::Modifier,
 };
 use chromiumoxide::{
     cdp::browser_protocol::input::{DispatchKeyEventParams, DispatchKeyEventType},
@@ -18,23 +19,29 @@ pub(super) struct Key {
     modifier: i64,
 }
 
-/// Interpret the browser CLI's modifier names on the Host executing the command.
-pub(super) fn modifier(name: &str) -> Option<i64> {
-    match name {
-        "Alt" => Some(1),
-        "Control" => Some(2),
-        "Meta" => Some(4),
-        "Shift" => Some(8),
-        "ControlOrMeta" => Some(if cfg!(target_os = "macos") { 4 } else { 2 }),
-        _ => None,
+/// A modifier's CDP bit on the Host executing the command.
+fn modifier_bit(modifier: Modifier) -> i64 {
+    match modifier {
+        Modifier::Alt => 1,
+        Modifier::Control => 2,
+        Modifier::Meta => 4,
+        Modifier::Shift => 8,
+        Modifier::ControlOrMeta if cfg!(target_os = "macos") => 4,
+        Modifier::ControlOrMeta => 2,
     }
 }
 
+/// Interpret a modifier's name in a key combination.
+pub(super) fn modifier(name: &str) -> Option<i64> {
+    name.parse().ok().map(modifier_bit)
+}
+
 /// Combine schema-validated browser pointer modifiers using the Host's key mapping.
-pub(super) fn modifiers(names: Option<&[String]>) -> i64 {
-    names.into_iter().flatten().fold(0, |mask, name| {
-        mask | modifier(name).expect("modifier is schema validated")
-    })
+pub(super) fn modifiers(modifiers: Option<&[Modifier]>) -> i64 {
+    modifiers
+        .into_iter()
+        .flatten()
+        .fold(0, |mask, modifier| mask | modifier_bit(*modifier))
 }
 
 impl Key {
@@ -445,6 +452,7 @@ impl BrowserTab {
                         .next()
                         .and_then(|node| node.r#ref)
                         .ok_or(BrowserError::StaleReference)?
+                        .to_string()
                 };
                 Ok((target, name))
             })
@@ -518,7 +526,7 @@ impl BrowserTab {
         .await;
         result.map_err(|error: BrowserError| {
             let mut details = error.details();
-            details["delivered"] = json!(delivered);
+            details.delivered = Some(delivered);
             BrowserError::Action {
                 source: Box::new(error),
                 details,

@@ -3,9 +3,8 @@ use super::{
     BrowserError, BrowserTab, Result, element,
     observation::{Observation, References},
     operation::Operation,
-    protocol::{DEFAULT_NODES, ProbeInput},
+    protocol::{Bounds, DEFAULT_NODES, ProbeInput, ProbeResult},
 };
-use serde_json::{Value, json};
 
 impl BrowserTab {
     pub(super) async fn probe(
@@ -13,7 +12,7 @@ impl BrowserTab {
         input: &ProbeInput,
         refs: &mut References,
         operation: &Operation<'_>,
-    ) -> Result<Value> {
+    ) -> Result<ProbeResult> {
         let point = self.coordinates(&input.xy).await?;
         let observation = Observation::capture(&self.page, refs).await?;
         let elements = observation
@@ -34,21 +33,25 @@ impl BrowserTab {
                 bounds[0] += offset[0];
                 bounds[1] += offset[1];
             }
-            node.bounds = Some(
-                serde_json::from_value(
-                    json!({"x":bounds[0],"y":bounds[1],"width":bounds[2],"height":bounds[3]}),
-                )
-                .map_err(|error| BrowserError::InvalidResult(error.to_string()))?,
-            );
+            let [x, y, width, height] = bounds;
+            node.bounds = Some(Bounds {
+                x,
+                y,
+                width,
+                height,
+            });
         }
-        Ok(
-            json!({"matches":nodes,"viewport":self.viewport().report(),"truncated":elements.len()>DEFAULT_NODES}),
-        )
+        Ok(ProbeResult {
+            matches: nodes,
+            viewport: self.viewport(),
+            path: None,
+            truncated: elements.len() > DEFAULT_NODES,
+        })
     }
 }
 
 /// Outline browser probe candidates in the captured PNG without changing the page DOM.
-pub(super) fn annotate(bytes: Vec<u8>, result: &Value) -> Result<Vec<u8>> {
+pub(super) fn annotate(bytes: Vec<u8>, result: &ProbeResult) -> Result<Vec<u8>> {
     let mut decoder = png::Decoder::new(std::io::Cursor::new(bytes));
     decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
     let mut reader = decoder
@@ -72,28 +75,17 @@ pub(super) fn annotate(bytes: Vec<u8>, result: &Value) -> Result<Vec<u8>> {
             ));
         }
     };
-    let viewport_width = result["viewport"]["width"]
-        .as_f64()
-        .ok_or_else(|| BrowserError::InvalidResult("probe viewport is missing".into()))?;
-    let viewport_height = result["viewport"]["height"]
-        .as_f64()
-        .ok_or_else(|| BrowserError::InvalidResult("probe viewport is missing".into()))?;
-    let scale_x = f64::from(info.width) / viewport_width;
-    let scale_y = f64::from(info.height) / viewport_height;
-    for node in result["matches"]
-        .as_array()
-        .ok_or_else(|| BrowserError::InvalidResult("probe matches are missing".into()))?
-    {
-        let bounds = &node["bounds"];
-        let coordinate = |name: &str| {
-            bounds[name]
-                .as_f64()
-                .ok_or_else(|| BrowserError::InvalidResult("probe bounds are missing".into()))
-        };
-        let x = coordinate("x")?;
-        let y = coordinate("y")?;
-        let width = coordinate("width")?;
-        let height = coordinate("height")?;
+    let scale_x = f64::from(info.width) / f64::from(result.viewport.width);
+    let scale_y = f64::from(info.height) / f64::from(result.viewport.height);
+    for node in &result.matches {
+        let Bounds {
+            x,
+            y,
+            width,
+            height,
+        } = node
+            .bounds
+            .ok_or_else(|| BrowserError::InvalidResult("probe bounds are missing".into()))?;
         let left = (x * scale_x).max(0.0).min(f64::from(info.width)) as u32;
         let top = (y * scale_y).max(0.0).min(f64::from(info.height)) as u32;
         let right = ((x + width) * scale_x).max(0.0).min(f64::from(info.width)) as u32;

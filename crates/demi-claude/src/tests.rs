@@ -9,6 +9,7 @@ use std::{
 };
 
 use bytes::Bytes;
+use demi_claude_protocol::Installed;
 use demi_command_service::{
     Handler, Input, InvocationContext, Output,
     protocol::{CommandCaller, CommandContext, CommandLocale, Completion, Invocation, Record},
@@ -20,7 +21,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     DemiClaude,
-    install::{EnsureError, Installed, Installer, Roots},
+    install::{EnsureError, Installer, Roots},
     platform::{self, Loaders, platform_key},
     version,
 };
@@ -229,7 +230,7 @@ async fn a_wrong_digest_installs_nothing() {
     let fixture = Fixture::serve(BODY, Duration::ZERO).await;
     let record = fixture.record("2.1.278", BODY.len(), &sha256(b"another executable"));
     let error = ensure(&machine.installer(), &record).await.unwrap_err();
-    assert_eq!(error.code(), "verification_failed");
+    assert_eq!(error.code().map(|code| code.to_string()).as_deref(), Some("verification_failed"));
     assert!(error.to_string().contains("2.1.278"), "{error}");
     assert!(error.to_string().contains("127.0.0.1"), "{error}");
     assert!(machine.home_directories().is_empty());
@@ -242,7 +243,7 @@ async fn a_body_longer_than_its_size_installs_nothing() {
     let declared = &BODY[..BODY.len() - 1];
     let record = fixture.record("2.1.278", declared.len(), &sha256(declared));
     let error = ensure(&machine.installer(), &record).await.unwrap_err();
-    assert_eq!(error.code(), "verification_failed");
+    assert_eq!(error.code().map(|code| code.to_string()).as_deref(), Some("verification_failed"));
     assert!(machine.home_directories().is_empty());
 }
 
@@ -252,7 +253,7 @@ async fn a_body_shorter_than_its_size_installs_nothing() {
     let fixture = Fixture::serve(BODY, Duration::ZERO).await;
     let record = fixture.record("2.1.278", BODY.len() + 1, &sha256(BODY));
     let error = ensure(&machine.installer(), &record).await.unwrap_err();
-    assert_eq!(error.code(), "verification_failed");
+    assert_eq!(error.code().map(|code| code.to_string()).as_deref(), Some("verification_failed"));
     assert!(machine.home_directories().is_empty());
 }
 
@@ -268,7 +269,7 @@ async fn a_record_without_this_platform_is_unsupported() {
         &sha256(BODY),
     );
     let error = ensure(&machine.installer(), &record).await.unwrap_err();
-    assert_eq!(error.code(), "unsupported_platform");
+    assert_eq!(error.code().map(|code| code.to_string()).as_deref(), Some("unsupported_platform"));
     assert!(
         error.to_string().contains(platform::current().unwrap()),
         "{error}"
@@ -392,7 +393,7 @@ fn malformed_records_are_invalid() {
         let error = installer
             .release(record.to_string().as_bytes())
             .unwrap_err();
-        assert_eq!(error.code(), "invalid_release", "{record}");
+        assert_eq!(error.code().map(|code| code.to_string()).as_deref(), Some("invalid_release"), "{record}");
     }
     for version in [
         "",
@@ -411,7 +412,7 @@ fn malformed_records_are_invalid() {
         let error = installer
             .release(record.to_string().as_bytes())
             .unwrap_err();
-        assert_eq!(error.code(), "invalid_release", "{version:?}");
+        assert_eq!(error.code().map(|code| code.to_string()).as_deref(), Some("invalid_release"), "{version:?}");
     }
     assert!(installer.release(b"{").is_err());
     for version in ["2.1.278", "0.0.0", "10.20.30-beta.1", "1.0.0-rc-1"] {

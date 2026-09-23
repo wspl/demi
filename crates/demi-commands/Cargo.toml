@@ -12,7 +12,9 @@ path = "src/main.rs"
 [dependencies]
 chromiumoxide = "=0.9.1"
 futures-util.workspace = true
+garde.workspace = true
 thiserror.workspace = true
+demi-builtin-protocol = { path = "../builtin-protocol" }
 demi-command-service = { path = "../command-service" }
 bytes.workspace = true
 serde.workspace = true

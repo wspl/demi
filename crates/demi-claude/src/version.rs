@@ -1,23 +1,7 @@
-//! CLI version strings: the accepted form, and their semantic order.
+//! The semantic order of CLI versions; `demi_claude_protocol::is_version`
+//! says which strings are versions.
 
 use std::cmp::Ordering;
-
-/// Whether `version` matches `^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$`.
-/// A version names its installation directory, so nothing else is accepted.
-pub fn is_valid(version: &str) -> bool {
-    let (core, prerelease) = split(version);
-    let numbers: Vec<&str> = core.split('.').collect();
-    numbers.len() == 3
-        && numbers
-            .iter()
-            .all(|number| !number.is_empty() && number.bytes().all(|byte| byte.is_ascii_digit()))
-        && prerelease.is_none_or(|prerelease| {
-            !prerelease.is_empty()
-                && prerelease
-                    .bytes()
-                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'.' || byte == b'-')
-        })
-}
 
 /// Semantic version precedence of two valid versions. A release is newer than
 /// its prereleases; numeric identifiers compare as numbers and sort before

@@ -15,11 +15,12 @@ use tokio::{
 };
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
+use demi_builtin_protocol::live::{
+    EndReason, LiveControl, LiveDialog, LiveModuleMessage, LiveTab, LiveViewerMessage, Platform,
+    PointerAction, STALL_MS, ViewerMode,
+};
+
 use super::{
-    super::protocol::{
-        BrowserViewport, LIVE_STALL_MS, LiveInbound, LiveOutbound, LiveOutboundDialogDialog,
-        LiveOutboundStateTabsItem,
-    },
     commands::{self, Command},
     frames::{self, Inbound},
     hub::{Membership, Panel},
@@ -31,8 +32,10 @@ use super::{
     writer::Writer,
 };
 use crate::browser::{
-    BrowserEnvironment, BrowserError, BrowserTab, conversations::Controller,
-    operation::CONTROL_TIMEOUT, viewport::Mode,
+    BrowserEnvironment, BrowserError, BrowserTab,
+    conversations::Controller,
+    operation::CONTROL_TIMEOUT,
+    protocol::{TabId, ViewportMode},
 };
 
 /// How long after the viewer's input text the tab copies reaches its
@@ -87,7 +90,7 @@ pub(in crate::browser) async fn serve(
     }
 }
 
-type Inbounds = mpsc::Receiver<Result<LiveInbound, String>>;
+type Inbounds = mpsc::Receiver<Result<LiveViewerMessage, String>>;
 
 /// Splits the page's bytes into messages; chosen files go to the uploads.
 fn read(
@@ -108,7 +111,7 @@ fn read(
                     let _ended = messages.send(Err(error.to_string())).await;
                     break;
                 }
-                Ok(Some(Inbound::Control(LiveInbound::Upload {
+                Ok(Some(Inbound::Control(LiveViewerMessage::Upload {
                     tab,
                     token,
                     revision,
@@ -150,7 +153,7 @@ struct Viewer {
 
 impl Viewer {
     /// The page's next message, or none once it ended its side.
-    async fn next(&mut self) -> Result<Option<LiveInbound>, Failure> {
+    async fn next(&mut self) -> Result<Option<LiveViewerMessage>, Failure> {
         match self.inbound.recv().await {
             Some(Ok(message)) => Ok(Some(message)),
             Some(Err(error)) => Err(Failure::Protocol(error)),
@@ -160,7 +163,7 @@ impl Viewer {
 
     async fn run(&mut self) -> Result<(), Failure> {
         match self.next().await? {
-            Some(LiveInbound::Hello { platform }) => self.mac = platform == "mac",
+            Some(LiveViewerMessage::Hello { platform }) => self.mac = platform == Platform::Mac,
             Some(_) => return Err(Failure::Protocol("a view starts with hello".into())),
             None => return Ok(()),
         }
@@ -170,11 +173,9 @@ impl Viewer {
         self.view(environment).await
     }
 
-    async fn end(&self, reason: &str) {
+    async fn end(&self, reason: EndReason) {
         self.writer
-            .control(&LiveOutbound::Ended {
-                reason: reason.into(),
-            })
+            .control(&LiveModuleMessage::Ended { reason })
             .await;
     }
 
@@ -188,14 +189,14 @@ impl Viewer {
                 Ok(Some(environment)) => return Ok(Some(environment)),
                 Err(BrowserError::Cancelled) => return Err(Failure::Cancelled),
                 Err(BrowserError::Closed) => {
-                    self.end("released").await;
+                    self.end(EndReason::Released).await;
                     return Ok(None);
                 }
                 // A browser that failed to start or was lost is not running.
                 Ok(None) | Err(_) => {}
             }
             self.writer
-                .control(&LiveOutbound::State {
+                .control(&LiveModuleMessage::State {
                     running: false,
                     tabs: Vec::new(),
                     watched: None,
@@ -206,7 +207,7 @@ impl Viewer {
             loop {
                 let message = tokio::select! {
                     _ = controller.cancellation.cancelled() => {
-                        self.end("released").await;
+                        self.end(EndReason::Released).await;
                         return Ok(None);
                     }
                     _ = cancel.cancelled() => return Err(Failure::Cancelled),
@@ -219,7 +220,7 @@ impl Viewer {
                 };
                 match message {
                     None => return Ok(None),
-                    Some(message @ LiveInbound::Panel { .. }) => self.panel = panel(&message),
+                    Some(message @ LiveViewerMessage::Panel { .. }) => self.panel = panel(&message),
                     // Nothing else acts without a browser.
                     Some(_) => {}
                 }
@@ -265,11 +266,11 @@ impl Viewer {
             tokio::select! {
                 biased;
                 _ = self.controller.cancellation.cancelled() => {
-                    self.end("released").await;
+                    self.end(EndReason::Released).await;
                     break Ok(());
                 }
                 _ = environment.ended.cancelled() => {
-                    self.end("browser_ended").await;
+                    self.end(EndReason::BrowserEnded).await;
                     break Ok(());
                 }
                 _ = self.cancel.cancelled() => break Err(Failure::Cancelled),
@@ -277,7 +278,7 @@ impl Viewer {
                     None => break Ok(()),
                     Some(Err(error)) => break Err(Failure::Protocol(error)),
                     Some(Ok(message)) => match message {
-                        LiveInbound::Panel { .. } => {
+                        LiveViewerMessage::Panel { .. } => {
                             if let Some(panel) = panel(&message) {
                                 self.panel = Some(panel);
                                 membership.panel(panel);
@@ -306,20 +307,20 @@ impl Viewer {
     }
 }
 
-fn panel(message: &LiveInbound) -> Option<Panel> {
+fn panel(message: &LiveViewerMessage) -> Option<Panel> {
     match *message {
-        LiveInbound::Panel {
+        LiveViewerMessage::Panel {
             width,
             height,
             device_pixel_ratio,
             screen_width,
             screen_height,
         } => Some(Panel {
-            width: width as u32,
-            height: height as u32,
+            width,
+            height,
             ratio: device_pixel_ratio,
-            screen_width: screen_width as u32,
-            screen_height: screen_height as u32,
+            screen_width,
+            screen_height,
         }),
         _ => None,
     }
@@ -335,7 +336,7 @@ struct Watched {
 }
 
 struct Observing {
-    controls: watch::Receiver<Vec<super::super::protocol::LiveOutboundControlsControlsItem>>,
+    controls: watch::Receiver<Vec<LiveControl>>,
     cursor: watch::Receiver<(String, bool)>,
     copies: broadcast::Receiver<String>,
     documents: watch::Receiver<u64>,
@@ -499,27 +500,19 @@ impl Session<'_> {
         }
         let tabs = listed
             .iter()
-            .map(|(tab, info)| {
-                let viewport = tab.viewport();
-                LiveOutboundStateTabsItem {
-                    id: tab.id(),
-                    title: info.title.clone(),
-                    url: info.url.clone(),
-                    created_by: tab.created_by.clone(),
-                    viewport: BrowserViewport {
-                        width: u64::from(viewport.width),
-                        height: u64::from(viewport.height),
-                        device_pixel_ratio: viewport.ratio,
-                        mode: viewport.mode.name().into(),
-                    },
-                }
+            .map(|(tab, info)| LiveTab {
+                id: tab.id().clone(),
+                title: info.title.clone(),
+                url: info.url.clone(),
+                created_by: tab.created_by.clone(),
+                viewport: tab.viewport(),
             })
             .collect();
         self.writer
-            .control(&LiveOutbound::State {
+            .control(&LiveModuleMessage::State {
                 running: true,
                 tabs,
-                watched: self.watched.as_ref().map(|watched| watched.tab.id()),
+                watched: self.watched.as_ref().map(|watched| watched.tab.id().clone()),
             })
             .await;
     }
@@ -566,11 +559,11 @@ impl Session<'_> {
 
     async fn receive(
         &mut self,
-        message: LiveInbound,
+        message: LiveViewerMessage,
         commands: &tokio::sync::mpsc::UnboundedSender<Command>,
     ) {
         match message {
-            LiveInbound::Watch { tab } => {
+            LiveViewerMessage::Watch { tab } => {
                 let tab = match tab {
                     Some(id) => match commands::find(self.environment, &id).await {
                         Ok(tab) => Some(tab),
@@ -584,51 +577,56 @@ impl Session<'_> {
                 self.watch(tab).await;
                 self.state().await;
             }
-            LiveInbound::Mode { tab, mode } => {
-                let mode = if mode == "mobile" {
-                    Mode::Mobile
-                } else {
-                    Mode::Web
+            LiveViewerMessage::Mode { tab, mode } => {
+                let mode = match mode {
+                    ViewerMode::Mobile => ViewportMode::Mobile,
+                    ViewerMode::Web => ViewportMode::Web,
                 };
                 let _ended = commands.send(Command::Mode { tab, mode });
             }
-            LiveInbound::Dialog { tab, accept, text } => {
+            LiveViewerMessage::Dialog { tab, accept, text } => {
                 if let Some(watched) = &self.watched
-                    && watched.tab.id() == tab
+                    && watched.tab.id() == &tab
                 {
                     commands::answer(watched.tab.clone(), accept, text, self.writer.clone());
                 }
             }
-            LiveInbound::Ack {
+            LiveViewerMessage::Ack {
                 generation,
                 sequence,
                 decode_queue,
             } => self.acknowledged(generation, sequence, decode_queue),
-            LiveInbound::Keyframe { generation } => {
-                if u64::from(self.delivery.generation) == generation {
+            LiveViewerMessage::Keyframe { generation } => {
+                if self.delivery.generation == generation {
                     self.delivery.awaiting_key = true;
                     self.membership.key_frame();
                 }
             }
-            LiveInbound::Release {} => self.input.control(Item::Release).await,
-            message @ (LiveInbound::Pointer { .. }
-            | LiveInbound::Wheel { .. }
-            | LiveInbound::Key { .. }
-            | LiveInbound::Text { .. }
-            | LiveInbound::Composition { .. }
-            | LiveInbound::Paste { .. }
-            | LiveInbound::Choice { .. }) => {
-                if let LiveInbound::Paste { text, .. } = &message {
+            LiveViewerMessage::Release {} => self.input.control(Item::Release).await,
+            message @ (LiveViewerMessage::Pointer { .. }
+            | LiveViewerMessage::Wheel { .. }
+            | LiveViewerMessage::Key { .. }
+            | LiveViewerMessage::Text { .. }
+            | LiveViewerMessage::Composition { .. }
+            | LiveViewerMessage::Paste { .. }
+            | LiveViewerMessage::Choice { .. }) => {
+                if let LiveViewerMessage::Paste { text, .. } = &message {
                     self.pasted = Some(text.clone());
                 }
                 // Moving the pointer is not operating.
-                if !matches!(&message, LiveInbound::Pointer { action, .. } if action == "move") {
+                if !matches!(
+                    &message,
+                    LiveViewerMessage::Pointer {
+                        action: PointerAction::Move,
+                        ..
+                    }
+                ) {
                     self.operated = Some(Instant::now());
                     self.membership.operated();
                 }
                 self.input.send(Item::Message(message));
             }
-            LiveInbound::Hello { .. } | LiveInbound::Panel { .. } | LiveInbound::Upload { .. } => {}
+            LiveViewerMessage::Hello { .. } | LiveViewerMessage::Panel { .. } | LiveViewerMessage::Upload { .. } => {}
         }
     }
 
@@ -636,7 +634,7 @@ impl Session<'_> {
         let Some(watched) = &mut self.watched else {
             return;
         };
-        let tab = watched.tab.id();
+        let tab: TabId = watched.tab.id().clone();
         match update {
             Update::Picture(Event::Restart {
                 epoch,
@@ -651,11 +649,11 @@ impl Session<'_> {
                 delivery.flight.clear();
                 delivery.rate.resize(u64::from(width) * u64::from(height));
                 self.writer
-                    .control(&LiveOutbound::Stream {
+                    .control(&LiveModuleMessage::Stream {
                         tab,
-                        generation: u64::from(delivery.generation),
-                        width: u64::from(width),
-                        height: u64::from(height),
+                        generation: delivery.generation,
+                        width,
+                        height,
                     })
                     .await;
             }
@@ -693,22 +691,26 @@ impl Session<'_> {
                     .pace(delivery.epoch, delivery.floor(), delivery.rate.window);
             }
             Update::Picture(Event::Unavailable(reason)) => {
-                self.writer.notice("capture_unavailable", &reason).await;
+                self.writer
+                    .notice(demi_builtin_protocol::live::CAPTURE_UNAVAILABLE, &reason)
+                    .await;
             }
             Update::Picture(Event::Failed(reason)) => {
-                self.writer.notice("capture_failed", &reason).await;
+                self.writer
+                    .notice(demi_builtin_protocol::live::CAPTURE_FAILED, &reason)
+                    .await;
             }
             Update::StreamEnded => watched.events = None,
             Update::Dialog => {
                 let dialog = watched.dialog.borrow_and_update().as_ref().map(|dialog| {
-                    LiveOutboundDialogDialog {
-                        r#type: dialog.r#type.as_ref().to_owned(),
+                    LiveDialog {
+                        r#type: crate::browser::tab::dialog_type(&dialog.r#type),
                         message: dialog.message.clone(),
                         default_text: dialog.default_prompt.clone().unwrap_or_default(),
                     }
                 });
                 self.writer
-                    .control(&LiveOutbound::Dialog { tab, dialog })
+                    .control(&LiveModuleMessage::Dialog { tab, dialog })
                     .await;
             }
             Update::Controls => {
@@ -717,7 +719,7 @@ impl Session<'_> {
                 };
                 let controls = observed.controls.borrow_and_update().clone();
                 self.writer
-                    .control(&LiveOutbound::Controls { tab, controls })
+                    .control(&LiveModuleMessage::Controls { tab, controls })
                     .await;
             }
             Update::Cursor => {
@@ -726,7 +728,7 @@ impl Session<'_> {
                 };
                 let (cursor, editable) = observed.cursor.borrow_and_update().clone();
                 self.writer
-                    .control(&LiveOutbound::Cursor {
+                    .control(&LiveModuleMessage::Cursor {
                         tab,
                         cursor,
                         editable,
@@ -740,7 +742,7 @@ impl Session<'_> {
                     .is_some_and(|operated| operated.elapsed() <= COPY_WINDOW)
                     && self.pasted.as_ref() != Some(&text)
                 {
-                    self.writer.control(&LiveOutbound::Clipboard { text }).await;
+                    self.writer.control(&LiveModuleMessage::Clipboard { text }).await;
                 }
             }
             // Input held in the old document is gone with it.
@@ -748,24 +750,24 @@ impl Session<'_> {
         }
     }
 
-    fn acknowledged(&mut self, generation: u64, sequence: u64, decode_queue: u64) {
+    fn acknowledged(&mut self, generation: u32, sequence: u32, decode_queue: u32) {
         let delivery = &mut self.delivery;
-        if u64::from(delivery.generation) != generation {
+        if delivery.generation != generation {
             return;
         }
         let now = Instant::now();
         while let Some(&(sent, at, length)) = delivery.flight.front()
-            && u64::from(sent) <= sequence
+            && sent <= sequence
         {
             delivery.flight.pop_front();
             delivery.acknowledged += length;
-            if u64::from(sent) == sequence {
+            if sent == sequence {
                 let round_trip = (now - at).as_secs_f64() * 1000.0;
                 delivery.rate.acknowledged(round_trip);
                 delivery.round_trip = round_trip;
             }
         }
-        delivery.decode_queue = decode_queue;
+        delivery.decode_queue = u64::from(decode_queue);
         delivery.last_ack = now;
         self.membership
             .pace(delivery.epoch, delivery.floor(), delivery.rate.window);
@@ -777,7 +779,7 @@ impl Session<'_> {
         let now = Instant::now();
         let elapsed = now - delivery.ticked;
         delivery.ticked = now;
-        let stall = Duration::from_millis(LIVE_STALL_MS);
+        let stall = Duration::from_millis(STALL_MS);
         let oldest = delivery.flight.front().map(|(_, sent, _)| *sent);
         // A Host pause, or a page that acknowledges nothing, is a stall, not
         // congestion: the budget stays. Frames the page has not acknowledged
