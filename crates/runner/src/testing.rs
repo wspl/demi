@@ -168,7 +168,11 @@ async fn serve(
     let mut contexts = ContextTable::new(index);
     let mut watches = JoinSet::new();
     loop {
+        // Requests go before inbound messages, as in the connection's owner: a
+        // call registers before it sends its request to the backend, so a
+        // reply that is already queued beside the registration finds the call.
         tokio::select! {
+            biased;
             _ = closed.cancelled() => return,
             request = requests.recv() => match request {
                 Some(Request::Call { id, events, ended }) => relay.call(id, events, ended, &mut watches),
