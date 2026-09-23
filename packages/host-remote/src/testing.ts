@@ -2,8 +2,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { nativePackageSchema, NATIVE_TARGETS, type ArtifactResolver } from '@demicodes/command-protocol'
-import { existsSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { buildNativePackageFixture } from './testing/native-package'
 
@@ -13,24 +11,26 @@ let packageFixture: ReturnType<typeof buildNativePackageFixture> | undefined
 
 export { TEST_COMMAND_CONTEXT } from '@demicodes/shell/testing'
 
-export function nativePackageFixture() {
-  return packageFixture ??= buildNativePackageFixture(repositoryRoot)
+/**
+ * The directory of the executables tests start. The test script builds them
+ * first (`bun run test`); a test never builds one itself.
+ */
+function testPrograms(): string {
+  const directory = process.env.DEMI_TEST_PROGRAMS
+  if (!directory)
+    throw new Error('Set DEMI_TEST_PROGRAMS to the built test programs: cargo build --workspace --all-targets --features demi-runner/test-fixtures, then DEMI_TEST_PROGRAMS=target/debug (bun run test does both)')
+  return resolve(repositoryRoot, directory)
 }
 
+export function nativePackageFixture() {
+  return packageFixture ??= buildNativePackageFixture(testPrograms())
+}
+
+/** The runner tests start: `DEMI_RUNNER_TEST_BINARY`, else the built test program. */
 export function runnerBinary(): Promise<string> {
-  return binary ??= (async () => {
-    if (process.env.DEMI_RUNNER_TEST_BINARY)
-      return resolve(process.env.DEMI_RUNNER_TEST_BINARY)
-    const installed = join(homedir(), '.cargo/bin', process.platform === 'win32' ? 'cargo.exe' : 'cargo')
-    const child = Bun.spawn([existsSync(installed) ? installed : 'cargo', 'build', '-p', 'demi-runner', '--features', 'test-fixtures'], {
-      cwd: repositoryRoot, stdout: 'ignore', stderr: 'pipe',
-    })
-    const diagnostics = new Response(child.stderr).text()
-    if (await child.exited !== 0)
-      throw new Error(`Runner build failed: ${await diagnostics}`)
-    await diagnostics
-    return join(repositoryRoot, 'target/debug', `demi-runner${process.platform === 'win32' ? '.exe' : ''}`)
-  })()
+  return binary ??= (async () => process.env.DEMI_RUNNER_TEST_BINARY
+    ? resolve(process.env.DEMI_RUNNER_TEST_BINARY)
+    : join(testPrograms(), `demi-runner${process.platform === 'win32' ? '.exe' : ''}`))()
 }
 
 export interface RunnerOptions {
