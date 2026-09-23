@@ -12,6 +12,7 @@ members = [
   "crates/demi-claude",
   "crates/demi-commands",
   "crates/gates",
+  "crates/provider",
   "crates/runner",
   "crates/runner-protocol",
 ]
