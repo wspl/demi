@@ -190,12 +190,8 @@ impl Parsed {
             }
         }
         if let Some(schema) = &leaf.input {
-            let schema =
-                serde_json::to_value(schema).map_err(|error| UsageError(error.to_string()))?;
-            let validator =
-                jsonschema::validator_for(&schema).map_err(|error| UsageError(error.to_string()))?;
-            validator
-                .validate(&Value::Object(self.values.clone()))
+            schema
+                .check(&Value::Object(self.values.clone()))
                 .map_err(|error| UsageError(format!("Invalid command arguments: {error}")))?;
         }
         Ok(self)
