@@ -1239,6 +1239,7 @@ dependencies = [
  "reqwest 0.12.28",
  "ripgrep",
  "rmp-serde",
+ "rustix",
  "sed",
  "serde",
  "serde_json",
