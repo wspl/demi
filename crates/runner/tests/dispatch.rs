@@ -2,15 +2,10 @@ use demi_command_service::protocol::{
     CommandCaller, CommandContext, CommandLocale, LocalInvocation,
 };
 use demi_runner::{
-    commands::artifacts::Artifacts,
     commands::command_client::{RawCommand, Stdio, forward},
-    commands::contexts::Contexts,
-    commands::dispatch::Dispatcher,
-    commands::local::Server,
-    commands::rpc::Calls,
-    management::Management,
+    commands::contexts::ExecutionContext,
     pipes::PipeClient,
-    services::{ServiceRegistry, target},
+    testing::{ContextGuard, Dispatch},
 };
 use serde_json::{Value, json};
 use std::{
@@ -20,10 +15,7 @@ use std::{
     task::{Context, Poll},
     time::Duration,
 };
-use tokio::{
-    io::{AsyncRead, ReadBuf},
-    sync::{RwLock, mpsc},
-};
+use tokio::{io::{AsyncRead, ReadBuf}, sync::watch};
 use tokio_util::sync::CancellationToken;
 
 struct NeverRead;
@@ -38,73 +30,26 @@ impl AsyncRead for NeverRead {
 }
 
 struct Fixture {
-    _directory: tempfile::TempDir,
-    contexts: Contexts,
-    services: ServiceRegistry,
-    calls: Arc<Calls>,
-    server: Server,
-    dispatcher: Arc<Dispatcher>,
-    outgoing: mpsc::Receiver<demi_runner::connection::wire::Frame>,
-    hash: String,
+    directory: tempfile::TempDir,
+    dispatch: Dispatch,
 }
 
 impl Fixture {
     async fn new() -> Self {
         let directory = tempfile::tempdir().unwrap();
-        let cwd = directory.path().to_owned();
-        let services = ServiceRegistry::new(cwd.join("artifacts"), cwd.clone(), BTreeMap::new())
-            .await
-            .unwrap();
-        let contexts = Contexts::new(
-            cwd.join("manifests"),
-            std::env::current_exe().unwrap(),
-            services.handle(),
-        )
-        .await
-        .unwrap();
         let body = json!({"roots": {"fixture": {"tree": {
             "name": "fixture", "summary": "Test callback.", "kind": "rpc", "runningHint": "Working",
             "input": {"type": "object", "properties": {"body": {"type": "string"}}, "required": ["body"]}, "stdinField": "body"
         }}}, "packages": {}});
         let hash = demi_command_service::protocol::canonical_digest(&body).unwrap();
         let mut manifest = body;
-        manifest["hash"] = hash.clone().into();
-        contexts.install(manifest).await.unwrap();
-        let resolver = Artifacts::new(contexts.clone(), target().into());
-        let calls =
-            Calls::new(PipeClient::new("http://127.0.0.1:1", Arc::new(RwLock::new(None))).unwrap());
-        let (output, outgoing) = mpsc::channel(32);
-        calls.attach(output, CancellationToken::new());
-        let management = Management::new("a".repeat(32), "test".into(), CancellationToken::new());
-        let dispatcher = Arc::new(Dispatcher {
-            contexts: contexts.clone(),
-            services: services.handle(),
-            resolver,
-            calls: calls.clone(),
-            management,
-        });
-        let server = Server::start(dispatcher.clone()).await.unwrap();
-        Self {
-            _directory: directory,
-            contexts,
-            services,
-            calls,
-            server,
-            dispatcher,
-            outgoing,
-            hash,
-        }
+        manifest["hash"] = hash.into();
+        let pipes = PipeClient::new("http://127.0.0.1:1", watch::Sender::new(None).subscribe()).unwrap();
+        let dispatch = Dispatch::new(directory.path(), manifest, pipes).await;
+        Self { directory, dispatch }
     }
-    async fn context(
-        &self,
-    ) -> (
-        Arc<demi_runner::commands::contexts::ExecutionContext>,
-        demi_runner::commands::contexts::Lease,
-    ) {
-        self.contexts
-            .create("job".into(), &self.hash, command_context())
-            .await
-            .unwrap()
+    async fn context(&self) -> (Arc<ExecutionContext>, ContextGuard) {
+        self.dispatch.context("job", command_context()).await
     }
     fn request(&self, id: String, argv: Vec<String>) -> LocalInvocation {
         LocalInvocation {
@@ -117,19 +62,16 @@ impl Fixture {
                 live: true,
             })
             .unwrap(),
-            cwd: self._directory.path().to_string_lossy().into_owned(),
+            cwd: self.directory.path().to_string_lossy().into_owned(),
             env: BTreeMap::new(),
         }
     }
     async fn message(&mut self) -> Value {
-        let message = self.outgoing.recv().await.unwrap();
+        let message = self.dispatch.outgoing.recv().await.unwrap();
         rmp_serde::from_slice(&message.into_bytes()).unwrap()
     }
     async fn close(self) {
-        self.contexts.close();
-        self.calls.detach();
-        self.server.close().await.unwrap();
-        self.services.close().await;
+        self.dispatch.close().await;
     }
 }
 
@@ -141,7 +83,7 @@ async fn help_never_reads_declared_stdin_or_calls_backend() {
         let request = fixture.request(context.id.clone(), vec!["--help".into()]);
         let mut stdout = Vec::new();
         let result = forward(
-            fixture.server.endpoint(),
+            fixture.dispatch.server.endpoint(),
             &request,
             Stdio {
                 stdin: NeverRead,
@@ -158,7 +100,7 @@ async fn help_never_reads_declared_stdin_or_calls_backend() {
                 .unwrap()
                 .starts_with("fixture: Test callback.")
         );
-        assert!(fixture.outgoing.try_recv().is_err());
+        assert!(fixture.dispatch.outgoing.try_recv().is_err());
         fixture.close().await;
     })
     .await
@@ -171,7 +113,7 @@ async fn callback_exit_clears_hint_and_revoked_context_cannot_dispatch() {
         let mut fixture = Fixture::new().await;
         let (context, lease) = fixture.context().await;
         let request = fixture.request(context.id.clone(), vec![]);
-        let endpoint = fixture.server.endpoint().to_owned();
+        let endpoint = fixture.dispatch.server.endpoint().to_owned();
         let request_copy = request.clone();
         let running = tokio::spawn(async move {
             forward(
@@ -192,16 +134,17 @@ async fn callback_exit_clears_hint_and_revoked_context_cannot_dispatch() {
         assert_eq!(call["type"], "rpc_call");
         assert_eq!(call["args"]["body"], "");
         fixture
-            .calls
-            .reply(&demi_runner::connection::wire::Inbound::RpcExit {
+            .dispatch
+            .deliver(demi_runner::connection::wire::Inbound::RpcExit {
                 call_id: call["callId"].as_str().unwrap().into(),
                 exit_code: 7,
-            });
+            })
+            .await;
         assert_eq!(running.await.unwrap().exit_code, 7);
         assert!(fixture.message().await["hint"].is_null());
         drop(lease);
         let result = forward(
-            fixture.server.endpoint(),
+            fixture.dispatch.server.endpoint(),
             &request,
             Stdio {
                 stdin: NeverRead,
@@ -213,7 +156,7 @@ async fn callback_exit_clears_hint_and_revoked_context_cannot_dispatch() {
         .await
         .unwrap();
         assert_ne!(result.exit_code, 0);
-        assert!(fixture.outgoing.try_recv().is_err());
+        assert!(fixture.dispatch.outgoing.try_recv().is_err());
         fixture.close().await;
     })
     .await
@@ -226,7 +169,7 @@ async fn cancellation_sends_callback_cancel_and_clears_running_hint() {
         let mut fixture = Fixture::new().await;
         let (context, _lease) = fixture.context().await;
         let request = fixture.request(context.id.clone(), vec![]);
-        let endpoint = fixture.server.endpoint().to_owned();
+        let endpoint = fixture.dispatch.server.endpoint().to_owned();
         let cancel = CancellationToken::new();
         let stopped = cancel.clone();
         let running = tokio::spawn(async move {
@@ -269,14 +212,14 @@ async fn declared_shell_builtin_dispatches_without_a_local_endpoint() {
         let scope = Scope::new(
             CancellationToken::new(),
             Some(CommandContext {
-                dispatcher: fixture.dispatcher.clone(),
+                dispatcher: fixture.dispatch.dispatcher.clone(),
                 execution: context,
             }),
         );
         // Neither PATH aliases nor a local endpoint are supplied to the shell.
         let mut job = Job::start(
             "printf body | fixture".into(),
-            fixture._directory.path().into(),
+            fixture.directory.path().into(),
             BTreeMap::new(),
             true,
             scope, &demi_runner::shell::ShellRuntime::current(),
@@ -288,11 +231,12 @@ async fn declared_shell_builtin_dispatches_without_a_local_endpoint() {
         assert_eq!(call["type"], "rpc_call");
         assert_eq!(call["args"]["body"], "body");
         fixture
-            .calls
-            .reply(&demi_runner::connection::wire::Inbound::RpcExit {
+            .dispatch
+            .deliver(demi_runner::connection::wire::Inbound::RpcExit {
                 call_id: call["callId"].as_str().unwrap().into(),
                 exit_code: 7,
-            });
+            })
+            .await;
         let (exit, _) = job.wait().await;
         assert_eq!(exit.code, Some(7), "{:?}", exit.error);
         assert!(fixture.message().await["hint"].is_null());

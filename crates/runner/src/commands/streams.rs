@@ -18,8 +18,11 @@ use tokio::sync::mpsc;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
-    commands::artifacts::Artifacts,
-    connection::wire::{self, ServiceErrorCode},
+    commands::artifacts::StreamArtifacts,
+    connection::{
+        ConnectionHandle,
+        wire::{self, ServiceErrorCode},
+    },
     host_log::LineSplitter,
     pipes::PipeClient,
     services::ServiceHandle,
@@ -32,10 +35,9 @@ use crate::{
 const OUTPUT_QUEUE: usize = 4;
 
 pub struct ServiceStreams {
-    output: mpsc::Sender<wire::Frame>,
+    connection: ConnectionHandle,
     pipes: PipeClient,
     services: ServiceHandle,
-    artifacts: Arc<Artifacts>,
     draining: CancellationToken,
     streams: TaskTracker,
     /// Ends every open stream: cancelled by `close` and by the host
@@ -45,18 +47,16 @@ pub struct ServiceStreams {
 
 impl ServiceStreams {
     pub fn new(
-        output: mpsc::Sender<wire::Frame>,
+        connection: ConnectionHandle,
         pipes: PipeClient,
         services: ServiceHandle,
-        artifacts: Arc<Artifacts>,
         draining: CancellationToken,
         cancel: CancellationToken,
     ) -> Self {
         Self {
-            output,
+            connection,
             pipes,
             services,
-            artifacts,
             draining,
             streams: TaskTracker::new(),
             cancel,
@@ -84,11 +84,14 @@ impl ServiceStreams {
             return Err(io::Error::other("host connection closed"));
         }
         let pipes = self.pipes.clone();
-        let reply = self.output.clone();
+        let reply = self.connection.control.clone();
         let reporting = self.cancel.clone();
         let stream = self.cancel.child_token();
         let services = self.services.clone();
-        let resolver = self.artifacts.for_stream(stream_id.clone());
+        let resolver = Arc::new(StreamArtifacts::new(
+            self.connection.clone(),
+            stream_id.clone(),
+        ));
         let digest = package
             .targets
             .get(crate::services::target())

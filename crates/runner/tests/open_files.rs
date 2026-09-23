@@ -8,19 +8,14 @@ use demi_command_service::protocol::{
     PackageDescriptor,
 };
 use demi_runner::{
-    commands::artifacts::Artifacts,
     commands::command_client::{RawCommand, Stdio, forward},
-    commands::contexts::Contexts,
-    commands::dispatch::Dispatcher,
-    commands::local::Server,
-    commands::rpc::Calls,
     connection::wire::{Inbound, PipeRef},
     host::HostServer,
-    management::Management,
     pipes::PipeClient,
     process::{ChildProcess, SpawnOptions},
     services::{ArtifactResolver, ArtifactSource, RuntimeError, ServiceRegistry, target},
     shell::{job::Job, scope::Scope},
+    testing::Dispatch,
 };
 use futures_util::{StreamExt, future::BoxFuture};
 use serde_json::json;
@@ -39,7 +34,7 @@ use std::{
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,
-    sync::{RwLock, mpsc},
+    sync::mpsc,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -202,7 +197,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
     let port = backend().await;
     let pipes = PipeClient::new(
         &format!("http://127.0.0.1:{port}"),
-        Arc::new(RwLock::new(Some("token".into()))),
+        tokio::sync::watch::Sender::new(Some("token".into())).subscribe(),
     )
     .unwrap();
     {
@@ -234,14 +229,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
     // Host requests.
     let (output, replies) = mpsc::channel(64);
     let replies = Arc::new(tokio::sync::Mutex::new(replies));
-    let host = Arc::new(HostServer::new(
-        output,
-        None,
-        root_path.join("logs"),
-        root_path.clone(),
-        BTreeMap::new(),
-        pipes.clone(), demi_runner::shell::ShellRuntime::current(),
-    ));
+    let host = Arc::new(HostServer::new(output, root_path.clone(), pipes.clone()));
     {
         let host = host.clone();
         let replies = replies.clone();
@@ -434,27 +422,15 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
     }
 
     // Local command connections through the runner's endpoint.
-    let services = ServiceRegistry::new(root_path.join("artifacts"), root_path.clone(), BTreeMap::new())
-        .await
-        .unwrap();
-    let contexts = Contexts::new(
-        root_path.join("manifests"),
-        std::env::current_exe().unwrap(),
-        services.handle(),
-    )
-    .await
-    .unwrap();
     let body = json!({"roots": {"fixture": {"tree": {
         "name": "fixture", "summary": "Test callback.", "kind": "rpc", "runningHint": "Working",
         "input": {"type": "object", "properties": {"body": {"type": "string"}}, "required": ["body"]}, "stdinField": "body"
     }}}, "packages": {}});
     let hash = demi_command_service::protocol::canonical_digest(&body).unwrap();
     let mut manifest = body;
-    manifest["hash"] = hash.clone().into();
-    contexts.install(manifest).await.unwrap();
-    let calls = Calls::new(pipes.clone());
-    let (output, mut outgoing) = mpsc::channel(32);
-    calls.attach(output, CancellationToken::new());
+    manifest["hash"] = hash.into();
+    let mut dispatch = Dispatch::new(&root_path, manifest, pipes.clone()).await;
+    let mut outgoing = std::mem::replace(&mut dispatch.outgoing, mpsc::channel(1).1);
     let reached = Arc::new(AtomicUsize::new(0));
     let counted = reached.clone();
     tokio::spawn(async move {
@@ -465,18 +441,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
             }
         }
     });
-    let dispatcher = Arc::new(Dispatcher {
-        contexts: contexts.clone(),
-        services: services.handle(),
-        resolver: Artifacts::new(contexts.clone(), target().into()),
-        calls: calls.clone(),
-        management: Management::new("a".repeat(32), "test".into(), CancellationToken::new()),
-    });
-    let server = Server::start(dispatcher).await.unwrap();
-    let (context, _lease) = contexts
-        .create("job".into(), &hash, command_context())
-        .await
-        .unwrap();
+    let (context, _guard) = dispatch.context("job", command_context()).await;
     let request = LocalInvocation {
         operation: "raw".into(),
         invocation_id: "invocation".into(),
@@ -492,7 +457,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
     };
     let cancel = CancellationToken::new();
     {
-        let endpoint = server.endpoint().to_owned();
+        let endpoint = dispatch.server.endpoint().to_owned();
         let request = request.clone();
         let cancel = cancel.clone();
         let reached = reached.clone();
@@ -518,10 +483,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
         .await;
     }
     cancel.cancel();
-    contexts.close();
-    calls.detach();
-    server.close().await.unwrap();
-    services.close().await;
+    dispatch.close().await;
 }
 
 fn command_context() -> CommandContext {

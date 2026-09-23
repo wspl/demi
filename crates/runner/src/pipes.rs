@@ -1,18 +1,19 @@
 use bytes::Bytes;
 use futures_util::{Stream, StreamExt, stream::BoxStream};
 use std::{io, sync::Arc};
-use tokio::sync::RwLock;
+use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
 #[derive(Clone)]
 pub struct PipeClient {
     http: reqwest::Client,
     origin: reqwest::Url,
-    token: Arc<RwLock<Option<String>>>,
+    /// The registration's device token, which a claim can change.
+    token: watch::Receiver<Option<String>>,
 }
 
 impl PipeClient {
-    pub fn new(backend: &str, token: Arc<RwLock<Option<String>>>) -> io::Result<Self> {
+    pub fn new(backend: &str, token: watch::Receiver<Option<String>>) -> io::Result<Self> {
         let mut origin = crate::state::backend_url(backend)?;
         match origin.scheme() {
             "ws" => origin
@@ -46,7 +47,7 @@ impl PipeClient {
         let response = tokio::select! {
             _ = cancel.cancelled() => return Err(cancelled()),
             response = demi_command_service::descriptors::retry(&cancel, || async {
-                let request = self.request(reqwest::Method::GET, path).await?;
+                let request = self.request(reqwest::Method::GET, path)?;
                 request.send().await.map_err(io::Error::other)
             }) => expect_ok(response?).await?,
         };
@@ -76,7 +77,7 @@ impl PipeClient {
             result = async {
                 let mut backoff = demi_command_service::descriptors::Backoff::default();
                 let response = loop {
-                    let request = self.request(reqwest::Method::PUT, path).await?;
+                    let request = self.request(reqwest::Method::PUT, path)?;
                     match request.body(reqwest::Body::wrap_stream(body.attempt())).send().await {
                         Ok(response) => break response,
                         // Out of open files, the connection waits for one
@@ -100,11 +101,7 @@ impl PipeClient {
         }
     }
 
-    async fn request(
-        &self,
-        method: reqwest::Method,
-        path: &str,
-    ) -> io::Result<reqwest::RequestBuilder> {
+    fn request(&self, method: reqwest::Method, path: &str) -> io::Result<reqwest::RequestBuilder> {
         if !path.starts_with('/') || path.starts_with("//") || path.contains('\\') {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -118,8 +115,7 @@ impl PipeClient {
                 "pipe URL changed backend origin",
             ));
         }
-        let token = self.token.read().await;
-        let token = token.as_deref().ok_or_else(|| {
+        let token = self.token.borrow().clone().ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::PermissionDenied,
                 "runner has no device token",

@@ -1,8 +1,8 @@
 //! Installation status and coordinated upgrade drain.
 
-use crate::tasks::TaskTable;
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize)]
@@ -36,11 +36,20 @@ pub struct Status {
     jobs: usize,
 }
 
+/// What the registration and its connection change while they run.
+#[derive(Clone, Copy)]
+struct Snapshot {
+    phase: Phase,
+    jobs: usize,
+}
+
+/// The installation's status and its drain (`runner.md` § Connection and
+/// identity). The registration sets the phase and the connection the job
+/// count; the management endpoint reads a snapshot of both.
 pub struct Management {
     secret: String,
     release: String,
-    phase: Mutex<Phase>,
-    tasks: Mutex<Option<TaskTable>>,
+    snapshot: watch::Sender<Snapshot>,
     pub draining: CancellationToken,
     pub stop: CancellationToken,
 }
@@ -50,12 +59,15 @@ impl Management {
         Arc::new(Self {
             secret,
             release,
-            phase: Mutex::new(Phase::Connecting),
-            tasks: Mutex::new(None),
+            snapshot: watch::Sender::new(Snapshot {
+                phase: Phase::Connecting,
+                jobs: 0,
+            }),
             draining: CancellationToken::new(),
             stop,
         })
     }
+
     pub fn authorize(&self, request: &Request) -> bool {
         // Secrets have fixed public length; compare every byte for a same-length value.
         request.secret.len() == self.secret.len()
@@ -66,35 +78,26 @@ impl Management {
                 .fold(0, |difference, (left, right)| difference | (left ^ right))
                 == 0
     }
-    pub fn attach(&self, tasks: TaskTable) {
-        *self.tasks.lock().unwrap() = Some(tasks);
-    }
-    pub fn detach(&self) {
-        self.tasks.lock().unwrap().take();
-    }
+
     pub fn phase(&self) -> Phase {
-        *self.phase.lock().unwrap()
+        self.snapshot.borrow().phase
     }
+
     pub fn set_phase(&self, phase: Phase) {
-        *self.phase.lock().unwrap() = phase;
+        self.snapshot.send_modify(|snapshot| snapshot.phase = phase);
     }
+
+    pub fn set_jobs(&self, jobs: usize) {
+        self.snapshot.send_modify(|snapshot| snapshot.jobs = jobs);
+    }
+
     pub fn status(&self) -> Status {
+        let snapshot = *self.snapshot.borrow();
         Status {
             release: self.release.clone(),
-            phase: *self.phase.lock().unwrap(),
+            phase: snapshot.phase,
             draining: self.draining.is_cancelled(),
-            jobs: self
-                .tasks
-                .lock()
-                .unwrap()
-                .as_ref()
-                .map_or(0, TaskTable::count),
-        }
-    }
-    pub async fn wait_jobs(&self) {
-        let tasks = self.tasks.lock().unwrap().clone();
-        if let Some(tasks) = tasks {
-            tasks.wait_idle().await;
+            jobs: snapshot.jobs,
         }
     }
 }
