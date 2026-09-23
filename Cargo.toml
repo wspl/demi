@@ -16,6 +16,7 @@ members = [
   "crates/machines",
   "crates/machines-protocol",
   "crates/provider",
+  "crates/provider-anthropic-api",
   "crates/runner",
   "crates/runner-protocol",
   "crates/web-api",
