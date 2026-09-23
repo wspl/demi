@@ -21,6 +21,7 @@ testing = ["dep:axum"]
 demi-core = { path = "../core" }
 demi-gates = { path = "../gates" }
 async-stream = "0.3"
+base64.workspace = true
 axum = { version = "0.8", optional = true }
 bytes.workspace = true
 eventsource-stream = "0.2"

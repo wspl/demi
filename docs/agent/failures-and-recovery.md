@@ -34,13 +34,13 @@ match the vendor's own code stands:
 | Words | Code |
 | --- | --- |
 | `context`, `too long`, or a word starting with `max` followed later by `token` or `tokens` | `context_length_exceeded` |
-| `rate`, a word starting with `ratelimit`, `quota`, `usage`, `billing`, `balance` | `rate_limit` |
+| `rate`, a word starting with `ratelimit`, `quota`, `usage limit`, `billing`, `balance` | `rate_limit` |
 | `auth`, `authentication`, `authorization`, or `invalid` or `expired` before or after an API, access or auth key or token | `auth_expired` |
 | a word starting with `overload`, `unavailable`, `server error`, `internal error`, `api error`, `timeout`, `timed out`, `fetch failed`, `network`, `socket`, a word starting with `econn` | `overloaded` |
 
-Words count only whole, so `generate` is not `rate` and `limit` alone decides
-nothing: an invalid request whose message mentions a limit keeps the vendor's
-code and is not retried.
+Words count only whole, so `generate` is not `rate`, and `limit` or `usage`
+alone decides nothing: an invalid request whose message mentions a limit, or
+an invalid usage of a parameter, keeps the vendor's code and is not retried.
 
 A failure Demi finds itself gets its code by an explicit rule, never by
 matching words in its message. A timeout or a network failure is
