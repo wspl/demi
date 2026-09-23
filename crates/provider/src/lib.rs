@@ -10,6 +10,7 @@ mod contract;
 pub mod credentials;
 mod failure;
 mod http_record;
+pub mod models_dev;
 pub mod quota;
 mod secret;
 #[cfg(feature = "testing")]

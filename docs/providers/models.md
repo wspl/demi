@@ -86,7 +86,8 @@ A models.dev model becomes a catalog model as follows: `limit.context` and
 `limit.output` are its token limits, `attachment` is attachment support,
 `reasoning` is thinking support, the values of its `effort` reasoning option
 are its thinking efforts, `tool_call` is tool support, and `cost` is its
-prices.
+prices. A limit that is not a positive whole number, such as an output limit
+of 0, states no limit and reads as unknown.
 
 ### Directories
 

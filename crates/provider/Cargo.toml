@@ -27,6 +27,7 @@ eventsource-stream = "0.2"
 futures-util.workspace = true
 http.workspace = true
 httpdate = "1"
+indexmap = { version = "2", features = ["serde"] }
 regex = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
 serde.workspace = true
