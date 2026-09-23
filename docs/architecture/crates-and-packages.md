@@ -358,7 +358,8 @@ Each crate implements the provider contract for one vendor family.
     `ShellEnvironment`, `ExecRequest`, `CommandStatus` and `CommandRecord`, the
     model's status view of a command.
 - **Public boundary:** the items above; `shell::testing` supplies the Host
-  conformance cases. The Host rules are in
+  conformance cases and an in-memory port for rpc handler tests
+  (`MemoryPort`). The Host rules are in
   [Host operations](../execution/runner.md#host-operations); the handler
   interface is [the TypeScript boundary](contracts.md#the-typescript-boundary).
 - **Must not:** depend on `agent`, `provider`, a concrete provider,
@@ -661,7 +662,7 @@ provider-google -> provider
 provider-codex -> provider
 provider-grok-build -> provider
 provider-claude-code -> provider, shell
-shell -> command-service, command-tree, core, gates
+shell -> command-service, command-tree, core
 agent -> agent-protocol, core, gates, provider, shell
 coding-agent -> agent, builtin-protocol, command-tree, core, shell
 host-remote -> command-service, command-tree, gates, runner-protocol, shell
