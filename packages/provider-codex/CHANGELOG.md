@@ -1,5 +1,14 @@
 # @demicodes/provider-codex
 
+## 0.25.3
+
+### Patch Changes
+
+- dd7767d: Update the default Codex model catalog client version to 0.156.1 so newly available models are discoverable without an application override.
+  - @demicodes/core@0.25.3
+  - @demicodes/provider@0.25.3
+  - @demicodes/utils@0.25.3
+
 ## 0.25.2
 
 ### Patch Changes
