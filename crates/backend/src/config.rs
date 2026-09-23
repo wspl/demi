@@ -5,11 +5,11 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use demi_core::{Clock, SystemClock};
 use demi_web_api::settings::InstanceMode;
 use url::Url;
 
 use crate::auth::email_change::AccountMail;
-use crate::clock::{Clock, SystemClock};
 use crate::shard::ShardPlacement;
 use crate::vault::secret::InstanceSecret;
 
@@ -91,7 +91,11 @@ impl Config {
             .as_deref()
             .map(|text| text.parse::<InstanceSecret>().map_err(|_| ConfigError::InstanceSecret))
             .transpose()?;
-        let mut config = BackendConfig::new(data_dir, SocketAddr::from((Ipv4Addr::UNSPECIFIED, self.port)));
+        let mut config = BackendConfig::new(
+            data_dir,
+            SocketAddr::from((Ipv4Addr::UNSPECIFIED, self.port)),
+            self.mode,
+        );
         config.instance_secret = instance_secret;
         config.web_directory = self.web_directory.clone();
         Ok(config)
@@ -105,6 +109,8 @@ pub struct BackendConfig {
     pub data_dir: PathBuf,
     /// Where the listener binds; port 0 picks a free port.
     pub address: SocketAddr,
+    /// Who configures providers (`product.md` § Instance mode).
+    pub mode: InstanceMode,
     /// A built browser directory served beside the API.
     pub web_directory: Option<PathBuf>,
     /// The instance secret; without it, the one in the data directory, which
@@ -120,10 +126,11 @@ pub struct BackendConfig {
 impl BackendConfig {
     /// A configuration on the system clock with one shard thread, no web
     /// directory and no mail sender.
-    pub fn new(data_dir: PathBuf, address: SocketAddr) -> Self {
+    pub fn new(data_dir: PathBuf, address: SocketAddr, mode: InstanceMode) -> Self {
         Self {
             data_dir,
             address,
+            mode,
             web_directory: None,
             instance_secret: None,
             account_mail: None,

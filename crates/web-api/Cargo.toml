@@ -11,12 +11,14 @@ rust-version.workspace = true
 doctest = false
 
 [dependencies]
+demi-command-service = { path = "../command-service" }
 demi-core = { path = "../core" }
 garde.workspace = true
 regex = "1"
 schemars.workspace = true
 serde.workspace = true
 serde_plain.workspace = true
+serde_with.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
