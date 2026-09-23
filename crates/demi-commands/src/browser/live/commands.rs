@@ -9,7 +9,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::{hub::Membership, writer::Writer};
 use crate::browser::{
-    BrowserEnvironment, BrowserError, BrowserTab, Result,
+    BrowserEnvironment, BrowserTab, Result,
     navigation::reload,
     operation::CONTROL_TIMEOUT,
     protocol::{TabId, ViewportMode},
@@ -65,11 +65,8 @@ async fn run(
 /// The tab with public ID `id`.
 pub(super) async fn find(environment: &BrowserEnvironment, id: &TabId) -> Result<BrowserTab> {
     environment
-        .tabs(&CancellationToken::new(), CONTROL_TIMEOUT)
-        .await?
-        .into_iter()
-        .find(|tab| tab.id() == id)
-        .ok_or(BrowserError::TabNotFound)
+        .tab(id, &CancellationToken::new(), CONTROL_TIMEOUT)
+        .await
 }
 
 /// Answers the tab's dialog for the viewer, unless someone answered first.
