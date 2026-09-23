@@ -1,23 +1,25 @@
-use std::{sync::Arc, time::Duration};
+use std::{
+    ops::{Deref, DerefMut},
+    sync::Arc,
+    time::Duration,
+};
 
 use chromiumoxide::layout::Point;
 use chromiumoxide::{
     Page,
     cdp::browser_protocol::{
-        input::{
-            DispatchKeyEventParams, DispatchMouseEventParams, DispatchMouseEventType,
-            InsertTextParams, MouseButton,
-        },
-        page::{EventJavascriptDialogOpening, HandleJavaScriptDialogParams},
+        input::{DispatchMouseEventParams, DispatchMouseEventType, InsertTextParams, MouseButton},
+        page::EventJavascriptDialogOpening,
     },
 };
-use futures_util::StreamExt;
 use serde_json::{Value, json};
-use tokio::sync::{Mutex, watch};
+use tokio::sync::watch;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use super::{
-    BrowserError, Result, element,
+    BrowserError, Result,
+    dialog::DialogInput,
+    element,
     environment::BrowserHandle,
     evaluation, keyboard,
     observation::{Observation, References, can_resample},
@@ -48,78 +50,126 @@ pub(super) fn dialog_type(
     }
 }
 
-pub(super) enum InputRelease {
-    Mouse(DispatchMouseEventParams),
-    Key(DispatchKeyEventParams),
+/// What the command holding a tab's operation lock uses of the tab: its node
+/// references, asset inventories and WebMCP tool sets (`browser.md` §
+/// Owners inside the service). It returns to the tab when the command
+/// releases the lock.
+#[derive(Default)]
+pub(super) struct TabSession {
+    pub references: References,
+    pub assets: super::assets::State,
+    pub webmcp: super::webmcp::State,
+}
+
+/// A tab's operation lock: one agent command at a time holds it, and with it
+/// the tab's session.
+pub(super) struct TabGate {
+    /// The session while no command holds it. A std mutex, touched only to
+    /// take the session out and to put it back, never across an await: a
+    /// command holds the session itself, not the mutex.
+    session: std::sync::Mutex<Option<Box<TabSession>>>,
+}
+
+impl Default for TabGate {
+    fn default() -> Self {
+        Self {
+            session: std::sync::Mutex::new(Some(Box::default())),
+        }
+    }
+}
+
+impl TabGate {
+    /// The tab's session, unless another command holds it.
+    pub fn try_checkout(&self) -> Option<Checkout<'_>> {
+        let session = self.slot().take()?;
+        Some(Checkout {
+            gate: self,
+            session: Some(session),
+        })
+    }
+
+    fn slot(&self) -> std::sync::MutexGuard<'_, Option<Box<TabSession>>> {
+        // Nothing can panic between taking the lock and releasing it.
+        self.session.lock().expect("the tab gate is intact")
+    }
+}
+
+/// A tab's session, held by the command that holds the tab's operation lock.
+pub(super) struct Checkout<'a> {
+    gate: &'a TabGate,
+    session: Option<Box<TabSession>>,
+}
+
+impl Deref for Checkout<'_> {
+    type Target = TabSession;
+
+    fn deref(&self) -> &TabSession {
+        self.session.as_ref().expect("a checkout holds its session")
+    }
+}
+
+impl DerefMut for Checkout<'_> {
+    fn deref_mut(&mut self) -> &mut TabSession {
+        self.session.as_mut().expect("a checkout holds its session")
+    }
+}
+
+impl Drop for Checkout<'_> {
+    fn drop(&mut self) {
+        *self.gate.slot() = self.session.take();
+    }
 }
 
 pub(super) struct TabState {
     pub failure: watch::Sender<Option<String>>,
-    pub operations: Mutex<References>,
-    pub assets: Mutex<super::assets::State>,
-    pub cdp: Mutex<super::cdp::State>,
-    pub webmcp: Mutex<super::webmcp::State>,
-    pub console: Arc<Mutex<super::logs::Console>>,
-    pub dialog: watch::Sender<Option<Arc<EventJavascriptDialogOpening>>>,
-    pub deferred_release: Mutex<Vec<InputRelease>>,
+    /// The operation lock and the session its holder uses.
+    pub gate: TabGate,
+    /// The debugging connections of `cdp` commands and their events.
+    pub debug: super::cdp::DebugSessions,
+    pub console: super::logs::Console,
+    /// The open dialog and the input it holds back.
+    pub dialog: DialogInput,
     pub viewport: watch::Sender<super::viewport::Viewports>,
     /// Tells the live view that what it shows of the browser changed.
     pub changes: watch::Sender<u64>,
     /// The live view's observer of this tab, once a viewer watched it.
     pub observed: tokio::sync::OnceCell<Arc<super::live::Observed>>,
+    /// The environment's tasks, which retirement joins: work for the tab that
+    /// no command waits for runs on them and ends with the tab.
+    pub tasks: TaskTracker,
 }
 
 impl TabState {
     pub(super) async fn observe(
         page: &Page,
+        browser: &BrowserHandle,
         ended: CancellationToken,
         tasks: &TaskTracker,
         failure: watch::Sender<Option<String>>,
         changes: watch::Sender<u64>,
     ) -> Result<Arc<Self>> {
-        // Headless dialogs are closed only by this controller. Handling clears
-        // the exact opening incarnation, so a subsequent prompt cannot be erased
-        // by a delayed close event delivered through a separate event stream.
-        let mut opening = page
+        let opening = page
             .event_listener::<EventJavascriptDialogOpening>()
             .await?;
-        let state = Arc::new(Self {
-            failure: failure.clone(),
-            console: super::logs::observe(page, ended.clone(), tasks).await?,
-            operations: Mutex::new(References::default()),
-            assets: Mutex::new(super::assets::State::default()),
-            cdp: Mutex::new(super::cdp::State::default()),
-            webmcp: Mutex::new(super::webmcp::State::default()),
-            dialog: watch::channel(None).0,
-            deferred_release: Mutex::new(Vec::new()),
+        let console = super::logs::observe(page, ended.clone(), tasks).await?;
+        let debug = super::cdp::DebugSessions::start(
+            browser.clone(),
+            page.target_id().clone(),
+            ended.clone(),
+            tasks,
+        );
+        let dialog = DialogInput::start(page.clone(), opening, ended, tasks, failure.clone());
+        Ok(Arc::new(Self {
+            failure,
+            gate: TabGate::default(),
+            debug,
+            console,
+            dialog,
             viewport: watch::channel(Default::default()).0,
             changes,
             observed: tokio::sync::OnceCell::new(),
-        });
-        let observed = state.clone();
-        tasks.spawn(async move {
-            loop {
-                let event = tokio::select! {
-                    biased;
-                    _ = ended.cancelled() => break,
-                    event = opening.next() => event.map(|event| event.map(Some)),
-                };
-                match event {
-                    Some(Ok(dialog)) => {
-                        observed.dialog.send_replace(dialog);
-                    }
-                    Some(Err(error)) => {
-                        failure.send_replace(Some(format!(
-                            "browser dialog observation failed: {error}"
-                        )));
-                        ended.cancel();
-                        break;
-                    }
-                    None => break,
-                }
-            }
-        });
-        Ok(state)
+            tasks: tasks.clone(),
+        }))
     }
 }
 
@@ -160,7 +210,7 @@ impl BrowserTab {
     pub(super) async fn release_objects(&self) -> Result<()> {
         // Chrome cannot answer Runtime commands while a dialog is open. The next
         // ordinary command releases the group; context destruction also releases it.
-        if self.state.dialog.borrow().is_some() || self.ended.is_cancelled() {
+        if self.state.dialog.is_open() || self.ended.is_cancelled() {
             return Ok(());
         }
         let cleanup = tokio::time::timeout(CONTROL_TIMEOUT, async {
@@ -207,11 +257,7 @@ impl BrowserTab {
         cancellation: &CancellationToken,
         timeout: Duration,
     ) -> Result<Value> {
-        let _guard = self
-            .state
-            .operations
-            .try_lock()
-            .map_err(|_| BrowserError::Busy)?;
+        let _session = self.state.gate.try_checkout().ok_or(BrowserError::Busy)?;
         Operation::for_tab(self, cancellation, tokio::time::Instant::now() + timeout)
             .run(evaluation::read_only(&self.page, expression))
             .await
@@ -232,11 +278,7 @@ impl BrowserTab {
         cancellation: &CancellationToken,
         timeout: Duration,
     ) -> Result<Vec<u8>> {
-        let _guard = self
-            .state
-            .operations
-            .try_lock()
-            .map_err(|_| BrowserError::Busy)?;
+        let _session = self.state.gate.try_checkout().ok_or(BrowserError::Busy)?;
         Operation::for_tab(self, cancellation, tokio::time::Instant::now() + timeout)
             .run(self.screenshot_bytes(full_page, clip))
             .await
@@ -250,16 +292,12 @@ impl BrowserTab {
         cancellation: &CancellationToken,
         timeout: Duration,
     ) -> Result<()> {
-        let mut references = self
-            .state
-            .operations
-            .try_lock()
-            .map_err(|_| BrowserError::Busy)?;
+        let mut session = self.state.gate.try_checkout().ok_or(BrowserError::Busy)?;
         let operation =
             Operation::for_tab(self, cancellation, tokio::time::Instant::now() + timeout);
         let target = css_target(selector);
         let (_, state) = self
-            .ready_element(&target, &mut references, element::CLICK, &operation)
+            .ready_element(&target, &mut session.references, element::CLICK, &operation)
             .await?;
         self.click_at(state.point(), MouseButton::Left, 1, 0, &operation)
             .await
@@ -274,15 +312,12 @@ impl BrowserTab {
         cancellation: &CancellationToken,
         timeout: Duration,
     ) -> Result<()> {
-        let mut references = self
-            .state
-            .operations
-            .try_lock()
-            .map_err(|_| BrowserError::Busy)?;
+        let mut session = self.state.gate.try_checkout().ok_or(BrowserError::Busy)?;
         let operation =
             Operation::for_tab(self, cancellation, tokio::time::Instant::now() + timeout);
         let target = css_target(selector);
-        self.fill(&target, &mut references, text, &operation).await
+        self.fill(&target, &mut session.references, text, &operation)
+            .await
     }
 
     pub(super) async fn fill(
@@ -456,7 +491,7 @@ impl BrowserTab {
         operation: &Operation<'_>,
         input: impl std::future::Future<Output = Result<T>>,
     ) -> Result<T> {
-        let mut dialog = self.state.dialog.subscribe();
+        let mut dialog = self.state.dialog.watch();
         if dialog.borrow().is_some() {
             return Err(BrowserError::DialogBlocked);
         }
@@ -539,45 +574,6 @@ impl BrowserTab {
             .build()
             .map_err(BrowserError::Configuration)?;
         self.release_mouse(result, release).await
-    }
-}
-
-impl BrowserTab {
-    /// Answers the open dialog, whether the agent or the user answers first,
-    /// then delivers the input releases it held back.
-    pub(super) async fn answer_dialog(
-        &self,
-        dialog: &Arc<EventJavascriptDialogOpening>,
-        accept: bool,
-        text: Option<String>,
-    ) -> Result<()> {
-        let mut request = HandleJavaScriptDialogParams::new(accept);
-        request.prompt_text = text;
-        self.page.execute(request).await?;
-        self.state.dialog.send_if_modified(|current| {
-            if current
-                .as_ref()
-                .is_some_and(|current| Arc::ptr_eq(current, dialog))
-            {
-                *current = None;
-                true
-            } else {
-                false
-            }
-        });
-        let mut releases = self.state.deferred_release.lock().await;
-        while self.state.dialog.borrow().is_none() && !releases.is_empty() {
-            match &releases[0] {
-                InputRelease::Mouse(event) => {
-                    self.page.execute(event.clone()).await?;
-                }
-                InputRelease::Key(event) => {
-                    self.page.execute(event.clone()).await?;
-                }
-            }
-            releases.remove(0);
-        }
-        Ok(())
     }
 }
 

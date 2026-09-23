@@ -6,6 +6,7 @@ mod cdp;
 mod clipboard;
 mod content;
 mod conversations;
+mod dialog;
 mod download;
 mod element;
 mod environment;

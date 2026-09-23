@@ -1,9 +1,10 @@
 //! Ordered browser pointer delivery with cancellation-safe button release.
 use super::{
-    BrowserError, BrowserTab, Result, keyboard,
+    BrowserError, BrowserTab, Result,
+    dialog::InputRelease,
+    keyboard,
     operation::{CONTROL_TIMEOUT, Operation, after_cleanup},
     protocol::{ActionResult, DragInput},
-    tab::InputRelease,
 };
 use chromiumoxide::cdp::browser_protocol::input::{
     DispatchMouseEventParams, DispatchMouseEventType, MouseButton,
@@ -89,12 +90,11 @@ impl BrowserTab {
         if self.ended.is_cancelled() {
             return result;
         }
-        if self.state.dialog.borrow().is_some() {
+        if self.state.dialog.is_open() {
             self.state
-                .deferred_release
-                .lock()
-                .await
-                .push(InputRelease::Mouse(release));
+                .dialog
+                .defer(vec![InputRelease::Mouse(release)])
+                .await;
             return after_cleanup(result, Err(BrowserError::DialogBlocked));
         }
         let cleanup = tokio::time::timeout(CONTROL_TIMEOUT, self.page.execute(release))
