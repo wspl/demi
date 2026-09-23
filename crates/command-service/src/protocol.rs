@@ -20,7 +20,7 @@ pub use invocation::{
 pub use package::{
     ArtifactLocation, ArtifactPath, ArtifactUrl, PackageArtifact, PackageDescriptor, ServiceInfo,
     TARGETS, VERSION, canonical_digest, digest, host_target, is_digest, is_target, target,
-    target_artifact,
+    target_artifact, target_artifacts,
 };
 
 /// The most bytes of invocation metadata.
