@@ -7,8 +7,8 @@
 //! streams and their request side in [`openai_request`]; the OAuth pieces of
 //! device logins and refreshes in [`oauth`]; the credential pool, its refresh
 //! protocol and the account operations in [`credentials`]; an account's
-//! quota in [`quota`]; and, behind the `testing` feature, scripted runtimes
-//! and a scripted vendor for tests.
+//! quota in [`quota`]; the models.dev document in [`models_dev`]; and, behind
+//! the `testing` feature, scripted runtimes and a scripted vendor for tests.
 
 mod body;
 mod contract;
@@ -16,6 +16,7 @@ pub mod credentials;
 mod endpoint;
 mod failure;
 mod http_record;
+pub mod models_dev;
 pub mod oauth;
 pub mod openai_request;
 pub mod quota;
