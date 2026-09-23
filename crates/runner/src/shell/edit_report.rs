@@ -61,7 +61,7 @@ fn read_snapshot(path: &String) -> std::io::Result<Vec<u8>> {
     std::fs::File::open(path)?
         .take((EDIT_FILE_BYTES + 1) as u64)
         .read_to_end(&mut bytes)?;
-    if bytes.len() > EDIT_FILE_BYTES || bytes.contains(&0) || std::str::from_utf8(&bytes).is_err() {
+    if bytes.len() > EDIT_FILE_BYTES || !demi_command_service::edits::is_text(&bytes) {
         return Err(std::io::Error::other("invalid edit snapshot"));
     }
     Ok(bytes)

@@ -1,10 +1,6 @@
 //! Line counting shared by working-tree changes and recorded edits.
 
-const BINARY_PROBE_BYTES: usize = 8_000;
-
-fn is_binary(bytes: &[u8]) -> bool {
-    bytes[..bytes.len().min(BINARY_PROBE_BYTES)].contains(&0)
-}
+use demi_command_service::edits::is_text;
 
 fn line_count(bytes: &[u8]) -> u64 {
     if bytes.is_empty() {
@@ -20,7 +16,7 @@ fn line_count(bytes: &[u8]) -> u64 {
 
 /// Lines added and removed between two sides; nothing for binary or unread content.
 pub(crate) fn line_counts(before: Option<&[u8]>, after: Option<&[u8]>) -> (u64, u64) {
-    if before.is_some_and(is_binary) || after.is_some_and(is_binary) {
+    if before.is_some_and(|bytes| !is_text(bytes)) || after.is_some_and(|bytes| !is_text(bytes)) {
         return (0, 0);
     }
     match (before, after) {
