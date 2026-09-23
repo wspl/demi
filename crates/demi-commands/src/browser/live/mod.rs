@@ -16,7 +16,3 @@ mod writer;
 pub(crate) use hub::Hub;
 pub(crate) use observers::Observed;
 pub(super) use viewer::serve;
-
-/// The declared operation that serves a view (`native-runtime.md` § User
-/// streams).
-pub(crate) const OPERATION: &str = "browser.live";

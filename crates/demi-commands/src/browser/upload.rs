@@ -37,8 +37,7 @@ pub(super) async fn execute(
     let work = async {
         let mut files = Vec::with_capacity(input.file.len());
         for file in &input.file {
-            let path = crate::files::resolve_path(&context.request.cwd, file)
-                .map_err(BrowserError::Configuration)?;
+            let path = super::output::resolve(&context.request.cwd, file)?;
             let path = operation
                 .run(async {
                     let path = tokio::fs::canonicalize(path).await?;

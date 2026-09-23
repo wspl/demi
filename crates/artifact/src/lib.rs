@@ -15,7 +15,10 @@ pub use archive::extract_zip;
 pub use digest::{Digest, Verifier, digest};
 pub use download::{client, copy, download};
 pub use lock::InstallLock;
-pub use publish::{Mode, Permissions, Publication, Staged, publish, publish_bytes, publish_directory};
+pub use publish::{
+    Mode, Permissions, Publication, Staged, publish, publish_bytes, publish_bytes_blocking,
+    publish_directory,
+};
 
 #[cfg(feature = "testing")]
 pub mod testing {
