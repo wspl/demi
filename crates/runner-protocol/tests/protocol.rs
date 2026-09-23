@@ -3,6 +3,8 @@
 
 use std::path::Path;
 
+use demi_command_service::protocol::PackageDescriptor;
+use demi_command_tree::{NativeOperation, Node};
 use demi_runner_protocol::manifest::Manifest;
 use demi_runner_protocol::wire::{self, Inbound, LogLine, Outbound, Timestamp};
 use serde_json::{Value, json};
@@ -220,4 +222,58 @@ fn closed_sets_display_as_the_wire_spells_them() {
     assert_eq!(ServiceErrorCode::UnknownOperation.to_string(), "unknown_operation");
     assert_eq!(HelloErrorCode::AlreadyConnected.to_string(), "already_connected");
     assert_eq!(VolumeName::Home.to_string(), "home");
+}
+
+/// A recorded manifest's trees as their declarations: without the descriptor
+/// hashes a build pins.
+fn declaration(mut tree: Value) -> Node<NativeOperation> {
+    fn unpin(node: &mut Value) {
+        if let Some(binding) = node.get_mut("binding").and_then(Value::as_object_mut) {
+            binding.remove("descriptorHash");
+        }
+        for child in node
+            .get_mut("subcommands")
+            .and_then(Value::as_array_mut)
+            .into_iter()
+            .flatten()
+        {
+            unpin(child);
+        }
+    }
+    unpin(&mut tree);
+    serde_json::from_value(tree).unwrap()
+}
+
+#[test]
+fn a_built_manifest_pins_its_native_commands_and_hashes_as_the_recorded_one() {
+    let recorded = manifest();
+    let packages = || {
+        recorded["packages"]
+            .as_object()
+            .unwrap()
+            .values()
+            .map(|descriptor| PackageDescriptor::parse(descriptor.clone()).unwrap())
+            .collect::<Vec<_>>()
+    };
+    let roots = recorded["roots"]
+        .as_object()
+        .unwrap()
+        .values()
+        .map(|root| declaration(root["tree"].clone()));
+    let built = Manifest::build(roots, packages()).unwrap();
+    assert_eq!(serde_json::to_value(&built).unwrap(), recorded);
+
+    let native = |package: &str, operation: &str| {
+        declaration(json!({"name": "native", "summary": "Native", "kind": "native",
+            "binding": {"package": package, "operation": operation}}))
+    };
+    let rpc = || declaration(json!({"name": "rpc", "summary": "Rpc", "kind": "rpc"}));
+    let refusal = |roots: Vec<Node<NativeOperation>>, packages: Vec<PackageDescriptor>| {
+        Manifest::build(roots, packages).unwrap_err().to_string()
+    };
+    assert!(refusal(vec![native("demicodes.other", "file.read")], packages()).contains("not configured"));
+    assert!(refusal(vec![native("demicodes.fixture", "file.gone")], packages()).contains("no operation"));
+    assert!(refusal(vec![rpc(), rpc()], vec![]).contains("duplicate root"));
+    let twice = packages().into_iter().chain(packages()).collect();
+    assert!(refusal(vec![], twice).contains("duplicate native package"));
 }

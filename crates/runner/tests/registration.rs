@@ -124,13 +124,17 @@ async fn backend_job_invokes_same_binary_alias_and_drain_releases_installation()
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
-        let body = json!({"roots": {"fixture": {"tree": {
+        let tree = json!({
             "name":"fixture", "summary":"Remote declaration", "kind":"rpc", "stdinField":"body",
             "input":{"type":"object", "properties":{"body":{"type":"string"}}, "required":["body"]}
-        }}}, "packages":{}});
-        let hash = demi_command_service::protocol::canonical_digest(&body).unwrap();
-        let mut manifest = body;
-        manifest["hash"] = hash.clone().into();
+        });
+        let manifest = demi_runner_protocol::manifest::Manifest::build(
+            [serde_json::from_value(tree).unwrap()],
+            [],
+        )
+        .unwrap();
+        let hash = manifest.hash.clone();
+        let manifest = serde_json::to_value(manifest).unwrap();
         send(&mut socket, json!({"type":"manifest", "manifest":manifest})).await;
         // No stdin EOF is sent: --help must complete without waiting for input.
         send(
