@@ -314,7 +314,38 @@ async fn a_cancelled_request_answers_cancelled() {
 
 /// Polls the watched baseline until `settled` holds for it, or fails after five seconds.
 async fn poll(service: &GitService, root: &Path, settled: impl Fn(&Changes) -> bool) -> Changes {
-    let deadline = Instant::now() + Duration::from_secs(5);
+    poll_within(
+        service,
+        root,
+        Duration::from_secs(5),
+        "the watched baseline never settled",
+        settled,
+    )
+    .await
+}
+
+/// Polls until the root's watch runs, which no request waits for. FSEvents
+/// takes seconds to start a stream while builds flood fseventsd, and once
+/// took more than 30 in the main checkout.
+async fn watching(service: &GitService, root: &Path) -> Changes {
+    poll_within(
+        service,
+        root,
+        Duration::from_secs(60),
+        "the watch never started",
+        |result| result.watched,
+    )
+    .await
+}
+
+async fn poll_within(
+    service: &GitService,
+    root: &Path,
+    within: Duration,
+    failure: &str,
+    settled: impl Fn(&Changes) -> bool,
+) -> Changes {
+    let deadline = Instant::now() + within;
     loop {
         let result = changes(service, root).await;
         if settled(&result) {
@@ -322,7 +353,7 @@ async fn poll(service: &GitService, root: &Path, settled: impl Fn(&Changes) -> b
         }
         assert!(
             Instant::now() < deadline,
-            "the watched baseline never settled; last {:?}",
+            "{failure}; last {:?}",
             summary(&result)
         );
         tokio::time::sleep(Duration::from_millis(50)).await;
@@ -347,7 +378,7 @@ async fn later_requests_follow_the_watch_and_a_commit_starts_over() {
     let service = GitService::default();
     // The first request starts the watch without waiting for it; a later one
     // answers from it once it runs.
-    let first = poll(&service, &repo, |result| result.watched).await;
+    let first = watching(&service, &repo).await;
     assert!(first.files.is_empty());
 
     std::fs::write(repo.join("a.txt"), "1\n2\n3\nmore\n").unwrap();
@@ -422,7 +453,7 @@ async fn a_staged_rename_stays_one_entry_across_watched_requests() {
     let (_dir, repo) = committed_repo();
     git(&repo, &["mv", "a.txt", "moved.txt"]);
     let service = GitService::default();
-    let first = poll(&service, &repo, |result| result.watched).await;
+    let first = watching(&service, &repo).await;
     assert_eq!(statuses(&first), git_status(&repo));
 
     // Only the new path changes.
