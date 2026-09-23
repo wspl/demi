@@ -7,7 +7,6 @@ pub mod command_output;
 pub mod contexts;
 pub mod dispatch;
 pub mod local;
-pub mod manifest;
 pub mod native;
 pub mod rpc;
 pub mod services;

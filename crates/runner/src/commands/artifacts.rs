@@ -16,7 +16,7 @@ use tokio_util::sync::CancellationToken;
 
 type Location = Result<ArtifactLocation, String>;
 struct Connection {
-    output: mpsc::Sender<wire::Outbound>,
+    output: mpsc::Sender<wire::Frame>,
     stop: CancellationToken,
 }
 struct State {
@@ -51,7 +51,7 @@ impl Artifacts {
             })),
         })
     }
-    pub fn attach(&self, output: mpsc::Sender<wire::Outbound>) {
+    pub fn attach(&self, output: mpsc::Sender<wire::Frame>) {
         self.detach();
         self.state.lock().unwrap().connection = Some(Connection {
             output,
@@ -92,7 +92,7 @@ impl Artifacts {
     /// does.
     async fn locate(
         &self,
-        owner: wire::ArtifactResolveOwner,
+        owner: wire::ArtifactOwner,
         artifact: &PackageArtifact,
         cancel: &CancellationToken,
         ended: impl std::future::Future<Output = ()>,
@@ -112,7 +112,12 @@ impl Artifacts {
             state: self.state.clone(),
         };
         let message =
-            wire::artifact_resolve(id, owner, artifact.sha256.clone(), self.target.clone())
+            wire::encode(&wire::Outbound::ArtifactResolve {
+                id,
+                owner,
+                sha256: artifact.sha256.clone(),
+                target: self.target.clone(),
+            })
                 .map_err(|error| RuntimeError::Artifact(error.to_string()))?;
         let location = tokio::select! {
             biased;
@@ -145,7 +150,7 @@ impl ArtifactResolver for Artifacts {
                         RuntimeError::Artifact("no live job authorizes this artifact".into())
                     })?;
                 let owner =
-                    wire::ArtifactResolveOwner::Variant0(wire::ArtifactResolveOwnerVariant0 {
+                    wire::ArtifactOwner::Job(wire::JobArtifactOwner {
                         job_id: context.job_id.clone(),
                         manifest_hash: context.manifest.hash.clone(),
                     });
@@ -173,7 +178,7 @@ impl ArtifactResolver for StreamArtifacts {
         cancel: &'a CancellationToken,
     ) -> BoxFuture<'a, Result<ArtifactSource, RuntimeError>> {
         Box::pin(async move {
-            let owner = wire::ArtifactResolveOwner::Variant1(wire::ArtifactResolveOwnerVariant1 {
+            let owner = wire::ArtifactOwner::Stream(wire::StreamArtifactOwner {
                 stream_id: self.stream.clone(),
             });
             self.artifacts

@@ -203,7 +203,7 @@ impl Services {
         for (digest, ready) in candidates {
             let retained = match ready {
                 Some(Ok(client)) => {
-                    let status = conversation(&client, "status", None)
+                    let status = conversation(&client, &ConversationRequest::Status {})
                         .await
                         .and_then(|value| {
                             let status = serde_json::from_value::<ConversationStatus>(value)
@@ -248,7 +248,12 @@ impl Services {
                 };
                 let result = match client {
                     Ok(client) => {
-                        conversation(&client, "release", Some(id))
+                        conversation(
+                            &client,
+                            &ConversationRequest::Release {
+                                conversation: id.to_owned(),
+                            },
+                        )
                             .await
                             .and_then(|value| {
                                 if value == serde_json::json!({}) {
@@ -302,15 +307,11 @@ pub use demi_command_service::protocol::host_target as target;
 /// Validate the bounded JSON response to a native conversation lifecycle operation.
 async fn conversation(
     client: &Client,
-    operation: &str,
-    id: Option<&str>,
+    request: &ConversationRequest,
 ) -> Result<serde_json::Value, String> {
     let exchange = async {
         let (_input, mut output) = client
-            .conversation(&ConversationRequest {
-                operation: operation.into(),
-                conversation: id.map(str::to_owned),
-            })
+            .conversation(request)
             .await
             .map_err(|error| error.to_string())?;
         let mut bytes = Vec::new();
@@ -329,7 +330,7 @@ async fn conversation(
                     completed = true
                 }
                 Record::Stderr(chunk) => host_log::runner(format_args!(
-                    "conversation {operation}: {}",
+                    "conversation {request:?}: {}",
                     String::from_utf8_lossy(&chunk).trim_end()
                 )),
                 _ => return Err("native conversation operation failed".into()),
@@ -341,7 +342,10 @@ async fn conversation(
         serde_json::from_slice(&bytes).map_err(|error| error.to_string())
     };
     tokio::time::timeout(
-        Duration::from_secs(if operation == "status" { 5 } else { 360 }),
+        Duration::from_secs(match request {
+            ConversationRequest::Status {} => 5,
+            ConversationRequest::Release { .. } => 360,
+        }),
         exchange,
     )
     .await

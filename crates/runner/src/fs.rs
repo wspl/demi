@@ -4,7 +4,7 @@ use std::{
     time::UNIX_EPOCH,
 };
 
-use crate::connection::wire::{self as wire, Inbound, Outbound, Timestamp};
+use crate::connection::wire::{self as wire, Frame, FsOk, FsResult, Inbound, Outbound, Timestamp};
 use futures_util::future::BoxFuture;
 use tokio::fs;
 use tokio_util::sync::CancellationToken;
@@ -18,17 +18,24 @@ pub async fn handle(
     message: &Inbound,
     default_cwd: &Path,
     cancel: &CancellationToken,
-) -> Option<Result<Outbound, wire::WireError>> {
+) -> Option<Result<Frame, wire::WireError>> {
     let id = message.fs_request_id()?;
+    let refuse = |code: Option<String>, message: String| {
+        wire::encode(&Outbound::FsError {
+            id: id.to_owned(),
+            code,
+            message,
+        })
+    };
     Some(match call(message, default_cwd, cancel).await {
-        Ok(reply) => wire::within_limit(reply, |reason| {
-            wire::fs_error(id.to_owned(), Some("too_large".into()), reason)
+        Ok(result) => wire::encode(&Outbound::FsOk(FsOk {
+            id: id.to_owned(),
+            result,
+        }))
+        .and_then(|reply| {
+            wire::within_limit(reply, |reason| refuse(Some("too_large".into()), reason))
         }),
-        Err(error) => wire::fs_error(
-            id.to_owned(),
-            error_code(&error).map(String::from),
-            error.to_string(),
-        ),
+        Err(error) => refuse(error_code(&error).map(String::from), error.to_string()),
     })
 }
 
@@ -36,43 +43,36 @@ async fn call(
     message: &Inbound,
     default_cwd: &Path,
     cancel: &CancellationToken,
-) -> io::Result<Outbound> {
+) -> io::Result<FsResult> {
     use Inbound::*;
     check_cancelled(cancel)?;
     let path = |path: &str, cwd: &Option<String>| {
         resolve(path, cwd.as_deref().map(Path::new).unwrap_or(default_cwd))
     };
-    let encoded = match message {
+    Ok(match message {
         FsExists {
-            id,
             path: value,
             cwd,
+            ..
         } => {
             let exists = match fs::symlink_metadata(path(value, cwd)?).await {
                 Ok(_) => true,
                 Err(error) if error.kind() == io::ErrorKind::NotFound => false,
                 Err(error) => return Err(error),
             };
-            wire::fs_ok_exists(id.clone(), exists)
+            FsResult::Exists(exists)
         }
         FsStat {
-            id,
-            path: value,
-            cwd,
-        } => wire::fs_ok_stat(id.clone(), stat(fs::metadata(path(value, cwd)?).await?)?),
+            path: value, cwd, ..
+        } => FsResult::Stat(stat(fs::metadata(path(value, cwd)?).await?)?),
         FsLstat {
-            id,
-            path: value,
-            cwd,
-        } => wire::fs_ok_lstat(
-            id.clone(),
-            stat(fs::symlink_metadata(path(value, cwd)?).await?)?,
-        ),
+            path: value, cwd, ..
+        } => FsResult::Lstat(stat(fs::symlink_metadata(path(value, cwd)?).await?)?),
         FsReaddir {
-            id,
             path: value,
             cwd,
             with_file_types,
+            ..
         } => {
             let target = path(value, cwd)?;
             let mut directory = read_dir(&target, cancel).await?;
@@ -80,27 +80,24 @@ async fn call(
             while let Some(entry) = directory.next_entry().await? {
                 check_cancelled(cancel)?;
                 let kind = entry.file_type().await?;
-                entries.push(wire::FsOkReaddirResultVariant1Item {
+                entries.push(wire::DirEntry {
                     name: entry.file_name().to_string_lossy().into_owned(),
                     is_file: kind.is_file(),
                     is_directory: kind.is_dir(),
                     is_symbolic_link: kind.is_symlink(),
                 });
             }
-            let result = if *with_file_types == Some(true) {
-                wire::FsOkReaddirResult::Variant1(entries)
+            FsResult::Readdir(if *with_file_types == Some(true) {
+                wire::Readdir::Entries(entries)
             } else {
-                wire::FsOkReaddirResult::Variant0(
-                    entries.into_iter().map(|entry| entry.name).collect(),
-                )
-            };
-            wire::fs_ok_readdir(id.clone(), result)
+                wire::Readdir::Names(entries.into_iter().map(|entry| entry.name).collect())
+            })
         }
         FsMkdir {
-            id,
             path: value,
             cwd,
             recursive,
+            ..
         } => {
             let target = path(value, cwd)?;
             if *recursive == Some(true) {
@@ -108,38 +105,38 @@ async fn call(
             } else {
                 fs::create_dir(target).await?;
             }
-            wire::fs_ok_mkdir(id.clone(), ())
+            FsResult::Mkdir
         }
         FsRm {
-            id,
             path: value,
             cwd,
             recursive,
             force,
+            ..
         } => {
             match remove(&path(value, cwd)?, *recursive == Some(true), cancel).await {
                 Err(error) if *force == Some(true) && error.kind() == io::ErrorKind::NotFound => {}
                 result => result?,
             }
-            wire::fs_ok_rm(id.clone(), ())
+            FsResult::Rm
         }
         FsCp {
-            id,
             path: value,
             cwd,
             destination,
             recursive,
+            ..
         } => {
             let source = path(value, cwd)?;
             let destination = path(destination, cwd)?;
             copy(&source, &destination, *recursive == Some(true), cancel).await?;
-            wire::fs_ok_cp(id.clone(), ())
+            FsResult::Cp
         }
         FsMv {
-            id,
             path: value,
             cwd,
             destination,
+            ..
         } => {
             let source = path(value, cwd)?;
             let destination = path(destination, cwd)?;
@@ -151,63 +148,57 @@ async fn call(
                 }
                 Err(error) => return Err(error),
             }
-            wire::fs_ok_mv(id.clone(), ())
+            FsResult::Mv
         }
         FsChmod {
-            id,
             path: value,
             cwd,
             mode,
+            ..
         } => {
-            chmod(&path(value, cwd)?, *mode as u32).await?;
-            wire::fs_ok_chmod(id.clone(), ())
+            chmod(&path(value, cwd)?, *mode).await?;
+            FsResult::Chmod
         }
         FsSymlink {
-            id,
             path: value,
             cwd,
             target,
+            ..
         } => {
             symlink(Path::new(target), &path(value, cwd)?).await?;
-            wire::fs_ok_symlink(id.clone(), ())
+            FsResult::Symlink
         }
         FsLink {
-            id,
             path: value,
             cwd,
             existing_path,
+            ..
         } => {
             fs::hard_link(path(existing_path, cwd)?, path(value, cwd)?).await?;
-            wire::fs_ok_link(id.clone(), ())
+            FsResult::Link
         }
         FsReadlink {
-            id,
-            path: value,
-            cwd,
-        } => wire::fs_ok_readlink(
-            id.clone(),
+            path: value, cwd, ..
+        } => FsResult::Readlink(
             fs::read_link(path(value, cwd)?)
                 .await?
                 .to_string_lossy()
                 .into_owned(),
         ),
         FsRealpath {
-            id,
-            path: value,
-            cwd,
-        } => wire::fs_ok_realpath(
-            id.clone(),
+            path: value, cwd, ..
+        } => FsResult::Realpath(
             fs::canonicalize(path(value, cwd)?)
                 .await?
                 .to_string_lossy()
                 .into_owned(),
         ),
         FsUtimes {
-            id,
             path: value,
             cwd,
             atime,
             mtime,
+            ..
         } => {
             let target = path(value, cwd)?;
             let atime = file_time(*atime);
@@ -215,7 +206,7 @@ async fn call(
             tokio::task::spawn_blocking(move || filetime::set_file_times(target, atime, mtime))
                 .await
                 .map_err(io::Error::other)??;
-            wire::fs_ok_utimes(id.clone(), ())
+            FsResult::Utimes
         }
         _ => {
             return Err(io::Error::new(
@@ -223,8 +214,7 @@ async fn call(
                 "not a filesystem request",
             ));
         }
-    };
-    encoded.map_err(io::Error::other)
+    })
 }
 
 pub async fn chmod(path: &Path, mode: u32) -> io::Result<()> {
@@ -369,17 +359,17 @@ fn copy_entry<'a>(
     })
 }
 
-fn stat(metadata: std::fs::Metadata) -> io::Result<wire::FsOkStatResult> {
+fn stat(metadata: std::fs::Metadata) -> io::Result<wire::FileStat> {
     let mtime = match metadata.modified()?.duration_since(UNIX_EPOCH) {
         Ok(duration) => i64::try_from(duration.as_millis()).map_err(io::Error::other)?,
         Err(error) => -i64::try_from(error.duration().as_millis()).map_err(io::Error::other)?,
     };
-    let mut result = wire::FsOkStatResult {
+    let mut result = wire::FileStat {
         is_file: metadata.is_file(),
         is_directory: metadata.is_dir(),
         is_symbolic_link: metadata.is_symlink(),
-        mode: 0.,
-        size: metadata.len() as f64,
+        mode: 0,
+        size: metadata.len(),
         mtime: Timestamp(mtime),
         uid: None,
         gid: None,
@@ -392,12 +382,12 @@ fn stat(metadata: std::fs::Metadata) -> io::Result<wire::FsOkStatResult> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::{FileTypeExt, MetadataExt};
-        result.mode = metadata.mode().into();
-        result.uid = Some(metadata.uid().into());
-        result.gid = Some(metadata.gid().into());
-        result.ino = Some(metadata.ino() as f64);
-        result.dev = Some(metadata.dev() as f64);
-        result.nlink = Some(metadata.nlink() as f64);
+        result.mode = metadata.mode();
+        result.uid = Some(metadata.uid());
+        result.gid = Some(metadata.gid());
+        result.ino = Some(metadata.ino());
+        result.dev = Some(metadata.dev());
+        result.nlink = Some(metadata.nlink());
         result.is_character_device = Some(metadata.file_type().is_char_device());
         result.is_fifo = Some(metadata.file_type().is_fifo());
     }
@@ -415,7 +405,7 @@ fn stat(metadata: std::fs::Metadata) -> io::Result<wire::FsOkStatResult> {
         } else {
             0o666
         };
-        result.mode = (kind | permissions | if metadata.is_dir() { 0o111 } else { 0 }) as f64;
+        result.mode = kind | permissions | if metadata.is_dir() { 0o111 } else { 0 };
     }
     Ok(result)
 }

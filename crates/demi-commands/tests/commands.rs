@@ -52,12 +52,15 @@ async fn exchange(
     lifecycle: bool,
 ) -> (Completion, Vec<u8>, Vec<u8>) {
     let (_input, mut output) = if lifecycle {
-        client
-            .conversation(&demi_command_service::protocol::ConversationRequest {
-                operation: request.operation.clone(),
-                conversation: Some(request.context.conversation.clone()),
-            })
-            .await
+        use demi_command_service::protocol::ConversationRequest;
+        let lifecycle = match request.operation.as_str() {
+            "status" => ConversationRequest::Status {},
+            "release" => ConversationRequest::Release {
+                conversation: request.context.conversation.clone(),
+            },
+            other => panic!("unknown lifecycle operation {other}"),
+        };
+        client.conversation(&lifecycle).await
     } else {
         client.invoke(request).await
     }
@@ -455,7 +458,10 @@ async fn resident_executable_runs_all_builtin_file_operations() {
         }
         assert_eq!(recorder.report().unwrap().files.len(), 2);
         assert_eq!(report.files.len(), 2);
-        assert_eq!(report.files[0].kind, "added");
+        assert_eq!(
+            report.files[0].kind,
+            demi_command_service::protocol::EditKind::Added
+        );
         assert_eq!(report.files[0].edits.len(), 1);
         assert_eq!(std::fs::read(report.files[0].edits[0].modified.as_ref().unwrap()).unwrap(), b"alpha\ndelta\n");
         assert_eq!(std::fs::read(report.files[1].edits[0].modified.as_ref().unwrap()).unwrap(), b"created\n");

@@ -5,7 +5,7 @@ use demi_command_service::edits::Recorder;
 use demi_command_service::protocol::EDIT_FILE_BYTES;
 use std::io::Read;
 
-pub fn finish(recorder: Option<&Recorder>) -> (Vec<wire::JobExitFilesItem>, bool) {
+pub fn finish(recorder: Option<&Recorder>) -> (Vec<wire::JobFileChange>, bool) {
     let Some(recorder) = recorder else {
         return (Vec::new(), false);
     };
@@ -44,7 +44,7 @@ pub fn finish(recorder: Option<&Recorder>) -> (Vec<wire::JobExitFilesItem>, bool
                     }
                 }
             }
-            wire::JobExitFilesItem {
+            wire::JobFileChange {
                 path: file.path,
                 kind: file.kind,
                 edits: file.edits,
