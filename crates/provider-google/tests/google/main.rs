@@ -36,7 +36,10 @@ pub(crate) fn runtime(vendor: &MockVendor) -> Box<dyn ProviderRuntime> {
         .unwrap()
 }
 
-pub(crate) async fn run(runtime: &mut dyn ProviderRuntime, request: InferenceRequest) -> Vec<ProviderEvent> {
+pub(crate) async fn run(
+    runtime: &mut dyn ProviderRuntime,
+    request: InferenceRequest,
+) -> Vec<ProviderEvent> {
     runtime.run(request).collect().await
 }
 

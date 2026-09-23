@@ -18,6 +18,10 @@ use serde::{Deserialize, Deserializer, de, de::DeserializeOwned};
 
 use crate::credentials::{SecretDecodeError, decode_secret};
 
+/// How long a device login waits for the user to confirm, whatever the
+/// vendor's code allows (`providers.md` § Login and publication).
+pub const DEVICE_LOGIN_LIFETIME: Duration = Duration::from_secs(10 * 60);
+
 /// A duration in seconds as an OAuth server states it: RFC 8628 says a
 /// number, and some deployments send the digits as a string. The number is
 /// finite and not negative.
