@@ -138,6 +138,10 @@ pub(crate) fn diagnostics(
 pub enum ErrorCode {
     /// A quota or throttling failure.
     RateLimit,
+    /// The backend's own request rate limit refused the attempt before it
+    /// reached the vendor (`usage-and-quota.md` § Rate limit); unlike
+    /// `rate_limit`, the agent does not retry it by itself.
+    RateLimited,
     /// A transient failure: HTTP 5xx, a timeout, a network or socket failure.
     Overloaded,
     /// The request is larger than the model accepts.
@@ -162,6 +166,7 @@ impl ErrorCode {
     pub fn as_str(&self) -> &str {
         match self {
             Self::RateLimit => "rate_limit",
+            Self::RateLimited => "rate_limited",
             Self::Overloaded => "overloaded",
             Self::ContextLengthExceeded => "context_length_exceeded",
             Self::Incomplete => "incomplete",
@@ -224,6 +229,7 @@ impl FromStr for ErrorCode {
     fn from_str(code: &str) -> Result<Self, Infallible> {
         Ok(match code {
             "rate_limit" => Self::RateLimit,
+            "rate_limited" => Self::RateLimited,
             "overloaded" => Self::Overloaded,
             "context_length_exceeded" => Self::ContextLengthExceeded,
             "incomplete" => Self::Incomplete,

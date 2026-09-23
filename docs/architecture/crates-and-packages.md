@@ -318,10 +318,11 @@ next to the wire's types, so that a command program depends on one crate.
     (`renew`), a pool held in memory for logins and tests
     (`MemoryCredentialPool`), the account operations every subscription
     family shares (`Accounts`, over a family's `AccountKit`), and why an
-    account could not be used (`AuthFailure`); quota
-    (`ProviderQuota`), token accounting and the models.dev client; the
-    catalog, state, account and quota shapes they return are `core`'s,
-    because the browser receives them.
+    account could not be used (`AuthFailure`); quota (`ProviderQuota`), token
+    accounting, and the models.dev client (`provider::models_dev`: the one
+    copy of the document a backend keeps, `ModelsDevClient`, and its vendors
+    and models as catalog models); the catalog, state, account and quota
+    shapes they return are `core`'s, because the browser receives them.
 - **Public boundary:** the items above; `provider::testing` supplies scripted
   runtimes (`ScriptedRuntime`), a scripted vendor server (`MockVendor`) and a
   fixed clock (`FixedClock`). Behavior: [Providers](../providers/providers.md),
@@ -474,7 +475,10 @@ Each crate implements the provider contract for one vendor family.
   as the live view's `browser` stream. Its modules are listed in
   [Backend](../backend/backend.md#request-paths-and-responsibilities).
 - **Public boundary:** the `demi-backend` executable; `Backend::start` and
-  `BackendConfig` for tests.
+  `BackendConfig` for tests, with the parts a test replaces: the provider
+  families entries are assembled with (`FamilyRegistry`, `ProviderFamily` and
+  the arguments a family builds a provider from) and the login timing
+  (`LoginTiming`).
 - **Must not:** be linked by another crate; put business logic in the HTTP
   layer beyond routing and validation; return secrets or proxy model traffic;
   spawn `runsc` or image tools itself (every sandbox and disk operation goes to
