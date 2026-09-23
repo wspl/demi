@@ -86,58 +86,92 @@ fn invocation(path: &[&str], args: Value) -> RpcInvocation {
 fn registration_refuses_reserved_taken_malformed_and_unbound_commands() {
     let mut set = CommandSet::new();
     set.register(todo()).unwrap();
-    assert!(set.register(todo()).unwrap_err().to_string().contains("already registered"));
+    assert!(
+        set.register(todo())
+            .unwrap_err()
+            .to_string()
+            .contains("already registered")
+    );
     for name in ["git", "cd", "grep", "python3", "."] {
         assert!(RESERVED_NAMES.contains(&name));
-        let error = CommandSet::new().register(LeafBuilder::rpc(name, "Shadows a tool.")).unwrap_err();
+        let error = CommandSet::new()
+            .register(LeafBuilder::rpc(name, "Shadows a tool."))
+            .unwrap_err();
         assert!(error.to_string().contains("reserved"), "{error}");
     }
     let refused = |root: GroupBuilder| CommandSet::new().register(root).unwrap_err().to_string();
     let error = refused(GroupBuilder::new("demi", "Demi.").leaf(LeafBuilder::rpc("add", "Add.")));
     assert!(error.contains("\"demi add\" has no handler"), "{error}");
-    let error = refused(GroupBuilder::new("demi", "Demi.").group(GroupBuilder::new("empty", "Empty.")));
+    let error =
+        refused(GroupBuilder::new("demi", "Demi.").group(GroupBuilder::new("empty", "Empty.")));
     assert!(error.contains("no subcommands"), "{error}");
-    let error = refused(GroupBuilder::new("demi", "Demi.").leaf(
-        LeafBuilder::rpc("bad name", "Bad.").bind(TypedRpc::new(add)),
-    ));
+    let error = refused(
+        GroupBuilder::new("demi", "Demi.")
+            .leaf(LeafBuilder::rpc("bad name", "Bad.").bind(TypedRpc::new(add))),
+    );
     assert!(error.contains("invalid command name"), "{error}");
-    let error = refused(GroupBuilder::new("demi", "Demi.").leaf(
-        LeafBuilder::rpc("add", "Add.")
-            .input::<AddArgs>()
-            .positionals(["missing"])
-            .bind(TypedRpc::new(add)),
-    ));
+    let error = refused(
+        GroupBuilder::new("demi", "Demi.").leaf(
+            LeafBuilder::rpc("add", "Add.")
+                .input::<AddArgs>()
+                .positionals(["missing"])
+                .bind(TypedRpc::new(add)),
+        ),
+    );
     assert!(error.contains("missing"), "{error}");
-    let error = refused(GroupBuilder::new("demi", "Demi.").leaf(
-        LeafBuilder::rpc("add", "Add.").input::<AddArgs>().stdin_field("count").bind(TypedRpc::new(add)),
-    ));
+    let error = refused(
+        GroupBuilder::new("demi", "Demi.").leaf(
+            LeafBuilder::rpc("add", "Add.")
+                .input::<AddArgs>()
+                .stdin_field("count")
+                .bind(TypedRpc::new(add)),
+        ),
+    );
     assert!(error.contains("stdin input must be a string"), "{error}");
-    let error = refused(GroupBuilder::new("demi", "Demi.").leaf(
-        LeafBuilder::rpc("add", "Add.")
-            .input::<AddArgs>()
-            .positionals(["text"])
-            .stdin_field("text")
-            .bind(TypedRpc::new(add)),
-    ));
+    let error = refused(
+        GroupBuilder::new("demi", "Demi.").leaf(
+            LeafBuilder::rpc("add", "Add.")
+                .input::<AddArgs>()
+                .positionals(["text"])
+                .stdin_field("text")
+                .bind(TypedRpc::new(add)),
+        ),
+    );
     assert!(error.contains("multiple input sources for text"), "{error}");
-    let error = refused(GroupBuilder::new("demi", "Demi.").leaf(
-        LeafBuilder::rpc("add", "Add.")
-            .input::<AddArgs>()
-            .positionals(["count", "text"])
+    let error = refused(
+        GroupBuilder::new("demi", "Demi.").leaf(
+            LeafBuilder::rpc("add", "Add.")
+                .input::<AddArgs>()
+                .positionals(["count", "text"])
+                .bind(TypedRpc::new(add)),
+        ),
+    );
+    assert!(
+        error.contains("required positional follows optional positional"),
+        "{error}"
+    );
+    let error = refused(
+        GroupBuilder::new("demi", "Demi.").leaf(
+            LeafBuilder::native(
+                "read",
+                "Read.",
+                NativeOperation {
+                    package: "demi.builtin".into(),
+                    operation: "file.read".into(),
+                },
+            )
             .bind(TypedRpc::new(add)),
-    ));
-    assert!(error.contains("required positional follows optional positional"), "{error}");
-    let error = refused(GroupBuilder::new("demi", "Demi.").leaf(
-        LeafBuilder::native("read", "Read.", NativeOperation {
-            package: "demi.builtin".into(),
-            operation: "file.read".into(),
-        })
-        .bind(TypedRpc::new(add)),
-    ));
+        ),
+    );
     assert!(error.contains("takes no handler"), "{error}");
-    let error = refused(GroupBuilder::new("demi", "Demi.").leaf(
-        LeafBuilder::rpc("add", "Add.").input::<AddArgs>().describe("absent", "x").bind(TypedRpc::new(add)),
-    ));
+    let error = refused(
+        GroupBuilder::new("demi", "Demi.").leaf(
+            LeafBuilder::rpc("add", "Add.")
+                .input::<AddArgs>()
+                .describe("absent", "x")
+                .bind(TypedRpc::new(add)),
+        ),
+    );
     assert!(error.contains("absent"), "{error}");
 }
 
@@ -164,8 +198,16 @@ struct Nested {
 #[test]
 fn registration_refuses_inputs_outside_the_subset_naming_the_field() {
     for (leaf, field, reason) in [
-        (LeafBuilder::rpc("add", "Add.").input::<Defaulted>(), "count", "default"),
-        (LeafBuilder::rpc("add", "Add.").input::<Nested>(), "inner", "nested object"),
+        (
+            LeafBuilder::rpc("add", "Add.").input::<Defaulted>(),
+            "count",
+            "default",
+        ),
+        (
+            LeafBuilder::rpc("add", "Add.").input::<Nested>(),
+            "inner",
+            "nested object",
+        ),
     ] {
         let root = GroupBuilder::new("demi", "Demi.").leaf(leaf.bind(TypedRpc::new(add)));
         let error = CommandSet::new().register(root).unwrap_err().to_string();
@@ -183,8 +225,14 @@ fn help_opens_with_the_defaults_and_lists_every_root() {
     let help = set.render_help();
     assert!(help.starts_with(demi_command_tree::HELP_DEFAULTS), "{help}");
     let root = set.declarations().next().unwrap().help("demi");
-    assert_eq!(help, format!("{}\n\n{root}", demi_command_tree::HELP_DEFAULTS));
-    assert!(root.contains("demi todo add <text> [--count <count>] [--json]"), "{root}");
+    assert_eq!(
+        help,
+        format!("{}\n\n{root}", demi_command_tree::HELP_DEFAULTS)
+    );
+    assert!(
+        root.contains("demi todo add <text> [--count <count>] [--json]"),
+        "{root}"
+    );
     assert!(root.contains("How many copies"), "{root}");
 }
 
@@ -194,18 +242,31 @@ async fn dispatch_validates_wire_arguments_as_they_are_and_runs_the_handler() {
     set.register(todo()).unwrap();
     let memory = MemoryPort::new();
     let cancel = CancellationToken::new();
-    let call = |args: Value| set.dispatch(invocation(&["demi", "todo", "add"], args), memory.port(cancel.clone()));
+    let call = |args: Value| {
+        set.dispatch(
+            invocation(&["demi", "todo", "add"], args),
+            memory.port(cancel.clone()),
+        )
+    };
     // Wire arguments are decoded JSON: "7" for a number is not converted.
     let error = call(json!({"text": "a", "count": "7"})).await.unwrap_err();
-    assert!(matches!(&error, RpcError::Usage(text) if text.starts_with("Invalid command arguments")), "{error}");
+    assert!(
+        matches!(&error, RpcError::Usage(text) if text.starts_with("Invalid command arguments")),
+        "{error}"
+    );
     assert!(call(json!({"text": "a", "extra": 1})).await.is_err());
     // A length bound counts Unicode scalar values: one scalar value, two
     // UTF-16 units.
     assert_eq!(call(json!({"text": "𝄞", "count": 2})).await.unwrap(), 0);
     assert!(call(json!({"text": "ab"})).await.is_err());
     assert_eq!(memory.stdout(), b"2\n");
-    let native = set.dispatch(invocation(&["demi", "todo", "read"], json!({"text": "a"})), memory.port(cancel.clone()));
-    assert!(matches!(native.await, Err(RpcError::Usage(text)) if text.contains("not an rpc command")));
+    let native = set.dispatch(
+        invocation(&["demi", "todo", "read"], json!({"text": "a"})),
+        memory.port(cancel.clone()),
+    );
+    assert!(
+        matches!(native.await, Err(RpcError::Usage(text)) if text.contains("not an rpc command"))
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -222,7 +283,10 @@ async fn concurrent_updates_keep_both_writes() {
         .await
     };
     let cancel = CancellationToken::new();
-    let (a, b) = tokio::join!(append(first.port(cancel.clone()), "A"), append(second.port(cancel), "B"));
+    let (a, b) = tokio::join!(
+        append(first.port(cancel.clone()), "A"),
+        append(second.port(cancel), "B")
+    );
     a.unwrap();
     b.unwrap();
     let stored = storage.value("todos").unwrap();
@@ -242,7 +306,11 @@ async fn a_stored_value_the_handler_cannot_read_is_refused_not_replaced() {
     })
     .await
     .unwrap();
-    let result = port.update("todos", |current: Option<Vec<String>>| Ok(current.unwrap_or_default())).await;
+    let result = port
+        .update("todos", |current: Option<Vec<String>>| {
+            Ok(current.unwrap_or_default())
+        })
+        .await;
     assert!(matches!(result, Err(RpcError::Failed(text)) if text.contains("unreadable")));
     assert_eq!(storage.value("todos"), Some(json!({"not": "a list"})));
 }
@@ -253,25 +321,43 @@ async fn grafting_replaces_or_appends_and_filtering_drops_emptied_groups() {
     set.register(todo()).unwrap();
     let calls = Rc::new(RefCell::new(0));
     let counted = calls.clone();
-    let agent = GroupBuilder::new("agent", "Agents.").leaf(LeafBuilder::rpc("list", "List agents.").bind(
-        TypedRpc::new(move |_: Call<Map<String, Value>>, _: RpcPort| {
-            *counted.borrow_mut() += 1;
-            async { Ok(0) }
-        }),
-    ));
+    let agent =
+        GroupBuilder::new("agent", "Agents.").leaf(LeafBuilder::rpc("list", "List agents.").bind(
+            TypedRpc::new(move |_: Call<Map<String, Value>>, _: RpcPort| {
+                *counted.borrow_mut() += 1;
+                async { Ok(0) }
+            }),
+        ));
     set.graft(&["demi"], agent).unwrap();
     let names = |set: &CommandSet| match set.declarations().next().unwrap() {
-        demi_command_tree::Node::Group(group) => group.subcommands.iter().map(|child| child.name().to_owned()).collect::<Vec<_>>(),
+        demi_command_tree::Node::Group(group) => group
+            .subcommands
+            .iter()
+            .map(|child| child.name().to_owned())
+            .collect::<Vec<_>>(),
         demi_command_tree::Node::Leaf(_) => panic!("demi is a group"),
     };
     assert_eq!(names(&set), ["todo", "agent"]);
     let port = MemoryPort::new().port(CancellationToken::new());
-    set.dispatch(invocation(&["demi", "agent", "list"], json!({})), port.clone()).await.unwrap();
+    set.dispatch(
+        invocation(&["demi", "agent", "list"], json!({})),
+        port.clone(),
+    )
+    .await
+    .unwrap();
     assert_eq!(*calls.borrow(), 1);
     // A graft of an unbound leaf is refused and leaves the set as it was.
-    assert!(set.graft(&["demi"], LeafBuilder::rpc("agent", "Unbound.")).is_err());
-    set.dispatch(invocation(&["demi", "agent", "list"], json!({})), port).await.unwrap();
-    assert!(set.graft(&["demi", "todo", "add"], LeafBuilder::rpc("x", "X.")).is_err());
+    assert!(
+        set.graft(&["demi"], LeafBuilder::rpc("agent", "Unbound."))
+            .is_err()
+    );
+    set.dispatch(invocation(&["demi", "agent", "list"], json!({})), port)
+        .await
+        .unwrap();
+    assert!(
+        set.graft(&["demi", "todo", "add"], LeafBuilder::rpc("x", "X."))
+            .is_err()
+    );
 
     let narrowed = set.filter(|path| path.get(1).map(String::as_str) != Some("todo"));
     assert_eq!(names(&narrowed), ["agent"]);
