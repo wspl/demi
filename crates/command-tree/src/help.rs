@@ -5,7 +5,11 @@ use serde_json::Value;
 
 use crate::{Leaf, Node};
 
-impl Node {
+/// The paragraph the model's command help opens with: what every command does
+/// unless its own help says otherwise (`commands.md` § Help).
+pub const HELP_DEFAULTS: &str = "Unless a command states otherwise: success prints raw text on stdout, failure writes an error message to stderr and exits non-zero. Pass --help at any level to print a command's documentation. Usage uses <placeholders> for values and [brackets] for optional arguments. Quote values containing spaces. Stdin bodies use a quoted heredoc, pipe, or input redirection; they have no command-line option. Use --name=value for option values beginning with --, and -- before positional values beginning with --.";
+
+impl<B> Node<B> {
     /// The help of this node and, for a group, of every node below it; `path`
     /// is the command line that names this node.
     pub fn help(&self, path: &str) -> String {
@@ -133,7 +137,7 @@ enum Source {
     Option,
 }
 
-fn source(leaf: &Leaf, field: &str) -> Source {
+fn source<B>(leaf: &Leaf<B>, field: &str) -> Source {
     if leaf.stdin_field.as_deref() == Some(field) {
         Source::Stdin
     } else if leaf.rest_field.as_deref() == Some(field) {

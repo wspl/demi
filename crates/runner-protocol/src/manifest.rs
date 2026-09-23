@@ -2,10 +2,10 @@
 //! declaration tree, the native packages its commands bind to, and the hash
 //! that identifies the whole (`commands.md` § Manifests).
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use demi_command_service::protocol::{PackageDescriptor, ProtocolError, canonical_digest};
-use demi_command_tree::{DeclarationError, Node};
+use demi_command_tree::{DeclarationError, NativeOperation, Node};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -38,6 +38,56 @@ pub enum ManifestError {
 }
 
 impl Manifest {
+    /// Builds the manifest of `roots`: files each of `packages` under its
+    /// digest, pins each native command to the descriptor of its package,
+    /// checks every tree, and hashes the whole the way [`Manifest::parse`]
+    /// verifies it.
+    pub fn build(
+        roots: impl IntoIterator<Item = Node<NativeOperation>>,
+        packages: impl IntoIterator<Item = PackageDescriptor>,
+    ) -> Result<Self, ManifestError> {
+        let mut filed = BTreeMap::new();
+        let mut digests = HashMap::new();
+        for descriptor in packages {
+            let digest = descriptor.digest()?;
+            if digests.insert(descriptor.id.clone(), digest.clone()).is_some() {
+                return Err(ManifestError::Invalid(format!(
+                    "duplicate native package: {}",
+                    descriptor.id
+                )));
+            }
+            filed.insert(digest, descriptor);
+        }
+        let mut pinned = BTreeMap::new();
+        for root in roots {
+            let tree = root.pin(&mut |operation| {
+                let digest = digests.get(&operation.package).ok_or_else(|| {
+                    ManifestError::Invalid(format!(
+                        "native package is not configured: {}",
+                        operation.package
+                    ))
+                })?;
+                if !filed[digest].operations.contains(&operation.operation) {
+                    return Err(ManifestError::Invalid(format!(
+                        "native package {} has no operation {}",
+                        operation.package, operation.operation
+                    )));
+                }
+                Ok(digest.clone())
+            })?;
+            tree.validate()?;
+            let name = tree.name().to_owned();
+            if pinned.insert(name.clone(), Root { tree }).is_some() {
+                return Err(ManifestError::Invalid(format!("duplicate root command: {name}")));
+            }
+        }
+        Ok(Self {
+            hash: hash(&pinned, &filed)?,
+            roots: pinned,
+            packages: filed,
+        })
+    }
+
     /// Decodes a manifest and verifies it: each descriptor matches the digest
     /// it is filed under and package ids are unique, each root names its
     /// tree, each tree follows the declaration rules, each native command's
@@ -74,18 +124,23 @@ impl Manifest {
                 }
             }
         }
-        #[derive(Serialize)]
-        struct Body<'a> {
-            roots: &'a BTreeMap<String, Root>,
-            packages: &'a BTreeMap<String, PackageDescriptor>,
-        }
-        let body = Body {
-            roots: &manifest.roots,
-            packages: &manifest.packages,
-        };
-        if canonical_digest(&body)? != manifest.hash {
+        if hash(&manifest.roots, &manifest.packages)? != manifest.hash {
             return Err(ManifestError::Invalid("command manifest hash mismatch".into()));
         }
         Ok(manifest)
     }
+}
+
+/// A manifest's hash: the SHA-256 of the canonical JSON of its roots and
+/// packages.
+fn hash(
+    roots: &BTreeMap<String, Root>,
+    packages: &BTreeMap<String, PackageDescriptor>,
+) -> Result<String, ManifestError> {
+    #[derive(Serialize)]
+    struct Body<'a> {
+        roots: &'a BTreeMap<String, Root>,
+        packages: &'a BTreeMap<String, PackageDescriptor>,
+    }
+    Ok(canonical_digest(&Body { roots, packages })?)
 }

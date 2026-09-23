@@ -170,8 +170,10 @@ next to the wire's types, so that a command program depends on one crate.
 #### `command-tree`
 
 - **Owns:** command declarations, which are also the manifest's nodes (`Node`,
-  `Group`, `Leaf`, `LeafKind` with its `Rpc` and `Native` bindings); the command
-  input subset and field table (`InputSpec::from_schema` is both the subset
+  `Group`, `Leaf`, `LeafKind` with its `Rpc` and `Native` bindings: a
+  declaration names a native command's package and operation
+  (`NativeOperation`), and `Node::pin` pins each to the descriptor a manifest
+  carries, as a `Binding`); the command input subset and field table (`InputSpec::from_schema` is both the subset
   check and the table argv parsing reads); argv parsing (`Node::select`,
   `Selected::parse`, `Parsed::finish`); help rendering (`Node::help`,
   `HELP_DEFAULTS`); the settings every declaration's JSON Schema is generated
