@@ -113,14 +113,19 @@ impl ModelsDevClient {
         let flight = {
             let mut state = self.inner.lock();
             if reuse_recent
-                && let Some(copy) = state.copy.as_ref().filter(|copy| copy.confirmed_at.elapsed() < FRESH_FOR)
+                && let Some(copy) = state
+                    .copy
+                    .as_ref()
+                    .filter(|copy| copy.confirmed_at.elapsed() < FRESH_FOR)
             {
                 return Ok(copy.snapshot());
             }
             match state.flight.as_ref().and_then(WeakShared::upgrade) {
                 Some(flight) => flight,
                 None => {
-                    let flight: Shared<Flight> = fetch(self.inner.clone(), state.copy.clone()).boxed().shared();
+                    let flight: Shared<Flight> = fetch(self.inner.clone(), state.copy.clone())
+                        .boxed()
+                        .shared();
                     state.flight = flight.downgrade();
                     flight
                 }
@@ -149,7 +154,10 @@ impl Inner {
 
 /// One request for the document, revalidating `previous`; its outcome
 /// becomes the copy.
-async fn fetch(inner: Arc<Inner>, previous: Option<Arc<DocumentCopy>>) -> Result<Arc<DocumentCopy>, String> {
+async fn fetch(
+    inner: Arc<Inner>,
+    previous: Option<Arc<DocumentCopy>>,
+) -> Result<Arc<DocumentCopy>, String> {
     let outcome = request(&inner, previous.as_deref()).await;
     let mut state = inner.lock();
     state.flight = None;
@@ -159,7 +167,10 @@ async fn fetch(inner: Arc<Inner>, previous: Option<Arc<DocumentCopy>>) -> Result
     outcome
 }
 
-async fn request(inner: &Inner, previous: Option<&DocumentCopy>) -> Result<Arc<DocumentCopy>, String> {
+async fn request(
+    inner: &Inner,
+    previous: Option<&DocumentCopy>,
+) -> Result<Arc<DocumentCopy>, String> {
     let mut request = inner
         .http
         .get(inner.url.clone())
@@ -185,7 +196,10 @@ async fn request(inner: &Inner, previous: Option<&DocumentCopy>) -> Result<Arc<D
         }));
     }
     if !status.is_success() {
-        return Err(format!("models.dev catalog request failed with HTTP {}", status.as_u16()));
+        return Err(format!(
+            "models.dev catalog request failed with HTTP {}",
+            status.as_u16()
+        ));
     }
     let etag = response.headers().get(ETAG).cloned();
     let last_modified = response.headers().get(LAST_MODIFIED).cloned();
@@ -256,8 +270,15 @@ struct ModelsDevDocument(IndexMap<String, ModelsDevVendor>);
 
 impl ModelsDevDocument {
     fn decode(body: &[u8]) -> Result<Self, String> {
-        serde_path_to_error::deserialize(&mut serde_json::Deserializer::from_slice(body))
-            .map_err(|error| format!("models.dev catalog cannot be read at {}: {}", error.path(), error.inner()))
+        serde_path_to_error::deserialize(&mut serde_json::Deserializer::from_slice(body)).map_err(
+            |error| {
+                format!(
+                    "models.dev catalog cannot be read at {}: {}",
+                    error.path(),
+                    error.inner()
+                )
+            },
+        )
     }
 }
 
@@ -371,9 +392,20 @@ impl ModelsDevModel {
     /// The nonempty values of the `effort` reasoning option; unknown without
     /// one.
     fn efforts(&self) -> Option<Vec<String>> {
-        let option = self.reasoning_options.as_ref()?.iter().find(|option| option.kind == "effort")?;
+        let option = self
+            .reasoning_options
+            .as_ref()?
+            .iter()
+            .find(|option| option.kind == "effort")?;
         let values = option.values.as_ref()?;
-        Some(values.iter().flatten().filter(|value| !value.is_empty()).cloned().collect())
+        Some(
+            values
+                .iter()
+                .flatten()
+                .filter(|value| !value.is_empty())
+                .cloned()
+                .collect(),
+        )
     }
 }
 
@@ -383,5 +415,5 @@ fn tokens(value: Option<f64>) -> Option<u32> {
     let value = value?;
     let whole = value.fract() == 0.0 && value >= 1.0 && value <= f64::from(u32::MAX);
     // A whole number in u32's range converts exactly.
-    whole.then(|| value as u32)
+    whole.then_some(value as u32)
 }

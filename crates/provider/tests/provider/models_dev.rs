@@ -67,15 +67,22 @@ async fn a_catalog_read_revalidates_the_copy_and_a_304_keeps_its_content_date() 
     let client = client(&vendor);
     vendor.respond(served(&document()));
     // Concurrent readers share one request.
-    let (first, second, third) = tokio::join!(client.refreshed(), client.refreshed(), client.current());
+    let (first, second, third) =
+        tokio::join!(client.refreshed(), client.refreshed(), client.current());
     let first = first.unwrap();
-    assert_eq!((first.fetched_at, first.stale), (NOW.parse::<Timestamp>().unwrap(), false));
+    assert_eq!(
+        (first.fetched_at, first.stale),
+        (NOW.parse::<Timestamp>().unwrap(), false)
+    );
     assert!(first.warnings.is_empty());
     for other in [second.unwrap(), third.unwrap()] {
         assert_eq!((other.fetched_at, other.stale), (first.fetched_at, false));
     }
     assert_eq!(vendor.requests().len(), 1);
-    assert_eq!(vendor.requests()[0].header("accept"), Some("application/json"));
+    assert_eq!(
+        vendor.requests()[0].header("accept"),
+        Some("application/json")
+    );
 
     // The vendor list reuses a copy confirmed less than a day ago.
     client.current().await.unwrap();
@@ -86,8 +93,14 @@ async fn a_catalog_read_revalidates_the_copy_and_a_304_keeps_its_content_date() 
     let confirmed = client.refreshed().await.unwrap();
     let revalidation = &vendor.requests()[1];
     assert_eq!(revalidation.header("if-none-match"), Some("\"v1\""));
-    assert_eq!(revalidation.header("if-modified-since"), Some("Mon, 07 Sep 2026 12:00:00 GMT"));
-    assert_eq!((confirmed.fetched_at, confirmed.stale), (first.fetched_at, false));
+    assert_eq!(
+        revalidation.header("if-modified-since"),
+        Some("Mon, 07 Sep 2026 12:00:00 GMT")
+    );
+    assert_eq!(
+        (confirmed.fetched_at, confirmed.stale),
+        (first.fetched_at, false)
+    );
     assert_eq!(confirmed.vendor_models("deepseek").unwrap().models.len(), 2);
 
     // A day after the confirmation, the vendor list asks again too.
@@ -107,7 +120,9 @@ async fn a_failed_read_returns_the_kept_copy_marked_stale_and_without_a_copy_it_
         client.refreshed().await.unwrap_err().to_string(),
         "models.dev catalog request failed with HTTP 500"
     );
-    vendor.respond(served(&json!({ "vendor": { "id": "vendor", "name": "Vendor", "models": [] } })));
+    vendor.respond(served(
+        &json!({ "vendor": { "id": "vendor", "name": "Vendor", "models": [] } }),
+    ));
     let malformed = client.refreshed().await.unwrap_err().to_string();
     assert!(malformed.contains("vendor.models"), "{malformed}");
 
@@ -121,7 +136,10 @@ async fn a_failed_read_returns_the_kept_copy_marked_stale_and_without_a_copy_it_
         ["Using stale models.dev catalog: models.dev catalog request failed with HTTP 503"]
     );
     let list = stale.vendor_models("deepseek").unwrap();
-    assert_eq!((list.stale, list.warnings.clone()), (true, stale.warnings.clone()));
+    assert_eq!(
+        (list.stale, list.warnings.clone()),
+        (true, stale.warnings.clone())
+    );
     // A document that cannot be read after a good one is a failed read too.
     vendor.respond(served(&json!([])));
     assert!(client.refreshed().await.unwrap().stale);
@@ -135,17 +153,36 @@ async fn a_vendors_models_become_catalog_models_with_what_the_document_states() 
     let snapshot = client.refreshed().await.unwrap();
     let vendors: Vec<(&str, &str, Option<&str>)> = snapshot
         .vendors()
-        .map(|vendor| (vendor.id.as_str(), vendor.name.as_str(), vendor.npm.as_deref()))
+        .map(|vendor| {
+            (
+                vendor.id.as_str(),
+                vendor.name.as_str(),
+                vendor.npm.as_deref(),
+            )
+        })
         .collect();
     assert_eq!(
         vendors,
-        [("deepseek", "DeepSeek", Some("@ai-sdk/openai-compatible")), ("minimax", "MiniMax", None)]
+        [
+            ("deepseek", "DeepSeek", Some("@ai-sdk/openai-compatible")),
+            ("minimax", "MiniMax", None)
+        ]
     );
-    assert_eq!(snapshot.vendor("deepseek").unwrap().api.as_deref(), Some("https://api.deepseek.com"));
+    assert_eq!(
+        snapshot.vendor("deepseek").unwrap().api.as_deref(),
+        Some("https://api.deepseek.com")
+    );
     assert!(snapshot.vendor_models("amazon-bedrock").is_none());
 
     let list = snapshot.vendor_models("deepseek").unwrap();
-    assert_eq!((list.default_model_id.clone(), list.source_fetched_at, list.stale), (None, snapshot.fetched_at, false));
+    assert_eq!(
+        (
+            list.default_model_id.clone(),
+            list.source_fetched_at,
+            list.stale
+        ),
+        (None, snapshot.fetched_at, false)
+    );
     assert_eq!(
         list.models[0],
         ProviderModel {
@@ -174,7 +211,17 @@ async fn a_vendors_models_become_catalog_models_with_what_the_document_states() 
     );
     // What the document does not state, or states as no limit, is unknown.
     let bare = &list.models[1];
-    assert_eq!((bare.id.as_str(), bare.display_name.as_str()), ("deepseek-v4-flash", "deepseek-v4-flash"));
+    assert_eq!(
+        (bare.id.as_str(), bare.display_name.as_str()),
+        ("deepseek-v4-flash", "deepseek-v4-flash")
+    );
     assert_eq!((bare.context_window, bare.output_limit), (None, None));
-    assert_eq!((bare.supports_tools, bare.supported_thinking_efforts.clone(), bare.cost), (None, None, None));
+    assert_eq!(
+        (
+            bare.supports_tools,
+            bare.supported_thinking_efforts.clone(),
+            bare.cost
+        ),
+        (None, None, None)
+    );
 }

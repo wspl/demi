@@ -13,8 +13,11 @@ use demi_artifact::{Mode, Permissions, Publication};
 use hkdf::Hkdf;
 use sha2::Sha256;
 
+use super::seal::VaultKey;
+
 const FILE: &str = "instance-secret";
 const EMAIL_CODE_LABEL: &[u8] = b"demi email-change code";
+const VAULT_LABEL: &[u8] = b"demi provider vault";
 
 /// The instance secret. `Debug` never shows it.
 #[derive(Clone)]
@@ -78,11 +81,21 @@ impl InstanceSecret {
 
     /// The key email-change codes are hashed under.
     pub(crate) fn email_code_key(&self) -> CodeKey {
+        CodeKey(self.subkey(EMAIL_CODE_LABEL))
+    }
+
+    /// The key provider credentials are sealed under.
+    pub(crate) fn vault_key(&self) -> VaultKey {
+        VaultKey::new(self.subkey(VAULT_LABEL))
+    }
+
+    /// The HKDF-SHA256 subkey under `label`, which no other label shares.
+    fn subkey(&self, label: &[u8]) -> [u8; 32] {
         let mut key = [0; 32];
         Hkdf::<Sha256>::new(None, &self.0)
-            .expand(EMAIL_CODE_LABEL, &mut key)
+            .expand(label, &mut key)
             .expect("32 bytes is a valid HKDF-SHA256 output length");
-        CodeKey(key)
+        key
     }
 }
 
