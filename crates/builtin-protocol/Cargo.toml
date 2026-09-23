@@ -5,6 +5,11 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+
+[lib]
+# No doc examples: rustdoc has nothing to test.
+doctest = false
+
 [dependencies]
 base64 = "0.22"
 garde.workspace = true

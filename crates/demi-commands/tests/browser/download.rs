@@ -1,7 +1,4 @@
-mod browser_families;
-#[path = "browser/server.rs"]
-mod browser_server;
-use browser_families::with_browser_fixture;
+use crate::families::with_browser_fixture;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
@@ -35,7 +32,7 @@ async fn downloads_publish_complete_files_and_support_media() {
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn cancelled_streaming_download_never_publishes_output() {
-    let server = browser_server::Server::start(
+    let server = crate::server::Server::start(
         "<!doctype html><a id='stream' href='/stream-download'>Download stream</a>",
     )
     .await;

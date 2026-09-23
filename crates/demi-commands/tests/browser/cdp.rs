@@ -1,7 +1,4 @@
-mod browser_families;
-#[path = "browser/server.rs"]
-mod browser_server;
-use browser_families::with_browser_fixture;
+use crate::families::with_browser_fixture;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
@@ -175,7 +172,7 @@ async fn cdp_eviction_marks_truncation_and_worker_handles_expire() {
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn cdp_detach_releases_only_its_caller_and_timeouts_identify_other_debug_owners() {
-    let server = browser_server::Server::start("<!doctype html><title>Unblocked</title>").await;
+    let server = crate::server::Server::start("<!doctype html><title>Unblocked</title>").await;
     let url = server.base.clone();
     with_browser_fixture(|mut first| async move {
         first.caller = "caller-one".into();
