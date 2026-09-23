@@ -78,6 +78,12 @@ impl TabRegistry {
     }
 }
 
+/// A browser profile's directory name starts with this, in the system's
+/// temporary directory.
+const PROFILE_PREFIX: &str = "demi-browser-";
+/// The file a profile's lock is held on while its environment exists.
+const PROFILE_LOCK: &str = "demi-profile.lock";
+
 /// The caller supplies the installed, verified release executable, never a PATH lookup.
 pub struct LaunchOptions {
     pub executable: PathBuf,
@@ -132,7 +138,16 @@ where
             "Chrome executable must be absolute".into(),
         ));
     }
-    let mut profile = tempfile::Builder::new().prefix("demi-browser-").tempdir()?;
+    let mut profile = tempfile::Builder::new().prefix(PROFILE_PREFIX).tempdir()?;
+    // Held until the profile is removed, however this service ends; a later
+    // service's sweep takes it only once this one is gone.
+    let profile_lock = std::fs::File::create_new(profile.path().join(PROFILE_LOCK))?;
+    profile_lock.try_lock().map_err(|error| match error {
+        std::fs::TryLockError::Error(error) => BrowserError::Io(error),
+        std::fs::TryLockError::WouldBlock => {
+            BrowserError::Io(io::Error::other("a new browser profile is already locked"))
+        }
+    })?;
     let mut process = ChromeProcess::new(profile.path(), &options.executable);
     let download_directory = profile.path().join("downloads");
     tokio::fs::create_dir(&download_directory).await?;
@@ -267,7 +282,55 @@ where
     }
     let retired = retire_browser(&browser, pump, &mut process).await;
     let cleanup = remove_profile(profile, retired).await;
+    drop(profile_lock);
     after_cleanup(after_cleanup(outcome, debug_cleanup), cleanup)
+}
+
+/// Removes what browsers left behind when their service ended without
+/// retiring them (`browser.md` § Native driver). A profile whose lock this
+/// service can take belongs to no running service: its marked Chrome
+/// processes end the way retirement ends them, then the profile goes. A
+/// profile whose lock is held, or that has no lock yet, is left alone.
+pub async fn sweep_orphans() {
+    sweep_orphans_in(&std::env::temp_dir(), super::installation::roots()).await;
+}
+
+async fn sweep_orphans_in(directory: &std::path::Path, installations: Vec<PathBuf>) {
+    let Ok(mut entries) = tokio::fs::read_dir(directory).await else {
+        return;
+    };
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        if !entry.file_name().to_string_lossy().starts_with(PROFILE_PREFIX) {
+            continue;
+        }
+        let profile = entry.path();
+        if let Err(error) = sweep_orphan(&profile, installations.clone()).await {
+            tracing::warn!("could not remove orphaned browser profile {}: {error}", profile.display());
+        }
+    }
+}
+
+async fn sweep_orphan(profile: &std::path::Path, installations: Vec<PathBuf>) -> Result<()> {
+    let lock = match std::fs::File::options()
+        .read(true)
+        .write(true)
+        .open(profile.join(PROFILE_LOCK))
+    {
+        Ok(lock) => lock,
+        // A profile being made, or one this release did not make.
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    match lock.try_lock() {
+        Ok(()) => {}
+        // A running service's environment holds it.
+        Err(std::fs::TryLockError::WouldBlock) => return Ok(()),
+        Err(std::fs::TryLockError::Error(error)) => return Err(error.into()),
+    }
+    ChromeProcess::marked(profile, installations).terminate().await?;
+    tokio::fs::remove_dir_all(profile).await?;
+    drop(lock);
+    Ok(())
 }
 
 impl BrowserEnvironment {
@@ -771,6 +834,31 @@ mod tests {
         )
         .await
         .unwrap();
+    }
+
+    /// A profile nobody holds goes; a held one and one without a lock stay.
+    #[tokio::test]
+    async fn the_sweep_removes_only_the_profiles_no_service_holds() {
+        let temporary = tempfile::tempdir().unwrap();
+        let profile = |name: &str| {
+            let path = temporary.path().join(format!("{PROFILE_PREFIX}{name}"));
+            std::fs::create_dir(&path).unwrap();
+            path
+        };
+        let orphan = profile("orphan");
+        std::fs::File::create(orphan.join(PROFILE_LOCK)).unwrap();
+        let held = profile("held");
+        let lock = std::fs::File::create(held.join(PROFILE_LOCK)).unwrap();
+        lock.try_lock().unwrap();
+        let unlocked = profile("being-made");
+        let other = temporary.path().join("not-a-profile");
+        std::fs::create_dir(&other).unwrap();
+        std::fs::File::create(other.join(PROFILE_LOCK)).unwrap();
+        sweep_orphans_in(temporary.path(), Vec::new()).await;
+        assert!(!orphan.exists());
+        assert!(held.exists());
+        assert!(unlocked.exists());
+        assert!(other.exists());
     }
 
     #[tokio::test]

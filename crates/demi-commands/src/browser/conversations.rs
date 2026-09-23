@@ -59,6 +59,10 @@ pub(super) struct Controller {
     commands: TaskTracker,
     /// Counts the environments started, so a waiting viewer learns of one.
     started: watch::Sender<u64>,
+    /// Whether the conversation holds a browser, starting or running. The
+    /// runner's status reads it without waiting for a start or a retirement
+    /// (`browser.md` § Conversation-scoped state).
+    holds: watch::Sender<bool>,
 }
 
 impl Controller {
@@ -81,6 +85,10 @@ impl Controller {
             let stop = CancellationToken::new();
             let owner_stop = stop.clone();
             let installation = self.installation.clone();
+            // Held from before the owner runs, so an owner that fails at once
+            // cannot end holding nothing while this still says it holds one.
+            self.holds.send_replace(true);
+            let holds = self.holds.clone();
             let (publish, ready) = watch::channel(None);
             let owner = tokio::spawn(async move {
                 let result = async {
@@ -106,6 +114,8 @@ impl Controller {
                     };
                     publish.send_replace(Some(Err(failure)));
                 }
+                // Retired or lost, the browser is gone once its owner ends.
+                holds.send_replace(false);
                 result
             });
             *state = State::Live {
@@ -217,11 +227,8 @@ impl Controller {
         Ok(())
     }
 
-    async fn live(&self) -> bool {
-        match &*self.state.lock().await {
-            State::Absent | State::Released => false,
-            State::Live { owner, .. } => !owner.is_finished(),
-        }
+    fn holds(&self) -> bool {
+        *self.holds.borrow()
     }
 
     /// Inspect retained debug owners without starting or querying Chrome after a timeout.
@@ -308,6 +315,7 @@ impl Conversations {
                     cancellation: CancellationToken::new(),
                     commands: TaskTracker::new(),
                     started: watch::channel(0).0,
+                    holds: watch::channel(false).0,
                 })
             })
             .clone();
@@ -735,19 +743,14 @@ impl Conversations {
     ) -> std::result::Result<Completion, ServiceError> {
         let output = match &context.request {
             ConversationRequest::Status {} => {
-                let controllers: Vec<_> = self
+                let mut conversations: Vec<_> = self
                     .controllers
                     .lock()
                     .await
                     .iter()
-                    .map(|(id, controller)| (id.clone(), controller.clone()))
+                    .filter(|(_, controller)| controller.holds())
+                    .map(|(id, _)| id.clone())
                     .collect();
-                let mut conversations = Vec::new();
-                for (id, controller) in controllers {
-                    if controller.live().await {
-                        conversations.push(id);
-                    }
-                }
                 conversations.sort();
                 serde_json::to_value(ConversationStatus { conversations })?
             }
@@ -789,18 +792,21 @@ impl Conversations {
         })
     }
 
+    /// Releases every conversation. Their browsers retire at the same time,
+    /// so shutting down takes as long as the slowest (`browser.md` § Release).
     pub async fn close(&self) -> std::result::Result<(), ServiceError> {
         let controllers = std::mem::take(&mut *self.controllers.lock().await);
-        let mut failure = None;
-        for controller in controllers.into_values() {
+        let retirements = controllers.into_values().map(|controller| async move {
             controller.cancellation.cancel();
             controller.commands.close();
             controller.commands.wait().await;
-            if let Err(error) = controller.retire(State::Released, None).await {
-                failure.get_or_insert(error);
-            }
-        }
-        match failure {
+            controller.retire(State::Released, None).await
+        });
+        match futures_util::future::join_all(retirements)
+            .await
+            .into_iter()
+            .find_map(std::result::Result::err)
+        {
             Some(error) => Err(ServiceError::Handler(error.to_string())),
             None => Ok(()),
         }
