@@ -1216,17 +1216,24 @@ dependencies = [
  "argon2",
  "axum",
  "axum-extra",
+ "bytes",
  "clap",
  "cookie",
  "demi-artifact",
+ "demi-command-service",
  "demi-core",
+ "demi-gates",
  "demi-web-api",
  "futures-util",
  "garde",
+ "hashlink",
  "hex",
  "hkdf",
  "hmac",
+ "icu_locale",
+ "icu_time",
  "jiff",
+ "object_store",
  "password-hash",
  "rand 0.9.5",
  "reqwest 0.12.28",
@@ -1560,6 +1567,7 @@ dependencies = [
 name = "demi-web-api"
 version = "0.1.3"
 dependencies = [
+ "demi-command-service",
  "demi-core",
  "garde",
  "regex",
@@ -1567,6 +1575,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_plain",
+ "serde_with",
  "thiserror",
 ]
 
@@ -3310,6 +3319,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
 
 [[package]]
+name = "humantime"
+version = "2.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "15cdd26707701c53297e2fa6afb323d55fbc1d0810c3aec078ae3ef0424c3c15"
+
+[[package]]
 name = "hybrid-array"
 version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4606,6 +4621,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7216bd11cbda54ccabcab84d523dc93b858ec75ecfb3a7d89513fa22464da396"
 dependencies = [
  "objc2-core-foundation",
+]
+
+[[package]]
+name = "object_store"
+version = "0.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "622acbc9100d3c10e2ee15804b0caa40e55c933d5aa53814cd520805b7958a49"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "chrono",
+ "futures-channel",
+ "futures-core",
+ "futures-util",
+ "http",
+ "humantime",
+ "itertools 0.14.0",
+ "parking_lot",
+ "percent-encoding",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "url",
+ "walkdir",
+ "wasm-bindgen-futures",
+ "web-time",
 ]
 
 [[package]]

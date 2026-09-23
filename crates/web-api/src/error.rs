@@ -20,7 +20,8 @@ pub struct ErrorBody {
 pub enum ErrorCode {
     /// The request carries no live session.
     Unauthenticated,
-    /// No route answers the method and path.
+    /// No route answers the method and path, or the path names nothing the
+    /// caller holds, such as a blob outside the caller's namespace.
     NotFound,
     /// A JSON body does not match its request type.
     InvalidBody,

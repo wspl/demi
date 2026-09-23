@@ -9,9 +9,11 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use demi_backend::{AccountMail, Backend, BackendConfig, Clock, MailError, VerificationMail};
+use demi_backend::{AccountMail, Backend, BackendConfig, MailError, VerificationMail};
+use demi_core::Clock;
 use demi_web_api::auth::{Identity, UserDto};
 use demi_web_api::error::{ErrorBody, ErrorCode};
+use demi_web_api::settings::InstanceMode;
 use jiff::{SignedDuration, Timestamp};
 use reqwest::header::{COOKIE, HeaderMap, SET_COOKIE};
 use reqwest::{Method, StatusCode};
@@ -26,8 +28,8 @@ pub const SESSION_COOKIE: &str = "demi_session";
 pub struct ManualClock(Mutex<Timestamp>);
 
 impl Clock for ManualClock {
-    fn now(&self) -> Timestamp {
-        *self.0.lock().unwrap()
+    fn now(&self) -> demi_core::Timestamp {
+        demi_core::Timestamp::truncate(*self.0.lock().unwrap())
     }
 }
 
@@ -74,6 +76,7 @@ pub struct Harness {
     pub mailbox: Arc<Mailbox>,
     mail: bool,
     web_directory: Option<PathBuf>,
+    mode: InstanceMode,
 }
 
 impl Harness {
@@ -86,7 +89,18 @@ impl Harness {
             mailbox: Arc::new(Mailbox::default()),
             mail: false,
             web_directory: None,
+            mode: InstanceMode::Shared,
         }
+    }
+
+    pub fn with_mode(mut self, mode: InstanceMode) -> Self {
+        self.mode = mode;
+        self
+    }
+
+    /// The data directory the backend keeps its storage in.
+    pub fn data_dir(&self) -> PathBuf {
+        self.data.path().join("backend")
     }
 
     pub fn with_mail(mut self) -> Self {
@@ -107,7 +121,7 @@ impl Harness {
 
     pub async fn start(&self) -> TestBackend {
         let address = SocketAddr::from((Ipv4Addr::LOCALHOST, 0));
-        let mut config = BackendConfig::new(self.data.path().join("backend"), address);
+        let mut config = BackendConfig::new(self.data_dir(), address, self.mode);
         config.clock = self.clock.clone();
         config.web_directory = self.web_directory.clone();
         if self.mail {
@@ -209,6 +223,22 @@ impl TestBackend {
     pub async fn post(&self, path: &str, session: Option<&Session>, body: Value) -> Answer {
         self.send(Method::POST, path, session.map(|session| session.cookie.as_str()), Some(body))
             .await
+    }
+
+    pub async fn patch(&self, path: &str, session: &Session, body: Value) -> Answer {
+        self.send(Method::PATCH, path, Some(&session.cookie), Some(body)).await
+    }
+
+    /// A GET with the session's cookie and extra headers.
+    pub async fn get_with(&self, path: &str, session: &Session, headers: &[(&str, &str)]) -> Answer {
+        let mut request = self
+            .http
+            .get(format!("{}{path}", self.url))
+            .header(COOKIE, &session.cookie);
+        for (name, value) in headers {
+            request = request.header(*name, *value);
+        }
+        answer(request.send().await.unwrap()).await
     }
 
     pub async fn setup(&self) -> Session {
