@@ -76,6 +76,9 @@ fn a_vendor_failure_classifies_by_whole_words_and_falls_back_to_the_vendor_code(
         (Some("invalid_request_error"), "Could not generate the schema", Some(ErrorCode::Vendor("invalid_request_error".into()))),
         (Some("invalid_request_error"), "tools: exceeds the limit of 128", Some(ErrorCode::Vendor("invalid_request_error".into()))),
         (None, "iterate over the unlimited list", None),
+        // `usage` decides only as part of a usage limit.
+        (Some("invalid_request_error"), "Invalid usage of the tools parameter", Some(ErrorCode::Vendor("invalid_request_error".into()))),
+        (None, "usage limit exceeded for this month", Some(ErrorCode::RateLimit)),
         (Some(""), "nothing to see", None),
     ];
     for (code, message, expected) in cases {

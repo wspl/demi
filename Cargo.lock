@@ -1443,6 +1443,7 @@ version = "0.1.3"
 dependencies = [
  "async-stream",
  "axum",
+ "base64 0.22.1",
  "bytes",
  "demi-core",
  "demi-gates",
@@ -1465,6 +1466,36 @@ dependencies = [
 
 [[package]]
 name = "demi-provider-anthropic-api"
+version = "0.1.3"
+dependencies = [
+ "async-stream",
+ "demi-core",
+ "demi-provider",
+ "futures-util",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "demi-provider-google"
+version = "0.1.3"
+dependencies = [
+ "async-stream",
+ "base64 0.22.1",
+ "demi-core",
+ "demi-provider",
+ "futures-util",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "demi-provider-openai-api"
 version = "0.1.3"
 dependencies = [
  "async-stream",
