@@ -350,12 +350,11 @@ impl BrowserTab {
         for key in pressed.into_iter().rev() {
             modifiers &= !key.modifier;
             let release = key.event(DispatchKeyEventType::KeyUp, modifiers);
-            if self.state.dialog.borrow().is_some() {
+            if self.state.dialog.is_open() {
                 self.state
-                    .deferred_release
-                    .lock()
-                    .await
-                    .push(super::tab::InputRelease::Key(release));
+                    .dialog
+                    .defer(vec![super::dialog::InputRelease::Key(release)])
+                    .await;
                 if result.is_ok() {
                     result = Err(BrowserError::DialogBlocked);
                 }
