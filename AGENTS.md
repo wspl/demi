@@ -1,6 +1,7 @@
 # Working Principles
 
 - Be pragmatic, never formalistic. Every step either moves the work forward or protects its correctness; drop ceremony that does neither, such as a check that cannot fail on the change at hand, a repeated full suite, or a report nobody needs.
+- Tests protect behavior, not implementation. Keep one test for each behavior another component or the user relies on and one for each bug that was fixed, at the boundary where it is observable (a wire format, a state machine, an API scenario), once, not again in every layer. Do not test internal steps. A slow test needs a reason: soaks and long waits stay out of the regular suite. A test you touch that is redundant, tests internals or waits without cause is fixed or deleted then.
 - Follow the boy scout rule and decide on the spot. When you notice on the way something that slows the work or is wrong (a slow or duplicated build, a flaky test, a stale script, a wasteful habit), fix it then and note what you changed and why where the next session reads it; for the Rust migration that is `plan.md` § Working method. Do not stop to ask or save it for a review. Stop and ask only about what changes the agreed design or scope, cannot be undone, or reaches beyond the repository and its build products.
 - Read the authoritative design before discussing changes. Inspect the implementation when needed to verify feasibility or investigate behavior; resolve discrepancies explicitly rather than treating code as an implicit design decision.
 - Prefer simple, direct designs with clear responsibilities and explicit dependencies.
@@ -38,7 +39,9 @@
 
 While the Rust migration in `docs/internal/rust-migration/plan.md` is under way, reread its § Working method and § Checkpoint checks at the start of every session and after every context compaction, before any other migration work, and follow them. In short:
 
-- Work the critical path: port the TypeScript. In Rust that already works, fix only the high findings; leave its medium and low findings for when that module next changes, or for the sweep after phase 7.
+- Work the critical path: port the TypeScript. In Rust that already works, fix only the high findings; leave its medium and low findings for when that module next changes, or for the cleanup sweep at the end.
+- Port tests by behavior, not case by case: from a module's TypeScript tests, list what it must guarantee and cover that with a few Rust scenario and unit tests. `ledger.md` entries are checked off by the test or scenario that covers their behavior, or as testing TypeScript internals.
+- The last work packages keep a cleanup sweep: the deferred findings, the tests (redundant, internal or slow), and whatever the port missed.
 - One work package is one checkpoint, committed and pushed once. While writing, run only `cargo check` and the test that covers the code; run the work package's checks once at its end. The Host acceptance (native builds for the Hosts in use, the refreshed Cloud image and a reset, a paired device and the Cloud, restarted processes, a real message) runs once per phase and before a batch is reported for acceptance.
 - Build and test with one Cargo selection everywhere: `cargo check --workspace --all-targets --features demi-runner/test-fixtures` and `cargo test --workspace --features demi-runner/test-fixtures`, adding `--test <name>` for one target. Never `-p <crate>` for a test build: each selection keeps its own copy of the dependencies, and switching has cost 140 s a time.
 - Work in large steps: read what a step needs in one call, write the whole step, then compile once. Start long builds and tests in the background and keep working meanwhile.
