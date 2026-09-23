@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use demi_runner::pipes::PipeClient;
 use futures_util::StreamExt;
-use std::{io, sync::Arc, time::Duration};
+use std::{io, time::Duration};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,

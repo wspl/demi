@@ -18,12 +18,28 @@ pub(super) struct ChromeProcess {
     marker: std::ffi::OsString,
     #[cfg(unix)]
     processes: System,
+    /// Where Chrome executables that may carry the marker live.
     #[cfg(unix)]
-    installation: std::path::PathBuf,
+    installations: Vec<std::path::PathBuf>,
 }
 
 impl ChromeProcess {
     pub fn new(profile: &Path, executable: &Path) -> Self {
+        // macOS helpers live in the app's Frameworks directory; Linux helpers
+        // live beside the main Chrome executable.
+        let installation = executable
+            .ancestors()
+            .find(|path| path.extension().is_some_and(|extension| extension == "app"))
+            .or_else(|| executable.parent())
+            .expect("absolute Chrome executable has a parent")
+            .to_owned();
+        Self::marked(profile, vec![installation])
+    }
+
+    /// The processes marked with `profile` whose executable lies under one
+    /// of `installations`: a browser's own, or those an orphaned browser left
+    /// when its service ended without retiring it.
+    pub fn marked(profile: &Path, installations: Vec<std::path::PathBuf>) -> Self {
         #[cfg(unix)]
         {
             let mut marker = std::ffi::OsString::from(format!("{PROFILE_ENV}="));
@@ -32,19 +48,12 @@ impl ChromeProcess {
                 group: None,
                 marker,
                 processes: System::new(),
-                // macOS helpers live in the app's Frameworks directory; Linux
-                // helpers live beside the main Chrome executable.
-                installation: executable
-                    .ancestors()
-                    .find(|path| path.extension().is_some_and(|extension| extension == "app"))
-                    .or_else(|| executable.parent())
-                    .expect("absolute Chrome executable has a parent")
-                    .to_owned(),
+                installations,
             }
         }
         #[cfg(not(unix))]
         {
-            let _ = (profile, executable);
+            let _ = (profile, installations);
             Self {}
         }
     }
@@ -61,6 +70,27 @@ impl ChromeProcess {
                 .split_at(PROFILE_ENV.len() + 1);
             use std::os::unix::ffi::OsStrExt;
             command.env(PROFILE_ENV, std::ffi::OsStr::from_bytes(profile));
+        }
+        #[cfg(target_os = "linux")]
+        {
+            // The kernel ends Chrome's leader when the thread that started it
+            // ends: a runtime worker, which lives as long as the service
+            // (`browser.md` § Native driver).
+            let service = std::process::id();
+            // SAFETY: the hook runs in the child between fork and exec and
+            // calls only async-signal-safe functions.
+            unsafe {
+                command.pre_exec(move || {
+                    if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) == -1 {
+                        return Err(io::Error::last_os_error());
+                    }
+                    // The service may have ended before the signal was set.
+                    if libc::getppid() as u32 != service {
+                        return Err(io::Error::other("the service ended before Chrome started"));
+                    }
+                    Ok(())
+                });
+            }
         }
         let child = command.spawn()?;
         #[cfg(unix)]
@@ -91,7 +121,7 @@ impl ChromeProcess {
                 .filter(|(_, process)| {
                     process
                         .exe()
-                        .is_some_and(|exe| exe.starts_with(&self.installation))
+                        .is_some_and(|exe| self.installed(exe))
                 })
                 .map(|(pid, _)| *pid)
                 .collect();
@@ -103,15 +133,16 @@ impl ChromeProcess {
         }
     }
 
-    /// Terminate and drain the group after chromiumoxide has reaped the leader.
+    /// Terminate and drain the group after chromiumoxide has reaped the
+    /// leader, and the marked helpers; an orphan's have no group here.
     pub async fn terminate(&mut self) -> Result<()> {
         #[cfg(unix)]
-        if let Some(group) = self.group {
+        {
             tokio::time::timeout(super::operation::CONTROL_TIMEOUT, async {
                 loop {
                     // Reap any members adopted by this process, without consuming
                     // exit statuses belonging to other Chrome environments/jobs.
-                    loop {
+                    while let Some(group) = self.group {
                         let result =
                             unsafe { libc::waitpid(-group, std::ptr::null_mut(), libc::WNOHANG) };
                         if result == 0 {
@@ -126,7 +157,7 @@ impl ChromeProcess {
                             }
                         }
                     }
-                    if !self.signal_owned(group)? {
+                    if !self.signal_owned()? {
                         return Ok(());
                     }
                     tokio::time::sleep(std::time::Duration::from_millis(20)).await;
@@ -141,20 +172,30 @@ impl ChromeProcess {
         Ok(())
     }
 
+    /// Whether `executable` lies in one of the Chrome installations, the only
+    /// processes whose environment is read for the marker.
+    #[cfg(unix)]
+    fn installed(&self, executable: &Path) -> bool {
+        self.installations
+            .iter()
+            .any(|installation| executable.starts_with(installation))
+    }
+
     /// Signal Chrome's group and detached helpers; only disappearance completes retirement.
     #[cfg(unix)]
-    fn signal_owned(&mut self, group: libc::pid_t) -> io::Result<bool> {
+    fn signal_owned(&mut self) -> io::Result<bool> {
         // ECHILD alone is insufficient: grandchildren can still be exiting or
         // awaiting reaping by their parent or the system's init process.
-        let group_alive = signal_group(group, libc::SIGKILL)?;
+        let group_alive = match self.group {
+            Some(group) => signal_group(group, libc::SIGKILL)?,
+            None => false,
+        };
         // sysinfo's Process::wait is synchronous and unbounded for non-children;
         // refreshing keeps the drain under the existing control deadline.
         self.observe();
         let mut helpers_alive = false;
         for process in self.processes.processes().values() {
-            if process
-                .exe()
-                .is_some_and(|exe| exe.starts_with(&self.installation))
+            if process.exe().is_some_and(|exe| self.installed(exe))
                 && process.environ().contains(&self.marker)
             {
                 helpers_alive = true;
@@ -178,9 +219,9 @@ impl Drop for ChromeProcess {
         // Explicit retirement awaits termination. Abrupt owner disposal can only
         // signal synchronously; its profile remains retained for safety.
         if let Some(group) = self.group
-            && let Err(error) = self.signal_owned(group)
+            && let Err(error) = self.signal_owned()
         {
-            eprintln!("could not terminate Chrome process tree {group}: {error}");
+            tracing::warn!("could not terminate Chrome process tree {group}: {error}");
         }
     }
 }
