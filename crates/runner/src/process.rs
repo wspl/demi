@@ -30,7 +30,7 @@ pub struct SpawnFailure {
     pub message: String,
 }
 
-pub use crate::connection::wire::OutputStream;
+pub use crate::connection::wire::{OutputStream, Signal};
 use crate::connection::wire::SpawnErrorKind;
 
 pub struct OutputChunk {
@@ -55,7 +55,7 @@ pub enum ProcessInput {
 pub struct ChildProcess {
     pub input: mpsc::Sender<ProcessInput>,
     pub output: mpsc::Receiver<OutputChunk>,
-    signals: mpsc::Sender<String>,
+    signals: mpsc::Sender<Signal>,
     /// Ends with the process's exit, once it is reaped and its pipes drained.
     owner: Option<tokio::task::JoinHandle<ProcessExit>>,
     exited: Option<ProcessExit>,
@@ -99,7 +99,7 @@ impl ChildProcess {
         let stderr = child.stderr().take().expect("piped stderr");
         let (input, mut input_rx) = mpsc::channel(4);
         let (output_tx, output) = mpsc::channel(4);
-        let (signals, mut signal_rx) = mpsc::channel::<String>(4);
+        let (signals, mut signal_rx) = mpsc::channel::<Signal>(4);
         let cancel = CancellationToken::new();
         let owner_cancel = cancel.clone();
         let owner = tokio::spawn(async move {
@@ -144,7 +144,7 @@ impl ChildProcess {
                         break child.wait().await;
                     }
                     signal = signal_rx.recv(), if !signal_rx.is_closed() => {
-                        if let Some(signal) = signal && let Err(error) = send_signal(child.as_mut(), &signal) {
+                        if let Some(signal) = signal && let Err(error) = send_signal(child.as_mut(), signal) {
                             failure = Some(error.to_string());
                         }
                     }
@@ -222,9 +222,9 @@ impl ChildProcess {
         })
     }
 
-    pub async fn signal(&self, signal: &str) -> io::Result<()> {
+    pub async fn signal(&self, signal: Signal) -> io::Result<()> {
         self.signals
-            .send(signal.into())
+            .send(signal)
             .await
             .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "process has exited"))
     }
@@ -280,40 +280,25 @@ async fn pump<T: AsyncRead + Unpin>(
 pub(crate) fn kill(child: &mut dyn ChildWrapper) -> io::Result<()> {
     match child.start_kill() {
         #[cfg(unix)]
-        Err(error) if error.raw_os_error() == Some(libc::ESRCH) => Ok(()),
+        Err(error) if error.raw_os_error() == Some(rustix::io::Errno::SRCH.raw_os_error()) => Ok(()),
         result => result,
     }
 }
 
-fn send_signal(child: &mut dyn ChildWrapper, signal: &str) -> io::Result<()> {
+fn send_signal(child: &mut dyn ChildWrapper, signal: Signal) -> io::Result<()> {
     #[cfg(unix)]
     {
-        let number = match signal {
-            "SIGTERM" => libc::SIGTERM,
-            "SIGKILL" => libc::SIGKILL,
-            "SIGINT" => libc::SIGINT,
-            "SIGHUP" => libc::SIGHUP,
-            "SIGQUIT" => libc::SIGQUIT,
-            "SIGUSR1" => libc::SIGUSR1,
-            "SIGUSR2" => libc::SIGUSR2,
-            "SIGSTOP" => libc::SIGSTOP,
-            "SIGCONT" => libc::SIGCONT,
-            _ => {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "unsupported process signal",
-                ));
+        match child.signal(number(signal).as_raw()) {
+            Err(error) if error.raw_os_error() == Some(rustix::io::Errno::SRCH.raw_os_error()) => {
+                Ok(())
             }
-        };
-        match child.signal(number) {
-            Err(error) if error.raw_os_error() == Some(libc::ESRCH) => Ok(()),
             result => result,
         }
     }
     #[cfg(windows)]
     {
         match signal {
-            "SIGTERM" | "SIGKILL" | "SIGINT" => kill(child),
+            Signal::Terminate | Signal::Kill | Signal::Interrupt => kill(child),
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "unsupported Windows process signal",
@@ -322,18 +307,45 @@ fn send_signal(child: &mut dyn ChildWrapper, signal: &str) -> io::Result<()> {
     }
 }
 
+#[cfg(unix)]
+fn number(signal: Signal) -> rustix::process::Signal {
+    use rustix::process::Signal as Number;
+    match signal {
+        Signal::Terminate => Number::TERM,
+        Signal::Kill => Number::KILL,
+        Signal::Interrupt => Number::INT,
+        Signal::Hangup => Number::HUP,
+        Signal::Quit => Number::QUIT,
+        Signal::User1 => Number::USR1,
+        Signal::User2 => Number::USR2,
+        Signal::Stop => Number::STOP,
+        Signal::Continue => Number::CONT,
+    }
+}
+
+/// The name of the signal that ended a process: one of the set requests
+/// name, `SIGPIPE`, or its number.
 fn exit_signal(status: ExitStatus) -> Option<String> {
     #[cfg(unix)]
     {
         use std::os::unix::process::ExitStatusExt;
-        status.signal().map(|number| match number {
-            libc::SIGTERM => "SIGTERM".into(),
-            libc::SIGKILL => "SIGKILL".into(),
-            libc::SIGINT => "SIGINT".into(),
-            libc::SIGHUP => "SIGHUP".into(),
-            libc::SIGQUIT => "SIGQUIT".into(),
-            libc::SIGPIPE => "SIGPIPE".into(),
-            _ => format!("SIG{number}"),
+        const SIGNALS: [Signal; 9] = [
+            Signal::Terminate,
+            Signal::Kill,
+            Signal::Interrupt,
+            Signal::Hangup,
+            Signal::Quit,
+            Signal::User1,
+            Signal::User2,
+            Signal::Stop,
+            Signal::Continue,
+        ];
+        status.signal().map(|raw| {
+            match SIGNALS.into_iter().find(|signal| number(*signal).as_raw() == raw) {
+                Some(signal) => signal.to_string(),
+                None if raw == rustix::process::Signal::PIPE.as_raw() => "SIGPIPE".into(),
+                None => format!("SIG{raw}"),
+            }
         })
     }
     #[cfg(windows)]
