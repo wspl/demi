@@ -7,3 +7,4 @@ mod encodings;
 mod lookups;
 mod provider;
 mod schemas;
+mod selection;
