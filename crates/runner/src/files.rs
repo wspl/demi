@@ -11,6 +11,7 @@ use std::{
 };
 
 use bytes::Bytes;
+use demi_artifact::{Mode, Permissions, Publication, Staged};
 use futures_util::StreamExt;
 use tokio::{
     fs,
@@ -273,6 +274,9 @@ fn chunks(
     })
 }
 
+/// Streams the pipe into a file staged beside `target` and publishes it there
+/// when the pipe ends cleanly; any failure removes the staged file and leaves
+/// `target` as it was.
 async fn write_from_pipe(
     pipes: &PipeClient,
     url: &str,
@@ -289,28 +293,22 @@ async fn write_from_pipe(
     if create_parents {
         fs::create_dir_all(parent).await?;
     }
-    // A fresh name beside the destination, so the rename stays on one volume
-    // and the destination changes only once, whole.
-    let temporary = parent.join(format!(".demi-write-{}", uuid::Uuid::new_v4()));
-    let mut options = fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    let mut file =
-        demi_command_service::descriptors::retry(cancel, || options.open(&temporary)).await?;
-    let written = async {
-        let mut body = pipes.get(url, cancel.clone()).await?;
-        while let Some(chunk) = body.next().await {
-            file.write_all(&chunk?).await?;
-        }
-        file.flush().await?;
-        drop(file);
-        fs::rename(&temporary, target).await
+    let publication = Publication {
+        mode: Mode::Replace,
+        permissions: Permissions::Default,
+        durable: false,
+    };
+    // Out of open files, the write waits for one (`runner.md` § Load).
+    let mut staged = demi_command_service::descriptors::retry(cancel, || {
+        Staged::new(target, publication)
+    })
+    .await
+    .map_err(crate::state::io_error)?;
+    let mut body = pipes.get(url, cancel.clone()).await?;
+    while let Some(chunk) = body.next().await {
+        staged.file().write_all(&chunk?).await?;
     }
-    .await;
-    if written.is_err() {
-        // The destination is untouched; the partial copy goes with the failure.
-        let _ = fs::remove_file(&temporary).await;
-    }
-    written
+    staged.publish().await.map_err(crate::state::io_error)
 }
 
 fn fs_error(id: String, error: &io::Error) -> Result<wire::Frame, wire::WireError> {

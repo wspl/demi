@@ -2,15 +2,12 @@
 
 use bytes::Bytes;
 use demi_command_service::{
-    Client, CommandInput, CommandOutput,
-    protocol::{Completion, LocalInvocation, MAX_RECORD_BYTES, Record},
+    Client, CommandInput, CommandOutput, Exchange, ExchangeError, InputSource, OutputSink,
+    protocol::{Completion, LocalInvocation, MAX_RECORD_BYTES},
 };
 use serde::{Deserialize, Serialize};
 use std::{io, time::Duration};
-use tokio::{
-    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
-    sync::mpsc,
-};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
 pub const ENDPOINT_ENV: &str = "DEMI_RUNNER_ENDPOINT";
@@ -94,10 +91,12 @@ where
     outcome
 }
 
+/// Runs the invocation with the caller's standard input as its source and
+/// the caller's standard output and error as its sink.
 async fn exchange<I, O, E>(
-    mut input: CommandInput,
-    mut output: CommandOutput,
-    mut stdio: Stdio<I, O, E>,
+    input: CommandInput,
+    output: CommandOutput,
+    stdio: Stdio<I, O, E>,
     cancel: &CancellationToken,
 ) -> io::Result<Completion>
 where
@@ -105,50 +104,55 @@ where
     O: AsyncWrite + Unpin,
     E: AsyncWrite + Unpin,
 {
-    let (pull, mut demanded) = mpsc::channel::<()>(1);
-    let send = async {
+    let mut source = Reader(stdio.stdin);
+    let mut sink = Terminal {
+        stdout: stdio.stdout,
+        stderr: stdio.stderr,
+    };
+    let exchange = Exchange::new(input, output).run(&mut source, &mut sink);
+    // Dropping a cancelled exchange resets its invocation.
+    let completion = tokio::select! {
+        _ = cancel.cancelled() => return Err(cancelled()),
+        result = exchange => result.map_err(|error| match error {
+            ExchangeError::Service(error) => io::Error::other(error),
+            ExchangeError::Input(error) | ExchangeError::Output(error) => error,
+        })?,
+    };
+    sink.stdout.flush().await?;
+    sink.stderr.flush().await?;
+    Ok(completion)
+}
+
+/// A reader that yields a record-sized chunk per pull.
+struct Reader<R>(R);
+
+impl<R: AsyncRead + Unpin> InputSource for Reader<R> {
+    type Error = io::Error;
+
+    async fn next(&mut self) -> io::Result<Option<Bytes>> {
         let mut buffer = vec![0; MAX_RECORD_BYTES];
-        while demanded.recv().await.is_some() {
-            let count = stdio.stdin.read(&mut buffer).await?;
-            if count == 0 {
-                input.end().map_err(io::Error::other)?;
-                // EOF ends input only. Keep waiting for the command's completion.
-                return std::future::pending::<io::Result<Completion>>().await;
-            }
-            input
-                .write(Bytes::copy_from_slice(&buffer[..count]))
-                .await
-                .map_err(io::Error::other)?;
-        }
-        std::future::pending::<io::Result<Completion>>().await
-    };
-    let receive = async {
-        let mut completion = None;
-        while let Some(record) = output.next().await.map_err(io::Error::other)? {
-            match record {
-                Record::Stdout(bytes) => stdio.stdout.write_all(&bytes).await?,
-                Record::Stderr(bytes) => stdio.stderr.write_all(&bytes).await?,
-                Record::InputPull => pull.try_send(()).map_err(|_| {
-                    io::Error::new(io::ErrorKind::InvalidData, "overlapping stdin demands")
-                })?,
-                Record::Completion(value) => completion = Some(value),
-            }
-        }
-        stdio.stdout.flush().await?;
-        stdio.stderr.flush().await?;
-        completion.ok_or_else(|| {
-            io::Error::new(io::ErrorKind::UnexpectedEof, "missing command completion")
-        })
-    };
-    let result = tokio::select! {
-        _ = cancel.cancelled() => Err(cancelled()),
-        result = receive => result,
-        result = send => result,
-    };
-    if result.is_err() {
-        input.cancel();
+        let count = self.0.read(&mut buffer).await?;
+        buffer.truncate(count);
+        Ok((count > 0).then(|| Bytes::from(buffer)))
     }
-    result
+}
+
+/// The caller's standard output and error.
+struct Terminal<O, E> {
+    stdout: O,
+    stderr: E,
+}
+
+impl<O: AsyncWrite + Unpin, E: AsyncWrite + Unpin> OutputSink for Terminal<O, E> {
+    type Error = io::Error;
+
+    async fn stdout(&mut self, bytes: Bytes) -> io::Result<()> {
+        self.stdout.write_all(&bytes).await
+    }
+
+    async fn stderr(&mut self, bytes: Bytes) -> io::Result<()> {
+        self.stderr.write_all(&bytes).await
+    }
 }
 
 fn cancelled() -> io::Error {

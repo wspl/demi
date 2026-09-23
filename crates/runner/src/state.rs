@@ -176,23 +176,28 @@ async fn read_optional(path: &Path) -> io::Result<Option<Vec<u8>>> {
     }
 }
 
+/// Replaces the state file at `path` with `bytes` and a final newline,
+/// readable by the owner alone and on disk before the rename.
 pub(crate) async fn write_private(path: PathBuf, mut bytes: Vec<u8>) -> io::Result<()> {
     if !bytes.ends_with(b"\n") {
         bytes.push(b'\n');
     }
-    tokio::task::spawn_blocking(move || {
-        use std::io::Write;
-        let directory = path.parent().ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidInput, "state file has no directory")
-        })?;
-        let mut file = tempfile::NamedTempFile::new_in(directory)?;
-        file.write_all(&bytes)?;
-        file.as_file().sync_all()?;
-        file.persist(path).map_err(|error| error.error)?;
-        Ok::<_, io::Error>(())
-    })
-    .await
-    .map_err(io::Error::other)?
+    let publication = demi_artifact::Publication {
+        mode: demi_artifact::Mode::Replace,
+        permissions: demi_artifact::Permissions::Private,
+        durable: true,
+    };
+    demi_artifact::publish_bytes(&path, &bytes, publication)
+        .await
+        .map_err(io_error)
+}
+
+/// An artifact failure as the IO error it is, or wraps.
+pub(crate) fn io_error(error: demi_artifact::Error) -> io::Error {
+    match error {
+        demi_artifact::Error::Io(error) => error,
+        error => io::Error::other(error),
+    }
 }
 
 fn validate_token(token: &str) -> io::Result<()> {

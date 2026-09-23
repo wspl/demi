@@ -33,7 +33,9 @@ pub mod testing {
 /// Why verified bytes could not be had.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error(transparent)]
+    /// The IO error is the source, so a caller that waits out a lack of open
+    /// files finds it.
+    #[error("{0}")]
     Io(#[from] std::io::Error),
     /// The request failed; the message leaves out the URL, which may carry
     /// a signature.

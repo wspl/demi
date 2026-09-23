@@ -1,7 +1,7 @@
 //! Invocation output with bounded JSON capture when a declaration requests it.
 
 use bytes::Bytes;
-use demi_command_service::{Output, ServiceError};
+use demi_command_service::{Output, OutputSink, ServiceError};
 use std::collections::BTreeMap;
 
 /// The most JSON output a command may produce.
@@ -66,5 +66,17 @@ impl CommandOutput {
             self.output.stdout(bytes.into()).await?;
         }
         Ok(())
+    }
+}
+
+impl OutputSink for CommandOutput {
+    type Error = ServiceError;
+
+    async fn stdout(&mut self, bytes: Bytes) -> Result<(), ServiceError> {
+        CommandOutput::stdout(self, bytes).await
+    }
+
+    async fn stderr(&mut self, bytes: Bytes) -> Result<(), ServiceError> {
+        CommandOutput::stderr(self, bytes).await
     }
 }
