@@ -3,7 +3,6 @@
 //! maps are ordered, and a message is written in this order.
 
 use std::collections::BTreeMap;
-use std::fmt;
 
 use demi_command_service::protocol::{
     ArtifactLocation, CommandContext, EditCopies, EditKind, PackageDescriptor, digest, without_nul,
@@ -800,31 +799,12 @@ pub struct LogLine {
     pub text: String,
 }
 
-/// Writes a closed set's value as the wire spells it, for logs: serde's own
-/// naming, so no second spelling exists.
-fn wire_name(value: &impl Serialize, formatter: &mut fmt::Formatter) -> fmt::Result {
-    match serde_json::to_value(value) {
-        Ok(serde_json::Value::String(name)) => formatter.write_str(&name),
-        _ => Err(fmt::Error),
-    }
-}
+// Closed sets display as the wire spells them, for logs.
+serde_plain::derive_display_from_serialize!(HelloErrorCode);
+serde_plain::derive_display_from_serialize!(VolumeName);
+serde_plain::derive_display_from_serialize!(OutputStream);
+serde_plain::derive_display_from_serialize!(NetErrorCode);
+serde_plain::derive_display_from_serialize!(ServiceErrorCode);
+serde_plain::derive_display_from_serialize!(ChangeKind);
+serde_plain::derive_display_from_serialize!(SpawnErrorKind);
 
-macro_rules! display_wire_name {
-    ($($set:ty),* $(,)?) => {
-        $(impl fmt::Display for $set {
-            fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                wire_name(self, formatter)
-            }
-        })*
-    };
-}
-
-display_wire_name!(
-    HelloErrorCode,
-    VolumeName,
-    OutputStream,
-    NetErrorCode,
-    ServiceErrorCode,
-    ChangeKind,
-    SpawnErrorKind,
-);

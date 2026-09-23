@@ -2,6 +2,8 @@
 resolver = "3"
 exclude = ["vendor/*", "vendor/chromiumoxide", "vendor/chromiumoxide_cdp"]
 members = [
+  "crates/builtin-protocol",
+  "crates/claude-protocol",
   "crates/command-service",
   "crates/command-tree",
   "crates/demi-claude",
@@ -24,6 +26,7 @@ h2 = "0.4"
 http = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+serde_plain = "1"
 serde_with = { version = "3", default-features = false }
 thiserror = "2"
 process-wrap = { version = "10", default-features = false, features = ["tokio1", "process-group", "job-object", "kill-on-drop"] }

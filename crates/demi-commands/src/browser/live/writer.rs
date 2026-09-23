@@ -11,13 +11,14 @@ use std::{
 };
 
 use bytes::Bytes;
+use demi_builtin_protocol::{
+    DecodeError,
+    live::{HEARTBEAT_MS, LiveModuleMessage},
+};
 use demi_command_service::Output;
 use tokio::{sync::mpsc, time::Instant};
 
-use super::{
-    super::protocol::{LIVE_HEARTBEAT_MS, LiveOutbound},
-    frames,
-};
+use super::frames;
 
 /// Control messages waiting for the page. The viewer waits for room here, so
 /// a page that stops reading holds back the viewer, not memory.
@@ -49,14 +50,21 @@ impl Writer {
         )
     }
 
-    pub async fn control(&self, message: &LiveOutbound) {
+    /// Queues a control message. A message outside the protocol's bounds
+    /// would end the view on the page, so it is logged and not sent: it comes
+    /// from a page observer's defect.
+    pub async fn control(&self, message: &LiveModuleMessage) {
+        if let Err(report) = garde::Validate::validate(message) {
+            eprintln!("live view message refused: {}", DecodeError::from(report));
+            return;
+        }
         let _ended = self.control.send(frames::control(message)).await;
     }
 
     /// Something the viewer asked for failed; the stream goes on.
-    pub async fn notice(&self, code: &str, message: &str) {
-        self.control(&LiveOutbound::Notice {
-            code: code.into(),
+    pub async fn notice(&self, code: impl std::fmt::Display, message: &str) {
+        self.control(&LiveModuleMessage::Notice {
+            code: code.to_string(),
             message: message.into(),
         })
         .await;
@@ -85,8 +93,8 @@ async fn run(
     mut videos: mpsc::Receiver<Bytes>,
     queued: Arc<AtomicUsize>,
 ) {
-    let quiet = Duration::from_millis(LIVE_HEARTBEAT_MS);
-    let heartbeat = frames::control(&LiveOutbound::Heartbeat {});
+    let quiet = Duration::from_millis(HEARTBEAT_MS);
+    let heartbeat = frames::control(&LiveModuleMessage::Heartbeat {});
     let mut written = Instant::now();
     loop {
         let bytes = tokio::select! {

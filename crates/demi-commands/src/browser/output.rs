@@ -1,4 +1,4 @@
-//! Browser output is schema validated and bounded before any success bytes escape.
+//! Browser output is bounded before any success bytes escape.
 
 use serde_json::Value;
 use std::io::{Read, Write};
@@ -6,8 +6,13 @@ use tokio_util::sync::CancellationToken;
 
 use super::{
     BrowserError, Result,
-    protocol::{INLINE_BYTES, validate_result},
+    protocol::{ActionProgress, BrowserErrorCode, ErrorDetails, INLINE_BYTES},
 };
+
+/// A typed result as the JSON value [`render`] bounds.
+pub(super) fn value(result: impl serde::Serialize) -> Result<Value> {
+    serde_json::to_value(result).map_err(|error| BrowserError::InvalidResult(error.to_string()))
+}
 
 /// Reject an existing browser output before delivering any page input.
 pub(super) async fn preflight(
@@ -111,7 +116,9 @@ async fn publish_reader(
     .await?
 }
 
-pub(super) fn render(operation: &str, mut value: Value, json: bool) -> Result<Vec<u8>> {
+/// Prints a result, shortening its content or its list until it fits
+/// [`INLINE_BYTES`]; a result that cannot shrink fails.
+pub(super) fn render(mut value: Value, json: bool) -> Result<Vec<u8>> {
     loop {
         let bytes = serde_json::to_vec(&value)
             .map_err(|error| BrowserError::InvalidResult(error.to_string()))?;
@@ -154,8 +161,6 @@ pub(super) fn render(operation: &str, mut value: Value, json: bool) -> Result<Ve
         }
         return Err(BrowserError::ResultTooLarge);
     }
-    let value = validate_result(operation, value)
-        .map_err(|error| BrowserError::InvalidResult(error.to_string()))?;
     let mut result = if json {
         serde_json::to_string(&value)
             .map_err(|error| BrowserError::InvalidResult(error.to_string()))?
@@ -209,10 +214,11 @@ pub(super) fn render(operation: &str, mut value: Value, json: bool) -> Result<Ve
 }
 
 /// Render browser failures with the same progress and details as their JSON form.
-pub(super) fn render_error(code: &str, message: &str, details: &Value) -> String {
-    let action = details["action"].as_str().unwrap_or("not_started");
+pub(super) fn render_error(code: BrowserErrorCode, message: &str, details: &ErrorDetails) -> String {
+    let action = details.action.unwrap_or(ActionProgress::NotStarted);
     let mut text = format!("Error: {code}\n{message}\nAction: {action}.\n");
-    if let Some(details) = details.as_object() {
+    // Details are plain data, which always serializes to an object.
+    if let Ok(Value::Object(details)) = serde_json::to_value(details) {
         for (key, value) in details {
             if key == "action" {
                 continue;
@@ -227,7 +233,7 @@ pub(super) fn render_error(code: &str, message: &str, details: &Value) -> String
                 }
             };
             let value = match value {
-                Value::String(value) => value.clone(),
+                Value::String(value) => value,
                 _ => value.to_string(),
             };
             text.push_str(&format!("{title}: {value}\n"));
@@ -245,7 +251,6 @@ mod tests {
     fn stream_output_truncation_does_not_skip_the_omitted_entries() {
         let entries: Vec<_> = (0..3).map(|sequence| json!({"sequence":sequence,"level":"info","text":"x".repeat(30_000),"timestamp":0})).collect();
         let bytes = render(
-            "logs",
             json!({"entries":entries,"cursor":"logs_test:3","hasMore":false,"truncated":false}),
             true,
         )
@@ -261,12 +266,16 @@ mod tests {
     #[test]
     fn text_errors_show_progress_and_individual_details() {
         let text = render_error(
-            "not_actionable",
+            BrowserErrorCode::NotActionable,
             "The button is covered.",
-            &json!({
-                "action": "not_started", "tab": "t_test", "url": "https://example.test/",
-                "interceptor": "<div id=overlay>", "delivered": 0,
-            }),
+            &ErrorDetails {
+                action: Some(ActionProgress::NotStarted),
+                tab: Some("t_test".into()),
+                url: Some("https://example.test/".into()),
+                interceptor: Some("<div id=overlay>".into()),
+                delivered: Some(0),
+                ..ErrorDetails::default()
+            },
         );
         assert!(
             text.starts_with(
@@ -291,24 +300,14 @@ mod tests {
             "tree": [{"role": "main", "children": [{"role": "checkbox", "name": "Confirm", "states": ["checked=false"], "value": "hello"}]}],
             "truncated": false,
         });
-        let text = String::from_utf8(render("inspect", value.clone(), false).unwrap()).unwrap();
+        let text = String::from_utf8(render(value.clone(), false).unwrap()).unwrap();
         assert!(text.contains("main "));
         assert!(text.contains("  checkbox \"Confirm\" [checked=false] [value=\"hello\"]"));
         let structured: Value =
-            serde_json::from_slice(&render("inspect", value, true).unwrap()).unwrap();
+            serde_json::from_slice(&render(value, true).unwrap()).unwrap();
         assert_eq!(
             structured["tree"][0]["children"][0]["states"][0],
             "checked=false"
         );
-    }
-
-    #[test]
-    fn navigation_results_require_url_but_allow_missing_metadata() {
-        for operation in ["open", "goto", "reload", "back", "forward"] {
-            assert!(
-                validate_result(operation, json!({"tab": "t_test", "url": "about:blank"})).is_ok()
-            );
-            assert!(validate_result(operation, json!({"tab": "t_test"})).is_err());
-        }
     }
 }

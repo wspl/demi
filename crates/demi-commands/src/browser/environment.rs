@@ -27,7 +27,7 @@ use super::{
     BrowserError, BrowserTab, Result,
     operation::{CONTROL_TIMEOUT, Operation, after_cleanup},
     process::ChromeProcess,
-    protocol::BrowserCreatedBy,
+    protocol::{BrowserCreatedBy, Load, TabId},
     tab::TabState,
 };
 
@@ -36,7 +36,7 @@ struct TabRegistry {
     openers: HashMap<TargetId, TargetId>,
     live: HashMap<TargetId, BrowserTab>,
     /// Each page's public ID, in the order the browser created them.
-    public_ids: HashMap<TargetId, (Arc<str>, usize)>,
+    public_ids: HashMap<TargetId, (TabId, usize)>,
 }
 
 impl TabRegistry {
@@ -67,11 +67,11 @@ impl TabRegistry {
     }
 
     /// Retain browser target identities even after their live tab is pruned.
-    fn public_id(&mut self, target: &TargetId) -> Result<Arc<str>> {
+    fn public_id(&mut self, target: &TargetId) -> Result<TabId> {
         if let Some((id, _)) = self.public_ids.get(target) {
             return Ok(id.clone());
         }
-        let id: Arc<str> = super::handles::fresh("t")?.into();
+        let id = TabId::from_random(super::handles::random()?);
         let order = self.public_ids.len();
         self.public_ids.insert(target.clone(), (id.clone(), order));
         Ok(id)
@@ -144,8 +144,8 @@ where
         .chrome_executable(options.executable)
         .user_data_dir(profile.path())
         .viewport(Viewport {
-            width: super::viewport::Viewport::UNWATCHED.width,
-            height: super::viewport::Viewport::UNWATCHED.height,
+            width: super::viewport::UNWATCHED.width,
+            height: super::viewport::UNWATCHED.height,
             ..Viewport::default()
         })
         .launch_timeout(Duration::from_secs(60))
@@ -280,7 +280,7 @@ impl BrowserEnvironment {
         self.open_for(
             url,
             "native",
-            "domcontentloaded",
+            Load::DomContentLoaded,
             cancellation,
             tokio::time::Instant::now() + timeout,
         )
@@ -292,7 +292,7 @@ impl BrowserEnvironment {
         &self,
         url: &str,
         caller: &str,
-        load: &str,
+        load: Load,
         cancellation: &CancellationToken,
         deadline: tokio::time::Instant,
     ) -> Result<(BrowserTab, String)> {
@@ -302,7 +302,12 @@ impl BrowserEnvironment {
             .run(async { Ok(self.acquisition.read().await) })
             .await?;
         let tab = self
-            .create_tab(created_by("agent", Some(caller))?, &operation)
+            .create_tab(
+                BrowserCreatedBy::Agent {
+                    node_id: caller.to_owned(),
+                },
+                &operation,
+            )
             .await?;
         let mut references = tab
             .state
@@ -337,7 +342,7 @@ impl BrowserEnvironment {
             .run(async { Ok(self.acquisition.read().await) })
             .await?;
         let tab = self
-            .create_tab(created_by("user", None)?, &operation)
+            .create_tab(BrowserCreatedBy::User {}, &operation)
             .await?;
         if let Some(url) = url {
             super::navigation::visit(&tab, url);
@@ -409,7 +414,12 @@ impl BrowserEnvironment {
         let result = async {
             for _ in 0..count {
                 batch.tabs.push(
-                    self.create_tab(created_by("temporary", Some(caller))?, &operation)
+                    self.create_tab(
+                        BrowserCreatedBy::Temporary {
+                            node_id: caller.to_owned(),
+                        },
+                        &operation,
+                    )
                         .await?,
                 );
             }
@@ -430,7 +440,7 @@ impl BrowserEnvironment {
             .await
             .live
             .values()
-            .find(|tab| tab.id() == id && !tab.ended.is_cancelled())
+            .find(|tab| tab.id().as_str() == id && !tab.ended.is_cancelled())
             .cloned();
         match tab {
             Some(tab) => tab.state.cdp.lock().await.other_callers(caller),
@@ -540,8 +550,9 @@ impl BrowserEnvironment {
                             "unregistered browser page has no recorded opener".into(),
                         )
                     })?;
-                serde_json::from_value(serde_json::json!({ "kind": "page", "opener": tabs.public_id(&opener)?.as_ref() }))
-                    .map_err(|error| BrowserError::InvalidResult(error.to_string()))?
+                BrowserCreatedBy::Page {
+                    opener: tabs.public_id(&opener)?,
+                }
             }
         };
         let id = tabs.public_id(page.target_id())?;
@@ -564,8 +575,7 @@ impl BrowserEnvironment {
             created_by,
         );
         // Every page starts at the unwatched viewport; its window must hold it.
-        tab.set_viewport(super::viewport::Viewport::UNWATCHED)
-            .await?;
+        tab.set_viewport(super::viewport::UNWATCHED).await?;
         tabs.live.insert(tab.page.target_id().clone(), tab.clone());
         Ok(tab)
     }
@@ -596,15 +606,6 @@ impl TemporaryBatch {
         }
         cleanup
     }
-}
-
-/// Creation metadata for a tab opened by `kind`, for the agent `node` if any.
-fn created_by(kind: &str, node: Option<&str>) -> Result<BrowserCreatedBy> {
-    let mut value = serde_json::json!({ "kind": kind });
-    if let Some(node) = node {
-        value["nodeId"] = serde_json::json!(node);
-    }
-    serde_json::from_value(value).map_err(|error| BrowserError::Configuration(error.to_string()))
 }
 
 /// Tells the live view whenever a tab opens, closes or changes its title or

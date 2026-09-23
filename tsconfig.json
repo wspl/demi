@@ -29,6 +29,6 @@
       "@demicodes/*": ["./packages/*/src/index.ts"]
     }
   },
-  "include": ["packages/*/src", "scripts/rust-zod.ts", "scripts/generate-contracts.ts", "scripts/typecheck-vue.ts", "scripts/native/**/*.ts"],
+  "include": ["packages/*/src", "scripts/typecheck-vue.ts", "scripts/native/**/*.ts"],
   "exclude": ["packages/web-ui", "packages/web-gallery", "packages/web"]
 }

@@ -17,10 +17,16 @@ use chromiumoxide::cdp::browser_protocol::input::{
 };
 use tokio::sync::mpsc;
 
-use super::{super::protocol::LiveInbound, observers, writer::Writer};
+use demi_builtin_protocol::live::{
+    KeyAction, LiveModuleMessage, LiveViewerMessage, PointerAction, PointerButton,
+};
+
+use super::{observers, writer::Writer};
 use crate::browser::{
-    BrowserError, BrowserTab, Result, keyboard, operation::CONTROL_TIMEOUT, tab::InputRelease,
-    viewport::Mode,
+    BrowserError, BrowserTab, Result, keyboard,
+    operation::CONTROL_TIMEOUT,
+    protocol::{TabId, ViewportMode},
+    tab::InputRelease,
 };
 
 /// Input the viewer sent and the task has not delivered yet. Past this the
@@ -29,7 +35,7 @@ use crate::browser::{
 const QUEUE: usize = 256;
 
 pub(super) enum Item {
-    Message(LiveInbound),
+    Message(LiveViewerMessage),
     /// The viewer watches another tab, or none.
     Watch(Option<BrowserTab>),
     /// Release what this viewer holds.
@@ -117,25 +123,25 @@ async fn run(
 }
 
 /// The tab named in an input message, which must be the watched one.
-fn target(message: &LiveInbound) -> Option<&str> {
+fn target(message: &LiveViewerMessage) -> Option<&TabId> {
     match message {
-        LiveInbound::Pointer { tab, .. }
-        | LiveInbound::Wheel { tab, .. }
-        | LiveInbound::Key { tab, .. }
-        | LiveInbound::Text { tab, .. }
-        | LiveInbound::Composition { tab, .. }
-        | LiveInbound::Paste { tab, .. }
-        | LiveInbound::Choice { tab, .. } => Some(tab),
+        LiveViewerMessage::Pointer { tab, .. }
+        | LiveViewerMessage::Wheel { tab, .. }
+        | LiveViewerMessage::Key { tab, .. }
+        | LiveViewerMessage::Text { tab, .. }
+        | LiveViewerMessage::Composition { tab, .. }
+        | LiveViewerMessage::Paste { tab, .. }
+        | LiveViewerMessage::Choice { tab, .. } => Some(tab),
         _ => None,
     }
 }
 
-fn button(name: &str) -> MouseButton {
-    match name {
-        "left" => MouseButton::Left,
-        "middle" => MouseButton::Middle,
-        "right" => MouseButton::Right,
-        _ => MouseButton::None,
+fn button(button: PointerButton) -> MouseButton {
+    match button {
+        PointerButton::Left => MouseButton::Left,
+        PointerButton::Middle => MouseButton::Middle,
+        PointerButton::Right => MouseButton::Right,
+        PointerButton::None => MouseButton::None,
     }
 }
 
@@ -158,16 +164,16 @@ where
 async fn deliver(
     tab: &BrowserTab,
     held: &mut Held,
-    message: LiveInbound,
+    message: LiveViewerMessage,
     mac: bool,
     writer: &Writer,
 ) -> Result<()> {
-    if target(&message) != Some(tab.id().as_str()) || tab.state.dialog.borrow().is_some() {
+    if target(&message) != Some(tab.id()) || tab.state.dialog.borrow().is_some() {
         return Ok(());
     }
     let page = &tab.page;
     match message {
-        LiveInbound::Pointer {
+        LiveViewerMessage::Pointer {
             action,
             x,
             y,
@@ -178,12 +184,14 @@ async fn deliver(
             ..
         } => {
             held.point = (x, y);
-            if tab.viewport().mode == Mode::Mobile {
+            if tab.viewport().mode == ViewportMode::Mobile {
                 // A phone has touches, not a mouse: no hover, one finger.
-                let kind = match action.as_str() {
-                    "down" if name == "left" => DispatchTouchEventType::TouchStart,
-                    "move" if held.touching => DispatchTouchEventType::TouchMove,
-                    "up" if held.touching => DispatchTouchEventType::TouchEnd,
+                let kind = match action {
+                    PointerAction::Down if name == PointerButton::Left => {
+                        DispatchTouchEventType::TouchStart
+                    }
+                    PointerAction::Move if held.touching => DispatchTouchEventType::TouchMove,
+                    PointerAction::Up if held.touching => DispatchTouchEventType::TouchEnd,
                     _ => return Ok(()),
                 };
                 held.touching = kind != DispatchTouchEventType::TouchEnd;
@@ -198,12 +206,12 @@ async fn deliver(
                 )
                 .await;
             }
-            let kind = match action.as_str() {
-                "down" => DispatchMouseEventType::MousePressed,
-                "up" => DispatchMouseEventType::MouseReleased,
-                _ => DispatchMouseEventType::MouseMoved,
+            let kind = match action {
+                PointerAction::Down => DispatchMouseEventType::MousePressed,
+                PointerAction::Up => DispatchMouseEventType::MouseReleased,
+                PointerAction::Move => DispatchMouseEventType::MouseMoved,
             };
-            let pressed = button(&name);
+            let pressed = button(name);
             match kind {
                 DispatchMouseEventType::MousePressed if !held.buttons.contains(&pressed) => {
                     held.buttons.push(pressed.clone());
@@ -225,7 +233,7 @@ async fn deliver(
                 .map_err(BrowserError::Configuration)?;
             dispatch(tab, page.execute(event)).await
         }
-        LiveInbound::Wheel {
+        LiveViewerMessage::Wheel {
             x,
             y,
             delta_x,
@@ -246,7 +254,7 @@ async fn deliver(
                 .map_err(BrowserError::Configuration)?;
             dispatch(tab, page.execute(event)).await
         }
-        LiveInbound::Key {
+        LiveViewerMessage::Key {
             action,
             key,
             code,
@@ -258,7 +266,7 @@ async fn deliver(
             alt_graph,
             ..
         } => {
-            let down = action == "down";
+            let down = action == KeyAction::Down;
             let mut event = keyboard::viewer_key(
                 &keyboard::ViewerKey {
                     down,
@@ -286,11 +294,11 @@ async fn deliver(
             }
             dispatch(tab, page.execute(event)).await
         }
-        LiveInbound::Text { text, .. } => {
+        LiveViewerMessage::Text { text, .. } => {
             held.composing = false;
             dispatch(tab, page.execute(InsertTextParams::new(text))).await
         }
-        LiveInbound::Composition { text, .. } => {
+        LiveViewerMessage::Composition { text, .. } => {
             if text.is_empty() && !held.composing {
                 return Ok(());
             }
@@ -302,11 +310,11 @@ async fn deliver(
             )
             .await
         }
-        LiveInbound::Paste { text, html, .. } => {
+        LiveViewerMessage::Paste { text, html, .. } => {
             held.composing = false;
             dispatch(tab, paste(tab, &text, &html)).await
         }
-        LiveInbound::Choice {
+        LiveViewerMessage::Choice {
             token,
             revision,
             value,
@@ -315,7 +323,7 @@ async fn deliver(
         } => {
             let accepted = observers::choose(tab, &token, revision, &value, &indices).await?;
             writer
-                .control(&super::super::protocol::LiveOutbound::Choice { token, accepted })
+                .control(&LiveModuleMessage::Choice { token, accepted })
                 .await;
             Ok(())
         }

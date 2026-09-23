@@ -3,18 +3,21 @@
 //! payload. The stream itself has no message boundaries.
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
+use demi_builtin_protocol::{
+    browser::TabId,
+    live::{
+        CONTROL_FRAME, FILE_FRAME, FileHeader, LiveModuleMessage, LiveViewerMessage,
+        MAX_FRAME_BYTES, VIDEO_FRAME, VideoHeader,
+    },
+};
 use demi_command_service::{Input, ServiceError};
 
-use super::super::protocol::{
-    LIVE_CONTROL_FRAME, LIVE_FILE_FRAME, LIVE_FILE_HEADER_BYTES, LIVE_MAX_FRAME_BYTES,
-    LIVE_VIDEO_FRAME, LIVE_VIDEO_HEADER_BYTES, LiveInbound, LiveOutbound,
-};
 use super::capture::Frame;
 
 /// What the page sends.
 #[derive(Debug)]
 pub(crate) enum Inbound {
-    Control(LiveInbound),
+    Control(LiveViewerMessage),
     /// Bytes of the `file`th file of an upload.
     File {
         upload: u32,
@@ -43,7 +46,7 @@ impl Reader {
             if self.pending.len() >= 4 {
                 let length = u32::from_be_bytes(self.pending[..4].try_into().expect("four bytes"));
                 let length = usize::try_from(length).unwrap_or(usize::MAX);
-                if length == 0 || length > LIVE_MAX_FRAME_BYTES {
+                if length == 0 || length > MAX_FRAME_BYTES {
                     return Err(invalid("a live frame is empty or too large"));
                 }
                 if self.pending.len() >= 4 + length {
@@ -63,14 +66,18 @@ impl Reader {
 
 fn decode(frame: &mut Bytes) -> Result<Inbound, ServiceError> {
     match frame.get_u8() {
-        LIVE_CONTROL_FRAME => serde_json::from_slice(frame)
+        CONTROL_FRAME => LiveViewerMessage::decode(frame)
             .map(Inbound::Control)
             .map_err(|error| invalid(&format!("invalid live message: {error}"))),
-        LIVE_FILE_FRAME if frame.len() >= LIVE_FILE_HEADER_BYTES => Ok(Inbound::File {
-            upload: frame.get_u32(),
-            file: frame.get_u32(),
-            data: frame.clone(),
-        }),
+        FILE_FRAME => {
+            let (header, data) = FileHeader::split(frame)
+                .map_err(|error| invalid(&format!("invalid file frame: {error}")))?;
+            Ok(Inbound::File {
+                upload: header.upload,
+                file: header.file,
+                data: frame.slice_ref(data),
+            })
+        }
         _ => Err(invalid("unknown live frame")),
     }
 }
@@ -88,33 +95,28 @@ fn framed(kind: u8, payload_length: usize, write: impl FnOnce(&mut BytesMut)) ->
 }
 
 /// A control message to the page.
-pub(crate) fn control(message: &LiveOutbound) -> Bytes {
+pub(crate) fn control(message: &LiveModuleMessage) -> Bytes {
     let json = serde_json::to_vec(message).expect("live messages serialize");
-    framed(LIVE_CONTROL_FRAME, json.len(), |bytes| {
-        bytes.extend_from_slice(&json)
-    })
+    framed(CONTROL_FRAME, json.len(), |bytes| bytes.extend_from_slice(&json))
 }
 
 /// A video frame to the page, in the viewer's stream generation.
-pub(crate) fn video(tab: &str, generation: u32, sequence: u32, frame: &Frame) -> Bytes {
-    framed(
-        LIVE_VIDEO_FRAME,
-        LIVE_VIDEO_HEADER_BYTES + frame.data.len(),
-        |bytes| {
-            let mut id = [0_u8; 24];
-            let length = tab.len().min(id.len());
-            id[..length].copy_from_slice(&tab.as_bytes()[..length]);
-            bytes.put_slice(&id);
-            bytes.put_u32(generation);
-            bytes.put_u32(sequence);
-            bytes.put_u8(u8::from(frame.key));
-            bytes.put_bytes(0, 3);
-            bytes.put_f64(frame.timestamp);
-            bytes.put_u16(frame.width);
-            bytes.put_u16(frame.height);
-            bytes.extend_from_slice(&frame.data);
-        },
-    )
+pub(crate) fn video(tab: &TabId, generation: u32, sequence: u32, frame: &Frame) -> Bytes {
+    let header = VideoHeader {
+        tab: tab.clone(),
+        generation,
+        sequence,
+        key: frame.key,
+        timestamp: frame.timestamp,
+        width: frame.width,
+        height: frame.height,
+    };
+    let mut head = Vec::with_capacity(VideoHeader::BYTES);
+    header.write(&mut head);
+    framed(VIDEO_FRAME, head.len() + frame.data.len(), |bytes| {
+        bytes.extend_from_slice(&head);
+        bytes.extend_from_slice(&frame.data);
+    })
 }
 
 #[cfg(test)]
@@ -127,15 +129,15 @@ mod tests {
         let release = br#"{"type":"release"}"#;
         let mut bytes = BytesMut::new();
         for (kind, payload) in [
-            (LIVE_CONTROL_FRAME, &hello[..]),
-            (LIVE_CONTROL_FRAME, &release[..]),
+            (CONTROL_FRAME, &hello[..]),
+            (CONTROL_FRAME, &release[..]),
         ] {
             bytes.put_u32(1 + payload.len() as u32);
             bytes.put_u8(kind);
             bytes.put_slice(payload);
         }
         bytes.put_u32(1 + 8 + 3);
-        bytes.put_u8(LIVE_FILE_FRAME);
+        bytes.put_u8(FILE_FRAME);
         bytes.put_u32(7);
         bytes.put_u32(1);
         bytes.put_slice(b"abc");
@@ -152,11 +154,12 @@ mod tests {
             let mut reader = Reader::new(input);
             assert!(matches!(
                 reader.next().await.unwrap(),
-                Some(Inbound::Control(LiveInbound::Hello { platform })) if platform == "mac"
+                Some(Inbound::Control(LiveViewerMessage::Hello { platform }))
+                    if platform == demi_builtin_protocol::live::Platform::Mac
             ));
             assert!(matches!(
                 reader.next().await.unwrap(),
-                Some(Inbound::Control(LiveInbound::Release {}))
+                Some(Inbound::Control(LiveViewerMessage::Release {}))
             ));
             assert!(matches!(
                 reader.next().await.unwrap(),
@@ -171,8 +174,8 @@ mod tests {
         for bytes in [
             vec![0, 0, 0, 0],
             vec![0, 0, 0, 1, 9],
-            vec![0, 0, 0, 3, LIVE_CONTROL_FRAME, b'{', b'}'],
-            vec![0, 0, 0, 5, LIVE_CONTROL_FRAME],
+            vec![0, 0, 0, 3, CONTROL_FRAME, b'{', b'}'],
+            vec![0, 0, 0, 5, CONTROL_FRAME],
         ] {
             let input = Input::from_stream(futures_util::stream::iter([Ok(Bytes::from(bytes))]));
             assert!(Reader::new(input).next().await.is_err());

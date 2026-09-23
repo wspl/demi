@@ -38,30 +38,11 @@ pub(super) async fn pattern_matches(
 
 /// Validate the entire browser query before resolving any branch or publishing references.
 pub(super) fn parse(body: &str) -> Result<BrowserQuery> {
-    let query: BrowserQuery = serde_json::from_str(body)
-        .map_err(|error| BrowserError::Configuration(error.to_string()))?;
-    let mut pending = vec![&query];
-    while let Some(query) = pending.pop() {
-        if usize::from(query.r#match.is_some())
-            + usize::from(query.and.is_some())
-            + usize::from(query.or.is_some())
-            != 1
-        {
-            return Err(BrowserError::Configuration(
-                "a query requires exactly one base: match, and, or".into(),
-            ));
-        }
-        if let Some(locator) = &query.r#match {
-            let target: BrowserTarget = serde_json::from_value(json!(locator))
-                .map_err(|error| BrowserError::Configuration(error.to_string()))?;
-            validate_target(&target)?;
-        }
-        pending.extend(query.within.as_deref());
-        pending.extend(query.frame.as_deref());
-        pending.extend(query.has.as_deref());
-        pending.extend(query.has_not.as_deref());
-        for branch in query.and.iter().chain(query.or.iter()).flatten() {
-            pending.push(branch);
+    let query =
+        BrowserQuery::parse(body).map_err(|error| BrowserError::Configuration(error.to_string()))?;
+    for branch in query.branches() {
+        if let Some(locator) = &branch.r#match {
+            validate_target(&BrowserTarget::from(locator.clone()))?;
         }
     }
     Ok(query)
@@ -106,9 +87,8 @@ impl Observation {
                 }
             }
             let mut matches = if let Some(locator) = &query.r#match {
-                let target = serde_json::from_value(json!(locator))
-                    .map_err(|error| BrowserError::Configuration(error.to_string()))?;
-                self.resolve(page, &target, refs).await?
+                self.resolve(page, &BrowserTarget::from(locator.clone()), refs)
+                    .await?
             } else {
                 let mut branches = query
                     .and

@@ -24,7 +24,10 @@ use super::{
     BrowserEnvironment, BrowserError, BrowserTab, Result,
     history::Buffer,
     operation::{CONTROL_TIMEOUT, Operation},
-    protocol::{BrowserCommand, CDP_BYTES, CDP_EVENTS, DEFAULT_NODES},
+    protocol::{
+        BrowserErrorCode, BrowserOperation, CDP_BYTES, CDP_EVENTS, Capability, CdpDetachResult,
+        CdpEvent, CdpEventsResult, CdpSendResult, CdpTarget, CdpTargetsResult, DEFAULT_NODES,
+    },
 };
 
 const DENIED_DOMAINS: &[&str] = &[
@@ -84,7 +87,7 @@ struct Target {
 }
 
 struct Events {
-    buffer: Mutex<Buffer>,
+    buffer: Mutex<Buffer<CdpEvent>>,
     changed: Notify,
 }
 
@@ -97,19 +100,25 @@ impl Events {
     }
 
     async fn push(&self, event: WireEvent, target: &str) -> Result<()> {
-        self.buffer.lock().await.push(json!({
-            "method": event.method,
-            "params": event.params,
-            "target": target
-        }))?;
+        self.buffer.lock().await.push(CdpEvent {
+            sequence: 0,
+            method: event.method,
+            params: event.params,
+            target: target.into(),
+        })?;
         self.changed.notify_waiters();
         Ok(())
     }
 }
 
 /// Expose the design's denied list without copying the pinned method catalog.
-pub(super) fn capability() -> Value {
-    json!({"id":"cdp", "available":true, "schema":{"deniedDomains":DENIED_DOMAINS,"deniedMethods":DENIED_METHODS,"help":"demi browser cdp --help"}})
+pub(super) fn capability() -> Capability {
+    Capability {
+        id: "cdp".into(),
+        available: true,
+        reason: None,
+        schema: Some(json!({"deniedDomains": DENIED_DOMAINS, "deniedMethods": DENIED_METHODS, "help": "demi browser cdp --help"})),
+    }
 }
 
 /// Execute only pinned tab/child methods; never accept a caller session identifier.
@@ -117,7 +126,7 @@ pub(super) async fn execute(
     context: &InvocationContext,
     environment: &BrowserEnvironment,
     tab: Option<&BrowserTab>,
-    command: &BrowserCommand,
+    command: &BrowserOperation,
     cancel: &CancellationToken,
     deadline: tokio::time::Instant,
 ) -> Result<Value> {
@@ -129,12 +138,14 @@ pub(super) async fn execute(
         .try_lock()
         .map_err(|_| BrowserError::Busy)?;
     let owner = super::conversations::agent(context)?;
-    if matches!(command, BrowserCommand::CdpDetach(_)) {
+    if matches!(command, BrowserOperation::CdpDetach(_)) {
         cancel_owner(tab, owner).await?;
-        return Ok(json!({"detached":tab.id()}));
+        return super::output::value(CdpDetachResult {
+            detached: tab.id().clone(),
+        });
     }
     let mut state = tab.state.cdp.lock().await;
-    let parameters = if let BrowserCommand::CdpSend(input) = command {
+    let parameters = if let BrowserOperation::CdpSend(input) = command {
         admit(&input.method)?;
         let params: Value = serde_json::from_str(&input.params)
             .map_err(|error| BrowserError::Configuration(error.to_string()))?;
@@ -173,7 +184,7 @@ pub(super) async fn execute(
         .clone();
     drop(state);
     match command {
-        BrowserCommand::CdpTargets(input) => {
+        BrowserOperation::CdpTargets(input) => {
             // A round trip flushes attachment events already queued by Chrome.
             operation
                 .run(connection.send("Runtime.getIsolateId", json!({}), "main"))
@@ -194,24 +205,23 @@ pub(super) async fn execute(
                     serde_json::from_value(value).map_err(|error| {
                         BrowserError::Cdp(chromiumoxide::error::CdpError::msg(error.to_string()))
                     })?;
-                rows.push(
-                    json!({"id":id,"kind":target.target_info.r#type,"url":target.target_info.url}),
-                );
+                rows.push(CdpTarget {
+                    id,
+                    kind: target.target_info.r#type,
+                    url: target.target_info.url,
+                });
             }
-            rows.sort_by(|left, right| left["id"].as_str().cmp(&right["id"].as_str()));
-            let offset = usize::try_from(input.offset.unwrap_or(0))
-                .map_err(|_| BrowserError::Configuration("offset is too large".into()))?;
-            let limit = usize::try_from(
-                input
-                    .limit
-                    .unwrap_or(u64::try_from(DEFAULT_NODES).expect("default fits")),
-            )
-            .map_err(|_| BrowserError::Configuration("limit is too large".into()))?;
+            rows.sort_by(|left, right| left.id.cmp(&right.id));
+            let offset = input.offset.unwrap_or(0);
+            let limit = input.limit.unwrap_or(DEFAULT_NODES);
             let count = rows.len();
-            let rows: Vec<_> = rows.into_iter().skip(offset).take(limit).collect();
-            Ok(json!({"targets":rows,"truncated":offset.saturating_add(limit)<count}))
+            let targets = rows.into_iter().skip(offset).take(limit).collect();
+            super::output::value(CdpTargetsResult {
+                targets,
+                truncated: offset.saturating_add(limit) < count,
+            })
         }
-        BrowserCommand::CdpSend(input) => {
+        BrowserOperation::CdpSend(input) => {
             let params = parameters.expect("send parameters were validated before attachment");
             let result = operation
                 .run(connection.send(
@@ -220,19 +230,23 @@ pub(super) async fn execute(
                     input.target.as_deref().unwrap_or("main"),
                 ))
                 .await;
-            if result
-                .as_ref()
-                .is_err_and(|error| matches!(error.code(), "cancelled" | "timeout"))
-            {
+            let sent = |result| CdpSendResult {
+                method: input.method.clone(),
+                result,
+            };
+            if result.as_ref().is_err_and(|error| {
+                matches!(
+                    error.code(),
+                    BrowserErrorCode::Cancelled | BrowserErrorCode::Timeout
+                )
+            }) {
                 let cleanup = cancel_owner(tab, owner).await;
-                return super::operation::after_cleanup(
-                    result.map(|result| json!({"method":input.method,"result":result})),
-                    cleanup,
-                );
+                return super::operation::after_cleanup(result.map(sent), cleanup)
+                    .and_then(super::output::value);
             }
-            Ok(json!({"method":input.method,"result":result?}))
+            super::output::value(sent(result?))
         }
-        BrowserCommand::CdpEvents(input) => {
+        BrowserOperation::CdpEvents(input) => {
             if let Some(methods) = &input.method {
                 for method in methods {
                     catalog()?.schema(method, "event")?;
@@ -246,44 +260,41 @@ pub(super) async fn execute(
                 let changed = events.changed.notified();
                 let buffer = events.buffer.lock().await;
                 let Some(after) = &input.after else {
-                    return Ok(
-                        json!({"events":[],"cursor":buffer.cursor(buffer.next()),"hasMore":false,"truncated":false}),
-                    );
+                    return super::output::value(CdpEventsResult {
+                        events: Vec::new(),
+                        cursor: buffer.cursor(buffer.next()),
+                        has_more: false,
+                        truncated: false,
+                    });
                 };
                 let position = buffer.position(after)?;
-                let limit = usize::try_from(
-                    input
-                        .limit
-                        .unwrap_or(u64::try_from(DEFAULT_NODES).expect("default fits")),
-                )
-                .map_err(|_| BrowserError::Configuration("limit is too large".into()))?;
-                let matches: Vec<_> = buffer
+                let limit = input.limit.unwrap_or(DEFAULT_NODES);
+                let matches: Vec<&CdpEvent> = buffer
                     .entries()
                     .filter(|entry| {
-                        entry["sequence"]
-                            .as_u64()
-                            .is_some_and(|sequence| sequence >= position)
-                            && entry["target"] == target
-                            && input.method.as_ref().is_none_or(|methods| {
-                                methods.iter().any(|method| entry["method"] == *method)
-                            })
+                        entry.sequence >= position
+                            && entry.target == target
+                            && input
+                                .method
+                                .as_ref()
+                                .is_none_or(|methods| methods.contains(&entry.method))
                     })
                     .collect();
                 let more = matches.len() > limit;
-                let rows: Vec<_> = matches.into_iter().take(limit).cloned().collect();
+                let rows: Vec<CdpEvent> = matches.into_iter().take(limit).cloned().collect();
                 let cursor = if more {
-                    rows.last()
-                        .and_then(|entry| entry["sequence"].as_u64())
-                        .expect("nonempty limited page")
-                        + 1
+                    rows.last().expect("nonempty limited page").sequence + 1
                 } else {
                     buffer.next()
                 };
-                let result = json!({"events":rows,"cursor":buffer.cursor(cursor),"hasMore":more,"truncated":buffer.truncated_since(position)});
-                if !rows.is_empty()
-                    || input.timeout.is_none()
-                    || tokio::time::Instant::now() >= deadline
-                {
+                let empty = rows.is_empty();
+                let result = super::output::value(CdpEventsResult {
+                    events: rows,
+                    cursor: buffer.cursor(cursor),
+                    has_more: more,
+                    truncated: buffer.truncated_since(position),
+                })?;
+                if !empty || input.timeout.is_none() || tokio::time::Instant::now() >= deadline {
                     return Ok(result);
                 }
                 drop(buffer);
