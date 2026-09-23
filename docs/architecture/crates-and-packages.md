@@ -466,7 +466,10 @@ Each crate implements the provider contract for one vendor family.
   as the live view's `browser` stream. Its modules are listed in
   [Backend](../backend/backend.md#request-paths-and-responsibilities).
 - **Public boundary:** the `demi-backend` executable; `Backend::start` and
-  `BackendConfig` for tests.
+  `BackendConfig` for tests, with the parts a test replaces: the provider
+  families entries are assembled with (`FamilyRegistry`, `ProviderFamily` and
+  the arguments a family builds a provider from) and the login timing
+  (`LoginTiming`).
 - **Must not:** be linked by another crate; put business logic in the HTTP
   layer beyond routing and validation; return secrets or proxy model traffic;
   spawn `runsc` or image tools itself (every sandbox and disk operation goes to
