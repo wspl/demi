@@ -51,7 +51,9 @@ impl CommandSet {
             )));
         }
         if self.roots.iter().any(|root| root.name() == name) {
-            return Err(RegisterError(format!("command \"{name}\" is already registered")));
+            return Err(RegisterError(format!(
+                "command \"{name}\" is already registered"
+            )));
         }
         check(&declared)?;
         self.handlers.extend(declared.handlers);
@@ -62,7 +64,11 @@ impl CommandSet {
     /// Places `node` in the group at `parent`, a path from a root, in place
     /// of the child with its name or after the others. The root is checked
     /// again as a whole and stays as it was when it is refused.
-    pub fn graft(&mut self, parent: &[&str], node: impl Into<Declared>) -> Result<(), RegisterError> {
+    pub fn graft(
+        &mut self,
+        parent: &[&str],
+        node: impl Into<Declared>,
+    ) -> Result<(), RegisterError> {
         let declared = node.into();
         let named = parent.join(" ");
         let (root_name, below) = parent
@@ -77,7 +83,11 @@ impl CommandSet {
         let group = group_mut(&mut root, below)
             .ok_or_else(|| RegisterError(format!("\"{named}\" is not a group")))?;
         let name = declared.tree.name().to_owned();
-        match group.subcommands.iter_mut().find(|child| child.name() == name) {
+        match group
+            .subcommands
+            .iter_mut()
+            .find(|child| child.name() == name)
+        {
             Some(child) => *child = declared.tree,
             None => group.subcommands.push(declared.tree),
         }
@@ -138,7 +148,11 @@ impl CommandSet {
         if self.roots.is_empty() {
             return String::new();
         }
-        let roots: Vec<String> = self.roots.iter().map(|root| root.help(root.name())).collect();
+        let roots: Vec<String> = self
+            .roots
+            .iter()
+            .map(|root| root.help(root.name()))
+            .collect();
         format!("{HELP_DEFAULTS}\n\n{}", roots.join("\n\n"))
     }
 
@@ -171,7 +185,10 @@ impl CommandSet {
             let Node::Group(group) = node else {
                 return None;
             };
-            node = group.subcommands.iter().find(|child| child.name() == name)?;
+            node = group
+                .subcommands
+                .iter()
+                .find(|child| child.name() == name)?;
         }
         node.leaf()
     }
@@ -228,7 +245,10 @@ fn group_mut<'a>(
     let mut node = node;
     for name in path {
         node = match node {
-            Node::Group(group) => group.subcommands.iter_mut().find(|child| child.name() == *name)?,
+            Node::Group(group) => group
+                .subcommands
+                .iter_mut()
+                .find(|child| child.name() == *name)?,
             Node::Leaf(_) => return None,
         };
     }
