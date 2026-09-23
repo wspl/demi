@@ -13,6 +13,7 @@ members = [
   "crates/demi-claude",
   "crates/demi-commands",
   "crates/gates",
+  "crates/host-remote",
   "crates/runner",
   "crates/runner-protocol",
   "crates/shell",
