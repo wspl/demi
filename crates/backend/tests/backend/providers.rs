@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use demi_backend::FamilyRegistry;
 use demi_provider::CatalogError;
-use demi_provider::testing::{MockResponse, MockVendor};
+use demi_provider::testing::{MockResponse, MockVendor, RecordedRequest, sse_body};
 use demi_web_api::auth::Role;
 use demi_web_api::error::ErrorCode;
 use demi_web_api::providers::{
@@ -345,9 +345,9 @@ async fn a_vendor_entry_takes_its_family_wire_and_endpoint_from_models_dev_and_r
         .with_models_dev(vendor.url("/api.json"));
     let (backend, master) = harness.start_set_up().await;
     vendor.respond(served(&models_dev_document()));
-    // Only vendors a registered family speaks to, by name; Bedrock's package
-    // has no family, Copilot is excluded by name, and z.ai's family is not
-    // registered here.
+    // Only vendors a family speaks to, by name: Bedrock's package has no
+    // family, and Copilot is excluded by name. A vendor that names no
+    // endpoint and has no official one starts without.
     let offered = backend
         .get("/api/providers/catalog", Some(&master))
         .await
@@ -364,6 +364,7 @@ async fn a_vendor_entry_takes_its_family_wire_and_endpoint_from_models_dev_and_r
                     "baseUrl": "https://api.deepseek.com", "doc": "https://api-docs.deepseek.com" }),
             json!({ "id": "minimax", "name": "MiniMax", "providerType": "anthropic",
                     "baseUrl": "https://api.minimax.io/anthropic/v1", "doc": null }),
+            json!({ "id": "zai", "name": "z.ai", "providerType": "google", "baseUrl": null, "doc": null }),
         ]
     );
     let unknown = backend
@@ -533,6 +534,37 @@ async fn a_directory_catalog_is_cached_refreshed_on_demand_and_kept_after_a_fail
 }
 
 /// A Messages API stream that answers `ok`.
+/// Tests a new entry of `family`, on `wire` when it names one, whose vendor
+/// streams `stream`, and answers the request the vendor received.
+async fn tested(
+    backend: &TestBackend,
+    master: &Session,
+    vendor: &MockVendor,
+    family: &str,
+    wire: Option<&str>,
+    stream: String,
+) -> RecordedRequest {
+    let mut body = json!({
+        "source": "custom", "providerType": family, "label": family, "apiKey": "sk-2",
+        "baseUrl": vendor.url("/v1"), "models": [configured("m")]
+    });
+    if let Some(wire) = wire {
+        body["wireApi"] = json!(wire);
+    }
+    let entry = create(backend, master, body).await;
+    vendor.respond(MockResponse::event_stream(stream));
+    let path = format!("/api/providers/{}/test", entry.id);
+    let result = backend
+        .post(&path, Some(master), json!({ "modelId": "m" }))
+        .await
+        .json::<TestResult>();
+    let passed = TestResult::Passed {
+        model: "m display".into(),
+    };
+    assert_eq!(result, passed, "{family} {wire:?}");
+    vendor.requests().pop().expect("the test sent a request")
+}
+
 fn answered() -> MockResponse {
     let frames = [
         json!({ "type": "message_start", "message": {
@@ -616,5 +648,36 @@ async fn the_provider_test_sends_one_real_request_through_the_entrys_family() {
         .await;
     assert_eq!(account.refusal(), (StatusCode::NOT_FOUND, ErrorCode::AccountNotFound));
     assert_eq!(vendor.requests().len(), 2);
+
+    // The other API-key families build from their entries alike: an
+    // `openai` entry on the wire it names or on Responses, and a `google`
+    // entry.
+    let compatible = format!(
+        "{}data: [DONE]\n\n",
+        sse_body(&[json!({ "choices": [{ "delta": { "content": "ok" } }] })])
+    );
+    let completed = sse_body(&[json!({
+        "type": "response.completed", "response": { "usage": { "input_tokens": 1, "output_tokens": 1 } }
+    })]);
+    let chat = tested(
+        &backend,
+        &master,
+        &vendor,
+        "openai",
+        Some("chat-completions"),
+        compatible,
+    )
+    .await;
+    assert_eq!(
+        (chat.uri.path(), chat.header("authorization")),
+        ("/v1/chat/completions", Some("Bearer sk-2"))
+    );
+    let responses = tested(&backend, &master, &vendor, "openai", None, completed).await;
+    assert_eq!(responses.uri.path(), "/v1/responses");
+    let google = tested(&backend, &master, &vendor, "google", None, String::new()).await;
+    assert_eq!(
+        (google.uri.path(), google.header("x-goog-api-key")),
+        ("/v1/models/m:streamGenerateContent", Some("sk-2"))
+    );
     backend.close().await;
 }

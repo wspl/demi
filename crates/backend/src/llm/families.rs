@@ -13,6 +13,8 @@ use demi_provider::models_dev::ModelsDevClient;
 use demi_provider::quota::QuotaSnapshotStore;
 use demi_provider::{Provider, Secret};
 use demi_provider_anthropic_api::{AnthropicConfig, AnthropicProvider};
+use demi_provider_google::{GoogleConfig, GoogleProvider};
+use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider, VendorPolicy};
 use demi_web_api::providers::{CredentialKind, WireApi};
 use url::Url;
 
@@ -60,7 +62,8 @@ pub struct ApiKeyArgs {
     /// The vendor's API base; the family's default without it.
     pub base_url: Option<Url>,
     pub wire_api: Option<WireApi>,
-    /// The request requirements of the vendor the entry was added from.
+    /// The request requirements of the vendor the entry was added from,
+    /// which the OpenAI wires apply.
     pub vendor: VendorPolicy,
 }
 
@@ -75,15 +78,6 @@ pub struct SubscriptionArgs {
 pub struct AccountBinding {
     pub credential_id: String,
     pub quota: Arc<dyn QuotaSnapshotStore>,
-}
-
-/// A vendor's request requirements, which the backend applies to every model
-/// of the vendor (`providers.md` § Vendors from models.dev).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct VendorPolicy {
-    /// Replay earlier thinking as `reasoning_content` on Chat Completions
-    /// tool-call continuations, as DeepSeek needs.
-    pub pass_back_reasoning_content: bool,
 }
 
 /// Why a family could not build a provider.
@@ -105,7 +99,10 @@ pub struct FamilyRegistry {
 impl FamilyRegistry {
     /// The families built into the backend.
     pub fn builtin() -> Self {
-        Self::default().with("anthropic", AnthropicFamily)
+        Self::default()
+            .with("anthropic", AnthropicFamily)
+            .with("google", GoogleFamily)
+            .with("openai", OpenAiFamily)
     }
 
     /// The registry with `family` under `name`, in place of any family of
@@ -147,5 +144,61 @@ impl ProviderFamily for AnthropicFamily {
             base_url: settings.base_url,
         };
         Ok(Arc::new(AnthropicProvider::new(config, args.clock)))
+    }
+}
+
+/// The `openai` family: the Responses API, or Chat Completions for an
+/// OpenAI-compatible endpoint, with an API key.
+struct OpenAiFamily;
+
+impl ProviderFamily for OpenAiFamily {
+    fn credential(&self) -> CredentialKind {
+        CredentialKind::ApiKey
+    }
+
+    fn wires(&self) -> &'static [WireApi] {
+        &[WireApi::Responses, WireApi::ChatCompletions]
+    }
+
+    fn provider(&self, args: FamilyArgs) -> Result<Arc<dyn Provider>, FamilyError> {
+        let FamilyCredential::ApiKey(settings) = args.credential else {
+            return Err(FamilyError::WrongCredential);
+        };
+        // An entry that names no wire speaks Responses.
+        let wire = match settings.wire_api {
+            None | Some(WireApi::Responses) => demi_provider_openai_api::WireApi::Responses,
+            Some(WireApi::ChatCompletions) => demi_provider_openai_api::WireApi::ChatCompletions,
+        };
+        let config = OpenAiConfig {
+            id: args.entry_id,
+            display_name: args.label,
+            api_key: settings.api_key,
+            base_url: settings.base_url,
+            wire,
+            policy: settings.vendor,
+        };
+        Ok(Arc::new(OpenAiProvider::new(config, args.clock)))
+    }
+}
+
+/// The `google` family: Gemini's `generateContent` API with an API key.
+struct GoogleFamily;
+
+impl ProviderFamily for GoogleFamily {
+    fn credential(&self) -> CredentialKind {
+        CredentialKind::ApiKey
+    }
+
+    fn provider(&self, args: FamilyArgs) -> Result<Arc<dyn Provider>, FamilyError> {
+        let FamilyCredential::ApiKey(settings) = args.credential else {
+            return Err(FamilyError::WrongCredential);
+        };
+        let config = GoogleConfig {
+            id: args.entry_id,
+            display_name: args.label,
+            api_key: settings.api_key,
+            base_url: settings.base_url,
+        };
+        Ok(Arc::new(GoogleProvider::new(config, args.clock)))
     }
 }
