@@ -1,5 +1,7 @@
 # Working Principles
 
+- Be pragmatic, never formalistic. Every step either moves the work forward or protects its correctness; drop ceremony that does neither, such as a check that cannot fail on the change at hand, a repeated full suite, or a report nobody needs.
+- Follow the boy scout rule and decide on the spot. When you notice on the way something that slows the work or is wrong (a slow or duplicated build, a flaky test, a stale script, a wasteful habit), fix it then and note what you changed and why where the next session reads it; for the Rust migration that is `plan.md` § Working method. Do not stop to ask or save it for a review. Stop and ask only about what changes the agreed design or scope, cannot be undone, or reaches beyond the repository and its build products.
 - Read the authoritative design before discussing changes. Inspect the implementation when needed to verify feasibility or investigate behavior; resolve discrepancies explicitly rather than treating code as an implicit design decision.
 - Prefer simple, direct designs with clear responsibilities and explicit dependencies.
 - Keep each fact defined in one place. Reuse existing code and contracts; consolidate duplication.
