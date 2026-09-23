@@ -11,7 +11,7 @@ use std::{
 
 use crate::protocol::{
     EDIT_FILE_BYTES, EDIT_JOB_BYTES, EDIT_JOB_FILES, EDIT_JOB_SEGMENTS, EditContext, EditCopies,
-    EditFile, EditJournal,
+    EditFile, EditJournal, EditKind,
 };
 
 #[derive(Clone)]
@@ -175,9 +175,9 @@ impl Recording {
                 self.journal.files.push(EditFile {
                     path,
                     kind: if matches!(before, Contents::Missing) {
-                        "added".into()
+                        EditKind::Added
                     } else {
-                        "modified".into()
+                        EditKind::Modified
                     },
                     edits: Vec::new(),
                 });
@@ -453,7 +453,7 @@ mod tests {
         first.record(&path, || fs::write(&path, "one")).unwrap();
         native.record(&path, || fs::write(&path, "two")).unwrap();
         let report = first.report().unwrap();
-        assert_eq!(report.files[0].kind, "added");
+        assert_eq!(report.files[0].kind, EditKind::Added);
         assert_eq!(report.files[0].edits.len(), 1);
         assert_eq!(
             contents(&report.files[0].edits[0]),
@@ -532,7 +532,7 @@ mod tests {
             .record(&path, || fs::write(&path, [0, 1, 2]))
             .unwrap();
         let report = recorder.report().unwrap();
-        assert_eq!(report.files[0].kind, "added");
+        assert_eq!(report.files[0].kind, EditKind::Added);
         assert!(report.files[0].edits[0].modified.is_none());
     }
 }

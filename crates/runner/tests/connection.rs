@@ -44,7 +44,7 @@ async fn typed_exchange_and_remote_close() {
             client.input.recv().await.unwrap(),
             wire::Inbound::Ping {}
         ));
-        client.output.send(wire::pong(2).unwrap()).await.unwrap();
+        client.output.send(wire::encode(&wire::Outbound::Pong { jobs: 2 }).unwrap()).await.unwrap();
         let response = server.next().await.unwrap().unwrap().into_data();
         let value: serde_json::Value = rmp_serde::from_slice(&response).unwrap();
         assert_eq!(value, serde_json::json!({"type":"pong", "jobs":2}));
@@ -60,11 +60,11 @@ async fn typed_exchange_and_remote_close() {
 async fn close_interrupts_stalled_output() {
     tokio::time::timeout(Duration::from_secs(3), async {
         let (client, _server) = pair().await;
-        let output = wire::spawn_output(
-            "stalled".into(),
-            "stdout".into(),
-            wire::WireBytes(vec![0; 65536]),
-        )
+        let output = wire::encode(&wire::Outbound::SpawnOutput {
+            spawn_id: "stalled".into(),
+            stream: wire::OutputStream::Stdout,
+            bytes: wire::WireBytes(vec![0; 65536]),
+        })
         .unwrap();
         client.output.send(output).await.unwrap();
         tokio::task::yield_now().await;

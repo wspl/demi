@@ -58,7 +58,7 @@ pub trait Handler: Send + Sync + 'static {
         context: ConversationContext,
     ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
         Box::pin(async move {
-            let body = if context.request.operation == "status" {
+            let body = if context.request == (ConversationRequest::Status {}) {
                 Bytes::from_static(b"{\"conversations\":[]}")
             } else {
                 Bytes::from_static(b"{}")
@@ -314,7 +314,10 @@ async fn invoke<H: Handler + ?Sized>(
     {
         return reject(&mut response, StatusCode::NOT_FOUND);
     }
-    let release = matches!(&call, Call::Conversation(request) if request.operation == "release");
+    let release = matches!(
+        &call,
+        Call::Conversation(ConversationRequest::Release { .. })
+    );
     let mut stream = response.send_response(Response::new(()), false)?;
     let (output, mut receiver) = Output::channel(cancellation.clone());
     let work = match call {

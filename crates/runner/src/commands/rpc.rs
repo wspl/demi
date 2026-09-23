@@ -1,7 +1,7 @@
 //! Application callback streams carried over the authenticated runner connection.
 
-use crate::commands::manifest::Parsed;
-use crate::connection::wire::{self as wire, Inbound, JobStartStdin};
+use demi_command_tree::Parsed;
+use crate::connection::wire::{self as wire, Inbound, PipeRef};
 use crate::{
     commands::command_output::CommandOutput, commands::contexts::ExecutionContext,
     pipes::PipeClient,
@@ -31,8 +31,8 @@ pub struct Request {
 
 enum Event {
     Pipes {
-        stdin: Option<JobStartStdin>,
-        stdout: JobStartStdin,
+        stdin: Option<PipeRef>,
+        stdout: PipeRef,
     },
     Stderr(Bytes),
     Pull,
@@ -44,12 +44,12 @@ struct Entry {
 }
 struct CallTransport<'a> {
     id: &'a str,
-    output: &'a mpsc::Sender<wire::Outbound>,
+    output: &'a mpsc::Sender<wire::Frame>,
     stop: &'a CancellationToken,
 }
 
 struct Connection {
-    output: mpsc::Sender<wire::Outbound>,
+    output: mpsc::Sender<wire::Frame>,
     stop: CancellationToken,
 }
 struct State {
@@ -78,7 +78,7 @@ impl Drop for Pending {
         if let Some(entry) = state.calls.remove(&self.id) {
             entry.cancel.cancel();
             if let Some(connection) = &mut state.connection {
-                match wire::rpc_cancel(self.id.clone()) {
+                match wire::encode(&wire::Outbound::RpcCancel { call_id: self.id.clone() }) {
                     Ok(message) => {
                         if connection.output.try_send(message).is_err() {
                             connection.stop.cancel();
@@ -95,8 +95,8 @@ impl Drop for Pending {
 
 /// A hint belongs to one invocation and is cleared even if its future is dropped.
 pub struct RunningHint {
-    clear: Option<wire::Outbound>,
-    output: mpsc::Sender<wire::Outbound>,
+    clear: Option<wire::Frame>,
+    output: mpsc::Sender<wire::Frame>,
     stop: CancellationToken,
 }
 impl Drop for RunningHint {
@@ -125,9 +125,17 @@ impl Calls {
             (connection.output.clone(), connection.stop.clone())
         };
         let id = uuid::Uuid::new_v4().simple().to_string();
-        let set = wire::job_running_hint(job_id.into(), id.clone(), Some(hint.into()))
+        let set = wire::encode(&wire::Outbound::JobRunningHint {
+            job_id: job_id.into(),
+            invocation_id: id.clone(),
+            hint: Some(hint.into()),
+        })
             .map_err(handler)?;
-        let clear = wire::job_running_hint(job_id.into(), id, None).map_err(handler)?;
+        let clear = wire::encode(&wire::Outbound::JobRunningHint {
+            job_id: job_id.into(),
+            invocation_id: id,
+            hint: None,
+        }).map_err(handler)?;
         let guard = RunningHint {
             clear: Some(clear),
             output,
@@ -149,7 +157,7 @@ impl Calls {
             pipes,
         })
     }
-    pub fn attach(&self, output: mpsc::Sender<wire::Outbound>, stop: CancellationToken) {
+    pub fn attach(&self, output: mpsc::Sender<wire::Frame>, stop: CancellationToken) {
         self.detach();
         self.state.lock().unwrap().connection = Some(Connection { output, stop });
     }
@@ -178,16 +186,13 @@ impl Calls {
             }
             Inbound::RpcStdinPull { call_id } => (call_id, Event::Pull),
             Inbound::RpcExit { call_id, exit_code } => {
-                if !exit_code.is_finite()
-                    || exit_code.fract() != 0.0
-                    || !(0.0..=255.0).contains(exit_code)
-                {
+                let Ok(exit_code) = u8::try_from(*exit_code) else {
                     if let Some(entry) = self.state.lock().unwrap().calls.get(call_id) {
                         entry.cancel.cancel();
                     }
                     return true;
-                }
-                (call_id, Event::Exit(*exit_code as u8))
+                };
+                (call_id, Event::Exit(exit_code))
             }
             _ => return false,
         };
@@ -231,18 +236,18 @@ impl Calls {
             id: id.clone(),
             state: self.state.clone(),
         };
-        let message = wire::rpc_call(
-            request.context.job_id.clone(),
-            id.clone(),
-            request.root.clone(),
-            request.parsed.path.clone(),
-            request.argv.clone(),
-            request.parsed.values.clone().into_iter().collect(),
-            request.parsed.json,
-            request.cwd.clone(),
-            request.env.clone(),
-            request.finite,
-        )
+        let message = wire::encode(&wire::Outbound::RpcCall {
+            job_id: request.context.job_id.clone(),
+            call_id: id.clone(),
+            root: request.root.clone(),
+            path: request.parsed.path.clone(),
+            argv: request.argv.clone(),
+            args: request.parsed.values.clone().into_iter().collect(),
+            json: request.parsed.json,
+            cwd: request.cwd.clone(),
+            env: request.env.clone(),
+            stdin: request.finite,
+        })
         .map_err(handler)?;
         let result = async {
             connection
@@ -251,7 +256,7 @@ impl Calls {
                 .map_err(|_| ServiceError::Cancelled)?;
             if !request.live {
                 connection
-                    .send(wire::rpc_stdin_end(id.clone()).map_err(handler)?)
+                    .send(stdin_end(&id)?)
                     .await
                     .map_err(|_| ServiceError::Cancelled)?;
             }
@@ -316,7 +321,7 @@ impl Calls {
                         ServiceError::Handler("overlapping RPC stdin demands".into())
                     })?,
                     Event::Pull => connection
-                        .send(wire::rpc_stdin_end(id.into()).map_err(handler)?)
+                        .send(stdin_end(id)?)
                         .await
                         .map_err(|_| ServiceError::Cancelled)?,
                     Event::Exit(code) => {
@@ -336,7 +341,7 @@ impl Calls {
             Err(ServiceError::Cancelled)
         };
         let download = async {
-            let Some(reference): Option<JobStartStdin> =
+            let Some(reference): Option<PipeRef> =
                 stdout_receiver.await.map_err(|_| ServiceError::Cancelled)?
             else {
                 return Ok(());
@@ -377,7 +382,7 @@ impl Calls {
     async fn input(
         &self,
         live: bool,
-        reference: oneshot::Receiver<Option<JobStartStdin>>,
+        reference: oneshot::Receiver<Option<PipeRef>>,
         mut demanded: mpsc::Receiver<()>,
         mut input: Input,
         transport: &CallTransport<'_>,
@@ -391,10 +396,13 @@ impl Calls {
             let _reference = reference.await.map_err(|_| ServiceError::Cancelled)?;
             while demanded.recv().await.is_some() {
                 let message = match input.next().await? {
-                    Some(bytes) => wire::rpc_stdin(id.into(), wire::WireBytes(bytes.to_vec())),
+                    Some(bytes) => wire::encode(&wire::Outbound::RpcStdin {
+                        call_id: id.into(),
+                        bytes: wire::WireBytes(bytes.to_vec()),
+                    }),
                     None => {
                         connection
-                            .send(wire::rpc_stdin_end(id.into()).map_err(handler)?)
+                            .send(stdin_end(id)?)
                             .await
                             .map_err(|_| ServiceError::Cancelled)?;
                         return Ok(());
@@ -430,16 +438,16 @@ impl Calls {
 }
 
 async fn report(
-    output: &mpsc::Sender<wire::Outbound>,
-    reference: &JobStartStdin,
+    output: &mpsc::Sender<wire::Frame>,
+    reference: &PipeRef,
     result: &io::Result<()>,
     stop: &CancellationToken,
 ) -> Result<(), ServiceError> {
-    let message = wire::pipe_done(
-        reference.id.clone(),
-        result.is_ok(),
-        result.as_ref().err().map(ToString::to_string),
-    )
+    let message = wire::encode(&wire::Outbound::PipeDone {
+        pipe_id: reference.id.clone(),
+        ok: result.is_ok(),
+        error: result.as_ref().err().map(ToString::to_string),
+    })
     .map_err(handler)?;
     tokio::select! {
         _ = stop.cancelled() => Err(ServiceError::Cancelled),
@@ -448,4 +456,12 @@ async fn report(
 }
 fn handler(error: impl std::fmt::Display) -> ServiceError {
     ServiceError::Handler(error.to_string())
+}
+
+/// The frame that ends a call's standard input.
+fn stdin_end(call_id: &str) -> Result<wire::Frame, ServiceError> {
+    wire::encode(&wire::Outbound::RpcStdinEnd {
+        call_id: call_id.into(),
+    })
+    .map_err(handler)
 }

@@ -1,6 +1,7 @@
 #![cfg(unix)]
 
 use bytes::Bytes;
+use demi_runner::connection::wire::SpawnErrorKind;
 use demi_runner::process::{ChildProcess, OutputStream, ProcessInput, SpawnOptions};
 use std::{collections::BTreeMap, time::Duration};
 
@@ -93,9 +94,9 @@ async fn spawn_failure_distinguishes_missing_cwd_from_missing_executable() {
         .await
         .err()
         .unwrap();
-    assert_eq!(failure.kind, "executable_not_found");
+    assert_eq!(failure.kind, SpawnErrorKind::ExecutableNotFound);
     let mut request = options("/bin/true", &[]);
     request.cwd = std::env::temp_dir().join("definitely-not-a-demi-test-cwd");
     let failure = ChildProcess::spawn(request).await.err().unwrap();
-    assert_eq!(failure.kind, "cwd_unusable");
+    assert_eq!(failure.kind, SpawnErrorKind::CwdUnusable);
 }

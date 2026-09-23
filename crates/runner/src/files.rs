@@ -32,7 +32,7 @@ use crate::{
 const CHUNK_BYTES: usize = 64 * 1024;
 
 pub struct FileTransfers {
-    output: mpsc::Sender<wire::Outbound>,
+    output: mpsc::Sender<wire::Frame>,
     pipes: PipeClient,
     transfers: TaskTracker,
     /// Ends every transfer: cancelled by `close` and by the host connection's
@@ -42,7 +42,7 @@ pub struct FileTransfers {
 
 impl FileTransfers {
     pub fn new(
-        output: mpsc::Sender<wire::Outbound>,
+        output: mpsc::Sender<wire::Frame>,
         pipes: PipeClient,
         cancel: CancellationToken,
     ) -> Self {
@@ -84,7 +84,11 @@ impl FileTransfers {
                     return;
                 }
             };
-            if !send(&reply, wire::fs_ok_read_file(id, ()), &shutdown).await {
+            let opened = wire::encode(&wire::Outbound::FsOk(wire::FsOk {
+                id,
+                result: wire::FsResult::ReadFile,
+            }));
+            if !send(&reply, opened, &shutdown).await {
                 return;
             }
             let result = pipes.put(&output.url, chunks(file), &transfer).await;
@@ -132,7 +136,10 @@ impl FileTransfers {
                 .map_err(|error| io::Error::new(error.kind(), error.to_string()));
             report_pipe(&reply, input.id, reported, &shutdown).await;
             let message = match result {
-                Ok(()) => wire::fs_ok_write_file(id, ()),
+                Ok(()) => wire::encode(&wire::Outbound::FsOk(wire::FsOk {
+                    id,
+                    result: wire::FsResult::WriteFile,
+                })),
                 Err(error) => fs_error(id, &error),
             };
             send(&reply, message, &shutdown).await;
@@ -184,14 +191,22 @@ impl FileTransfers {
             let bytes = match decoded {
                 Ok(bytes) => bytes,
                 Err(error) => {
-                    let message = wire::git_error(id, error.code().to_owned(), error.message());
+                    let message = wire::encode(&wire::Outbound::GitError {
+                        id,
+                        code: error.code().to_owned(),
+                        message: error.message(),
+                    });
                     send(&reply, message, &shutdown).await;
                     let unused = io::Error::other(error.message());
                     report_pipe(&reply, output.id, Err(unused), &shutdown).await;
                     return;
                 }
             };
-            if !send(&reply, wire::git_ok_show(id, ()), &shutdown).await {
+            let found = wire::encode(&wire::Outbound::GitOk(wire::GitOk {
+                id,
+                result: wire::GitResult::Show,
+            }));
+            if !send(&reply, found, &shutdown).await {
                 return;
             }
             let body = futures_util::stream::iter([Ok::<_, io::Error>(Bytes::from(bytes))]);
@@ -297,15 +312,19 @@ async fn write_from_pipe(
     written
 }
 
-fn fs_error(id: String, error: &io::Error) -> Result<wire::Outbound, wire::WireError> {
-    wire::fs_error(id, error_code(error).map(String::from), error.to_string())
+fn fs_error(id: String, error: &io::Error) -> Result<wire::Frame, wire::WireError> {
+    wire::encode(&wire::Outbound::FsError {
+        id,
+        code: error_code(error).map(String::from),
+        message: error.to_string(),
+    })
 }
 
 /// Sends one reply unless the connection is shutting down; false when it
 /// could not be sent.
 async fn send(
-    output: &mpsc::Sender<wire::Outbound>,
-    message: Result<wire::Outbound, wire::WireError>,
+    output: &mpsc::Sender<wire::Frame>,
+    message: Result<wire::Frame, wire::WireError>,
     shutdown: &CancellationToken,
 ) -> bool {
     let message = match message {

@@ -1,7 +1,7 @@
 //! Live command authority and immutable declaration snapshots for runner-owned jobs.
 
 use crate::commands::command_client::{CONTEXT_ENV, ENDPOINT_ENV};
-use crate::commands::manifest::Manifest;
+use demi_runner_protocol::manifest::Manifest;
 use demi_command_service::protocol::CommandContext;
 use std::{
     collections::{BTreeMap, HashMap},

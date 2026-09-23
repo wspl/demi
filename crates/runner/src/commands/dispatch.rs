@@ -84,10 +84,10 @@ impl Dispatcher {
         raw.validate().map_err(handler)?;
         let context = self.contexts.get(&raw.context).map_err(handler)?;
         let execute = async {
-            let selected = context
-                .manifest
-                .select(&raw.root, &raw.argv)
-                .map_err(handler)?;
+            let root = context.manifest.roots.get(&raw.root).ok_or_else(|| {
+                handler(format!("{}: not a root command of this manifest", raw.root))
+            })?;
+            let selected = root.tree.select(&raw.argv).map_err(handler)?;
             let parsed = selected.parse(&raw.argv).map_err(handler)?;
             if parsed.help {
                 let path = selected.path.join(" ");
@@ -101,7 +101,7 @@ impl Dispatcher {
                 .node
                 .leaf()
                 .ok_or_else(|| handler("missing command leaf"))?;
-            let body = if leaf.stdin_field().is_some() {
+            let body = if leaf.stdin_field.is_some() {
                 // A terminal is the live channel, not a finite command body.
                 let mut bytes = Vec::new();
                 if !raw.live {
@@ -120,7 +120,7 @@ impl Dispatcher {
             let output = CommandOutput::new(invocation.output, parsed.json);
             let _hint = self
                 .calls
-                .running_hint(&context.job_id, leaf.running_hint().as_deref())
+                .running_hint(&context.job_id, leaf.running_hint.as_deref())
                 .await?;
             let code = if let Some(binding) = leaf.binding() {
                 let descriptor = context
@@ -158,7 +158,7 @@ impl Dispatcher {
                             cwd: invocation.request.cwd,
                             env: invocation.request.env,
                             live: raw.live,
-                            finite: !raw.live && leaf.stdin_field().is_none(),
+                            finite: !raw.live && leaf.stdin_field.is_none(),
                         },
                         invocation.input,
                         output.clone(),

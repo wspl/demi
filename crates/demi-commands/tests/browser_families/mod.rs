@@ -140,14 +140,19 @@ impl BrowserFixture {
     }
 
     pub async fn lifecycle(&self, operation: &str) -> Value {
+        use demi_command_service::protocol::ConversationRequest;
+        let request = match operation {
+            "status" => ConversationRequest::Status {},
+            "release" => ConversationRequest::Release {
+                conversation: self.conversation.clone(),
+            },
+            other => panic!("unknown lifecycle operation {other}"),
+        };
         let (output, mut records) = Output::channel(CancellationToken::new());
         let invoke = self
             .service
             .conversation(demi_command_service::ConversationContext {
-                request: demi_command_service::protocol::ConversationRequest {
-                    operation: operation.into(),
-                    conversation: Some(self.conversation.clone()),
-                },
+                request,
                 output,
                 cancellation: CancellationToken::new(),
             });

@@ -20,7 +20,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
     commands::{artifacts::Artifacts, contexts::Contexts, native::Services},
-    connection::wire,
+    connection::wire::{self, ServiceErrorCode},
     host_log::{self, LineSplitter},
     pipes::PipeClient,
     tasks::report_pipe,
@@ -31,7 +31,7 @@ use crate::{
 const OUTPUT_QUEUE: usize = 4;
 
 pub struct ServiceStreams {
-    output: mpsc::Sender<wire::Outbound>,
+    output: mpsc::Sender<wire::Frame>,
     pipes: PipeClient,
     services: Arc<Services>,
     artifacts: Arc<Artifacts>,
@@ -51,7 +51,7 @@ pub struct ServiceStreams {
 impl ServiceStreams {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        output: mpsc::Sender<wire::Outbound>,
+        output: mpsc::Sender<wire::Frame>,
         pipes: PipeClient,
         services: Arc<Services>,
         artifacts: Arc<Artifacts>,
@@ -125,12 +125,12 @@ impl ServiceStreams {
         self.streams.spawn(async move {
             if draining.is_cancelled() {
                 let message = "the runner is draining for an upgrade".to_owned();
-                send_error(&reply, stream_id, "refused", message, &stream, &log).await;
+                send_error(&reply, stream_id, ServiceErrorCode::Refused, message, &stream, &log).await;
                 return;
             }
             if !package.operations.contains(&operation) {
                 let message = format!("{} has no operation {operation}", package.id);
-                send_error(&reply, stream_id, "unknown_operation", message, &stream, &log).await;
+                send_error(&reply, stream_id, ServiceErrorCode::UnknownOperation, message, &stream, &log).await;
                 return;
             }
             // The stream holds its service from the start: acquiring one no
@@ -161,14 +161,14 @@ impl ServiceStreams {
                 result = opened => match result {
                     Ok(exchange) => exchange,
                     Err(message) => {
-                        send_error(&reply, stream_id, "service_failed", message, &stream, &log)
+                        send_error(&reply, stream_id, ServiceErrorCode::ServiceFailed, message, &stream, &log)
                             .await;
                         return;
                     }
                 },
             };
             // No bytes move before the answer.
-            match wire::service_opened(stream_id.clone()) {
+            match wire::encode(&wire::Outbound::ServiceOpened { stream_id: stream_id.clone() }) {
                 Ok(message) => {
                     tokio::select! {
                         _ = stream.cancelled() => return,
@@ -241,7 +241,7 @@ impl ServiceStreams {
             // exit code and the operation's own words from this message.
             let done = outcome.lock().unwrap().take();
             if let Some(Outcome { exit_code, stderr }) = done {
-                match wire::service_done(stream_id, exit_code, stderr) {
+                match wire::encode(&wire::Outbound::ServiceDone { stream_id, exit_code, stderr }) {
                     Ok(message) => {
                         // A disconnected backend no longer waits for the call.
                         let _ = reply.send(message).await;
@@ -482,15 +482,19 @@ async fn pump_output(
 }
 
 async fn send_error(
-    output: &mpsc::Sender<wire::Outbound>,
+    output: &mpsc::Sender<wire::Frame>,
     stream_id: String,
-    code: &str,
+    code: ServiceErrorCode,
     message: String,
     cancel: &CancellationToken,
     log: &StreamLog,
 ) {
     log.event(&format!("refused ({code}): {message}"));
-    match wire::service_error(stream_id, code.into(), message) {
+    match wire::encode(&wire::Outbound::ServiceError {
+        stream_id,
+        code,
+        message,
+    }) {
         Ok(message) => {
             tokio::select! {
                 _ = cancel.cancelled() => {},

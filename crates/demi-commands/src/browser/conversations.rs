@@ -5,7 +5,7 @@ use std::{collections::HashMap, sync::Arc};
 use bytes::Bytes;
 use demi_command_service::{
     ConversationContext, InvocationContext, ServiceError,
-    protocol::{CommandLocale, Completion},
+    protocol::{CommandLocale, Completion, ConversationRequest},
 };
 use tokio::sync::{Mutex, watch};
 use tokio_util::{
@@ -686,8 +686,8 @@ impl Conversations {
         &self,
         context: ConversationContext,
     ) -> std::result::Result<Completion, ServiceError> {
-        let output = match context.request.operation.as_str() {
-            "status" => {
+        let output = match &context.request {
+            ConversationRequest::Status {} => {
                 let controllers: Vec<_> = self
                     .controllers
                     .lock()
@@ -704,10 +704,7 @@ impl Conversations {
                 conversations.sort();
                 serde_json::json!({"conversations": conversations})
             }
-            "release" => {
-                let conversation = context.request.conversation.as_ref().ok_or_else(|| {
-                    ServiceError::Handler("release requires a conversation".into())
-                })?;
+            ConversationRequest::Release { conversation } => {
                 let controller = {
                     let controllers = self.controllers.lock().await;
                     let controller = controllers.get(conversation).cloned();
@@ -733,11 +730,6 @@ impl Conversations {
                     }
                 }
                 serde_json::json!({})
-            }
-            _ => {
-                return Err(ServiceError::Handler(
-                    "unknown conversation operation".into(),
-                ));
             }
         };
         context

@@ -1,10 +1,10 @@
 //! Bounded runner WebSocket transport with one explicitly joined owner.
 
-pub mod wire;
+pub use demi_runner_protocol::wire;
 
 use std::{io, time::Duration};
 
-use crate::connection::wire::{Inbound, Outbound};
+use crate::connection::wire::{Frame, Inbound};
 use futures_util::{SinkExt, StreamExt};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -22,8 +22,8 @@ const WRITE_TIMEOUT: Duration = Duration::from_secs(30);
 const QUEUE_MESSAGES: usize = 8;
 
 pub struct Connection {
-    pub output: mpsc::Sender<Outbound>,
-    pub control: mpsc::Sender<Outbound>,
+    pub output: mpsc::Sender<Frame>,
+    pub control: mpsc::Sender<Frame>,
     pub input: mpsc::Receiver<Inbound>,
     cancel: CancellationToken,
     owner: Option<JoinHandle<io::Result<()>>>,
@@ -63,8 +63,8 @@ impl Connection {
         S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
     {
         let cancel = cancel.child_token();
-        let (output, mut outgoing) = mpsc::channel::<Outbound>(QUEUE_MESSAGES);
-        let (control, mut controls) = mpsc::channel::<Outbound>(128);
+        let (output, mut outgoing) = mpsc::channel::<Frame>(QUEUE_MESSAGES);
+        let (control, mut controls) = mpsc::channel::<Frame>(128);
         let (incoming, input) = mpsc::channel(QUEUE_MESSAGES);
         let stopped = cancel.clone();
         let owner = tokio::spawn(async move {

@@ -27,7 +27,7 @@ fn validates_and_hashes_typescript_package_fixture() {
 }
 
 #[test]
-fn generated_deserialization_enforces_package_value_constraints() {
+fn package_decoding_enforces_value_constraints() {
     let fixture: serde_json::Value = serde_json::from_str(include_str!(
         "../../../packages/command-protocol/tests/fixtures/package.json"
     ))
@@ -52,26 +52,30 @@ fn generated_deserialization_enforces_package_value_constraints() {
     ] {
         let mut invalid = fixture["descriptor"].clone();
         *invalid.pointer_mut(pointer).unwrap() = replacement;
-        assert!(
-            serde_json::from_value::<PackageDescriptor>(invalid).is_err(),
-            "{pointer}"
-        );
+        assert!(PackageDescriptor::parse(invalid).is_err(), "{pointer}");
     }
 }
 
+/// Decodes and validates invocation metadata as the service boundary does.
+fn decode_invocation(value: serde_json::Value) -> Result<(), String> {
+    use demi_command_service::protocol::{Invocation, Metadata};
+    let invocation: Invocation = serde_json::from_value(value).map_err(|error| error.to_string())?;
+    invocation.validate().map_err(|error| error.to_string())
+}
+
 #[test]
-fn generated_invocation_checks_nested_values_and_optional_nulls() {
-    use demi_command_service::protocol::{Completion, Invocation};
+fn invocation_decoding_checks_nested_values_and_optional_nulls() {
+    use demi_command_service::protocol::Completion;
     let context = serde_json::json!({
         "conversation": "conversation",
         "caller": {"kind": "agent", "node": "node"},
         "locale": {"timeZone": "UTC", "languages": ["en-US"]},
     });
     let valid = serde_json::json!({"operation":"read", "invocationId":"call", "context":context, "args":{}, "cwd":"/work", "env":{}});
-    assert!(serde_json::from_value::<Invocation>(valid.clone()).is_ok());
+    assert!(decode_invocation(valid.clone()).is_ok());
     let mut user = valid.clone();
     user["context"]["caller"] = serde_json::json!({"kind": "user"});
-    assert!(serde_json::from_value::<Invocation>(user).is_ok());
+    assert!(decode_invocation(user).is_ok());
     for (field, replacement) in [
         ("operation", serde_json::json!("")),
         ("invocationId", serde_json::json!("")),
@@ -118,17 +122,14 @@ fn generated_invocation_checks_nested_values_and_optional_nulls() {
     ] {
         let mut invalid = valid.clone();
         invalid[field] = replacement;
-        assert!(
-            serde_json::from_value::<Invocation>(invalid).is_err(),
-            "{field}"
-        );
+        assert!(decode_invocation(invalid).is_err(), "{field}");
     }
     let mut missing = valid.clone();
     missing.as_object_mut().unwrap().remove("context");
-    assert!(serde_json::from_value::<Invocation>(missing).is_err());
+    assert!(decode_invocation(missing).is_err());
     let mut grant = valid.clone();
     grant["resource"] = serde_json::json!({"id":"old", "kind":"browser"});
-    assert!(serde_json::from_value::<Invocation>(grant).is_err());
+    assert!(decode_invocation(grant).is_err());
     assert!(serde_json::from_value::<Completion>(serde_json::json!({"exitCode":0})).is_ok());
     assert!(
         serde_json::from_value::<Completion>(serde_json::json!({"exitCode":0, "error":null}))

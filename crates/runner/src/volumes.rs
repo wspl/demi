@@ -1,6 +1,6 @@
 //! Managed volume growth and connection-owned filesystem flush work.
 
-use crate::connection::wire;
+use crate::connection::wire::{self, VolumeName};
 use std::{
     collections::HashMap,
     io,
@@ -12,7 +12,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 #[derive(Clone)]
 pub struct ManagedVolume {
-    pub name: String,
+    pub name: VolumeName,
     pub mount: PathBuf,
 }
 
@@ -23,11 +23,11 @@ enum Pending {
 
 pub struct Volumes {
     blocks: Vec<ManagedVolume>,
-    pending: Arc<Mutex<HashMap<String, Pending>>>,
+    pending: Arc<Mutex<HashMap<VolumeName, Pending>>>,
     tasks: TaskTracker,
     sync_capacity: Arc<Semaphore>,
     stop: CancellationToken,
-    output: mpsc::Sender<wire::Outbound>,
+    output: mpsc::Sender<wire::Frame>,
 }
 
 pub fn growth_wanted(total: u64, available: u64) -> io::Result<Option<u64>> {
@@ -48,7 +48,7 @@ pub fn growth_wanted(total: u64, available: u64) -> io::Result<Option<u64>> {
 impl Volumes {
     pub fn new(
         blocks: Vec<ManagedVolume>,
-        output: mpsc::Sender<wire::Outbound>,
+        output: mpsc::Sender<wire::Frame>,
         stop: CancellationToken,
     ) -> Self {
         Self {
@@ -80,7 +80,10 @@ impl Volumes {
                 .await
                 .map_err(io::Error::other)
                 .and_then(|result| result);
-            let message = wire::sync_done(id, result.err().map(|error| error.to_string()));
+            let message = wire::encode(&wire::Outbound::SyncDone {
+                id,
+                error: result.err().map(|error| error.to_string()),
+            });
             send(&output, message, &stop).await;
         });
         Ok(())
@@ -114,7 +117,11 @@ impl Volumes {
                             .lock()
                             .unwrap()
                             .insert(volume.name.clone(), Pending::Requested(id.clone()));
-                        send(&output, wire::volume_grow(id, volume.name, bytes), &stop).await;
+                        send(&output, wire::encode(&wire::Outbound::VolumeGrow {
+                            id,
+                            volume: volume.name,
+                            bytes,
+                        }), &stop).await;
                     }
                     outcome => {
                         pending.lock().unwrap().remove(&volume.name);
@@ -127,15 +134,21 @@ impl Volumes {
         }
     }
 
-    pub fn grown(&self, id: &str, name: &str, bytes: u64, error: Option<String>) -> io::Result<()> {
+    pub fn grown(
+        &self,
+        id: &str,
+        name: VolumeName,
+        bytes: u64,
+        error: Option<String>,
+    ) -> io::Result<()> {
         if !self.blocks.iter().any(|volume| volume.name == name) {
             return Err(io::Error::other("unknown managed volume"));
         }
         let mut pending = self.pending.lock().unwrap();
-        if !matches!(pending.get(name), Some(Pending::Requested(request)) if request == id) {
+        if !matches!(pending.get(&name), Some(Pending::Requested(request)) if request == id) {
             return Err(io::Error::other("unexpected volume growth response"));
         }
-        pending.remove(name);
+        pending.remove(&name);
         if let Some(error) = error {
             crate::host_log::runner(format_args!(
                 "{name} growth to {bytes} bytes failed: {error}"
@@ -160,8 +173,8 @@ impl Drop for Volumes {
 }
 
 async fn send(
-    output: &mpsc::Sender<wire::Outbound>,
-    message: Result<wire::Outbound, wire::WireError>,
+    output: &mpsc::Sender<wire::Frame>,
+    message: Result<wire::Frame, wire::WireError>,
     stop: &CancellationToken,
 ) {
     match message {

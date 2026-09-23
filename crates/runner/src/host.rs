@@ -18,7 +18,7 @@ pub struct HostServer {
     pub tasks: TaskTable,
     default_cwd: PathBuf,
     device_env: BTreeMap<String, String>,
-    output: mpsc::Sender<wire::Outbound>,
+    output: mpsc::Sender<wire::Frame>,
     filesystem: TaskTracker,
     filesystem_capacity: Arc<Semaphore>,
     git: GitService,
@@ -38,7 +38,7 @@ impl Drop for HostServer {
 
 impl HostServer {
     pub fn new(
-        output: mpsc::Sender<wire::Outbound>,
+        output: mpsc::Sender<wire::Frame>,
         dispatcher: Option<Arc<crate::commands::dispatch::Dispatcher>>,
         output_dir: PathBuf,
         default_cwd: PathBuf,

@@ -28,7 +28,7 @@ pub struct Options {
     pub executable: PathBuf,
     pub cwd: PathBuf,
     pub env: BTreeMap<String, String>,
-    pub runner: wire::HelloRunner,
+    pub runner: wire::RunnerInfo,
     pub token: Option<String>,
     pub volumes: Vec<crate::volumes::ManagedVolume>,
 }
@@ -221,11 +221,11 @@ impl Runtime {
         self.artifacts.attach(connection.control.clone());
         let lifecycle = TaskTracker::new();
         let result = async {
-            let hello = wire::hello(
-                wire::VERSION as f64,
-                self.token.read().await.clone(),
-                self.options.runner.clone(),
-            )
+            let hello = wire::encode(&wire::Outbound::Hello {
+                protocol: wire::VERSION,
+                device_token: self.token.read().await.clone(),
+                runner: self.options.runner.clone(),
+            })
             .map_err(io::Error::other)?;
             connection
                 .control
@@ -287,7 +287,7 @@ impl Runtime {
                     }
                     Inbound::HelloError { code, reason } => {
                         host_log::runner(format_args!("registration refused ({code}): {reason}"));
-                        if code == "already_connected" {
+                        if code == wire::HelloErrorCode::AlreadyConnected {
                             return Ok(End::Disconnected);
                         }
                         self.management.set_phase(Phase::Rejected);
@@ -297,7 +297,9 @@ impl Runtime {
                         connection
                             .control
                             .send(
-                                wire::pong(host.tasks.job_count() as u64)
+                                wire::encode(&wire::Outbound::Pong {
+                                    jobs: host.tasks.job_count() as u64,
+                                })
                                     .map_err(io::Error::other)?,
                             )
                             .await
@@ -358,7 +360,10 @@ impl Runtime {
                         result = services.release_conversation(&conversation_id) => result,
                     };
                     contexts.refresh();
-                    match wire::conversation_released(id, result.err()) {
+                    match wire::encode(&wire::Outbound::ConversationReleased {
+                        id,
+                        error: result.err(),
+                    }) {
                         Ok(reply) => {
                             // A disconnected backend no longer needs an acknowledgement.
                             let _ = output.send(reply).await;
@@ -383,7 +388,7 @@ impl Runtime {
                 volume,
                 bytes,
                 error,
-            } => volumes.grown(&id, &volume, bytes, error)?,
+            } => volumes.grown(&id, volume, bytes, error)?,
             message if message.fs_request_id().is_some() => host.handle_filesystem(message)?,
             message if message.git_request_id().is_some() => host.handle_git(message)?,
             Inbound::NetOpen { .. } => host.handle_net(message)?,
@@ -404,12 +409,15 @@ impl Runtime {
                         source,
                     };
                     let reply = match log.read(query).await {
-                        Ok(page) => wire::log_lines(
-                            id.clone(),
-                            page.lines.into_iter().map(Into::into).collect(),
-                            page.next,
-                        ),
-                        Err(error) => wire::log_error(id.clone(), error.to_string()),
+                        Ok(page) => wire::encode(&wire::Outbound::LogLines {
+                            id: id.clone(),
+                            lines: page.lines.into_iter().map(Into::into).collect(),
+                            next: page.next,
+                        }),
+                        Err(error) => wire::encode(&wire::Outbound::LogError {
+                            id: id.clone(),
+                            message: error.to_string(),
+                        }),
                     };
                     let reply = match reply {
                         Ok(reply) => reply,
@@ -468,23 +476,28 @@ impl Runtime {
                 if let Err(error) = setup {
                     host_log::runner(format_args!("backend work could not start: {error}"));
                     let reason = Some(error.to_string());
-                    let failure = Some(wire::SpawnExitSpawnError {
-                        kind: "other".into(),
+                    let failure = Some(wire::SpawnError {
+                        kind: wire::SpawnErrorKind::Other,
                         detail: None,
                     });
                     let reply = match message {
-                        Inbound::JobStart { job_id, .. } => wire::job_exit(
+                        Inbound::JobStart { job_id, .. } => wire::encode(&wire::Outbound::JobExit {
                             job_id,
-                            None,
-                            reason,
-                            failure,
-                            None,
-                            None,
-                            Vec::new(),
-                            false,
-                        ),
+                            exit_code: None,
+                            signal: reason,
+                            spawn_error: failure,
+                            cwd: None,
+                            output: None,
+                            files: Vec::new(),
+                            files_truncated: false,
+                        }),
                         Inbound::Spawn { spawn_id, .. } => {
-                            wire::spawn_exit(spawn_id, None, reason, failure)
+                            wire::encode(&wire::Outbound::SpawnExit {
+                                spawn_id,
+                                exit_code: None,
+                                signal: reason,
+                                spawn_error: failure,
+                            })
                         }
                         _ => return Err(error),
                     }
