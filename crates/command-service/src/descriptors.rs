@@ -83,24 +83,13 @@ where
 }
 
 /// `retry` for a synchronous call, such as the shell's process and pipe hooks.
-/// On a multi-threaded runtime the worker hands its other tasks on while it
-/// waits.
+/// It runs on a thread that may block, never an async worker, so it sleeps
+/// between attempts.
 pub fn retry_blocking<T>(mut attempt: impl FnMut() -> io::Result<T>) -> io::Result<T> {
     let mut backoff = Backoff::default();
     loop {
         match attempt() {
-            Err(error) if exhausted(&error) => {
-                let pause = backoff.next();
-                let flavor =
-                    tokio::runtime::Handle::try_current().map(|handle| handle.runtime_flavor());
-                if let Ok(tokio::runtime::RuntimeFlavor::MultiThread) = flavor {
-                    tokio::task::block_in_place(|| std::thread::sleep(pause));
-                } else {
-                    // `block_in_place` needs a multi-threaded runtime; elsewhere
-                    // this thread is the only one to wait.
-                    std::thread::sleep(pause);
-                }
-            }
+            Err(error) if exhausted(&error) => std::thread::sleep(backoff.next()),
             result => return result,
         }
     }

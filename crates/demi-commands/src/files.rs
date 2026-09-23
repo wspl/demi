@@ -11,10 +11,7 @@ use tokio_util::sync::CancellationToken;
 use crate::patch;
 
 pub fn resolve_path(cwd: &str, path: &str) -> Result<PathBuf, String> {
-    if path.is_empty() || path.contains('\0') {
-        return Err("File path must be nonempty and contain no NUL byte".into());
-    }
-    Ok(Path::new(cwd).join(path))
+    demi_command_service::paths::resolve(cwd, path).map_err(|error| error.to_string())
 }
 
 pub fn check_cancelled(cancellation: &CancellationToken) -> Result<(), String> {

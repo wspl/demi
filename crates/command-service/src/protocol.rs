@@ -47,7 +47,7 @@ pub trait Metadata: serde::Serialize + serde::de::DeserializeOwned + Send + 'sta
 
 impl Metadata for Invocation {
     fn validate(&self) -> Result<(), ProtocolError> {
-        garde::Validate::validate(self).map_err(|_| ProtocolError::InvalidMetadata)
+        garde::Validate::validate(self).map_err(ProtocolError::from)
     }
 
     fn operation(&self) -> &str {
@@ -57,7 +57,7 @@ impl Metadata for Invocation {
 
 impl Metadata for LocalInvocation {
     fn validate(&self) -> Result<(), ProtocolError> {
-        garde::Validate::validate(self).map_err(|_| ProtocolError::InvalidMetadata)
+        garde::Validate::validate(self).map_err(ProtocolError::from)
     }
 
     fn operation(&self) -> &str {
@@ -67,7 +67,7 @@ impl Metadata for LocalInvocation {
 
 impl ConversationRequest {
     pub fn validate(&self) -> Result<(), ProtocolError> {
-        garde::Validate::validate(self).map_err(|_| ProtocolError::InvalidMetadata)
+        garde::Validate::validate(self).map_err(ProtocolError::from)
     }
 
     pub fn encode(&self) -> Result<Bytes, ProtocolError> {
@@ -78,7 +78,7 @@ impl ConversationRequest {
 
 impl ConversationStatus {
     pub fn validate(&self) -> Result<(), ProtocolError> {
-        garde::Validate::validate(self).map_err(|_| ProtocolError::InvalidMetadata)
+        garde::Validate::validate(self).map_err(ProtocolError::from)
     }
 }
 
@@ -138,8 +138,11 @@ pub fn encode_input(bytes: Bytes) -> Result<Bytes, ProtocolError> {
 pub enum ProtocolError {
     #[error("command protocol payload exceeds limit")]
     TooLarge,
-    #[error("invalid invocation metadata")]
-    InvalidMetadata,
+    /// A value breaks its type's rules; the text names each field and rule.
+    #[error("invalid command protocol value: {0}")]
+    Invalid(String),
+    #[error("the package has no artifact for {0}")]
+    MissingTarget(String),
     #[error("unknown response record kind")]
     UnknownRecord,
     #[error("response contains data after completion")]
@@ -148,6 +151,12 @@ pub enum ProtocolError {
     Incomplete,
     #[error(transparent)]
     Json(#[from] serde_json::Error),
+}
+
+impl From<garde::Report> for ProtocolError {
+    fn from(report: garde::Report) -> Self {
+        Self::Invalid(report.to_string().trim_end().to_owned())
+    }
 }
 
 /// Buffers at most one record. Callers retain and incrementally pass unread bytes.
@@ -193,7 +202,11 @@ impl RecordDecoder {
                 Record::Completion(completion)
             }
             4 if payload.is_empty() => Record::InputPull,
-            4 => return Err(ProtocolError::InvalidMetadata),
+            4 => {
+                return Err(ProtocolError::Invalid(
+                    "an input pull record carries no payload".into(),
+                ));
+            }
             _ => unreachable!(),
         };
         Ok(Some(record))

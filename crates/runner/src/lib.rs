@@ -3,7 +3,6 @@
 pub mod files;
 pub mod fs;
 pub mod git;
-pub mod paths;
 pub mod pipes;
 pub mod process;
 pub mod state;

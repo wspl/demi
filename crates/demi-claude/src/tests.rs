@@ -23,7 +23,6 @@ use crate::{
     DemiClaude,
     install::{EnsureError, Installer, Roots},
     platform::{self, Loaders, platform_key},
-    version,
 };
 
 const BINARY: &str = if cfg!(windows) {
@@ -482,11 +481,10 @@ fn versions_order_semantically() {
     ];
     for (index, left) in ascending.iter().enumerate() {
         for (other, right) in ascending.iter().enumerate() {
-            assert_eq!(
-                version::compare(left, right),
-                index.cmp(&other),
-                "{left} {right}"
-            );
+            let order = demi_claude_protocol::parse_version(left)
+                .unwrap()
+                .cmp(&demi_claude_protocol::parse_version(right).unwrap());
+            assert_eq!(order, index.cmp(&other), "{left} {right}");
         }
     }
 }

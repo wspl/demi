@@ -158,8 +158,10 @@ from its `status` the way VS Code's Git does.
 `kind`, `from` and the line counts compare `head` with the working tree,
 whatever the index holds: a path whose status git lists but whose content
 matches `head`, such as an executable bit changed or a staged edit undone on
-the disk, is `modified` with 0 and 0. Line counts skip binary files and files
-over 8 MiB, which report 0 and 0. `git_show` refuses a blob over 8 MiB with
+the disk, is `modified` with 0 and 0. Line counts skip files that are not
+text, binary and non-UTF-8 alike as in
+[edit tracking](edit-tracking.md#scope), and files over 8 MiB; they report 0
+and 0. `git_show` refuses a blob over 8 MiB with
 `too_large`, answers `ENOENT` for a path the last commit does not have, and
 `not_repository` outside a repository.
 

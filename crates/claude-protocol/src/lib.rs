@@ -26,31 +26,24 @@ impl From<garde::Report> for DecodeError {
     }
 }
 
-/// Whether `version` is `MAJOR.MINOR.PATCH` with an optional
-/// `-PRERELEASE` of ASCII letters, digits, dots and hyphens. A version names
-/// its installation directory, so nothing else is accepted.
+/// `version` as a SemVer version when it is one without build metadata, such
+/// as `2.1.3` or `2.1.3-beta.1`. A version names its installation directory,
+/// so `+build` is refused.
+pub fn parse_version(version: &str) -> Option<semver::Version> {
+    semver::Version::parse(version)
+        .ok()
+        .filter(|version| version.build.is_empty())
+}
+
+/// Whether [`parse_version`] accepts `version`.
 pub fn is_version(version: &str) -> bool {
-    let (core, prerelease) = match version.split_once('-') {
-        Some((core, prerelease)) => (core, Some(prerelease)),
-        None => (version, None),
-    };
-    let numbers: Vec<&str> = core.split('.').collect();
-    numbers.len() == 3
-        && numbers
-            .iter()
-            .all(|number| !number.is_empty() && number.bytes().all(|byte| byte.is_ascii_digit()))
-        && prerelease.is_none_or(|prerelease| {
-            !prerelease.is_empty()
-                && prerelease
-                    .bytes()
-                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'.' || byte == b'-')
-        })
+    parse_version(version).is_some()
 }
 
 fn cli_version(value: &str, _: &()) -> garde::Result {
     if !is_version(value) {
         return Err(garde::Error::new(
-            "is not MAJOR.MINOR.PATCH with an optional -PRERELEASE",
+            "is not a SemVer version without build metadata",
         ));
     }
     Ok(())

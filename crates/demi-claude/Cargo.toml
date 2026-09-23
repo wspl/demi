@@ -10,18 +10,22 @@ name = "demi-claude"
 path = "src/main.rs"
 
 [dependencies]
+demi-artifact = { path = "../artifact" }
 bytes.workspace = true
 demi-claude-protocol = { path = "../claude-protocol" }
 demi-command-service = { path = "../command-service" }
-futures-util.workspace = true
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
 serde.workspace = true
 serde_json.workspace = true
-sha2 = "0.10"
 tempfile = "3"
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
+
+[dev-dependencies]
+demi-artifact = { path = "../artifact", features = ["testing"] }
+futures-util.workspace = true
+sha2 = "0.10"
 
 [package.metadata.demi]
 id = "demi.claude"

@@ -56,14 +56,22 @@ pub struct PackageDescriptor {
 impl PackageDescriptor {
     pub fn parse(value: serde_json::Value) -> Result<Self, ProtocolError> {
         let descriptor: Self = serde_json::from_value(value)?;
-        garde::Validate::validate(&descriptor).map_err(|_| ProtocolError::InvalidMetadata)?;
+        garde::Validate::validate(&descriptor)?;
         Ok(descriptor)
     }
 
     /// The descriptor's identity: the SHA-256 of its canonical JSON.
     pub fn digest(&self) -> Result<String, ProtocolError> {
-        garde::Validate::validate(self).map_err(|_| ProtocolError::InvalidMetadata)?;
+        garde::Validate::validate(self)?;
         canonical_digest(self)
+    }
+
+    /// Whether a service's catalog is the one this descriptor declares: the
+    /// same protocol and the same operations, in any order.
+    pub fn serves(&self, info: &ServiceInfo) -> bool {
+        let declared: HashSet<&String> = self.operations.iter().collect();
+        let served: HashSet<&String> = info.operations.iter().collect();
+        info.protocol_version == self.protocol_version && declared == served
     }
 }
 
@@ -95,12 +103,23 @@ pub enum ArtifactLocation {
     Path(#[garde(dive)] ArtifactPath),
 }
 
-/// What a resident service answers on its info path.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// What a resident service answers on its info path: the protocol it speaks
+/// and the operations it serves, each once.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ServiceInfo {
+    #[garde(range(equal = VERSION))]
     pub protocol_version: u64,
+    #[garde(length(min = 1), inner(length(min = 1)), custom(unique))]
     pub operations: Vec<String>,
+}
+
+impl ServiceInfo {
+    /// Checks a catalog a service offers or a runner received.
+    pub fn validate(&self) -> Result<(), ProtocolError> {
+        garde::Validate::validate(self)?;
+        Ok(())
+    }
 }
 
 /// Whether `value` is a SHA-256 digest in lowercase hexadecimal, the form of
@@ -142,7 +161,7 @@ pub fn target_artifact<'a>(
     package
         .targets
         .get(target)
-        .ok_or(ProtocolError::InvalidMetadata)
+        .ok_or_else(|| ProtocolError::MissingTarget(target.to_owned()))
 }
 
 /// The build target used by native artifacts and their runtime dependencies.

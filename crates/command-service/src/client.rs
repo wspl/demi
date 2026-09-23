@@ -5,7 +5,6 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use crate::protocol::{
     CONVERSATION_PATH, ConversationRequest, INFO_PATH, INVOKE_PATH, MAX_METADATA_BYTES,
     MAX_RECORD_BYTES, Metadata, ProtocolError, Record, RecordDecoder, SHUTDOWN_PATH, ServiceInfo,
-    VERSION,
 };
 use crate::{
     ServiceError,
@@ -50,14 +49,7 @@ impl Client {
             body.flow_control().release_capacity(chunk.len())?;
         }
         let info: ServiceInfo = serde_json::from_slice(&bytes)?;
-        let operations: std::collections::HashSet<_> = info.operations.iter().collect();
-        if info.protocol_version != VERSION
-            || info.operations.is_empty()
-            || info.operations.iter().any(String::is_empty)
-            || operations.len() != info.operations.len()
-        {
-            return Err(ServiceError::InvalidCatalog);
-        }
+        info.validate()?;
         Ok(info)
     }
 
@@ -137,6 +129,9 @@ impl CommandInput {
         match self.stream.send_data(Bytes::new(), true) {
             Ok(()) => Ok(()),
             Err(error) => {
+                // h2 has no synchronous query for a reset the peer already
+                // sent; polling once with a waker that never wakes reads it
+                // without waiting.
                 let mut context = std::task::Context::from_waker(std::task::Waker::noop());
                 match self.stream.poll_reset(&mut context) {
                     std::task::Poll::Ready(Ok(h2::Reason::NO_ERROR)) => Ok(()),
