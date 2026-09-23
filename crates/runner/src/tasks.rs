@@ -10,7 +10,7 @@ use crate::{
     },
     connection::ConnectionHandle,
     pipes::PipeClient,
-    process::{ChildProcess, OutputStream, ProcessInput, SpawnOptions},
+    process::{ChildProcess, OutputStream, ProcessInput, Signal, SpawnOptions},
     services::ServiceHandle,
     shell::ShellRuntime,
 };
@@ -80,7 +80,7 @@ pub struct Commands {
 
 struct Entry {
     input: mpsc::Sender<TaskInput>,
-    signals: mpsc::Sender<String>,
+    signals: mpsc::Sender<Signal>,
     cancel: CancellationToken,
 }
 
@@ -202,11 +202,11 @@ impl JobTable {
         self.send(id, TaskInput::End)
     }
 
-    pub fn signal(&self, id: &WorkId, signal: String) -> io::Result<()> {
+    pub fn signal(&self, id: &WorkId, signal: Signal) -> io::Result<()> {
         let Some(entry) = self.entries.get(id) else {
             return Ok(());
         };
-        if signal == "SIGKILL" {
+        if signal == Signal::Kill {
             entry.cancel.cancel();
             return Ok(());
         }
@@ -315,7 +315,7 @@ impl JobConfig {
         self: &Arc<Self>,
         spec: TaskSpec,
         mut input: mpsc::Receiver<TaskInput>,
-        mut signals: mpsc::Receiver<String>,
+        mut signals: mpsc::Receiver<Signal>,
         cancel: CancellationToken,
         closed: CancellationToken,
     ) -> io::Result<wire::Frame> {
@@ -478,7 +478,7 @@ impl JobConfig {
                 _ = cancel.cancelled(), if !child.is_cancelled() => child.cancel(),
                 signal = signals.recv(), if !signals.is_closed() => {
                     if let Some(signal) = signal
-                        && let Err(error) = child.signal(&signal).await {
+                        && let Err(error) = child.signal(signal).await {
                         failure = Some(error.to_string());
                         child.cancel();
                     }
@@ -636,7 +636,7 @@ impl Execution {
             ExecutionOwner::Shell(child) => child.is_cancelled(),
         }
     }
-    async fn signal(&self, signal: &str) -> io::Result<()> {
+    async fn signal(&self, signal: Signal) -> io::Result<()> {
         match &self.owner {
             ExecutionOwner::Process(child) => child.signal(signal).await,
             ExecutionOwner::Shell(child) => child.signal(signal).await,

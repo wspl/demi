@@ -1,7 +1,7 @@
 //! Resident shell job with bounded input/output and an owned completion task.
 
 use super::{ShellOptions, ShellRuntime, scope::Scope};
-use crate::process::{OutputChunk, OutputStream, ProcessExit, ProcessInput};
+use crate::process::{OutputChunk, OutputStream, ProcessExit, ProcessInput, Signal};
 use bytes::Bytes;
 use std::{
     collections::BTreeMap,
@@ -210,16 +210,21 @@ impl Job {
     pub fn is_cancelled(&self) -> bool {
         self.cancel.is_cancelled()
     }
-    pub async fn signal(&self, signal: &str) -> io::Result<()> {
+    /// Cancels the job for a signal that ends it, which its exit reports.
+    pub async fn signal(&self, signal: Signal) -> io::Result<()> {
         match signal {
-            "SIGINT" | "SIGTERM" | "SIGKILL" | "SIGHUP" | "SIGQUIT" => {
+            Signal::Interrupt
+            | Signal::Terminate
+            | Signal::Kill
+            | Signal::Hangup
+            | Signal::Quit => {
                 if !self.cancel.is_cancelled() {
-                    self.requested_signal.get_or_init(|| signal.into());
+                    self.requested_signal.get_or_init(|| signal.to_string());
                 }
                 self.cancel();
                 Ok(())
             }
-            _ => Err(io::Error::new(
+            Signal::User1 | Signal::User2 | Signal::Stop | Signal::Continue => Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 "unsupported shell job signal",
             )),

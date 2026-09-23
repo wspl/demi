@@ -14,13 +14,14 @@ pub enum Phase {
     Rejected,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Request {
     pub secret: String,
     pub action: Action,
 }
-#[derive(Deserialize)]
+
+#[derive(Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Action {
     Status,
@@ -68,15 +69,10 @@ impl Management {
         })
     }
 
+    /// Whether `request` carries the secret, compared in constant time.
     pub fn authorize(&self, request: &Request) -> bool {
-        // Secrets have fixed public length; compare every byte for a same-length value.
-        request.secret.len() == self.secret.len()
-            && request
-                .secret
-                .bytes()
-                .zip(self.secret.bytes())
-                .fold(0, |difference, (left, right)| difference | (left ^ right))
-                == 0
+        use subtle::ConstantTimeEq;
+        request.secret.as_bytes().ct_eq(self.secret.as_bytes()).into()
     }
 
     pub fn phase(&self) -> Phase {
