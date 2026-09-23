@@ -4,6 +4,7 @@ exclude = ["vendor/*", "vendor/chromiumoxide", "vendor/chromiumoxide_cdp"]
 members = [
   "crates/agent-protocol",
   "crates/artifact",
+  "crates/backend",
   "crates/builtin-protocol",
   "crates/claude-protocol",
   "crates/command-service",
@@ -14,6 +15,7 @@ members = [
   "crates/gates",
   "crates/runner",
   "crates/runner-protocol",
+  "crates/web-api",
 ]
 
 [workspace.package]
