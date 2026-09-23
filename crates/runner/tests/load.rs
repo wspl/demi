@@ -8,20 +8,15 @@ use demi_command_service::protocol::{
     PackageDescriptor, Record,
 };
 use demi_runner::{
-    commands::artifacts::Artifacts,
     commands::command_client::{RawCommand, Stdio, forward},
-    commands::contexts::Contexts,
-    commands::dispatch::Dispatcher,
-    commands::local::Server,
-    commands::rpc::Calls,
     connection::wire::Inbound,
     host::HostServer,
-    management::Management,
     pipes::PipeClient,
     services::{
         ArtifactResolver, ArtifactSource, Resident, RuntimeError, ServiceLease, ServiceRegistry,
         target,
     },
+    testing::Dispatch,
 };
 use futures_util::future::BoxFuture;
 use serde_json::json;
@@ -36,7 +31,7 @@ use std::{
     },
     time::Duration,
 };
-use tokio::sync::{RwLock, mpsc};
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 struct Local(PathBuf);
@@ -102,7 +97,7 @@ async fn resident(root: &Path) -> (ServiceRegistry, ServiceLease, Resident) {
     };
     let lease = services
         .handle()
-        .lease(descriptor.targets[target()].sha256.clone());
+        .lease(descriptor.targets[target()].sha256.clone()).await;
     let resident = services
         .handle()
         .acquire(
@@ -158,29 +153,16 @@ async fn backend_commands_are_never_turned_away() {
     tokio::time::timeout(Duration::from_secs(60), async {
         let directory = tempfile::tempdir().unwrap();
         let cwd = directory.path().to_owned();
-        let services = ServiceRegistry::new(cwd.join("artifacts"), cwd.clone(), BTreeMap::new())
-            .await
-            .unwrap();
-        let contexts = Contexts::new(
-            cwd.join("manifests"),
-            std::env::current_exe().unwrap(),
-            services.handle(),
-        )
-        .await
-        .unwrap();
         let body = json!({"roots": {"fixture": {"tree": {
             "name": "fixture", "summary": "Test callback.", "kind": "rpc", "runningHint": "Working",
             "input": {"type": "object", "properties": {"body": {"type": "string"}}, "required": ["body"]}, "stdinField": "body"
         }}}, "packages": {}});
         let hash = demi_command_service::protocol::canonical_digest(&body).unwrap();
         let mut manifest = body;
-        manifest["hash"] = hash.clone().into();
-        contexts.install(manifest).await.unwrap();
-        let resolver = Artifacts::new(contexts.clone(), target().into());
-        let calls =
-            Calls::new(PipeClient::new("http://127.0.0.1:1", Arc::new(RwLock::new(None))).unwrap());
-        let (output, mut outgoing) = mpsc::channel(32);
-        calls.attach(output, CancellationToken::new());
+        manifest["hash"] = hash.into();
+        let pipes = PipeClient::new("http://127.0.0.1:1", tokio::sync::watch::Sender::new(None).subscribe()).unwrap();
+        let mut dispatch = Dispatch::new(&cwd, manifest, pipes).await;
+        let mut outgoing = std::mem::replace(&mut dispatch.outgoing, mpsc::channel(1).1);
         // The backend never answers; count the calls that reach it.
         let reached = Arc::new(AtomicUsize::new(0));
         let counted = reached.clone();
@@ -193,23 +175,7 @@ async fn backend_commands_are_never_turned_away() {
                 }
             }
         });
-        let management = Management::new("a".repeat(32), "test".into(), CancellationToken::new());
-        let dispatcher = Arc::new(Dispatcher {
-            contexts: contexts.clone(),
-            services: services.handle(),
-            resolver,
-            calls: calls.clone(),
-            management,
-        });
-        let server = Server::start(dispatcher).await.unwrap();
-        let (context, _lease) = contexts
-            .create(
-                "job".into(),
-                &hash,
-                command_context("conversation"),
-            )
-            .await
-            .unwrap();
+        let (context, _guard) = dispatch.context("job", command_context("conversation")).await;
         let request = LocalInvocation {
             operation: "raw".into(),
             invocation_id: "raw".into(),
@@ -226,7 +192,7 @@ async fn backend_commands_are_never_turned_away() {
         let cancel = CancellationToken::new();
         let mut running = tokio::task::JoinSet::new();
         for _ in 0..200 {
-            let endpoint = server.endpoint().to_owned();
+            let endpoint = dispatch.server.endpoint().to_owned();
             let request = request.clone();
             let cancel = cancel.clone();
             running.spawn(async move {
@@ -257,10 +223,7 @@ async fn backend_commands_are_never_turned_away() {
         }
         cancel.cancel();
         while running.join_next().await.is_some() {}
-        contexts.close();
-        calls.detach();
-        server.close().await.unwrap();
-        services.close().await;
+        dispatch.close().await;
     })
     .await
     .unwrap();
@@ -279,15 +242,8 @@ async fn filesystem_requests_wait_instead_of_failing() {
             std::fs::write(root.path().join(format!("f{index}")), "x").unwrap();
         }
         let (output, mut replies) = mpsc::channel(1024);
-        let pipes = PipeClient::new("http://127.0.0.1:1", Arc::new(RwLock::new(None))).unwrap();
-        let host = HostServer::new(
-            output,
-            None,
-            root.path().join("logs"),
-            root.path().into(),
-            BTreeMap::new(),
-            pipes, demi_runner::shell::ShellRuntime::current(),
-        );
+        let pipes = PipeClient::new("http://127.0.0.1:1", tokio::sync::watch::Sender::new(None).subscribe()).unwrap();
+        let host = HostServer::new(output, root.path().into(), pipes);
         for index in 0..500 {
             host.handle_filesystem(Inbound::FsReaddir {
                 id: format!("r{index}"),
@@ -344,16 +300,9 @@ async fn working_tree_requests_wait_instead_of_failing() {
     tokio::time::timeout(Duration::from_secs(120), async {
         let repositories: Vec<_> = (0..16).map(|_| repository()).collect();
         let (output, mut replies) = mpsc::channel(1024);
-        let pipes = PipeClient::new("http://127.0.0.1:1", Arc::new(RwLock::new(None))).unwrap();
+        let pipes = PipeClient::new("http://127.0.0.1:1", tokio::sync::watch::Sender::new(None).subscribe()).unwrap();
         let logs = tempfile::tempdir().unwrap();
-        let host = HostServer::new(
-            output,
-            None,
-            logs.path().join("logs"),
-            logs.path().into(),
-            BTreeMap::new(),
-            pipes, demi_runner::shell::ShellRuntime::current(),
-        );
+        let host = HostServer::new(output, logs.path().into(), pipes);
         for (index, (_dir, repo)) in repositories.iter().enumerate() {
             host.handle_git(Inbound::GitChanges {
                 id: format!("g{index}"),

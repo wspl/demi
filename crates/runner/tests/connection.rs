@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use demi_runner::connection::wire;
-use demi_runner::connection::{Connection, socket_url};
+use demi_runner::connection::{Transport, socket_url};
 use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::{
     WebSocketStream,
@@ -9,12 +9,12 @@ use tokio_tungstenite::{
 };
 use tokio_util::sync::CancellationToken;
 
-async fn pair() -> (Connection, WebSocketStream<tokio::io::DuplexStream>) {
+async fn pair() -> (Transport, WebSocketStream<tokio::io::DuplexStream>) {
     let (client, server) = tokio::io::duplex(1024);
     let client = WebSocketStream::from_raw_socket(client, Role::Client, None).await;
     let server = WebSocketStream::from_raw_socket(server, Role::Server, None).await;
     (
-        Connection::from_socket(client, CancellationToken::new()),
+        Transport::from_socket(client, CancellationToken::new()),
         server,
     )
 }
@@ -81,6 +81,32 @@ async fn malformed_input_fails_connection() {
         server.send(Message::Text("{}".into())).await.unwrap();
         assert!(client.input.recv().await.is_none());
         assert!(client.close().await.is_err());
+    })
+    .await
+    .unwrap();
+}
+
+/// A full inbound queue holds the reading back instead of closing the
+/// connection (`runner.md` § Connection and identity).
+#[tokio::test]
+async fn a_full_inbound_queue_waits_instead_of_closing() {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        let (mut client, mut server) = pair().await;
+        let ping = rmp_serde::to_vec_named(&serde_json::json!({"type":"ping"})).unwrap();
+        // Far more than the queue holds, while nothing takes them.
+        for _ in 0..64 {
+            server.send(Message::Binary(ping.clone().into())).await.unwrap();
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        for _ in 0..64 {
+            assert!(matches!(
+                client.input.recv().await.unwrap(),
+                wire::Inbound::Ping {}
+            ));
+        }
+        client.output.send(wire::encode(&wire::Outbound::Pong { jobs: 0 }).unwrap()).await.unwrap();
+        assert!(server.next().await.unwrap().is_ok());
+        client.close().await.unwrap();
     })
     .await
     .unwrap();

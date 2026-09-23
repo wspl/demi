@@ -37,7 +37,7 @@ async fn concurrent_acquisition_shares_service_and_checks_every_descriptor() {
         })).unwrap();
         let registry = ServiceRegistry::new(directory.path().join("cache"), directory.path().into(), BTreeMap::new()).await.unwrap();
         let services = registry.handle();
-        let _lease = services.lease(package.targets[target()].sha256.clone());
+        let _lease = services.lease(package.targets[target()].sha256.clone()).await;
         let resolver: Arc<dyn ArtifactResolver> = Arc::new(Local);
         let stop = CancellationToken::new();
         let first = services.acquire(&package, resolver.clone(), &stop);
