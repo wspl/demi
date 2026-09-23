@@ -3,8 +3,12 @@
 //! is an FSEvents stream, one per watch whatever the size of the trees:
 //! notify's recommended backend there is kqueue, which the vendored `tail`
 //! selects and which holds a descriptor for every file of a tree, more than
-//! a repository and the usual limit of 256 allow. Elsewhere it is notify's
-//! recommended backend.
+//! a repository and the usual limit of 256 allow; with kqueue selected,
+//! notify builds no FSEvents watcher. `tail` needs kqueue: FSEvents reports
+//! an append through an open descriptor only once the writer closes the
+//! file, and names a file by its real path, so `tail -f` on FSEvents prints
+//! nothing while a program keeps its log open, or for a file under `/tmp`.
+//! Elsewhere it is notify's recommended backend.
 
 use std::path::{Path, PathBuf};
 
