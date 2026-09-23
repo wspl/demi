@@ -160,7 +160,7 @@ async fn backend_commands_are_never_turned_away() {
         let hash = demi_command_service::protocol::canonical_digest(&body).unwrap();
         let mut manifest = body;
         manifest["hash"] = hash.into();
-        let pipes = PipeClient::new("http://127.0.0.1:1", tokio::sync::watch::Sender::new(None).subscribe()).unwrap();
+        let pipes = PipeClient::new(&"http://127.0.0.1:1".parse().unwrap(), tokio::sync::watch::Sender::new(None).subscribe()).unwrap();
         let mut dispatch = Dispatch::new(&cwd, manifest, pipes).await;
         let mut outgoing = std::mem::replace(&mut dispatch.outgoing, mpsc::channel(1).1);
         // The backend never answers; count the calls that reach it.
@@ -242,7 +242,7 @@ async fn filesystem_requests_wait_instead_of_failing() {
             std::fs::write(root.path().join(format!("f{index}")), "x").unwrap();
         }
         let (output, mut replies) = mpsc::channel(1024);
-        let pipes = PipeClient::new("http://127.0.0.1:1", tokio::sync::watch::Sender::new(None).subscribe()).unwrap();
+        let pipes = PipeClient::new(&"http://127.0.0.1:1".parse().unwrap(), tokio::sync::watch::Sender::new(None).subscribe()).unwrap();
         let host = HostServer::new(output, root.path().into(), pipes);
         for index in 0..500 {
             host.handle_filesystem(Inbound::FsReaddir {
@@ -300,7 +300,7 @@ async fn working_tree_requests_wait_instead_of_failing() {
     tokio::time::timeout(Duration::from_secs(120), async {
         let repositories: Vec<_> = (0..16).map(|_| repository()).collect();
         let (output, mut replies) = mpsc::channel(1024);
-        let pipes = PipeClient::new("http://127.0.0.1:1", tokio::sync::watch::Sender::new(None).subscribe()).unwrap();
+        let pipes = PipeClient::new(&"http://127.0.0.1:1".parse().unwrap(), tokio::sync::watch::Sender::new(None).subscribe()).unwrap();
         let logs = tempfile::tempdir().unwrap();
         let host = HostServer::new(output, logs.path().into(), pipes);
         for (index, (_dir, repo)) in repositories.iter().enumerate() {

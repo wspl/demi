@@ -87,7 +87,6 @@ impl Dispatcher {
         mut invocation: InvocationContext<LocalInvocation>,
     ) -> Result<Completion, ServiceError> {
         let raw: RawCommand = serde_json::from_value(invocation.request.args.clone())?;
-        raw.validate().map_err(handler)?;
         let context = self.contexts.get(&raw.context).map_err(handler)?;
         let execute = async {
             let root = context.manifest.roots.get(&raw.root).ok_or_else(|| {

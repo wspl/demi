@@ -1,6 +1,7 @@
 use bytes::Bytes;
 use futures_util::{Stream, StreamExt, stream::BoxStream};
 use std::{io, sync::Arc};
+use demi_runner_protocol::values::{BackendUrl, DeviceToken};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
@@ -15,12 +16,12 @@ pub struct PipeClient {
     http: reqwest::Client,
     origin: reqwest::Url,
     /// The registration's device token, which a claim can change.
-    token: watch::Receiver<Option<String>>,
+    token: watch::Receiver<Option<DeviceToken>>,
 }
 
 impl PipeClient {
-    pub fn new(backend: &str, token: watch::Receiver<Option<String>>) -> io::Result<Self> {
-        let mut origin = crate::state::backend_url(backend)?;
+    pub fn new(backend: &BackendUrl, token: watch::Receiver<Option<DeviceToken>>) -> io::Result<Self> {
+        let mut origin = backend.url().clone();
         match origin.scheme() {
             "ws" => origin
                 .set_scheme("http")
@@ -127,7 +128,7 @@ impl PipeClient {
                 "runner has no device token",
             )
         })?;
-        Ok(self.http.request(method, url).bearer_auth(token))
+        Ok(self.http.request(method, url).bearer_auth(token.expose()))
     }
 }
 
