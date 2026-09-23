@@ -575,6 +575,7 @@ impl Context {
         let tab = async {
             let state = TabState::observe(
                 &page,
+                &self.browser,
                 ended.clone(),
                 &self.tasks,
                 self.failure.clone(),
@@ -948,14 +949,9 @@ impl Owner {
 
     fn gone(&mut self, target: &TargetId) {
         let (tab, changed) = self.book.gone(target);
+        // The tab's debugging connections end with it.
         if let Some(tab) = tab {
             tab.ended.cancel();
-            // The tab's debugging connections end with it.
-            self.context.tasks.spawn(async move {
-                if let Err(error) = super::cdp::release(&tab).await {
-                    tracing::warn!("could not release a closed tab's debugging connections: {error}");
-                }
-            });
         }
         if changed {
             self.publish();
@@ -1034,7 +1030,8 @@ impl Owner {
 /// Stops the tab's loading and asks Chrome to destroy it, without running its
 /// `beforeunload` hooks.
 async fn close_target(browser: &BrowserHandle, tab: &BrowserTab, deadline: Instant) -> Result<()> {
-    let cleanup = super::cdp::release(tab).await;
+    // A debugger paused in the page lets go before the page closes.
+    let cleanup = tab.state.debug.release().await;
     let closed = tokio::time::timeout_at(deadline, async {
         loop {
             match tab.page.execute(StopLoadingParams {}).await {
