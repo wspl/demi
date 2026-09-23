@@ -212,7 +212,16 @@ A test finds an executable through the variable `cargo xtask test` sets; it
 does not build one itself. An ordinary test run starts no Chrome; release
 acceptance runs the Chrome tests. The machine manager builds only for Linux, so
 on a Mac its tests are cross-built with cargo-zigbuild and run in the Lima VM
-([Verification](../cloud/managed-hosts.md#verification)).
+([Verification](../cloud/managed-hosts.md#verification)). The tests that need
+root are ignored in an ordinary run; as root, `--include-ignored` runs them,
+each in mount and network namespaces of its own:
+
+```sh
+cargo zigbuild --tests --target aarch64-unknown-linux-musl \
+  -p demi-machines -p demi-machines-protocol --target-dir .cache/linux-target
+limactl shell demi-machines -- <test executable>
+limactl shell demi-machines -- sudo <test executable> --include-ignored
+```
 [Scenarios](scenarios.md) defines the suites that run the whole backend.
 
 Release acceptance also checks the artifacts and installers on each platform:
