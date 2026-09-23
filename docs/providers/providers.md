@@ -453,8 +453,10 @@ secret document through it:
 | Remove | Delete the account |
 
 The backend's pool is the `provider_credentials` table. Every secret write
-advances the account's version. A login in progress uses a pool held in memory
-until it completes ([Login and publication](#login-and-publication)).
+advances the account's version, and a write into an entry without an active
+account also selects the account, in the same transaction. A login in
+progress uses a pool held in memory until it completes
+([Login and publication](#login-and-publication)).
 
 ### Token refresh
 

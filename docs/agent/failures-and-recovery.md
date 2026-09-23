@@ -13,6 +13,7 @@ decisions read, and diagnostics, which the user and support read:
 | Code | Meaning | Retried automatically |
 | --- | --- | --- |
 | `rate_limit` | A quota or throttling failure | Yes |
+| `rate_limited` | The backend's own request rate limit refused the attempt before it reached the vendor ([Rate limit](../providers/usage-and-quota.md#rate-limit)) | No |
 | `overloaded` | A transient failure: HTTP 5xx, a timeout, a network or socket failure | Yes |
 | An authentication code | A missing, invalid or expired credential, or one that could not be refreshed | No |
 | `context_length_exceeded` | The request is larger than the model accepts | No |

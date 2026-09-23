@@ -3,6 +3,7 @@
 //! browser build. Handlers are thin: they parse, authenticate, and call a
 //! shared service or a shard.
 
+mod accounts;
 mod assets;
 mod auth;
 mod blobs;
@@ -12,8 +13,12 @@ mod cookies;
 mod error;
 mod gate;
 mod listener;
+mod models;
+mod providers;
+mod query;
 mod settings;
 mod state;
+mod usage;
 
 use std::io;
 use std::net::SocketAddr;
@@ -25,7 +30,7 @@ use axum::extract::{DefaultBodyLimit, FromRef, OriginalUri, Request, State};
 use axum::http::Method;
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post, put};
+use axum::routing::{delete, get, patch, post, put};
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -138,6 +143,25 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             get(settings::preferences).patch(settings::patch_preferences),
         )
         .route("/blobs/{sha256}", get(blobs::blob))
+        .route("/models", get(models::models))
+        .route("/providers", get(providers::list).post(providers::create))
+        .route("/providers/catalog", get(providers::catalog))
+        .route("/providers/setup-token", post(accounts::import_setup_token))
+        .route("/providers/subscription-login", post(accounts::start_login))
+        .route(
+            "/providers/subscription-login/{id}",
+            get(accounts::login_state).delete(accounts::cancel_login),
+        )
+        .route("/providers/{id}", patch(providers::update).delete(providers::delete))
+        .route("/providers/{id}/status", get(providers::status))
+        .route("/providers/{id}/quota", post(providers::quota))
+        .route("/providers/{id}/test", post(providers::test))
+        .route("/providers/{id}/accounts", get(accounts::list).post(accounts::add_token))
+        .route("/providers/{id}/accounts/active", put(accounts::activate))
+        .route("/providers/{id}/accounts/login", post(accounts::login_into))
+        .route("/providers/{id}/accounts/{credential}", delete(accounts::remove))
+        .route("/usage", get(usage::totals))
+        .route("/usage/instance", get(usage::instance))
         .fallback(no_route)
         .method_not_allowed_fallback(no_route)
         // After the fallbacks, so the gate covers them too.

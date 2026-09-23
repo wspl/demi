@@ -6,14 +6,21 @@ mod auth;
 mod backend;
 mod config;
 mod edge;
+mod llm;
 mod settings;
 mod shard;
 mod storage;
 mod sync;
+mod usage;
 mod vault;
 
 pub use auth::email_change::{AccountMail, MailError, VerificationMail};
 pub use backend::{Backend, ShutdownError, ShutdownErrors, StartError};
 pub use config::{BackendConfig, Config, ConfigError};
+pub use llm::families::{
+    AccountBinding, ApiKeyArgs, FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry, ProviderFamily,
+    SubscriptionArgs,
+};
 pub use shard::ShardPlacement;
+pub use vault::logins::LoginTiming;
 pub use vault::secret::{InstanceSecret, SecretError};
