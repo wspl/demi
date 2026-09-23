@@ -402,8 +402,11 @@ fn normalize(path: &Path) -> PathBuf {
     std::path::absolute(path).unwrap_or_else(|_| path.to_owned())
 }
 
+/// Inside the runner the event reaches the Host log; inside a command service
+/// it reaches standard error, which the runner drains into the same log
+/// (`edit-tracking.md`).
 fn diagnostic(error: &io::Error) {
-    eprintln!("edit recording failed: {error}");
+    tracing::warn!("edit recording failed: {error}");
 }
 
 #[cfg(test)]

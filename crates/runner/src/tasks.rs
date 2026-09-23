@@ -155,7 +155,7 @@ impl TaskTable {
                     }
                 }
                 Err(error) => {
-                    crate::host_log::runner(format_args!("task terminal encoding failed: {error}"))
+                    tracing::warn!("task terminal encoding failed: {error}")
                 }
             }
         });
@@ -315,7 +315,7 @@ impl TaskTable {
                     match demi_command_service::edits::Recorder::new(edit_context.clone()) {
                         Ok(recorder) => Some(recorder),
                         Err(error) => {
-                            crate::host_log::runner(format_args!("edit recording failed: {error}"));
+                            tracing::warn!("edit recording failed: {error}");
                             None
                         }
                     };
@@ -648,7 +648,7 @@ pub(crate) async fn report_pipe(
                 _ = output.send(message) => {},
             }
         }
-        Err(error) => crate::host_log::runner(format_args!("pipe result encoding failed: {error}")),
+        Err(error) => tracing::warn!("pipe result encoding failed: {error}"),
     }
 }
 

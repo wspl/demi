@@ -205,9 +205,9 @@ impl HostServer {
                     }
                 }
                 Err(error) => {
-                    crate::host_log::runner(format_args!(
+                    tracing::warn!(
                         "filesystem response encoding failed: {error}"
-                    ));
+                    );
                     cancel.cancel();
                 }
             }
@@ -255,9 +255,9 @@ impl HostServer {
                     }
                 }
                 Err(error) => {
-                    crate::host_log::runner(format_args!(
+                    tracing::warn!(
                         "working-tree response encoding failed: {error}"
-                    ));
+                    );
                     cancel.cancel();
                 }
             }

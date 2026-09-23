@@ -22,7 +22,7 @@ use tokio_util::sync::CancellationToken;
 use super::{ExitReason, RuntimeError, ServiceExit};
 use crate::{
     connection::wire,
-    host_log::{self, LineSplitter},
+    host_log::LineSplitter,
     tail::TailBuffer,
 };
 
@@ -236,11 +236,11 @@ async fn shut_down<Failure>(
     loop {
         tokio::select! {
             _ = &mut deadline => {
-                host_log::runner(format_args!(
+                tracing::warn!(
                     "{} did not shut down within {} seconds and was killed",
                     stderr.source,
                     STOP_TIMEOUT.as_secs()
-                ));
+                );
                 return;
             }
             _ = child.wait() => return,
@@ -262,12 +262,12 @@ async fn finish(
     let running = match child.try_wait() {
         Ok(status) => status.is_none(),
         Err(error) => {
-            host_log::runner(format_args!("{}: {error}", stderr.source));
+            tracing::warn!("{}: {error}", stderr.source);
             true
         }
     };
     if running && let Err(error) = Box::into_pin(child.kill()).await {
-        host_log::runner(format_args!("{} could not be killed: {error}", stderr.source));
+        tracing::warn!("{} could not be killed: {error}", stderr.source);
     }
     Ended {
         reason,
@@ -317,12 +317,12 @@ impl Stderr {
             Ok(0) => self.close(),
             Ok(count) => {
                 for line in self.lines.push(&buffer[..count]) {
-                    host_log::write(&self.source, None, &line);
+                    tracing::info!(source = self.source.as_str(), "{line}");
                 }
                 self.tail.push(&buffer[..count]);
             }
             Err(error) => {
-                host_log::runner(format_args!("{} standard error: {error}", self.source));
+                tracing::warn!("{} standard error: {error}", self.source);
                 self.close();
             }
         }
@@ -331,7 +331,7 @@ impl Stderr {
     fn close(&mut self) {
         self.pipe = None;
         if let Some(line) = std::mem::take(&mut self.lines).finish() {
-            host_log::write(&self.source, None, &line);
+            tracing::info!(source = self.source.as_str(), "{line}");
         }
     }
 

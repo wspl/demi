@@ -6,6 +6,14 @@ async fn main() {
         eprintln!("Usage: demi-commands --command-service");
         std::process::exit(2);
     }
+    // Diagnostics go to standard error, which the runner drains into the
+    // Host's log line by line.
+    tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .with_max_level(tracing::Level::INFO)
+        .without_time()
+        .with_target(false)
+        .init();
     let result =
         demi_command_service::serve_stdio(Arc::new(demi_commands::DemiCommands::default())).await;
     if let Err(error) = result {

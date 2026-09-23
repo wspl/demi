@@ -126,7 +126,7 @@ impl Volumes {
                     outcome => {
                         pending.lock().unwrap().remove(&volume.name);
                         if let Err(error) = outcome {
-                            crate::host_log::runner(format_args!("volume capacity check: {error}"));
+                            tracing::warn!("volume capacity check: {error}");
                         }
                     }
                 }
@@ -150,9 +150,9 @@ impl Volumes {
         }
         pending.remove(&name);
         if let Some(error) = error {
-            crate::host_log::runner(format_args!(
+            tracing::warn!(
                 "{name} growth to {bytes} bytes failed: {error}"
-            ));
+            );
         }
         Ok(())
     }
@@ -187,7 +187,7 @@ async fn send(
             }
         }
         Err(error) => {
-            crate::host_log::runner(format_args!("volume response encoding: {error}"));
+            tracing::warn!("volume response encoding: {error}");
             stop.cancel();
         }
     }

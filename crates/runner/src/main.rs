@@ -1,9 +1,13 @@
 use demi_command_service::protocol::LocalInvocation;
 use demi_runner::{
     commands::command_client::{self, RawCommand, Stdio},
+    host_log,
     mode::{self, Options},
     state::{self, RunnerState},
     stdio::{self, standard_file},
+};
+use tracing_subscriber::{
+    Layer as _, filter::LevelFilter, layer::SubscriberExt as _, util::SubscriberInitExt as _,
 };
 use std::{
     collections::BTreeMap,
@@ -175,9 +179,21 @@ async fn runner(args: Vec<String>) -> io::Result<u8> {
                 .map(|value| !value.is_empty())
         }),
     };
+    // A managed guest's state is temporary; its log stays on the system
+    // layer (`runner.md` § Host log).
+    let log_directory = if boot.is_some() {
+        PathBuf::from("/var/log/demi")
+    } else {
+        directory.join("log")
+    };
+    let (log, layer) = host_log::open(log_directory).await?;
+    tracing_subscriber::registry()
+        .with(layer.with_filter(LevelFilter::INFO))
+        .with(host_log::Console.with_filter(LevelFilter::WARN))
+        .init();
     let options = Options {
         backend,
-        log: directory.join("log"),
+        log: log.reader(),
         directory,
         executable: std::env::current_exe()?,
         cwd: std::env::current_dir()?,
@@ -202,15 +218,26 @@ async fn runner(args: Vec<String>) -> io::Result<u8> {
     let stop = CancellationToken::new();
     let running = mode::run(options, stop.clone());
     tokio::pin!(running);
-    tokio::select! {
-        result = &mut running => result?,
-        result = signal() => {
-            result?;
-            stop.cancel();
-            running.await?;
+    let outcome = tokio::select! {
+        result = &mut running => result,
+        result = signal() => match result {
+            Ok(()) => {
+                stop.cancel();
+                running.await
+            }
+            Err(error) => Err(error),
         },
-    }
-    Ok(0)
+    };
+    // Past this point the log holds what went wrong, and the console hears it.
+    let code = match outcome {
+        Ok(()) => 0,
+        Err(error) => {
+            tracing::error!("{error}");
+            1
+        }
+    };
+    log.close().await;
+    Ok(code)
 }
 
 fn identity(home_dir: String) -> io::Result<demi_runner::connection::wire::HostIdentity> {
@@ -276,6 +303,10 @@ fn main() {
         .build()
         .expect("runner runtime");
     let result = if name != "demi-runner" {
+        // A command alias has no log of its own; the runner it calls logs.
+        tracing_subscriber::registry()
+            .with(host_log::Console.with_filter(LevelFilter::WARN))
+            .init();
         runtime.block_on(command(name.into(), args[1..].to_vec()))
     } else {
         runtime.block_on(runner(args[1..].to_vec()))

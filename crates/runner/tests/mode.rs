@@ -56,10 +56,17 @@ async fn backend_job_invokes_same_binary_alias_and_drain_releases_installation()
         let backend = format!("http://{}", listener.local_addr().unwrap());
         let state_dir = directory.path().join("state");
         let home = directory.path().to_string_lossy().into_owned();
+        // As `main` does: the log is a layer of the process's subscriber.
+        let (log, layer) = demi_runner::host_log::open(state_dir.join("log")).await.unwrap();
+        {
+            use tracing_subscriber::layer::SubscriberExt as _;
+            use tracing_subscriber::util::SubscriberInitExt as _;
+            tracing_subscriber::registry().with(layer).init();
+        }
         let options = Options {
             backend,
             directory: state_dir.clone(),
-            log: state_dir.join("log"),
+            log: log.reader(),
             executable: env!("CARGO_BIN_EXE_demi-runner").into(),
             cwd: directory.path().into(),
             env: BTreeMap::from([("HOME".into(), home.clone())]),
@@ -187,6 +194,7 @@ async fn backend_job_invokes_same_binary_alias_and_drain_releases_installation()
         assert_eq!(completion.exit_code, 0);
         eprintln!("mode test: drain acknowledged");
         running.await.unwrap().unwrap();
+        log.close().await;
         assert!(!state_dir.join("active.json").exists());
         state.lock().unwrap().release().unwrap();
     })

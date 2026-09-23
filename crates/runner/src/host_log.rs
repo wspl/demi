@@ -1,26 +1,34 @@
 //! The Host's log (`runner.md` § Host log): one bounded log of diagnostics
 //! per Host, kept in two files so the older can be replaced when the newer
-//! fills. Sources hand lines to a queue and never wait for the disk; one
-//! writer task owns the files, and a read parses them as they are.
+//! fills. Every part of the runner writes `tracing` events; the log is a
+//! `tracing` layer that queues each event's lines and never waits for the
+//! disk. One writer thread owns the files: it writes the queued lines and
+//! answers reads between them.
 
 use std::{
-    fmt,
+    fmt::{self, Write as _},
     fs::{File, OpenOptions},
     io::{self, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     sync::{
-        Arc, Mutex, RwLock,
+        Arc,
         atomic::{AtomicU64, Ordering},
     },
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use serde::{Deserialize, Serialize};
-use tokio::{sync::mpsc, task::JoinHandle};
+use tokio::sync::{mpsc, oneshot};
+use tracing::{
+    Event, Subscriber,
+    field::{Field, Visit},
+};
+use tracing_subscriber::layer::{Context, Layer};
 
 use crate::connection::wire;
 
-/// The source of the runner's own diagnostics.
+/// The source of the runner's own diagnostics, and of every event that names
+/// no other.
 pub const RUNNER: &str = "runner";
 
 const NEWER: &str = "host.log";
@@ -81,70 +89,134 @@ struct Entry {
     text: String,
 }
 
+/// What the writer thread is asked, in the order asked.
 enum Message {
     Entry(Entry),
+    Read {
+        query: Query,
+        reply: oneshot::Sender<io::Result<Page>>,
+    },
     Close,
 }
 
-pub struct HostLog {
-    queue: mpsc::Sender<Message>,
-    dropped: Arc<AtomicU64>,
-    files: Arc<Mutex<Files>>,
-    writer: Mutex<Option<JoinHandle<()>>>,
+/// Opens the log in `directory`, continuing the files a former runner left,
+/// and starts its writer thread. The layer goes into the process's `tracing`
+/// subscriber; the writer stays with whoever closes the log.
+pub async fn open(directory: PathBuf) -> io::Result<(HostLogWriter, HostLogLayer)> {
+    tokio::fs::create_dir_all(&directory).await?;
+    crate::fs::chmod(&directory, 0o700).await?;
+    let files = tokio::task::spawn_blocking(move || Files::open(directory))
+        .await
+        .map_err(io::Error::other)??;
+    let dropped = Arc::new(AtomicU64::new(0));
+    let (queue, queued) = mpsc::channel(QUEUE);
+    let thread = std::thread::Builder::new().name("host-log".into()).spawn({
+        let dropped = dropped.clone();
+        move || serve(files, queued, &dropped)
+    })?;
+    Ok((
+        HostLogWriter {
+            queue: queue.clone(),
+            thread,
+        },
+        HostLogLayer { queue, dropped },
+    ))
 }
 
-impl HostLog {
-    /// Opens the log in `directory`, continuing the files a former runner left.
-    pub async fn open(directory: PathBuf) -> io::Result<Arc<Self>> {
-        tokio::fs::create_dir_all(&directory).await?;
-        crate::fs::chmod(&directory, 0o700).await?;
-        let files = tokio::task::spawn_blocking(move || Files::open(directory))
-            .await
-            .map_err(io::Error::other)??;
-        let files = Arc::new(Mutex::new(files));
-        let dropped = Arc::new(AtomicU64::new(0));
-        let (queue, mut queued) = mpsc::channel(QUEUE);
-        let writer = tokio::task::spawn_blocking({
-            let files = files.clone();
-            let dropped = dropped.clone();
-            move || {
-                while let Some(Message::Entry(entry)) = queued.blocking_recv() {
-                    let mut files = files.lock().expect("log files lock");
-                    let missed = dropped.swap(0, Ordering::Relaxed);
-                    if missed > 0 {
-                        files.append(Entry {
-                            at: entry.at,
-                            source: RUNNER.into(),
-                            conversation_id: None,
-                            text: format!("{missed} log lines were dropped: the log fell behind"),
-                        });
-                    }
-                    files.append(entry);
+/// The writer thread: it writes each queued line, first saying how many the
+/// queue had no room for, and answers each read from the files as they are.
+fn serve(mut files: Files, mut queued: mpsc::Receiver<Message>, dropped: &AtomicU64) {
+    while let Some(message) = queued.blocking_recv() {
+        match message {
+            Message::Entry(entry) => {
+                let missed = dropped.swap(0, Ordering::Relaxed);
+                if missed > 0 {
+                    files.append(Entry {
+                        at: entry.at,
+                        source: RUNNER.into(),
+                        conversation_id: None,
+                        text: format!("{missed} log lines were dropped: the log fell behind"),
+                    });
                 }
+                files.append(entry);
             }
-        });
-        Ok(Arc::new(Self {
-            queue,
-            dropped,
-            files,
-            writer: Mutex::new(Some(writer)),
-        }))
+            Message::Read { query, reply } => {
+                // The reader may have gone; the read cost nothing to keep.
+                let _gone = reply.send(files.read(&query));
+            }
+            Message::Close => return,
+        }
+    }
+}
+
+/// Owns the writer thread.
+pub struct HostLogWriter {
+    queue: mpsc::Sender<Message>,
+    thread: std::thread::JoinHandle<()>,
+}
+
+impl HostLogWriter {
+    pub fn reader(&self) -> HostLogReader {
+        HostLogReader {
+            queue: self.queue.clone(),
+        }
     }
 
-    /// Queues `text`, one log line per line of it. It never waits and never
-    /// fails: the log is diagnostics beside the work, so a line the writer
-    /// has no room for is dropped and counted rather than holding up what it
-    /// describes.
-    pub fn write(&self, source: &str, conversation_id: Option<&str>, text: &str) {
+    /// Writes every line queued before it and stops the writer thread. Lines
+    /// written afterwards are dropped.
+    pub async fn close(self) {
+        // The thread is gone only if it panicked; there is nothing to flush then.
+        let _gone = self.queue.send(Message::Close).await;
+        let thread = self.thread;
+        let joined = tokio::task::spawn_blocking(move || thread.join()).await;
+        if !matches!(joined, Ok(Ok(()))) {
+            eprintln!("demi-runner: the host log writer failed");
+        }
+    }
+}
+
+/// Reads the log for `log_read` requests.
+#[derive(Clone)]
+pub struct HostLogReader {
+    queue: mpsc::Sender<Message>,
+}
+
+impl HostLogReader {
+    /// The writer thread answers between two lines it writes, so the page
+    /// holds every line queued before the read.
+    pub async fn read(&self, query: Query) -> io::Result<Page> {
+        let (reply, answer) = oneshot::channel();
+        let closed = || io::Error::other("the host log is closed");
+        self.queue
+            .send(Message::Read { query, reply })
+            .await
+            .map_err(|_| closed())?;
+        answer.await.map_err(|_| closed())?
+    }
+}
+
+/// The `tracing` layer that turns events into log lines: the `source` and
+/// `conversation` fields place each line, and every line of the message
+/// becomes one line of the log. It never waits and never fails: a line the
+/// writer has no room for is dropped and counted rather than holding up what
+/// it describes.
+pub struct HostLogLayer {
+    queue: mpsc::Sender<Message>,
+    dropped: Arc<AtomicU64>,
+}
+
+impl<S: Subscriber> Layer<S> for HostLogLayer {
+    fn on_event(&self, event: &Event<'_>, _: Context<'_, S>) {
+        let fields = Fields::of(event);
         let at = now();
         let mut splitter = LineSplitter::default();
-        let mut lines = splitter.push(text.as_bytes());
+        let mut lines = splitter.push(fields.text.as_bytes());
         lines.extend(splitter.finish());
         for text in lines {
             let entry = Entry {
                 at,
-                source: source.into(),
-                conversation_id: conversation_id.map(str::to_owned),
+                source: fields.source.clone().unwrap_or_else(|| RUNNER.into()),
+                conversation_id: fields.conversation.clone(),
                 text,
             };
             if self.queue.try_send(Message::Entry(entry)).is_err() {
@@ -152,27 +224,63 @@ impl HostLog {
             }
         }
     }
+}
 
-    /// Reads the files as they are; it waits for no line still queued.
-    pub async fn read(&self, query: Query) -> io::Result<Page> {
-        let files = self.files.clone();
-        tokio::task::spawn_blocking(move || files.lock().expect("log files lock").read(&query))
-            .await
-            .map_err(io::Error::other)?
+/// The console layer: each event it is given goes to standard error, which a
+/// guest's console shows. Only what was tried and why it failed belongs there:
+/// never a token, a pairing code or content (`runner.md` § Host log).
+pub struct Console;
+
+impl<S: Subscriber> Layer<S> for Console {
+    fn on_event(&self, event: &Event<'_>, _: Context<'_, S>) {
+        eprintln!("demi-runner: {}", Fields::of(event).text);
+    }
+}
+
+/// An event's text, its message followed by any other fields, and its place
+/// in the log.
+#[derive(Default)]
+struct Fields {
+    text: String,
+    source: Option<String>,
+    conversation: Option<String>,
+}
+
+impl Fields {
+    fn of(event: &Event<'_>) -> Self {
+        let mut visitor = Visitor::default();
+        event.record(&mut visitor);
+        Self {
+            text: visitor.message + &visitor.others,
+            source: visitor.source,
+            conversation: visitor.conversation,
+        }
+    }
+}
+
+#[derive(Default)]
+struct Visitor {
+    message: String,
+    others: String,
+    source: Option<String>,
+    conversation: Option<String>,
+}
+
+impl Visit for Visitor {
+    fn record_str(&mut self, field: &Field, value: &str) {
+        match field.name() {
+            "source" => self.source = Some(value.into()),
+            "conversation" => self.conversation = Some(value.into()),
+            _ => self.record_debug(field, &value),
+        }
     }
 
-    /// Writes every queued line and stops the writer task. Lines written
-    /// afterwards are dropped.
-    pub async fn close(&self) {
-        let writer = self.writer.lock().expect("log writer lock").take();
-        let Some(writer) = writer else {
-            return;
+    fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
+        // Writing to a String does not fail.
+        let _ = match field.name() {
+            "message" => write!(self.message, "{value:?}"),
+            name => write!(self.others, " {name}={value:?}"),
         };
-        // The writer is gone only if it panicked; there is nothing to flush then.
-        let _ = self.queue.send(Message::Close).await;
-        if let Err(error) = writer.await {
-            eprintln!("demi-runner: host log writer failed: {error}");
-        }
     }
 }
 
@@ -386,52 +494,6 @@ impl LineSplitter {
         }
         Some(text.to_owned())
     }
-}
-
-/// The log of the runner this process is. One process serves one Host, so the
-/// sources reach its log here the way they reach its standard error.
-static CURRENT: RwLock<Option<Arc<HostLog>>> = RwLock::new(None);
-
-/// Keeps a log current until dropped.
-pub struct Installed(Arc<HostLog>);
-
-pub fn install(log: Arc<HostLog>) -> Installed {
-    *CURRENT.write().expect("current log lock") = Some(log.clone());
-    Installed(log)
-}
-
-impl Drop for Installed {
-    fn drop(&mut self) {
-        let mut current = CURRENT.write().expect("current log lock");
-        if current
-            .as_ref()
-            .is_some_and(|current| Arc::ptr_eq(current, &self.0))
-        {
-            *current = None;
-        }
-    }
-}
-
-/// One line from `source`; nothing is kept while no log is installed.
-pub fn write(source: &str, conversation_id: Option<&str>, text: &str) {
-    if let Some(log) = CURRENT.read().expect("current log lock").as_ref() {
-        log.write(source, conversation_id, text);
-    }
-}
-
-/// One event of the runner's ordinary life (it connected, a service
-/// started), to the log alone.
-pub fn event(text: impl fmt::Display) {
-    write(RUNNER, None, &text.to_string());
-}
-
-/// One diagnostic of the runner itself, to its standard error (a guest's
-/// console) and to the log. Only what was tried and why it failed belongs
-/// here: never a token, a pairing code or content (`runner.md` § Host log).
-pub fn runner(text: impl fmt::Display) {
-    let text = text.to_string();
-    eprintln!("demi-runner: {text}");
-    write(RUNNER, None, &text);
 }
 
 #[cfg(test)]
@@ -656,24 +718,64 @@ mod tests {
         assert_eq!(LineSplitter::default().finish(), None);
     }
 
-    #[tokio::test]
-    async fn queued_lines_reach_the_files_by_close_and_survive_reopening() {
-        let directory = tempfile::tempdir().unwrap();
-        let log = HostLog::open(directory.path().join("log")).await.unwrap();
-        log.write("service:demi.builtin", None, "could not list tabs");
-        log.write("stream:browser.live", Some("conversation"), "view failed");
-        log.close().await;
-        log.write(RUNNER, None, "after close");
-        let page = log.read(query(None, 10, None)).await.unwrap();
-        assert_eq!(texts(&page), ["could not list tabs", "view failed"]);
+    /// Emits `events` into a subscriber made of `layer` alone.
+    fn emit(layer: HostLogLayer, events: impl FnOnce()) {
+        use tracing_subscriber::layer::SubscriberExt as _;
+        tracing::subscriber::with_default(tracing_subscriber::registry().with(layer), events);
+    }
 
-        let reopened = HostLog::open(directory.path().join("log")).await.unwrap();
-        reopened.write(RUNNER, None, "restarted");
-        reopened.close().await;
-        let page = reopened
-            .read(query(Some(page.next), 10, None))
-            .await
-            .unwrap();
+    #[tokio::test]
+    async fn events_become_lines_in_order_and_survive_reopening() {
+        let directory = tempfile::tempdir().unwrap();
+        let (writer, layer) = open(directory.path().join("log")).await.unwrap();
+        emit(layer, || {
+            tracing::info!(source = "service:demi.builtin", "could not list tabs");
+            tracing::warn!(source = "stream:browser.live", conversation = "c1", "view failed\nretrying");
+            tracing::info!(pid = 7, "service started");
+        });
+        let page = writer.reader().read(query(None, 10, None)).await.unwrap();
+        assert_eq!(
+            texts(&page),
+            ["could not list tabs", "view failed", "retrying", "service started pid=7"]
+        );
+        assert_eq!(page.lines[0].source, "service:demi.builtin");
+        assert_eq!(page.lines[1].conversation_id.as_deref(), Some("c1"));
+        assert_eq!(page.lines[3].source, RUNNER);
+        writer.close().await;
+
+        let (reopened, layer) = open(directory.path().join("log")).await.unwrap();
+        emit(layer, || tracing::info!("restarted"));
+        let reader = reopened.reader();
+        let page = reader.read(query(Some(page.next), 10, None)).await.unwrap();
         assert_eq!(texts(&page), ["restarted"]);
+        reopened.close().await;
+        assert!(reader.read(query(None, 10, None)).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn a_full_queue_drops_lines_and_says_how_many() {
+        let directory = tempfile::tempdir().unwrap();
+        let files = Files::open(directory.path().into()).unwrap();
+        let dropped = Arc::new(AtomicU64::new(0));
+        let (queue, queued) = mpsc::channel(QUEUE);
+        let layer = HostLogLayer {
+            queue: queue.clone(),
+            dropped: dropped.clone(),
+        };
+        // Nothing drains the queue yet: the lines past it are counted.
+        emit(layer, || {
+            for index in 0..QUEUE + 3 {
+                tracing::info!("line {index}");
+            }
+        });
+        assert_eq!(dropped.load(Ordering::Relaxed), 3);
+        let thread = std::thread::spawn(move || serve(files, queued, &dropped));
+        queue.send(Message::Close).await.unwrap();
+        thread.join().unwrap();
+        let files = Files::open(directory.path().into()).unwrap();
+        let page = files.read(&query(None, 3, None)).unwrap();
+        assert_eq!(texts(&page)[0], format!("line {}", QUEUE - 3));
+        let all = files.read(&query(Some(0), QUEUE + 10, None)).unwrap();
+        assert_eq!(all.lines[0].text, "3 log lines were dropped: the log fell behind");
     }
 }
