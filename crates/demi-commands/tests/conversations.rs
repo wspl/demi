@@ -47,9 +47,8 @@ async fn release_cancels_a_browser_command_blocked_on_output() {
     assert!(futures_util::poll!(command.as_mut()).is_pending());
     let (output, mut release_records) = Output::channel(CancellationToken::new());
     let release = service.conversation(ConversationContext {
-        request: ConversationRequest {
-            operation: "release".into(),
-            conversation: Some("conversation".into()),
+        request: ConversationRequest::Release {
+            conversation: "conversation".into(),
         },
         output,
         cancellation: CancellationToken::new(),

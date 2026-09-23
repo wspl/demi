@@ -43,7 +43,7 @@ impl ArtifactSource {
         location: demi_command_service::protocol::ArtifactLocation,
     ) -> Result<Self, RuntimeError> {
         match location {
-            demi_command_service::protocol::ArtifactLocation::Variant0(location) => {
+            demi_command_service::protocol::ArtifactLocation::Url(location) => {
                 let url = reqwest::Url::parse(&location.url)
                     .map_err(|error| RuntimeError::Artifact(error.to_string()))?;
                 if url.scheme() != "https" || !url.username().is_empty() || url.password().is_some()
@@ -71,7 +71,7 @@ impl ArtifactSource {
                     expires_at,
                 })
             }
-            demi_command_service::protocol::ArtifactLocation::Variant1(location) => {
+            demi_command_service::protocol::ArtifactLocation::Path(location) => {
                 let path = std::path::PathBuf::from(location.path);
                 if !path.is_absolute() {
                     return Err(RuntimeError::Artifact(

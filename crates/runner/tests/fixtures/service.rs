@@ -1,6 +1,6 @@
 //! Deliberately faulty operations available only in native integration tests.
 use bytes::Bytes;
-use demi_command_service::protocol::{Completion, Invocation};
+use demi_command_service::protocol::{Completion, ConversationRequest, Invocation};
 use demi_command_service::{ConversationContext, Handler, InvocationContext, ServiceError};
 use std::{
     collections::BTreeSet,
@@ -102,14 +102,17 @@ impl Handler for Fixture {
         Box::pin(async move {
             let value = {
                 let mut held = conversations.lock().unwrap();
-                if context.request.operation == "status" {
-                    serde_json::json!({ "conversations": *held })
-                } else {
-                    if context.request.conversation.as_deref() == Some("fail") {
+                match &context.request {
+                    ConversationRequest::Status {} => {
+                        serde_json::json!({ "conversations": *held })
+                    }
+                    ConversationRequest::Release { conversation } if conversation == "fail" => {
                         return Err(ServiceError::Handler("fixture cleanup failed".into()));
                     }
-                    held.remove(context.request.conversation.as_ref().unwrap());
-                    serde_json::json!({})
+                    ConversationRequest::Release { conversation } => {
+                        held.remove(conversation);
+                        serde_json::json!({})
+                    }
                 }
             };
             context.output.stdout(value.to_string().into()).await?;

@@ -16,7 +16,7 @@ use demi_runner::{
     commands::local::Server,
     commands::native::{self, Services},
     commands::rpc::Calls,
-    connection::wire::{Inbound, JobStartStdin},
+    connection::wire::{Inbound, PipeRef},
     host::HostServer,
     management::Management,
     pipes::PipeClient,
@@ -161,7 +161,7 @@ fn reply(bytes: Vec<u8>) -> serde_json::Value {
 /// The next reply whose `key` is `value`; replies for other requests, such as
 /// a finished pipe's report, are skipped.
 async fn reply_for(
-    replies: &tokio::sync::Mutex<mpsc::Receiver<demi_runner::connection::wire::Outbound>>,
+    replies: &tokio::sync::Mutex<mpsc::Receiver<demi_runner::connection::wire::Frame>>,
     key: &str,
     value: &str,
 ) -> serde_json::Value {
@@ -272,7 +272,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
                 cwd: None,
                 offset: None,
                 length: None,
-                output: JobStartStdin {
+                output: PipeRef {
                     id: "transfer".into(),
                     url: "/pipe/transfer".into(),
                 },
@@ -330,11 +330,11 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
                 stream_id: "n".into(),
                 host: "127.0.0.1".into(),
                 port: service_port.into(),
-                input: JobStartStdin {
+                input: PipeRef {
                     id: "in".into(),
                     url: "/pipe/net-in".into(),
                 },
-                output: JobStartStdin {
+                output: PipeRef {
                     id: "out".into(),
                     url: "/pipe/net-out".into(),
                 },

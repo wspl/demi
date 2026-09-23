@@ -29,7 +29,7 @@ pub enum TaskKind {
 pub struct TaskTable {
     shared: Arc<Shared>,
     tasks: TaskTracker,
-    output: mpsc::Sender<wire::Outbound>,
+    output: mpsc::Sender<wire::Frame>,
     dispatcher: Option<Arc<crate::commands::dispatch::Dispatcher>>,
     output_dir: PathBuf,
     pipes: PipeClient,
@@ -56,8 +56,8 @@ enum TaskInput {
 pub enum TaskCommand {
     Shell {
         script: String,
-        stdin: Option<wire::JobStartStdin>,
-        stdout: Option<wire::JobStartStdin>,
+        stdin: Option<wire::PipeRef>,
+        stdout: Option<wire::PipeRef>,
     },
     Process {
         command: String,
@@ -76,7 +76,7 @@ pub struct TaskSpec {
 
 impl TaskTable {
     pub fn new(
-        output: mpsc::Sender<wire::Outbound>,
+        output: mpsc::Sender<wire::Frame>,
         dispatcher: Option<Arc<crate::commands::dispatch::Dispatcher>>,
         output_dir: PathBuf,
         pipes: PipeClient,
@@ -247,7 +247,7 @@ impl TaskTable {
         mut input: mpsc::Receiver<TaskInput>,
         mut signals: mpsc::Receiver<String>,
         cancel: CancellationToken,
-    ) -> io::Result<wire::Outbound> {
+    ) -> io::Result<wire::Frame> {
         let id = spec.id;
         let mut env = spec.env;
         let mut job = None;
@@ -268,15 +268,15 @@ impl TaskTable {
                 let child = match child {
                     Ok(child) => child,
                     Err(error) => {
-                        return wire::spawn_exit(
-                            id,
-                            None,
-                            None,
-                            Some(wire::SpawnExitSpawnError {
-                                kind: error.kind.into(),
+                        return wire::encode(&wire::Outbound::SpawnExit {
+                            spawn_id: id,
+                            exit_code: None,
+                            signal: None,
+                            spawn_error: Some(wire::SpawnError {
+                                kind: error.kind,
                                 detail: Some(error.message),
                             }),
-                        )
+                        })
                         .map_err(io::Error::other);
                     }
                 };
@@ -435,10 +435,6 @@ impl TaskTable {
                     let Some(chunk) = chunk else {
                         break;
                     };
-                    let name = match chunk.stream {
-                        OutputStream::Stdout => "stdout",
-                        OutputStream::Stderr => "stderr",
-                    };
                     let bytes = if let Some((logs, _, _)) = job.as_mut() {
                         logs.write(chunk.stream, &chunk.bytes).await?
                     } else {
@@ -446,8 +442,16 @@ impl TaskTable {
                     };
                     if !bytes.is_empty() {
                         let message = match kind {
-                            TaskKind::Job => wire::job_output(id.clone(), name.into(), wire::WireBytes(bytes.to_vec())),
-                            TaskKind::Spawn => wire::spawn_output(id.clone(), name.into(), wire::WireBytes(bytes.to_vec())),
+                            TaskKind::Job => wire::encode(&wire::Outbound::JobOutput {
+                                job_id: id.clone(),
+                                stream: chunk.stream,
+                                bytes: wire::WireBytes(bytes.to_vec()),
+                            }),
+                            TaskKind::Spawn => wire::encode(&wire::Outbound::SpawnOutput {
+                                spawn_id: id.clone(),
+                                stream: chunk.stream,
+                                bytes: wire::WireBytes(bytes.to_vec()),
+                            }),
                         }.map_err(io::Error::other)?;
                         tokio::select! {
                             _ = cancel.cancelled() => child.cancel(),
@@ -499,19 +503,24 @@ impl TaskTable {
                 })
                 .await
                 .map_err(io::Error::other)?;
-                wire::job_exit(
-                    id,
-                    exit.code.map(f64::from),
-                    error.or(exit.signal),
-                    None,
+                wire::encode(&wire::Outbound::JobExit {
+                    job_id: id,
+                    exit_code: exit.code,
+                    signal: error.or(exit.signal),
+                    spawn_error: None,
                     cwd,
-                    Some(output),
+                    output: Some(output),
                     files,
                     files_truncated,
-                )
+                })
                 .map_err(io::Error::other)
             }
-            None => wire::spawn_exit(id, exit.code.map(f64::from), error.or(exit.signal), None)
+            None => wire::encode(&wire::Outbound::SpawnExit {
+                spawn_id: id,
+                exit_code: exit.code,
+                signal: error.or(exit.signal),
+                spawn_error: None,
+            })
                 .map_err(io::Error::other),
         }
     }
@@ -593,46 +602,46 @@ fn task_key(kind: TaskKind, id: &str) -> String {
     )
 }
 
-fn failure(kind: TaskKind, id: String, error: String) -> Result<wire::Outbound, wire::WireError> {
+fn failure(kind: TaskKind, id: String, error: String) -> Result<wire::Frame, wire::WireError> {
     match kind {
-        TaskKind::Job => wire::job_exit(
-            id,
-            None,
-            Some(error),
-            Some(wire::SpawnExitSpawnError {
-                kind: "other".into(),
+        TaskKind::Job => wire::encode(&wire::Outbound::JobExit {
+            job_id: id,
+            exit_code: None,
+            signal: Some(error),
+            spawn_error: Some(wire::SpawnError {
+                kind: wire::SpawnErrorKind::Other,
                 detail: None,
             }),
-            None,
-            None,
-            Vec::new(),
-            false,
-        ),
-        TaskKind::Spawn => wire::spawn_exit(
-            id,
-            None,
-            Some(error),
-            Some(wire::SpawnExitSpawnError {
-                kind: "other".into(),
+            cwd: None,
+            output: None,
+            files: Vec::new(),
+            files_truncated: false,
+        }),
+        TaskKind::Spawn => wire::encode(&wire::Outbound::SpawnExit {
+            spawn_id: id,
+            exit_code: None,
+            signal: Some(error),
+            spawn_error: Some(wire::SpawnError {
+                kind: wire::SpawnErrorKind::Other,
                 detail: None,
             }),
-        ),
+        }),
     }
 }
 
 /// Reports a pipe end's outcome to the backend; `shutdown` stops reporting
 /// without a backend to receive it.
 pub(crate) async fn report_pipe(
-    output: &mpsc::Sender<wire::Outbound>,
+    output: &mpsc::Sender<wire::Frame>,
     id: String,
     result: io::Result<()>,
     shutdown: &CancellationToken,
 ) {
-    match wire::pipe_done(
-        id,
-        result.is_ok(),
-        result.err().map(|error| error.to_string()),
-    ) {
+    match wire::encode(&wire::Outbound::PipeDone {
+        pipe_id: id,
+        ok: result.is_ok(),
+        error: result.err().map(|error| error.to_string()),
+    }) {
         Ok(message) => {
             tokio::select! {
                 _ = shutdown.cancelled() => {},
@@ -697,14 +706,14 @@ impl Logs {
             OutputStream::Stderr => self.stderr.write(bytes).await,
         }
     }
-    async fn finish(mut self) -> io::Result<wire::JobExitOutput> {
+    async fn finish(mut self) -> io::Result<wire::RetainedOutput> {
         self.stdout.file.flush().await?;
         self.stderr.file.flush().await?;
-        Ok(wire::JobExitOutput {
+        Ok(wire::RetainedOutput {
             stdout_path: self.stdout.path.to_string_lossy().into_owned(),
             stderr_path: self.stderr.path.to_string_lossy().into_owned(),
-            stdout_bytes: self.stdout.bytes as f64,
-            stderr_bytes: self.stderr.bytes as f64,
+            stdout_bytes: self.stdout.bytes,
+            stderr_bytes: self.stderr.bytes,
             stdout_tail: wire::WireBytes(self.stdout.tail),
             stderr_tail: wire::WireBytes(self.stderr.tail),
         })

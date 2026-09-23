@@ -535,6 +535,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "castaway"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dec551ab6e7578819132c713a93c022a05d60159dc86e7a7050223577484c55a"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "cc"
 version = "1.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -777,6 +786,20 @@ checksum = "1b60b5124979fccd9addd89d8b97a1d6eebb4950694520c75ddd722535ea443f"
 dependencies = [
  "nix 0.31.3",
  "thiserror",
+]
+
+[[package]]
+name = "compact_str"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9dfdd1c2274d9aa354115b09dc9a901d6c5576818cdf70d14cae2bdb47df00ab"
+dependencies = [
+ "castaway",
+ "cfg-if",
+ "itoa",
+ "rustversion",
+ "ryu",
+ "static_assertions",
 ]
 
 [[package]]
@@ -1072,20 +1095,31 @@ version = "0.1.3"
 dependencies = [
  "bytes",
  "futures-util",
+ "garde",
  "h2",
  "http",
  "libc",
- "regex",
  "serde",
  "serde_json",
  "serde_json_canonicalizer",
+ "serde_with",
  "sha2",
  "tempfile",
  "thiserror",
  "tokio",
  "tokio-util",
- "url",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "demi-command-tree"
+version = "0.1.3"
+dependencies = [
+ "jsonschema",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "thiserror",
 ]
 
 [[package]]
@@ -1129,6 +1163,8 @@ dependencies = [
  "bytes",
  "chrono",
  "demi-command-service",
+ "demi-command-tree",
+ "demi-runner-protocol",
  "diffutils",
  "filetime",
  "findutils",
@@ -1140,13 +1176,11 @@ dependencies = [
  "libc",
  "notify",
  "process-wrap",
- "regex",
  "reqwest 0.12.28",
  "ripgrep",
  "rmp-serde",
  "sed",
  "serde",
- "serde_bytes",
  "serde_json",
  "sha2",
  "tempfile",
@@ -1154,7 +1188,6 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "tokio-util",
- "url",
  "uu_basename",
  "uu_cat",
  "uu_chmod",
@@ -1192,6 +1225,21 @@ dependencies = [
  "uucore 0.11.0",
  "uuid",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "demi-runner-protocol"
+version = "0.1.3"
+dependencies = [
+ "demi-command-service",
+ "demi-command-tree",
+ "garde",
+ "rmp-serde",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "serde_with",
+ "thiserror",
 ]
 
 [[package]]
@@ -1683,6 +1731,32 @@ dependencies = [
  "memchr",
  "pin-project-lite",
  "slab",
+]
+
+[[package]]
+name = "garde"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d7f479d28d1daedf23970890723b8774d120aa627abcb33c1d7c93d0965e6c3"
+dependencies = [
+ "compact_str",
+ "garde_derive",
+ "once_cell",
+ "regex",
+ "smallvec",
+ "url",
+]
+
+[[package]]
+name = "garde_derive"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b0252cacdca8e6f30a900e6d436fbf294e23f674b9288ca4a5bd35976bef87c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "regex",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -4985,6 +5059,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_with"
+version = "3.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "935177bb8c0cd8ca1a4e6d1a2ac8988bea69cab4f9d3a31311e012ad27868ea4"
+dependencies = [
+ "serde_core",
+]
+
+[[package]]
 name = "sha1"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5104,6 +5187,12 @@ name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
+
+[[package]]
+name = "static_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "strsim"

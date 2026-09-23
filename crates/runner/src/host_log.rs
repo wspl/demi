@@ -63,7 +63,7 @@ pub struct Page {
     pub next: u64,
 }
 
-impl From<Line> for wire::LogLinesLinesItem {
+impl From<Line> for wire::LogLine {
     fn from(line: Line) -> Self {
         Self {
             at: wire::Timestamp(line.at),

@@ -19,7 +19,7 @@ use gix::bstr::{BStr, BString, ByteSlice};
 use tokio::sync::Semaphore;
 use tokio_util::sync::CancellationToken;
 
-use crate::connection::wire::{self as wire, Inbound, Outbound};
+use crate::connection::wire::{self as wire, Frame, Inbound};
 use crate::paths::resolve;
 use crate::tree_watch::{TreeWatch, WatchEvent};
 
@@ -36,24 +36,7 @@ const TIMEOUT: Duration = Duration::from_secs(30);
 const CONCURRENT_COMPUTATIONS: usize = 2;
 
 /// How the working tree differs from HEAD at a path.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ChangeKind {
-    Added,
-    Modified,
-    Deleted,
-    Renamed,
-}
-
-impl ChangeKind {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            ChangeKind::Added => "added",
-            ChangeKind::Modified => "modified",
-            ChangeKind::Deleted => "deleted",
-            ChangeKind::Renamed => "renamed",
-        }
-    }
-}
+pub use crate::connection::wire::ChangeKind;
 
 /// One path `git status` lists, relative to the requested directory.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1084,7 +1067,7 @@ pub async fn handle(
     message: &Inbound,
     default_cwd: &Path,
     cancel: &CancellationToken,
-) -> Option<Result<Outbound, wire::WireError>> {
+) -> Option<Result<Frame, wire::WireError>> {
     let id = message.git_request_id()?;
     // Out of open files, the request waits for one (`runner.md` § Load).
     let result = demi_command_service::descriptors::retry(cancel, || {
@@ -1093,9 +1076,17 @@ pub async fn handle(
     .await;
     Some(match result {
         Ok(reply) => wire::within_limit(reply, |reason| {
-            wire::git_error(id.to_owned(), GitError::TooLarge.code().to_owned(), reason)
+            wire::encode(&wire::Outbound::GitError {
+                id: id.to_owned(),
+                code: GitError::TooLarge.code().to_owned(),
+                message: reason,
+            })
         }),
-        Err(error) => wire::git_error(id.to_owned(), error.code().to_owned(), error.message()),
+        Err(error) => wire::encode(&wire::Outbound::GitError {
+            id: id.to_owned(),
+            code: error.code().to_owned(),
+            message: error.message(),
+        }),
     })
 }
 
@@ -1104,28 +1095,32 @@ async fn call(
     message: &Inbound,
     default_cwd: &Path,
     cancel: &CancellationToken,
-) -> Result<Outbound, GitError> {
+) -> Result<Frame, GitError> {
     match message {
         Inbound::GitChanges { id, root } => {
             let root = resolve(root, default_cwd).map_err(GitError::Io)?;
             let changes = service.changes(&root, cancel).await?;
-            wire::git_ok_changes(id.clone(), to_wire(changes)).map_err(internal)
+            wire::encode(&wire::Outbound::GitOk(wire::GitOk {
+                id: id.clone(),
+                result: wire::GitResult::Changes(to_wire(changes)),
+            }))
+            .map_err(internal)
         }
         _ => Err(GitError::Internal("not a working-tree request".into())),
     }
 }
 
-fn to_wire(changes: Changes) -> wire::GitOkChangesResult {
-    wire::GitOkChangesResult {
+fn to_wire(changes: Changes) -> wire::GitChanges {
+    wire::GitChanges {
         repository: changes.repository,
         head: changes.head,
         files: changes
             .files
             .into_iter()
-            .map(|change| wire::GitOkChangesResultFilesItem {
+            .map(|change| wire::GitChange {
                 path: change.path,
                 status: change.status,
-                kind: change.kind.as_str().to_owned(),
+                kind: change.kind,
                 from: change.from,
                 added: change.added,
                 removed: change.removed,

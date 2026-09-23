@@ -37,18 +37,18 @@ async fn conversation_endpoint_has_no_grants_and_validates_release_identity() {
         let server = tokio::spawn(serve(service, Arc::new(Stateless)));
         let (client, connection) = Client::connect(io).await.unwrap();
         let driver = tokio::spawn(connection);
-        for (operation, conversation, body) in [
-            ("status", None, b"{\"conversations\":[]}".as_slice()),
-            ("release", Some("unknown"), b"{}".as_slice()),
-            ("release", Some("unknown"), b"{}".as_slice()),
+        let release = || ConversationRequest::Release {
+            conversation: "unknown".into(),
+        };
+        for (request, body) in [
+            (
+                ConversationRequest::Status {},
+                b"{\"conversations\":[]}".as_slice(),
+            ),
+            (release(), b"{}".as_slice()),
+            (release(), b"{}".as_slice()),
         ] {
-            let (_input, mut output) = client
-                .conversation(&ConversationRequest {
-                    operation: operation.into(),
-                    conversation: conversation.map(str::to_owned),
-                })
-                .await
-                .unwrap();
+            let (_input, mut output) = client.conversation(&request).await.unwrap();
             assert_eq!(
                 output.next().await.unwrap(),
                 Some(Record::Stdout(Bytes::copy_from_slice(body)))
@@ -140,7 +140,7 @@ impl Handler for Lifecycle {
         let cancelled = self.cancelled.clone();
         Box::pin(async move {
             started.notify_one();
-            if context.request.conversation.as_deref() == Some("wait") {
+            if matches!(&context.request, ConversationRequest::Release { conversation } if conversation == "wait") {
                 context.cancellation.cancelled().await;
                 cancelled.notify_one();
                 return Err(ServiceError::Cancelled);
@@ -168,14 +168,14 @@ async fn conversation_cancellation_joins_hook_and_cleanup_failure_retires_servic
         let server = tokio::spawn(serve(service, Arc::new(Lifecycle { started: started.clone(), cancelled: cancelled.clone(), closed: closed.clone() })));
         let (client, connection) = Client::connect(io).await.unwrap();
         let driver = tokio::spawn(connection);
-        let (mut input, output) = client.conversation(&ConversationRequest { operation: "release".into(), conversation: Some("wait".into()) }).await.unwrap();
+        let (mut input, output) = client.conversation(&ConversationRequest::Release { conversation: "wait".into() }).await.unwrap();
         started.notified().await;
         input.cancel();
         cancelled.notified().await;
         drop(input);
         drop(output);
         assert_eq!(client.info().await.unwrap().operations, ["noop"]);
-        let (_input, mut output) = client.conversation(&ConversationRequest { operation: "release".into(), conversation: Some("fail".into()) }).await.unwrap();
+        let (_input, mut output) = client.conversation(&ConversationRequest::Release { conversation: "fail".into() }).await.unwrap();
         // Cleanup failure closes the service; the final failure record may race
         // connection teardown, but it must never report successful completion.
         if let Ok(Some(Record::Completion(completion))) = output.next().await {

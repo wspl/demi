@@ -59,16 +59,19 @@ convention:
 - Enums are internally tagged: by `type`, or by `op` for transcript patches,
   `status` for nested outcomes and `kind` for views. No untagged enum exists
   anywhere; the TypeScript generator rejects them.
-- An optional field is omitted when absent (`Option<T>` with `default` and
-  `skip_serializing_if`); a nullable field is always written, as `null` when
-  empty (a plain `Option<T>`).
+- An optional field is omitted when absent, and a `null` in its place is
+  refused (`Option<T>` with `default`, `skip_serializing_if` and serde_with's
+  `unwrap_or_skip`). A nullable field is always written, as `null` when empty,
+  and its absence is refused (`Option<T>` decoded with `Option::deserialize`).
+  The generated Zod schemas refuse the same values, so both ends agree.
 - Bytes are base64 strings (`B64Bytes`), and times are RFC 3339 strings
   (`jiff::Timestamp`).
 - Integers are integer types. An integer the browser reads is bounded to
   JavaScript's safe integer range.
 
 The runner wire has its own field names and MessagePack encoding, fixed by
-`runner-protocol` and its corpus. [Storage](../backend/storage.md) owns the
+`runner-protocol` and its corpus; its optional and nullable fields follow the
+rule above. [Storage](../backend/storage.md) owns the
 storage encodings: column types, times in the database, digests, sealed
 credentials and password hashes.
 
