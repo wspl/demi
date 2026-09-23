@@ -19,6 +19,8 @@ pub mod tasks;
 pub mod volumes;
 
 pub mod commands;
+pub mod services;
+pub mod tail;
 
 pub(crate) mod file_diff;
 pub(crate) mod tree_watch;

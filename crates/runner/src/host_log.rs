@@ -588,6 +588,8 @@ mod tests {
         let cursor = files.read(&query(None, 1, None)).unwrap().next;
         drop(files);
         std::fs::remove_file(directory.path().join(NEWER)).unwrap();
+        // The new log starts at the clock, which must have moved on.
+        std::thread::sleep(std::time::Duration::from_millis(2));
         let mut files = Files::open(directory.path().into()).unwrap();
         files.append(entry(RUNNER, "new"));
         let page = files.read(&query(Some(cursor), 10, None)).unwrap();

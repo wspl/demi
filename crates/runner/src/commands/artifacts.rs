@@ -1,6 +1,6 @@
 //! Exact artifact location requests over the authenticated backend connection.
 
-use crate::commands::cache::{ArtifactResolver, ArtifactSource, RuntimeError};
+use crate::services::{ArtifactResolver, ArtifactSource, RuntimeError};
 use crate::commands::contexts::Contexts;
 use crate::connection::wire;
 use demi_command_service::protocol::ArtifactLocation;
@@ -118,7 +118,7 @@ impl Artifacts {
                 sha256: artifact.sha256.clone(),
                 target: self.target.clone(),
             })
-                .map_err(|error| RuntimeError::Artifact(error.to_string()))?;
+                .map_err(|error| RuntimeError::Location(error.to_string()))?;
         let location = tokio::select! {
             biased;
             _ = cancel.cancelled() => return Err(RuntimeError::Cancelled),
@@ -126,7 +126,7 @@ impl Artifacts {
             _ = ended => return Ok(None),
             result = tokio::time::timeout(Duration::from_secs(15), async {
                 output.send(message).await.map_err(|_| RuntimeError::Cancelled)?;
-                receiver.await.map_err(|_| RuntimeError::Cancelled)?.map_err(RuntimeError::Artifact)
+                receiver.await.map_err(|_| RuntimeError::Cancelled)?.map_err(RuntimeError::Location)
             }) => result.map_err(|_| RuntimeError::Deadline("artifact location"))??,
         };
         ArtifactSource::from_location(location).map(Some)
@@ -147,7 +147,7 @@ impl ArtifactResolver for Artifacts {
                     .contexts
                     .for_artifact(&artifact.sha256, &self.target)
                     .ok_or_else(|| {
-                        RuntimeError::Artifact("no live job authorizes this artifact".into())
+                        RuntimeError::Location("no live job authorizes this artifact".into())
                     })?;
                 let owner =
                     wire::ArtifactOwner::Job(wire::JobArtifactOwner {

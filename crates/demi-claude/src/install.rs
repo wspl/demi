@@ -299,9 +299,9 @@ impl Installer {
         match downloaded {
             Ok(()) => {}
             Err(demi_artifact::Error::Cancelled) => return Err(EnsureError::Cancelled),
-            Err(demi_artifact::Error::Download(reason)) => {
+            Err(error @ (demi_artifact::Error::Download(_) | demi_artifact::Error::Rejected { .. })) => {
                 return Err(EnsureError::DownloadFailed(format!(
-                    "Claude Code {version} download from {host} failed: {reason}"
+                    "Claude Code {version} download from {host} failed: {error}"
                 )));
             }
             Err(
