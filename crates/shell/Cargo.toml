@@ -1,0 +1,33 @@
+[package]
+name = "demi-shell"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+# No doc examples: rustdoc has nothing to test.
+doctest = false
+
+[dependencies]
+bytes.workspace = true
+demi-command-service = { path = "../command-service" }
+demi-command-tree = { path = "../command-tree" }
+demi-core = { path = "../core" }
+futures-util.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_with.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+
+[dev-dependencies]
+# The crate's own tests use its test support.
+demi-shell = { path = ".", features = ["testing"] }
+tokio = { workspace = true, features = ["test-util"] }
+
+[features]
+# The Host conformance cases and an in-memory rpc port (`shell::testing`).
+testing = []

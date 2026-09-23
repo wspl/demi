@@ -19,6 +19,7 @@ members = [
   "crates/provider-anthropic-api",
   "crates/runner",
   "crates/runner-protocol",
+  "crates/shell",
   "crates/web-api",
 ]
 
