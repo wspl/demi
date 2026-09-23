@@ -1,0 +1,23 @@
+[package]
+name = "demi-web-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+
+[lib]
+# No doc examples: rustdoc has nothing to test.
+doctest = false
+
+[dependencies]
+demi-core = { path = "../core" }
+garde.workspace = true
+regex = "1"
+schemars.workspace = true
+serde.workspace = true
+serde_plain.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

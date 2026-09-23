@@ -1,0 +1,52 @@
+[package]
+name = "demi-backend"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+
+[lib]
+# No doc examples: rustdoc has nothing to test.
+doctest = false
+
+[dependencies]
+demi-artifact = { path = "../artifact" }
+demi-core = { path = "../core" }
+demi-web-api = { path = "../web-api" }
+# `std` for `password_hash::Error` as a `std::error::Error`; `password-hash`'s
+# `getrandom` gives `SaltString::generate` its operating-system RNG.
+argon2 = { version = "0.5", features = ["std"] }
+axum = "0.8"
+axum-extra = { version = "0.12", features = ["cookie"] }
+clap = { version = "4", features = ["derive", "env"] }
+cookie = "0.18"
+futures-util.workspace = true
+garde.workspace = true
+hex = "0.4"
+hkdf = "0.12"
+hmac = "0.12"
+jiff.workspace = true
+password-hash = { version = "0.5", features = ["getrandom"] }
+rand = "0.9"
+rusqlite = { version = "0.40", default-features = false, features = ["bundled"] }
+rusqlite_migration = "2.6"
+serde.workspace = true
+sha2 = "0.10"
+subtle = "2"
+thiserror.workspace = true
+tokio.workspace = true
+tokio-rusqlite = "0.8"
+tokio-util.workspace = true
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["fs", "trace"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+url = "2"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+serde_json.workspace = true
+tempfile = "3"
+tokio = { workspace = true, features = ["test-util"] }
