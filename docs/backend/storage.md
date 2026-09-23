@@ -249,7 +249,11 @@ Every stored value has one encoding, fixed by its column or by its type:
 - **SQL columns hold scalars.** A time is an integer count of milliseconds
   since the Unix epoch, so ordering and comparison are exact. An identifier is
   text, stored exactly as received: a conversation ID keeps the case the
-  browser sent. A closed set, such as a role, a device kind or a title origin,
+  browser sent. Conversation IDs are nevertheless compared without case, in
+  the conversation index and in Fork reservations, so no two conversations
+  have IDs that differ only in case: each ID names a database file,
+  `conversations/<id>.sqlite` with the ID in lowercase, and a file system may
+  ignore case. A closed set, such as a role, a device kind or a title origin,
   is text that a CHECK constraint limits and the reader decodes into its type.
 - **Structured values are JSON columns typed by their schema,** encoded by
   the convention of the browser wire
