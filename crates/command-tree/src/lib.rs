@@ -2,10 +2,18 @@
 //! carries, the rules a leaf's input declaration follows, and how a command
 //! line selects a command, fills its input and renders its help
 //! (`commands.md`).
+//!
+//! A tree is generic over how its native commands name their operation. A
+//! declaration names the package and the operation ([`NativeOperation`]); the
+//! manifest a runner receives pins each to the descriptor that serves it
+//! ([`Binding`]), and [`Node::pin`] turns the one into the other.
 
 mod help;
+mod input;
 mod parse;
 
+pub use help::HELP_DEFAULTS;
+pub use input::{FieldKind, InputField, InputSpec, command_schema_settings};
 pub use parse::{Parsed, Selected, UsageError};
 
 use std::{
@@ -26,28 +34,39 @@ pub const MAX_DEPTH: usize = 32;
 #[error("{0}")]
 pub struct DeclarationError(String);
 
-/// A command group or a command.
+/// A command group or a command. `B` is how a native command names what it
+/// runs: [`Binding`] in a manifest, [`NativeOperation`] in a declaration.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum Node {
-    Group(Group),
-    Leaf(Leaf),
+#[serde(
+    untagged,
+    bound(serialize = "B: Serialize + Clone", deserialize = "B: Deserialize<'de>")
+)]
+pub enum Node<B = Binding> {
+    Group(Group<B>),
+    Leaf(Leaf<B>),
 }
 
 /// A command group: a name that only selects one of its subcommands.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Group {
+#[serde(
+    deny_unknown_fields,
+    bound(serialize = "B: Serialize + Clone", deserialize = "B: Deserialize<'de>")
+)]
+pub struct Group<B = Binding> {
     pub name: String,
     pub summary: String,
-    pub subcommands: Vec<Node>,
+    pub subcommands: Vec<Node<B>>,
 }
 
 /// A command: its help texts, the JSON Schema of its input object, where its
 /// input comes from on the command line, and how it runs.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(try_from = "RawLeaf", into = "RawLeaf")]
-pub struct Leaf {
+#[serde(
+    try_from = "RawLeaf<B>",
+    into = "RawLeaf<B>",
+    bound(serialize = "B: Serialize + Clone", deserialize = "B: Deserialize<'de>")
+)]
+pub struct Leaf<B = Binding> {
     pub name: String,
     pub summary: String,
     pub success_output: Option<String>,
@@ -58,7 +77,7 @@ pub struct Leaf {
     pub stdin_field: Option<String>,
     pub rest_field: Option<String>,
     pub output: Option<LeafOutput>,
-    pub kind: LeafKind,
+    pub kind: LeafKind<B>,
 }
 
 /// The JSON Schema of a command's `--json` output.
@@ -129,9 +148,18 @@ impl<'de> Deserialize<'de> for Schema {
 /// How a command runs: as a call to the backend, or as an operation of a
 /// native command package.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LeafKind {
+pub enum LeafKind<B = Binding> {
     Rpc,
-    Native(Binding),
+    Native(B),
+}
+
+/// The native package operation a declaration names. The manifest pins it to
+/// the descriptor the backend selected for the package ([`Node::pin`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NativeOperation {
+    pub package: String,
+    pub operation: String,
 }
 
 /// The native package operation a command runs, and the digest of the
@@ -144,7 +172,7 @@ pub struct Binding {
     pub descriptor_hash: String,
 }
 
-impl Node {
+impl<B> Node<B> {
     pub fn name(&self) -> &str {
         match self {
             Self::Group(group) => &group.name,
@@ -159,7 +187,7 @@ impl Node {
         }
     }
 
-    pub fn leaf(&self) -> Option<&Leaf> {
+    pub fn leaf(&self) -> Option<&Leaf<B>> {
         match self {
             Self::Group(_) => None,
             Self::Leaf(leaf) => Some(leaf),
@@ -167,7 +195,7 @@ impl Node {
     }
 
     /// The leaves of this tree, depth first.
-    pub fn leaves(&self) -> Vec<&Leaf> {
+    pub fn leaves(&self) -> Vec<&Leaf<B>> {
         match self {
             Self::Group(group) => group.subcommands.iter().flat_map(Node::leaves).collect(),
             Self::Leaf(leaf) => vec![leaf],
@@ -214,8 +242,49 @@ impl Node {
     }
 }
 
-impl Leaf {
-    pub fn binding(&self) -> Option<&Binding> {
+impl Node<NativeOperation> {
+    /// The manifest node of this declaration: each native command pinned to
+    /// the descriptor `descriptor_hash` names for its operation.
+    pub fn pin<E>(
+        &self,
+        descriptor_hash: &mut impl FnMut(&NativeOperation) -> Result<String, E>,
+    ) -> Result<Node, E> {
+        Ok(match self {
+            Self::Group(group) => Node::Group(Group {
+                name: group.name.clone(),
+                summary: group.summary.clone(),
+                subcommands: group
+                    .subcommands
+                    .iter()
+                    .map(|child| child.pin(descriptor_hash))
+                    .collect::<Result<_, E>>()?,
+            }),
+            Self::Leaf(leaf) => Node::Leaf(Leaf {
+                name: leaf.name.clone(),
+                summary: leaf.summary.clone(),
+                success_output: leaf.success_output.clone(),
+                failure_output: leaf.failure_output.clone(),
+                running_hint: leaf.running_hint.clone(),
+                input: leaf.input.clone(),
+                positionals: leaf.positionals.clone(),
+                stdin_field: leaf.stdin_field.clone(),
+                rest_field: leaf.rest_field.clone(),
+                output: leaf.output.clone(),
+                kind: match &leaf.kind {
+                    LeafKind::Rpc => LeafKind::Rpc,
+                    LeafKind::Native(operation) => LeafKind::Native(Binding {
+                        package: operation.package.clone(),
+                        operation: operation.operation.clone(),
+                        descriptor_hash: descriptor_hash(operation)?,
+                    }),
+                },
+            }),
+        })
+    }
+}
+
+impl<B> Leaf<B> {
+    pub fn binding(&self) -> Option<&B> {
         match &self.kind {
             LeafKind::Rpc => None,
             LeafKind::Native(binding) => Some(binding),
@@ -320,8 +389,12 @@ fn invalid(message: String) -> DeclarationError {
 /// A leaf as the manifest writes it: `kind` names how it runs, and a native
 /// leaf's `binding` sits beside it.
 #[derive(Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct RawLeaf {
+#[serde(
+    rename_all = "camelCase",
+    deny_unknown_fields,
+    bound(serialize = "B: Serialize", deserialize = "B: Deserialize<'de>")
+)]
+struct RawLeaf<B> {
     name: String,
     summary: String,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
@@ -342,7 +415,7 @@ struct RawLeaf {
     output: Option<LeafOutput>,
     kind: RawKind,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-    binding: Option<Binding>,
+    binding: Option<B>,
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
@@ -352,10 +425,10 @@ enum RawKind {
     Native,
 }
 
-impl TryFrom<RawLeaf> for Leaf {
+impl<B> TryFrom<RawLeaf<B>> for Leaf<B> {
     type Error = String;
 
-    fn try_from(raw: RawLeaf) -> Result<Self, String> {
+    fn try_from(raw: RawLeaf<B>) -> Result<Self, String> {
         let kind = match (raw.kind, raw.binding) {
             (RawKind::Rpc, None) => LeafKind::Rpc,
             (RawKind::Native, Some(binding)) => LeafKind::Native(binding),
@@ -378,8 +451,8 @@ impl TryFrom<RawLeaf> for Leaf {
     }
 }
 
-impl From<Leaf> for RawLeaf {
-    fn from(leaf: Leaf) -> Self {
+impl<B> From<Leaf<B>> for RawLeaf<B> {
+    fn from(leaf: Leaf<B>) -> Self {
         let (kind, binding) = match leaf.kind {
             LeafKind::Rpc => (RawKind::Rpc, None),
             LeafKind::Native(binding) => (RawKind::Native, Some(binding)),
