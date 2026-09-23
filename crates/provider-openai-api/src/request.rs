@@ -18,7 +18,10 @@ use serde::Serialize;
 use crate::{SIGNATURE_TAG, VendorPolicy};
 
 /// The JSON body of a Responses request.
-pub(crate) fn responses(request: &InferenceRequest, policy: VendorPolicy) -> Result<Vec<u8>, UnloadedMedia> {
+pub(crate) fn responses(
+    request: &InferenceRequest,
+    policy: VendorPolicy,
+) -> Result<Vec<u8>, UnloadedMedia> {
     let dialect = ResponsesDialect {
         signature_tag: SIGNATURE_TAG,
         assistant: if policy.replay_assistant_status {
@@ -39,7 +42,11 @@ pub(crate) fn responses(request: &InferenceRequest, policy: VendorPolicy) -> Res
         prompt_cache_key: prompt_cache_key(&request.session_id),
         max_output_tokens: request.output_limit.map(|limit| limit.get()),
         instructions: (!is_blank(&request.system_prompt)).then_some(request.system_prompt.as_str()),
-        tools: request.tools.iter().map(|tool| ResponsesTool::new(tool, false)).collect(),
+        tools: request
+            .tools
+            .iter()
+            .map(|tool| ResponsesTool::new(tool, false))
+            .collect(),
         tool_choice: has_tools.then_some("auto"),
         parallel_tool_calls: has_tools.then_some(true),
         reasoning: responses_reasoning(request.thinking.as_ref(), SummaryOff::Omitted),
@@ -74,7 +81,10 @@ struct ResponsesBody<'a> {
 }
 
 /// The JSON body of a Chat Completions request.
-pub(crate) fn chat_completions(request: &InferenceRequest, policy: VendorPolicy) -> Result<Vec<u8>, UnloadedMedia> {
+pub(crate) fn chat_completions(
+    request: &InferenceRequest,
+    policy: VendorPolicy,
+) -> Result<Vec<u8>, UnloadedMedia> {
     let dialect = ChatDialect {
         reasoning_content: policy.pass_back_reasoning_content,
         media: ChatMedia::Native,
@@ -88,7 +98,9 @@ pub(crate) fn chat_completions(request: &InferenceRequest, policy: VendorPolicy)
         max_completion_tokens: request.output_limit.map(|limit| limit.get()),
         reasoning_effort: reasoning_effort(request.thinking.as_ref()),
         service_tier: request.service_tier_id.as_deref(),
-        stream_options: StreamOptions { include_usage: true },
+        stream_options: StreamOptions {
+            include_usage: true,
+        },
     };
     Ok(json_body(&body))
 }

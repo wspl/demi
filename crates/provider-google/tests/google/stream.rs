@@ -73,7 +73,11 @@ async fn a_signed_call_opens_thinking_and_a_signature_after_thoughts_closes_it()
         [
             ProviderEvent::ThinkingStart,
             ProviderEvent::ThinkingSignature("google:sig-1".into()),
-            ProviderEvent::ToolCall(ToolCall { tool_use_id: "c1".into(), tool_name: "look".into(), input: json!({}) }),
+            ProviderEvent::ToolCall(ToolCall {
+                tool_use_id: "c1".into(),
+                tool_name: "look".into(),
+                input: json!({})
+            }),
             ProviderEvent::ThinkingStart,
             ProviderEvent::ThinkingDelta("plan".into()),
             ProviderEvent::ThinkingSignature("google:sig-2".into()),
@@ -99,30 +103,61 @@ async fn a_call_without_an_id_gets_a_new_unique_one() {
     let second = ids(events_of(chunks(&[call()])).await);
     let all: std::collections::HashSet<&String> = first.iter().chain(&second).collect();
     assert_eq!(all.len(), 3, "{first:?} {second:?}");
-    assert!(all.iter().all(|id| id.starts_with("shell_exec_")), "{all:?}");
+    assert!(
+        all.iter().all(|id| id.starts_with("shell_exec_")),
+        "{all:?}"
+    );
 }
 
 #[tokio::test]
 async fn a_stream_error_fails_the_run_with_the_chunk_as_its_record() {
     let chunk = json!({ "error": { "status": "RESOURCE_EXHAUSTED", "message": "quota exceeded" } });
-    let failure = failure_of(events_of(chunks(&[chunk.clone(), parts(json!([{ "text": "never read" }]))])).await);
-    assert_eq!((failure.message.as_str(), failure.code), ("quota exceeded", Some(ErrorCode::RateLimit)));
+    let failure = failure_of(
+        events_of(chunks(&[
+            chunk.clone(),
+            parts(json!([{ "text": "never read" }])),
+        ]))
+        .await,
+    );
+    assert_eq!(
+        (failure.message.as_str(), failure.code),
+        ("quota exceeded", Some(ErrorCode::RateLimit))
+    );
     let diagnostics = failure.diagnostics.unwrap();
-    assert_eq!((diagnostics.source, diagnostics.provider_code.as_deref()), (FailureSource::Stream, Some("RESOURCE_EXHAUSTED")));
+    assert_eq!(
+        (diagnostics.source, diagnostics.provider_code.as_deref()),
+        (FailureSource::Stream, Some("RESOURCE_EXHAUSTED"))
+    );
     assert_eq!(diagnostics.upstream, Some(chunk.to_string()));
 }
 
 #[tokio::test]
 async fn a_chunk_that_breaks_its_shape_is_a_protocol_failure_naming_the_field() {
     for (chunk, field) in [
-        (json!({ "candidates": { "content": { "parts": [{ "text": "hello" }] } } }), "candidates"),
-        (json!({ "usageMetadata": { "promptTokenCount": "10" } }), "promptTokenCount"),
-        (json!({ "candidates": [{ "content": { "parts": [{ "functionCall": { "name": "" } }] } }] }), "name"),
+        (
+            json!({ "candidates": { "content": { "parts": [{ "text": "hello" }] } } }),
+            "candidates",
+        ),
+        (
+            json!({ "usageMetadata": { "promptTokenCount": "10" } }),
+            "promptTokenCount",
+        ),
+        (
+            json!({ "candidates": [{ "content": { "parts": [{ "functionCall": { "name": "" } }] } }] }),
+            "name",
+        ),
     ] {
-        let failure = failure_of(events_of(chunks(&[chunk.clone()])).await);
+        let failure = failure_of(events_of(chunks(std::slice::from_ref(&chunk))).await);
         assert_eq!(failure.code, None, "{chunk}");
-        assert!(failure.message.contains(field), "{chunk}: {}", failure.message);
-        assert_eq!(failure.diagnostics.unwrap().upstream, Some(chunk.to_string()));
+        assert!(
+            failure.message.contains(field),
+            "{chunk}: {}",
+            failure.message
+        );
+        assert_eq!(
+            failure.diagnostics.unwrap().upstream,
+            Some(chunk.to_string())
+        );
     }
 }
 
@@ -130,7 +165,10 @@ async fn a_chunk_that_breaks_its_shape_is_a_protocol_failure_naming_the_field() 
 async fn a_refused_request_fails_with_the_vendor_record() {
     let body = r#"{"error":{"code":429,"message":"Resource has been exhausted","status":"RESOURCE_EXHAUSTED"}}"#;
     let failure = failure_of(events_of(MockResponse::status(429).chunk(body)).await);
-    assert_eq!(failure.message, format!("Google API request failed with HTTP 429: {body}"));
+    assert_eq!(
+        failure.message,
+        format!("Google API request failed with HTTP 429: {body}")
+    );
     assert_eq!(failure.code, Some(ErrorCode::RateLimit));
 }
 
@@ -143,7 +181,10 @@ async fn cancelling_mid_stream_ends_the_run_without_an_event_and_drops_the_conne
     let request = inference_request();
     let cancel = request.cancel.clone();
     let mut events = runtime.run(request);
-    assert_eq!(events.next().await, Some(ProviderEvent::TextDelta("hel".into())));
+    assert_eq!(
+        events.next().await,
+        Some(ProviderEvent::TextDelta("hel".into()))
+    );
     cancel.cancel();
     assert_eq!(events.next().await, None);
     vendor.disconnected().await;
@@ -151,6 +192,10 @@ async fn cancelling_mid_stream_ends_the_run_without_an_event_and_drops_the_conne
     let request = inference_request();
     request.cancel.cancel();
     let vendor = MockVendor::start().await;
-    assert!(run(crate::runtime(&vendor).as_mut(), request).await.is_empty());
+    assert!(
+        run(crate::runtime(&vendor).as_mut(), request)
+            .await
+            .is_empty()
+    );
     assert!(vendor.requests().is_empty());
 }

@@ -2,7 +2,6 @@
 //! (`concurrency.md` § Blocking work): a request with images is megabytes of
 //! base64, which would hold up every conversation of the user.
 
-use bytes::Bytes;
 use serde::Serialize;
 
 use crate::ProviderFailure;
@@ -13,14 +12,15 @@ use crate::ProviderFailure;
 #[error("media {0} was not loaded")]
 pub struct UnloadedMedia(pub String);
 
-/// Runs `encode`, which builds a request body and serializes it with
-/// [`json_body`], on the blocking pool. A body that names unloaded media
+/// Runs `encode`, which builds a request body and serializes it, such as
+/// with [`json_body`], on the blocking pool. A body that names unloaded media
 /// fails the run without a code, as a request Demi could not build. Dropping
 /// the future while it runs leaves the work to finish there; it has no
 /// effect beyond its result, which is then discarded.
-pub async fn encode_body<F>(label: &str, encode: F) -> Result<Bytes, ProviderFailure>
+pub async fn encode_body<T, F>(label: &str, encode: F) -> Result<T, ProviderFailure>
 where
-    F: FnOnce() -> Result<Vec<u8>, UnloadedMedia> + Send + 'static,
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, UnloadedMedia> + Send + 'static,
 {
     let encoded = tokio::task::spawn_blocking(encode).await;
     let unbuilt = |message: String| ProviderFailure {
@@ -30,7 +30,7 @@ where
         retry_after: None,
     };
     match encoded {
-        Ok(Ok(body)) => Ok(Bytes::from(body)),
+        Ok(Ok(body)) => Ok(body),
         Ok(Err(UnloadedMedia(blob))) => Err(unbuilt(format!(
             "{label} API request names media {blob} that was not loaded"
         ))),

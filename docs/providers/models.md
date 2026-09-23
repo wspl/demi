@@ -98,7 +98,7 @@ entry's catalog is kept.
 |---|---|
 | `anthropic`, `openai`, `google` | A list built into the provider for its family. Reading it makes no request. |
 | `codex` | The account's model list on the ChatGPT backend ([The Codex catalog](#the-codex-catalog)). |
-| `grok-build` | `GET /v1/models` on the Grok Build service, with the account's session. The service answers a `data` envelope or a bare list. A catalog that cannot be read is a failed refresh: the service is unreachable or refuses, the account has no session, the payload cannot be read, or it lists no model. |
+| `grok-build` | `GET /v1/models` on the Grok Build service, with the account's session. The service answers a `data` envelope or a bare list. A model is named by its `id`, else its `model`; one that names neither is skipped. Its efforts are its `reasoning_efforts`, and its default effort is the one flagged `default`, else its `reasoning_effort`, else the first. Every model takes tools and images; its context window is unknown unless the service states one. A catalog that cannot be read is a failed refresh: the service is unreachable or refuses, the account has no session, the payload cannot be read, or it lists no model. |
 | `claude-code` | The `anthropic` vendor of the models.dev document: the models whose id starts with `claude-` and whose version is 4.6 or later. Opus models come first, then Sonnet, then Haiku, then others, newest version first within each family. An id whose version cannot be read is skipped with a warning. Thinking cannot be turned off, because the CLI's `--effort` option only levels it. |
 
 ### The Codex catalog
@@ -125,8 +125,8 @@ inference.
   turning reasoning off. An advertised `none` effort stays a selectable level.
 - The model's `service_tiers` are its tiers, and `priority` is Fast.
 - A model whose `input_modalities` include `image` accepts attachments.
-- An HTTP 401 answer makes the provider refresh the account's credentials once,
-  forced, and read again.
+- An HTTP 401 answer makes the provider refresh the token it was refused with
+  ([Token refresh](providers.md#token-refresh)) and read again, once.
 
 Upstream references:
 [models request](https://github.com/openai/codex/blob/3dc1e2a58406dc69db5812539adfee7d89fa9ef7/codex-rs/codex-api/src/endpoint/models.rs),
