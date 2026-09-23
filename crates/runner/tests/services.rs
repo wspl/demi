@@ -282,13 +282,19 @@ async fn a_service_that_dies_reports_its_status_and_standard_error() {
             edits: None,
             json: None,
         };
-        let (mut input, mut output) = resident.client().invoke(&invocation).await.unwrap();
-        input.end().unwrap();
-        let error = loop {
-            match output.next().await {
-                Ok(Some(_)) => {}
-                Ok(None) => panic!("the crashing call completed"),
-                Err(error) => break error,
+        // The service may die before the call is even open.
+        let error = match resident.client().invoke(&invocation).await {
+            Err(error) => error,
+            Ok((mut input, mut output)) => {
+                // Ending input fails too once the service is gone.
+                let _ = input.end();
+                loop {
+                    match output.next().await {
+                        Ok(Some(_)) => {}
+                        Ok(None) => panic!("the crashing call completed"),
+                        Err(error) => break error,
+                    }
+                }
             }
         };
         let failure = resident.failure(error).await;
