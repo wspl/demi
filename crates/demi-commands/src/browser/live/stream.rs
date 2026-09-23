@@ -2,14 +2,21 @@
 //! the same tab share one capture and one encoding. The capture follows the
 //! tab's viewport, and its pace and encoding follow the viewer with the least
 //! room.
+//!
+//! Nothing reaches a stream through a queue. The hub publishes who watches
+//! the tab; each viewer publishes its latest pacing, which supersedes the one
+//! before, and wakes the stream to read it.
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use tokio::{sync::mpsc, time::Instant};
-use tokio_util::{sync::CancellationToken, task::TaskTracker};
+use tokio::{
+    sync::{mpsc, watch},
+    time::Instant,
+};
+use tokio_util::task::TaskTracker;
 
 use super::{
-    capture::{Capture, CaptureEvent, Captures, Frame},
+    capture::{Capture, CaptureChannel, CaptureEvent, Frame},
     rate::{self, FRAME_RATES, SCALES},
 };
 use crate::browser::{BrowserError, BrowserTab};
@@ -35,54 +42,121 @@ pub(super) enum Event {
     Failed(String),
 }
 
-pub(super) enum Command {
-    Join {
-        viewer: u64,
-        events: mpsc::Sender<Event>,
-    },
-    Leave {
-        viewer: u64,
-    },
+/// What a viewer last told its tab's stream.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub(super) struct Pacing {
+    /// The capture epoch, the newest frame the page has or will never get,
+    /// and how many frames may be in flight past it.
+    pace: Option<(u32, u32, u32)>,
+    /// The bit rate, frame rate and scale the viewer's path takes.
+    encoding: Option<(u32, u32, f64)>,
+    /// Counts the key frames the viewer asked for.
+    key_frames: u64,
+}
+
+/// A viewer's side of the stream it watches.
+pub(super) struct StreamView {
+    pub events: mpsc::Receiver<Event>,
+    pacing: watch::Sender<Pacing>,
+    /// Wakes the stream to read its viewers' pacing.
+    wake: watch::Sender<u64>,
+}
+
+impl StreamView {
     /// The viewer has frames after `floor` in flight and allows `window`.
-    Pace {
-        viewer: u64,
-        epoch: u32,
-        floor: u32,
-        window: u32,
-    },
-    Encoding {
-        viewer: u64,
-        bitrate: u32,
-        fps: u32,
-        scale: f64,
-    },
-    KeyFrame,
+    pub fn pace(&self, epoch: u32, floor: u32, window: u32) {
+        self.change(|pacing| pacing.pace = Some((epoch, floor, window)));
+    }
+
+    pub fn encoding(&self, bitrate: u32, fps: u32, scale: f64) {
+        self.change(|pacing| pacing.encoding = Some((bitrate, fps, scale)));
+    }
+
+    pub fn key_frame(&self) {
+        self.change(|pacing| pacing.key_frames += 1);
+    }
+
+    fn change(&self, change: impl FnOnce(&mut Pacing)) {
+        self.pacing.send_modify(change);
+        self.wake
+            .send_modify(|wakes| *wakes = wakes.wrapping_add(1));
+    }
+}
+
+/// A viewer as its stream sees it.
+#[derive(Clone)]
+struct Member {
+    events: mpsc::Sender<Event>,
+    pacing: watch::Receiver<Pacing>,
+}
+
+type Members = Arc<HashMap<u64, Member>>;
+
+/// The hub's side of one watched tab's stream; the stream ends when this is
+/// dropped or the tab closes.
+pub(super) struct StreamHandle {
+    members: watch::Sender<Members>,
+    wake: watch::Sender<u64>,
+}
+
+impl StreamHandle {
+    pub fn start(tab: BrowserTab, captures: CaptureChannel, tasks: &TaskTracker) -> Self {
+        let (members, watched) = watch::channel(Members::default());
+        let (wake, woken) = watch::channel(0);
+        tasks.spawn(run(tab, captures, watched, woken, tasks.clone()));
+        Self { members, wake }
+    }
+
+    /// Adds viewer `id`; its view carries the pictures and its pacing.
+    pub fn join(&self, id: u64) -> StreamView {
+        let (events, receiver) = mpsc::channel(VIEWER_QUEUE);
+        let (pacing, paced) = watch::channel(Pacing::default());
+        self.members.send_modify(|members| {
+            let mut next = HashMap::clone(members);
+            next.insert(
+                id,
+                Member {
+                    events,
+                    pacing: paced,
+                },
+            );
+            *members = Arc::new(next);
+        });
+        StreamView {
+            events: receiver,
+            pacing,
+            wake: self.wake.clone(),
+        }
+    }
+
+    pub fn leave(&self, id: u64) {
+        self.members.send_if_modified(|members| {
+            if !members.contains_key(&id) {
+                return false;
+            }
+            let mut next = HashMap::clone(members);
+            next.remove(&id);
+            *members = Arc::new(next);
+            true
+        });
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.members.borrow().is_empty()
+    }
 }
 
 struct Viewer {
     events: mpsc::Sender<Event>,
+    pacing: watch::Receiver<Pacing>,
+    /// The key frame requests already served.
+    key_frames: u64,
     floor: u32,
     window: u32,
     /// None until the viewer measured its path.
     bitrate: Option<u32>,
     fps: u32,
     scale: f64,
-}
-
-/// Starts the tab's stream; it ends when the returned sender is dropped or
-/// the tab closes.
-pub(super) fn start(
-    tab: BrowserTab,
-    captures: Arc<Captures>,
-    tasks: &TaskTracker,
-) -> mpsc::UnboundedSender<Command> {
-    let (commands, receiver) = mpsc::unbounded_channel();
-    tasks.spawn(run(tab, captures, receiver));
-    commands
-}
-
-pub(super) fn events() -> (mpsc::Sender<Event>, mpsc::Receiver<Event>) {
-    mpsc::channel(VIEWER_QUEUE)
 }
 
 struct Running {
@@ -96,8 +170,10 @@ struct Running {
 
 async fn run(
     tab: BrowserTab,
-    captures: Arc<Captures>,
-    mut commands: mpsc::UnboundedReceiver<Command>,
+    captures: CaptureChannel,
+    mut members: watch::Receiver<Members>,
+    mut wake: watch::Receiver<u64>,
+    tasks: TaskTracker,
 ) {
     let mut viewers: HashMap<u64, Viewer> = HashMap::new();
     let mut viewport = tab.state.viewport.subscribe();
@@ -108,7 +184,9 @@ async fn run(
     let mut unavailable: Option<String> = None;
     // Why the viewers get no picture, as they were last told.
     let mut failure: Option<String> = None;
-    let stop = CancellationToken::new();
+    // Ends a capture start that waits for the extension when the tab closes
+    // or the stream ends.
+    let stop = tab.ended.child_token();
     let _stop = stop.clone().drop_guard();
     loop {
         let fps = viewers
@@ -163,7 +241,7 @@ async fn run(
                     unavailable = Some(reason);
                 }
                 Err(error) => {
-                    eprintln!("live view capture of {}: {error}", tab.id());
+                    tracing::warn!("live view capture of {}: {error}", tab.id());
                     report(&viewers, &mut failure, error.to_string());
                     retry = (retry * 2).clamp(Duration::from_millis(500), RETRY_LIMIT);
                     attempt = Instant::now() + retry;
@@ -187,62 +265,48 @@ async fn run(
             _ = tab.ended.cancelled() => return,
             _ = viewport.changed() => {}
             _ = tokio::time::sleep_until(attempt), if waiting => {}
-            command = commands.recv() => {
-                let Some(command) = command else { return };
-                match command {
-                    Command::Join { viewer, events } => {
-                        if let Some(reason) = &unavailable {
-                            let _behind = events.try_send(Event::Unavailable(reason.clone()));
-                        }
-                        if let Some(reason) = &failure {
-                            let _behind = events.try_send(Event::Failed(reason.clone()));
-                        }
-                        if let Some(running) = &running {
-                            let _behind = events.try_send(Event::Restart {
-                                epoch: running.epoch,
-                                width: running.size.0,
-                                height: running.size.1,
-                            });
-                            running.capture.key_frame();
-                        }
-                        let floor = running.as_ref().map_or(0, |running| running.sequence);
-                        viewers.insert(viewer, Viewer {
-                            events,
-                            floor,
-                            window: 4,
-                            bitrate: None,
-                            fps: FRAME_RATES[0],
-                            scale: SCALES[0],
-                        });
-                    }
-                    Command::Leave { viewer } => {
-                        viewers.remove(&viewer);
-                    }
-                    Command::Pace { viewer, epoch, floor, window } => {
-                        let Some(running) = &running else { continue };
-                        if epoch != running.epoch {
-                            continue;
-                        }
-                        if let Some(entry) = viewers.get_mut(&viewer) {
-                            (entry.floor, entry.window) = (floor, window);
-                        }
-                        let floor = viewers.values().map(|viewer| viewer.floor).min();
-                        let window = viewers.values().map(|viewer| viewer.window).min();
-                        if let (Some(floor), Some(window)) = (floor, window) {
-                            running.capture.ack(floor, window);
-                        }
-                    }
-                    Command::Encoding { viewer, bitrate, fps, scale } => {
-                        if let Some(entry) = viewers.get_mut(&viewer) {
-                            (entry.bitrate, entry.fps, entry.scale) = (Some(bitrate), fps, scale);
-                        }
-                    }
-                    Command::KeyFrame => {
-                        if let Some(running) = &running {
-                            running.capture.key_frame();
-                        }
-                    }
+            changed = members.changed() => {
+                // The hub drops a stream nobody watches.
+                if changed.is_err() {
+                    return;
                 }
+                let current = members.borrow_and_update().clone();
+                viewers.retain(|id, _| current.contains_key(id));
+                for (id, member) in current.iter() {
+                    if viewers.contains_key(id) {
+                        continue;
+                    }
+                    if let Some(reason) = &unavailable {
+                        let _behind = member.events.try_send(Event::Unavailable(reason.clone()));
+                    }
+                    if let Some(reason) = &failure {
+                        let _behind = member.events.try_send(Event::Failed(reason.clone()));
+                    }
+                    if let Some(running) = &running {
+                        let _behind = member.events.try_send(Event::Restart {
+                            epoch: running.epoch,
+                            width: running.size.0,
+                            height: running.size.1,
+                        });
+                        running.capture.key_frame();
+                    }
+                    viewers.insert(*id, Viewer {
+                        events: member.events.clone(),
+                        pacing: member.pacing.clone(),
+                        key_frames: 0,
+                        floor: running.as_ref().map_or(0, |running| running.sequence),
+                        window: 4,
+                        bitrate: None,
+                        fps: FRAME_RATES[0],
+                        scale: SCALES[0],
+                    });
+                }
+            }
+            woken = wake.changed() => {
+                if woken.is_err() {
+                    return;
+                }
+                paced(&mut viewers, running.as_ref());
             }
             event = event => match event {
                 Some(CaptureEvent::Frame(frame)) => {
@@ -260,17 +324,20 @@ async fn run(
                 // picture; a screenshot from its surface paints one.
                 Some(CaptureEvent::Stalled) => {
                     let page = tab.page.clone();
-                    tokio::spawn(async move {
-                        let _painted = tokio::time::timeout(
-                            Duration::from_secs(5),
-                            crate::browser::viewport::paint(&page),
-                        )
-                        .await;
+                    let ended = tab.ended.clone();
+                    tasks.spawn(async move {
+                        tokio::select! {
+                            _ = ended.cancelled() => {}
+                            _painted = tokio::time::timeout(
+                                Duration::from_secs(5),
+                                crate::browser::viewport::paint(&page),
+                            ) => {}
+                        }
                     });
                 }
                 Some(CaptureEvent::Started) => {}
                 Some(CaptureEvent::Failed(message)) => {
-                    eprintln!("live view capture of {}: {message}", tab.id());
+                    tracing::warn!("live view capture of {}: {message}", tab.id());
                     report(&viewers, &mut failure, message);
                     running = None;
                     retry = (retry * 2).clamp(Duration::from_millis(500), RETRY_LIMIT);
@@ -283,6 +350,45 @@ async fn run(
                 }
             },
         }
+    }
+}
+
+/// Takes in what the viewers told the stream since it last looked: the latest
+/// pace and encoding of each, and whether one asked for a key frame.
+fn paced(viewers: &mut HashMap<u64, Viewer>, running: Option<&Running>) {
+    let mut key_frame = false;
+    let mut acknowledged = false;
+    for viewer in viewers.values_mut() {
+        if !viewer.pacing.has_changed().unwrap_or(false) {
+            continue;
+        }
+        let pacing = *viewer.pacing.borrow_and_update();
+        if let Some((epoch, floor, window)) = pacing.pace
+            && running.is_some_and(|running| running.epoch == epoch)
+        {
+            (viewer.floor, viewer.window) = (floor, window);
+            acknowledged = true;
+        }
+        if let Some((bitrate, fps, scale)) = pacing.encoding {
+            (viewer.bitrate, viewer.fps, viewer.scale) = (Some(bitrate), fps, scale);
+        }
+        if pacing.key_frames != viewer.key_frames {
+            viewer.key_frames = pacing.key_frames;
+            key_frame = true;
+        }
+    }
+    let Some(running) = running else {
+        return;
+    };
+    if acknowledged {
+        let floor = viewers.values().map(|viewer| viewer.floor).min();
+        let window = viewers.values().map(|viewer| viewer.window).min();
+        if let (Some(floor), Some(window)) = (floor, window) {
+            running.capture.ack(floor, window);
+        }
+    }
+    if key_frame {
+        running.capture.key_frame();
     }
 }
 

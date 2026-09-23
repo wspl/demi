@@ -204,7 +204,7 @@ impl ConversationBrowser {
     /// Inspect retained debug owners without starting or querying Chrome after a timeout.
     async fn debugging_callers(&self, tab: &str, caller: Option<&str>) -> Vec<String> {
         match self.environment(None, &CancellationToken::new()).await {
-            Ok(Some(environment)) => environment.debugging_callers(tab, caller).await,
+            Ok(Some(environment)) => environment.debugging_callers(tab, caller),
             Ok(None) | Err(_) => Vec::new(),
         }
     }
@@ -1024,13 +1024,9 @@ impl Conversations {
             && let Some(file) = &input.output
         {
             output::preflight(&context.request.cwd, file, input.overwrite == Some(true)).await?;
-            let mut references = tab
-                .state
-                .operations
-                .try_lock()
-                .map_err(|_| BrowserError::Busy)?;
+            let mut session = tab.state.gate.try_checkout().ok_or(BrowserError::Busy)?;
             let TabResult::Probe(mut result) = tab
-                .command_admitted(command, cancellation, deadline, &mut references)
+                .command_admitted(command, cancellation, deadline, &mut session.references)
                 .await?
             else {
                 return Err(BrowserError::InvalidResult("probe returned another result".into()));

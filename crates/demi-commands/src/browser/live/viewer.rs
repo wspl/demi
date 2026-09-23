@@ -27,7 +27,7 @@ use super::{
     input::{Input, Item},
     observers::{self, Observed},
     rate::{Rate, Sample},
-    stream::Event,
+    stream::{Event, StreamView},
     uploads,
     writer::Writer,
 };
@@ -230,25 +230,39 @@ impl Viewer {
     }
 
     async fn view(&mut self, environment: BrowserEnvironment) -> Result<(), Failure> {
-        let membership = Arc::new(environment.live.join());
+        let Ok((membership, mut notices)) = environment.live.join().await else {
+            // The hub ends with the browser.
+            self.end(EndReason::BrowserEnded).await;
+            return Ok(());
+        };
+        let membership = Arc::new(membership);
         if let Some(panel) = self.panel {
-            membership.panel(panel);
+            membership.panel(panel).await;
         }
         let mut changes = environment.live.subscribe();
-        let (input, input_task) = Input::start(self.writer.clone(), self.mac);
+        let (input, input_task) = Input::start(
+            &environment.observers,
+            environment.ended.clone(),
+            self.writer.clone(),
+            self.mac,
+        );
         let commands = commands::start(
-            environment.clone(),
+            &environment,
             Arc::downgrade(&membership),
             self.writer.clone(),
         );
-        let _uploads = self.uploads.take().map(|items| {
+        // The view's uploads end with it, or with the environment.
+        let stop_uploads = environment.ended.child_token();
+        let _stop_uploads = stop_uploads.clone().drop_guard();
+        if let Some(items) = self.uploads.take() {
             uploads::start(
                 environment.clone(),
                 membership.clone(),
                 self.writer.clone(),
                 items,
-            )
-        });
+                stop_uploads,
+            );
+        }
         let mut session = Session {
             environment: &environment,
             membership: &membership,
@@ -282,13 +296,17 @@ impl Viewer {
                         LiveViewerMessage::Panel { .. } => {
                             if let Some(panel) = panel(&message) {
                                 self.panel = Some(panel);
-                                membership.panel(panel);
+                                membership.panel(panel).await;
                             }
                         }
                         message => session.receive(message, &commands).await,
                     },
                 },
                 update = Watched::next(&mut session.watched) => session.update(update).await,
+                // What the hub could not do for this viewer.
+                Some(notice) = notices.recv() => {
+                    self.writer.notice(notice.code, &notice.message).await;
+                }
                 _ = changes.changed() => {
                     refresh.get_or_insert_with(|| Instant::now() + STATE_DELAY);
                 }
@@ -330,8 +348,8 @@ fn panel(message: &LiveViewerMessage) -> Option<Panel> {
 /// The tab a viewer watches and what the viewer hears of it.
 struct Watched {
     tab: BrowserTab,
-    /// Its pictures; none once its stream ended.
-    events: Option<mpsc::Receiver<Event>>,
+    /// Its pictures and the pacing they follow; none once its stream ended.
+    stream: Option<StreamView>,
     dialog: watch::Receiver<Option<Arc<EventJavascriptDialogOpening>>>,
     observed: Option<Observing>,
 }
@@ -370,8 +388,8 @@ impl Watched {
             return std::future::pending().await;
         };
         let events = async {
-            match watched.events.as_mut() {
-                Some(events) => events.recv().await,
+            match watched.stream.as_mut() {
+                Some(stream) => stream.events.recv().await,
                 None => std::future::pending().await,
             }
         };
@@ -404,6 +422,11 @@ impl Watched {
             update = observed => update,
         }
     }
+}
+
+/// The watched tab's stream, while its pictures come.
+fn stream(watched: &Option<Watched>) -> Option<&StreamView> {
+    watched.as_ref().and_then(|watched| watched.stream.as_ref())
 }
 
 /// The frames a viewer's page has, and the path they take.
@@ -488,7 +511,7 @@ impl Session<'_> {
                 // A browser that ended takes its tab list with it; the view
                 // ends with it and says so.
                 if !self.environment.ended.is_cancelled() {
-                    eprintln!("live view tabs: {error}");
+                    tracing::warn!("live view tabs: {error}");
                     self.writer.notice(error.code(), &error.to_string()).await;
                 }
                 return;
@@ -524,7 +547,11 @@ impl Session<'_> {
         {
             return;
         }
-        let events = self.membership.watch(tab.as_ref());
+        let stream = self.membership.watch(tab.as_ref()).await;
+        // The encoding follows the viewer's path, whichever tab it watches.
+        if let (Some(stream), Some((bitrate, fps, scale))) = (&stream, self.delivery.applied) {
+            stream.encoding(bitrate, fps, scale);
+        }
         self.input.control(Item::Watch(tab.clone())).await;
         self.delivery.awaiting_key = true;
         self.delivery.flight.clear();
@@ -538,16 +565,16 @@ impl Session<'_> {
                         // Without its observer the viewer gets no cursor, native
                         // controls or copied text of this tab.
                         if !tab.ended.is_cancelled() {
-                            eprintln!("live view observer of {}: {error}", tab.id());
+                            tracing::warn!("live view observer of {}: {error}", tab.id());
                             self.writer.notice(error.code(), &error.to_string()).await;
                         }
                         None
                     }
                 };
                 Some(Watched {
-                    dialog: tab.state.dialog.subscribe(),
+                    dialog: tab.state.dialog.watch(),
                     tab,
-                    events,
+                    stream,
                     observed,
                 })
             }
@@ -559,11 +586,7 @@ impl Session<'_> {
         }
     }
 
-    async fn receive(
-        &mut self,
-        message: LiveViewerMessage,
-        commands: &tokio::sync::mpsc::UnboundedSender<Command>,
-    ) {
+    async fn receive(&mut self, message: LiveViewerMessage, commands: &mpsc::Sender<Command>) {
         match message {
             LiveViewerMessage::Watch { tab } => {
                 let tab = match tab {
@@ -584,7 +607,8 @@ impl Session<'_> {
                     ViewerMode::Mobile => ViewportMode::Mobile,
                     ViewerMode::Web => ViewportMode::Web,
                 };
-                let _ended = commands.send(Command::Mode { tab, mode });
+                // The runner ends with the browser, as the view does.
+                let _ended = commands.send(Command::Mode { tab, mode }).await;
             }
             LiveViewerMessage::Dialog { tab, accept, text } => {
                 if let Some(watched) = &self.watched
@@ -601,7 +625,9 @@ impl Session<'_> {
             LiveViewerMessage::Keyframe { generation } => {
                 if self.delivery.generation == generation {
                     self.delivery.awaiting_key = true;
-                    self.membership.key_frame();
+                    if let Some(stream) = stream(&self.watched) {
+                        stream.key_frame();
+                    }
                 }
             }
             LiveViewerMessage::Release {} => self.input.control(Item::Release).await,
@@ -624,7 +650,7 @@ impl Session<'_> {
                     }
                 ) {
                     self.operated = Some(Instant::now());
-                    self.membership.operated();
+                    self.membership.operated().await;
                 }
                 self.input.send(Item::Message(message));
             }
@@ -667,12 +693,15 @@ impl Session<'_> {
                 // A frame the viewer never had breaks the pictures after it.
                 if delivery.last != 0 && frame.sequence != delivery.last + 1 && !frame.key {
                     delivery.awaiting_key = true;
-                    self.membership.key_frame();
+                    if let Some(stream) = stream(&self.watched) {
+                        stream.key_frame();
+                    }
                 }
                 delivery.last = frame.sequence;
                 if delivery.awaiting_key && !frame.key {
-                    self.membership
-                        .pace(delivery.epoch, delivery.floor(), delivery.rate.window);
+                    if let Some(stream) = stream(&self.watched) {
+                        stream.pace(delivery.epoch, delivery.floor(), delivery.rate.window);
+                    }
                     return;
                 }
                 let bytes = frames::video(&tab, delivery.generation, frame.sequence, &frame);
@@ -687,10 +716,13 @@ impl Session<'_> {
                 } else {
                     delivery.dropped = true;
                     delivery.awaiting_key = true;
-                    self.membership.key_frame();
+                    if let Some(stream) = stream(&self.watched) {
+                        stream.key_frame();
+                    }
                 }
-                self.membership
-                    .pace(delivery.epoch, delivery.floor(), delivery.rate.window);
+                if let Some(stream) = stream(&self.watched) {
+                    stream.pace(delivery.epoch, delivery.floor(), delivery.rate.window);
+                }
             }
             Update::Picture(Event::Unavailable(reason)) => {
                 self.writer
@@ -702,7 +734,7 @@ impl Session<'_> {
                     .notice(demi_builtin_protocol::live::CAPTURE_FAILED, &reason)
                     .await;
             }
-            Update::StreamEnded => watched.events = None,
+            Update::StreamEnded => watched.stream = None,
             Update::Dialog => {
                 let dialog = watched.dialog.borrow_and_update().as_ref().map(|dialog| {
                     LiveDialog {
@@ -771,8 +803,9 @@ impl Session<'_> {
         }
         delivery.decode_queue = u64::from(decode_queue);
         delivery.last_ack = now;
-        self.membership
-            .pace(delivery.epoch, delivery.floor(), delivery.rate.window);
+        if let Some(stream) = stream(&self.watched) {
+            stream.pace(delivery.epoch, delivery.floor(), delivery.rate.window);
+        }
     }
 
     /// Adapts the picture to the path once a second.
@@ -793,8 +826,9 @@ impl Session<'_> {
             if oldest.is_some_and(|sent| now - sent > 2 * stall) {
                 delivery.flight.clear();
                 delivery.awaiting_key = true;
-                self.membership
-                    .pace(delivery.epoch, delivery.floor(), delivery.rate.window);
+                if let Some(stream) = stream(&self.watched) {
+                    stream.pace(delivery.epoch, delivery.floor(), delivery.rate.window);
+                }
             }
         } else {
             let seconds = elapsed.as_secs_f64().max(0.001);
@@ -815,7 +849,7 @@ impl Session<'_> {
             };
             if let Some(cause) = delivery.rate.update(&sample) {
                 // Why a picture lost quality is found in the Host's log, not guessed.
-                eprintln!(
+                tracing::info!(
                     "live view rate fell to {} bps, {} fps, scale {} after {cause}: {} bytes waiting, oldest frame {:.0} ms, round trip {:.0} ms, decode queue {}, sent {:.0} bps, acknowledged {:.0} bps",
                     delivery.rate.bitrate(),
                     delivery.rate.fps(),
@@ -835,7 +869,9 @@ impl Session<'_> {
             );
             if delivery.applied != Some(encoding) {
                 delivery.applied = Some(encoding);
-                self.membership.encoding(encoding.0, encoding.1, encoding.2);
+                if let Some(stream) = stream(&self.watched) {
+                    stream.encoding(encoding.0, encoding.1, encoding.2);
+                }
             }
         }
         delivery.frames = 0;

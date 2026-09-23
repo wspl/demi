@@ -92,11 +92,7 @@ pub(super) async fn execute(
                 .unwrap_or_else(|| "clipboard unavailable".into()),
         ));
     }
-    let _guard = tab
-        .state
-        .operations
-        .try_lock()
-        .map_err(|_| BrowserError::Busy)?;
+    let _session = tab.state.gate.try_checkout().ok_or(BrowserError::Busy)?;
     operation.run(grant(&environment.browser)).await?;
     match command {
         BrowserOperation::ClipboardWrite(input) => {
