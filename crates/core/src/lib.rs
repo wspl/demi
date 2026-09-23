@@ -43,10 +43,12 @@ pub use bytes::B64Bytes;
 pub use catalog::{ModelCost, ProviderModel, ProviderModelList, ServiceTier};
 pub use content::{
     Attachment, BlobRef, DocumentSource, MediaSource, ToolMediaSource, ToolResultContentBlock,
-    UserContentBlock, attachment_tag, is_blank,
+    UserContentBlock, attachment_tag, is_blank, trim,
 };
 pub use failure::{FailureSource, ProviderErrorDiagnostics, ProviderFailureFacts};
 pub use file_types::{PREVIEW_TYPES, PreviewType, preview_media_type, shows_in_place};
+#[doc(hidden)]
+pub use ids::__private;
 pub use ids::{BlockId, CommandId, EmptyId, NodeId, OperationId, ShellId, TurnId, WakeupId};
 pub use media::{
     MODEL_MEDIA_TYPES, ModelMediaKind, ModelMediaType, model_accepts_media_type,

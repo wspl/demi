@@ -92,7 +92,8 @@ next to the wire's types, so that a command program depends on one crate.
   - user and tool content (`UserContentBlock`, `MediaSource`,
     `ToolResultContentBlock`), the blob references stored media travels by
     (`BlobRef`), the tag that names an attachment to a model
-    (`attachment_tag`), and the one test of a blank text (`is_blank`);
+    (`attachment_tag`), and the one test of a blank text with the trim that
+    goes with it (`is_blank`, `trim`);
   - models and their selection (`Model`, `ModelSelection`, `ThinkingConfig`)
     and token usage (`TokenUsage`);
   - tool views (`ToolView`, `ShellToolView`, `OutputChunk`, `EditedFile`) and
@@ -109,7 +110,9 @@ next to the wire's types, so that a command program depends on one crate.
     browser sees them (`AccountInfo`, `LoginPending`); and an account's quota
     snapshot (`QuotaSnapshot`, `QuotaWindow`, `QuotaPlan` and their sets);
   - the identities blocks and frames name (`BlockId`, `TurnId`, `NodeId`,
-    `WakeupId`, `ShellId`, `CommandId`, `OperationId`);
+    `WakeupId`, `ShellId`, `CommandId`, `OperationId`), and the macro every
+    crate declares a checked identity with (`id!`): a string newtype that
+    serializes as itself and holds only the strings its check accepts;
   - the file-type table the product previews by (`preview_media_type`,
     `shows_in_place`), and the media types a model accepts with their sniffing
     (`sniff_model_media_type`);
@@ -117,7 +120,7 @@ next to the wire's types, so that a command program depends on one crate.
     read from (`Clock`, `SystemClock`), the schema marker of nullable fields
     (`Nullable`), and the decode function of every boundary that receives
     these types (`decode`).
-- **Public boundary:** the types and functions above.
+- **Public boundary:** the types, functions and macro above.
 - **Must not:** contain concrete provider names, catalog source names, shell
   runtime details, Host details, user-interface concepts, transport URLs or
   backend identifiers.
