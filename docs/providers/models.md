@@ -289,6 +289,26 @@ The efforts are the vendor's words, so a Claude model's `low` to `max` reach
 the API unchanged. The newest Claude models refuse a token budget, which is
 why an effort never becomes one.
 
+The OpenAI-shaped formats level thinking by effort only:
+
+| Thinking setting | Responses (`openai`, `codex`) | Chat Completions (`openai`, `grok-build`) |
+|---|---|---|
+| An effort | `reasoning: { effort, summary }`, the summary asked for, else `auto`; a summary turned off leaves `summary` out, and Codex receives `auto` | `reasoning_effort` |
+| The effort `none` | `reasoning: { effort: "none" }` | `reasoning_effort: "none"` |
+| Adaptive thinking at an effort | `reasoning: { effort, summary: "auto" }` | `reasoning_effort` |
+| A token budget, off, or none | No `reasoning` field | No `reasoning_effort` field |
+
+Gemini levels thinking by a token budget, `generationConfig.thinkingConfig`,
+and asks for thought summaries unless thinking is off, because the model
+thinks, and bills for it, either way:
+
+| Thinking setting | `thinkingConfig` |
+|---|---|
+| An effort, or adaptive thinking at an effort | `includeThoughts: true` and the effort's budget: `low` 4,096, `medium` 16,384, `high` 32,768, `xhigh` 65,536, `max` 98,304 tokens, and `medium`'s for any other effort |
+| A token budget | `includeThoughts: true` and the budget |
+| Off | `includeThoughts: false`, `thinkingBudget: 0` |
+| None | `includeThoughts: true` |
+
 A model's catalog says what the product can offer: the model's effort levels
 and its default, and whether thinking can be turned off. Codex and Claude Code
 models cannot turn thinking off ([The Codex catalog](#the-codex-catalog),

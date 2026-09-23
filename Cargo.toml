@@ -17,6 +17,8 @@ members = [
   "crates/machines-protocol",
   "crates/provider",
   "crates/provider-anthropic-api",
+  "crates/provider-google",
+  "crates/provider-openai-api",
   "crates/runner",
   "crates/runner-protocol",
   "crates/shell",

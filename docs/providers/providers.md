@@ -204,9 +204,16 @@ A run yields these events:
 
 Signatures and redacted reasoning are sent back only to the vendor that
 issued them, because a vendor refuses a signature it did not sign. Each
-provider marks what it receives so that it recognizes its own on replay: the
-`anthropic` family prefixes it with `anthropic:`, and replays thinking without
-a signature of its own, or another vendor's, not at all.
+provider marks what it receives with its family's name so that it recognizes
+its own on replay: `anthropic:`, `openai:`, `codex:` or `google:` before the
+vendor's signature, or before the whole reasoning item a Responses stream
+sends, which is what that API takes back. Thinking without a signature of its
+own, or with another vendor's, is not replayed. Gemini requires the signature
+of each function call it is sent, so a call without one of Google's, such as
+history from another provider, is replayed as text, and so is its result.
+Chat Completions signs nothing; a vendor that needs earlier thinking back
+receives its text as `reasoning_content`
+([Vendors from models.dev](#vendors-from-modelsdev)).
 
 A run ends after its response, after an error, after the last tool call of a
 batch, or when it is cancelled. An HTTP provider's tool calls are followed by
