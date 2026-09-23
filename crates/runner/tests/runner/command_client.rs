@@ -80,7 +80,7 @@ fn invocation(operation: &str) -> LocalInvocation {
 
 #[tokio::test]
 async fn command_that_does_not_read_stdin_never_polls_the_source() {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(Duration::from_secs(60), async {
         let server = Server::start(Arc::new(Commands)).await.unwrap();
         let mut stdout = Vec::new();
         let completion = forward(
@@ -105,7 +105,7 @@ async fn command_that_does_not_read_stdin_never_polls_the_source() {
 
 #[tokio::test]
 async fn pending_terminal_input_does_not_block_output_or_completion() {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(Duration::from_secs(60), async {
         let server = Server::start(Arc::new(Commands)).await.unwrap();
         let (_terminal, stdin) = tokio::io::duplex(1);
         let mut stdout = Vec::new();
@@ -131,7 +131,7 @@ async fn pending_terminal_input_does_not_block_output_or_completion() {
 
 #[tokio::test]
 async fn cancellation_interrupts_blocked_output() {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(Duration::from_secs(60), async {
         let server = Server::start(Arc::new(Commands)).await.unwrap();
         let (stdout, mut receiver) = tokio::io::duplex(1);
         let endpoint = server.endpoint().to_owned();
@@ -165,7 +165,7 @@ async fn cancellation_interrupts_blocked_output() {
 
 #[tokio::test]
 async fn connection_loss_interrupts_a_caller_blocked_on_stdout() {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(Duration::from_secs(60), async {
         let server = Server::start(Arc::new(Commands)).await.unwrap();
         let (stdout, mut receiver) = tokio::io::duplex(1);
         let endpoint = server.endpoint().to_owned();

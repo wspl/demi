@@ -5,6 +5,11 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+
+[lib]
+# No doc examples: rustdoc has nothing to test.
+doctest = false
+
 [features]
 # Test support: a download client that also reaches a fixture server on 127.0.0.1.
 testing = []

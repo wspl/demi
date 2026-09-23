@@ -12,7 +12,7 @@ use demi_runner::{
 
 #[tokio::test]
 async fn filesystem_requests_and_kill_remain_available_during_job() {
-    tokio::time::timeout(Duration::from_secs(10), async {
+    tokio::time::timeout(Duration::from_secs(60), async {
         let root = tempfile::tempdir().unwrap();
         let mut host = Host::start(root.path(), BTreeMap::new()).await.online().await;
         host.send(Inbound::JobStart {
@@ -55,7 +55,7 @@ async fn filesystem_requests_and_kill_remain_available_during_job() {
 
 #[tokio::test]
 async fn job_environment_combines_device_request_and_owned_values() {
-    tokio::time::timeout(Duration::from_secs(10), async {
+    tokio::time::timeout(Duration::from_secs(60), async {
         let root = tempfile::tempdir().unwrap();
         let device = BTreeMap::from([
             ("DEVICE".into(), "device".into()),

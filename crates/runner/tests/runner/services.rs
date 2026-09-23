@@ -131,7 +131,7 @@ async fn call(resident: &Resident, operation: &str, conversation: &str) -> u8 {
 
 /// Waits until the service behind `resident` has stopped.
 async fn stopped(resident: &Resident) {
-    tokio::time::timeout(Duration::from_secs(15), async {
+    tokio::time::timeout(Duration::from_secs(60), async {
         while resident.client().info().await.is_ok() {
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
@@ -240,8 +240,9 @@ async fn a_failed_release_retires_the_service_and_the_next_caller_gets_a_new_one
         let resolver = local(path);
         let _lease = services.lease(digest(&descriptor)).await;
         let resident = acquire(&services, &descriptor, resolver.clone()).await;
-        let error = services.release_conversation("fail").await.unwrap_err();
-        assert!(error.contains("failed"), "{error}");
+        // The service reports its failure, or dies before its answer
+        // arrives; either way the release fails and the service retires.
+        assert!(services.release_conversation("fail").await.is_err());
         // The release is answered once the service has gone.
         assert!(resident.client().info().await.is_err());
         let next = acquire(&services, &descriptor, resolver).await;

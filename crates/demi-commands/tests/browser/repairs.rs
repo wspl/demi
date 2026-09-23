@@ -5,9 +5,7 @@ use serde_json::{Value, json};
 use std::{sync::Arc, time::Duration};
 use tokio_util::sync::CancellationToken;
 
-#[path = "browser/fixture.rs"]
-mod browser_fixture;
-use browser_fixture::with_fixture;
+use crate::fixture::with_fixture;
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 

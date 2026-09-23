@@ -1,7 +1,4 @@
-mod browser_families;
-#[path = "browser/server.rs"]
-mod browser_server;
-use browser_families::with_browser_fixture;
+use crate::families::with_browser_fixture;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
@@ -37,7 +34,7 @@ async fn assets_export_observed_content_and_keep_partial_success() {
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn asset_inventory_covers_cross_process_frames_and_expires_on_child_navigation() {
-    let server = browser_server::Server::start(include_str!("browser/assets-frames.html")).await;
+    let server = crate::server::Server::start(include_str!("assets-frames.html")).await;
     let base = server.base.clone();
     with_browser_fixture(|fixture| async move {
         let tab = fixture.call("browser.open", json!({"url":base,"load":"load"})).await["tab"].clone();

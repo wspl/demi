@@ -2,7 +2,6 @@
 //! a viewer drives `browser.live` as the page does, beside the agent's
 //! commands on the same tabs.
 
-mod browser_families;
 
 use std::{
     sync::{Arc, Mutex},
@@ -15,7 +14,7 @@ use axum::{
     response::Html,
     routing::get,
 };
-use browser_families::{BrowserFixture, with_browser_fixture};
+use crate::families::{BrowserFixture, with_browser_fixture};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use demi_command_service::{
     Input, ServiceError,
@@ -736,7 +735,7 @@ async fn a_view_waits_for_a_browser_and_ends_with_its_last_tab() {
 async fn the_user_can_immediately_close_the_first_loading_tab() {
     with_browser_fixture(|fixture| async move {
         let path = fixture.root.path().join("loading.html");
-        std::fs::write(&path, include_str!("browser_families/loading-form.html")).unwrap();
+        std::fs::write(&path, include_str!("families/loading-form.html")).unwrap();
         let url = url::Url::from_file_path(&path).unwrap();
         for _ in 0..30 {
             let opened = request(&fixture, "browser.open", json!({"url": url.as_str()})).await;

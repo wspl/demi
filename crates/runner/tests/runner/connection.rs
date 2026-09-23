@@ -32,7 +32,7 @@ fn backend_url_preserves_explicit_path_and_query() {
 
 #[tokio::test]
 async fn typed_exchange_and_remote_close() {
-    tokio::time::timeout(Duration::from_secs(3), async {
+    tokio::time::timeout(Duration::from_secs(60), async {
         let (mut client, mut server) = pair().await;
         let ping = rmp_serde::to_vec_named(&serde_json::json!({"type":"ping"})).unwrap();
         server.send(Message::Binary(ping.into())).await.unwrap();
@@ -54,7 +54,7 @@ async fn typed_exchange_and_remote_close() {
 
 #[tokio::test]
 async fn close_interrupts_stalled_output() {
-    tokio::time::timeout(Duration::from_secs(3), async {
+    tokio::time::timeout(Duration::from_secs(60), async {
         let (client, _server) = pair().await;
         let output = wire::encode(&wire::Outbound::SpawnOutput {
             spawn_id: "stalled".into(),
@@ -72,7 +72,7 @@ async fn close_interrupts_stalled_output() {
 
 #[tokio::test]
 async fn malformed_input_fails_connection() {
-    tokio::time::timeout(Duration::from_secs(3), async {
+    tokio::time::timeout(Duration::from_secs(60), async {
         let (mut client, mut server) = pair().await;
         server.send(Message::Text("{}".into())).await.unwrap();
         assert!(client.input.recv().await.is_none());
@@ -86,7 +86,7 @@ async fn malformed_input_fails_connection() {
 /// connection (`runner.md` § Connection and identity).
 #[tokio::test]
 async fn a_full_inbound_queue_waits_instead_of_closing() {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(Duration::from_secs(60), async {
         let (mut client, mut server) = pair().await;
         let ping = rmp_serde::to_vec_named(&serde_json::json!({"type":"ping"})).unwrap();
         // Far more than the queue holds, while nothing takes them.

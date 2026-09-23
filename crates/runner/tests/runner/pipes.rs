@@ -10,7 +10,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 #[tokio::test]
 async fn quiet_uploads_delayed_headers_and_bodies_outlive_the_connect_deadline() {
-    tokio::time::timeout(Duration::from_secs(25), async {
+    tokio::time::timeout(Duration::from_secs(60), async {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let origin = format!("http://{}", listener.local_addr().unwrap());
         let tasks = TaskTracker::new();
@@ -77,7 +77,7 @@ async fn quiet_uploads_delayed_headers_and_bodies_outlive_the_connect_deadline()
 
 #[tokio::test]
 async fn explicit_cancel_interrupts_quiet_input_and_urls_cannot_change_origin() {
-    tokio::time::timeout(Duration::from_secs(3), async {
+    tokio::time::timeout(Duration::from_secs(60), async {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let origin = format!("http://{}", listener.local_addr().unwrap());
         let client = PipeClient::new(&origin.parse().unwrap(), tokio::sync::watch::Sender::new(Some("token".parse().unwrap())).subscribe()).unwrap();

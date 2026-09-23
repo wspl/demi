@@ -5,6 +5,11 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+
+[lib]
+# No doc examples: rustdoc has nothing to test.
+doctest = false
+
 [dependencies]
 jsonschema = { version = "0.56", default-features = false }
 serde.workspace = true

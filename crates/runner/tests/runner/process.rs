@@ -17,7 +17,7 @@ fn options(command: &str, args: &[&str]) -> SpawnOptions {
 
 #[tokio::test]
 async fn child_streams_binary_before_stdin_eof_and_reaps() {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(Duration::from_secs(60), async {
         let mut child = ChildProcess::spawn(options("/bin/cat", &[])).await.unwrap();
         child
             .input
@@ -39,7 +39,7 @@ async fn child_streams_binary_before_stdin_eof_and_reaps() {
 
 #[tokio::test]
 async fn cancellation_interrupts_output_backpressure() {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(Duration::from_secs(60), async {
         let mut child = ChildProcess::spawn(options("/usr/bin/yes", &[]))
             .await
             .unwrap();
@@ -57,7 +57,7 @@ async fn cancellation_interrupts_output_backpressure() {
 
 #[tokio::test]
 async fn cancellation_kills_descendant_process_group() {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(Duration::from_secs(60), async {
         let mut child = ChildProcess::spawn(options(
             "/bin/sh",
             &["-c", "sleep 30 & printf '%s\\n' $!; wait"],

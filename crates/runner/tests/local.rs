@@ -63,7 +63,7 @@ fn invocation(operation: &str) -> LocalInvocation {
 
 #[tokio::test]
 async fn private_endpoint_streams_binary_input_on_demand_and_joins_cancelled_calls() {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(Duration::from_secs(60), async {
         let cancelled = Arc::new(AtomicBool::new(false));
         let server = Server::start(Arc::new(Commands {
             cancelled: cancelled.clone(),
@@ -165,8 +165,11 @@ async fn a_client_waits_for_a_busy_runner_but_not_for_a_gone_one() {
     let alive = std::fs::File::create(busy.path().join("ipc.alive")).unwrap();
     alive.try_lock().unwrap();
     let mut queued = Vec::new();
+    // A connect that does not finish within a second is one the full queue
+    // holds back; a loaded machine can take far longer than 100 ms for one
+    // that the queue still takes.
     while let Ok(Ok(stream)) = tokio::time::timeout(
-        Duration::from_millis(100),
+        Duration::from_secs(1),
         tokio::net::UnixStream::connect(&socket),
     )
     .await

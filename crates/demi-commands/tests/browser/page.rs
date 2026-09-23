@@ -31,7 +31,7 @@ async fn browser_contract_and_cleanup() {
     let app = Router::new()
         .route(
             "/",
-            get(|| async { Html(include_str!("browser/fixture.html")) }),
+            get(|| async { Html(include_str!("fixture.html")) }),
         )
         .route(
             "/side-effect",

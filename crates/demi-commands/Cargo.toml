@@ -5,6 +5,11 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+
+[lib]
+# No doc examples: rustdoc has nothing to test.
+doctest = false
+
 [[bin]]
 name = "demi-commands"
 path = "src/main.rs"
@@ -12,10 +17,6 @@ path = "src/main.rs"
 [features]
 # Page-driving helpers for the Chrome tests.
 testing = []
-
-[[test]]
-name = "browser"
-required-features = ["testing"]
 
 [dependencies]
 demi-artifact = { path = "../artifact" }

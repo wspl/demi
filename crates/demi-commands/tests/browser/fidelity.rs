@@ -1,8 +1,7 @@
-mod browser_families;
 use std::sync::{Arc, Mutex};
 
 use axum::{Router, extract::State, http::HeaderMap, response::Html, routing::get};
-use browser_families::with_browser_fixture;
+use crate::families::with_browser_fixture;
 use demi_command_service::protocol::CommandLocale;
 use serde_json::{Value, json};
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
@@ -66,7 +65,7 @@ async fn site() -> Site {
 }
 
 /// The page's report once its worker answered.
-async fn page_report(fixture: &browser_families::BrowserFixture, tab: &str) -> Value {
+async fn page_report(fixture: &crate::families::BrowserFixture, tab: &str) -> Value {
     fixture
         .call(
             "browser.wait",

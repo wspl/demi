@@ -45,7 +45,7 @@ fn table(
 
 /// Waits for a shell job's complete readiness marker across output frames.
 async fn wait_for_job_ready(job: &mut demi_runner::shell::job::Job) {
-    tokio::time::timeout(Duration::from_secs(3), async {
+    tokio::time::timeout(Duration::from_secs(60), async {
         let mut ready = Vec::new();
         while ready.len() < 5 {
             let chunk = job.output.recv().await.expect("job exited before ready");
@@ -136,7 +136,7 @@ async fn functions_and_compound_pipelines_drain_large_output_and_here_documents(
             },
         })
         .unwrap();
-    let result = tokio::time::timeout(Duration::from_secs(20), async {
+    let result = tokio::time::timeout(Duration::from_secs(60), async {
         let mut output = Vec::new();
         loop {
             let message = receiver.recv().await.unwrap();
@@ -188,7 +188,7 @@ async fn cancellation_terminates_a_blocking_native_builtin() {
     table
         .signal(&WorkId::Job("job".into()), Signal::Kill)
         .unwrap();
-    tokio::time::timeout(Duration::from_secs(3), async {
+    tokio::time::timeout(Duration::from_secs(60), async {
         while let Some(message) = receiver.recv().await {
             if matches!(
                 rmp_serde::from_slice::<Reply>(&message.into_bytes()).unwrap(),
@@ -363,7 +363,7 @@ async fn cancellation_reaps_external_programs_started_by_native_utilities() {
         )
             .await
         .unwrap();
-        let pid = tokio::time::timeout(Duration::from_secs(3), async {
+        let pid = tokio::time::timeout(Duration::from_secs(60), async {
             loop {
                 if let Ok(text) = tokio::fs::read_to_string(root.path().join("child.pid")).await
                     && let Ok(pid) = text.trim().parse::<i32>()

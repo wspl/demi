@@ -5,6 +5,11 @@ edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
+
+[lib]
+# No doc examples: rustdoc has nothing to test.
+doctest = false
+
 [dependencies]
 demi-artifact = { path = "../artifact" }
 brush-core = "0.5"
