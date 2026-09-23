@@ -1,7 +1,4 @@
-mod browser_families;
-#[path = "browser/server.rs"]
-mod browser_server;
-use browser_families::with_browser_fixture;
+use crate::families::with_browser_fixture;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
@@ -64,7 +61,7 @@ async fn fetch_returns_input_order_and_releases_batch_tabs() {
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn fetch_closure_and_cancellation_release_registered_tabs() {
-    let server = browser_server::Server::start(include_str!("browser/assets.html")).await;
+    let server = crate::server::Server::start(include_str!("assets.html")).await;
     let base = server.base.clone();
     with_browser_fixture(|fixture| async move {
         let retained = fixture.open("upload.html").await;
