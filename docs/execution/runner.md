@@ -281,8 +281,9 @@ service's standard error enters the same way, one event per line as it arrives.
   read. Without a cursor the answer ends at the newest line. The cursor is a
   line number that grows across both files and across restarts; one whose
   lines are gone, or that comes from a log a reset removed, continues from
-  the oldest line still kept. The request reads the files and waits for
-  nothing, not even a line still queued. The backend serves it as the
+  the oldest line still kept. The writer thread answers the request between
+  two lines it writes, so the answer holds every line queued before the
+  request and a read never races a write. The backend serves it as the
   [device log route](../product/web-api.md#device-log).
 - What a source writes is diagnostics: what it tried and why it failed. Page
   content, typed text, cookies, tokens and file contents never go to the log.

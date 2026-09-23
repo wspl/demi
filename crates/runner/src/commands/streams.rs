@@ -20,7 +20,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use crate::{
     commands::artifacts::Artifacts,
     connection::wire::{self, ServiceErrorCode},
-    host_log::{self, LineSplitter},
+    host_log::LineSplitter,
     pipes::PipeClient,
     services::ServiceHandle,
     tail::TailBuffer,
@@ -156,7 +156,7 @@ impl ServiceStreams {
                     }
                 }
                 Err(error) => {
-                    host_log::runner(format_args!("service_opened encoding failed: {error}"));
+                    tracing::warn!("service_opened encoding failed: {error}");
                     return;
                 }
             }
@@ -223,7 +223,7 @@ impl ServiceStreams {
                         let _ = reply.send(message).await;
                     }
                     Err(error) => {
-                        host_log::runner(format_args!("service_done encoding failed: {error}"));
+                        tracing::warn!("service_done encoding failed: {error}");
                     }
                 }
             }
@@ -250,15 +250,15 @@ struct StreamLog {
 
 impl StreamLog {
     fn event(&self, text: &str) {
-        host_log::write(
-            host_log::RUNNER,
-            Some(&self.conversation),
-            &format!("{} {text}", self.source),
-        );
+        tracing::info!(conversation = self.conversation.as_str(), "{} {text}", self.source);
     }
 
     fn stderr(&self, line: &str) {
-        host_log::write(&self.source, Some(&self.conversation), line);
+        tracing::info!(
+            source = self.source.as_str(),
+            conversation = self.conversation.as_str(),
+            "{line}"
+        );
     }
 }
 
@@ -435,6 +435,6 @@ async fn send_error(
                 _ = output.send(message) => {},
             }
         }
-        Err(error) => host_log::runner(format_args!("service_error encoding failed: {error}")),
+        Err(error) => tracing::warn!("service_error encoding failed: {error}"),
     }
 }

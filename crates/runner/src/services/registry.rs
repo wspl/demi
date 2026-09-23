@@ -31,7 +31,6 @@ use tokio_util::sync::CancellationToken;
 use super::{
     ArtifactResolver, RuntimeError, cache::ArtifactCache, process::ResidentService, target,
 };
-use crate::host_log;
 
 /// How long a service has to say which conversations it holds.
 const STATUS_TIMEOUT: Duration = Duration::from_secs(5);
@@ -468,10 +467,10 @@ impl Owner {
             State::Ended(_) => return,
         };
         let Some(client) = client else {
-            host_log::event(format_args!(
+            tracing::info!(
                 "service {} is no longer needed and its start stops",
                 current.id
-            ));
+            );
             current.stop.cancel();
             self.entries.remove(digest);
             return;
@@ -516,19 +515,19 @@ impl Owner {
         match checked.holds {
             Ok(true) => {}
             Ok(false) => {
-                host_log::event(format_args!(
+                tracing::info!(
                     "service {} holds no lease or conversation and stops",
                     current.id
-                ));
+                );
                 current.stop.cancel();
                 self.entries.remove(&checked.digest);
             }
             // A service that cannot say what it holds is not one that holds
             // nothing: stopping it would end every conversation it serves.
-            Err(error) => host_log::runner(format_args!(
+            Err(error) => tracing::warn!(
                 "service {} did not say which conversations it holds ({error}); it stays",
                 current.id
-            )),
+            ),
         }
     }
 
@@ -684,17 +683,17 @@ async fn live(
         Ok(service) => service,
         Err(error) => {
             if !matches!(error, RuntimeError::Cancelled) {
-                host_log::runner(format_args!("service {} did not start: {error}", descriptor.id));
+                tracing::warn!("service {} did not start: {error}", descriptor.id);
             }
             state.send_replace(State::Ended(Arc::new(error)));
             return;
         }
     };
-    host_log::event(format_args!(
+    tracing::info!(
         "service {} started (pid {})",
         descriptor.id,
         service.pid()
-    ));
+    );
     state.send_replace(State::Ready {
         client: service.client().clone(),
         info: Arc::new(service.info().clone()),
@@ -702,7 +701,7 @@ async fn live(
     let ended = service.ended().await;
     let error = match ended.reason {
         None => {
-            host_log::event(format_args!("service {} stopped", descriptor.id));
+            tracing::info!("service {} stopped", descriptor.id);
             RuntimeError::Stopped
         }
         Some(reason) => {
@@ -712,10 +711,10 @@ async fn live(
                 stderr: ended.stderr,
             };
             // Its standard error is in the log already, line by line.
-            host_log::runner(format_args!(
+            tracing::warn!(
                 "service {} {}",
                 exit.service, exit.reason
-            ));
+            );
             exit.into()
         }
     };
@@ -762,10 +761,10 @@ async fn conversation_call(
                 {
                     completed = true
                 }
-                Record::Stderr(chunk) => host_log::runner(format_args!(
+                Record::Stderr(chunk) => tracing::warn!(
                     "conversation {request:?}: {}",
                     String::from_utf8_lossy(&chunk).trim_end()
-                )),
+                ),
                 _ => return Err("the conversation operation failed".into()),
             }
         }
