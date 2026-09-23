@@ -163,6 +163,7 @@ media.
 | A document | The byte count divided by 4, rounded up |
 | An image in a tool result | The larger of 1,600 and its decoded byte count divided by 1,000, rounded up |
 | A video, anywhere | 0 |
+| Media held by blob reference, whose bytes are not loaded | An image 1,600, a document 0 |
 
 Images and documents are weighted because their text rendering says nothing
 about their cost; an image-heavy history would otherwise estimate near zero
