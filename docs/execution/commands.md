@@ -155,7 +155,7 @@ and in help.
 
 In the derived JSON Schema, the leaf's input is an object that allows no other
 properties, and a property uses only `type`, `enum`, `items`, `description`,
-`format` for integers, `minLength`, `maxLength`, `pattern`, `minimum`,
+`format` for numbers, `minLength`, `maxLength`, `pattern`, `minimum`,
 `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `minItems`, and `maxItems`.
 An optional field is an `Option` in the argument type: its schema leaves it out
 of `required` and never allows `null`. Registration rejects anything else and
