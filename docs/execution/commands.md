@@ -258,7 +258,9 @@ immutable manifest. Switching A → B → A sends all three selections; existing
 jobs retain their own pinned manifest. A new connection sends its first manifest
 again, even when its hash matches the previous connection. Ordered delivery
 installs a manifest before its job; this avoids revalidating the same command
-schemas before every shell invocation. A failed send makes the selection
+schemas before every shell invocation. The runner keeps one installed manifest,
+so a manifest and the job after it travel together: jobs that start at once on
+one connection take turns. A failed send makes the selection
 uncertain; the next job sends its manifest again, even if it was selected before
 the failed send.
 

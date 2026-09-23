@@ -396,20 +396,26 @@ Each crate implements the provider contract for one vendor family.
   - `AgentServer`, one per user shard, which holds each open conversation's
     `Tree`; `Tree`, a conversation's live nodes, its attachment to a
     connection and the supervisor operations on its subagents; `Node`;
+  - `Connection`, the frame handling of one conversation socket: the backend
+    hands it each decoded client frame, and its bounded outbox (`FrameRx`)
+    carries every server frame back;
   - `AgentSession`, a handle over one session's `SessionCore`;
   - the transcript and its estimates (`transcript::estimate`) and compaction;
   - the standard tools (`StandardTool`: `shell_exec`, `shell_status`,
     `shell_write`, `shell_abort` and `yield`), with the durable dispatch of
     every tool call;
   - the `demi agent` command group;
-  - the harness trait (`AgentHarness`) and the tree store contract
-    (`AgentTreeStore`, `SessionStore`).
+  - the harness trait (`AgentHarness`), where a session's provider runtimes
+    come from (`ProviderResolver`), and the tree store contract
+    (`AgentTreeStore`, `SessionStore`, with the node records and checkpoints
+    they carry in `store`).
 - **Public boundary:** the items above; `agent::testing` supplies an in-memory
-  tree store (`MemoryTreeStore`) and a test client that drives a connection. A
-  product supplies the harness, the providers, a
-  shell environment per Host and a tree store; the agent never knows which
-  shell engine runs. Behavior: [Agent runtime](../agent/runtime.md),
-  [Subagents](../agent/subagents.md) and [Compaction](../agent/compaction.md).
+  tree store (`MemoryTreeStore`), predictable identities (`SequentialIds`) and
+  a test client that drives a connection (`TestClient`). A product supplies
+  the harness, the providers, a shell environment per Host and a tree store;
+  the agent never knows which shell engine runs. Behavior:
+  [Agent runtime](../agent/runtime.md), [Subagents](../agent/subagents.md)
+  and [Compaction](../agent/compaction.md).
 - **Rules:** the node assembly is the one place that creates a node's session;
   the supervisor asks it for a child and never builds one. Media persistence
   goes through the tree store: the product's store decides where media bytes
@@ -435,8 +441,9 @@ Each crate implements the provider contract for one vendor family.
 #### `host-remote`
 
 - **Owns:** the backend's end of a runner:
-  - the connection engine (`LinkEngine`): routing replies by id, liveness and
-    rpc plumbing;
+  - the connection engine (`Link`, served by its `LinkDriver`): routing
+    replies by id, liveness and rpc plumbing, with the product's decisions on
+    calls behind `LinkPolicy`;
   - `RemoteHost`, a `Host` over a runner connection whose file contents travel
     through pipes, with job, working-tree, network, log and service facets;
   - pipe records (`Pipes`) and their `Send` ends;
@@ -444,8 +451,10 @@ Each crate implements the provider contract for one vendor family.
     runner jobs, and its factory;
   - building manifests from a command set.
 - **Public boundary:** the items above; `host_remote::testing` supplies a real
-  runner for one device (`RunnerFixture`) and an in-process fake runner
-  (`TestLink`). Behavior: [Runner](../execution/runner.md) and
+  runner for one device (`RunnerFixture`), an in-process fake runner
+  (`TestDevice`, whose connections are `TestLink`s), the runner's native
+  fixture package (`NativeFixture`) and a policy that runs every call in one
+  command set (`CommandPolicy`). Behavior: [Runner](../execution/runner.md) and
   [Native command execution](../execution/native-runtime.md), which owns
   [artifact-location admission](../execution/native-runtime.md#install-the-selected-executable).
 - **Must not:** own sockets or HTTP routes (the backend's connection tasks and
@@ -685,15 +694,15 @@ gates -> none
 artifact -> none
 provider -> core, gates
 provider-anthropic-api -> core, provider
-provider-openai-api -> provider
-provider-google -> provider
+provider-openai-api -> core, provider
+provider-google -> core, provider
 provider-codex -> provider
 provider-grok-build -> provider
 provider-claude-code -> provider, shell
 shell -> command-service, command-tree, core
 agent -> agent-protocol, core, gates, provider, shell
 coding-agent -> agent, builtin-protocol, command-tree, core, shell
-host-remote -> command-service, command-tree, gates, runner-protocol, shell
+host-remote -> command-service, command-tree, core, gates, runner-protocol, shell
 backend -> agent, agent-protocol, artifact, builtin-protocol, claude-protocol, coding-agent, command-service, command-tree, core, gates, host-remote, machines-protocol, provider, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shell, web-api
 machines -> artifact, machines-protocol, runner-protocol
 runner -> artifact, command-service, command-tree, gates, runner-protocol
