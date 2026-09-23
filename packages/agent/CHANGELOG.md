@@ -1,5 +1,15 @@
 # @demicodes/agent
 
+## 0.25.4
+
+### Patch Changes
+
+- Updated dependencies
+  - @demicodes/shell@0.25.4
+  - @demicodes/core@0.25.4
+  - @demicodes/provider@0.25.4
+  - @demicodes/utils@0.25.4
+
 ## 0.25.3
 
 ### Patch Changes

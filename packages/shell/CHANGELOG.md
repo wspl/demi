@@ -1,5 +1,12 @@
 # @demicodes/shell
 
+## 0.25.4
+
+### Patch Changes
+
+- Fix UTF-8 corruption in shell read variables passed to commands, including Unicode character counts and descriptor input. Add byte-level and real-process regression coverage.
+  - @demicodes/utils@0.25.4
+
 ## 0.25.3
 
 ### Patch Changes
