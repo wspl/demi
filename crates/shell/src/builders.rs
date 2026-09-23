@@ -222,10 +222,20 @@ impl From<LeafBuilder> for Declared {
 /// deserializing, an output's for serializing.
 fn schema_of<T: JsonSchema>(output: bool) -> Result<Schema, String> {
     let settings = command_schema_settings();
-    let settings = if output { settings.for_serialize() } else { settings };
-    let value = settings.into_generator().into_root_schema_for::<T>().to_value();
+    let settings = if output {
+        settings.for_serialize()
+    } else {
+        settings
+    };
+    let value = settings
+        .into_generator()
+        .into_root_schema_for::<T>()
+        .to_value();
     let Value::Object(object) = value else {
-        return Err(format!("the schema of {} is not an object", T::schema_name()));
+        return Err(format!(
+            "the schema of {} is not an object",
+            T::schema_name()
+        ));
     };
     Schema::new(object.into_iter().collect()).map_err(|error| error.to_string())
 }
@@ -266,7 +276,11 @@ where
     F: Fn(Call<A>, RpcPort) -> Fut,
     Fut: Future<Output = Result<u8, RpcError>> + 'static,
 {
-    fn call(&self, invocation: RpcInvocation, port: RpcPort) -> LocalBoxFuture<'_, Result<u8, RpcError>> {
+    fn call(
+        &self,
+        invocation: RpcInvocation,
+        port: RpcPort,
+    ) -> LocalBoxFuture<'_, Result<u8, RpcError>> {
         match serde_json::from_value::<A>(Value::Object(invocation.args.clone())) {
             Ok(args) => Box::pin((self.run)(Call { args, invocation }, port)),
             Err(error) => Box::pin(ready(Err(RpcError::Failed(format!(
