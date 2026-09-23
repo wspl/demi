@@ -63,16 +63,13 @@ pub(super) async fn capability(page: &chromiumoxide::Page) -> Result<Capability>
 }
 
 /// Lets pages use the browser's own clipboard.
-pub(super) async fn grant(
-    browser: &std::sync::Weak<tokio::sync::Mutex<chromiumoxide::Browser>>,
-) -> Result<()> {
-    let browser = browser.upgrade().ok_or(BrowserError::Closed)?;
+pub(super) async fn grant(browser: &super::environment::BrowserHandle) -> Result<()> {
     #[allow(deprecated)]
     let permissions = GrantPermissionsParams::new(vec![
         PermissionType::ClipboardReadWrite,
         PermissionType::ClipboardSanitizedWrite,
     ]);
-    browser.lock().await.execute(permissions).await?;
+    browser.call()?.execute(permissions).await?;
     Ok(())
 }
 
