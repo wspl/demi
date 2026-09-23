@@ -38,6 +38,14 @@ tokio-util = { version = "0.7", features = ["io", "rt"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "registry", "std"] }
 
+[profile.dev]
+# Line tables are enough for test backtraces. Full debug info made every test
+# binary hundreds of megabytes, and linking them waited on the disk.
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [profile.release]
 lto = "thin"
 strip = true
