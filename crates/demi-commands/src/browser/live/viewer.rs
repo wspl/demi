@@ -1,4 +1,4 @@
-//! One viewer of the conversation's browser (`browser-live-view.md` § The
+//! One viewer of the conversation's browser (`live-view.md` § The
 //! stream): one invocation of `browser.live`, from the page's `hello` until
 //! either side ends it.
 

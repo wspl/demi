@@ -1,4 +1,4 @@
-//! The live view module (`browser-live-view.md`): viewers of the
+//! The live view module (`live-view.md`): viewers of the
 //! conversation's browser, the capture of the tabs they watch, and their input.
 
 pub(crate) mod capture;

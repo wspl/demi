@@ -1,6 +1,6 @@
 /**
  * The `browser` tab kind's own side of the work panel
- * (`browser-live-view.md` § A browser tab in the panel): what a tab saves, the
+ * (`live-view.md` § A browser tab in the panel): what a tab saves, the
  * requests that list, open, close and navigate the conversation browser's
  * tabs, and the one view a page keeps while a `browser` tab is shown.
  */

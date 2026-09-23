@@ -1,5 +1,5 @@
 /**
- * The pictures of a watched tab on a canvas (`browser-live-view.md` §
+ * The pictures of a watched tab on a canvas (`live-view.md` §
  * Delivery): WebCodecs decodes the Host's H.264, the page shows the newest
  * frame it has, and tells the module what it showed.
  */

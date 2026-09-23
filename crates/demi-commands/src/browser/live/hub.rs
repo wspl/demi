@@ -1,4 +1,4 @@
-//! One browser's live view (`browser-live-view.md`): who watches which tab,
+//! One browser's live view (`live-view.md`): who watches which tab,
 //! the streams viewers of the same tab share, and the viewports and the
 //! screen the viewers decide.
 
