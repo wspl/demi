@@ -105,7 +105,9 @@ next to the wire's types, so that a command program depends on one crate.
   - what the product shows of a provider entry: its model catalog
     (`ProviderModelList`, `ProviderModel`, `ServiceTier`, `ModelCost`), which
     carries portable facts only and never a source label such as
-    `codex-backend`, `models.dev` or `cache`; its authentication and runtime
+    `codex-backend`, `models.dev` or `cache`, with the one conversion of a
+    catalog model into a selection (`ProviderModel::selection`, with the
+    attachment types it derives, `ATTACHMENT_FILE_EXTENSIONS`); its authentication and runtime
     states (`AuthState`, `RuntimeState`); its subscription accounts as the
     browser sees them (`AccountInfo`, `LoginPending`); and an account's quota
     snapshot (`QuotaSnapshot`, `QuotaWindow`, `QuotaPlan` and their sets);

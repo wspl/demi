@@ -55,8 +55,9 @@ pub use media::{
     model_media_type_for, sniff_model_media_type,
 };
 pub use model::{
-    FileExtension, Model, ModelSelection, ThinkingCapability, ThinkingConfig, ThinkingSummary,
-    TokenUsage, VIDEO_FILE_EXTENSIONS, file_extension_support, model_accepts_video,
+    ATTACHMENT_FILE_EXTENSIONS, FileExtension, Model, ModelSelection, ThinkingCapability,
+    ThinkingConfig, ThinkingSummary, TokenUsage, VIDEO_FILE_EXTENSIONS, file_extension_support,
+    model_accepts_video,
 };
 pub use provider_state::{AccountInfo, AuthState, LoginPending, RuntimeState};
 pub use quota::{
