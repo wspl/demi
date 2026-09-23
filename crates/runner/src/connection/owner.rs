@@ -73,6 +73,8 @@ enum Work {
         result: io::Result<Installed>,
     },
     Stored(io::Result<()>),
+    /// The claimed device token was stored.
+    Paired(io::Result<()>),
     Done,
 }
 
@@ -267,6 +269,12 @@ impl Owner<'_> {
                 self.installed = Some(installed);
             }
             Work::Stored(result) => result?,
+            Work::Paired(result) => {
+                result?;
+                // Said once the token is stored, so a runner that reports
+                // itself paired keeps its pairing.
+                tracing::warn!("online");
+            }
             Work::Done => {}
         }
         Ok(())
@@ -302,9 +310,8 @@ impl Owner<'_> {
                 registered.token.send_replace(Some(device_token.clone()));
                 let state = registered.state.clone();
                 self.work
-                    .spawn(async move { Work::Stored(state.write_token(&device_token).await) });
+                    .spawn(async move { Work::Paired(state.write_token(&device_token).await) });
                 management.set_phase(Phase::Online);
-                tracing::warn!("online");
             }
             Inbound::HelloError { code, reason } => {
                 tracing::warn!("registration refused ({code}): {reason}");
