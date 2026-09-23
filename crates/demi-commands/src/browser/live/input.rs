@@ -16,6 +16,7 @@ use chromiumoxide::cdp::browser_protocol::input::{
     MouseButton, TouchPoint,
 };
 use tokio::sync::mpsc;
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use demi_builtin_protocol::live::{
     KeyAction, LiveModuleMessage, LiveViewerMessage, PointerAction, PointerButton,
@@ -23,10 +24,11 @@ use demi_builtin_protocol::live::{
 
 use super::{observers, writer::Writer};
 use crate::browser::{
-    BrowserError, BrowserTab, Result, keyboard,
+    BrowserError, BrowserTab, Result,
+    dialog::InputRelease,
+    keyboard,
     operation::CONTROL_TIMEOUT,
     protocol::{TabId, ViewportMode},
-    tab::InputRelease,
 };
 
 /// Input the viewer sent and the task has not delivered yet. Past this the
@@ -49,10 +51,19 @@ pub(super) struct Input {
 }
 
 impl Input {
-    pub fn start(writer: Writer, mac: bool) -> (Self, tokio::task::JoinHandle<()>) {
+    /// Starts the task on the environment's `tasks`; it ends with the
+    /// environment, or once the view drops this and it released what the
+    /// viewer holds.
+    pub fn start(
+        tasks: &TaskTracker,
+        ended: CancellationToken,
+        writer: Writer,
+        mac: bool,
+    ) -> (Self, tokio::task::JoinHandle<()>) {
         let (items, receiver) = mpsc::channel(QUEUE);
         let overflowed = Arc::new(AtomicBool::new(false));
-        let task = tokio::spawn(run(receiver, overflowed.clone(), writer, mac));
+        let writer = writer.until(&ended);
+        let task = tasks.spawn(run(receiver, overflowed.clone(), writer, mac, ended));
         (Self { items, overflowed }, task)
     }
 
@@ -84,10 +95,20 @@ async fn run(
     overflowed: Arc<AtomicBool>,
     writer: Writer,
     mac: bool,
+    ended: CancellationToken,
 ) {
     let mut tab: Option<BrowserTab> = None;
     let mut held = Held::default();
-    while let Some(item) = items.recv().await {
+    loop {
+        let item = tokio::select! {
+            biased;
+            // What the viewer held went with the browser.
+            _ = ended.cancelled() => return,
+            item = items.recv() => match item {
+                Some(item) => item,
+                None => break,
+            },
+        };
         if overflowed.swap(false, Ordering::SeqCst) {
             // Whatever was queued no longer reflects what the viewer holds.
             let mut pending = vec![item];
@@ -154,7 +175,7 @@ async fn dispatch<T, E>(
 where
     BrowserError: From<E>,
 {
-    let mut dialog = tab.state.dialog.subscribe();
+    let mut dialog = tab.state.dialog.watch();
     tokio::select! {
         result = delivery => result.map(|_| ()).map_err(BrowserError::from),
         _ = dialog.wait_for(|dialog| dialog.is_some()) => Ok(()),
@@ -168,7 +189,7 @@ async fn deliver(
     mac: bool,
     writer: &Writer,
 ) -> Result<()> {
-    if target(&message) != Some(tab.id()) || tab.state.dialog.borrow().is_some() {
+    if target(&message) != Some(tab.id()) || tab.state.dialog.is_open() {
         return Ok(());
     }
     let page = &tab.page;
@@ -378,8 +399,8 @@ async fn release(tab: Option<&BrowserTab>, held: &mut Held) {
             releases.push(InputRelease::Mouse(event));
         }
     }
-    if tab.state.dialog.borrow().is_some() {
-        tab.state.deferred_release.lock().await.extend(releases);
+    if tab.state.dialog.is_open() {
+        tab.state.dialog.defer(releases).await;
         return;
     }
     let delivered = tokio::time::timeout(CONTROL_TIMEOUT, async {
@@ -412,6 +433,6 @@ async fn release(tab: Option<&BrowserTab>, held: &mut Held) {
     if let Ok(Err(error)) = delivered
         && !tab.ended.is_cancelled()
     {
-        eprintln!("live view input release on {}: {error}", tab.id());
+        tracing::warn!("live view input release on {}: {error}", tab.id());
     }
 }
