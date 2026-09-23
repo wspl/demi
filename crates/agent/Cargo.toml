@@ -1,0 +1,39 @@
+[package]
+name = "demi-agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+# No doc examples: rustdoc has nothing to test.
+doctest = false
+
+[features]
+# An in-memory tree store, predictable ids and a test client that drives a
+# connection (`agent::testing`), for the tests of the agent and of what sits
+# above it.
+testing = []
+
+[dependencies]
+demi-agent-protocol = { path = "../agent-protocol" }
+demi-core = { path = "../core" }
+demi-gates = { path = "../gates" }
+demi-provider = { path = "../provider" }
+demi-shell = { path = "../shell" }
+futures-util.workspace = true
+garde.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+# The crate's own tests use its test support and the scripted provider
+# runtimes.
+demi-agent = { path = ".", features = ["testing"] }
+demi-provider = { path = "../provider", features = ["testing"] }
+tokio = { workspace = true, features = ["test-util"] }
