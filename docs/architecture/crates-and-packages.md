@@ -662,7 +662,7 @@ web-api -> agent-protocol, builtin-protocol, core, runner-protocol
 gates -> none
 artifact -> none
 provider -> core
-provider-anthropic-api -> provider
+provider-anthropic-api -> core, provider
 provider-openai-api -> provider
 provider-google -> provider
 provider-codex -> provider

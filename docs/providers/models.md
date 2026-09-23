@@ -277,6 +277,18 @@ browser sends is refused by the same whole-number rule.
 
 Thinking and the service tier travel with each request. Each provider maps the
 thinking setting onto its vendor's option, an effort level or a token budget.
+For example, the `anthropic` family maps them onto the Messages API as follows:
+
+| Thinking setting | Request |
+|---|---|
+| An effort, or adaptive thinking at an effort | `thinking: { type: "adaptive", display: "summarized" }` and `output_config: { effort }`; `display` is `omitted` when the setting turns summaries off |
+| A token budget | `thinking: { type: "enabled", budget_tokens }`, the budget kept between 1,024 and `max_tokens` minus 1,024, and 1,024 when `max_tokens` is 2,048 or less |
+| Off, or none | No `thinking` field |
+
+The efforts are the vendor's words, so a Claude model's `low` to `max` reach
+the API unchanged. The newest Claude models refuse a token budget, which is
+why an effort never becomes one.
+
 A model's catalog says what the product can offer: the model's effort levels
 and its default, and whether thinking can be turned off. Codex and Claude Code
 models cannot turn thinking off ([The Codex catalog](#the-codex-catalog),
