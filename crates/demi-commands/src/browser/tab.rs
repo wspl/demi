@@ -28,6 +28,7 @@ use super::{
 };
 
 /// The element target of a CSS selector.
+#[cfg(feature = "testing")]
 fn css_target(selector: &str) -> BrowserTarget {
     BrowserTarget {
         css: Some(selector.to_owned()),
@@ -241,6 +242,8 @@ impl BrowserTab {
             .await
     }
 
+    /// Clicks the element `selector` matches, for tests that drive a page.
+    #[cfg(feature = "testing")]
     pub async fn click_css(
         &self,
         selector: &str,
@@ -262,6 +265,8 @@ impl BrowserTab {
             .await
     }
 
+    /// Fills the element `selector` matches, for tests that drive a page.
+    #[cfg(feature = "testing")]
     pub async fn fill_css(
         &self,
         selector: &str,

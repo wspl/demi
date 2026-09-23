@@ -11,7 +11,7 @@ mod tests;
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use bytes::Bytes;
-use demi_claude_protocol::{Failure, Installed, OPERATIONS, Reply};
+use demi_claude_protocol::{Failure, Installed, Operation, Reply};
 use demi_command_service::protocol::{CommandError, Completion, Invocation};
 use demi_command_service::{Handler, Input, InvocationContext, ServiceError};
 use serde::Serialize;
@@ -41,7 +41,10 @@ impl Handler for DemiClaude {
     type Metadata = Invocation;
 
     fn operations(&self) -> Vec<String> {
-        OPERATIONS.iter().copied().map(String::from).collect()
+        Operation::ALL
+            .into_iter()
+            .map(|operation| operation.name().to_owned())
+            .collect()
     }
 
     fn invoke(
@@ -56,16 +59,17 @@ impl Handler for DemiClaude {
                 output,
                 cancellation,
             } = context;
-            let result = match request.operation.as_str() {
-                "claude.ensure" => ensure(&installer, input, &cancellation)
+            let Some(operation) = Operation::parse(&request.operation) else {
+                return Err(ServiceError::Handler(format!(
+                    "unknown operation {}",
+                    request.operation
+                )));
+            };
+            let result = match operation {
+                Operation::Ensure => ensure(&installer, input, &cancellation)
                     .await
                     .and_then(document),
-                "claude.status" => installer.status().await.and_then(document),
-                operation => {
-                    return Err(ServiceError::Handler(format!(
-                        "unknown operation {operation}"
-                    )));
-                }
+                Operation::Status => installer.status().await.and_then(document),
             };
             let (body, completion) = match result {
                 Ok(body) => (

@@ -1,7 +1,6 @@
 //! Browser output is bounded before any success bytes escape.
 
 use serde_json::Value;
-use std::io::{Read, Write};
 use tokio_util::sync::CancellationToken;
 
 use super::{
@@ -14,13 +13,20 @@ pub(super) fn value(result: impl serde::Serialize) -> Result<Value> {
     serde_json::to_value(result).map_err(|error| BrowserError::InvalidResult(error.to_string()))
 }
 
+/// The absolute path of `path`, a path a command names, against `cwd`; an
+/// empty path or one with a NUL byte is invalid input.
+pub(super) fn resolve(cwd: &str, path: &str) -> Result<std::path::PathBuf> {
+    demi_command_service::paths::resolve(cwd, path)
+        .map_err(|error| BrowserError::Configuration(error.to_string()))
+}
+
 /// Reject an existing browser output before delivering any page input.
 pub(super) async fn preflight(
     cwd: &str,
     output: &str,
     overwrite: bool,
 ) -> Result<std::path::PathBuf> {
-    let path = crate::files::resolve_path(cwd, output).map_err(BrowserError::Configuration)?;
+    let path = resolve(cwd, output)?;
     match tokio::fs::symlink_metadata(&path).await {
         Ok(_) if !overwrite => return Err(BrowserError::OutputExists(path.display().to_string())),
         Ok(_) => {}
@@ -40,14 +46,7 @@ pub(super) async fn save_with_overwrite(
     deadline: tokio::time::Instant,
 ) -> Result<String> {
     let path = preflight(cwd, output, overwrite).await?;
-    publish_reader(
-        path,
-        overwrite,
-        std::io::Cursor::new(bytes),
-        cancel,
-        deadline,
-    )
-    .await
+    publish(path, overwrite, &mut std::io::Cursor::new(bytes), cancel, deadline).await
 }
 
 /// Copy a completed browser download into an atomic Host publication without buffering it.
@@ -60,60 +59,49 @@ pub(super) async fn publish_file(
     deadline: tokio::time::Instant,
 ) -> Result<String> {
     let path = preflight(cwd, output, overwrite).await?;
-    let source = std::fs::File::open(source)?;
-    publish_reader(path, overwrite, source, cancel, deadline).await
+    let mut source = tokio::fs::File::open(source).await?;
+    publish(path, overwrite, &mut source, cancel, deadline).await
 }
 
-/// Join the browser file write on every exit so cancellation cannot publish late.
-async fn publish_reader(
+/// Publishes what `source` yields at `path`. The deadline stops the copy as
+/// cancellation does; a rename that has started completes, so a command
+/// that reports a failure never publishes afterwards.
+async fn publish(
     path: std::path::PathBuf,
     overwrite: bool,
-    mut source: impl Read + Send + 'static,
+    source: &mut (impl tokio::io::AsyncRead + Unpin),
     cancel: &CancellationToken,
     deadline: tokio::time::Instant,
 ) -> Result<String> {
-    let cancelled = cancel.clone();
-    tokio::task::spawn_blocking(move || {
-        let check = || {
-            if tokio::time::Instant::now() >= deadline {
-                Err(BrowserError::Timeout)
-            } else if cancelled.is_cancelled() {
-                Err(BrowserError::Cancelled)
-            } else {
-                Ok(())
-            }
-        };
-        check()?;
-        let parent = path.parent().ok_or_else(|| {
-            BrowserError::Configuration("browser output has no parent directory".into())
-        })?;
-        let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
-        let mut buffer = [0_u8; 64 * 1024];
-        loop {
-            check()?;
-            let count = source.read(&mut buffer)?;
-            if count == 0 {
-                break;
-            }
-            temporary.write_all(&buffer[..count])?;
-        }
-        temporary.flush()?;
-        check()?;
-        let persisted = if overwrite {
-            temporary.persist(&path)
+    let copying = cancel.child_token();
+    let publication = demi_artifact::Publication {
+        mode: if overwrite {
+            demi_artifact::Mode::Replace
         } else {
-            temporary.persist_noclobber(&path)
-        };
-        persisted.map_err(|error| {
-            if error.error.kind() == std::io::ErrorKind::AlreadyExists {
-                BrowserError::OutputExists(path.display().to_string())
-            } else {
-                BrowserError::Io(error.error)
-            }
-        })?;
-        Ok(path.to_string_lossy().into_owned())
-    })
-    .await?
+            demi_artifact::Mode::CreateNew
+        },
+        permissions: demi_artifact::Permissions::Default,
+        durable: false,
+    };
+    let published = demi_artifact::publish(&path, source, publication, &copying);
+    tokio::pin!(published);
+    let result = tokio::select! {
+        result = &mut published => result,
+        () = tokio::time::sleep_until(deadline) => {
+            copying.cancel();
+            published.await
+        }
+    };
+    match result {
+        Ok(()) => Ok(path.to_string_lossy().into_owned()),
+        Err(demi_artifact::Error::Cancelled) if cancel.is_cancelled() => Err(BrowserError::Cancelled),
+        Err(demi_artifact::Error::Cancelled) => Err(BrowserError::Timeout),
+        Err(demi_artifact::Error::Io(error)) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            Err(BrowserError::OutputExists(path.display().to_string()))
+        }
+        Err(demi_artifact::Error::Io(error)) => Err(BrowserError::Io(error)),
+        Err(error) => Err(BrowserError::Io(std::io::Error::other(error))),
+    }
 }
 
 /// Prints a result, shortening its content or its list until it fits

@@ -59,21 +59,3 @@ impl BrowserInstallation {
         crate::decode_slice(bytes)
     }
 }
-
-/// Where the service installs Chrome: under the home directory the
-/// environment names.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
-#[serde(deny_unknown_fields)]
-pub struct BrowserRuntimeConfig {
-    #[garde(length(min = 1), pattern(r"^[^\x00]*$"))]
-    pub home: String,
-}
-
-impl BrowserRuntimeConfig {
-    /// Checks the home directory the environment names.
-    pub fn new(home: String) -> Result<Self, DecodeError> {
-        let config = Self { home };
-        garde::Validate::validate(&config)?;
-        Ok(config)
-    }
-}

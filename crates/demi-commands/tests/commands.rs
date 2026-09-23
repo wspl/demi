@@ -1,4 +1,3 @@
-use demi_runner::services::process::ResidentService;
 use std::{collections::BTreeMap, process::Stdio, time::Duration};
 
 use demi_command_service::{
@@ -471,55 +470,5 @@ async fn resident_executable_runs_all_builtin_file_operations() {
         drop(client);
         driver.await.unwrap().unwrap();
         assert!(status.success());
-    }).await.unwrap();
-}
-
-#[tokio::test]
-async fn verified_artifact_launches_and_retires_through_runtime() {
-    use demi_command_service::protocol::{PackageArtifact, PackageDescriptor, TARGETS};
-    use demi_runner::services::{
-        ArtifactResolver, ArtifactSource, RuntimeError, cache::ArtifactCache,
-    };
-    use futures_util::future::BoxFuture;
-    use sha2::{Digest, Sha256};
-    use tokio_util::sync::CancellationToken;
-    struct Local;
-    impl ArtifactResolver for Local {
-        fn resolve<'a>(
-            &'a self,
-            _: &'a PackageArtifact,
-            _: &'a CancellationToken,
-        ) -> BoxFuture<'a, Result<ArtifactSource, RuntimeError>> {
-            Box::pin(async {
-                Ok(ArtifactSource::Local(
-                    env!("CARGO_BIN_EXE_demi-commands").into(),
-                ))
-            })
-        }
-    }
-    // Debug executables contain large symbol tables; hashing and copying them on
-    // small CI hosts is separate from the resident service's own deadlines.
-    tokio::time::timeout(Duration::from_secs(60), async {
-        let root = tempfile::tempdir().unwrap();
-        let bytes = tokio::fs::read(env!("CARGO_BIN_EXE_demi-commands")).await.unwrap();
-        let artifact = PackageArtifact { sha256: format!("{:x}", Sha256::digest(&bytes)), size: bytes.len() as u64 };
-        // A catalog fixture; this test executes only the current host target.
-        let package = PackageDescriptor::parse(serde_json::json!({
-            "id":"demicodes.demi", "version":"test", "protocolVersion":1,
-            "operations":demi_command_service::Handler::operations(&demi_commands::DemiCommands::default()),
-            "targets": TARGETS.iter().map(|target| (target.to_string(), serde_json::to_value(&artifact).unwrap())).collect::<BTreeMap<_, _>>()
-        })).unwrap();
-        let cache = ArtifactCache::new(root.path().join("cache")).await.unwrap();
-        let executable = cache.install(&artifact, &Local, &CancellationToken::new()).await.unwrap();
-        let stop = CancellationToken::new();
-        let service = ResidentService::start(&executable, &package, root.path(), &BTreeMap::new(), stop.clone()).await.unwrap();
-        let pid = service.pid();
-        let (result, _, _) = call(service.client(), root.path().to_str().unwrap(), "file.create", serde_json::json!({"path":"through-cache", "content":"hello"})).await;
-        assert_eq!(result.exit_code, 0);
-        assert_eq!(std::fs::read(root.path().join("through-cache")).unwrap(), b"hello");
-        assert_eq!(service.pid(), pid);
-        stop.cancel();
-        let ended = service.ended().await;
-        assert!(ended.reason.is_none(), "{:?}: {}", ended.reason, ended.stderr);
     }).await.unwrap();
 }

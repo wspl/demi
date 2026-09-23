@@ -206,8 +206,7 @@ pub(super) async fn execute(
                             .is_some_and(|kinds| kinds.contains(&asset.kind))
                 })
                 .collect();
-            let directory = crate::files::resolve_path(&context.request.cwd, &input.output_dir)
-                .map_err(BrowserError::Configuration)?;
+            let directory = super::output::resolve(&context.request.cwd, &input.output_dir)?;
             operation
                 .run(async {
                     tokio::fs::create_dir_all(&directory).await?;
