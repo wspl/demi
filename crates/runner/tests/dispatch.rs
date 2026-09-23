@@ -279,8 +279,9 @@ async fn declared_shell_builtin_dispatches_without_a_local_endpoint() {
             fixture._directory.path().into(),
             BTreeMap::new(),
             true,
-            scope,
+            scope, &demi_runner::shell::ShellRuntime::current(),
         )
+            .await
         .unwrap();
         assert_eq!(fixture.message().await["hint"], "Working");
         let call = fixture.message().await;
