@@ -1,6 +1,6 @@
 use demi_command_service::protocol::LocalInvocation;
 use demi_runner::connection::wire::{
-    HelloRunner, HelloRunnerIdentity, JobExitOutput, LogLinesLinesItem, WireBytes,
+    RunnerInfo, HostIdentity, RetainedOutput, LogLine, WireBytes,
 };
 use demi_runner::{
     commands::command_client::{Stdio, forward},
@@ -25,12 +25,12 @@ enum Reply {
     Exit {
         #[serde(rename = "exitCode")]
         code: Option<f64>,
-        output: Option<JobExitOutput>,
+        output: Option<RetainedOutput>,
     },
     #[serde(rename = "log_lines")]
     LogLines {
         id: String,
-        lines: Vec<LogLinesLinesItem>,
+        lines: Vec<LogLine>,
         next: u64,
     },
 }
@@ -65,15 +65,15 @@ async fn backend_job_invokes_same_binary_alias_and_drain_releases_installation()
             env: BTreeMap::from([("HOME".into(), home.clone())]),
             token: Some("test-token".into()),
             volumes: vec![],
-            runner: HelloRunner {
+            runner: RunnerInfo {
                 native_target: Some(demi_runner::commands::native::target().into()),
                 name: "test".into(),
                 platform: "test".into(),
                 version: "test".into(),
                 managed: None,
-                identity: HelloRunnerIdentity {
-                    uid: 1000.0,
-                    gid: 1000.0,
+                identity: HostIdentity {
+                    uid: 1000,
+                    gid: 1000,
                     hostname: "test".into(),
                     home_dir: home.clone(),
                 },

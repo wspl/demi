@@ -3,63 +3,34 @@
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use thiserror::Error;
 
+mod conversation;
+mod edits;
+mod invocation;
 mod package;
-// Generated checks use uniform borrowed expressions across owned fields and references.
-#[allow(
-    clippy::needless_borrow,
-    clippy::deref_addrof,
-    clippy::len_zero,
-    clippy::nonminimal_bool,
-    clippy::collapsible_if,
-    clippy::redundant_closure_call
-)]
-mod generated {
-    include!(concat!(env!("OUT_DIR"), "/protocol.rs"));
-}
-pub use generated::{
-    ArtifactLocation, CONVERSATION_PATH, CommandCaller, CommandContext, CommandError,
-    CommandLocale, Completion, ConversationRequest, ConversationStatus, EDIT_FILE_BYTES,
-    EDIT_JOB_BYTES, EDIT_JOB_FILES, EDIT_JOB_SEGMENTS, EditContext, EditCopies, EditFile,
-    EditJournal, INFO_PATH, INVOKE_PATH, Invocation, LocalInvocation, MAX_METADATA_BYTES,
-    MAX_RECORD_BYTES, PackageDescriptor, PackageDescriptorTargetsValue as PackageArtifact,
-    SHUTDOWN_PATH, ServiceInfo, TARGETS, VERSION,
+
+pub use conversation::{ConversationRequest, ConversationStatus};
+pub use edits::{
+    EDIT_FILE_BYTES, EDIT_JOB_BYTES, EDIT_JOB_FILES, EDIT_JOB_SEGMENTS, EditContext, EditCopies,
+    EditFile, EditJournal, EditKind,
 };
-pub use package::{canonical_digest, host_target, target_artifact};
+pub use invocation::{
+    COMMAND_LOCALE_LANGUAGES, CommandCaller, CommandContext, CommandError, CommandLocale,
+    Completion, Invocation, LocalInvocation, without_nul,
+};
+pub use package::{
+    ArtifactLocation, ArtifactPath, ArtifactUrl, PackageArtifact, PackageDescriptor, ServiceInfo,
+    TARGETS, VERSION, canonical_digest, digest, host_target, is_digest, is_target, target,
+    target_artifact,
+};
 
-impl EditContext {
-    pub fn validate(&self) -> Result<(), String> {
-        generated::edit_context_validate(self)?;
-        if !std::path::Path::new(&self.directory).is_absolute()
-            || !std::path::Path::new(&self.lock).is_absolute()
-        {
-            return Err("edit context paths must be absolute".into());
-        }
-        Ok(())
-    }
-}
-
-impl EditJournal {
-    pub fn validate(&self) -> Result<(), String> {
-        generated::edit_journal_validate(self)
-    }
-}
-
-impl CommandCaller {
-    pub fn agent(node: impl Into<String>) -> Self {
-        Self::Variant0(generated::CommandCallerVariant0 {
-            kind: "agent".into(),
-            node: node.into(),
-        })
-    }
-
-    /// The agent node that started the work; none when the user did.
-    pub fn node(&self) -> Option<&str> {
-        match self {
-            Self::Variant0(agent) => Some(&agent.node),
-            Self::Variant1(_) => None,
-        }
-    }
-}
+/// The most bytes of invocation metadata.
+pub const MAX_METADATA_BYTES: usize = 256 * 1024;
+/// The most bytes of one response record's payload or one input chunk.
+pub const MAX_RECORD_BYTES: usize = 64 * 1024;
+pub const INFO_PATH: &str = "/v1/info";
+pub const INVOKE_PATH: &str = "/v1/invoke";
+pub const CONVERSATION_PATH: &str = "/v1/conversation";
+pub const SHUTDOWN_PATH: &str = "/v1/shutdown";
 
 /// The metadata that opens an invocation stream: the native protocol's
 /// [`Invocation`], or the local command client's [`LocalInvocation`], which
@@ -76,7 +47,7 @@ pub trait Metadata: serde::Serialize + serde::de::DeserializeOwned + Send + 'sta
 
 impl Metadata for Invocation {
     fn validate(&self) -> Result<(), ProtocolError> {
-        generated::invocation_validate(self).map_err(|_| ProtocolError::InvalidMetadata)
+        garde::Validate::validate(self).map_err(|_| ProtocolError::InvalidMetadata)
     }
 
     fn operation(&self) -> &str {
@@ -86,7 +57,7 @@ impl Metadata for Invocation {
 
 impl Metadata for LocalInvocation {
     fn validate(&self) -> Result<(), ProtocolError> {
-        generated::local_invocation_validate(self).map_err(|_| ProtocolError::InvalidMetadata)
+        garde::Validate::validate(self).map_err(|_| ProtocolError::InvalidMetadata)
     }
 
     fn operation(&self) -> &str {
@@ -96,12 +67,7 @@ impl Metadata for LocalInvocation {
 
 impl ConversationRequest {
     pub fn validate(&self) -> Result<(), ProtocolError> {
-        generated::conversation_request_validate(self)
-            .map_err(|_| ProtocolError::InvalidMetadata)?;
-        if self.operation == "release" && self.conversation.is_none() {
-            return Err(ProtocolError::InvalidMetadata);
-        }
-        Ok(())
+        garde::Validate::validate(self).map_err(|_| ProtocolError::InvalidMetadata)
     }
 
     pub fn encode(&self) -> Result<Bytes, ProtocolError> {
@@ -112,7 +78,7 @@ impl ConversationRequest {
 
 impl ConversationStatus {
     pub fn validate(&self) -> Result<(), ProtocolError> {
-        generated::conversation_status_validate(self).map_err(|_| ProtocolError::InvalidMetadata)
+        garde::Validate::validate(self).map_err(|_| ProtocolError::InvalidMetadata)
     }
 }
 

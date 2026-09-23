@@ -13,7 +13,11 @@ use tokio::{
 };
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::{connection::wire, pipes::PipeClient, tasks::report_pipe};
+use crate::{
+    connection::wire::{self, NetErrorCode},
+    pipes::PipeClient,
+    tasks::report_pipe,
+};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// Reads feed the upload through a bounded channel, so the socket backs off
@@ -21,7 +25,7 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const READ_QUEUE: usize = 4;
 
 pub struct NetStreams {
-    output: mpsc::Sender<wire::Outbound>,
+    output: mpsc::Sender<wire::Frame>,
     pipes: PipeClient,
     streams: TaskTracker,
     /// Ends every open socket: cancelled by `close` and by the host
@@ -31,7 +35,7 @@ pub struct NetStreams {
 
 impl NetStreams {
     pub fn new(
-        output: mpsc::Sender<wire::Outbound>,
+        output: mpsc::Sender<wire::Frame>,
         pipes: PipeClient,
         cancel: CancellationToken,
     ) -> Self {
@@ -74,7 +78,7 @@ impl NetStreams {
                 }
             };
             // No bytes move before the answer.
-            match wire::net_opened(stream_id) {
+            match wire::encode(&wire::Outbound::NetOpened { stream_id }) {
                 Ok(message) => {
                     tokio::select! {
                         _ = stream.cancelled() => return,
@@ -181,26 +185,6 @@ async fn connect(host: &str, port: u16) -> Result<TcpStream, (NetErrorCode, Stri
     }
 }
 
-/// The wire's connect-failure codes, spelled once (`netErrorCodeSchema` on
-/// the backend side).
-#[derive(Debug, Clone, Copy)]
-enum NetErrorCode {
-    Refused,
-    Unreachable,
-    ResolveFailed,
-    Timeout,
-}
-
-impl NetErrorCode {
-    fn as_str(self) -> &'static str {
-        match self {
-            NetErrorCode::Refused => "refused",
-            NetErrorCode::Unreachable => "unreachable",
-            NetErrorCode::ResolveFailed => "resolve_failed",
-            NetErrorCode::Timeout => "timeout",
-        }
-    }
-}
 
 async fn pump_input(
     pipes: PipeClient,
@@ -271,13 +255,17 @@ async fn pump_output(
 }
 
 async fn send_net_error(
-    output: &mpsc::Sender<wire::Outbound>,
+    output: &mpsc::Sender<wire::Frame>,
     stream_id: String,
     code: NetErrorCode,
     message: String,
     cancel: &CancellationToken,
 ) {
-    match wire::net_error(stream_id, code.as_str().to_string(), message) {
+    match wire::encode(&wire::Outbound::NetError {
+        stream_id,
+        code,
+        message,
+    }) {
         Ok(message) => {
             tokio::select! {
                 _ = cancel.cancelled() => {},

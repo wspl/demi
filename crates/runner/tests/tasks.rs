@@ -1,4 +1,4 @@
-use demi_runner::connection::wire::{JobExitOutput, WireBytes};
+use demi_runner::connection::wire::{RetainedOutput, WireBytes};
 use demi_runner::{
     pipes::PipeClient,
     tasks::{TaskCommand, TaskKind, TaskSpec, TaskTable},
@@ -17,7 +17,7 @@ enum Reply {
         exit_code: Option<f64>,
         signal: Option<String>,
         cwd: Option<String>,
-        output: Option<JobExitOutput>,
+        output: Option<RetainedOutput>,
     },
 }
 
@@ -26,7 +26,7 @@ fn table(
     capacity: usize,
 ) -> (
     TaskTable,
-    mpsc::Receiver<demi_runner::connection::wire::Outbound>,
+    mpsc::Receiver<demi_runner::connection::wire::Frame>,
 ) {
     let (output, receiver) = mpsc::channel(capacity);
     let token = Arc::new(RwLock::new(Some("test-token".into())));
@@ -98,8 +98,8 @@ async fn shell_job_keeps_full_logs_but_only_sends_head_and_tail_views() {
                 let output = output.unwrap();
                 assert_eq!(stdout.len(), 32768);
                 assert_eq!(stderr.len(), 32768);
-                assert_eq!(output.stdout_bytes, 60000.0);
-                assert_eq!(output.stderr_bytes, 40000.0);
+                assert_eq!(output.stdout_bytes, 60000);
+                assert_eq!(output.stderr_bytes, 40000);
                 assert_eq!(output.stdout_tail.0.len(), 32768);
                 assert_eq!(output.stderr_tail.0.last(), Some(&b'1'));
                 assert_eq!(std::fs::read(output.stdout_path).unwrap().len(), 60000);

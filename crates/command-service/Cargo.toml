@@ -8,6 +8,7 @@ rust-version.workspace = true
 [dependencies]
 bytes.workspace = true
 futures-util.workspace = true
+garde.workspace = true
 h2.workspace = true
 http.workspace = true
 serde_json.workspace = true
@@ -16,10 +17,9 @@ tokio.workspace = true
 tokio-util.workspace = true
 
 serde.workspace = true
+serde_with.workspace = true
 sha2 = "0.10"
 serde_json_canonicalizer = "0.3"
-regex = "1"
-url = "2"
 tempfile = "3"
 
 [target.'cfg(unix)'.dependencies]

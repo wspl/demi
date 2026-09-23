@@ -1,136 +1,12 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { z } from 'zod'
-import {
-  commandArgsSchema, commandErrorSchema, completionSchema, invocationSchema, localInvocationSchema,
-  commandCallerSchema, commandLocaleSchema, commandContextSchema,
-  serviceInfoSchema, nativePackageSchema, NATIVE_TARGETS, NATIVE_PROTOCOL_VERSION,
-  MAX_METADATA_BYTES, MAX_RECORD_BYTES, INFO_PATH, INVOKE_PATH, CONVERSATION_PATH, SHUTDOWN_PATH,
-  conversationRequestSchema, conversationStatusSchema,
-  artifactLocationSchema,
-  editContextSchema, editCopiesSchema, editFileSchema, editJournalSchema,
-  EDIT_FILE_BYTES, EDIT_JOB_BYTES, EDIT_JOB_FILES, EDIT_JOB_SEGMENTS,
-} from '../packages/command-protocol/src/index'
-import { manifestSchema, manifestNodeSchema } from '../packages/command-loader/src/manifest/schema'
 import {
   LIVE_FILE_CHUNK_BYTES, LIVE_FILE_HEADER_BYTES, LIVE_FRAME_KIND, LIVE_HEARTBEAT_MS, LIVE_MAX_FRAME_BYTES,
   LIVE_STALL_MS, LIVE_VIDEO_HEADER_BYTES, liveModuleMessageSchema, liveViewerMessageSchema,
 } from '../packages/browser-protocol/src/live'
-import { RustZodTypes, rustField, rustPascal, rustString, unionOptions } from './rust-zod'
+import { RustZodTypes, rustField, rustPascal, rustString } from './rust-zod'
 import { BROWSER_CLIPBOARD_PNG_BYTES, BROWSER_CLIPBOARD_PNG_PIXELS, BROWSER_STDIN_BYTES, BROWSER_FETCH_URLS, BROWSER_CONSOLE_ENTRIES, BROWSER_CONSOLE_BYTES, BROWSER_CDP_EVENTS, BROWSER_CDP_BYTES, browserQuerySchema, browserErrorSchema, browserOperations, browserTargetSchema, browserNodeSchema, browserCreatedBySchema, browserViewportSchema, browserReleaseSchema, browserInstallationSchema, browserRuntimeConfigSchema, browserDefaultTimeout, BROWSER_DEFAULT_NODES, BROWSER_MAX_NODES, BROWSER_INLINE_BYTES } from '../packages/browser-protocol/src/index'
 
-
-async function wire(): Promise<string> {
-  const { backendToRunnerMessageSchema, runnerToBackendMessageSchema, bytesSchema } = await import('../packages/runner-protocol/src/schemas')
-  const { JOB_VIEW_BYTES, MAX_MESSAGE_BYTES, RUNNER_PROTOCOL_VERSION } = await import('../packages/runner-protocol/src/messages')
-  const generator = new RustZodTypes({
-    bytes: bytesSchema,
-    dateType: 'super::Timestamp',
-    overrides: new Map<z.core.$ZodType, string>([
-      [editCopiesSchema, 'demi_command_service::protocol::EditCopies'],
-      [commandContextSchema, 'demi_command_service::protocol::CommandContext'],
-      [nativePackageSchema, 'demi_command_service::protocol::PackageDescriptor'],
-      [artifactLocationSchema, 'demi_command_service::protocol::ArtifactLocation'],
-    ]),
-  })
-  const { managedBootSchema } = await import('../packages/runner-protocol/src/managed-boot')
-  generator.type(managedBootSchema, 'ManagedBoot')
-  const schemas = unionOptions(backendToRunnerMessageSchema)
-  const inbound = generator.taggedEnum(backendToRunnerMessageSchema, 'Inbound')
-  const requestIds = (prefix: string) => schemas.flatMap(schema => {
-    const tag = (schema.shape.type as z.ZodLiteral<string>).value
-    return tag.startsWith(prefix) ? [`Self::${rustPascal(tag)} { id, .. } => Some(id),`] : []
-  })
-  const fsIds = requestIds('fs_')
-  const gitIds = requestIds('git_')
-  const outgoing = unionOptions(runnerToBackendMessageSchema).map(schema => {
-    const literals = Object.entries(schema.shape).filter(([, child]) => child._zod.def.type === 'literal')
-    const tag = (schema.shape.type as z.ZodLiteral<string>).value
-    const op = schema.shape.op ? (schema.shape.op as z.ZodLiteral<string>).value : ''
-    const name = `${rustPascal(tag)}${rustPascal(op)}`
-    const constants = new Set(literals.map(([key]) => key))
-    const fields = Object.entries(schema.shape).filter(([key]) => !constants.has(key))
-    const args = fields.map(([key, child]) => `${rustField(key)}: ${generator.type(child, `${name}${rustPascal(key)}`)}`)
-    const body = generator.fields(schema, name, constants, false).replaceAll('pub ', '')
-    const checks = fields.map(([key, child]) => generator.validate(child, `&${rustField(key)}`)).join('\n')
-    return `#[allow(clippy::too_many_arguments)]
-      pub fn ${rustField(name)}(${args.join(', ')}) -> Result<super::Outbound, super::WireError> {
-        ${checks ? `let checked: Result<(), String> = (|| { ${checks}\nOk(()) })();
-        checked.map_err(super::WireError::Invalid)?;` : ''}
-        #[derive(serde::Serialize)]
-        struct Message {
-          ${literals.map(([key]) => `#[serde(rename = ${rustString(key)})]\n${rustField(key)}: &'static str,`).join('\n')}
-          ${body}
-        }
-        super::encode(&Message {
-          ${literals.map(([key, child]) => `${rustField(key)}: ${rustString((child as z.ZodLiteral<string>).value)},`).join('\n')}
-          ${fields.map(([key]) => `${rustField(key)},`).join('\n')}
-        })
-      }`
-  })
-  return `pub const VERSION: u64 = ${RUNNER_PROTOCOL_VERSION};
-    pub const JOB_VIEW_BYTES: usize = ${JOB_VIEW_BYTES};
-    pub const MAX_MESSAGE_BYTES: usize = ${MAX_MESSAGE_BYTES};
-    ${inbound}
-    impl Inbound {
-      pub fn fs_request_id(&self) -> Option<&str> {
-        match self { ${fsIds.join('\n')} _ => None }
-      }
-      pub fn git_request_id(&self) -> Option<&str> {
-        match self { ${gitIds.join('\n')} _ => None }
-      }
-    }
-    ${generator.finish()}
-    ${outgoing.join('\n')}`
-}
-
-function manifest(): string {
-  const generator = new RustZodTypes({
-    boxedUnions: true,
-    overrides: new Map([[nativePackageSchema, 'demi_command_service::protocol::PackageDescriptor']]),
-  })
-  generator.type(manifestNodeSchema, 'Node')
-  generator.type(manifestSchema, 'Manifest')
-  // Recursive validation is bounded by the runner's manifest admission limit.
-  return generator.finish()
-}
-
-function commandProtocol(): string {
-  const generator = new RustZodTypes({
-    overrides: new Map([[commandArgsSchema, 'serde_json::Value']]),
-    jsonObjects: new Set([commandArgsSchema]),
-  })
-  const types = { EditContext: editContextSchema, EditCopies: editCopiesSchema,
-    EditFile: editFileSchema, EditJournal: editJournalSchema,
-    ConversationRequest: conversationRequestSchema,
-    ConversationStatus: conversationStatusSchema,
-    ArtifactLocation: artifactLocationSchema,
-    PackageDescriptor: nativePackageSchema, ServiceInfo: serviceInfoSchema,
-    CommandCaller: commandCallerSchema, CommandLocale: commandLocaleSchema,
-    CommandContext: commandContextSchema,
-    CommandError: commandErrorSchema, Completion: completionSchema, Invocation: invocationSchema,
-    LocalInvocation: localInvocationSchema }
-  for (const [name, schema] of Object.entries(types))
-    generator.type(schema, name)
-  const checks = Object.entries(types).filter(([name]) => ['PackageDescriptor', 'Invocation', 'LocalInvocation', 'ConversationRequest', 'ConversationStatus', 'EditContext', 'EditJournal'].includes(name)).map(([name, schema]) =>
-    `pub fn ${rustField(name)}_validate(value: &${name}) -> Result<(), String> {
-      ${generator.validate(schema, 'value')}\nOk(())
-    }`)
-  return `${generator.finish()}
-    ${checks.join('\n')}
-    pub const VERSION: u64 = ${NATIVE_PROTOCOL_VERSION};
-    pub const TARGETS: &[&str] = &[${NATIVE_TARGETS.map(rustString).join(', ')}];
-    pub const MAX_METADATA_BYTES: usize = ${MAX_METADATA_BYTES};
-    pub const MAX_RECORD_BYTES: usize = ${MAX_RECORD_BYTES};
-    pub const EDIT_FILE_BYTES: usize = ${EDIT_FILE_BYTES};
-    pub const EDIT_JOB_BYTES: u64 = ${EDIT_JOB_BYTES};
-    pub const EDIT_JOB_FILES: usize = ${EDIT_JOB_FILES};
-    pub const EDIT_JOB_SEGMENTS: u64 = ${EDIT_JOB_SEGMENTS};
-    pub const INFO_PATH: &str = ${rustString(INFO_PATH)};
-    pub const INVOKE_PATH: &str = ${rustString(INVOKE_PATH)};
-    pub const CONVERSATION_PATH: &str = ${rustString(CONVERSATION_PATH)};
-    pub const SHUTDOWN_PATH: &str = ${rustString(SHUTDOWN_PATH)};`
-}
 
 function browserProtocol(): string {
   const generator = new RustZodTypes()
@@ -219,9 +95,8 @@ function browserProtocol(): string {
 }
 
 const [target, output] = process.argv.slice(2)
-if (!output || !['runner', 'command-service', 'demi-commands'].includes(target ?? ''))
-  throw new Error('Usage: generate-contracts.ts <runner|command-service|demi-commands> <OUT_DIR>')
-const sources = target === 'runner' ? { wire: await wire(), manifest: manifest() }
-  : target === 'demi-commands' ? { browser: browserProtocol() } : { protocol: commandProtocol() }
+if (!output || target !== 'demi-commands')
+  throw new Error('Usage: generate-contracts.ts demi-commands <OUT_DIR>')
+const sources = { browser: browserProtocol() }
 for (const [name, source] of Object.entries(sources))
   await writeFile(join(output, `${name}.rs`), `// Generated from authoritative Zod schemas.\n${source}\n`)

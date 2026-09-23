@@ -44,7 +44,7 @@ struct Fixture {
     calls: Arc<Calls>,
     server: Server,
     dispatcher: Arc<Dispatcher>,
-    outgoing: mpsc::Receiver<demi_runner::connection::wire::Outbound>,
+    outgoing: mpsc::Receiver<demi_runner::connection::wire::Frame>,
     hash: String,
 }
 
@@ -196,7 +196,7 @@ async fn callback_exit_clears_hint_and_revoked_context_cannot_dispatch() {
             .calls
             .reply(&demi_runner::connection::wire::Inbound::RpcExit {
                 call_id: call["callId"].as_str().unwrap().into(),
-                exit_code: 7.0,
+                exit_code: 7,
             });
         assert_eq!(running.await.unwrap().exit_code, 7);
         assert!(fixture.message().await["hint"].is_null());
@@ -291,7 +291,7 @@ async fn declared_shell_builtin_dispatches_without_a_local_endpoint() {
             .calls
             .reply(&demi_runner::connection::wire::Inbound::RpcExit {
                 call_id: call["callId"].as_str().unwrap().into(),
-                exit_code: 7.0,
+                exit_code: 7,
             });
         let (exit, _) = job.wait().await;
         assert_eq!(exit.code, Some(7), "{:?}", exit.error);

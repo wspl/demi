@@ -108,10 +108,8 @@ async fn runner(args: Vec<String>) -> io::Result<u8> {
     let boot = match boot_path {
         Some(path) => {
             let bytes = tokio::fs::read(path).await?;
-            let boot: demi_runner::connection::wire::ManagedBoot = serde_json::from_slice(&bytes)
-                .map_err(|_| {
-                io::Error::new(io::ErrorKind::InvalidData, "invalid managed boot file")
-            })?;
+            let boot = demi_runner_protocol::boot::ManagedBoot::decode(&bytes)
+                .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
             state::backend_url(&boot.backend_url)?;
             Some(boot)
         }
@@ -153,7 +151,7 @@ async fn runner(args: Vec<String>) -> io::Result<u8> {
         }
     };
     let identity = identity(home)?;
-    let runner = demi_runner::connection::wire::HelloRunner {
+    let runner = demi_runner::connection::wire::RunnerInfo {
         native_target: Some(demi_runner::commands::native::target().into()),
         name: env
             .get("DEMI_RUNNER_NAME")
@@ -189,11 +187,11 @@ async fn runner(args: Vec<String>) -> io::Result<u8> {
         volumes: if boot.is_some() {
             vec![
                 demi_runner::volumes::ManagedVolume {
-                    name: "system".into(),
+                    name: demi_runner::connection::wire::VolumeName::System,
                     mount: "/".into(),
                 },
                 demi_runner::volumes::ManagedVolume {
-                    name: "home".into(),
+                    name: demi_runner::connection::wire::VolumeName::Home,
                     mount: "/home".into(),
                 },
             ]
@@ -215,7 +213,7 @@ async fn runner(args: Vec<String>) -> io::Result<u8> {
     Ok(0)
 }
 
-fn identity(home_dir: String) -> io::Result<demi_runner::connection::wire::HelloRunnerIdentity> {
+fn identity(home_dir: String) -> io::Result<demi_runner::connection::wire::HostIdentity> {
     #[cfg(unix)]
     {
         let mut hostname = [0_u8; 256];
@@ -226,7 +224,7 @@ fn identity(home_dir: String) -> io::Result<demi_runner::connection::wire::Hello
             .iter()
             .position(|byte| *byte == 0)
             .ok_or_else(|| io::Error::other("hostname exceeds 255 bytes"))?;
-        Ok(demi_runner::connection::wire::HelloRunnerIdentity {
+        Ok(demi_runner::connection::wire::HostIdentity {
             uid: unsafe { libc::getuid() }.into(),
             gid: unsafe { libc::getgid() }.into(),
             hostname: String::from_utf8(hostname[..length].to_vec()).map_err(io::Error::other)?,
@@ -235,7 +233,7 @@ fn identity(home_dir: String) -> io::Result<demi_runner::connection::wire::Hello
     }
     #[cfg(windows)]
     {
-        Ok(demi_runner::connection::wire::HelloRunnerIdentity {
+        Ok(demi_runner::connection::wire::HostIdentity {
             uid: 0.0,
             gid: 0.0,
             hostname: std::env::var("COMPUTERNAME").map_err(io::Error::other)?,

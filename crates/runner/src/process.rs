@@ -26,15 +26,12 @@ pub struct SpawnOptions {
 
 #[derive(Debug, Clone)]
 pub struct SpawnFailure {
-    pub kind: &'static str,
+    pub kind: SpawnErrorKind,
     pub message: String,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum OutputStream {
-    Stdout,
-    Stderr,
-}
+pub use crate::connection::wire::OutputStream;
+use crate::connection::wire::SpawnErrorKind;
 
 pub struct OutputChunk {
     pub stream: OutputStream,
@@ -353,13 +350,13 @@ async fn classify_failure(error: io::Error, options: &SpawnOptions) -> SpawnFail
         .await
         .is_ok_and(|metadata| metadata.is_dir())
     {
-        "cwd_unusable"
+        SpawnErrorKind::CwdUnusable
     } else {
         match error.kind() {
-            io::ErrorKind::NotFound => "executable_not_found",
-            io::ErrorKind::PermissionDenied => "permission_denied",
-            io::ErrorKind::IsADirectory => "is_directory",
-            _ => "other",
+            io::ErrorKind::NotFound => SpawnErrorKind::ExecutableNotFound,
+            io::ErrorKind::PermissionDenied => SpawnErrorKind::PermissionDenied,
+            io::ErrorKind::IsADirectory => SpawnErrorKind::IsDirectory,
+            _ => SpawnErrorKind::Other,
         }
     };
     SpawnFailure {

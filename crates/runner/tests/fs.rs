@@ -25,7 +25,7 @@ async fn filesystem_wire_preserves_binary_dates_links_and_error_codes() {
     std::fs::create_dir(root.path().join("nested")).unwrap();
     std::fs::write(root.path().join("nested/a"), [0, 255, 128, 10]).unwrap();
     assert!(
-        call::<wire::FsOkStatResult>(
+        call::<wire::FileStat>(
             Inbound::FsStat {
                 id: id.clone(),
                 path: "a".into(),
@@ -47,7 +47,7 @@ async fn filesystem_wire_preserves_binary_dates_links_and_error_codes() {
         root.path(),
     )
     .await;
-    let stat = call::<wire::FsOkStatResult>(
+    let stat = call::<wire::FileStat>(
         Inbound::FsStat {
             id: id.clone(),
             path: "nested/a".into(),
@@ -58,7 +58,7 @@ async fn filesystem_wire_preserves_binary_dates_links_and_error_codes() {
     .await;
     assert_eq!(stat.mtime.0, 1234567890123);
     assert!(stat.is_file);
-    assert_eq!(stat.size, 4.);
+    assert_eq!(stat.size, 4);
     call::<()>(
         Inbound::FsLink {
             id: id.clone(),
@@ -94,7 +94,7 @@ async fn filesystem_wire_preserves_binary_dates_links_and_error_codes() {
             "nested/a"
         );
         assert!(
-            call::<wire::FsOkStatResult>(
+            call::<wire::FileStat>(
                 Inbound::FsLstat {
                     id: id.clone(),
                     path: "symbolic".into(),
