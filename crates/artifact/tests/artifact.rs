@@ -4,8 +4,9 @@
 use std::{io::Write as _, path::Path, time::Duration};
 
 use demi_artifact::{
-    Digest, Error, InstallLock, Mode, Permissions, Publication, Verifier, copy, digest, download,
-    extract_zip, publish, publish_bytes, publish_directory, receipt, testing::loopback_client,
+    Digest, Error, InstallLock, Mode, Permissions, Publication, Staged, Verifier, copy, digest,
+    download, extract_zip, publish, publish_bytes, publish_directory, receipt,
+    testing::loopback_client,
 };
 use sha2::{Digest as _, Sha256};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -70,7 +71,10 @@ async fn a_download_is_verified_as_it_arrives() {
     assert!(matches!(result, Err(Error::TooLarge { declared: 3 })), "{result:?}");
     let missing = serve("404 Not Found", b"", Some(0)).await;
     let result = download(&client, &missing, &declared(BODY), &mut Vec::new(), &cancel).await;
-    assert!(matches!(result, Err(Error::Download(_))), "{result:?}");
+    assert!(matches!(result, Err(Error::Rejected { status: 404 })), "{result:?}");
+    let moved = serve("302 Found", b"", Some(0)).await;
+    let result = download(&client, &moved, &declared(BODY), &mut Vec::new(), &cancel).await;
+    assert!(matches!(result, Err(Error::Rejected { status: 302 })), "{result:?}");
     cancel.cancel();
     let result = download(&client, &url, &declared(BODY), &mut Vec::new(), &cancel).await;
     assert!(matches!(result, Err(Error::Cancelled)), "{result:?}");
@@ -143,6 +147,32 @@ async fn publication_creates_or_replaces_whole_files() {
     let result = publish(&path, &mut input, publication(Mode::Replace, Permissions::Default), &cancel).await;
     assert!(matches!(result, Err(Error::Cancelled)));
     assert_eq!(std::fs::read(&path).unwrap(), b"replaced");
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
+}
+
+#[tokio::test]
+async fn a_staged_file_appears_only_when_published() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("tool");
+    let mut abandoned = Staged::new(&path, publication(Mode::CreateNew, Permissions::Executable))
+        .await
+        .unwrap();
+    abandoned.file().write_all(b"partial").await.unwrap();
+    drop(abandoned);
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 0);
+    let mut staged = Staged::new(&path, publication(Mode::CreateNew, Permissions::Executable))
+        .await
+        .unwrap();
+    let mut input = tokio::fs::File::open(env!("CARGO_MANIFEST_DIR").to_owned() + "/Cargo.toml")
+        .await
+        .unwrap();
+    let expected = std::fs::read(env!("CARGO_MANIFEST_DIR").to_owned() + "/Cargo.toml").unwrap();
+    copy(&mut input, &declared(&expected), staged.file(), &CancellationToken::new())
+        .await
+        .unwrap();
+    assert!(!path.exists());
+    staged.publish().await.unwrap();
+    assert_eq!(std::fs::read(&path).unwrap(), expected);
     assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
 }
 

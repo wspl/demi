@@ -1,13 +1,12 @@
 //! The local API validates declarations before routing native and callback work.
 
-use crate::commands::cache::ArtifactResolver;
 use crate::{
     commands::command_client::RawCommand,
     commands::command_output::CommandOutput,
     commands::contexts::Contexts,
-    commands::native::Services,
     commands::rpc::{self, Calls},
     management::{self, Management},
+    services::{ArtifactResolver, ServiceHandle},
 };
 use bytes::Bytes;
 use demi_command_service::protocol::{Completion, Invocation, LocalInvocation, Record};
@@ -18,7 +17,7 @@ use tokio::sync::mpsc;
 #[derive(Clone)]
 pub struct Dispatcher {
     pub contexts: Contexts,
-    pub services: Arc<Services>,
+    pub services: ServiceHandle,
     pub resolver: Arc<dyn ArtifactResolver>,
     pub calls: Arc<Calls>,
     pub management: Arc<Management>,
@@ -128,7 +127,7 @@ impl Dispatcher {
                     .packages
                     .get(&binding.descriptor_hash)
                     .ok_or_else(|| handler("native descriptor is not in this manifest"))?;
-                let client = self
+                let mut resident = self
                     .services
                     .acquire(descriptor, self.resolver.clone(), &invocation.cancellation)
                     .await
@@ -143,8 +142,25 @@ impl Dispatcher {
                     cwd: invocation.request.cwd,
                     env: invocation.request.env,
                 };
-                let (input, response) = client.invoke(&request).await?;
-                native_exchange(input, response, invocation.input, output.clone()).await?
+                let exchange = async {
+                    let (input, response) = resident
+                        .client()
+                        .invoke(&request)
+                        .await
+                        .map_err(Failed::Service)?;
+                    native_exchange(input, response, invocation.input, output.clone()).await
+                };
+                match exchange.await {
+                    Ok(code) => code,
+                    Err(Failed::Caller(error) | Failed::Service(error @ ServiceError::Cancelled)) => {
+                        return Err(error);
+                    }
+                    // A call that failed with its service reports how the
+                    // service ended (`native-runtime.md` § Invocation protocol).
+                    Err(Failed::Service(error)) => {
+                        return Err(handler(resident.failure(error).await));
+                    }
+                }
             } else {
                 let mut argv = vec![raw.root.clone()];
                 argv.extend(raw.argv);
@@ -178,44 +194,52 @@ impl Dispatcher {
     }
 }
 
+/// Which end of a native call failed: the service or the caller.
+enum Failed {
+    Service(ServiceError),
+    Caller(ServiceError),
+}
+
+/// Drives one native call: the caller's input goes to the service one chunk
+/// per pull, and the service's records come back to the caller.
 async fn native_exchange(
     mut sender: demi_command_service::CommandInput,
     mut response: demi_command_service::CommandOutput,
     mut input: Input,
     output: CommandOutput,
-) -> Result<u8, ServiceError> {
+) -> Result<u8, Failed> {
     let (pull, mut demanded) = mpsc::channel::<()>(1);
     let send = async {
         while demanded.recv().await.is_some() {
-            match input.next().await? {
-                Some(bytes) => sender.write(bytes).await?,
+            match input.next().await.map_err(Failed::Caller)? {
+                Some(bytes) => sender.write(bytes).await.map_err(Failed::Service)?,
                 None => {
-                    sender.end()?;
-                    return std::future::pending::<Result<u8, ServiceError>>().await;
+                    sender.end().map_err(Failed::Service)?;
+                    return std::future::pending::<Result<u8, Failed>>().await;
                 }
             }
         }
-        std::future::pending::<Result<u8, ServiceError>>().await
+        std::future::pending::<Result<u8, Failed>>().await
     };
     let receive = async {
         let mut completion = None;
-        while let Some(record) = response.next().await? {
+        while let Some(record) = response.next().await.map_err(Failed::Service)? {
             match record {
-                Record::Stdout(bytes) => output.stdout(bytes).await?,
-                Record::Stderr(bytes) => {
-                    output.stderr(bytes).await?;
-                }
+                Record::Stdout(bytes) => output.stdout(bytes).await.map_err(Failed::Caller)?,
+                Record::Stderr(bytes) => output.stderr(bytes).await.map_err(Failed::Caller)?,
                 Record::InputPull => pull
                     .try_send(())
-                    .map_err(|_| handler("overlapping native input demands"))?,
+                    .map_err(|_| Failed::Service(handler("overlapping native input demands")))?,
                 Record::Completion(value) => completion = Some(value),
             }
         }
-        let completion = completion.ok_or_else(|| handler("native command has no completion"))?;
+        let completion = completion
+            .ok_or_else(|| Failed::Service(handler("native command has no completion")))?;
         if let Some(error) = completion.error {
             output
                 .stderr(Bytes::from(format!("{}: {}\n", error.code, error.message)))
-                .await?;
+                .await
+                .map_err(Failed::Caller)?;
         }
         Ok(completion.exit_code)
     };

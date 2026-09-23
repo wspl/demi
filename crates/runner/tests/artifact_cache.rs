@@ -1,22 +1,20 @@
+//! The verified executable cache (`native-runtime.md` § Install the selected
+//! executable): a miss downloads and verifies, a hit asks nobody, and nothing
+//! partial or mismatched is ever published.
+
 use demi_command_service::protocol::PackageArtifact;
-use demi_runner::commands::cache::{ArtifactCache, ArtifactResolver, ArtifactSource, RuntimeError};
+use demi_runner::services::{ArtifactResolver, ArtifactSource, RuntimeError, cache::ArtifactCache};
 use futures_util::future::BoxFuture;
 use sha2::{Digest, Sha256};
 use std::{
     path::PathBuf,
-    sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    },
+    sync::atomic::{AtomicUsize, Ordering},
 };
-use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
 struct Resolver {
     path: PathBuf,
     calls: AtomicUsize,
-    started: Notify,
-    proceed: Notify,
 }
 
 impl ArtifactResolver for Resolver {
@@ -27,8 +25,6 @@ impl ArtifactResolver for Resolver {
     ) -> BoxFuture<'a, Result<ArtifactSource, RuntimeError>> {
         Box::pin(async move {
             self.calls.fetch_add(1, Ordering::SeqCst);
-            self.started.notify_one();
-            self.proceed.notified().await;
             Ok(ArtifactSource::Local(self.path.clone()))
         })
     }
@@ -42,84 +38,76 @@ fn artifact(bytes: &[u8]) -> PackageArtifact {
 }
 
 #[tokio::test]
-async fn cancelled_waiter_does_not_cancel_shared_download_and_cache_is_verified() {
-    tokio::time::timeout(std::time::Duration::from_secs(5), async {
-        let root = tempfile::tempdir().unwrap();
-        let source = root.path().join("source");
-        let bytes = b"native executable fixture";
-        tokio::fs::write(&source, bytes).await.unwrap();
-        let resolver = Arc::new(Resolver {
-            path: source,
-            calls: AtomicUsize::new(0),
-            started: Notify::new(),
-            proceed: Notify::new(),
-        });
-        let cache = ArtifactCache::new(root.path().join("cache")).await.unwrap();
-        let cancel = CancellationToken::new();
-        let first = tokio::spawn({
-            let cache = cache.clone();
-            let resolver = resolver.clone();
-            let cancel = cancel.clone();
-            async move { cache.acquire(artifact(bytes), resolver, &cancel).await }
-        });
-        resolver.started.notified().await;
-        cancel.cancel();
-        assert!(matches!(
-            first.await.unwrap().unwrap_err().as_ref(),
-            RuntimeError::Cancelled
-        ));
-        resolver.proceed.notify_one();
-        let path = cache
-            .acquire(artifact(bytes), resolver.clone(), &CancellationToken::new())
-            .await
-            .unwrap();
-        assert_eq!(tokio::fs::read(&path).await.unwrap(), bytes);
-        assert_eq!(resolver.calls.load(Ordering::SeqCst), 1);
-        cache
-            .acquire(artifact(bytes), resolver.clone(), &CancellationToken::new())
-            .await
-            .unwrap();
-        assert_eq!(resolver.calls.load(Ordering::SeqCst), 1);
-        tokio::fs::write(&path, b"corrupt cache").await.unwrap();
-        assert!(
-            cache
-                .acquire(artifact(bytes), resolver.clone(), &CancellationToken::new())
-                .await
-                .is_err()
-        );
-        cache.shutdown().await;
-        assert!(
-            cache
-                .acquire(artifact(bytes), resolver, &CancellationToken::new())
-                .await
-                .is_err()
-        );
-    })
-    .await
-    .unwrap();
+async fn a_hit_asks_nobody_and_a_corrupt_entry_fails() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    let bytes = b"native executable fixture";
+    tokio::fs::write(&source, bytes).await.unwrap();
+    let resolver = Resolver {
+        path: source,
+        calls: AtomicUsize::new(0),
+    };
+    let cache = ArtifactCache::new(root.path().join("cache")).await.unwrap();
+    let cancel = CancellationToken::new();
+    let path = cache.install(&artifact(bytes), &resolver, &cancel).await.unwrap();
+    assert_eq!(tokio::fs::read(&path).await.unwrap(), bytes);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o111, 0o111, "the cached executable runs");
+    }
+    cache.install(&artifact(bytes), &resolver, &cancel).await.unwrap();
+    assert_eq!(resolver.calls.load(Ordering::SeqCst), 1);
+    tokio::fs::write(&path, b"corrupt cache").await.unwrap();
+    let result = cache.install(&artifact(bytes), &resolver, &cancel).await;
+    assert!(
+        matches!(result, Err(RuntimeError::Artifact(demi_artifact::Error::Digest | demi_artifact::Error::TooLarge { .. }))),
+        "{result:?}"
+    );
 }
 
 #[tokio::test]
-async fn size_mismatch_leaves_no_cache_file_or_temporary_download() {
+async fn a_mismatched_download_leaves_no_file_behind() {
     let root = tempfile::tempdir().unwrap();
     let source = root.path().join("source");
     tokio::fs::write(&source, b"too much data").await.unwrap();
-    let resolver = Arc::new(Resolver {
+    let resolver = Resolver {
         path: source,
         calls: AtomicUsize::new(0),
-        started: Notify::new(),
-        proceed: Notify::new(),
-    });
-    resolver.proceed.notify_one();
+    };
     let cache_root = root.path().join("cache");
     let cache = ArtifactCache::new(cache_root.clone()).await.unwrap();
+    let result = cache
+        .install(&artifact(b"small"), &resolver, &CancellationToken::new())
+        .await;
+    assert!(matches!(result, Err(RuntimeError::Artifact(_))), "{result:?}");
     assert!(
-        cache
-            .acquire(artifact(b"small"), resolver, &CancellationToken::new())
+        tokio::fs::read_dir(cache_root)
             .await
-            .is_err()
+            .unwrap()
+            .next_entry()
+            .await
+            .unwrap()
+            .is_none()
     );
-    cache.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_cancelled_install_publishes_nothing() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    tokio::fs::write(&source, b"bytes").await.unwrap();
+    let resolver = Resolver {
+        path: source,
+        calls: AtomicUsize::new(0),
+    };
+    let cache_root = root.path().join("cache");
+    let cache = ArtifactCache::new(cache_root.clone()).await.unwrap();
+    let cancel = CancellationToken::new();
+    cancel.cancel();
+    let result = cache.install(&artifact(b"bytes"), &resolver, &cancel).await;
+    assert!(matches!(result, Err(RuntimeError::Cancelled)), "{result:?}");
     assert!(
         tokio::fs::read_dir(cache_root)
             .await

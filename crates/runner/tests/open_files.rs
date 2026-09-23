@@ -9,18 +9,17 @@ use demi_command_service::protocol::{
 };
 use demi_runner::{
     commands::artifacts::Artifacts,
-    commands::cache::{ArtifactResolver, ArtifactSource, RuntimeError},
     commands::command_client::{RawCommand, Stdio, forward},
     commands::contexts::Contexts,
     commands::dispatch::Dispatcher,
     commands::local::Server,
-    commands::native::{self, Services},
     commands::rpc::Calls,
     connection::wire::{Inbound, PipeRef},
     host::HostServer,
     management::Management,
     pipes::PipeClient,
     process::{ChildProcess, SpawnOptions},
+    services::{ArtifactResolver, ArtifactSource, RuntimeError, ServiceRegistry, target},
     shell::{job::Job, scope::Scope},
 };
 use futures_util::{StreamExt, future::BoxFuture};
@@ -391,14 +390,9 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
     // A resident native service.
     {
         let cache = root_path.join("native");
-        let services = Services::new(
-            cache.join("cache"),
-            native::target().into(),
-            root_path.clone(),
-            BTreeMap::new(),
-        )
-        .await
-        .unwrap();
+        let services = ServiceRegistry::new(cache.join("cache"), root_path.clone(), BTreeMap::new())
+            .await
+            .unwrap();
         let bytes = std::fs::read(env!("CARGO_BIN_EXE_demi-native-fixture")).unwrap();
         let path = cache.join("fixture");
         std::fs::write(&path, &bytes).unwrap();
@@ -406,20 +400,20 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
             id: "fixture".into(),
             version: "1.0.0".into(),
             protocol_version: 1,
-            operations: ["where", "echo", "first", "spin", "result", "retain"]
+            operations: ["where", "echo", "first", "spin", "result", "retain", "crash"]
                 .map(String::from)
                 .to_vec(),
             targets: BTreeMap::from([(
-                native::target().into(),
+                target().into(),
                 PackageArtifact {
                     sha256: format!("{:x}", Sha256::digest(&bytes)),
                     size: bytes.len() as u64,
                 },
             )]),
         };
-        let started = services.clone();
+        let started = services.handle();
         starved("native service start", async move {
-            let client = started
+            let resident = started
                 .acquire(
                     &descriptor,
                     Arc::new(Local(path)),
@@ -427,7 +421,8 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
                 )
                 .await
                 .map_err(|error| error.to_string())?;
-            client
+            resident
+                .client()
                 .info()
                 .await
                 .map(|_| ())
@@ -438,9 +433,13 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
     }
 
     // Local command connections through the runner's endpoint.
+    let services = ServiceRegistry::new(root_path.join("artifacts"), root_path.clone(), BTreeMap::new())
+        .await
+        .unwrap();
     let contexts = Contexts::new(
         root_path.join("manifests"),
         std::env::current_exe().unwrap(),
+        services.handle(),
     )
     .await
     .unwrap();
@@ -452,14 +451,6 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
     let mut manifest = body;
     manifest["hash"] = hash.clone().into();
     contexts.install(manifest).await.unwrap();
-    let services = Services::new(
-        root_path.join("artifacts"),
-        native::target().into(),
-        root_path.clone(),
-        BTreeMap::new(),
-    )
-    .await
-    .unwrap();
     let calls = Calls::new(pipes.clone());
     let (output, mut outgoing) = mpsc::channel(32);
     calls.attach(output, CancellationToken::new());
@@ -475,8 +466,8 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
     });
     let dispatcher = Arc::new(Dispatcher {
         contexts: contexts.clone(),
-        services: services.clone(),
-        resolver: Artifacts::new(contexts.clone(), native::target().into()),
+        services: services.handle(),
+        resolver: Artifacts::new(contexts.clone(), target().into()),
         calls: calls.clone(),
         management: Management::new("a".repeat(32), "test".into(), CancellationToken::new()),
     });
