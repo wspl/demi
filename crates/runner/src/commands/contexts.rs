@@ -1,253 +1,294 @@
-//! Live command authority and immutable declaration snapshots for runner-owned jobs.
+//! Execution contexts (`native-runtime.md` § Command context): the live
+//! authority a job's declared commands run under, and the manifest the
+//! connection installed. The connection owns its contexts; everything else
+//! looks them up in the snapshot it publishes.
 
 use crate::commands::command_client::{CONTEXT_ENV, ENDPOINT_ENV};
+use crate::connection::ConnectionHandle;
 use crate::services::{ServiceHandle, ServiceLease};
+use demi_command_service::protocol::{CommandContext, EditContext};
 use demi_runner_protocol::manifest::Manifest;
-use demi_command_service::protocol::CommandContext;
 use std::{
     collections::{BTreeMap, HashMap},
     io,
     path::PathBuf,
-    sync::{Arc, Mutex, OnceLock},
+    sync::Arc,
 };
+use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
 pub struct ExecutionContext {
     pub id: String,
-    pub owner: String,
     pub job_id: String,
     /// What the backend told the job's declared commands
     /// (`native-runtime.md` § Command context).
     pub command: CommandContext,
     pub manifest: Arc<Manifest>,
     pub cancel: CancellationToken,
-    pub edits: OnceLock<demi_command_service::protocol::EditContext>,
+    /// Where the job records the files its commands change.
+    pub edits: EditContext,
+    /// The connection the job runs under, for its callbacks and artifact
+    /// locations.
+    pub connection: ConnectionHandle,
     aliases: tempfile::TempDir,
 }
 
-#[derive(Clone)]
-pub struct Contexts {
-    state: Arc<Mutex<State>>,
-    directory: PathBuf,
-    executable: PathBuf,
-    services: ServiceHandle,
-}
-
-struct State {
-    current: Option<Leased>,
-    entries: HashMap<String, Leased<Arc<ExecutionContext>>>,
-}
-
-/// A manifest or a live context with the leases that keep its services
-/// resident (`native-runtime.md` § Keep a service resident).
-struct Leased<T = Arc<Manifest>> {
-    value: T,
-    _leases: Vec<ServiceLease>,
-}
-
-/// The task owner drops this after its process and streams finish, including errors.
-pub struct Lease {
-    contexts: Contexts,
-    id: String,
-}
-
-impl Drop for Lease {
-    fn drop(&mut self) {
-        let removed = self.contexts.state.lock().unwrap().entries.remove(&self.id);
-        if let Some(live) = removed {
-            live.value.cancel.cancel();
-        }
-    }
-}
-
-impl Contexts {
-    pub async fn new(
-        directory: PathBuf,
-        executable: PathBuf,
-        services: ServiceHandle,
-    ) -> io::Result<Self> {
-        tokio::fs::create_dir_all(&directory).await?;
-        crate::fs::chmod(&directory, 0o700).await?;
-        Ok(Self {
-            state: Arc::new(Mutex::new(State {
-                current: None,
-                entries: HashMap::new(),
-            })),
-            directory,
-            executable,
-            services,
-        })
-    }
-
-    /// Leases on the services of `manifest`'s packages for this host.
-    fn leases(&self, manifest: &Manifest) -> Vec<ServiceLease> {
-        manifest
-            .packages
-            .values()
-            .filter_map(|package| package.targets.get(crate::services::target()))
-            .map(|artifact| self.services.lease(artifact.sha256.clone()))
-            .collect()
-    }
-
-    pub async fn install(&self, value: serde_json::Value) -> io::Result<Arc<Manifest>> {
-        let manifest = Arc::new(
-            tokio::task::spawn_blocking(move || Manifest::parse(value))
-                .await
-                .map_err(io::Error::other)?
-                .map_err(io::Error::other)?,
-        );
-        let builtins = brush_builtins::default_builtins::<
-            brush_core::extensions::DefaultShellExtensions,
-        >(brush_builtins::BuiltinSet::BashMode);
-        for name in manifest.roots.keys() {
-            if name == "demi-runner"
-                || crate::shell::utilities::NAMES.contains(&name.as_str())
-                || builtins.contains_key(name)
-            {
-                return Err(io::Error::other(format!("reserved root command: {name}")));
-            }
-        }
-        let path = self.directory.join(format!("{}.json", manifest.hash));
-        match tokio::fs::read(&path).await {
-            Ok(bytes) => {
-                let existing =
-                    Manifest::parse(serde_json::from_slice(&bytes).map_err(io::Error::other)?)
-                        .map_err(io::Error::other)?;
-                if existing.hash != manifest.hash {
-                    return Err(io::Error::other("cached manifest identity mismatch"));
-                }
-            }
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                crate::state::write_private(
-                    path,
-                    serde_json::to_vec(&*manifest).map_err(io::Error::other)?,
-                )
-                .await?;
-            }
-            Err(error) => return Err(error),
-        }
-        let installed = Leased {
-            _leases: self.leases(&manifest),
-            value: manifest.clone(),
-        };
-        // The new manifest's leases count before the old one's end, so a
-        // service both name stays resident.
-        let replaced = self.state.lock().unwrap().current.replace(installed);
-        drop(replaced);
-        Ok(manifest)
-    }
-
+impl ExecutionContext {
+    /// A context for `job_id` with a private directory holding one alias of
+    /// the runner per root command. It is live once its connection has
+    /// registered it.
     pub async fn create(
-        &self,
         job_id: String,
-        manifest_hash: &str,
         command: CommandContext,
-    ) -> io::Result<(Arc<ExecutionContext>, Lease)> {
-        let manifest = self
-            .state
-            .lock()
-            .unwrap()
-            .current
-            .as_ref()
-            .map(|installed| installed.value.clone())
-            .filter(|manifest| manifest.hash == manifest_hash)
-            .ok_or_else(|| io::Error::other("job manifest is not installed"))?;
+        manifest: Arc<Manifest>,
+        edits: EditContext,
+        connection: ConnectionHandle,
+        paths: &ContextPaths,
+    ) -> io::Result<Self> {
         let aliases = aliases(
-            self.directory.clone(),
-            self.executable.clone(),
+            paths.directory.clone(),
+            paths.executable.clone(),
             manifest.roots.keys().cloned().collect(),
         )
         .await?;
-        let id = uuid::Uuid::new_v4().simple().to_string();
-        let context = Arc::new(ExecutionContext {
-            id: id.clone(),
-            owner: format!("job:{job_id}"),
+        Ok(Self {
+            id: uuid::Uuid::new_v4().simple().to_string(),
             job_id,
             command,
             manifest,
             cancel: CancellationToken::new(),
-            edits: OnceLock::new(),
+            edits,
+            connection,
             aliases,
-        });
-        let leases = self.leases(&context.manifest);
-        let mut state = self.state.lock().unwrap();
-        if state
-            .entries
-            .values()
-            .any(|entry| entry.value.owner == context.owner)
-        {
-            return Err(io::Error::other("duplicate live execution owner"));
+        })
+    }
+
+    pub fn environment(
+        &self,
+        endpoint: &str,
+        home: &str,
+        path: Option<&str>,
+    ) -> io::Result<BTreeMap<String, String>> {
+        let mut paths = vec![self.aliases.path().to_owned()];
+        if let Some(path) = path {
+            paths.extend(std::env::split_paths(path));
         }
-        state.entries.insert(
-            id.clone(),
-            Leased {
-                value: context.clone(),
-                _leases: leases,
-            },
-        );
-        Ok((
-            context,
-            Lease {
-                contexts: self.clone(),
-                id,
-            },
-        ))
+        let path = std::env::join_paths(paths).map_err(io::Error::other)?;
+        let path = path
+            .into_string()
+            .map_err(|_| io::Error::other("command PATH is not UTF-8"))?;
+        Ok(BTreeMap::from([
+            (ENDPOINT_ENV.into(), endpoint.into()),
+            (CONTEXT_ENV.into(), self.id.clone()),
+            ("DEMI_HOME".into(), home.into()),
+            ("PATH".into(), path),
+        ]))
+    }
+
+    /// Whether the context's manifest carries `digest` for this host.
+    pub fn carries(&self, digest: &str) -> bool {
+        self.manifest.packages.values().any(|package| {
+            package
+                .targets
+                .get(crate::services::target())
+                .is_some_and(|artifact| artifact.sha256 == digest)
+        })
+    }
+}
+
+/// Where contexts keep their alias directories and manifests, and what the
+/// aliases run.
+#[derive(Clone)]
+pub struct ContextPaths {
+    pub directory: PathBuf,
+    pub executable: PathBuf,
+}
+
+impl ContextPaths {
+    pub async fn new(directory: PathBuf, executable: PathBuf) -> io::Result<Self> {
+        tokio::fs::create_dir_all(&directory).await?;
+        crate::fs::chmod(&directory, 0o700).await?;
+        Ok(Self {
+            directory,
+            executable,
+        })
+    }
+}
+
+/// The live contexts by id, as their connection last published them.
+pub type ContextIndex = HashMap<String, Arc<ExecutionContext>>;
+
+/// Looks contexts up in the snapshot the current connection publishes.
+#[derive(Clone)]
+pub struct Contexts(watch::Receiver<Arc<ContextIndex>>);
+
+impl Contexts {
+    pub fn new(index: watch::Receiver<Arc<ContextIndex>>) -> Self {
+        Self(index)
     }
 
     pub fn get(&self, id: &str) -> io::Result<Arc<ExecutionContext>> {
-        self.state
-            .lock()
-            .unwrap()
-            .entries
-            .get(id)
-            .map(|entry| entry.value.clone())
-            .ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::PermissionDenied,
-                    "execution context is not live on this runner",
-                )
-            })
+        self.0.borrow().get(id).cloned().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "execution context is not live on this runner",
+            )
+        })
     }
 
-    pub fn for_artifact(&self, digest: &str, target: &str) -> Option<Arc<ExecutionContext>> {
-        self.state
-            .lock()
-            .unwrap()
-            .entries
+    /// A live context whose manifest carries `digest`, which authorizes its
+    /// download.
+    pub fn carrying(&self, digest: &str) -> Option<Arc<ExecutionContext>> {
+        self.0
+            .borrow()
             .values()
-            .map(|entry| &entry.value)
-            .find(|context| {
-                !context.cancel.is_cancelled()
-                    && context.manifest.packages.values().any(|package| {
-                        package
-                            .targets
-                            .get(target)
-                            .is_some_and(|artifact| artifact.sha256 == digest)
-                    })
-            })
+            .find(|context| !context.cancel.is_cancelled() && context.carries(digest))
             .cloned()
     }
+}
 
-    pub fn cancel_owner(&self, owner: &str) {
-        for context in self
-            .state
-            .lock()
-            .unwrap()
-            .entries
+/// A connection's contexts. The connection owns the table and publishes each
+/// change as a new snapshot; a context's service leases end when it leaves.
+pub struct ContextTable {
+    index: watch::Sender<Arc<ContextIndex>>,
+    leases: HashMap<String, Vec<ServiceLease>>,
+}
+
+impl ContextTable {
+    pub fn new(index: watch::Sender<Arc<ContextIndex>>) -> Self {
+        index.send_replace(Arc::default());
+        Self {
+            index,
+            leases: HashMap::new(),
+        }
+    }
+
+    /// Makes `context` live; a job has at most one.
+    pub fn insert(
+        &mut self,
+        context: Arc<ExecutionContext>,
+        leases: Vec<ServiceLease>,
+    ) -> io::Result<()> {
+        let mut entries = ContextIndex::clone(&self.index.borrow());
+        if entries.values().any(|entry| entry.job_id == context.job_id) {
+            return Err(io::Error::other("duplicate live execution owner"));
+        }
+        self.leases.insert(context.id.clone(), leases);
+        entries.insert(context.id.clone(), context);
+        self.index.send_replace(Arc::new(entries));
+        Ok(())
+    }
+
+    /// Cancels the context of `job_id`; it stays until the job ends.
+    pub fn cancel(&self, job_id: &str) {
+        for context in self.index.borrow().values() {
+            if context.job_id == job_id {
+                context.cancel.cancel();
+            }
+        }
+    }
+
+    /// Ends the context of `job_id`, once its process and streams finished.
+    pub fn remove(&mut self, job_id: &str) {
+        let mut entries = ContextIndex::clone(&self.index.borrow());
+        let Some(id) = entries
             .values()
-            .map(|entry| &entry.value)
-            .filter(|context| context.owner == owner)
-        {
+            .find(|context| context.job_id == job_id)
+            .map(|context| context.id.clone())
+        else {
+            return;
+        };
+        if let Some(context) = entries.remove(&id) {
             context.cancel.cancel();
         }
+        self.leases.remove(&id);
+        self.index.send_replace(Arc::new(entries));
     }
+}
 
-    pub fn close(&self) {
-        let closed: Vec<_> = self.state.lock().unwrap().entries.drain().collect();
-        for (_, live) in closed {
-            live.value.cancel.cancel();
+impl Drop for ContextTable {
+    /// A closed connection's contexts end with it.
+    fn drop(&mut self) {
+        for context in self.index.borrow().values() {
+            context.cancel.cancel();
+        }
+        self.index.send_replace(Arc::default());
+    }
+}
+
+/// The connection's manifest as the jobs that name one see it.
+#[derive(Clone)]
+pub enum Installation {
+    /// None installed yet.
+    Absent,
+    /// The latest manifest is being checked and kept.
+    Installing,
+    Ready(Arc<Manifest>),
+}
+
+/// A manifest the connection installed, with the leases that keep its
+/// services resident (`native-runtime.md` § Keep a service resident).
+pub struct Installed {
+    pub manifest: Arc<Manifest>,
+    pub leases: Vec<ServiceLease>,
+}
+
+/// Parses, checks and keeps `value` as the connection's manifest.
+pub async fn install(
+    value: serde_json::Value,
+    paths: &ContextPaths,
+    services: &ServiceHandle,
+) -> io::Result<Installed> {
+    let manifest = tokio::task::spawn_blocking(move || Manifest::parse(value))
+        .await
+        .map_err(io::Error::other)?
+        .map_err(io::Error::other)?;
+    let builtins = brush_builtins::default_builtins::<
+        brush_core::extensions::DefaultShellExtensions,
+    >(brush_builtins::BuiltinSet::BashMode);
+    for name in manifest.roots.keys() {
+        if name == "demi-runner"
+            || crate::shell::utilities::NAMES.contains(&name.as_str())
+            || builtins.contains_key(name)
+        {
+            return Err(io::Error::other(format!("reserved root command: {name}")));
         }
     }
+    let path = paths.directory.join(format!("{}.json", manifest.hash));
+    match tokio::fs::read(&path).await {
+        Ok(bytes) => {
+            let existing =
+                Manifest::parse(serde_json::from_slice(&bytes).map_err(io::Error::other)?)
+                    .map_err(io::Error::other)?;
+            if existing.hash != manifest.hash {
+                return Err(io::Error::other("cached manifest identity mismatch"));
+            }
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            crate::state::write_private(
+                path,
+                serde_json::to_vec(&manifest).map_err(io::Error::other)?,
+            )
+            .await?;
+        }
+        Err(error) => return Err(error),
+    }
+    let leases = leases(&manifest, services).await;
+    Ok(Installed {
+        manifest: Arc::new(manifest),
+        leases,
+    })
+}
+
+/// Leases on the services of `manifest`'s packages for this host.
+pub async fn leases(manifest: &Manifest, services: &ServiceHandle) -> Vec<ServiceLease> {
+    let mut leases = Vec::new();
+    for package in manifest.packages.values() {
+        if let Some(artifact) = package.targets.get(crate::services::target()) {
+            leases.push(services.lease(artifact.sha256.clone()).await);
+        }
+    }
+    leases
 }
 
 /// A private directory with one alias of the runner per root command, made
@@ -287,28 +328,4 @@ async fn aliases(
     })
     .await
     .map_err(io::Error::other)?
-}
-
-impl ExecutionContext {
-    pub fn environment(
-        &self,
-        endpoint: &str,
-        home: &str,
-        path: Option<&str>,
-    ) -> io::Result<BTreeMap<String, String>> {
-        let mut paths = vec![self.aliases.path().to_owned()];
-        if let Some(path) = path {
-            paths.extend(std::env::split_paths(path));
-        }
-        let path = std::env::join_paths(paths).map_err(io::Error::other)?;
-        let path = path
-            .into_string()
-            .map_err(|_| io::Error::other("command PATH is not UTF-8"))?;
-        Ok(BTreeMap::from([
-            (ENDPOINT_ENV.into(), endpoint.into()),
-            (CONTEXT_ENV.into(), self.id.clone()),
-            ("DEMI_HOME".into(), home.into()),
-            ("PATH".into(), path),
-        ]))
-    }
 }

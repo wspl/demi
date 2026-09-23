@@ -2,7 +2,7 @@ use demi_command_service::protocol::LocalInvocation;
 use demi_runner::{
     commands::command_client::{self, RawCommand, Stdio},
     host_log,
-    mode::{self, Options},
+    registration::{self, Options},
     state::{self, RunnerState},
     stdio::{self, standard_file},
 };
@@ -217,7 +217,7 @@ async fn runner(args: Vec<String>, shell: demi_runner::shell::ShellRuntime) -> i
         shell,
     };
     let stop = CancellationToken::new();
-    let running = mode::run(options, stop.clone());
+    let running = registration::run(options, stop.clone());
     tokio::pin!(running);
     let outcome = tokio::select! {
         result = &mut running => result,

@@ -1,50 +1,84 @@
-//! Process and shell-job ownership, full output logs and bounded wire views.
+//! Jobs and raw processes (`runner.md` § Command lifetime): the connection
+//! owns its job table and routes each job's input, signals and end to it.
+//! Every job keeps full output logs and sends bounded views.
 
 use crate::connection::wire;
 use crate::{
+    commands::{
+        contexts::{self, ContextPaths, ExecutionContext, Installation},
+        dispatch::Dispatcher,
+    },
+    connection::ConnectionHandle,
     pipes::PipeClient,
     process::{ChildProcess, OutputStream, ProcessInput, SpawnOptions},
+    services::ServiceHandle,
     shell::ShellRuntime,
 };
 use bytes::Bytes;
+use demi_command_service::protocol::CommandContext;
 use futures_util::{FutureExt, StreamExt};
 use std::{
     collections::{BTreeMap, HashMap},
     io,
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 use tokio::{
     io::AsyncWriteExt,
-    sync::{Notify, mpsc},
+    sync::{mpsc, watch},
+    task::JoinSet,
 };
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-#[derive(Clone, Copy, Eq, PartialEq)]
-pub enum TaskKind {
-    Job,
-    Spawn,
+/// A job's or raw process's id, which the two kinds do not share.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum WorkId {
+    Job(String),
+    Spawn(String),
 }
 
-#[derive(Clone)]
-pub struct TaskTable {
-    shared: Arc<Shared>,
-    tasks: TaskTracker,
-    output: mpsc::Sender<wire::Frame>,
-    dispatcher: Option<Arc<crate::commands::dispatch::Dispatcher>>,
-    output_dir: PathBuf,
-    pipes: PipeClient,
-    shell: ShellRuntime,
-}
+/// Live stdin chunks a task has not read yet; past them the task is
+/// cancelled rather than holding up the connection.
+const INPUT_QUEUE: usize = 64;
+/// Signals a task has not taken yet.
+const SIGNAL_QUEUE: usize = 16;
 
-struct Shared {
-    entries: Mutex<HashMap<String, Entry>>,
-    changed: Notify,
+/// A connection's jobs and raw processes. The connection owns the table,
+/// registers each task before its setup runs so that its input and signals
+/// find it, and learns of each end through `finished`.
+pub struct JobTable {
+    entries: HashMap<WorkId, Entry>,
+    running: JoinSet<WorkId>,
+    config: Arc<JobConfig>,
     closed: CancellationToken,
 }
 
+/// What every task of one connection shares.
+pub struct JobConfig {
+    pub output: mpsc::Sender<wire::Frame>,
+    /// Where each job gets its own directory.
+    pub output_dir: PathBuf,
+    pub pipes: PipeClient,
+    pub shell: ShellRuntime,
+    /// For jobs whose manifest declares commands; absent where nothing makes
+    /// execution contexts live.
+    pub commands: Option<Commands>,
+}
+
+/// What a job needs to make its execution context and run declared commands.
+pub struct Commands {
+    pub dispatcher: Arc<Dispatcher>,
+    pub connection: ConnectionHandle,
+    pub installation: watch::Receiver<Installation>,
+    pub paths: ContextPaths,
+    pub services: ServiceHandle,
+    /// The local endpoint command clients reach.
+    pub endpoint: String,
+    /// The installation directory, `DEMI_HOME`.
+    pub home: String,
+}
+
 struct Entry {
-    kind: TaskKind,
     input: mpsc::Sender<TaskInput>,
     signals: mpsc::Sender<String>,
     cancel: CancellationToken,
@@ -60,6 +94,8 @@ pub enum TaskCommand {
         script: String,
         stdin: Option<wire::PipeRef>,
         stdout: Option<wire::PipeRef>,
+        /// The manifest and command context of a job with declared commands.
+        commands: Option<(String, CommandContext)>,
     },
     Process {
         command: String,
@@ -73,133 +109,115 @@ pub struct TaskSpec {
     pub cwd: PathBuf,
     pub env: BTreeMap<String, String>,
     pub command: TaskCommand,
-    pub lifetime: Option<Box<dyn Send>>,
 }
 
-impl TaskTable {
-    pub fn new(
-        output: mpsc::Sender<wire::Frame>,
-        dispatcher: Option<Arc<crate::commands::dispatch::Dispatcher>>,
-        output_dir: PathBuf,
-        pipes: PipeClient,
-        shell: ShellRuntime,
-    ) -> Self {
+impl JobTable {
+    pub fn new(config: JobConfig) -> Self {
         Self {
-            shared: Arc::new(Shared {
-                entries: Mutex::new(HashMap::new()),
-                changed: Notify::new(),
-                closed: CancellationToken::new(),
-            }),
-            tasks: TaskTracker::new(),
-            output,
-            dispatcher,
-            output_dir,
-            pipes,
-            shell,
+            entries: HashMap::new(),
+            running: JoinSet::new(),
+            config: Arc::new(config),
+            closed: CancellationToken::new(),
         }
     }
 
-    pub fn count(&self) -> usize {
-        self.shared.entries.lock().unwrap().len()
+    pub fn len(&self) -> usize {
+        self.entries.len()
     }
 
-    pub fn start(&self, mut spec: TaskSpec) -> io::Result<()> {
-        if self.shared.closed.is_cancelled() {
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    pub fn job_count(&self) -> usize {
+        self.entries
+            .keys()
+            .filter(|id| matches!(id, WorkId::Job(_)))
+            .count()
+    }
+
+    /// Registers the task at once, so the input and signals that follow find
+    /// it, and runs its setup and work in a task of its own.
+    pub fn start(&mut self, spec: TaskSpec) -> io::Result<()> {
+        if self.closed.is_cancelled() {
             return Err(io::Error::other("task table is closed"));
         }
         if !spec.cwd.is_absolute() {
             return Err(io::Error::other("task cwd must be absolute"));
         }
-        let kind = match &spec.command {
-            TaskCommand::Shell { .. } => TaskKind::Job,
-            TaskCommand::Process { .. } => TaskKind::Spawn,
+        let key = match &spec.command {
+            TaskCommand::Shell { .. } => WorkId::Job(spec.id.clone()),
+            TaskCommand::Process { .. } => WorkId::Spawn(spec.id.clone()),
         };
-        let key = task_key(kind, &spec.id);
-        let (input, receiver) = mpsc::channel(64);
-        let (signals, signal_receiver) = mpsc::channel(16);
-        let cancel = CancellationToken::new();
-        let mut entries = self.shared.entries.lock().unwrap();
-        if self.shared.closed.is_cancelled() {
-            return Err(io::Error::other("task table is closed"));
-        }
-        if entries.contains_key(&key) {
+        if self.entries.contains_key(&key) {
             return Err(io::Error::other("duplicate live task id"));
         }
-        entries.insert(
+        let (input, receiver) = mpsc::channel(INPUT_QUEUE);
+        let (signals, signal_receiver) = mpsc::channel(SIGNAL_QUEUE);
+        let cancel = CancellationToken::new();
+        self.entries.insert(
             key.clone(),
             Entry {
-                kind,
                 input,
                 signals,
                 cancel: cancel.clone(),
             },
         );
-        let table = self.clone();
-        self.tasks.spawn(async move {
-            let _registration = Registration {
-                shared: table.shared.clone(),
-                key,
-            };
-            let lifetime = spec.lifetime.take();
+        let config = self.config.clone();
+        let closed = self.closed.clone();
+        self.running.spawn(async move {
             let id = spec.id.clone();
-            let run = table.run(spec, receiver, signal_receiver, cancel);
+            let run = config.run(spec, receiver, signal_receiver, cancel, closed.clone());
             let outcome = std::panic::AssertUnwindSafe(run).catch_unwind().await;
-            drop(lifetime);
             let terminal = match outcome {
                 Ok(Ok(terminal)) => Ok(terminal),
-                Ok(Err(error)) => failure(kind, id, error.to_string()),
-                Err(_) => failure(kind, id, "task owner panicked".into()),
+                Ok(Err(error)) => failure(&key, id, error.to_string()),
+                Err(_) => failure(&key, id, "task owner panicked".into()),
             };
             match terminal {
                 Ok(message) => {
                     // A disconnected backend no longer receives task results.
                     tokio::select! {
-                        _ = table.shared.closed.cancelled() => {},
-                        _ = table.output.send(message) => {},
+                        _ = closed.cancelled() => {},
+                        _ = config.output.send(message) => {},
                     }
                 }
-                Err(error) => {
-                    tracing::warn!("task terminal encoding failed: {error}")
-                }
+                Err(error) => tracing::warn!("task terminal encoding failed: {error}"),
             }
+            key
         });
-        drop(entries);
         Ok(())
     }
 
     /// Live stdin is bounded; bulk streams use the independently flowing HTTP pipe.
-    pub fn input(&self, kind: TaskKind, id: &str, bytes: Bytes) -> io::Result<()> {
+    pub fn input(&self, id: &WorkId, bytes: Bytes) -> io::Result<()> {
         // docs/execution/runner.md § Pipes and output: the native stdin chunk limit.
         if bytes.len() > 64 * 1024 {
             return Err(io::Error::other("live stdin chunk exceeds 64 KiB"));
         }
-        self.send(kind, id, TaskInput::Bytes(bytes))
+        self.send(id, TaskInput::Bytes(bytes))
     }
 
-    pub fn end_input(&self, kind: TaskKind, id: &str) -> io::Result<()> {
-        self.send(kind, id, TaskInput::End)
+    pub fn end_input(&self, id: &WorkId) -> io::Result<()> {
+        self.send(id, TaskInput::End)
     }
 
-    pub fn signal(&self, kind: TaskKind, id: &str, signal: String) -> io::Result<()> {
-        if signal == "SIGKILL" {
-            if let Some(entry) = self.shared.entries.lock().unwrap().get(&task_key(kind, id)) {
-                entry.cancel.cancel();
-            }
-            return Ok(());
-        }
-        let entries = self.shared.entries.lock().unwrap();
-        let Some(entry) = entries.get(&task_key(kind, id)) else {
+    pub fn signal(&self, id: &WorkId, signal: String) -> io::Result<()> {
+        let Some(entry) = self.entries.get(id) else {
             return Ok(());
         };
+        if signal == "SIGKILL" {
+            entry.cancel.cancel();
+            return Ok(());
+        }
         entry
             .signals
             .try_send(signal)
             .map_err(|error| io::Error::other(format!("signal queue unavailable: {error}")))
     }
 
-    fn send(&self, kind: TaskKind, id: &str, input: TaskInput) -> io::Result<()> {
-        let entries = self.shared.entries.lock().unwrap();
-        let Some(entry) = entries.get(&task_key(kind, id)) else {
+    fn send(&self, id: &WorkId, input: TaskInput) -> io::Result<()> {
+        let Some(entry) = self.entries.get(id) else {
             return Ok(());
         };
         match entry.input.try_send(input) {
@@ -212,45 +230,94 @@ impl TaskTable {
         }
     }
 
-    pub async fn wait_idle(&self) {
-        loop {
-            let changed = self.shared.changed.notified();
-            if self.count() == 0 {
-                return;
-            }
-            changed.await;
-        }
+    /// The next task that ended, after it sent its result; its entry is gone.
+    /// `None` while no task runs.
+    pub async fn finished(&mut self) -> Option<WorkId> {
+        let key = self
+            .running
+            .join_next()
+            .await?
+            .expect("task owners catch their panics");
+        self.entries.remove(&key);
+        Some(key)
     }
 
-    pub fn cancel(&self) {
-        self.shared.closed.cancel();
-        for entry in self.shared.entries.lock().unwrap().values() {
+    /// Cancels every task and waits for each to end; results are no longer sent.
+    pub async fn close(&mut self) {
+        self.closed.cancel();
+        for entry in self.entries.values() {
             entry.cancel.cancel();
         }
-        self.tasks.close();
+        while self.finished().await.is_some() {}
     }
+}
 
-    pub async fn close(&self) {
-        self.cancel();
-        self.tasks.wait().await;
+impl Drop for JobTable {
+    fn drop(&mut self) {
+        // The tasks still stop and reap what they started; the join is `close`'s.
+        self.closed.cancel();
+        for entry in self.entries.values() {
+            entry.cancel.cancel();
+        }
     }
+}
 
-    pub fn job_count(&self) -> usize {
-        self.shared
-            .entries
-            .lock()
-            .unwrap()
-            .values()
-            .filter(|entry| entry.kind == TaskKind::Job)
-            .count()
+impl JobConfig {
+    /// Makes the job's execution context live once its manifest is installed,
+    /// and adds what its commands need to `env`.
+    async fn context(
+        &self,
+        job_id: &str,
+        manifest_hash: &str,
+        command: CommandContext,
+        edits: demi_command_service::protocol::EditContext,
+        env: &mut BTreeMap<String, String>,
+    ) -> io::Result<crate::shell::scope::CommandContext> {
+        let commands = self
+            .commands
+            .as_ref()
+            .ok_or_else(|| io::Error::other("shell command dispatcher is unavailable"))?;
+        let mut installation = commands.installation.clone();
+        let installed = installation
+            .wait_for(|installation| !matches!(installation, Installation::Installing))
+            .await
+            .map_err(|_| io::Error::other("host connection closed"))?
+            .clone();
+        let manifest = match installed {
+            Installation::Ready(manifest) if manifest.hash == manifest_hash => manifest,
+            _ => return Err(io::Error::other("job manifest is not installed")),
+        };
+        let context = Arc::new(
+            ExecutionContext::create(
+                job_id.to_owned(),
+                command,
+                manifest,
+                edits,
+                commands.connection.clone(),
+                &commands.paths,
+            )
+            .await?,
+        );
+        let leases = contexts::leases(&context.manifest, &commands.services).await;
+        commands
+            .connection
+            .register_context(context.clone(), leases)
+            .await?;
+        let path = env.get("PATH").cloned();
+        env.extend(context.environment(&commands.endpoint, &commands.home, path.as_deref())?);
+        Ok(crate::shell::scope::CommandContext {
+            dispatcher: commands.dispatcher.clone(),
+            execution: context,
+        })
     }
 
     async fn run(
-        &self,
+        self: &Arc<Self>,
         spec: TaskSpec,
         mut input: mpsc::Receiver<TaskInput>,
         mut signals: mpsc::Receiver<String>,
         cancel: CancellationToken,
+        closed: CancellationToken,
     ) -> io::Result<wire::Frame> {
         let id = spec.id;
         let mut env = spec.env;
@@ -290,6 +357,7 @@ impl TaskTable {
                 script,
                 stdin,
                 stdout,
+                commands,
             } => {
                 let JobDirectory { path, scratch } =
                     JobDirectory::create(self.output_dir.clone()).await?;
@@ -322,26 +390,20 @@ impl TaskTable {
                 };
                 let logs = Logs::new(path, &cancel).await?;
                 job = Some((logs, scratch, recorder.clone()));
-                let commands = match (
-                    &self.dispatcher,
-                    env.get(crate::commands::command_client::CONTEXT_ENV),
-                ) {
-                    (Some(dispatcher), Some(id)) => Some(crate::shell::scope::CommandContext {
-                        dispatcher: dispatcher.clone(),
-                        execution: dispatcher.contexts.get(id)?,
-                    }),
-                    (_, None) => None,
-                    (None, Some(_)) => {
-                        return Err(io::Error::other("shell command dispatcher is unavailable"));
+                let commands = match commands {
+                    Some((manifest_hash, command)) => {
+                        let setup = self.context(&id, &manifest_hash, command, edit_context, &mut env);
+                        // A job killed while it waits for its manifest never starts.
+                        let context = tokio::select! {
+                            _ = cancel.cancelled() => {
+                                return Err(io::Error::other("the job was cancelled before it started"));
+                            }
+                            context = setup => context?,
+                        };
+                        Some(context)
                     }
+                    None => None,
                 };
-                if let Some(commands) = &commands {
-                    commands
-                        .execution
-                        .edits
-                        .set(edit_context)
-                        .map_err(|_| io::Error::other("job recording context was already set"))?;
-                }
                 let mut scope = crate::shell::scope::Scope::new(cancel.child_token(), commands);
                 scope.edits = recorder;
                 let child = crate::shell::job::Job::start(
@@ -357,9 +419,9 @@ impl TaskTable {
             }
         };
         let kind = if job.is_some() {
-            TaskKind::Job
+            WorkId::Job(id.clone())
         } else {
-            TaskKind::Spawn
+            WorkId::Spawn(id.clone())
         };
         let io_cancel = cancel.child_token();
         let _io_guard = io_cancel.clone().drop_guard();
@@ -370,7 +432,7 @@ impl TaskTable {
             let input = child.input.clone();
             let output = self.output.clone();
             let cancel = input_cancel.clone();
-            let shutdown = self.shared.closed.clone();
+            let shutdown = closed.clone();
             pipe_tasks.spawn(async move {
                 let result = async {
                     let mut body = pipes.get(&reference.url, cancel.clone()).await?;
@@ -397,7 +459,7 @@ impl TaskTable {
             let pipes = self.pipes.clone();
             let output = self.output.clone();
             let cancel = io_cancel.clone();
-            let shutdown = self.shared.closed.clone();
+            let shutdown = closed.clone();
             pipe_tasks.spawn(async move {
                 let stream = futures_util::stream::poll_fn(move |cx| {
                     receiver.poll_recv(cx).map(|bytes| bytes.map(Ok))
@@ -450,12 +512,12 @@ impl TaskTable {
                     };
                     if !bytes.is_empty() {
                         let message = match kind {
-                            TaskKind::Job => wire::encode(&wire::Outbound::JobOutput {
+                            WorkId::Job(_) => wire::encode(&wire::Outbound::JobOutput {
                                 job_id: id.clone(),
                                 stream: chunk.stream,
                                 bytes: wire::WireBytes(bytes.to_vec()),
                             }),
-                            TaskKind::Spawn => wire::encode(&wire::Outbound::SpawnOutput {
+                            WorkId::Spawn(_) => wire::encode(&wire::Outbound::SpawnOutput {
                                 spawn_id: id.clone(),
                                 stream: chunk.stream,
                                 bytes: wire::WireBytes(bytes.to_vec()),
@@ -588,31 +650,9 @@ impl Execution {
     }
 }
 
-struct Registration {
-    shared: Arc<Shared>,
-    key: String,
-}
-impl Drop for Registration {
-    fn drop(&mut self) {
-        self.shared.entries.lock().unwrap().remove(&self.key);
-        self.shared.changed.notify_waiters();
-    }
-}
-
-fn task_key(kind: TaskKind, id: &str) -> String {
-    format!(
-        "{}:{id}",
-        if kind == TaskKind::Job {
-            "job"
-        } else {
-            "spawn"
-        }
-    )
-}
-
-fn failure(kind: TaskKind, id: String, error: String) -> Result<wire::Frame, wire::WireError> {
+fn failure(kind: &WorkId, id: String, error: String) -> Result<wire::Frame, wire::WireError> {
     match kind {
-        TaskKind::Job => wire::encode(&wire::Outbound::JobExit {
+        WorkId::Job(_) => wire::encode(&wire::Outbound::JobExit {
             job_id: id,
             exit_code: None,
             signal: Some(error),
@@ -625,7 +665,7 @@ fn failure(kind: TaskKind, id: String, error: String) -> Result<wire::Frame, wir
             files: Vec::new(),
             files_truncated: false,
         }),
-        TaskKind::Spawn => wire::encode(&wire::Outbound::SpawnExit {
+        WorkId::Spawn(_) => wire::encode(&wire::Outbound::SpawnExit {
             spawn_id: id,
             exit_code: None,
             signal: Some(error),

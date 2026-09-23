@@ -5,7 +5,6 @@ use std::{io, sync::Arc, time::Duration};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpListener,
-    sync::RwLock,
 };
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
@@ -48,7 +47,7 @@ async fn quiet_uploads_delayed_headers_and_bodies_outlive_the_connect_deadline()
                 });
             }
         });
-        let client = PipeClient::new(&origin, Arc::new(RwLock::new(Some("test-token".into())))).unwrap();
+        let client = PipeClient::new(&origin, tokio::sync::watch::Sender::new(Some("test-token".into())).subscribe()).unwrap();
         let cancel = CancellationToken::new();
         let collect = async |path| {
             let mut stream = client.get(path, cancel.clone()).await.unwrap();
@@ -81,7 +80,7 @@ async fn explicit_cancel_interrupts_quiet_input_and_urls_cannot_change_origin() 
     tokio::time::timeout(Duration::from_secs(3), async {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let origin = format!("http://{}", listener.local_addr().unwrap());
-        let client = PipeClient::new(&origin, Arc::new(RwLock::new(Some("token".into())))).unwrap();
+        let client = PipeClient::new(&origin, tokio::sync::watch::Sender::new(Some("token".into())).subscribe()).unwrap();
         for path in ["//elsewhere/pipe", "https://elsewhere/pipe", "/\\elsewhere"] {
             assert_eq!(
                 client

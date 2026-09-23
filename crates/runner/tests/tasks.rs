@@ -1,10 +1,10 @@
 use demi_runner::connection::wire::{RetainedOutput, WireBytes};
 use demi_runner::{
     pipes::PipeClient,
-    tasks::{TaskCommand, TaskKind, TaskSpec, TaskTable},
+    tasks::{JobConfig, JobTable, TaskCommand, TaskSpec, WorkId},
 };
-use std::{collections::BTreeMap, path::Path, sync::Arc, time::Duration};
-use tokio::sync::{RwLock, mpsc};
+use std::{collections::BTreeMap, path::Path, time::Duration};
+use tokio::sync::mpsc;
 
 #[derive(serde::Deserialize)]
 #[serde(tag = "type")]
@@ -25,14 +25,20 @@ fn table(
     root: &Path,
     capacity: usize,
 ) -> (
-    TaskTable,
+    JobTable,
     mpsc::Receiver<demi_runner::connection::wire::Frame>,
 ) {
     let (output, receiver) = mpsc::channel(capacity);
-    let token = Arc::new(RwLock::new(Some("test-token".into())));
+    let token = tokio::sync::watch::Sender::new(Some("test-token".into())).subscribe();
     let pipes = PipeClient::new("http://127.0.0.1:1", token).unwrap();
     (
-        TaskTable::new(output, None, root.join("logs"), pipes, demi_runner::shell::ShellRuntime::current()),
+        JobTable::new(JobConfig {
+            output,
+            output_dir: root.join("logs"),
+            pipes,
+            shell: demi_runner::shell::ShellRuntime::current(),
+            commands: None,
+        }),
         receiver,
     )
 }
@@ -54,10 +60,9 @@ async fn wait_for_job_ready(job: &mut demi_runner::shell::job::Job) {
 #[tokio::test]
 async fn shell_job_keeps_full_logs_but_only_sends_head_and_tail_views() {
     let root = tempfile::tempdir().unwrap();
-    let (table, mut receiver) = table(root.path(), 8);
+    let (mut table, mut receiver) = table(root.path(), 8);
     table
         .start(TaskSpec {
-            lifetime: None,
             id: "job".into(),
             cwd: root.path().into(),
             env: BTreeMap::new(),
@@ -66,6 +71,7 @@ async fn shell_job_keeps_full_logs_but_only_sends_head_and_tail_views() {
                     .into(),
                 stdin: None,
                 stdout: None,
+                commands: None,
             },
         })
         .unwrap();
@@ -109,17 +115,16 @@ async fn shell_job_keeps_full_logs_but_only_sends_head_and_tail_views() {
         }
     }
     table.close().await;
-    assert_eq!(table.count(), 0);
+    assert_eq!(table.len(), 0);
 }
 
 #[tokio::test]
 async fn functions_and_compound_pipelines_drain_large_output_and_here_documents() {
     let root = tempfile::tempdir().unwrap();
     std::fs::write(root.path().join("input"), vec![b'x'; 262_144]).unwrap();
-    let (table, mut receiver) = table(root.path(), 8);
+    let (mut table, mut receiver) = table(root.path(), 8);
     table
         .start(TaskSpec {
-            lifetime: None,
             id: "pipeline".into(),
             cwd: root.path().into(),
             env: BTreeMap::new(),
@@ -127,6 +132,7 @@ async fn functions_and_compound_pipelines_drain_large_output_and_here_documents(
                 script: "producer() { cat input; }; value=$(producer | cat | cat); printf '%s\\n' \"${#value}\"; { producer; } | wc -c; (producer) | wc -c; cat <<EOF | wc -c\n$value\nEOF\ncat <<< \"$value\" | wc -c".into(),
                 stdin: None,
                 stdout: None,
+                commands: None,
             },
         })
         .unwrap();
@@ -160,10 +166,9 @@ async fn functions_and_compound_pipelines_drain_large_output_and_here_documents(
 #[tokio::test]
 async fn cancellation_terminates_a_blocking_native_builtin() {
     let root = tempfile::tempdir().unwrap();
-    let (table, mut receiver) = table(root.path(), 8);
+    let (mut table, mut receiver) = table(root.path(), 8);
     table
         .start(TaskSpec {
-            lifetime: None,
             id: "job".into(),
             cwd: root.path().into(),
             env: BTreeMap::new(),
@@ -171,6 +176,7 @@ async fn cancellation_terminates_a_blocking_native_builtin() {
                 script: "printf ready; sleep 60".into(),
                 stdin: None,
                 stdout: None,
+                commands: None,
             },
         })
         .unwrap();
@@ -180,7 +186,7 @@ async fn cancellation_terminates_a_blocking_native_builtin() {
         Reply::Output { .. }
     ));
     table
-        .signal(TaskKind::Job, "job", "SIGKILL".into())
+        .signal(&WorkId::Job("job".into()), "SIGKILL".into())
         .unwrap();
     tokio::time::timeout(Duration::from_secs(3), async {
         while let Some(message) = receiver.recv().await {
@@ -196,7 +202,7 @@ async fn cancellation_terminates_a_blocking_native_builtin() {
     .await
     .unwrap();
     table.close().await;
-    assert_eq!(table.count(), 0);
+    assert_eq!(table.len(), 0);
 }
 
 #[tokio::test]
@@ -246,10 +252,9 @@ async fn shell_cancellation_reports_the_requesting_signal() {
 #[tokio::test]
 async fn shutdown_does_not_wait_for_a_blocked_output_consumer() {
     let root = tempfile::tempdir().unwrap();
-    let (table, mut receiver) = table(root.path(), 1);
+    let (mut table, mut receiver) = table(root.path(), 1);
     table
         .start(TaskSpec {
-            lifetime: None,
             id: "spawn".into(),
             cwd: root.path().into(),
             env: BTreeMap::new(),
@@ -257,6 +262,7 @@ async fn shutdown_does_not_wait_for_a_blocked_output_consumer() {
                 script: "while :; do printf '%04096d' 0; done".into(),
                 stdin: None,
                 stdout: None,
+                commands: None,
             },
         })
         .unwrap();
@@ -264,7 +270,7 @@ async fn shutdown_does_not_wait_for_a_blocked_output_consumer() {
     tokio::time::timeout(Duration::from_secs(3), table.close())
         .await
         .unwrap();
-    assert_eq!(table.count(), 0);
+    assert_eq!(table.len(), 0);
 }
 
 #[tokio::test]

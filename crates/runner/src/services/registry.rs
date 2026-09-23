@@ -1,8 +1,8 @@
 //! The service registry (`native-runtime.md` § Keep a service resident). One
 //! owner task keeps a registration's resident services by artifact digest,
 //! counts the leases on each, and decides when a service ends. A lease holder
-//! sends one message when it takes its lease and one when it drops it, and
-//! never waits for the decision.
+//! tells the registry when it takes its lease; the registry sees the lease
+//! end when its holder drops it, and nobody waits for the decision.
 //!
 //! For example, a job whose manifest names `demi.builtin` holds a lease on
 //! its artifact while the job runs, and the installed manifest holds another.
@@ -39,6 +39,8 @@ const STATUS_TIMEOUT: Duration = Duration::from_secs(5);
 const RELEASE_TIMEOUT: Duration = Duration::from_secs(360);
 /// The most a conversation operation's answer may hold.
 const ANSWER_BYTES: usize = 1024 * 1024;
+/// Requests waiting for the owner; a sender waits for room.
+const REQUESTS: usize = 64;
 
 /// The registry's owner task and the handle to it.
 pub struct ServiceRegistry {
@@ -55,15 +57,13 @@ impl ServiceRegistry {
         env: BTreeMap<String, String>,
     ) -> Result<Self, RuntimeError> {
         let cache = Arc::new(ArtifactCache::new(cache).await?);
-        // Unbounded, but bounded by construction: each lease sends two
-        // messages, and each other request comes from a caller awaiting it.
-        let (requests, receiver) = mpsc::unbounded_channel();
+        let (requests, receiver) = mpsc::channel(REQUESTS);
         let owner = Owner {
             cache,
             cwd,
             env,
-            requests: requests.downgrade(),
             entries: HashMap::new(),
+            leases: JoinSet::new(),
             generation: 0,
             lifecycles: JoinSet::new(),
             checks: JoinSet::new(),
@@ -81,17 +81,20 @@ impl ServiceRegistry {
     }
 
     /// Stops every service and waits until each has ended. The owner also
-    /// ends by itself once every handle and lease is gone.
+    /// ends by itself once every handle is gone.
     pub async fn close(self) {
         // An owner that has ended already has nothing left to stop.
-        let _closed = self.handle.requests.send(Request::Close);
+        let _closed = self.handle.requests.send(Request::Close).await;
         self.owner.await.expect("the service registry does not panic");
     }
 }
 
 enum Request {
-    Lease(String),
-    Unlease(String),
+    /// A lease on `digest` that lasts until `alive` closes.
+    Lease {
+        digest: String,
+        alive: oneshot::Receiver<()>,
+    },
     Acquire {
         descriptor: PackageDescriptor,
         resolver: Arc<dyn ArtifactResolver>,
@@ -127,19 +130,17 @@ struct Acquired {
 /// Sends requests to the registry. Cloning shares the one registry.
 #[derive(Clone)]
 pub struct ServiceHandle {
-    requests: mpsc::UnboundedSender<Request>,
+    requests: mpsc::Sender<Request>,
 }
 
 impl ServiceHandle {
     /// A lease that keeps the service of `digest` resident until it drops,
     /// whether or not that service runs yet.
-    pub fn lease(&self, digest: String) -> ServiceLease {
+    pub async fn lease(&self, digest: String) -> ServiceLease {
+        let (lease, alive) = ServiceLease::new();
         // A closed registry keeps nothing; the lease then means nothing.
-        let _closed = self.requests.send(Request::Lease(digest.clone()));
-        ServiceLease {
-            requests: self.requests.clone(),
-            digest,
-        }
+        let _closed = self.requests.send(Request::Lease { digest, alive }).await;
+        lease
     }
 
     /// The service of `descriptor`'s artifact for this host, started when
@@ -157,6 +158,7 @@ impl ServiceHandle {
                 resolver,
                 reply,
             })
+            .await
             .map_err(|_| Arc::new(RuntimeError::Cancelled))?;
         let acquired = tokio::select! {
             _ = cancel.cancelled() => return Err(Arc::new(RuntimeError::Cancelled)),
@@ -195,6 +197,7 @@ impl ServiceHandle {
                 conversation: conversation.to_owned(),
                 reply,
             })
+            .await
             .map_err(|_| "the service registry is closed".to_owned())?;
         answer
             .await
@@ -205,25 +208,23 @@ impl ServiceHandle {
     /// (`runner.md` § Command lifetime), and waits until each has ended.
     pub async fn stop_all(&self) {
         let (reply, answer) = oneshot::channel();
-        if self.requests.send(Request::StopAll { reply }).is_ok() {
+        if self.requests.send(Request::StopAll { reply }).await.is_ok() {
             // A closed registry has stopped everything already.
             let _closed = answer.await;
         }
     }
 }
 
-/// One claim on a digest's service; dropping it ends the claim.
+/// One claim on a digest's service; dropping it ends the claim, which the
+/// registry sees as the closing of its `alive` channel.
 pub struct ServiceLease {
-    requests: mpsc::UnboundedSender<Request>,
-    digest: String,
+    _alive: oneshot::Sender<()>,
 }
 
-impl Drop for ServiceLease {
-    fn drop(&mut self) {
-        // A closed registry has no count to lower.
-        let _closed = self
-            .requests
-            .send(Request::Unlease(std::mem::take(&mut self.digest)));
+impl ServiceLease {
+    fn new() -> (Self, oneshot::Receiver<()>) {
+        let (alive, watched) = oneshot::channel();
+        (Self { _alive: alive }, watched)
     }
 }
 
@@ -267,10 +268,9 @@ struct Owner {
     cache: Arc<ArtifactCache>,
     cwd: PathBuf,
     env: BTreeMap<String, String>,
-    /// For the leases the owner hands out itself; weak, so the owner ends
-    /// when nothing else can reach it.
-    requests: mpsc::WeakUnboundedSender<Request>,
     entries: HashMap<String, Entry>,
+    /// One watch per lease, ending with its digest when the lease drops.
+    leases: JoinSet<String>,
     /// Numbers the services started, so a late report about one that has
     /// ended is not taken for its successor.
     generation: u64,
@@ -325,13 +325,17 @@ enum Work {
 }
 
 impl Owner {
-    async fn run(mut self, mut requests: mpsc::UnboundedReceiver<Request>) {
+    async fn run(mut self, mut requests: mpsc::Receiver<Request>) {
         loop {
             tokio::select! {
                 request = requests.recv() => match request {
                     Some(Request::Close) | None => break,
                     Some(request) => self.request(request),
                 },
+                Some(ended) = self.leases.join_next() => {
+                    let digest = ended.expect("lease watches do not panic");
+                    self.unlease(&digest);
+                }
                 Some(ended) = self.lifecycles.join_next() => {
                     let (digest, generation) = ended.expect("service lifecycles do not panic");
                     self.ended(&digest, generation);
@@ -345,25 +349,35 @@ impl Owner {
             }
         }
         self.stop.cancel();
+        self.leases.shutdown().await;
         self.checks.shutdown().await;
         self.work.shutdown().await;
         while self.lifecycles.join_next().await.is_some() {}
     }
 
+    /// Counts a lease on `digest` until `alive` closes.
+    fn lease(&mut self, digest: String, alive: oneshot::Receiver<()>) {
+        let entry = self.entries.entry(digest.clone()).or_default();
+        entry.leases += 1;
+        entry.changes += 1;
+        self.leases.spawn(async move {
+            // The holder never sends; the channel closes when it drops.
+            let _closed = alive.await;
+            digest
+        });
+    }
+
+    fn unlease(&mut self, digest: &str) {
+        if let Some(entry) = self.entries.get_mut(digest) {
+            entry.leases -= 1;
+            entry.changes += 1;
+        }
+        self.consider(digest);
+    }
+
     fn request(&mut self, request: Request) {
         match request {
-            Request::Lease(digest) => {
-                let entry = self.entries.entry(digest).or_default();
-                entry.leases += 1;
-                entry.changes += 1;
-            }
-            Request::Unlease(digest) => {
-                if let Some(entry) = self.entries.get_mut(&digest) {
-                    entry.leases -= 1;
-                    entry.changes += 1;
-                }
-                self.consider(&digest);
-            }
+            Request::Lease { digest, alive } => self.lease(digest, alive),
             Request::Acquire {
                 descriptor,
                 resolver,
@@ -406,13 +420,9 @@ impl Owner {
         let digest = artifact.sha256.clone();
         // The waiting caller's lease counts at once, so a start never begins
         // with nothing holding it.
-        let waiting = ServiceLease {
-            requests: self.requests.upgrade().ok_or(RuntimeError::Cancelled)?,
-            digest: digest.clone(),
-        };
-        let entry = self.entries.entry(digest).or_default();
-        entry.leases += 1;
-        entry.changes += 1;
+        let (waiting, alive) = ServiceLease::new();
+        self.lease(digest.clone(), alive);
+        let entry = self.entries.get_mut(&digest).expect("the lease made the entry");
         // A service that has just ended, before its owner reported it, is
         // one to start again.
         if let Some(current) = &entry.current

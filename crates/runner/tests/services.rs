@@ -160,7 +160,7 @@ async fn a_service_without_leases_stays_while_it_holds_a_conversation() {
         let registry = registry(root.path()).await;
         let services = registry.handle();
         let (descriptor, path) = fixture(root.path(), 0).await;
-        let lease = services.lease(digest(&descriptor));
+        let lease = services.lease(digest(&descriptor)).await;
         let resident = acquire(&services, &descriptor, local(path)).await;
         for conversation in ["one", "two"] {
             assert_eq!(call(&resident, "retain", conversation).await, 0);
@@ -190,7 +190,7 @@ async fn a_lease_keeps_a_service_that_holds_nothing() {
         let services = registry.handle();
         let (descriptor, path) = fixture(root.path(), 0).await;
         let resolver = local(path);
-        let lease = services.lease(digest(&descriptor));
+        let lease = services.lease(digest(&descriptor)).await;
         let resident = acquire(&services, &descriptor, resolver.clone()).await;
         stays(&resident).await;
         // A second caller reaches the same process.
@@ -217,7 +217,7 @@ async fn a_service_that_cannot_say_what_it_holds_stays() {
         let registry = registry(root.path()).await;
         let services = registry.handle();
         let (descriptor, path) = fixture(root.path(), 0).await;
-        let lease = services.lease(digest(&descriptor));
+        let lease = services.lease(digest(&descriptor)).await;
         let resident = acquire(&services, &descriptor, local(path)).await;
         assert_eq!(call(&resident, "retain", "unanswerable").await, 0);
         drop(lease);
@@ -238,7 +238,7 @@ async fn a_failed_release_retires_the_service_and_the_next_caller_gets_a_new_one
         let services = registry.handle();
         let (descriptor, path) = fixture(root.path(), 0).await;
         let resolver = local(path);
-        let _lease = services.lease(digest(&descriptor));
+        let _lease = services.lease(digest(&descriptor)).await;
         let resident = acquire(&services, &descriptor, resolver.clone()).await;
         let error = services.release_conversation("fail").await.unwrap_err();
         assert!(error.contains("failed"), "{error}");
@@ -263,7 +263,7 @@ async fn a_service_that_dies_reports_its_status_and_standard_error() {
         let services = registry.handle();
         let (descriptor, path) = fixture(root.path(), 0).await;
         let resolver = local(path);
-        let _lease = services.lease(digest(&descriptor));
+        let _lease = services.lease(digest(&descriptor)).await;
         let mut resident = acquire(&services, &descriptor, resolver.clone()).await;
         let invocation = Invocation {
             context: CommandContext {
@@ -407,7 +407,7 @@ async fn stopping_all_services_ends_every_one_and_closing_ends_the_registry() {
         let mut leases = Vec::new();
         for variant in 0..2 {
             let (descriptor, path) = fixture(root.path(), variant).await;
-            leases.push(services.lease(digest(&descriptor)));
+            leases.push(services.lease(digest(&descriptor)).await);
             let resident = acquire(&services, &descriptor, local(path)).await;
             assert_eq!(call(&resident, "retain", "held").await, 0);
             residents.push(resident);

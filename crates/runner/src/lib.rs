@@ -11,7 +11,7 @@ pub mod connection;
 pub mod host;
 pub mod host_log;
 pub mod management;
-pub mod mode;
+pub mod registration;
 pub mod net;
 pub mod shell;
 pub mod stdio;
@@ -21,6 +21,7 @@ pub mod volumes;
 pub mod commands;
 pub mod services;
 pub mod tail;
+pub mod testing;
 
 pub(crate) mod file_diff;
 pub(crate) mod tree_watch;

@@ -1,161 +1,294 @@
-//! Bounded runner WebSocket transport with one explicitly joined owner.
+//! One backend connection (`runner.md` § Connection and identity). Its owner
+//! routes each message to the work it belongs to and owns everything that
+//! lasts as long as the connection: the job table, the execution contexts
+//! and installed manifest, the callbacks and artifact locations in flight,
+//! the volumes and the Host requests. The owner never waits for that work,
+//! so the inbound queue drains; closing the connection ends all of it.
+//!
+//! Work that runs apart from the owner reaches it through a
+//! [`ConnectionHandle`]: a callback call registers where its events go, an
+//! artifact download asks where its artifact is, and a job makes its
+//! execution context live.
+
+mod owner;
+pub mod transport;
 
 pub use demi_runner_protocol::wire;
+pub use owner::{End, Registered, serve};
+pub use transport::{Transport, socket_url};
 
-use std::{io, time::Duration};
+use std::{collections::HashMap, io, sync::Arc, time::Duration};
 
-use crate::connection::wire::{Frame, Inbound};
-use futures_util::{SinkExt, StreamExt};
+use demi_command_service::protocol::ArtifactLocation;
 use tokio::{
-    io::{AsyncRead, AsyncWrite},
-    sync::mpsc,
-    task::JoinHandle,
-};
-use tokio_tungstenite::{
-    WebSocketStream,
-    tungstenite::{Message, protocol::WebSocketConfig},
+    sync::{mpsc, oneshot},
+    task::JoinSet,
 };
 use tokio_util::sync::CancellationToken;
 
-const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(15);
-const WRITE_TIMEOUT: Duration = Duration::from_secs(30);
-const QUEUE_MESSAGES: usize = 8;
+use crate::{
+    commands::{contexts::ExecutionContext, rpc::CallEvent},
+    services::{RuntimeError, ServiceLease},
+};
+use wire::Inbound;
 
-pub struct Connection {
-    pub output: mpsc::Sender<Frame>,
-    pub control: mpsc::Sender<Frame>,
-    pub input: mpsc::Receiver<Inbound>,
-    cancel: CancellationToken,
-    owner: Option<JoinHandle<io::Result<()>>>,
+/// Requests waiting for a connection's owner; a sender waits for room.
+const REQUESTS: usize = 64;
+/// How long the backend has to say where an artifact is.
+const LOCATE_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// How work running under a connection reaches the backend and the
+/// connection's owner.
+#[derive(Clone)]
+pub struct ConnectionHandle {
+    /// Replies and requests to the backend.
+    pub control: mpsc::Sender<wire::Frame>,
+    requests: mpsc::Sender<Request>,
+    closed: CancellationToken,
 }
 
-pub fn socket_url(backend: &str) -> io::Result<reqwest::Url> {
-    let mut url = crate::state::backend_url(backend)?;
-    let scheme = match url.scheme() {
-        "http" | "ws" => "ws",
-        _ => "wss",
-    };
-    url.set_scheme(scheme)
-        .map_err(|_| io::Error::other("invalid WebSocket scheme"))?;
-    if url.path().is_empty() || url.path() == "/" {
-        url.set_path("/api/runner");
-    }
-    Ok(url)
+/// What work asks of a connection's owner.
+pub enum Request {
+    /// Where a callback call's events go, until `ended` is cancelled.
+    Call {
+        id: String,
+        events: mpsc::Sender<CallEvent>,
+        ended: CancellationToken,
+    },
+    /// Where an artifact is, on behalf of `owner`; the asker cancels
+    /// `abandoned` when it no longer waits.
+    Locate {
+        owner: wire::ArtifactOwner,
+        sha256: String,
+        reply: oneshot::Sender<Result<ArtifactLocation, String>>,
+        abandoned: CancellationToken,
+    },
+    /// Makes a job's execution context live.
+    Context {
+        context: Arc<ExecutionContext>,
+        leases: Vec<ServiceLease>,
+        reply: oneshot::Sender<io::Result<()>>,
+    },
 }
 
-impl Connection {
-    pub async fn connect(backend: &str, cancel: CancellationToken) -> io::Result<Self> {
-        let url = socket_url(backend)?;
-        let config = WebSocketConfig::default()
-            .max_message_size(Some(wire::MAX_MESSAGE_BYTES))
-            .max_frame_size(Some(wire::MAX_MESSAGE_BYTES));
-        let (socket, _) = tokio::select! {
-            _ = cancel.cancelled() => return Err(io::Error::new(io::ErrorKind::Interrupted, "connection cancelled")),
-            result = tokio::time::timeout(HANDSHAKE_TIMEOUT, tokio_tungstenite::connect_async_with_config(url.as_str(), Some(config), true)) => {
-                result.map_err(io::Error::other)?.map_err(io::Error::other)?
-            }
-        };
-        Ok(Self::from_socket(socket, cancel))
+impl ConnectionHandle {
+    /// A handle whose requests arrive at the returned receiver; `closed`
+    /// ends with the connection.
+    pub fn new(
+        control: mpsc::Sender<wire::Frame>,
+        closed: CancellationToken,
+    ) -> (Self, mpsc::Receiver<Request>) {
+        let (requests, received) = mpsc::channel(REQUESTS);
+        (
+            Self {
+                control,
+                requests,
+                closed,
+            },
+            received,
+        )
     }
 
-    pub fn from_socket<S>(socket: WebSocketStream<S>, cancel: CancellationToken) -> Self
-    where
-        S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
-    {
-        let cancel = cancel.child_token();
-        let (output, mut outgoing) = mpsc::channel::<Frame>(QUEUE_MESSAGES);
-        let (control, mut controls) = mpsc::channel::<Frame>(128);
-        let (incoming, input) = mpsc::channel(QUEUE_MESSAGES);
-        let stopped = cancel.clone();
-        let owner = tokio::spawn(async move {
-            let (mut writer, mut reader) = socket.split();
-            let receive = async {
-                while let Some(message) = reader.next().await {
-                    match message.map_err(io::Error::other)? {
-                        Message::Binary(bytes) => {
-                            let message = crate::connection::wire::decode(&bytes)
-                                .map_err(io::Error::other)?;
-                            // Overload closes the connection instead of blocking its
-                            // reader behind application work or buffering without limit.
-                            incoming.try_send(message).map_err(|error| {
-                                io::Error::other(format!(
-                                    "runner inbound queue unavailable: {error}"
-                                ))
-                            })?;
-                        }
-                        Message::Close(_) => return Ok(()),
-                        Message::Ping(_) | Message::Pong(_) => {}
-                        _ => {
-                            return Err(io::Error::new(
-                                io::ErrorKind::InvalidData,
-                                "runner requires binary WebSocket messages",
-                            ));
-                        }
-                    }
-                }
-                Ok::<_, io::Error>(())
-            };
-            let send = async {
-                loop {
-                    let message = tokio::select! {
-                        biased;
-                        Some(message) = controls.recv() => message,
-                        Some(message) = outgoing.recv() => message,
-                        else => break,
-                    };
-                    let bytes = message.into_bytes();
-                    // Replies over the limit already failed their requests;
-                    // anything else this large breaks the protocol.
-                    if bytes.len() > wire::MAX_MESSAGE_BYTES {
-                        return Err(io::Error::new(
-                            io::ErrorKind::InvalidData,
-                            format!(
-                                "runner outbound message exceeds {} bytes",
-                                wire::MAX_MESSAGE_BYTES
-                            ),
-                        ));
-                    }
-                    tokio::time::timeout(WRITE_TIMEOUT, writer.send(Message::Binary(bytes.into())))
-                        .await
-                        .map_err(io::Error::other)?
-                        .map_err(io::Error::other)?;
-                }
-                Ok::<_, io::Error>(())
-            };
-            // Both halves are owned by this task. Returning drops both futures
-            // and the socket even when a write is stalled by a disconnected peer.
-            tokio::select! {
-                _ = stopped.cancelled() => Ok(()),
-                result = receive => result,
-                result = send => result,
-            }
-        });
-        Self {
-            output,
-            control,
-            input,
-            cancel,
-            owner: Some(owner),
+    /// Cancelled when the connection ends.
+    pub fn closed(&self) -> &CancellationToken {
+        &self.closed
+    }
+
+    async fn request(&self, request: Request) -> Result<(), RuntimeError> {
+        tokio::select! {
+            _ = self.closed.cancelled() => Err(RuntimeError::Cancelled),
+            sent = self.requests.send(request) => sent.map_err(|_| RuntimeError::Cancelled),
         }
     }
 
-    pub async fn close(mut self) -> io::Result<()> {
-        self.cancel.cancel();
-        self.owner
-            .take()
-            .expect("connection owner exists until close")
+    /// Sends the call's inbound events to `events` until `ended` is
+    /// cancelled; false when the connection has ended.
+    pub async fn register_call(
+        &self,
+        id: String,
+        events: mpsc::Sender<CallEvent>,
+        ended: CancellationToken,
+    ) -> bool {
+        self.request(Request::Call { id, events, ended })
             .await
-            .map_err(io::Error::other)?
+            .is_ok()
     }
 
-    pub fn cancellation(&self) -> CancellationToken {
-        self.cancel.clone()
+    /// Asks the backend where the artifact `sha256` is, on behalf of the live
+    /// work `owner` names (`native-runtime.md` § Install the selected
+    /// executable).
+    pub async fn locate(
+        &self,
+        owner: wire::ArtifactOwner,
+        sha256: String,
+    ) -> Result<ArtifactLocation, RuntimeError> {
+        let (reply, answer) = oneshot::channel();
+        let abandoned = CancellationToken::new();
+        let _abandon = abandoned.clone().drop_guard();
+        self.request(Request::Locate {
+            owner,
+            sha256,
+            reply,
+            abandoned,
+        })
+        .await?;
+        tokio::select! {
+            _ = self.closed.cancelled() => Err(RuntimeError::Cancelled),
+            answer = tokio::time::timeout(LOCATE_TIMEOUT, answer) => answer
+                .map_err(|_| RuntimeError::Deadline("artifact location"))?
+                .map_err(|_| RuntimeError::Cancelled)?
+                .map_err(RuntimeError::Location),
+        }
+    }
+
+    /// Makes `context` live on the connection, with the leases that keep its
+    /// services resident.
+    pub async fn register_context(
+        &self,
+        context: Arc<ExecutionContext>,
+        leases: Vec<ServiceLease>,
+    ) -> io::Result<()> {
+        let (reply, answer) = oneshot::channel();
+        let closed = || io::Error::other("host connection closed");
+        self.request(Request::Context {
+            context,
+            leases,
+            reply,
+        })
+        .await
+        .map_err(|_| closed())?;
+        tokio::select! {
+            _ = self.closed.cancelled() => Err(closed()),
+            answer = answer => answer.map_err(|_| closed())?,
+        }
     }
 }
 
-impl Drop for Connection {
-    fn drop(&mut self) {
-        // Cancellation wakes the owner on every early return; explicit close joins it.
-        self.cancel.cancel();
+/// When an entry of the relay no longer needs keeping.
+pub enum Ended {
+    Call(String),
+    Locate(String),
+}
+
+/// The owner's routing of callback events and artifact locations: each
+/// entry stays until its inbound message arrives or its asker leaves.
+#[derive(Default)]
+pub struct Relay {
+    calls: HashMap<String, Call>,
+    locates: HashMap<String, oneshot::Sender<Result<ArtifactLocation, String>>>,
+}
+
+struct Call {
+    events: mpsc::Sender<CallEvent>,
+    ended: CancellationToken,
+}
+
+impl Relay {
+    pub fn call(
+        &mut self,
+        id: String,
+        events: mpsc::Sender<CallEvent>,
+        ended: CancellationToken,
+        watches: &mut JoinSet<Ended>,
+    ) {
+        let watched = ended.clone();
+        let key = id.clone();
+        watches.spawn(async move {
+            watched.cancelled().await;
+            Ended::Call(key)
+        });
+        self.calls.insert(id, Call { events, ended });
+    }
+
+    /// Registers a location request and returns the frame that asks for it.
+    pub fn locate(
+        &mut self,
+        owner: wire::ArtifactOwner,
+        sha256: String,
+        reply: oneshot::Sender<Result<ArtifactLocation, String>>,
+        abandoned: CancellationToken,
+        watches: &mut JoinSet<Ended>,
+    ) -> Result<wire::Frame, wire::WireError> {
+        let id = uuid::Uuid::new_v4().simple().to_string();
+        let frame = wire::encode(&wire::Outbound::ArtifactResolve {
+            id: id.clone(),
+            owner,
+            sha256,
+            target: crate::services::target().into(),
+        })?;
+        let key = id.clone();
+        watches.spawn(async move {
+            abandoned.cancelled().await;
+            Ended::Locate(key)
+        });
+        self.locates.insert(id, reply);
+        Ok(frame)
+    }
+
+    pub fn ended(&mut self, ended: Ended) {
+        match ended {
+            Ended::Call(id) => {
+                self.calls.remove(&id);
+            }
+            Ended::Locate(id) => {
+                self.locates.remove(&id);
+            }
+        }
+    }
+
+    /// Delivers `message` when it answers a call or a location; false for
+    /// any other message.
+    pub fn route(&mut self, message: &Inbound) -> bool {
+        let (id, event) = match message {
+            Inbound::RpcPipes {
+                call_id,
+                stdin,
+                stdout,
+            } => (
+                call_id,
+                CallEvent::Pipes {
+                    stdin: stdin.clone(),
+                    stdout: stdout.clone(),
+                },
+            ),
+            Inbound::RpcOutput { call_id, bytes } => {
+                (call_id, CallEvent::Stderr(bytes.0.clone().into()))
+            }
+            Inbound::RpcStdinPull { call_id } => (call_id, CallEvent::Pull),
+            Inbound::RpcExit { call_id, exit_code } => match u8::try_from(*exit_code) {
+                Ok(exit_code) => (call_id, CallEvent::Exit(exit_code)),
+                // A status no command can exit with ends the call.
+                Err(_) => {
+                    if let Some(call) = self.calls.get(call_id) {
+                        call.ended.cancel();
+                    }
+                    return true;
+                }
+            },
+            Inbound::ArtifactLocation {
+                id,
+                location,
+                error,
+            } => {
+                if let Some(reply) = self.locates.remove(id) {
+                    let answer = match (location, error) {
+                        (Some(location), None) => Ok(location.clone()),
+                        (None, Some(error)) => Err(error.clone()),
+                        _ => Err("invalid artifact location response".into()),
+                    };
+                    // An asker that left no longer needs the answer.
+                    let _left = reply.send(answer);
+                }
+                return true;
+            }
+            _ => return false,
+        };
+        // A call that cannot keep up with its events ends.
+        if let Some(call) = self.calls.get(id)
+            && call.events.try_send(event).is_err()
+        {
+            call.ended.cancel();
+        }
+        true
     }
 }
