@@ -50,7 +50,10 @@ pub trait ShellEnvironment {
 
     /// Stops a running command: asks it to end, and ends it when it does not.
     /// A command that is not running answers its status.
-    fn abort<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Result<CommandStatus, ShellError>>;
+    fn abort<'a>(
+        &'a self,
+        command: &'a CommandId,
+    ) -> LocalBoxFuture<'a, Result<CommandStatus, ShellError>>;
 
     /// Forgets a command, stopping it first when it runs; false when unknown.
     fn release_command<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, bool>;
@@ -178,8 +181,6 @@ pub enum ShellError {
     UnknownShell(ShellId),
     #[error("Unknown command \"{0}\"")]
     UnknownCommand(CommandId),
-    #[error("Shell session \"{0}\" has exited")]
-    ShellExited(ShellId),
     #[error("Shell session \"{shell}\" is already running command \"{command}\"")]
     ShellBusy { shell: ShellId, command: CommandId },
     #[error("Command \"{0}\" is not running")]

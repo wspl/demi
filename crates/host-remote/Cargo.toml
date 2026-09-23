@@ -1,0 +1,47 @@
+[package]
+name = "demi-host-remote"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+# No doc examples: rustdoc has nothing to test.
+doctest = false
+
+[dependencies]
+bytes.workspace = true
+demi-command-service = { path = "../command-service" }
+demi-command-tree = { path = "../command-tree" }
+demi-core = { path = "../core" }
+demi-gates = { path = "../gates" }
+demi-runner-protocol = { path = "../runner-protocol" }
+demi-shell = { path = "../shell" }
+futures-util.workspace = true
+garde.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+uuid = { version = "1", features = ["v4"] }
+# The test support: a runner's backend end over HTTP and a WebSocket.
+axum = { version = "0.8", features = ["ws"], optional = true }
+sha2 = { version = "0.10", optional = true }
+tempfile = { version = "3", optional = true }
+
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1", features = ["process"], optional = true }
+
+[dev-dependencies]
+# The crate's own tests use its test support and the Host conformance cases.
+demi-host-remote = { path = ".", features = ["testing"] }
+demi-shell = { path = "../shell", features = ["testing"] }
+schemars.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
+
+[features]
+# A real runner for one device (`RunnerFixture`) and an in-process fake
+# runner (`TestLink`).
+testing = ["dep:axum", "dep:sha2", "dep:tempfile", "dep:rustix", "demi-shell/testing"]
