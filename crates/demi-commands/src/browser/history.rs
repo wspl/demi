@@ -1,19 +1,49 @@
 //! Browser console and CDP streams share bounded retention and generation cursors.
-use super::{BrowserError, Result};
-use serde_json::{Value, json};
+use serde::Serialize;
 use std::collections::VecDeque;
 
-pub(super) struct Buffer {
+use super::{
+    BrowserError, Result,
+    protocol::{CdpEvent, LogEntry},
+};
+
+/// An entry whose position in its stream the buffer assigns.
+pub(super) trait Entry: Serialize {
+    fn sequence(&self) -> u64;
+    fn set_sequence(&mut self, sequence: u64);
+}
+
+impl Entry for LogEntry {
+    fn sequence(&self) -> u64 {
+        self.sequence
+    }
+
+    fn set_sequence(&mut self, sequence: u64) {
+        self.sequence = sequence;
+    }
+}
+
+impl Entry for CdpEvent {
+    fn sequence(&self) -> u64 {
+        self.sequence
+    }
+
+    fn set_sequence(&mut self, sequence: u64) {
+        self.sequence = sequence;
+    }
+}
+
+pub(super) struct Buffer<T> {
     generation: String,
     next: u64,
     bytes: usize,
     entry_limit: usize,
     byte_limit: usize,
     evicted_through: Option<u64>,
-    entries: VecDeque<(Value, usize)>,
+    entries: VecDeque<(T, usize)>,
 }
 
-impl Buffer {
+impl<T: Entry> Buffer<T> {
     pub fn new(prefix: &str, entry_limit: usize, byte_limit: usize) -> Result<Self> {
         Ok(Self {
             generation: super::handles::fresh(prefix)?,
@@ -26,16 +56,9 @@ impl Buffer {
         })
     }
 
-    pub fn push(&mut self, mut entry: Value) -> Result<()> {
-        let object = entry.as_object_mut().ok_or_else(|| {
-            BrowserError::InvalidResult("browser history entry must be an object".into())
-        })?;
-        if object.contains_key("sequence") {
-            return Err(BrowserError::InvalidResult(
-                "browser history owns entry sequences".into(),
-            ));
-        }
-        object.insert("sequence".into(), json!(self.next));
+    /// Appends an entry at the next position, evicting the oldest past the limits.
+    pub fn push(&mut self, mut entry: T) -> Result<()> {
+        entry.set_sequence(self.next);
         let size = serde_json::to_vec(&entry)
             .map_err(|error| BrowserError::InvalidResult(error.to_string()))?
             .len();
@@ -48,9 +71,7 @@ impl Buffer {
         while self.entries.len() > self.entry_limit || self.bytes > self.byte_limit {
             if let Some((entry, size)) = self.entries.pop_front() {
                 self.bytes -= size;
-                let sequence = entry["sequence"]
-                    .as_u64()
-                    .expect("buffer assigns each sequence");
+                let sequence = entry.sequence();
                 self.evicted_through = Some(
                     self.evicted_through
                         .map_or(sequence, |previous| previous.max(sequence)),
@@ -71,7 +92,7 @@ impl Buffer {
         Ok(())
     }
 
-    pub fn entries(&self) -> impl Iterator<Item = &Value> {
+    pub fn entries(&self) -> impl Iterator<Item = &T> {
         self.entries.iter().map(|(entry, _)| entry)
     }
     pub fn next(&self) -> u64 {
@@ -102,29 +123,37 @@ impl Buffer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::browser::protocol::LogLevel;
+
+    fn entry(text: &str) -> LogEntry {
+        LogEntry {
+            sequence: 0,
+            level: LogLevel::Log,
+            text: text.into(),
+            url: None,
+            timestamp: 0.0,
+        }
+    }
 
     #[test]
     fn browser_streams_keep_independent_cursors_and_report_count_and_byte_eviction() {
-        let mut buffer = Buffer::new("test", 2, 128).unwrap();
+        let mut buffer = Buffer::new("test", 2, 160).unwrap();
         let start = buffer.cursor(0);
         for value in ["a", "b", "c"] {
-            buffer.push(json!({"text":value})).unwrap();
+            buffer.push(entry(value)).unwrap();
         }
         assert_eq!(
-            buffer
-                .entries()
-                .map(|entry| entry["sequence"].as_u64().unwrap())
-                .collect::<Vec<_>>(),
+            buffer.entries().map(Entry::sequence).collect::<Vec<_>>(),
             [1, 2]
         );
         assert_eq!(buffer.position(&start).unwrap(), 0);
         assert!(buffer.truncated_since(0));
         assert!(!buffer.truncated_since(1));
         assert_eq!(buffer.entries().count(), 2);
-        let other = Buffer::new("test", 2, 128).unwrap();
+        let other = Buffer::<LogEntry>::new("test", 2, 160).unwrap();
         assert!(other.position(&start).is_err());
         assert!(buffer.position(&buffer.cursor(4)).is_err());
-        buffer.push(json!({"text":"x".repeat(128)})).unwrap();
+        buffer.push(entry(&"x".repeat(160))).unwrap();
         assert_eq!(buffer.entries().count(), 0);
         assert!(buffer.truncated_since(3));
         buffer.mark_gap().unwrap();

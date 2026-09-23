@@ -1,6 +1,10 @@
 //! Per-command main-document observation; subscriptions are dropped with the command.
 
-use super::{BrowserError, BrowserTab, Result, operation::Operation, protocol::BrowserCommand};
+use super::{
+    BrowserError, BrowserTab, Result,
+    operation::Operation,
+    protocol::{BrowserOperation, Load, NavigationResult},
+};
 use chromiumoxide::{
     Page,
     cdp::browser_protocol::{
@@ -168,7 +172,7 @@ impl NavigationObservation {
 
     pub async fn wait_load(
         &mut self,
-        load: &str,
+        load: Load,
         ordinary_click: bool,
         operation: &Operation<'_>,
     ) -> Result<()> {
@@ -201,9 +205,9 @@ impl NavigationObservation {
                 _ => {}
             }
             if let Some(loader) = &self.committed
-                && (load == "commit"
+                && (load == Load::Commit
                     || self.states.get(loader).is_some_and(|states| {
-                        states.contains(if load == "load" {
+                        states.contains(if load == Load::Load {
                             "load"
                         } else {
                             "DOMContentLoaded"
@@ -255,7 +259,7 @@ impl BrowserTab {
     pub(super) async fn navigate(
         &self,
         navigation: Navigation,
-        load: &str,
+        load: Load,
         operation: &Operation<'_>,
         references: &mut super::observation::References,
     ) -> Result<String> {
@@ -322,14 +326,14 @@ impl BrowserTab {
                 {
                     observation.url = url;
                 }
-                Err(operation.failure(error, &self.id(), Some(&observation.url)))
+                Err(operation.failure(error, self.id().as_str(), Some(&observation.url)))
             }
         }
     }
 }
 
 /// Wait for the document current at subscription, never for a future navigation.
-pub(super) async fn wait_current_load(page: &Page, load: &str) -> Result<()> {
+pub(super) async fn wait_current_load(page: &Page, load: Load) -> Result<()> {
     let mut lifecycle = page
         .event_listener_with_capacity::<EventLifecycleEvent>(NAVIGATION_EVENT_CAPACITY)
         .await?;
@@ -358,9 +362,9 @@ pub(super) async fn wait_current_load(page: &Page, load: &str) -> Result<()> {
             "current document was replaced before its load wait completed".into(),
         ));
     }
-    if load == "commit"
+    if load == Load::Commit
         || ready == "complete"
-        || (load == "domcontentloaded" && ready == "interactive")
+        || (load == Load::DomContentLoaded && ready == "interactive")
     {
         return Ok(());
     }
@@ -378,7 +382,7 @@ pub(super) async fn wait_current_load(page: &Page, load: &str) -> Result<()> {
         if event.frame_id == frame.id
             && event.loader_id == frame.loader_id
             && (event.name == "load"
-                || (load == "domcontentloaded" && event.name == "DOMContentLoaded"))
+                || (load == Load::DomContentLoaded && event.name == "DOMContentLoaded"))
         {
             return Ok(());
         }
@@ -443,25 +447,25 @@ where
 /// navigation starts and the answer does not wait for it.
 pub(super) async fn steer(
     tab: &BrowserTab,
-    command: &BrowserCommand,
+    command: &BrowserOperation,
     operation: &Operation<'_>,
-) -> Result<serde_json::Value> {
+) -> Result<NavigationResult> {
     let url = match command {
-        BrowserCommand::Goto(input) => {
+        BrowserOperation::Goto(input) => {
             validate_url(&input.url)?;
             visit(tab, &input.url);
-            Some(input.url.clone())
+            input.url.clone()
         }
-        BrowserCommand::Reload(_) => {
+        BrowserOperation::Reload(_) => {
             let url = operation.run(async { Ok(tab.page.url().await?) }).await?;
             detach(tab, ReloadParams::default());
-            url
+            url.ok_or_else(|| BrowserError::InvalidResult("the tab has no URL to reload".into()))?
         }
-        BrowserCommand::Back(_) | BrowserCommand::Forward(_) => {
-            let back = matches!(command, BrowserCommand::Back(_));
+        BrowserOperation::Back(_) | BrowserOperation::Forward(_) => {
+            let back = matches!(command, BrowserOperation::Back(_));
             let entry = history_step(tab, back, operation).await?;
             detach(tab, NavigateToHistoryEntryParams::new(entry.id));
-            Some(entry.url)
+            entry.url
         }
         _ => {
             return Err(BrowserError::Configuration(
@@ -469,11 +473,11 @@ pub(super) async fn steer(
             ));
         }
     };
-    let mut result = serde_json::json!({ "tab": tab.id() });
-    if let Some(url) = url {
-        result["url"] = serde_json::json!(url);
-    }
-    Ok(result)
+    Ok(NavigationResult {
+        tab: tab.id().clone(),
+        url,
+        title: None,
+    })
 }
 
 /// Compile the browser URL glob; regex escaping owns every literal character.

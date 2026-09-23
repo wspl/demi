@@ -16,7 +16,8 @@ use super::{
 };
 use crate::browser::{
     BrowserTab, Result,
-    viewport::{Mode, Screen, Viewport, ratio_for, screen_ratio},
+    protocol::{BrowserViewport, TabId, ViewportMode},
+    viewport::{PHONE, Screen, ratio_for, screen_ratio},
 };
 
 /// A viewer's panel in CSS pixels, and its screen.
@@ -48,14 +49,14 @@ struct State {
     viewers: HashMap<u64, Viewer>,
     /// The viewer that operated most recently, whose screen the browser's is.
     driver: Option<u64>,
-    streams: HashMap<String, Stream>,
+    streams: HashMap<TabId, Stream>,
     /// A layout is running, and whether another is due after it.
     laying_out: bool,
     due: bool,
 }
 
 impl State {
-    fn leave_stream(&mut self, tab: &str, viewer: u64) {
+    fn leave_stream(&mut self, tab: &TabId, viewer: u64) {
         if let Some(stream) = self.streams.get_mut(tab) {
             let _ended = stream.commands.send(Command::Leave { viewer });
             stream.viewers -= 1;
@@ -70,7 +71,7 @@ impl State {
             viewer
                 .watching
                 .as_ref()
-                .and_then(|tab| self.streams.get(&tab.id()))
+                .and_then(|tab| self.streams.get(tab.id()))
         });
         if let Some(stream) = stream {
             let _ended = stream.commands.send(command);
@@ -79,7 +80,7 @@ impl State {
 
     /// The panel that decides a watched tab's size: that of the viewer who
     /// watches it and operated most recently.
-    fn decider(&self, tab: &str) -> Option<Panel> {
+    fn decider(&self, tab: &TabId) -> Option<Panel> {
         self.viewers
             .values()
             .filter(|viewer| {
@@ -194,7 +195,7 @@ impl Hub {
             for viewer in state.viewers.values() {
                 if let Some(tab) = &viewer.watching
                     && !tabs.iter().any(|(listed, _)| listed.id() == tab.id())
-                    && let Some(panel) = state.decider(&tab.id())
+                    && let Some(panel) = state.decider(tab.id())
                 {
                     tabs.push((tab.clone(), panel));
                 }
@@ -221,17 +222,17 @@ impl Hub {
 }
 
 /// Gives a Web or Mobile tab the viewport `panel` decides.
-async fn fit(tab: &BrowserTab, mode: Mode, panel: Panel) -> Result<()> {
+async fn fit(tab: &BrowserTab, mode: ViewportMode, panel: Panel) -> Result<()> {
     let (width, height) = match mode {
-        Mode::Web => (panel.width, panel.height),
-        Mode::Mobile => Viewport::PHONE,
-        Mode::Custom => return Ok(()),
+        ViewportMode::Web => (panel.width, panel.height),
+        ViewportMode::Mobile => PHONE,
+        ViewportMode::Custom => return Ok(()),
     };
-    let viewport = Viewport {
+    let viewport = BrowserViewport {
         mode,
         width,
         height,
-        ratio: ratio_for(panel.ratio, width, height),
+        device_pixel_ratio: ratio_for(panel.ratio, width, height),
     };
     if tab.viewport() != viewport {
         tab.set_viewport(viewport).await?;
@@ -292,12 +293,12 @@ impl Membership {
             .get_mut(&self.id)
             .and_then(|viewer| std::mem::replace(&mut viewer.watching, tab.cloned()));
         if let Some(previous) = previous {
-            state.leave_stream(&previous.id(), self.id);
+            state.leave_stream(previous.id(), self.id);
         }
         let receiver = tab.map(|tab| {
             let (events, receiver) = stream::events();
             let hub = &self.hub;
-            let stream = state.streams.entry(tab.id()).or_insert_with(|| Stream {
+            let stream = state.streams.entry(tab.id().clone()).or_insert_with(|| Stream {
                 commands: stream::start(tab.clone(), hub.captures.clone(), &hub.tasks),
                 viewers: 0,
             });
@@ -346,12 +347,12 @@ impl Membership {
     }
 
     /// Puts `tab` in Web or Mobile mode, sized for whoever decides it.
-    pub async fn mode(&self, tab: &BrowserTab, mode: Mode) -> Result<()> {
+    pub async fn mode(&self, tab: &BrowserTab, mode: ViewportMode) -> Result<()> {
         let _screen = self.hub.screen.lock().await;
         let panel = {
             let state = self.hub.state.lock().expect("live lock poisoned");
             state
-                .decider(&tab.id())
+                .decider(tab.id())
                 .or_else(|| state.viewers.get(&self.id).and_then(|viewer| viewer.panel))
         };
         match panel {
@@ -360,14 +361,14 @@ impl Membership {
             None => {
                 let web = tab.web_viewport();
                 let (width, height) = match mode {
-                    Mode::Mobile => Viewport::PHONE,
+                    ViewportMode::Mobile => PHONE,
                     _ => (web.width, web.height),
                 };
-                tab.set_viewport(Viewport {
+                tab.set_viewport(BrowserViewport {
                     mode,
                     width,
                     height,
-                    ratio: web.ratio,
+                    device_pixel_ratio: web.device_pixel_ratio,
                 })
                 .await
             }
@@ -381,7 +382,7 @@ impl Drop for Membership {
         if let Some(viewer) = state.viewers.remove(&self.id)
             && let Some(tab) = viewer.watching
         {
-            state.leave_stream(&tab.id(), self.id);
+            state.leave_stream(tab.id(), self.id);
         }
         // The screen keeps its ratio until another viewer operates.
         if state.driver == Some(self.id) {

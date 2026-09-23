@@ -9,12 +9,14 @@ use tokio_util::sync::CancellationToken;
 
 use super::{hub::Membership, writer::Writer};
 use crate::browser::{
-    BrowserEnvironment, BrowserError, BrowserTab, Result, navigation::reload,
-    operation::CONTROL_TIMEOUT, viewport::Mode,
+    BrowserEnvironment, BrowserError, BrowserTab, Result,
+    navigation::reload,
+    operation::CONTROL_TIMEOUT,
+    protocol::{TabId, ViewportMode},
 };
 
 pub(super) enum Command {
-    Mode { tab: String, mode: Mode },
+    Mode { tab: TabId, mode: ViewportMode },
 }
 
 /// Runs a viewer's commands in order, beside its input and pictures.
@@ -46,12 +48,12 @@ async fn run(
         Command::Mode { tab, mode } => {
             if let Some(membership) = membership.upgrade() {
                 let tab = find(environment, &tab).await?;
-                let was_phone = tab.viewport().mode == Mode::Mobile;
+                let was_phone = tab.viewport().mode == ViewportMode::Mobile;
                 membership.mode(&tab, mode).await?;
                 // A phone's user agent and touch reach only what loads after
                 // them: the page in the tab was served to the other kind of
                 // device, and lays out as that one until it loads again.
-                if was_phone != (mode == Mode::Mobile) {
+                if was_phone != (mode == ViewportMode::Mobile) {
                     reload(&tab);
                 }
             }
@@ -61,7 +63,7 @@ async fn run(
 }
 
 /// The tab with public ID `id`.
-pub(super) async fn find(environment: &BrowserEnvironment, id: &str) -> Result<BrowserTab> {
+pub(super) async fn find(environment: &BrowserEnvironment, id: &TabId) -> Result<BrowserTab> {
     environment
         .tabs(&CancellationToken::new(), CONTROL_TIMEOUT)
         .await?

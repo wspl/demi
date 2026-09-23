@@ -38,7 +38,5 @@ mod webmcp;
 
 pub(crate) use conversations::Conversations;
 pub use environment::{BrowserEnvironment, LaunchOptions, with_browser};
-pub(crate) use live::OPERATION as LIVE_OPERATION;
 pub use operation::{BrowserError, Result};
-pub(crate) use protocol::OPERATIONS;
 pub use tab::BrowserTab;

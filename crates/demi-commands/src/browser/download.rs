@@ -13,13 +13,13 @@ use chromiumoxide::cdp::browser_protocol::{
 };
 use demi_command_service::InvocationContext;
 use futures_util::{FutureExt, StreamExt};
-use serde_json::{Value, json};
+use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
 use super::{
     BrowserEnvironment, BrowserError, BrowserTab, Result, element,
     operation::{CONTROL_TIMEOUT, Operation, after_cleanup},
-    protocol::BrowserCommand,
+    protocol::{BrowserOperation, DownloadResult},
 };
 
 enum Phase {
@@ -34,12 +34,12 @@ pub(super) async fn execute(
     context: &InvocationContext,
     environment: &BrowserEnvironment,
     tab: Option<&BrowserTab>,
-    command: &BrowserCommand,
+    command: &BrowserOperation,
     cancel: &CancellationToken,
     deadline: tokio::time::Instant,
 ) -> Result<Value> {
     let tab = tab.ok_or(BrowserError::TabNotFound)?;
-    let BrowserCommand::Download(input) = command else {
+    let BrowserOperation::Download(input) = command else {
         unreachable!("download dispatch accepts only download");
     };
     let operation = Operation::for_tab(tab, cancel, deadline);
@@ -47,7 +47,7 @@ pub(super) async fn execute(
         .state
         .operations
         .try_lock()
-        .map_err(|_| operation.failure(BrowserError::Busy, &tab.id(), None))?;
+        .map_err(|_| operation.failure(BrowserError::Busy, tab.id().as_str(), None))?;
     let browser = environment.browser.upgrade().ok_or(BrowserError::Closed)?;
     let (mut beginnings, mut progress) = operation
         .run(async {
@@ -104,7 +104,12 @@ pub(super) async fn execute(
                 let count = bytes.len();
                 let suggested = url::Url::parse(&source).ok().and_then(|url| url.path_segments().and_then(|mut parts| parts.next_back()).map(str::to_owned)).unwrap_or_default();
                 let path = super::output::save_with_overwrite(&context.request.cwd, &output.to_string_lossy(), bytes, input.overwrite == Some(true), cancel, deadline).await?;
-                return Ok(json!({"path":path,"suggestedFilename":suggested,"bytes":count,"mimeType":mime.unwrap_or_else(||"application/octet-stream".into())}));
+                return super::output::value(DownloadResult {
+                    path,
+                    suggested_filename: suggested,
+                    bytes: count as u64,
+                    mime_type: mime.unwrap_or_else(|| "application/octet-stream".into()),
+                });
             }
         }
         phase = Phase::Triggered;
@@ -139,7 +144,12 @@ pub(super) async fn execute(
             if response.response.url == beginning.url { mime = response.response.mime_type.clone(); }
         }
         let path = super::output::publish_file(&context.request.cwd, &output.to_string_lossy(), source, input.overwrite == Some(true), cancel, deadline).await?;
-        Ok(json!({"path": path, "suggestedFilename": beginning.suggested_filename, "bytes": bytes, "mimeType": mime}))
+        super::output::value(DownloadResult {
+            path,
+            suggested_filename: beginning.suggested_filename.clone(),
+            bytes,
+            mime_type: mime,
+        })
     }.await;
     // A click can finish before its download event arrives. On failure retain
     // the installed observation during bounded cleanup, then cancel that GUID.
@@ -218,7 +228,7 @@ pub(super) async fn execute(
     drop(beginnings);
     drop(progress);
     drop(responses);
-    after_cleanup(work, cleanup).map_err(|error| operation.failure(error, &tab.id(), None))
+    after_cleanup(work, cleanup).map_err(|error| operation.failure(error, tab.id().as_str(), None))
 }
 
 /// Resolve a Chrome download GUID inside the environment's private spool.

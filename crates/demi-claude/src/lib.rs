@@ -12,6 +12,7 @@ mod tests;
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use bytes::Bytes;
+use demi_claude_protocol::{Failure, Installed, OPERATIONS, Reply};
 use demi_command_service::protocol::{CommandError, Completion, Invocation};
 use demi_command_service::{Handler, Input, InvocationContext, ServiceError};
 use serde::Serialize;
@@ -37,28 +38,11 @@ impl DemiClaude {
     }
 }
 
-/// The one JSON document an operation writes to stdout. A service stream
-/// carries only stdout, so a failure is a document too.
-#[derive(Serialize)]
-#[serde(untagged)]
-enum Document<T> {
-    Done {
-        ok: bool,
-        #[serde(flatten)]
-        answer: T,
-    },
-    Failed {
-        ok: bool,
-        code: &'static str,
-        message: String,
-    },
-}
-
 impl Handler for DemiClaude {
     type Metadata = Invocation;
 
     fn operations(&self) -> Vec<String> {
-        vec!["claude.ensure".into(), "claude.status".into()]
+        OPERATIONS.iter().copied().map(String::from).collect()
     }
 
     fn invoke(
@@ -92,21 +76,22 @@ impl Handler for DemiClaude {
                         error: None,
                     },
                 ),
-                Err(EnsureError::Cancelled) => return Err(ServiceError::Cancelled),
                 Err(error) => {
-                    let code = error.code();
+                    // Only a cancellation has no code; it writes no document.
+                    let Some(code) = error.code() else {
+                        return Err(ServiceError::Cancelled);
+                    };
                     let message = error.to_string();
-                    let body = serde_json::to_vec(&Document::<()>::Failed {
-                        ok: false,
+                    let body = serde_json::to_vec(&Reply::<()>::Failed(Failure {
                         code,
                         message: message.clone(),
-                    })?;
+                    }))?;
                     (
                         body,
                         Completion {
                             exit_code: 1,
                             error: Some(CommandError {
-                                code: code.into(),
+                                code: code.to_string(),
                                 message,
                             }),
                         },
@@ -123,7 +108,7 @@ async fn ensure(
     installer: &Installer,
     input: Input,
     cancel: &CancellationToken,
-) -> Result<install::Installed, EnsureError> {
+) -> Result<Installed, EnsureError> {
     let input = read_input(input, cancel).await?;
     let release = installer.release(&input)?;
     installer.ensure(&release, cancel).await
@@ -154,7 +139,7 @@ async fn read_input(mut input: Input, cancel: &CancellationToken) -> Result<Vec<
 }
 
 fn document<T: Serialize>(answer: T) -> Result<Vec<u8>, EnsureError> {
-    serde_json::to_vec(&Document::Done { ok: true, answer })
+    serde_json::to_vec(&Reply::Done(answer))
         .map_err(|error| EnsureError::InstallFailed(error.to_string()))
 }
 
