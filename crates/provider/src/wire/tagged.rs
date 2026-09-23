@@ -174,3 +174,18 @@ impl<'de, T: DeserializeOwned> Deserialize<'de> for Reported<T> {
         Ok(Self(T::deserialize(value).ok()))
     }
 }
+
+/// Text a vendor must not send empty, such as a tool call's name or a device
+/// code: an empty string is a malformed payload.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NonEmpty(pub String);
+
+impl<'de> Deserialize<'de> for NonEmpty {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        if text.is_empty() {
+            return Err(de::Error::invalid_length(0, &"a nonempty string"));
+        }
+        Ok(Self(text))
+    }
+}

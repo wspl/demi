@@ -135,7 +135,10 @@ Codex sends a request over a WebSocket to its Responses endpoint first, as one
 `response.create` message. If the socket fails before its first event (it
 cannot connect, the handshake is refused, or it closes), the same request goes
 over server-sent events instead; a failure after the first event is the run's
-failure. The WebSocket connect waits at most 10 seconds, and a server-sent
+failure. A WebSocket that cannot connect at all, because its connection fails
+or times out, sends the provider's later requests over server-sent events at
+once, so that a network that blocks WebSockets does not cost every request a
+failed connect. The WebSocket connect waits at most 10 seconds, and a server-sent
 events request waits at most 20 seconds for its response headers. The WebSocket
 client is tokio-tungstenite, because the handshake must carry Codex's own
 headers. Grok Build sends Chat Completions through the chat proxy that Grok's
@@ -424,7 +427,7 @@ the family's requests and refreshes need:
 | Family | The secret document holds |
 |---|---|
 | `codex` | The ChatGPT sign-in's tokens, the account they act for, and the time of the last refresh |
-| `grok-build` | The OAuth tokens and their expiry, the issuer and client that issued them, and the team or organization the tokens act for |
+| `grok-build` | The OAuth tokens and their expiry, the issuer and client that issued them, the team or organization the tokens act for, and the user's ID and email |
 | `claude-code` | The setup token |
 
 A field the type does not name is an error, as is a missing required one. The
@@ -474,8 +477,12 @@ refresh turn only saves needless vendor calls within one backend.
 
 | Family | Refreshes when |
 |---|---|
-| `codex` | A request was refused with HTTP 401, or the stored access token expires within 5 minutes, or it was last refreshed 8 or more days ago |
-| `grok-build` | The stored access token is still the one a request found refused or expiring, or it expires within 5 minutes |
+| `codex` | A request was refused with HTTP 401 and its access token is still the stored one, or the stored access token expires within 5 minutes, or the sign-in was last refreshed 8 or more days ago |
+| `grok-build` | A request was refused with HTTP 401 and its access token is still the stored one, or the stored access token expires within 5 minutes; a sign-in without a refresh token is used as it is |
+
+A refused request names the token it was refused with, so a refresher that
+waited behind another finds the other's new tokens no longer due and uses
+them.
 | `claude-code` | Never: a setup token is used as it is |
 
 ### An account is the unit
@@ -528,7 +535,10 @@ which refuses the vendors' token responses: they omit `token_type` and state
   code, and accepts only an `https` address, or `http` on a loopback host,
   without control characters. It polls at the server's interval and at least
   once a second, continues on `authorization_pending`, waits 5 seconds longer
-  after `slow_down`, and ends the login on any other error.
+  after `slow_down`, and ends the login on any other error. Once the user
+  confirms, it reads the user's ID and email from the chat proxy's `/v1/user`
+  when that answers. Tokens that act for a team or organization make it the
+  account's user, without an email.
 
 A flow authenticates against a staged pool held in memory; nothing is stored
 until it completes. Completion is one control-store transaction:
@@ -540,11 +550,13 @@ until it completes. Completion is one control-store transaction:
 
 Within its entry, an account is identified by an identity key that the family
 derives from the account, so logging in again with the same account replaces
-its record instead of adding a second one.
+its record instead of adding a second one. Codex keys an account by its
+ChatGPT account ID; Grok Build by its issuer and user ID, else its email, else
+its OAuth client.
 
 A flow that loses the uniqueness check, fails or is cancelled has stored
 nothing, so there is nothing to clean up. A device login expires after ten
-minutes. Cancelling a login stops it at once, even while it waits between
+minutes, whatever the vendor's code allows. Cancelling a login stops it at once, even while it waits between
 polls, and backend shutdown cancels and drains active flows. Logging into an
 existing entry reserves the entry until the login completes or fails; another
 change to the entry meanwhile is refused as busy. A failed token import answers

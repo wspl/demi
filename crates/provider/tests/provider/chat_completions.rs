@@ -153,7 +153,7 @@ async fn a_malformed_chunk_is_a_protocol_failure_that_names_its_field() {
         (json!({ "choices": [{ "delta": { "tool_calls": "none" } }] }), "tool_calls"),
         (json!({ "usage": { "prompt_tokens": "12" } }), "prompt_tokens"),
     ] {
-        let failure = failure_of(events(&[frame.clone()]).await);
+        let failure = failure_of(events(std::slice::from_ref(&frame)).await);
         assert_eq!(failure.code, None, "{frame}");
         assert!(failure.message.contains(field), "{frame}: {}", failure.message);
         assert_eq!(failure.diagnostics.unwrap().upstream, Some(frame.to_string()));
