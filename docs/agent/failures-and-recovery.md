@@ -22,6 +22,26 @@ decisions read, and diagnostics, which the user and support read:
 Invalid requests are terminal as well. The complete set of codes belongs to the
 provider contract ([Providers](../providers/providers.md)).
 
+An HTTP failure gets its code from its status: 401 and 403 are
+`auth_expired`, 429 is `rate_limit`, 408, 409, 425 and every 5xx are
+`overloaded`, and a 400 whose text mentions `context`, `too long` or `token` is
+`context_length_exceeded`. A failure the vendor reports inside a response, such
+as an error event in a stream, gets its code from the vendor's own code and
+message, read as lowercase words with every other character, `_` and `-`
+included, separating them. The first row that matches decides, and without a
+match the vendor's own code stands:
+
+| Words | Code |
+| --- | --- |
+| `context`, `too long`, or a word starting with `max` followed later by `token` or `tokens` | `context_length_exceeded` |
+| `rate`, a word starting with `ratelimit`, `quota`, `usage`, `billing`, `balance` | `rate_limit` |
+| `auth`, `authentication`, `authorization`, or `invalid` or `expired` before or after an API, access or auth key or token | `auth_expired` |
+| a word starting with `overload`, `unavailable`, `server error`, `internal error`, `api error`, `timeout`, `timed out`, `fetch failed`, `network`, `socket`, a word starting with `econn` | `overloaded` |
+
+Words count only whole, so `generate` is not `rate` and `limit` alone decides
+nothing: an invalid request whose message mentions a limit keeps the vendor's
+code and is not retried.
+
 A failure Demi finds itself gets its code by an explicit rule, never by
 matching words in its message. A timeout or a network failure is
 `overloaded`. A decode or protocol failure has no code, its source is
