@@ -1223,7 +1223,7 @@ macro_rules! operations {
             pub fn parse(name: &str, args: Value) -> Result<Self, DecodeError> {
                 match name {
                     $($name => crate::decode(args).map(Self::$variant),)*
-                    _ => Err(DecodeError::UnknownOperation(format!("browser.{name}"))),
+                    _ => Err(DecodeError::UnknownOperation(format!("{}{name}", super::PREFIX))),
                 }
             }
 
@@ -1254,7 +1254,7 @@ macro_rules! operations {
         }
 
         /// The browser operations, as the package descriptor lists them.
-        pub const OPERATIONS: &[&str] = &[$(concat!("browser.", $name),)*];
+        pub const OPERATIONS: &[&str] = &[$(concat!(super::prefix!(), $name),)*];
     };
 }
 

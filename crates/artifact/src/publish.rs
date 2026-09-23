@@ -73,7 +73,8 @@ impl Staged {
     }
 }
 
-/// Publishes what `input` yields at `path`.
+/// Publishes what `input` yields at `path`. Once `cancel` fires, nothing is
+/// published: the rename happens only if it had not fired by then.
 pub async fn publish(
     path: &Path,
     input: &mut (impl AsyncRead + Unpin),
@@ -84,6 +85,7 @@ pub async fn publish(
     let mut buffer = vec![0; 64 * 1024];
     loop {
         let count = tokio::select! {
+            biased;
             _ = cancel.cancelled() => return Err(Error::Cancelled),
             count = input.read(&mut buffer) => count?,
         };
@@ -92,14 +94,32 @@ pub async fn publish(
         }
         staged.file().write_all(&buffer[..count]).await?;
     }
+    if cancel.is_cancelled() {
+        return Err(Error::Cancelled);
+    }
     staged.publish().await
 }
 
 /// Publishes `bytes` at `path`.
 pub async fn publish_bytes(path: &Path, bytes: &[u8], publication: Publication) -> Result<(), Error> {
-    let mut staged = Staged::new(path, publication).await?;
-    staged.file().write_all(bytes).await?;
-    staged.publish().await
+    let path = path.to_owned();
+    let bytes = bytes.to_vec();
+    tokio::task::spawn_blocking(move || publish_bytes_blocking(&path, &bytes, publication))
+        .await
+        .map_err(std::io::Error::other)?
+}
+
+/// Publishes `bytes` at `path` on this thread, for work that already runs on
+/// a blocking thread, such as a file mutation that must stay in one piece.
+pub fn publish_bytes_blocking(path: &Path, bytes: &[u8], publication: Publication) -> Result<(), Error> {
+    use std::io::Write as _;
+    let (mut file, temporary) = stage_blocking(path, publication)?;
+    file.write_all(bytes)?;
+    if publication.durable {
+        file.sync_all()?;
+    }
+    drop(file);
+    persist(temporary, path, publication.mode)
 }
 
 /// Moves the directory `staged` to `destination`, replacing a directory
@@ -119,42 +139,46 @@ async fn stage(
     path: &Path,
     publication: Publication,
 ) -> Result<(std::fs::File, tempfile::TempPath), Error> {
+    let path = path.to_owned();
+    tokio::task::spawn_blocking(move || stage_blocking(&path, publication))
+        .await
+        .map_err(std::io::Error::other)?
+}
+
+fn stage_blocking(
+    path: &Path,
+    publication: Publication,
+) -> Result<(std::fs::File, tempfile::TempPath), Error> {
     let parent = path
         .parent()
-        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "a file needs a parent directory"))?
-        .to_owned();
-    let replaced = path.to_owned();
-    tokio::task::spawn_blocking(move || {
-        let mut builder = tempfile::Builder::new();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            // The mode applies when the file is made, less the umask.
-            let mode = match publication.permissions {
-                Permissions::Default => 0o666,
-                Permissions::Private => 0o600,
-                Permissions::Executable => 0o755,
-                Permissions::Keep => 0o600,
-            };
-            builder.permissions(std::fs::Permissions::from_mode(mode));
-        }
-        let temporary = builder.tempfile_in(&parent)?;
-        if publication.permissions == Permissions::Keep {
-            let permissions = std::fs::metadata(&replaced)?.permissions();
-            temporary.as_file().set_permissions(permissions)?;
-        }
-        #[cfg(unix)]
-        if publication.permissions == Permissions::Executable {
-            use std::os::unix::fs::PermissionsExt;
-            // An executable is runnable whatever the umask.
-            temporary
-                .as_file()
-                .set_permissions(std::fs::Permissions::from_mode(0o755))?;
-        }
-        Ok(temporary.into_parts())
-    })
-    .await
-    .map_err(std::io::Error::other)?
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "a file needs a parent directory"))?;
+    let mut builder = tempfile::Builder::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        // The mode applies when the file is made, less the umask.
+        let mode = match publication.permissions {
+            Permissions::Default => 0o666,
+            Permissions::Private => 0o600,
+            Permissions::Executable => 0o755,
+            Permissions::Keep => 0o600,
+        };
+        builder.permissions(std::fs::Permissions::from_mode(mode));
+    }
+    let temporary = builder.tempfile_in(parent)?;
+    if publication.permissions == Permissions::Keep {
+        let permissions = std::fs::metadata(path)?.permissions();
+        temporary.as_file().set_permissions(permissions)?;
+    }
+    #[cfg(unix)]
+    if publication.permissions == Permissions::Executable {
+        use std::os::unix::fs::PermissionsExt;
+        // An executable is runnable whatever the umask.
+        temporary
+            .as_file()
+            .set_permissions(std::fs::Permissions::from_mode(0o755))?;
+    }
+    Ok(temporary.into_parts())
 }
 
 async fn finish(
@@ -169,13 +193,16 @@ async fn finish(
     }
     drop(file);
     let path: PathBuf = path.to_owned();
-    tokio::task::spawn_blocking(move || {
-        let persisted = match publication.mode {
-            Mode::CreateNew => temporary.persist_noclobber(&path),
-            Mode::Replace => temporary.persist(&path),
-        };
-        persisted.map_err(|error| Error::Io(error.error))
-    })
-    .await
-    .map_err(std::io::Error::other)?
+    tokio::task::spawn_blocking(move || persist(temporary, &path, publication.mode))
+        .await
+        .map_err(std::io::Error::other)?
+}
+
+/// Renames the staged file to `path`.
+fn persist(temporary: tempfile::TempPath, path: &Path, mode: Mode) -> Result<(), Error> {
+    let persisted = match mode {
+        Mode::CreateNew => temporary.persist_noclobber(path),
+        Mode::Replace => temporary.persist(path),
+    };
+    persisted.map_err(|error| Error::Io(error.error))
 }

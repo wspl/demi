@@ -51,14 +51,57 @@ impl From<garde::Report> for DecodeError {
     }
 }
 
-/// Every operation the package serves: the file operations, the browser
-/// operations and the live view.
-pub fn operations() -> impl Iterator<Item = &'static str> {
-    file::OPERATIONS
-        .iter()
-        .chain(browser::OPERATIONS)
-        .chain([&live::OPERATION])
-        .copied()
+/// An invocation of the package: the operation its name names, with the
+/// operation's checked arguments.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Operation {
+    File(file::FileOperation),
+    Browser(browser::BrowserOperation),
+    /// `browser.live`: a viewer of the conversation's browser.
+    Live,
+}
+
+/// Why an invocation could not be decoded. The part of the package whose
+/// operation it names reports the failure, each in its own way.
+#[derive(Debug, thiserror::Error)]
+pub enum OperationError {
+    #[error("unknown operation {0}")]
+    Unknown(String),
+    #[error(transparent)]
+    File(DecodeError),
+    #[error(transparent)]
+    Browser(DecodeError),
+}
+
+impl Operation {
+    /// Decodes the operation `name` and its arguments.
+    pub fn parse(name: &str, args: serde_json::Value) -> Result<Self, OperationError> {
+        if name == live::OPERATION {
+            return decode::<live::LiveInput>(args)
+                .map(|_| Self::Live)
+                .map_err(OperationError::Browser);
+        }
+        if let Some(browser) = name.strip_prefix(browser::PREFIX) {
+            return browser::BrowserOperation::parse(browser, args)
+                .map(Self::Browser)
+                .map_err(OperationError::Browser);
+        }
+        match file::FileOperation::parse(name, args) {
+            Ok(operation) => Ok(Self::File(operation)),
+            Err(DecodeError::UnknownOperation(name)) => Err(OperationError::Unknown(name)),
+            Err(error) => Err(OperationError::File(error)),
+        }
+    }
+
+    /// Every operation the package serves, as its descriptor lists them: the
+    /// file operations, the browser operations and the live view.
+    pub fn names() -> impl Iterator<Item = &'static str> {
+        file::OPERATIONS
+            .iter()
+            .chain(browser::OPERATIONS)
+            .chain([&live::OPERATION])
+            .copied()
+    }
 }
 
 /// Decodes a JSON value that entered the process and checks its rules.

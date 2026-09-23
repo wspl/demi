@@ -9,6 +9,14 @@ rust-version.workspace = true
 name = "demi-commands"
 path = "src/main.rs"
 
+[features]
+# Page-driving helpers for the Chrome tests.
+testing = []
+
+[[test]]
+name = "browser"
+required-features = ["testing"]
+
 [dependencies]
 demi-artifact = { path = "../artifact" }
 chromiumoxide = "=0.9.1"
@@ -17,6 +25,7 @@ garde.workspace = true
 thiserror.workspace = true
 demi-builtin-protocol = { path = "../builtin-protocol" }
 demi-command-service = { path = "../command-service" }
+demi-gates = { path = "../gates" }
 bytes.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -26,7 +35,6 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 tempfile = "3"
 regex = "1"
-globset = "0.4"
 base64 = "0.22"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
 sha2 = "0.10"
@@ -44,10 +52,7 @@ sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 
 [dev-dependencies]
 axum = "0.8"
-demi-runner = { path = "../runner" }
 uuid = { version = "1", features = ["v4"] }
-
-
 
 [package.metadata.demi]
 id = "demi.builtin"

@@ -2,7 +2,7 @@
 //! and the JSON its results and messages make.
 
 use demi_builtin_protocol::{
-    DecodeError,
+    DecodeError, Operation, OperationError,
     browser::{
         ActionResult, AssetsExportResult, BrowserErrorCode, BrowserFailure, BrowserInput,
         BrowserOperation, BrowserQuery, BrowserTarget, ErrorDetails, ExportedAsset, Load,
@@ -11,7 +11,7 @@ use demi_builtin_protocol::{
     capture::{CaptureEvent, FrameHeader},
     file::FileOperation,
     live::{FileHeader, LiveModuleMessage, LiveViewerMessage, VideoHeader},
-    release::{BrowserInstallation, BrowserRelease, BrowserRuntimeConfig},
+    release::{BrowserInstallation, BrowserRelease},
 };
 use serde_json::{Value, json};
 
@@ -157,7 +157,47 @@ fn file_arguments_refuse_empty_old_text_and_zero_positions() {
     }
     assert!(FileOperation::parse("file.read", json!({"path": "a", "extra": true})).is_err());
     assert!(FileOperation::parse("file.remove", json!({"path": "a"})).is_err());
-    assert_eq!(demi_builtin_protocol::operations().count(), 4 + 47 + 1);
+    assert_eq!(Operation::names().count(), 4 + 47 + 1);
+}
+
+#[test]
+fn an_invocation_decodes_to_the_part_of_the_package_its_name_names() {
+    assert!(matches!(
+        Operation::parse("file.read", json!({"path": "a"})),
+        Ok(Operation::File(FileOperation::Read(_)))
+    ));
+    assert!(matches!(
+        Operation::parse("browser.tabs", json!({})),
+        Ok(Operation::Browser(_))
+    ));
+    assert!(matches!(
+        Operation::parse("browser.live", json!({})),
+        Ok(Operation::Live)
+    ));
+    // Each part reports a refused argument itself.
+    assert!(matches!(
+        Operation::parse("file.read", json!({})),
+        Err(OperationError::File(_))
+    ));
+    assert!(matches!(
+        Operation::parse("browser.nothing", json!({})),
+        Err(OperationError::Browser(_))
+    ));
+    assert!(matches!(
+        Operation::parse("browser.live", json!({"tab": "t"})),
+        Err(OperationError::Browser(_))
+    ));
+    assert!(matches!(
+        Operation::parse("claude.ensure", json!({})),
+        Err(OperationError::Unknown(name)) if name == "claude.ensure"
+    ));
+    // Every listed name decodes, so the descriptor lists nothing unserved.
+    for name in Operation::names() {
+        assert!(
+            !matches!(Operation::parse(name, json!({})), Err(OperationError::Unknown(_))),
+            "{name}"
+        );
+    }
 }
 
 #[test]
@@ -329,9 +369,6 @@ fn release_records_and_receipts_are_checked() {
     let receipt = json!({"archiveHash": digest, "executableHash": digest}).to_string();
     assert!(BrowserInstallation::parse(receipt.as_bytes()).is_ok());
     assert!(BrowserInstallation::parse(br#"{"archiveHash": "x", "executableHash": "y"}"#).is_err());
-    assert!(BrowserRuntimeConfig::new("/home/user".into()).is_ok());
-    assert!(BrowserRuntimeConfig::new(String::new()).is_err());
-    assert!(BrowserRuntimeConfig::new("/home/\0".into()).is_err());
 }
 
 #[test]

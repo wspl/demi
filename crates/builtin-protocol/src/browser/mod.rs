@@ -9,6 +9,17 @@ use serde_with::rust::unwrap_or_skip;
 
 use crate::DecodeError;
 
+/// The prefix of every browser operation's name, as a literal for `concat!`.
+macro_rules! prefix {
+    () => {
+        "browser."
+    };
+}
+pub(crate) use prefix;
+
+/// The prefix of every browser operation's name, such as `browser.open`.
+pub const PREFIX: &str = prefix!();
+
 /// The deadline of an operation whose input names none, in milliseconds.
 pub const TIMEOUT_MS: u64 = 30_000;
 /// The longest deadline an input may name, and `open`'s default: a cold start

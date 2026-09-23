@@ -7,15 +7,15 @@ mod patch;
 
 use std::{future::Future, pin::Pin, sync::Arc};
 
-use bytes::Bytes;
-use demi_builtin_protocol::file::FileOperation;
-use demi_command_service::protocol::{CommandError, Completion, Invocation};
+use demi_builtin_protocol::{Operation, OperationError};
+use demi_command_service::protocol::{Completion, Invocation};
 use demi_command_service::{ConversationContext, Handler, InvocationContext, ServiceError};
-use tokio::{io::AsyncReadExt, sync::Mutex};
+use demi_gates::SerialGate;
 
 #[derive(Default)]
 pub struct DemiCommands {
-    mutations: Arc<Mutex<()>>,
+    /// File mutations run one at a time.
+    mutations: SerialGate,
     browsers: Arc<browser::Conversations>,
 }
 
@@ -36,92 +36,31 @@ impl Handler for DemiCommands {
     }
 
     fn operations(&self) -> Vec<String> {
-        demi_builtin_protocol::operations().map(String::from).collect()
+        Operation::names().map(String::from).collect()
     }
 
     fn invoke(
         &self,
         context: InvocationContext,
     ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
-        if context.request.operation.starts_with("browser.") {
-            let browsers = self.browsers.clone();
-            return Box::pin(async move { browsers.invoke(context).await });
-        }
-        let mutations = self.mutations.clone();
-        Box::pin(async move {
-            let result = if context.request.operation == "file.read" {
-                read(&context).await
-            } else {
-                let guard = tokio::select! {
-                    _ = context.cancellation.cancelled() => return Err(ServiceError::Cancelled),
-                    guard = mutations.lock_owned() => guard,
-                };
-                let request = context.request.clone();
-                let cancellation = context.cancellation.clone();
-                let result = tokio::task::spawn_blocking(move || {
-                    // The lock covers planning, writes and rollback, including cancellation.
-                    let _guard = guard;
-                    let recorder = request.edits.clone().and_then(|context| {
-                        match demi_command_service::edits::Recorder::new(context) {
-                            Ok(recorder) => Some(recorder),
-                            Err(error) => {
-                                eprintln!("edit recording failed: {error}");
-                                None
-                            }
-                        }
-                    });
-                    let mut recording = recorder.as_ref().and_then(|recorder| recorder.begin());
-                    files::mutate(&request, &cancellation, recording.as_mut())
-                })
-                .await
-                .map_err(|error| ServiceError::Handler(error.to_string()))?;
-                match result {
-                    Ok(message) => context.output.stdout(Bytes::from(message)).await,
-                    Err(error) => Err(ServiceError::Handler(error)),
-                }
-            };
-            match result {
-                Ok(()) => Ok(Completion {
-                    exit_code: 0,
-                    error: None,
-                }),
-                Err(ServiceError::Cancelled) => Err(ServiceError::Cancelled),
-                Err(error) => Ok(Completion {
-                    exit_code: 1,
-                    error: Some(CommandError {
-                        code: "command_failed".into(),
-                        message: error.to_string(),
-                    }),
-                }),
+        let browsers = self.browsers.clone();
+        match Operation::parse(&context.request.operation, context.request.args.clone()) {
+            Ok(Operation::File(operation)) => {
+                Box::pin(files::invoke(context, operation, self.mutations.clone()))
             }
-        })
-    }
-}
-
-async fn read(context: &InvocationContext) -> Result<(), ServiceError> {
-    let FileOperation::Read(args) =
-        FileOperation::parse(&context.request.operation, context.request.args.clone())
-            .map_err(|error| ServiceError::Handler(error.to_string()))?
-    else {
-        return Err(ServiceError::Handler("not a file read".into()));
-    };
-    let path =
-        files::resolve_path(&context.request.cwd, &args.path).map_err(ServiceError::Handler)?;
-    let mut file = tokio::fs::File::open(path)
-        .await
-        .map_err(|error| ServiceError::Handler(error.to_string()))?;
-    let mut buffer = vec![0; 64 * 1024];
-    loop {
-        let count = tokio::select! {
-            _ = context.cancellation.cancelled() => return Err(ServiceError::Cancelled),
-            result = file.read(&mut buffer) => result.map_err(|error| ServiceError::Handler(error.to_string()))?,
-        };
-        if count == 0 {
-            return Ok(());
+            Err(OperationError::File(error)) => {
+                Box::pin(async move { Ok(files::failure(&error.into())) })
+            }
+            Ok(Operation::Browser(operation)) => {
+                Box::pin(async move { browsers.invoke(context, Ok(operation)).await })
+            }
+            Err(OperationError::Browser(error)) => {
+                Box::pin(async move { browsers.invoke(context, Err(error)).await })
+            }
+            Ok(Operation::Live) => Box::pin(async move { browsers.live(context).await }),
+            Err(error @ OperationError::Unknown(_)) => {
+                Box::pin(async move { Err(ServiceError::Handler(error.to_string())) })
+            }
         }
-        context
-            .output
-            .stdout(Bytes::copy_from_slice(&buffer[..count]))
-            .await?;
     }
 }

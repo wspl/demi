@@ -57,6 +57,9 @@ pub enum BrowserError {
     ProtectedValue,
     #[error("browser could not start: {0}")]
     Unavailable(String),
+    /// Chrome for Testing could not be installed or found intact.
+    #[error("Chrome for Testing {0}")]
+    Installation(String),
     #[error("{source}")]
     Action {
         source: Box<BrowserError>,
@@ -277,7 +280,7 @@ impl BrowserError {
             Self::ResultTooLarge => BrowserErrorCode::ResultTooLarge,
             Self::UnsupportedCapability(_) => BrowserErrorCode::UnsupportedCapability,
             Self::ProtectedValue => BrowserErrorCode::ProtectedValue,
-            Self::Unavailable(_) => BrowserErrorCode::BrowserUnavailable,
+            Self::Unavailable(_) | Self::Installation(_) => BrowserErrorCode::BrowserUnavailable,
             Self::Cancelled => BrowserErrorCode::Cancelled,
             Self::Timeout => BrowserErrorCode::Timeout,
             Self::Busy => BrowserErrorCode::TabBusy,

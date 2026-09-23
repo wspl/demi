@@ -17,6 +17,11 @@ use crate::{
 /// streams).
 pub const OPERATION: &str = "browser.live";
 
+/// The view's arguments: none; the page and the module speak over the stream.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[serde(deny_unknown_fields)]
+pub struct LiveInput {}
+
 /// A frame's kind, the byte after its length.
 pub const CONTROL_FRAME: u8 = 1;
 /// A video frame: [`VideoHeader`], then H.264 Annex B data.
