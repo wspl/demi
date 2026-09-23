@@ -8,12 +8,10 @@ pub const RESERVED_NAMES: &[&str] = &[
     // Shell language words and builtins.
     ".", "bash", "break", "cd", "command", "continue", "echo", "exit", "export", "jobs", "local",
     "popd", "printf", "pushd", "read", "return", "set", "sh", "shift", "source", "test", "true",
-    "false", "unset", "wait",
-    // Coreutils and text tools.
+    "false", "unset", "wait", // Coreutils and text tools.
     "awk", "cat", "chmod", "cp", "cut", "du", "file", "find", "grep", "head", "jq", "ls", "mkdir",
     "mv", "nl", "rg", "rm", "sed", "sort", "stat", "tail", "tee", "touch", "tr", "tree", "uniq",
-    "wc", "xargs", "yq",
-    // Toolchains.
+    "wc", "xargs", "yq", // Toolchains.
     "bun", "cargo", "docker", "git", "go", "node", "npm", "pnpm", "python", "python3", "ruby",
     "rustc", "yarn",
 ];
