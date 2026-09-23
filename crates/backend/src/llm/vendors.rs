@@ -6,11 +6,10 @@
 use demi_core::{ProviderModelList, Timestamp};
 use demi_provider::models_dev::{ModelsDevClient, ModelsDevError, ModelsDevVendor};
 use demi_provider_anthropic_api::AnthropicConfig;
+use demi_provider_openai_api::{OpenAiConfig, VendorPolicy};
 use demi_web_api::providers::{Vendor, WireApi};
 use icu_collator::options::CollatorOptions;
 use icu_collator::{Collator, CollatorBorrowed};
-
-use super::families::VendorPolicy;
 
 /// The family and wire each models.dev client package is written for. A
 /// vendor of another package is not offered.
@@ -30,6 +29,7 @@ fn policy_of(vendor_id: &str) -> VendorPolicy {
     match vendor_id {
         "deepseek" => VendorPolicy {
             pass_back_reasoning_content: true,
+            ..VendorPolicy::default()
         },
         _ => VendorPolicy::default(),
     }
@@ -112,6 +112,7 @@ fn offered(vendor: &ModelsDevVendor) -> Option<Vendor> {
 fn official_base_url(vendor_id: &str) -> Option<String> {
     match vendor_id {
         "anthropic" => Some(AnthropicConfig::DEFAULT_BASE_URL.to_owned()),
+        "openai" => Some(OpenAiConfig::DEFAULT_BASE_URL.to_owned()),
         _ => None,
     }
 }
