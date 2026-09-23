@@ -10,8 +10,8 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use demi_provider::{Provider, Secret};
 use demi_provider::quota::QuotaError;
+use demi_provider::{Provider, Secret};
 use demi_web_api::auth::UserDto;
 use demi_web_api::error::ErrorCode;
 use demi_web_api::ids::{CredentialId, ProviderId};
@@ -70,8 +70,7 @@ pub(super) async fn list(
 }
 
 /// What the page can add: each subscription family with whether the scope
-/// holds its entry, and the models.dev vendors a registered family speaks
-/// to.
+/// holds its entry, and the models.dev vendors a family speaks to.
 pub(super) async fn catalog(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
@@ -87,8 +86,7 @@ pub(super) async fn catalog(
             configured: entries.iter().any(|entry| entry.family == family),
         })
         .collect();
-    let mut vendors = assembly.vendors().vendors().await.map_err(catalog_unavailable)?;
-    vendors.retain(|vendor| assembly.families().get(&vendor.provider_type).is_some());
+    let vendors = assembly.vendors().vendors().await.map_err(catalog_unavailable)?;
     Ok(Json(VendorCatalog { subscriptions, vendors }))
 }
 

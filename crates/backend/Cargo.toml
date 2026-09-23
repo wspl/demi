@@ -17,6 +17,8 @@ demi-core = { path = "../core" }
 demi-gates = { path = "../gates" }
 demi-provider = { path = "../provider" }
 demi-provider-anthropic-api = { path = "../provider-anthropic-api" }
+demi-provider-google = { path = "../provider-google" }
+demi-provider-openai-api = { path = "../provider-openai-api" }
 demi-web-api = { path = "../web-api" }
 aes-gcm = "0.10"
 # `std` for `password_hash::Error` as a `std::error::Error`; `password-hash`'s

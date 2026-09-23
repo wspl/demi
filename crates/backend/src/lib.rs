@@ -19,7 +19,7 @@ pub use backend::{Backend, ShutdownError, ShutdownErrors, StartError};
 pub use config::{BackendConfig, Config, ConfigError};
 pub use llm::families::{
     AccountBinding, ApiKeyArgs, FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry, ProviderFamily,
-    SubscriptionArgs, VendorPolicy,
+    SubscriptionArgs,
 };
 pub use shard::ShardPlacement;
 pub use vault::logins::LoginTiming;

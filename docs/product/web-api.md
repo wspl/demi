@@ -359,8 +359,9 @@ writes these overrides through its preference state adapter.
 `{ source: "vendor", vendorId, label, apiKey, baseUrl?, models? }` or
 `{ source: "custom", providerType, wireApi?, label, apiKey, baseUrl?, models? }`.
 The first derives the family, its wire and its endpoint from the vendor
-catalog, `GET /api/providers/catalog`, which lists only vendors a registered
-family speaks to; the second names the family explicitly. `wireApi` is
+catalog, `GET /api/providers/catalog`, which lists the
+[vendors from models.dev](../providers/providers.md#vendors-from-modelsdev);
+the second names the family explicitly. `wireApi` is
 `responses` or `chat-completions`, and only a family that speaks both takes
 it. A label has 1 to 80 characters after trimming, a key is one line of text,
 and `baseUrl` is an `http` or `https` URL. PATCH accepts label and, for
@@ -384,12 +385,16 @@ catalog never resends a failed message.
 
 `GET /api/models` is an account-wide catalog, independent of any conversation.
 Each provider carries its models, `sourceFetchedAt`, `stale` and `warnings`,
-its authentication and runtime health with the `availability` the backend
-derives from it, and whether its transport is a process. Each model carries
+its authentication and runtime health, the `availability` the backend derives
+from that health, and whether its transport is a process. `availability` is
+`{ type: "unavailable", reason: "authentication", message }` while the
+credential is missing or refused, `{ type: "unavailable", reason: "runtime",
+message }` with the runtime's message while the provider cannot run, and
+`{ type: "available" }` otherwise, unknown health included. Each model carries
 the `selection` the backend built from it. One provider's catalog failure does
-not remove the other providers or saved models. A static catalog, or one never fetched, reports the Unix epoch
-as `sourceFetchedAt`. `refresh=true` waits for a shared forced refresh; how
-catalogs are cached and refreshed is defined in
+not remove the other providers or saved models. A static catalog, or one never
+fetched, reports the Unix epoch as `sourceFetchedAt`. `refresh=true` waits for
+a shared forced refresh; how catalogs are cached and refreshed is defined in
 [Catalog cache](../providers/models.md#catalog-cache). The route does not wake
 Cloud or execute a model. The browser combines each provider's health with the
 state of the conversation's target and, for a provider whose transport is a
