@@ -17,7 +17,7 @@ async fn filesystem_requests_and_kill_remain_available_during_job() {
             root.path().join("logs"),
             root.path().into(),
             BTreeMap::new(),
-            pipes,
+            pipes, demi_runner::shell::ShellRuntime::current(),
         );
         host.handle_task(
             &Inbound::JobStart {
@@ -89,7 +89,7 @@ async fn job_environment_combines_device_request_and_owned_context() {
             root.path().join("logs"),
             root.path().into(),
             device,
-            pipes,
+            pipes, demi_runner::shell::ShellRuntime::current(),
         );
         host.handle_task(
             &Inbound::JobStart {
@@ -145,7 +145,7 @@ async fn raw_spawn_inherits_environment_only_when_requested() {
             ("DEVICE".into(), "device".into()),
             ("OVERRIDE".into(), "device".into()),
         ]),
-        pipes,
+        pipes, demi_runner::shell::ShellRuntime::current(),
     );
     for (id, inherit_env, env, expected) in [
         ("default", None, None, "device:device"),
