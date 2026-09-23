@@ -299,6 +299,9 @@ next to the wire's types, so that a command program depends on one crate.
     reading, quota, accounts and `runtime`), and `ProviderRuntime`, one
     session's runtime (`run`, `fresh`, `close`); `InferenceRequest`,
     `ProviderEvent`, `ProviderFailure` and its `ErrorCode`;
+  - the HTTP failure record and its standard reading (`HttpFailureRecord`,
+    `http_failure`, `read_http_failure`), and the text of a credential a
+    provider holds (`Secret`), which never prints;
   - the vendor-wire building blocks every HTTP provider decodes with:
     server-sent events, the two-step decode of payloads tagged by `type`, and
     the OpenAI-shaped Responses and Chat Completions formats with their stream
@@ -308,7 +311,8 @@ next to the wire's types, so that a command program depends on one crate.
     models.dev client; the catalog, state, account and quota shapes they
     return are `core`'s, because the browser receives them.
 - **Public boundary:** the items above; `provider::testing` supplies scripted
-  runtimes (`ScriptedRuntime`). Behavior: [Providers](../providers/providers.md),
+  runtimes (`ScriptedRuntime`), a scripted vendor server (`MockVendor`) and a
+  fixed clock (`FixedClock`). Behavior: [Providers](../providers/providers.md),
   [Models](../providers/models.md),
   [Usage and quota](../providers/usage-and-quota.md) and
   [Failures and recovery](../agent/failures-and-recovery.md).
