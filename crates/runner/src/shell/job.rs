@@ -10,13 +10,16 @@ use std::{
     path::PathBuf,
     sync::{Arc, OnceLock},
 };
-use tokio::sync::{mpsc, watch};
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 pub struct Job {
     pub input: mpsc::Sender<ProcessInput>,
     pub output: mpsc::Receiver<OutputChunk>,
-    exited: watch::Receiver<Option<(ProcessExit, Option<String>)>>,
+    /// Ends with the job's exit and last working directory, once everything
+    /// the job ran has finished.
+    owner: Option<tokio::task::JoinHandle<(ProcessExit, Option<String>)>>,
+    exited: Option<(ProcessExit, Option<String>)>,
     cancel: CancellationToken,
     requested_signal: Arc<OnceLock<String>>,
 }
@@ -84,39 +87,15 @@ impl Job {
                 crate::stdio::live_reference(&input_reference)?,
             );
         }
-        let (input, mut receiver) = mpsc::channel(4);
+        let (input, receiver) = mpsc::channel(4);
         let (sender, output) = mpsc::channel(4);
-        let (finished, exited) = watch::channel(None);
         let cancel = scope.cancellation.clone();
         let owner_cancel = cancel.clone();
         let requested_signal = Arc::new(OnceLock::<String>::new());
         let owner_signal = requested_signal.clone();
         scope.cancellation = cancel.child_token();
-        let input_scope = Scope::new(cancel.child_token(), None);
-        let writer_scope = input_scope.clone();
-        let writer = shell.spawn_blocking(move || -> io::Result<()> {
-            let runtime = tokio::runtime::Handle::current();
-            loop {
-                let item = runtime.block_on(async {
-                    tokio::select! {
-                        _ = writer_scope.cancellation.cancelled() => None,
-                        item = receiver.recv() => item,
-                    }
-                });
-                match item {
-                    Some(ProcessInput::Bytes(mut bytes)) => {
-                        while !bytes.is_empty() {
-                            let count = writer_scope.write(&input_writer, &bytes)?;
-                            if count == 0 {
-                                return Err(io::ErrorKind::WriteZero.into());
-                            }
-                            bytes = bytes.slice(count..);
-                        }
-                    }
-                    Some(ProcessInput::End) | None => return Ok(()),
-                }
-            }
-        });
+        let input_cancel = cancel.child_token();
+        let writer = feed(shell, input_writer, receiver, input_cancel.clone());
         let readers = [
             pump(
                 shell,
@@ -152,9 +131,9 @@ impl Job {
             runtime.block_on(scope.finish());
             outcome
         });
-        tokio::spawn(async move {
+        let owner = tokio::spawn(async move {
             let outcome = worker.await;
-            input_scope.cancellation.cancel();
+            input_cancel.cancel();
             let mut error = match writer.await {
                 Ok(Err(error))
                     if !matches!(
@@ -170,7 +149,6 @@ impl Job {
                 Err(error) => Some(error.to_string()),
                 _ => None,
             };
-            input_scope.finish().await;
             for reader in readers {
                 match reader.await {
                     Ok(Err(failure)) if !owner_cancel.is_cancelled() => {
@@ -198,7 +176,7 @@ impl Job {
                     (None, None)
                 }
             };
-            finished.send_replace(Some((
+            (
                 ProcessExit {
                     code,
                     signal: owner_cancel.is_cancelled().then(|| {
@@ -214,12 +192,13 @@ impl Job {
                     },
                 },
                 cwd,
-            )));
+            )
         });
         Ok(Self {
             input,
             output,
-            exited,
+            owner: Some(owner),
+            exited: None,
             cancel,
             requested_signal,
         })
@@ -246,22 +225,21 @@ impl Job {
             )),
         }
     }
+    /// The job's exit, once everything it ran has finished.
     pub async fn wait(&mut self) -> (ProcessExit, Option<String>) {
-        loop {
-            if let Some(exit) = self.exited.borrow_and_update().clone() {
-                return exit;
-            }
-            if self.exited.changed().await.is_err() {
-                return (
+        if let Some(owner) = self.owner.take() {
+            self.exited = Some(owner.await.unwrap_or_else(|_| {
+                (
                     ProcessExit {
                         code: None,
                         signal: None,
-                        error: Some("shell owner ended without status".into()),
+                        error: Some("the shell job's owner panicked".into()),
                     },
                     None,
-                );
-            }
+                )
+            }));
         }
+        self.exited.clone().expect("the owner left the exit")
     }
 }
 
@@ -271,6 +249,68 @@ impl Drop for Job {
     }
 }
 
+/// Writes the job's input into its stdin pipe. On Unix the runner's end is
+/// asynchronous and takes no thread; on Windows it takes one of the shell
+/// pool's.
+fn feed(
+    shell: &ShellRuntime,
+    file: File,
+    mut receiver: mpsc::Receiver<ProcessInput>,
+    cancel: CancellationToken,
+) -> tokio::task::JoinHandle<io::Result<()>> {
+    #[cfg(unix)]
+    {
+        use tokio::io::AsyncWriteExt;
+        let _ = shell;
+        tokio::spawn(async move {
+            let mut pipe = tokio::net::unix::pipe::Sender::from_file(file)?;
+            loop {
+                let item = tokio::select! {
+                    _ = cancel.cancelled() => return Ok(()),
+                    item = receiver.recv() => item,
+                };
+                let Some(ProcessInput::Bytes(bytes)) = item else {
+                    return Ok(());
+                };
+                tokio::select! {
+                    _ = cancel.cancelled() => return Ok(()),
+                    written = pipe.write_all(&bytes) => written?,
+                }
+            }
+        })
+    }
+    #[cfg(windows)]
+    {
+        shell.spawn_blocking(move || -> io::Result<()> {
+            let scope = Scope::new(cancel, None);
+            let runtime = tokio::runtime::Handle::current();
+            loop {
+                let item = runtime.block_on(async {
+                    tokio::select! {
+                        _ = scope.cancellation.cancelled() => None,
+                        item = receiver.recv() => item,
+                    }
+                });
+                match item {
+                    Some(ProcessInput::Bytes(mut bytes)) => {
+                        while !bytes.is_empty() {
+                            let count = scope.write(&file, &bytes)?;
+                            if count == 0 {
+                                return Err(io::ErrorKind::WriteZero.into());
+                            }
+                            bytes = bytes.slice(count..);
+                        }
+                    }
+                    Some(ProcessInput::End) | None => return Ok(()),
+                }
+            }
+        })
+    }
+}
+
+/// Reads one of the job's output pipes into chunks for the task. On Unix the
+/// runner's end is asynchronous and takes no thread; on Windows it takes one
+/// of the shell pool's.
 fn pump(
     shell: &ShellRuntime,
     file: File,
@@ -278,13 +318,20 @@ fn pump(
     sender: mpsc::Sender<OutputChunk>,
     cancel: CancellationToken,
 ) -> tokio::task::JoinHandle<io::Result<()>> {
-    shell.spawn_blocking(move || {
-        let scope = Scope::new(cancel.clone(), None);
-        let runtime = tokio::runtime::Handle::current();
-        let mut buffer = vec![0; 64 * 1024];
-        let result = (|| {
+    let cancelled = || io::Error::new(io::ErrorKind::Interrupted, "job output cancelled");
+    let closed = || io::Error::new(io::ErrorKind::BrokenPipe, "job output consumer closed");
+    #[cfg(unix)]
+    {
+        use tokio::io::AsyncReadExt;
+        let _ = shell;
+        tokio::spawn(async move {
+            let mut pipe = tokio::net::unix::pipe::Receiver::from_file(file)?;
+            let mut buffer = vec![0; 64 * 1024];
             loop {
-                let count = scope.read(&file, &mut buffer)?;
+                let count = tokio::select! {
+                    _ = cancel.cancelled() => return Err(cancelled()),
+                    count = pipe.read(&mut buffer) => count?,
+                };
                 if count == 0 {
                     return Ok(());
                 }
@@ -292,17 +339,41 @@ fn pump(
                     stream,
                     bytes: Bytes::copy_from_slice(&buffer[..count]),
                 };
-                runtime.block_on(async {
                 tokio::select! {
-                    _ = cancel.cancelled() => Err(io::Error::new(io::ErrorKind::Interrupted, "job output cancelled")),
-                    result = sender.send(chunk) => result.map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "job output consumer closed")),
+                    _ = cancel.cancelled() => return Err(cancelled()),
+                    sent = sender.send(chunk) => sent.map_err(|_| closed())?,
                 }
-            })?;
             }
-        })();
-        runtime.block_on(scope.finish());
-        result
-    })
+        })
+    }
+    #[cfg(windows)]
+    {
+        shell.spawn_blocking(move || {
+            let scope = Scope::new(cancel.clone(), None);
+            let runtime = tokio::runtime::Handle::current();
+            let mut buffer = vec![0; 64 * 1024];
+            let result = (|| {
+                loop {
+                    let count = scope.read(&file, &mut buffer)?;
+                    if count == 0 {
+                        return Ok(());
+                    }
+                    let chunk = OutputChunk {
+                        stream,
+                        bytes: Bytes::copy_from_slice(&buffer[..count]),
+                    };
+                    runtime.block_on(async {
+                        tokio::select! {
+                            _ = cancel.cancelled() => Err(cancelled()),
+                            result = sender.send(chunk) => result.map_err(|_| closed()),
+                        }
+                    })?;
+                }
+            })();
+            runtime.block_on(scope.finish());
+            result
+        })
+    }
 }
 
 pub(super) fn pipe() -> io::Result<(File, File)> {
