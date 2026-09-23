@@ -41,6 +41,38 @@ pub struct Publication {
     pub durable: bool,
 }
 
+/// A file being published: what the caller writes to it stays out of sight
+/// at its path until `publish`, and dropping it unpublished removes it.
+pub struct Staged {
+    file: tokio::fs::File,
+    temporary: tempfile::TempPath,
+    path: PathBuf,
+    publication: Publication,
+}
+
+impl Staged {
+    /// A temporary file beside `path` with the publication's permissions.
+    pub async fn new(path: &Path, publication: Publication) -> Result<Self, Error> {
+        let (file, temporary) = stage(path, publication).await?;
+        Ok(Self {
+            file: tokio::fs::File::from_std(file),
+            temporary,
+            path: path.to_owned(),
+            publication,
+        })
+    }
+
+    /// The staged file, for the caller to fill.
+    pub fn file(&mut self) -> &mut tokio::fs::File {
+        &mut self.file
+    }
+
+    /// Makes the staged bytes the file at the path.
+    pub async fn publish(self) -> Result<(), Error> {
+        finish(self.file, self.temporary, &self.path, self.publication).await
+    }
+}
+
 /// Publishes what `input` yields at `path`.
 pub async fn publish(
     path: &Path,
@@ -48,8 +80,7 @@ pub async fn publish(
     publication: Publication,
     cancel: &CancellationToken,
 ) -> Result<(), Error> {
-    let (file, temporary) = stage(path, publication).await?;
-    let mut file = tokio::fs::File::from_std(file);
+    let mut staged = Staged::new(path, publication).await?;
     let mut buffer = vec![0; 64 * 1024];
     loop {
         let count = tokio::select! {
@@ -59,17 +90,16 @@ pub async fn publish(
         if count == 0 {
             break;
         }
-        file.write_all(&buffer[..count]).await?;
+        staged.file().write_all(&buffer[..count]).await?;
     }
-    finish(file, temporary, path, publication).await
+    staged.publish().await
 }
 
 /// Publishes `bytes` at `path`.
 pub async fn publish_bytes(path: &Path, bytes: &[u8], publication: Publication) -> Result<(), Error> {
-    let (file, temporary) = stage(path, publication).await?;
-    let mut file = tokio::fs::File::from_std(file);
-    file.write_all(bytes).await?;
-    finish(file, temporary, path, publication).await
+    let mut staged = Staged::new(path, publication).await?;
+    staged.file().write_all(bytes).await?;
+    staged.publish().await
 }
 
 /// Moves the directory `staged` to `destination`, replacing a directory

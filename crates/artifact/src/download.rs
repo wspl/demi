@@ -38,7 +38,12 @@ pub async fn download(
         _ = cancel.cancelled() => return Err(Error::Cancelled),
         response = client.get(url).send() => response.map_err(failed)?,
     };
-    let response = response.error_for_status().map_err(failed)?;
+    // With redirects off, a redirect is an answer that is not the artifact.
+    if !response.status().is_success() {
+        return Err(Error::Rejected {
+            status: response.status().as_u16(),
+        });
+    }
     if let Some(length) = response.content_length()
         && length != expected.size
     {

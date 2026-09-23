@@ -18,7 +18,7 @@ impl Handler for Fixture {
     type Metadata = Invocation;
 
     fn operations(&self) -> Vec<String> {
-        ["where", "echo", "first", "spin", "result", "retain"]
+        ["where", "echo", "first", "spin", "result", "retain", "crash"]
             .map(String::from)
             .to_vec()
     }
@@ -36,6 +36,12 @@ impl Handler for Fixture {
                         .lock()
                         .unwrap()
                         .insert(context.request.context.conversation);
+                }
+                // The whole service fails, leaving its last words on
+                // standard error.
+                "crash" => {
+                    eprintln!("fixture crashing on purpose");
+                    std::process::exit(3);
                 }
                 "where" => {
                     let value = serde_json::json!({
@@ -103,6 +109,10 @@ impl Handler for Fixture {
             let value = {
                 let mut held = conversations.lock().unwrap();
                 match &context.request {
+                    // A service that cannot say what it holds.
+                    ConversationRequest::Status {} if held.contains("unanswerable") => {
+                        return Err(ServiceError::Handler("fixture status unavailable".into()));
+                    }
                     ConversationRequest::Status {} => {
                         serde_json::json!({ "conversations": *held })
                     }

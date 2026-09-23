@@ -7,10 +7,10 @@ use demi_runner::{
     commands::contexts::Contexts,
     commands::dispatch::Dispatcher,
     commands::local::Server,
-    commands::native::{self, Services},
     commands::rpc::Calls,
     management::Management,
     pipes::PipeClient,
+    services::{ServiceRegistry, target},
 };
 use serde_json::{Value, json};
 use std::{
@@ -40,7 +40,7 @@ impl AsyncRead for NeverRead {
 struct Fixture {
     _directory: tempfile::TempDir,
     contexts: Contexts,
-    services: Arc<Services>,
+    services: ServiceRegistry,
     calls: Arc<Calls>,
     server: Server,
     dispatcher: Arc<Dispatcher>,
@@ -52,9 +52,16 @@ impl Fixture {
     async fn new() -> Self {
         let directory = tempfile::tempdir().unwrap();
         let cwd = directory.path().to_owned();
-        let contexts = Contexts::new(cwd.join("manifests"), std::env::current_exe().unwrap())
+        let services = ServiceRegistry::new(cwd.join("artifacts"), cwd.clone(), BTreeMap::new())
             .await
             .unwrap();
+        let contexts = Contexts::new(
+            cwd.join("manifests"),
+            std::env::current_exe().unwrap(),
+            services.handle(),
+        )
+        .await
+        .unwrap();
         let body = json!({"roots": {"fixture": {"tree": {
             "name": "fixture", "summary": "Test callback.", "kind": "rpc", "runningHint": "Working",
             "input": {"type": "object", "properties": {"body": {"type": "string"}}, "required": ["body"]}, "stdinField": "body"
@@ -63,15 +70,7 @@ impl Fixture {
         let mut manifest = body;
         manifest["hash"] = hash.clone().into();
         contexts.install(manifest).await.unwrap();
-        let services = Services::new(
-            cwd.join("artifacts"),
-            native::target().into(),
-            cwd,
-            BTreeMap::new(),
-        )
-        .await
-        .unwrap();
-        let resolver = Artifacts::new(contexts.clone(), native::target().into());
+        let resolver = Artifacts::new(contexts.clone(), target().into());
         let calls =
             Calls::new(PipeClient::new("http://127.0.0.1:1", Arc::new(RwLock::new(None))).unwrap());
         let (output, outgoing) = mpsc::channel(32);
@@ -79,7 +78,7 @@ impl Fixture {
         let management = Management::new("a".repeat(32), "test".into(), CancellationToken::new());
         let dispatcher = Arc::new(Dispatcher {
             contexts: contexts.clone(),
-            services: services.clone(),
+            services: services.handle(),
             resolver,
             calls: calls.clone(),
             management,

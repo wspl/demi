@@ -1,13 +1,11 @@
-//! Declared commands, artifact acquisition and resident command services.
+//! Declared commands: execution contexts, dispatch, application callbacks,
+//! artifact locations and user streams.
 
 pub mod artifacts;
-pub mod cache;
 pub mod command_client;
 pub mod command_output;
 pub mod contexts;
 pub mod dispatch;
 pub mod local;
-pub mod native;
 pub mod rpc;
-pub mod services;
 pub mod streams;

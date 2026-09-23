@@ -1,4 +1,4 @@
-use demi_runner::commands::services::ResidentService;
+use demi_runner::services::process::ResidentService;
 use std::{collections::BTreeMap, process::Stdio, time::Duration};
 
 use demi_command_service::{
@@ -477,12 +477,11 @@ async fn resident_executable_runs_all_builtin_file_operations() {
 #[tokio::test]
 async fn verified_artifact_launches_and_retires_through_runtime() {
     use demi_command_service::protocol::{PackageArtifact, PackageDescriptor, TARGETS};
-    use demi_runner::commands::cache::{
-        ArtifactCache, ArtifactResolver, ArtifactSource, RuntimeError,
+    use demi_runner::services::{
+        ArtifactResolver, ArtifactSource, RuntimeError, cache::ArtifactCache,
     };
     use futures_util::future::BoxFuture;
     use sha2::{Digest, Sha256};
-    use std::sync::Arc;
     use tokio_util::sync::CancellationToken;
     struct Local;
     impl ArtifactResolver for Local {
@@ -511,14 +510,16 @@ async fn verified_artifact_launches_and_retires_through_runtime() {
             "targets": TARGETS.iter().map(|target| (target.to_string(), serde_json::to_value(&artifact).unwrap())).collect::<BTreeMap<_, _>>()
         })).unwrap();
         let cache = ArtifactCache::new(root.path().join("cache")).await.unwrap();
-        let executable = cache.acquire(artifact, Arc::new(Local), &CancellationToken::new()).await.unwrap();
-        let service = ResidentService::start(&executable, &package, root.path(), &BTreeMap::new()).await.unwrap();
+        let executable = cache.install(&artifact, &Local, &CancellationToken::new()).await.unwrap();
+        let stop = CancellationToken::new();
+        let service = ResidentService::start(&executable, &package, root.path(), &BTreeMap::new(), stop.clone()).await.unwrap();
         let pid = service.pid();
         let (result, _, _) = call(service.client(), root.path().to_str().unwrap(), "file.create", serde_json::json!({"path":"through-cache", "content":"hello"})).await;
         assert_eq!(result.exit_code, 0);
         assert_eq!(std::fs::read(root.path().join("through-cache")).unwrap(), b"hello");
         assert_eq!(service.pid(), pid);
-        service.shutdown().await.unwrap();
-        cache.shutdown().await;
+        stop.cancel();
+        let ended = service.ended().await;
+        assert!(ended.reason.is_none(), "{:?}: {}", ended.reason, ended.stderr);
     }).await.unwrap();
 }

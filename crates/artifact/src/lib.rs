@@ -15,7 +15,7 @@ pub use archive::extract_zip;
 pub use digest::{Digest, Verifier, digest};
 pub use download::{client, copy, download};
 pub use lock::InstallLock;
-pub use publish::{Mode, Permissions, Publication, publish, publish_bytes, publish_directory};
+pub use publish::{Mode, Permissions, Publication, Staged, publish, publish_bytes, publish_directory};
 
 #[cfg(feature = "testing")]
 pub mod testing {
@@ -35,10 +35,13 @@ pub mod testing {
 pub enum Error {
     #[error(transparent)]
     Io(#[from] std::io::Error),
-    /// The request failed or answered an error status; the message leaves
-    /// out the URL, which may carry a signature.
+    /// The request failed; the message leaves out the URL, which may carry
+    /// a signature.
     #[error("{0}")]
     Download(String),
+    /// The server answered with a status other than success.
+    #[error("the server answered {status}")]
+    Rejected { status: u16 },
     #[error("the artifact has more than its declared {declared} bytes")]
     TooLarge { declared: u64 },
     #[error("the artifact has {actual} bytes, not the declared {declared}")]

@@ -152,7 +152,7 @@ async fn runner(args: Vec<String>) -> io::Result<u8> {
     };
     let identity = identity(home)?;
     let runner = demi_runner::connection::wire::RunnerInfo {
-        native_target: Some(demi_runner::commands::native::target().into()),
+        native_target: Some(demi_runner::services::target().into()),
         name: env
             .get("DEMI_RUNNER_NAME")
             .cloned()
