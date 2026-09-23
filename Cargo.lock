@@ -1460,6 +1460,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "demi-provider-anthropic-api"
+version = "0.1.3"
+dependencies = [
+ "async-stream",
+ "demi-core",
+ "demi-provider",
+ "futures-util",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "demi-runner"
 version = "0.1.3"
 dependencies = [

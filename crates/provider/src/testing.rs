@@ -255,7 +255,18 @@ pub struct MockResponse {
     status: StatusCode,
     headers: Vec<(HeaderName, HeaderValue)>,
     chunks: Vec<Bytes>,
-    stay_open: bool,
+    ending: Ending,
+}
+
+/// What a response does after its chunks.
+#[derive(Debug, Clone, Copy)]
+enum Ending {
+    /// The body ends.
+    Complete,
+    /// The body stays open until the client leaves.
+    Open,
+    /// The connection breaks before the body ends.
+    Broken,
 }
 
 impl MockResponse {
@@ -265,7 +276,7 @@ impl MockResponse {
             status: StatusCode::from_u16(status).expect("a scripted status is valid"),
             headers: Vec::new(),
             chunks: Vec::new(),
-            stay_open: false,
+            ending: Ending::Complete,
         }
     }
 
@@ -294,7 +305,13 @@ impl MockResponse {
     /// The server sends an event-stream comment every 10 ms meanwhile, so that
     /// it notices the client leaving.
     pub fn stay_open(mut self) -> Self {
-        self.stay_open = true;
+        self.ending = Ending::Open;
+        self
+    }
+
+    /// Breaks the connection after the chunks, before the body is complete.
+    pub fn break_off(mut self) -> Self {
+        self.ending = Ending::Broken;
         self
     }
 }
@@ -372,15 +389,26 @@ async fn answer(State(state): State<Arc<VendorState>>, request: Request) -> Resp
         return response;
     };
     let chunks = stream::iter(scripted.chunks.into_iter().map(Ok::<_, std::io::Error>));
-    let body: BoxStream<'static, Result<Bytes, std::io::Error>> = if scripted.stay_open {
-        let guard = LeaveGuard(state.clone());
-        let pings = stream::unfold(guard, |guard| async move {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-            Some((Ok(Bytes::from_static(b": ping\n\n")), guard))
-        });
-        chunks.chain(pings).boxed()
-    } else {
-        chunks.boxed()
+    let body: BoxStream<'static, Result<Bytes, std::io::Error>> = match scripted.ending {
+        Ending::Complete => chunks.boxed(),
+        Ending::Open => {
+            let guard = LeaveGuard(state.clone());
+            let pings = stream::unfold(guard, |guard| async move {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+                Some((Ok(Bytes::from_static(b": ping\n\n")), guard))
+            });
+            chunks.chain(pings).boxed()
+        }
+        // A body stream that fails makes the server drop the connection
+        // without ending the body. The pause before it lets the server flush
+        // what came before, which it does when the body has nothing ready.
+        Ending::Broken => {
+            let failure = async {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                Err(std::io::Error::other("MockVendor breaks the connection"))
+            };
+            chunks.chain(stream::once(failure)).boxed()
+        }
     };
     let mut response = Response::new(Body::from_stream(body));
     *response.status_mut() = scripted.status;

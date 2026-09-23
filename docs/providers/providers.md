@@ -202,6 +202,12 @@ A run yields these events:
 | Response | The token usage of the run's final API call |
 | Error | A failure: its message, a typed code, its diagnostics and the wait the vendor asked for |
 
+Signatures and redacted reasoning are sent back only to the vendor that
+issued them, because a vendor refuses a signature it did not sign. Each
+provider marks what it receives so that it recognizes its own on replay: the
+`anthropic` family prefixes it with `anthropic:`, and replays thinking without
+a signature of its own, or another vendor's, not at all.
+
 A run ends after its response, after an error, after the last tool call of a
 batch, or when it is cancelled. An HTTP provider's tool calls are followed by
 the response of the API call that produced them. Claude Code's CLI needs the
