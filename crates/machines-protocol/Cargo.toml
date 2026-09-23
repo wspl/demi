@@ -1,0 +1,20 @@
+[package]
+name = "demi-machines-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+
+[lib]
+# No doc examples: rustdoc has nothing to test.
+doctest = false
+
+[dependencies]
+demi-command-service = { path = "../command-service" }
+demi-runner-protocol = { path = "../runner-protocol" }
+garde.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_plain.workspace = true
+thiserror.workspace = true

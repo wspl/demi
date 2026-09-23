@@ -1,0 +1,32 @@
+table inet demi_cloud {
+	set slots {
+		type ifname . ipv4_addr
+	}
+
+	chain input {
+		type filter hook input priority filter - 10; policy accept;
+		iifname "demih*" jump ingress
+	}
+
+	chain forward {
+		type filter hook forward priority filter - 10; policy accept;
+		iifname "demih*" jump ingress
+		oifname "demih*" ct state established,related accept
+		oifname "demih*" drop
+	}
+
+	chain ingress {
+		meta nfproto != ipv4 drop
+		iifname . ip saddr != @slots drop
+		ip daddr 203.0.113.10 tcp dport 3271 accept
+		ip daddr { 1.1.1.1, 8.8.8.8 } meta l4proto { tcp, udp } th dport 53 accept
+		fib daddr type local drop
+		ip daddr { 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.0.0.0/24, 192.0.2.0/24, 192.168.0.0/16, 198.18.0.0/15, 198.51.100.0/24, 203.0.113.0/24, 224.0.0.0/3 } drop
+		accept
+	}
+
+	chain nat {
+		type nat hook postrouting priority srcnat; policy accept;
+		ip saddr 172.30.0.0/16 oifname != "demih*" masquerade
+	}
+}
