@@ -91,7 +91,7 @@ impl NetStreams {
                     }
                 }
                 Err(error) => {
-                    crate::host_log::runner(format_args!("net_opened encoding failed: {error}"));
+                    tracing::warn!("net_opened encoding failed: {error}");
                     return;
                 }
             }
@@ -272,6 +272,6 @@ async fn send_net_error(
                 _ = output.send(message) => {},
             }
         }
-        Err(error) => crate::host_log::runner(format_args!("net_error encoding failed: {error}")),
+        Err(error) => tracing::warn!("net_error encoding failed: {error}"),
     }
 }
