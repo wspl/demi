@@ -10,7 +10,7 @@ use process_wrap::tokio::{ChildWrapper, CommandWrap, KillOnDrop};
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWriteExt},
     process::Command,
-    sync::{mpsc, watch},
+    sync::mpsc,
     task::JoinSet,
 };
 use tokio_util::sync::CancellationToken;
@@ -56,7 +56,9 @@ pub struct ChildProcess {
     pub input: mpsc::Sender<ProcessInput>,
     pub output: mpsc::Receiver<OutputChunk>,
     signals: mpsc::Sender<String>,
-    exited: watch::Receiver<Option<ProcessExit>>,
+    /// Ends with the process's exit, once it is reaped and its pipes drained.
+    owner: Option<tokio::task::JoinHandle<ProcessExit>>,
+    exited: Option<ProcessExit>,
     cancel: CancellationToken,
     pub pid: u32,
 }
@@ -98,10 +100,9 @@ impl ChildProcess {
         let (input, mut input_rx) = mpsc::channel(4);
         let (output_tx, output) = mpsc::channel(4);
         let (signals, mut signal_rx) = mpsc::channel::<String>(4);
-        let (exit_tx, exited) = watch::channel(None);
         let cancel = CancellationToken::new();
         let owner_cancel = cancel.clone();
-        tokio::spawn(async move {
+        let owner = tokio::spawn(async move {
             let io_cancel = CancellationToken::new();
             let stdin_cancel = CancellationToken::new();
             let mut readers = JoinSet::new();
@@ -197,7 +198,7 @@ impl ChildProcess {
                     }
                 }
             }
-            let result = match status {
+            match status {
                 Ok(status) => ProcessExit {
                     code: status.code(),
                     signal: exit_signal(status),
@@ -208,14 +209,14 @@ impl ChildProcess {
                     signal: None,
                     error: Some(error.to_string()),
                 },
-            };
-            exit_tx.send_replace(Some(result));
+            }
         });
         Ok(Self {
             input,
             output,
             signals,
-            exited,
+            owner: Some(owner),
+            exited: None,
             cancel,
             pid,
         })
@@ -236,19 +237,16 @@ impl ChildProcess {
         self.cancel.cancel();
     }
 
+    /// The process's exit, once it is reaped and its pipes drained.
     pub async fn wait(&mut self) -> ProcessExit {
-        loop {
-            if let Some(exit) = self.exited.borrow_and_update().clone() {
-                return exit;
-            }
-            if self.exited.changed().await.is_err() {
-                return ProcessExit {
-                    code: None,
-                    signal: None,
-                    error: Some("process owner ended without status".into()),
-                };
-            }
+        if let Some(owner) = self.owner.take() {
+            self.exited = Some(owner.await.unwrap_or_else(|_| ProcessExit {
+                code: None,
+                signal: None,
+                error: Some("the process's owner panicked".into()),
+            }));
         }
+        self.exited.clone().expect("the owner left the exit")
     }
 }
 
