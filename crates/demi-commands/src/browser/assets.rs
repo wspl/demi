@@ -75,12 +75,8 @@ pub(super) async fn execute(
 ) -> Result<Value> {
     let tab = tab.ok_or(BrowserError::TabNotFound)?;
     let operation = Operation::for_tab(tab, cancel, deadline);
-    let _guard = tab
-        .state
-        .operations
-        .try_lock()
-        .map_err(|_| BrowserError::Busy)?;
-    let mut state = tab.state.assets.lock().await;
+    let mut session = tab.state.gate.try_checkout().ok_or(BrowserError::Busy)?;
+    let state = &mut session.assets;
     let frames = operation.run(inventory_frames(&tab.page)).await?;
     let documents = frames
         .iter()
