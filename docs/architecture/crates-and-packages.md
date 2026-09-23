@@ -92,7 +92,8 @@ next to the wire's types, so that a command program depends on one crate.
   - user and tool content (`UserContentBlock`, `MediaSource`,
     `ToolResultContentBlock`), the blob references stored media travels by
     (`BlobRef`), the tag that names an attachment to a model
-    (`attachment_tag`), and the one test of a blank text (`is_blank`);
+    (`attachment_tag`), and the one test of a blank text with the trim that
+    goes with it (`is_blank`, `trim`);
   - models and their selection (`Model`, `ModelSelection`, `ThinkingConfig`)
     and token usage (`TokenUsage`);
   - tool views (`ToolView`, `ShellToolView`, `OutputChunk`, `EditedFile`) and
@@ -101,15 +102,27 @@ next to the wire's types, so that a command program depends on one crate.
   - agent messages (`AgentMessage`, `CompletionId`);
   - the session phase, queued messages and pending steers;
   - provider failure facts (`ProviderFailureFacts`, `ProviderErrorDiagnostics`);
+  - what the product shows of a provider entry: its model catalog
+    (`ProviderModelList`, `ProviderModel`, `ServiceTier`, `ModelCost`), which
+    carries portable facts only and never a source label such as
+    `codex-backend`, `models.dev` or `cache`, with the one conversion of a
+    catalog model into a selection (`ProviderModel::selection`, with the
+    attachment types it derives, `ATTACHMENT_FILE_EXTENSIONS`); its authentication and runtime
+    states (`AuthState`, `RuntimeState`); its subscription accounts as the
+    browser sees them (`AccountInfo`, `LoginPending`); and an account's quota
+    snapshot (`QuotaSnapshot`, `QuotaWindow`, `QuotaPlan` and their sets);
   - the identities blocks and frames name (`BlockId`, `TurnId`, `NodeId`,
-    `WakeupId`, `ShellId`, `CommandId`, `OperationId`);
+    `WakeupId`, `ShellId`, `CommandId`, `OperationId`), and the macro every
+    crate declares a checked identity with (`id!`): a string newtype that
+    serializes as itself and holds only the strings its check accepts;
   - the file-type table the product previews by (`preview_media_type`,
     `shows_in_place`), and the media types a model accepts with their sniffing
     (`sniff_model_media_type`);
-  - base64 bytes (`B64Bytes`), times (`Timestamp`), the schema marker of
-    nullable fields (`Nullable`), and the decode function of every boundary
-    that receives these types (`decode`).
-- **Public boundary:** the types and functions above.
+  - base64 bytes (`B64Bytes`), times (`Timestamp`), the wall clock times are
+    read from (`Clock`, `SystemClock`), the schema marker of nullable fields
+    (`Nullable`), and the decode function of every boundary that receives
+    these types (`decode`).
+- **Public boundary:** the types, functions and macro above.
 - **Must not:** contain concrete provider names, catalog source names, shell
   runtime details, Host details, user-interface concepts, transport URLs or
   backend identifiers.
@@ -238,8 +251,11 @@ next to the wire's types, so that a command program depends on one crate.
   (`MachineResponse`: `ok`, `error` and `death`), each operation's result
   (`Operation::Output`) and the line codec (`decode_request`,
   `decode_response`, `encode_line`, `MAX_LINE_BYTES`); machine image state
-  (`MachineImageState`, `RuntimeState`, `Volume`); and the Cloud image manifest
-  (`CloudImageManifest`).
+  (`MachineImageState`, `RuntimeState`, `Volume`) and the names of stored
+  images (`DeviceId`, `GenerationId`, `BaseVersion`: one path component
+  each); and the Cloud image manifest (`image::CloudImageManifest`), which
+  embeds `runner-protocol`'s runner release and `command-service`'s package
+  descriptors.
 - **Public boundary:** the items above. The backend's machine-manager client
   and the manager link it; `xtask` writes the image manifest with it. Behavior:
   [Managed Cloud hosts](../cloud/managed-hosts.md).
@@ -251,8 +267,9 @@ next to the wire's types, so that a command program depends on one crate.
   `ConversationPatch` and `ProviderDto`; the error body (`ErrorBody`) and
   `ErrorCode`, the one list of every error code the browser can see; and the
   identifier and text types those bodies use. It reuses the runner's
-  working-tree change and log-line types and `builtin-protocol`'s browser tab
-  types instead of declaring them again.
+  working-tree change and log-line types, `builtin-protocol`'s browser tab
+  types and `command-service`'s command locale (`CommandLocale`, which the
+  browser reports as a preference) instead of declaring them again.
 - **Public boundary:** the types above; their TypeScript form is generated into
   `web`. Behavior: [Web API](../product/web-api.md).
 - **Must not:** hold route handling or domain logic.
@@ -288,22 +305,28 @@ next to the wire's types, so that a command program depends on one crate.
     reading, quota, accounts and `runtime`), and `ProviderRuntime`, one
     session's runtime (`run`, `fresh`, `close`); `InferenceRequest`,
     `ProviderEvent`, `ProviderFailure` and its `ErrorCode`;
+  - the HTTP failure record and its standard reading (`HttpFailureRecord`,
+    `http_failure`, `read_http_failure`), and the text of a credential a
+    provider holds (`Secret`), which never prints;
   - the vendor-wire building blocks every HTTP provider decodes with:
     server-sent events, the two-step decode of payloads tagged by `type`, and
     the OpenAI-shaped Responses and Chat Completions formats with their stream
     mappers;
-  - OAuth device flows (`provider::oauth`), the credential pool contract with
-    single-flight refresh, quota (`ProviderQuota`), token accounting, the
-    models.dev client and the model catalog shape.
+  - OAuth device flows (`provider::oauth`); the credential pool contract
+    (`CredentialPool`, `AccountDocument`) with one refresh at a time per
+    account (`RefreshGates`), the one refresh protocol of every family
+    (`renew`), a pool held in memory for logins and tests
+    (`MemoryCredentialPool`), and the account operations every subscription
+    family shares (`Accounts`, over a family's `AccountKit`); quota
+    (`ProviderQuota`), token accounting and the models.dev client; the
+    catalog, state, account and quota shapes they return are `core`'s,
+    because the browser receives them.
 - **Public boundary:** the items above; `provider::testing` supplies scripted
-  runtimes (`ScriptedRuntime`). Behavior: [Providers](../providers/providers.md),
+  runtimes (`ScriptedRuntime`), a scripted vendor server (`MockVendor`) and a
+  fixed clock (`FixedClock`). Behavior: [Providers](../providers/providers.md),
   [Models](../providers/models.md),
   [Usage and quota](../providers/usage-and-quota.md) and
   [Failures and recovery](../agent/failures-and-recovery.md).
-- **Model catalog boundary:** common catalog state exposes portable fields
-  only: model ids, display metadata, capability metadata, service tiers, the
-  fetch time, staleness and warnings. It never exposes a provider-specific
-  source label such as `codex-backend`, `models.dev` or `cache`.
 - **Must not:** depend on concrete providers, the agent runtime, `shell` or a
   Host implementation.
 
@@ -371,20 +394,26 @@ Each crate implements the provider contract for one vendor family.
   - `AgentServer`, one per user shard, which holds each open conversation's
     `Tree`; `Tree`, a conversation's live nodes, its attachment to a
     connection and the supervisor operations on its subagents; `Node`;
+  - `Connection`, the frame handling of one conversation socket: the backend
+    hands it each decoded client frame, and its bounded outbox (`FrameRx`)
+    carries every server frame back;
   - `AgentSession`, a handle over one session's `SessionCore`;
   - the transcript and its estimates (`transcript::estimate`) and compaction;
   - the standard tools (`StandardTool`: `shell_exec`, `shell_status`,
     `shell_write`, `shell_abort` and `yield`), with the durable dispatch of
     every tool call;
   - the `demi agent` command group;
-  - the harness trait (`AgentHarness`) and the tree store contract
-    (`AgentTreeStore`, `SessionStore`).
+  - the harness trait (`AgentHarness`), where a session's provider runtimes
+    come from (`ProviderResolver`), and the tree store contract
+    (`AgentTreeStore`, `SessionStore`, with the node records and checkpoints
+    they carry in `store`).
 - **Public boundary:** the items above; `agent::testing` supplies an in-memory
-  tree store (`MemoryTreeStore`) and a test client that drives a connection. A
-  product supplies the harness, the providers, a
-  shell environment per Host and a tree store; the agent never knows which
-  shell engine runs. Behavior: [Agent runtime](../agent/runtime.md),
-  [Subagents](../agent/subagents.md) and [Compaction](../agent/compaction.md).
+  tree store (`MemoryTreeStore`), predictable identities (`SequentialIds`) and
+  a test client that drives a connection (`TestClient`). A product supplies
+  the harness, the providers, a shell environment per Host and a tree store;
+  the agent never knows which shell engine runs. Behavior:
+  [Agent runtime](../agent/runtime.md), [Subagents](../agent/subagents.md)
+  and [Compaction](../agent/compaction.md).
 - **Rules:** the node assembly is the one place that creates a node's session;
   the supervisor asks it for a child and never builds one. Media persistence
   goes through the tree store: the product's store decides where media bytes
@@ -654,12 +683,12 @@ command-tree -> none
 builtin-protocol -> none
 claude-protocol -> none
 runner-protocol -> command-service, command-tree
-machines-protocol -> runner-protocol
-web-api -> agent-protocol, builtin-protocol, core, runner-protocol
+machines-protocol -> command-service, runner-protocol
+web-api -> agent-protocol, builtin-protocol, command-service, core, runner-protocol
 gates -> none
 artifact -> none
-provider -> core
-provider-anthropic-api -> provider
+provider -> core, gates
+provider-anthropic-api -> core, provider
 provider-openai-api -> provider
 provider-google -> provider
 provider-codex -> provider

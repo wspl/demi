@@ -26,6 +26,17 @@ pub enum FileExtension {
 serde_plain::derive_display_from_serialize!(FileExtension);
 serde_plain::derive_fromstr_from_deserialize!(FileExtension);
 
+/// The image and document types a model known to read attachments accepts
+/// (`models.md` § Accepted attachment types).
+pub const ATTACHMENT_FILE_EXTENSIONS: [FileExtension; 6] = [
+    FileExtension::Png,
+    FileExtension::Jpg,
+    FileExtension::Jpeg,
+    FileExtension::Gif,
+    FileExtension::Webp,
+    FileExtension::Pdf,
+];
+
 /// The video types, which only a model known to read video accepts.
 pub const VIDEO_FILE_EXTENSIONS: [FileExtension; 4] = [
     FileExtension::Mp4,

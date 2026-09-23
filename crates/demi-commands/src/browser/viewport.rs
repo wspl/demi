@@ -219,8 +219,7 @@ impl BrowserTab {
     }
 
     async fn fit_window(&self, viewport: BrowserViewport) -> Result<()> {
-        let browser = self.browser.upgrade().ok_or(BrowserError::Closed)?;
-        let browser = browser.lock().await;
+        let browser = self.browser.call()?;
         let window = browser
             .execute(
                 GetWindowForTargetParams::builder()

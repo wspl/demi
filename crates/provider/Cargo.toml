@@ -1,0 +1,42 @@
+[package]
+name = "demi-provider"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+
+[lib]
+# No doc examples: rustdoc has nothing to test. The tests are in
+# tests/provider, so the library needs no test harness of its own.
+doctest = false
+test = false
+
+[features]
+# Scripted runtimes, a scripted vendor server and a fixed clock, for the tests
+# of providers and of what sits above them.
+testing = ["dep:axum"]
+
+[dependencies]
+demi-core = { path = "../core" }
+demi-gates = { path = "../gates" }
+async-stream = "0.3"
+axum = { version = "0.8", optional = true }
+bytes.workspace = true
+eventsource-stream = "0.2"
+futures-util.workspace = true
+http.workspace = true
+httpdate = "1"
+jiff.workspace = true
+regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+serde.workspace = true
+serde_json.workspace = true
+serde_path_to_error = "0.1"
+sha2 = "0.10"
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+
+[dev-dependencies]
+demi-provider = { path = ".", features = ["testing"] }

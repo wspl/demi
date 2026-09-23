@@ -1,0 +1,104 @@
+{
+  "ociVersion": "1.1.0",
+  "root": {
+    "path": "/run/demi-machines/demi-00000000-0000-4000-8000-000000000000/rootfs",
+    "readonly": false
+  },
+  "process": {
+    "terminal": false,
+    "user": { "uid": 1000, "gid": 1000 },
+    "cwd": "/home/demi",
+    "args": ["/usr/bin/tini", "--", "/usr/bin/demi-runner", "run", "--managed-boot", "/run/demi-boot.json"],
+    "env": [
+      "HOME=/home/demi",
+      "USER=demi",
+      "LOGNAME=demi",
+      "LANG=en_US.UTF-8",
+      "PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin"
+    ],
+    "capabilities": {
+      "bounding": [
+        "CAP_CHOWN",
+        "CAP_DAC_OVERRIDE",
+        "CAP_FOWNER",
+        "CAP_FSETID",
+        "CAP_KILL",
+        "CAP_SETGID",
+        "CAP_SETUID",
+        "CAP_SETPCAP",
+        "CAP_NET_BIND_SERVICE",
+        "CAP_SYS_CHROOT",
+        "CAP_SETFCAP"
+      ],
+      "effective": [],
+      "permitted": [],
+      "inheritable": [],
+      "ambient": []
+    },
+    "noNewPrivileges": false,
+    "rlimits": [
+      { "type": "RLIMIT_NOFILE", "hard": 65536, "soft": 65536 },
+      { "type": "RLIMIT_NPROC", "hard": 1024, "soft": 1024 }
+    ]
+  },
+  "hostname": "demi-cloud",
+  "mounts": [
+    { "destination": "/proc", "type": "proc", "source": "proc", "options": ["nosuid", "nodev", "noexec"] },
+    { "destination": "/dev", "type": "tmpfs", "source": "tmpfs", "options": ["nosuid", "mode=755", "size=65536k"] },
+    {
+      "destination": "/dev/pts",
+      "type": "devpts",
+      "source": "devpts",
+      "options": ["nosuid", "noexec", "newinstance", "ptmxmode=0666", "mode=0620", "gid=5"]
+    },
+    { "destination": "/dev/shm", "type": "tmpfs", "source": "tmpfs", "options": ["nosuid", "nodev", "size=256m", "mode=1777"] },
+    { "destination": "/tmp", "type": "tmpfs", "source": "tmpfs", "options": ["nosuid", "nodev", "size=256m", "mode=1777"] },
+    {
+      "destination": "/run",
+      "type": "tmpfs",
+      "source": "tmpfs",
+      "options": ["nosuid", "nodev", "size=256m", "mode=0755", "uid=1000", "gid=1000"]
+    },
+    {
+      "destination": "/home",
+      "type": "bind",
+      "source": "/run/demi-machines/demi-00000000-0000-4000-8000-000000000000/home",
+      "options": ["bind", "nodev"]
+    },
+    {
+      "destination": "/run/demi-boot.json",
+      "type": "bind",
+      "source": "/run/demi-machines/demi-00000000-0000-4000-8000-000000000000/credentials/boot.json",
+      "options": ["bind", "ro", "nodev"]
+    },
+    {
+      "destination": "/etc/resolv.conf",
+      "type": "bind",
+      "source": "/run/demi-machines/demi-00000000-0000-4000-8000-000000000000/credentials/resolv.conf",
+      "options": ["bind", "ro", "nodev"]
+    },
+    {
+      "destination": "/etc/hosts",
+      "type": "bind",
+      "source": "/run/demi-machines/demi-00000000-0000-4000-8000-000000000000/credentials/hosts",
+      "options": ["bind", "ro", "nodev"]
+    }
+  ],
+  "linux": {
+    "namespaces": [
+      { "type": "pid" },
+      { "type": "ipc" },
+      { "type": "uts" },
+      { "type": "mount" },
+      { "type": "network", "path": "/run/netns/demi-3" }
+    ],
+    "cgroupsPath": "/demi-cloud/demi-00000000-0000-4000-8000-000000000000",
+    "resources": {
+      "cpu": { "period": 100000, "quota": 200000 },
+      "memory": { "limit": 2147483648, "swap": 2147483648 },
+      "pids": { "limit": 1024 }
+    },
+    "maskedPaths": ["/proc/kcore", "/proc/keys", "/proc/timer_list", "/sys"],
+    "readonlyPaths": ["/proc/sys", "/proc/sysrq-trigger", "/proc/irq", "/proc/bus"]
+  }
+}

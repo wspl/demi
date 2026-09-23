@@ -8,6 +8,7 @@ use demi_web_api::error::{ErrorBody, ErrorCode};
 
 use crate::auth::email_change::EmailChangeError;
 use crate::auth::passwords::HashError;
+use crate::shard::ShardUnavailable;
 use crate::storage::StorageError;
 
 #[derive(Debug)]
@@ -35,6 +36,14 @@ impl ApiError {
         Self::new(StatusCode::BAD_REQUEST, ErrorCode::InvalidBody, message)
     }
 
+    pub(crate) fn backend_closing() -> Self {
+        Self::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            ErrorCode::BackendClosing,
+            "The backend is shutting down",
+        )
+    }
+
     pub(crate) fn no_route(method: &Method, path: &str) -> Self {
         Self::new(StatusCode::NOT_FOUND, ErrorCode::NotFound, format!("No route for {method} {path}"))
     }
@@ -50,6 +59,15 @@ impl ApiError {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         (self.status, Json(self.body)).into_response()
+    }
+}
+
+impl From<ShardUnavailable> for ApiError {
+    fn from(error: ShardUnavailable) -> Self {
+        match error {
+            ShardUnavailable::Closing => Self::backend_closing(),
+            ShardUnavailable::Failed => Self::internal(&error),
+        }
     }
 }
 

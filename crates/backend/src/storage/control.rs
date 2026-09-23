@@ -3,22 +3,23 @@
 //! database's own thread. Operations take owned input, so no caller holds a
 //! transaction open across a wait.
 
-use std::fmt::Display;
 use std::path::Path;
 use std::sync::Arc;
 
+use demi_core::{Clock, Timestamp};
 use demi_web_api::auth::{Role, UserDto};
 use demi_web_api::ids::UserId;
-use demi_core::Timestamp;
+use demi_web_api::settings::Preferences;
 use demi_web_api::text::EmailAddress;
 use jiff::SignedDuration;
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
 
+use super::columns::{decode, instant, json, to_json};
 use super::{StorageError, schema, sqlite};
 use crate::auth::email_change::{ChallengeIssue, ChallengeOutcome, ChallengePolicy, CodeHash};
 use crate::auth::passwords::PasswordHash;
 use crate::auth::sessions::{ResolvedSession, SessionPolicy, TokenHash};
-use crate::clock::Clock;
+use crate::settings::{self, CheckedPatch};
 
 /// An account with the hash its password checks against.
 pub(crate) struct Account {
@@ -51,13 +52,7 @@ impl ControlService {
 
     /// Closes the database; operations after it fail with `Closed`.
     pub(crate) async fn close(&self) -> Result<(), StorageError> {
-        match self.db.clone().close().await {
-            Ok(()) => Ok(()),
-            Err(tokio_rusqlite::Error::Close((_, error)) | tokio_rusqlite::Error::Error(error)) => {
-                Err(StorageError::Sqlite(error))
-            }
-            Err(_) => Err(StorageError::Closed),
-        }
+        sqlite::close(self.db.clone()).await
     }
 
     /// Runs `work` on the database thread with the time of the operation, in
@@ -68,9 +63,9 @@ impl ControlService {
     ) -> Result<T, StorageError> {
         let clock = self.clock.clone();
         self.db
-            .call(move |connection| work(connection, Timestamp::truncate(clock.now())))
+            .call(move |connection| work(connection, clock.now()))
             .await
-            .map_err(flatten)
+            .map_err(sqlite::flatten)
     }
 
     pub(crate) async fn has_users(&self) -> Result<bool, StorageError> {
@@ -173,6 +168,29 @@ impl ControlService {
                 params![password_hash.as_str(), user.as_str()],
             )?;
             Ok(())
+        })
+        .await
+    }
+
+    /// The user's saved preferences; a user who saved none has no overrides.
+    pub(crate) async fn preferences(&self, user: UserId) -> Result<Preferences, StorageError> {
+        self.call(move |connection, _| saved_preferences(connection, &user)).await
+    }
+
+    /// Merges `patch` into the user's preferences and answers them as saved.
+    /// The read, the merge and the write are one transaction, so patches of
+    /// different fields that arrive together all stay.
+    pub(crate) async fn patch_preferences(&self, user: UserId, patch: CheckedPatch) -> Result<Preferences, StorageError> {
+        self.call(move |connection, _| {
+            let transaction = connection.transaction()?;
+            let preferences = settings::merge(saved_preferences(&transaction, &user)?, patch);
+            transaction.execute(
+                "INSERT INTO user_preferences (user_id, preferences) VALUES (?1, ?2)
+                 ON CONFLICT (user_id) DO UPDATE SET preferences = excluded.preferences",
+                params![user.as_str(), to_json(&preferences)],
+            )?;
+            transaction.commit()?;
+            Ok(preferences)
         })
         .await
     }
@@ -407,6 +425,20 @@ fn pending_challenge(
     }))
 }
 
+fn saved_preferences(connection: &Connection, user: &UserId) -> Result<Preferences, StorageError> {
+    let saved: Option<String> = connection
+        .query_row(
+            "SELECT preferences FROM user_preferences WHERE user_id = ?1",
+            [user.as_str()],
+            |row| row.get(0),
+        )
+        .optional()?;
+    match saved {
+        Some(text) => json("user_preferences", "preferences", &text),
+        None => Ok(Preferences::default()),
+    }
+}
+
 /// A `users` row, read from its columns in `USER_COLUMNS`.
 fn user_row(row: &Row<'_>) -> Result<UserDto, StorageError> {
     Ok(UserDto {
@@ -425,33 +457,12 @@ fn account(row: &Row<'_>) -> Result<Account, StorageError> {
     })
 }
 
-/// A stored millisecond count as a point in time.
-fn instant(row: &Row<'_>, table: &'static str, column: &'static str) -> Result<Timestamp, StorageError> {
-    decode(table, column, Timestamp::from_millisecond(row.get(column)?))
-}
-
-fn decode<T, E: Display>(table: &'static str, column: &'static str, value: Result<T, E>) -> Result<T, StorageError> {
-    value.map_err(|error| StorageError::Corrupt {
-        table,
-        column,
-        reason: error.to_string(),
-    })
-}
-
 /// `now` moved on by `by`.
 fn later(now: Timestamp, by: SignedDuration) -> Result<Timestamp, StorageError> {
     now.to_jiff()
         .checked_add(by)
         .map(Timestamp::truncate)
         .map_err(StorageError::Time)
-}
-
-fn flatten(error: tokio_rusqlite::Error<StorageError>) -> StorageError {
-    match error {
-        tokio_rusqlite::Error::Error(error) => error,
-        tokio_rusqlite::Error::Close((_, error)) => StorageError::Sqlite(error),
-        _ => StorageError::Closed,
-    }
 }
 
 #[cfg(test)]
@@ -465,8 +476,8 @@ mod tests {
     struct TestClock(Mutex<jiff::Timestamp>);
 
     impl Clock for TestClock {
-        fn now(&self) -> jiff::Timestamp {
-            *self.0.lock().unwrap()
+        fn now(&self) -> Timestamp {
+            Timestamp::truncate(*self.0.lock().unwrap())
         }
     }
 
@@ -490,11 +501,11 @@ mod tests {
     async fn the_schema_applies_once_and_holds_no_conversation_data() {
         let data = tempfile::tempdir().unwrap();
         let path = data.path().join("control.sqlite");
-        let first = ControlService::open(&path, Arc::new(crate::clock::SystemClock)).await.unwrap();
+        let first = ControlService::open(&path, Arc::new(demi_core::SystemClock)).await.unwrap();
         master(&first).await;
         first.close().await.unwrap();
 
-        let again = ControlService::open(&path, Arc::new(crate::clock::SystemClock)).await.unwrap();
+        let again = ControlService::open(&path, Arc::new(demi_core::SystemClock)).await.unwrap();
         assert!(again.has_users().await.unwrap());
         let tables: Vec<String> = again
             .call(|connection, _| {
@@ -544,6 +555,58 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(live.user, user);
+        control.close().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn preferences_are_each_users_own_and_a_corrupt_row_is_refused() {
+        use demi_web_api::settings::{Appearance, PreferencesPatch, Theme};
+
+        let data = tempfile::tempdir().unwrap();
+        let control = ControlService::open(&data.path().join("control.sqlite"), Arc::new(demi_core::SystemClock))
+            .await
+            .unwrap();
+        let master = master(&control).await;
+        let other = UserId::try_from("other-user").unwrap();
+        let other_id = other.clone();
+        control
+            .call(move |connection, now| {
+                connection.execute(
+                    "INSERT INTO users (id, email, nickname, password_hash, role, created_at)
+                     VALUES (?1, 'other@example.test', '', 'x', 'user', ?2)",
+                    params![other_id.as_str(), now.as_millisecond()],
+                )?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+        let dark = PreferencesPatch {
+            appearance: Some(Appearance {
+                theme: Some(Theme::Dark),
+                ..Appearance::default()
+            }),
+            ..PreferencesPatch::default()
+        };
+        let saved = control
+            .patch_preferences(master.id.clone(), settings::check(dark).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(saved.appearance.theme, Some(Theme::Dark));
+        assert_eq!(control.preferences(master.id.clone()).await.unwrap(), saved);
+        assert_eq!(control.preferences(other.clone()).await.unwrap(), Preferences::default());
+
+        control
+            .call(|connection, _| {
+                connection.execute("UPDATE user_preferences SET preferences = '{\"appearance\":{}}'", [])?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+        let refused = control.preferences(master.id).await.unwrap_err();
+        assert!(
+            matches!(refused, StorageError::Corrupt { table: "user_preferences", column: "preferences", .. }),
+            "{refused}"
+        );
         control.close().await.unwrap();
     }
 }

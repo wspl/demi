@@ -39,14 +39,16 @@ const QUEUE: usize = 256;
 /// them.
 pub(crate) struct Shard {
     user: UserId,
-    #[expect(dead_code, reason = "the shard's first components arrive with the conversation routes")]
     services: Arc<Services>,
 }
 
 impl Shard {
-    #[cfg_attr(not(test), expect(dead_code, reason = "the first shard calls arrive with the conversation routes"))]
     pub(crate) fn user(&self) -> &UserId {
         &self.user
+    }
+
+    pub(crate) fn services(&self) -> &Services {
+        &self.services
     }
 }
 
@@ -74,7 +76,6 @@ pub(crate) struct ShardRef<'a> {
 }
 
 impl Shards {
-    #[cfg_attr(not(test), expect(dead_code, reason = "the first shard calls arrive with the conversation routes"))]
     pub(crate) fn of<'a>(&'a self, user: &'a UserId) -> ShardRef<'a> {
         let digest = Sha256::digest(user.as_str().as_bytes());
         let hash = u64::from_be_bytes(digest[..8].try_into().expect("a SHA-256 digest has 8 bytes"));
@@ -92,7 +93,6 @@ impl ShardRef<'_> {
     /// to completion even when this future is dropped; dropping it cancels
     /// the token `work` receives, which only its waits observe, never a step
     /// after a commit.
-    #[cfg_attr(not(test), expect(dead_code, reason = "the first shard calls arrive with the conversation routes"))]
     pub(crate) async fn call<F, Fut, T>(&self, work: F) -> Result<T, ShardUnavailable>
     where
         F: FnOnce(Rc<Shard>, CancellationToken) -> Fut + Send + 'static,
@@ -211,7 +211,6 @@ impl ShardPool {
         })
     }
 
-    #[cfg_attr(not(test), expect(dead_code, reason = "the first shard calls arrive with the conversation routes"))]
     pub(crate) fn shards(&self) -> Shards {
         self.shards.clone()
     }

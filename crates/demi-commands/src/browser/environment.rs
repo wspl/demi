@@ -1,26 +1,19 @@
 use std::{
-    collections::HashMap,
     future::Future,
     io,
+    ops::Deref,
     path::PathBuf,
     sync::{Arc, Weak},
     time::Duration,
 };
 
-use chromiumoxide::{
-    Browser, BrowserConfig,
-    cdp::browser_protocol::target::{
-        EventTargetCreated, EventTargetDestroyed, EventTargetInfoChanged, GetTargetsParams,
-        TargetId, TargetInfo,
-    },
-    handler::viewport::Viewport,
-};
+use chromiumoxide::{Browser, BrowserConfig, handler::viewport::Viewport};
 use demi_command_service::protocol::CommandLocale;
-use futures_util::{FutureExt, StreamExt};
-use tokio::sync::{Mutex, OwnedRwLockReadGuard, RwLock, watch};
+use futures_util::StreamExt;
+use tokio::sync::watch;
 use tokio_util::{
     sync::CancellationToken,
-    task::{AbortOnDropHandle, TaskTracker},
+    task::{AbortOnDropHandle, TaskTracker, task_tracker::TaskTrackerToken},
 };
 
 use super::{
@@ -28,53 +21,59 @@ use super::{
     operation::{CONTROL_TIMEOUT, Operation, after_cleanup},
     process::ChromeProcess,
     protocol::{BrowserCreatedBy, Load, TabId},
-    tab::TabState,
+    registry::{self, Hold, Snapshot, Tabs},
 };
 
-struct TabRegistry {
-    created: chromiumoxide::listeners::EventStream<EventTargetCreated>,
-    openers: HashMap<TargetId, TargetId>,
-    live: HashMap<TargetId, BrowserTab>,
-    /// Each page's public ID, in the order the browser created them.
-    public_ids: HashMap<TargetId, (TabId, usize)>,
+/// Chrome answers a browser call within this, or chromiumoxide fails the
+/// call.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// The environment's one browser connection, which commands share without
+/// taking turns (`browser.md` § Owners inside the service). The environment
+/// owns the `Browser`; a handle reaches it for one call at a time, and only
+/// until the environment ends, so no handle keeps Chrome running.
+#[derive(Clone)]
+pub(super) struct BrowserHandle {
+    browser: Weak<Browser>,
+    /// Browser calls in flight. Retirement waits for them before it takes
+    /// the browser back to close it.
+    calls: TaskTracker,
+    ended: CancellationToken,
 }
 
-impl TabRegistry {
-    /// Consume creation metadata before reconciling live pages, even if an opener closed.
-    fn observe_targets(&mut self) -> Result<()> {
-        while let Some(event) = self.created.next().now_or_never() {
-            match event.ok_or(BrowserError::Closed)? {
-                Ok(event) => self.record_target(&event.target_info)?,
-                // Every registry reconciliation below reads Target.getTargets;
-                // a bounded creation stream gap never poisons the environment.
-                Err(chromiumoxide::listeners::EventStreamError::Lagged(_)) => {}
-                Err(error) => return Err(error.into()),
-            }
+/// The browser, for one call.
+pub(super) struct BrowserCall {
+    browser: Arc<Browser>,
+    _call: TaskTrackerToken,
+}
+
+impl Deref for BrowserCall {
+    type Target = Browser;
+
+    fn deref(&self) -> &Browser {
+        &self.browser
+    }
+}
+
+impl BrowserHandle {
+    pub fn call(&self) -> Result<BrowserCall> {
+        // Counted before the end is checked: retirement ends the environment
+        // before it waits for calls, so it waits for every call that saw the
+        // environment running.
+        let call = self.calls.token();
+        if self.ended.is_cancelled() {
+            return Err(BrowserError::Closed);
         }
-        Ok(())
+        let browser = self.browser.upgrade().ok_or(BrowserError::Closed)?;
+        Ok(BrowserCall {
+            browser,
+            _call: call,
+        })
     }
 
-    fn record_target(&mut self, info: &TargetInfo) -> Result<()> {
-        if info.r#type != "page" {
-            return Ok(());
-        }
-        self.public_id(&info.target_id)?;
-        if let Some(opener) = &info.opener_id {
-            self.public_id(opener)?;
-            self.openers.insert(info.target_id.clone(), opener.clone());
-        }
-        Ok(())
-    }
-
-    /// Retain browser target identities even after their live tab is pruned.
-    fn public_id(&mut self, target: &TargetId) -> Result<TabId> {
-        if let Some((id, _)) = self.public_ids.get(target) {
-            return Ok(id.clone());
-        }
-        let id = TabId::from_random(super::handles::random()?);
-        let order = self.public_ids.len();
-        self.public_ids.insert(target.clone(), (id.clone(), order));
-        Ok(id)
+    /// Whether both reach the same browser.
+    pub fn same(&self, other: &Self) -> bool {
+        self.browser.ptr_eq(&other.browser)
     }
 }
 
@@ -107,15 +106,15 @@ impl LaunchOptions {
 
 #[derive(Clone)]
 pub struct BrowserEnvironment {
-    pub(super) browser: Weak<Mutex<Browser>>,
+    pub(super) browser: BrowserHandle,
     pub(super) ended: CancellationToken,
-    tabs: Arc<Mutex<TabRegistry>>,
+    tabs: Tabs,
+    /// Why the browser connection ended, once it ended on its own.
     report_failure: watch::Sender<Option<String>>,
     pub(super) observers: TaskTracker,
     pub(super) download_directory: PathBuf,
     /// Files the user chose in the live view, until the browser retires.
     pub(super) upload_directory: PathBuf,
-    pub(super) acquisition: Arc<RwLock<()>>,
     /// The live view of this browser (`live-view.md`).
     pub(super) live: Arc<super::live::Hub>,
 }
@@ -164,7 +163,7 @@ where
             ..Viewport::default()
         })
         .launch_timeout(Duration::from_secs(60))
-        .request_timeout(Duration::from_secs(30));
+        .request_timeout(REQUEST_TIMEOUT);
     let capture = super::live::capture::CaptureServer::bind().await?;
     let config = super::launch::configure(
         builder,
@@ -191,12 +190,18 @@ where
             return after_cleanup(Err(error), cleanup);
         }
     };
-    let browser = Arc::new(Mutex::new(browser));
+    let browser = Arc::new(browser);
     let (failure, _) = watch::channel(None);
     let ended = CancellationToken::new();
     let observers = TaskTracker::new();
+    let calls = TaskTracker::new();
+    let handle = BrowserHandle {
+        browser: Arc::downgrade(&browser),
+        calls: calls.clone(),
+        ended: ended.clone(),
+    };
     let _end_on_drop = ended.clone().drop_guard();
-    let captures = Arc::new(super::live::capture::Captures::default());
+    let captures = super::live::capture::CaptureChannel::open(&observers, ended.clone());
     capture.serve(captures.clone(), &observers, ended.clone());
     let live = Arc::new(super::live::Hub::new(
         captures,
@@ -234,56 +239,56 @@ where
         pump_ended.cancel();
         result
     }));
-    let mut owned_tabs = None;
     let outcome = tokio::select! {
         biased;
         _ = stop.cancelled() => Err(BrowserError::Cancelled),
         _ = ended.cancelled() => Err(failure.borrow().clone().map(BrowserError::Connection).unwrap_or(BrowserError::Closed)),
         result = async {
-            // Subscribe before any caller can create a target. Chrome may discard
-            // openerId from later TargetInfo responses after the opener closes.
             use chromiumoxide::cdp::browser_protocol::browser::{SetDownloadBehaviorParams, SetDownloadBehaviorBehavior};
-            browser.lock().await.execute(SetDownloadBehaviorParams::builder()
+            handle.call()?.execute(SetDownloadBehaviorParams::builder()
                 .behavior(SetDownloadBehaviorBehavior::AllowAndName)
                 .download_path(download_directory.to_string_lossy().into_owned())
                 .events_enabled(true)
                 .build().map_err(BrowserError::Configuration)?).await?;
-            let created = browser.lock().await.event_listener::<EventTargetCreated>().await?;
-            watch_targets(&browser, &live, &observers, &ended).await?;
+            // Subscribed before any caller can create a target: Chrome may
+            // leave a popup's opener out of later target information once
+            // the opener closed.
+            let tabs = registry::start(
+                handle.clone(),
+                ended.clone(),
+                &observers,
+                failure.clone(),
+                live.changes(),
+            )
+            .await?;
             let environment = BrowserEnvironment {
-                browser: Arc::downgrade(&browser),
+                browser: handle.clone(),
                 ended: ended.clone(),
-                tabs: Arc::new(Mutex::new(TabRegistry {
-                    live: HashMap::new(),
-                    public_ids: HashMap::new(),
-                    openers: HashMap::new(),
-                    created,
-                })),
+                tabs,
                 report_failure: failure.clone(),
                 observers: observers.clone(),
                 download_directory,
                 upload_directory,
-                acquisition: Arc::new(RwLock::new(())),
                 live: live.clone(),
             };
-            owned_tabs = Some(environment.tabs.clone());
             work(environment).await
         } => result,
     };
+    // Every task of the environment ends with it: the tabs' debugging
+    // owners close their connections as they end.
     ended.cancel();
     observers.close();
     observers.wait().await;
-    let mut debug_cleanup = Ok(());
-    if let Some(registry) = owned_tabs {
-        let tabs: Vec<_> = registry.lock().await.live.values().cloned().collect();
-        for tab in tabs {
-            debug_cleanup = after_cleanup(debug_cleanup, super::cdp::release(&tab).await);
-        }
-    }
-    let retired = retire_browser(&browser, pump, &mut process).await;
+    // No call starts once the environment ended, and each ends within the
+    // request timeout while the pump still runs; then only this owner holds
+    // the browser. A call that outlived the wait leaves the browser with it,
+    // and `retire_browser` ends Chrome's process tree without it.
+    calls.close();
+    let _outlived = tokio::time::timeout(REQUEST_TIMEOUT, calls.wait()).await;
+    let retired = retire_browser(Arc::into_inner(browser), pump, &mut process).await;
     let cleanup = remove_profile(profile, retired).await;
     drop(profile_lock);
-    after_cleanup(after_cleanup(outcome, debug_cleanup), cleanup)
+    after_cleanup(outcome, cleanup)
 }
 
 /// Removes what browsers left behind when their service ended without
@@ -361,31 +366,24 @@ impl BrowserEnvironment {
     ) -> Result<(BrowserTab, String)> {
         super::navigation::validate_url(url)?;
         let operation = Operation::until(&self.ended, cancellation, deadline);
-        let _acquisition = operation
-            .run(async { Ok(self.acquisition.read().await) })
-            .await?;
         let tab = self
-            .create_tab(
+            .create(
                 BrowserCreatedBy::Agent {
                     node_id: caller.to_owned(),
                 },
                 &operation,
             )
             .await?;
-        let mut references = tab
-            .state
-            .operations
-            .try_lock()
-            .map_err(|_| BrowserError::Busy)?;
+        let mut session = tab.state.gate.try_checkout().ok_or(BrowserError::Busy)?;
         let url = tab
             .navigate(
                 super::navigation::Navigation::Url(url.into()),
                 load,
                 &operation,
-                &mut references,
+                &mut session.references,
             )
             .await?;
-        drop(references);
+        drop(session);
         Ok((tab, url))
     }
 
@@ -401,64 +399,15 @@ impl BrowserEnvironment {
             super::navigation::validate_url(url)?;
         }
         let operation = Operation::until(&self.ended, cancellation, deadline);
-        let _acquisition = operation
-            .run(async { Ok(self.acquisition.read().await) })
-            .await?;
-        let tab = self
-            .create_tab(BrowserCreatedBy::User {}, &operation)
-            .await?;
+        let tab = self.create(BrowserCreatedBy::User {}, &operation).await?;
         if let Some(url) = url {
             super::navigation::visit(&tab, url);
         }
         Ok(tab)
     }
 
-    /// Register a blank browser tab before any command can navigate it.
-    async fn blank_tab(&self, created_by: BrowserCreatedBy) -> Result<BrowserTab> {
-        let mut registry = self.tabs.lock().await;
-        let page = self
-            .browser
-            .upgrade()
-            .ok_or(BrowserError::Closed)?
-            .lock()
-            .await
-            .new_page("about:blank")
-            .await?;
-        self.tab(&mut registry, page, Some(created_by)).await
-    }
-
-    /// Join browser tab creation after cancellation so its newly created target is closed.
-    async fn create_tab(
-        &self,
-        created_by: BrowserCreatedBy,
-        operation: &Operation<'_>,
-    ) -> Result<BrowserTab> {
-        use std::sync::atomic::{AtomicU8, Ordering};
-        // 0 = not started, 1 = awaiting Chrome, 2 = completed.
-        let phase = AtomicU8::new(0);
-        let creation = async {
-            phase.store(1, Ordering::Relaxed);
-            let result = self.blank_tab(created_by).await;
-            phase.store(2, Ordering::Relaxed);
-            result
-        };
-        tokio::pin!(creation);
-        match operation.run(creation.as_mut()).await {
-            Err(error) if phase.load(Ordering::Relaxed) == 1 => {
-                let cleanup = tokio::time::timeout(CONTROL_TIMEOUT, async {
-                    let tab = creation.await?;
-                    tab.close(&CancellationToken::new(), CONTROL_TIMEOUT).await
-                })
-                .await
-                .map_err(|_| BrowserError::Timeout)
-                .and_then(std::convert::identity);
-                after_cleanup(Err(error), cleanup)
-            }
-            result => result,
-        }
-    }
-
-    /// Hold environment admission while all temporary browser tabs are created and consumed.
+    /// Creates `count` temporary tabs, and keeps the environment from
+    /// retiring until the batch is closed.
     pub(super) async fn temporary_tabs(
         &self,
         caller: &str,
@@ -467,24 +416,18 @@ impl BrowserEnvironment {
         deadline: tokio::time::Instant,
     ) -> Result<TemporaryBatch> {
         let operation = Operation::until(&self.ended, cancel, deadline);
-        let hold = operation
-            .run(async { Ok(self.acquisition.clone().read_owned().await) })
-            .await?;
+        let hold = operation.run(self.tabs.hold()).await?;
         let mut batch = TemporaryBatch {
             tabs: Vec::with_capacity(count),
-            _hold: hold,
+            hold,
+            registry: self.tabs.clone(),
         };
         let result = async {
             for _ in 0..count {
-                batch.tabs.push(
-                    self.create_tab(
-                        BrowserCreatedBy::Temporary {
-                            node_id: caller.to_owned(),
-                        },
-                        &operation,
-                    )
-                        .await?,
-                );
+                let created_by = BrowserCreatedBy::Temporary {
+                    node_id: caller.to_owned(),
+                };
+                batch.tabs.push(self.create(created_by, &operation).await?);
             }
             Ok(())
         }
@@ -495,20 +438,35 @@ impl BrowserEnvironment {
         Ok(batch)
     }
 
-    /// Snapshot another caller's debug ownership without issuing browser commands.
-    pub(super) async fn debugging_callers(&self, id: &str, caller: Option<&str>) -> Vec<String> {
-        let tab = self
-            .tabs
-            .lock()
-            .await
-            .live
-            .values()
-            .find(|tab| tab.id().as_str() == id && !tab.ended.is_cancelled())
-            .cloned();
-        match tab {
-            Some(tab) => tab.state.cdp.lock().await.other_callers(caller),
-            None => Vec::new(),
+    /// A new tab for `operation`. A creation Chrome began finishes even when
+    /// the operation ends first, and its tab closes again before the
+    /// operation's end is reported, so a later listing does not show it.
+    async fn create(&self, created_by: BrowserCreatedBy, operation: &Operation<'_>) -> Result<BrowserTab> {
+        let mut creation = operation.run(self.tabs.create(created_by)).await?;
+        match operation.run(creation.tab()).await {
+            Ok(tab) => Ok(tab),
+            Err(error) => {
+                let cleanup = tokio::time::timeout(CONTROL_TIMEOUT, async {
+                    let tab = creation.tab().await?;
+                    tab.close(&CancellationToken::new(), CONTROL_TIMEOUT).await
+                })
+                .await
+                .map_err(|_| BrowserError::Timeout)
+                .and_then(std::convert::identity);
+                after_cleanup(Err(error), cleanup)
+            }
         }
+    }
+
+    /// Snapshot another caller's debug ownership without issuing browser commands.
+    pub(super) fn debugging_callers(&self, id: &str, caller: Option<&str>) -> Vec<String> {
+        self.tabs
+            .latest()
+            .tabs
+            .iter()
+            .map(|listed| &listed.tab)
+            .find(|tab| tab.id().as_str() == id && !tab.ended.is_cancelled())
+            .map_or_else(Vec::new, |tab| tab.state.debug.other_callers(caller))
     }
 
     pub async fn tabs(
@@ -519,135 +477,59 @@ impl BrowserEnvironment {
         Ok(self
             .listed(cancellation, timeout)
             .await?
-            .into_iter()
-            .map(|(tab, _)| tab)
+            .tabs
+            .iter()
+            .map(|listed| listed.tab.clone())
             .collect())
     }
 
-    /// The tabs in the order the browser created them, with what the browser
-    /// knows of each: its title and URL.
+    /// The tabs in the order the browser created them, with their titles and
+    /// URLs, as the registry lists them.
     pub(super) async fn listed(
         &self,
         cancellation: &CancellationToken,
         timeout: Duration,
-    ) -> Result<Vec<(BrowserTab, TargetInfo)>> {
-        let operation = Operation::new(&self.ended, cancellation, timeout);
-        operation
-            .run(async {
-                let mut registry = self.tabs.lock().await;
-                registry.observe_targets()?;
-                let browser = self.browser.upgrade().ok_or(BrowserError::Closed)?;
-                let browser = browser.lock().await;
-                let targets = browser
-                    .execute(GetTargetsParams::default())
-                    .await?
-                    .result
-                    .target_infos;
-                let top_level: std::collections::HashSet<_> = targets
-                    .iter()
-                    .filter(|target| target.r#type == "page")
-                    .map(|target| target.target_id.clone())
-                    .collect();
-                for target in &targets {
-                    registry.record_target(target)?;
-                }
-                let pages = browser
-                    .pages()
-                    .await?
-                    .into_iter()
-                    .filter(|page| top_level.contains(page.target_id()))
-                    .collect::<Vec<_>>();
-                drop(browser);
-                let removed: Vec<_> = registry
-                    .live
-                    .keys()
-                    .filter(|target| !top_level.contains(*target))
-                    .cloned()
-                    .collect();
-                for target in removed {
-                    let tab = &registry.live[&target];
-                    tab.ended.cancel();
-                    super::cdp::release(tab).await?;
-                    registry.live.remove(&target);
-                }
-                let mut tabs = Vec::with_capacity(pages.len());
-                for page in pages {
-                    let info = targets
-                        .iter()
-                        .find(|target| &target.target_id == page.target_id())
-                        .cloned()
-                        .expect("pages are listed targets");
-                    let order = registry
-                        .public_ids
-                        .get(page.target_id())
-                        .map(|(_, order)| *order);
-                    tabs.push((self.tab(&mut registry, page, None).await?, info, order));
-                }
-                tabs.sort_by_key(|(_, _, order)| *order);
-                Ok(tabs.into_iter().map(|(tab, info, _)| (tab, info)).collect())
-            })
+    ) -> Result<Arc<Snapshot>> {
+        Operation::new(&self.ended, cancellation, timeout)
+            .run(self.tabs.listing())
             .await
     }
 
-    /// Reconcile pages into the one registry, retaining their operation gates and refs.
-    async fn tab(
+    /// The tab with public ID `id`, from the registry's snapshot.
+    pub(super) async fn tab(
         &self,
-        tabs: &mut TabRegistry,
-        page: chromiumoxide::Page,
-        created_by: Option<BrowserCreatedBy>,
+        id: &TabId,
+        cancellation: &CancellationToken,
+        timeout: Duration,
     ) -> Result<BrowserTab> {
-        tabs.observe_targets()?;
-        if let Some(tab) = tabs.live.get(page.target_id()) {
-            return Ok(tab.clone());
-        }
-        let created_by = match created_by {
-            Some(value) => value,
-            None => {
-                let opener = tabs
-                    .openers
-                    .get(page.target_id())
-                    .cloned()
-                    .or_else(|| page.opener_id().clone())
-                    .ok_or_else(|| {
-                        BrowserError::InvalidResult(
-                            "unregistered browser page has no recorded opener".into(),
-                        )
-                    })?;
-                BrowserCreatedBy::Page {
-                    opener: tabs.public_id(&opener)?,
-                }
-            }
-        };
-        let id = tabs.public_id(page.target_id())?;
-        let ended = self.ended.child_token();
-        let state = TabState::observe(
-            &page,
-            ended.clone(),
-            &self.observers,
-            self.report_failure.clone(),
-            self.live.changes(),
-        )
-        .await?;
-        let tab = BrowserTab::new(
-            page,
-            self.browser.clone(),
-            ended,
-            self.ended.clone(),
-            state,
-            id,
-            created_by,
-        );
-        // Every page starts at the unwatched viewport; its window must hold it.
-        tab.set_viewport(super::viewport::UNWATCHED).await?;
-        tabs.live.insert(tab.page.target_id().clone(), tab.clone());
-        Ok(tab)
+        Operation::new(&self.ended, cancellation, timeout)
+            .run(self.tabs.find(id))
+            .await
+    }
+
+    /// Cancelled once the last tab has closed: the environment admits no new
+    /// tab, and its owner retires it.
+    pub(super) fn emptied(&self) -> &CancellationToken {
+        self.tabs.emptied()
+    }
+
+    /// Why the browser connection ended on its own, if it did.
+    pub(super) fn failure(&self) -> Option<String> {
+        self.report_failure.borrow().clone()
+    }
+
+    /// Whether both are the same browser generation.
+    pub(super) fn same(&self, other: &Self) -> bool {
+        self.browser.same(&other.browser)
     }
 }
 
-/// Registered temporary tabs pin last-tab retirement until their joined cleanup finishes.
+/// Temporary tabs in use; until they are closed, the environment does not
+/// retire.
 pub(super) struct TemporaryBatch {
     tabs: Vec<BrowserTab>,
-    _hold: OwnedRwLockReadGuard<()>,
+    hold: Hold,
+    registry: Tabs,
 }
 
 impl TemporaryBatch {
@@ -655,6 +537,8 @@ impl TemporaryBatch {
         &self.tabs
     }
 
+    /// Closes the batch's tabs and ends its hold. Once this returns, the
+    /// environment has emptied if nothing else holds it.
     pub async fn close(self, timeout: Duration) -> Result<()> {
         let mut cleanup = Ok(());
         let cancel = CancellationToken::new();
@@ -667,69 +551,52 @@ impl TemporaryBatch {
             };
             cleanup = after_cleanup(cleanup, result);
         }
-        cleanup
+        drop(self.hold);
+        let settled = match self.registry.settled().await {
+            // An environment that ended has no hold left to settle.
+            Err(BrowserError::Closed) => Ok(()),
+            settled => settled.map(|_| ()),
+        };
+        after_cleanup(cleanup, settled)
     }
 }
 
-/// Tells the live view whenever a tab opens, closes or changes its title or
-/// URL.
-async fn watch_targets(
-    browser: &Mutex<Browser>,
-    live: &Arc<super::live::Hub>,
-    tasks: &TaskTracker,
-    ended: &CancellationToken,
-) -> Result<()> {
-    let browser = browser.lock().await;
-    let mut created = browser.event_listener::<EventTargetCreated>().await?;
-    let mut destroyed = browser.event_listener::<EventTargetDestroyed>().await?;
-    let mut changed = browser.event_listener::<EventTargetInfoChanged>().await?;
-    drop(browser);
-    let live = live.clone();
-    let ended = ended.clone();
-    tasks.spawn(async move {
-        loop {
-            let event = tokio::select! {
-                _ = ended.cancelled() => break,
-                event = created.next() => event.map(|_| ()),
-                event = destroyed.next() => event.map(|_| ()),
-                event = changed.next() => event.map(|_| ()),
-            };
-            if event.is_none() {
-                break;
-            }
-            live.changed();
-        }
-    });
-    Ok(())
-}
-
 /// Stop Chrome before joining the CDP pump; it must run while close is in flight.
+/// Without the browser, because a call still holds it, Chrome's process
+/// tree ends without a graceful close: `ChromeProcess` stays authoritative.
 async fn retire_browser(
-    browser: &Mutex<Browser>,
+    browser: Option<Browser>,
     mut pump: AbortOnDropHandle<chromiumoxide::Result<()>>,
     process: &mut ChromeProcess,
 ) -> Result<()> {
-    let mut browser = browser.lock().await;
     process.observe();
-    let graceful = tokio::time::timeout(CONTROL_TIMEOUT, async {
-        browser.close().await?;
-        browser.wait().await?;
-        Ok::<_, BrowserError>(())
-    })
-    .await;
-    let leader = match graceful {
-        Ok(Ok(())) => Ok(()),
-        _ => {
-            // The connection can already be gone; killing the owned child is authoritative.
-            match tokio::time::timeout(CONTROL_TIMEOUT, browser.kill()).await {
-                Ok(Some(result)) => result.map_err(BrowserError::from),
-                Ok(None) => Err(BrowserError::Closed),
-                Err(_) => Err(io::Error::new(
-                    io::ErrorKind::TimedOut,
-                    "Chrome leader did not exit",
-                )
-                .into()),
+    let leader = match browser {
+        Some(mut browser) => {
+            let graceful = tokio::time::timeout(CONTROL_TIMEOUT, async {
+                browser.close().await?;
+                browser.wait().await?;
+                Ok::<_, BrowserError>(())
+            })
+            .await;
+            match graceful {
+                Ok(Ok(())) => Ok(()),
+                _ => {
+                    // The connection can already be gone; killing the owned child is authoritative.
+                    match tokio::time::timeout(CONTROL_TIMEOUT, browser.kill()).await {
+                        Ok(Some(result)) => result.map_err(BrowserError::from),
+                        Ok(None) => Err(BrowserError::Closed),
+                        Err(_) => Err(io::Error::new(
+                            io::ErrorKind::TimedOut,
+                            "Chrome leader did not exit",
+                        )
+                        .into()),
+                    }
+                }
             }
+        }
+        None => {
+            tracing::warn!("a browser call outlived its environment; Chrome's process tree ends without closing it");
+            Ok(())
         }
     };
     let group = process.terminate().await;
@@ -783,6 +650,8 @@ async fn remove_profile(profile: tempfile::TempDir, retired: Result<()>) -> Resu
 
 #[cfg(test)]
 mod tests {
+    use chromiumoxide::cdp::browser_protocol::target::GetTargetsParams;
+
     use super::*;
 
     #[tokio::test]
@@ -806,12 +675,11 @@ mod tests {
                     "chrome-extension://{}/",
                     super::super::launch::CAPTURE_EXTENSION_ID
                 );
-                let browser = environment.browser.upgrade().ok_or(BrowserError::Closed)?;
                 let mut loaded = false;
                 for _ in 0..100 {
-                    let targets = browser
-                        .lock()
-                        .await
+                    let targets = environment
+                        .browser
+                        .call()?
                         .execute(GetTargetsParams::default())
                         .await?
                         .result
@@ -822,7 +690,6 @@ mod tests {
                     }
                     tokio::time::sleep(Duration::from_millis(50)).await;
                 }
-                drop(browser);
                 assert!(loaded, "the capture extension never ran");
                 let tabs = environment.tabs(&CancellationToken::new(), timeout).await?;
                 assert_eq!(
