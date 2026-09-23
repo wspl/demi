@@ -47,7 +47,7 @@ fn a_frame_without_failures_carries_none_and_a_status_carries_its_ids() {
         unreachable!()
     };
     assert_eq!(status.command().command_id.as_str(), "cmd-1");
-    assert!(matches!(status, ShellStatus::Exited { exit_code: 0, binary_stdout: Some(binary), .. } if binary.truncated));
+    assert!(matches!(*status, ShellStatus::Exited { exit_code: 0, binary_stdout: Some(binary), .. } if binary.truncated));
     assert!(output.get("shellId").is_none());
     assert!(output["status"]["binaryStdout"].get("data").is_none());
 }
