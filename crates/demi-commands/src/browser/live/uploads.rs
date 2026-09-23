@@ -6,7 +6,7 @@ use std::{path::PathBuf, sync::Arc};
 
 use bytes::Bytes;
 use tokio::{io::AsyncWriteExt, sync::mpsc};
-use tokio_util::task::AbortOnDropHandle;
+use tokio_util::sync::CancellationToken;
 
 use demi_builtin_protocol::live::{ControlToken, LiveModuleMessage, UploadFile};
 
@@ -64,15 +64,28 @@ impl Upload {
     }
 }
 
+/// Receives a view's uploads on the environment's tasks until `stop`, which
+/// the view's end and the environment's end cancel.
 pub(super) fn start(
     environment: BrowserEnvironment,
     membership: Arc<Membership>,
     writer: Writer,
     mut items: mpsc::Receiver<Item>,
-) -> AbortOnDropHandle<()> {
-    AbortOnDropHandle::new(tokio::spawn(async move {
+    stop: CancellationToken,
+) {
+    let tasks = environment.observers.clone();
+    let writer = writer.until(&stop);
+    tasks.spawn(async move {
         let mut pending: Option<Upload> = None;
-        while let Some(item) = items.recv().await {
+        loop {
+            let item = tokio::select! {
+                biased;
+                _ = stop.cancelled() => break,
+                item = items.recv() => match item {
+                    Some(item) => item,
+                    None => break,
+                },
+            };
             let outcome = match item {
                 Item::Start {
                     tab,
@@ -81,7 +94,7 @@ pub(super) fn start(
                     upload,
                     files,
                 } => {
-                    membership.operated();
+                    membership.operated().await;
                     match prepare(&environment, upload, tab, token.clone(), revision, files).await {
                         Ok(upload) => {
                             pending = Some(upload);
@@ -142,7 +155,7 @@ pub(super) fn start(
                 }
             }
         }
-    }))
+    });
 }
 
 async fn prepare(

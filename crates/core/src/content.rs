@@ -183,9 +183,19 @@ fn push_escaped(out: &mut String, value: &str) {
 /// it, which includes U+FEFF and excludes U+0085: the one test of an empty
 /// text, wherever emptiness decides what happens, as in message validation.
 pub fn is_blank(text: &str) -> bool {
-    text.chars().all(|character| {
-        character == '\u{feff}' || (character.is_whitespace() && character != '\u{85}')
-    })
+    text.chars().all(is_trimmed_space)
+}
+
+/// `text` without the white space around it, as JavaScript's `trim` removes
+/// it: the characters [`is_blank`] counts as white space, so a text is blank
+/// exactly when its trim is empty.
+pub fn trim(text: &str) -> &str {
+    text.trim_matches(is_trimmed_space)
+}
+
+/// JavaScript's white space and line terminators.
+fn is_trimmed_space(character: char) -> bool {
+    character == '\u{feff}' || (character.is_whitespace() && character != '\u{85}')
 }
 
 /// Where an image's or a video's bytes are.

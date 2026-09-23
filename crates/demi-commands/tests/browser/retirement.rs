@@ -259,27 +259,6 @@ async fn chrome_process_tree_and_profile_retire_together() {
 }
 
 
-/// Wait until a concurrent browser command holds this fixture tab's admission.
-async fn wait_until_busy(fixture: &crate::families::BrowserFixture, tab: &str) {
-    tokio::time::timeout(std::time::Duration::from_secs(5), async {
-        loop {
-            let (_, result) = fixture
-                .result(
-                    "browser.info",
-                    serde_json::json!({"tab": tab}),
-                    CancellationToken::new(),
-                )
-                .await;
-            if result["error"]["code"] == "tab_busy" {
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-        }
-    })
-    .await
-    .unwrap();
-}
-
 /// Locate the test service's browser profiles without exposing diagnostic product APIs.
 fn chrome_profiles() -> std::collections::BTreeMap<i32, PathBuf> {
     let parent = i32::try_from(std::process::id()).unwrap();
@@ -361,7 +340,7 @@ async fn conversation_release_cancels_only_its_commands_and_retires_its_profile(
         );
         tokio::pin!(waiting);
         let release = async {
-            wait_until_busy(&first, &first_tab).await;
+            first.wait_until_busy(&first_tab).await;
             assert_eq!(first.lifecycle("release").await, json!({}));
         };
         let ((code, error), ()) = tokio::join!(&mut waiting, release);
@@ -539,7 +518,7 @@ async fn last_tab_close_fails_its_running_command_as_browser_lost() {
             CancellationToken::new(),
         );
         let close = async {
-            wait_until_busy(&fixture, &tab).await;
+            fixture.wait_until_busy(&tab).await;
             fixture.call("browser.close", json!({"tab":tab})).await;
         };
         let ((code, failure), ()) = tokio::join!(waiting, close);

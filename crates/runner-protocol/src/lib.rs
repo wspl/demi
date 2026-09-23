@@ -4,5 +4,6 @@
 
 pub mod boot;
 pub mod manifest;
+pub mod release;
 pub mod values;
 pub mod wire;

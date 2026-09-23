@@ -191,9 +191,21 @@ struct Waiter {
 
 struct RootState {
     baseline: Option<Baseline>,
-    watcher: Option<TreeWatch>,
-    /// A watch is tried once per root; a failure means whole walks from then on.
-    watch_tried: bool,
+    watch: Watch,
+}
+
+/// A root's watch, from its start to its end.
+enum Watch {
+    /// Not started: the directory has not been found in a repository yet.
+    Unstarted,
+    /// Being set up on a blocking thread, which no request waits for: on
+    /// macOS, FSEvents can take seconds to start a stream when the system
+    /// is busy. A root dropped meanwhile drops the watch as the thread ends.
+    Starting(tokio::task::JoinHandle<Option<TreeWatch>>),
+    Running(#[allow(dead_code, reason = "held for its drop, which stops the watch")] TreeWatch),
+    /// It could not be set up, or it failed: every request walks the whole
+    /// tree.
+    Unavailable,
 }
 
 struct Baseline {
@@ -370,8 +382,7 @@ impl Owner {
         let root = self.roots.entry(request.root.clone()).or_insert_with(|| Root {
             state: Some(RootState {
                 baseline: None,
-                watcher: None,
-                watch_tried: false,
+                watch: Watch::Unstarted,
             }),
             touched: Arc::new(Mutex::new(Touched::default())),
             last_used: now,
@@ -460,28 +471,45 @@ async fn changes(
     })
     .await?;
     let Some((located, rules)) = located else {
-        // A directory that stops being a repository loses its baseline and watch.
+        // A directory that stops being a repository loses its baseline and
+        // watch; should it become one again, its next request starts another.
         state.baseline = None;
-        state.watcher = None;
+        state.watch = Watch::Unstarted;
         return Ok(Changes::outside_repository());
     };
-    if !state.watch_tried {
-        let root_path = path.to_owned();
-        let git_dir = located.git_dir.clone();
-        let touched = touched_paths.clone();
-        state.watcher = blocking(cancel, move || {
-            Ok(start_watch(&root_path, &git_dir, touched))
-        })
-        .await?;
-        state.watch_tried = true;
+    // The watch this computation finds running for the first time began
+    // after the baseline's walk: it cannot tell what changed before it ran.
+    let mut adopted = false;
+    match &mut state.watch {
+        Watch::Unstarted => {
+            let root_path = path.to_owned();
+            let git_dir = located.git_dir.clone();
+            let touched = touched_paths.clone();
+            state.watch = Watch::Starting(tokio::task::spawn_blocking(move || {
+                start_watch(&root_path, &git_dir, touched)
+            }));
+        }
+        Watch::Starting(start) if start.is_finished() => {
+            state.watch = match start.await {
+                Ok(Some(watch)) => {
+                    adopted = true;
+                    Watch::Running(watch)
+                }
+                // A panicked start is a watch that could not be set up.
+                Ok(None) | Err(_) => Watch::Unavailable,
+            };
+        }
+        Watch::Starting(_) | Watch::Running(_) | Watch::Unavailable => {}
     }
     let touched = std::mem::take(&mut *lock(touched_paths));
     if touched.broken {
-        state.watcher = None;
+        state.watch = Watch::Unavailable;
     }
-    let watched = state.watcher.is_some();
+    let watched = matches!(state.watch, Watch::Running(_));
     let scope = match &state.baseline {
-        Some(baseline) if watched && !touched.whole && baseline.rules_above == rules => {
+        Some(baseline)
+            if watched && !adopted && !touched.whole && baseline.rules_above == rules =>
+        {
             let scope = paths_scope(&touched.paths, &located, baseline);
             match scope {
                 Some(scope) => scope,
@@ -583,18 +611,24 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 }
 
 /// Runs `work` on a blocking thread; a panic there answers `internal`. Only
-/// short work goes here (finding the repository, starting a watch, reading
-/// one blob), so a cancelled request returns at once and leaves the thread to
-/// finish alone; a computation, which can take long, goes through
-/// `interruptible`.
+/// short work goes here (finding the repository, reading one blob); a
+/// computation, which can take long, goes through `interruptible`. A
+/// cancelled request waits for the thread before it answers, so the
+/// request's admission covers the thread (`runner.md` § Load).
 async fn blocking<T: Send + 'static>(
     cancel: &CancellationToken,
     work: impl FnOnce() -> Result<T, GitError> + Send + 'static,
 ) -> Result<T, GitError> {
     let handle = tokio::task::spawn_blocking(work);
+    tokio::pin!(handle);
+    let panicked = || GitError::Internal("working-tree work panicked".into());
     tokio::select! {
-        outcome = handle => outcome.map_err(|_| GitError::Internal("working-tree work panicked".into()))?,
-        _ = cancel.cancelled() => Err(GitError::Cancelled),
+        outcome = &mut handle => outcome.map_err(|_| panicked())?,
+        _ = cancel.cancelled() => {
+            // What the work found no longer matters.
+            let _unused = handle.await;
+            Err(GitError::Cancelled)
+        }
     }
 }
 

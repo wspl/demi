@@ -128,7 +128,7 @@ pub(super) async fn observe(tab: &BrowserTab, tasks: &TaskTracker) -> Result<Arc
                                 Ok(Report::Copy { text }) => {
                                     let _unwatched = reporting.copies.send(text);
                                 }
-                                Err(error) => eprintln!("live view observer report: {error}"),
+                                Err(error) => tracing::warn!("live view observer report: {error}"),
                             }
                         }
                         navigation = navigations.next() => {
