@@ -422,13 +422,14 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
     }
 
     // Local command connections through the runner's endpoint.
-    let body = json!({"roots": {"fixture": {"tree": {
+    let tree = json!({
         "name": "fixture", "summary": "Test callback.", "kind": "rpc", "runningHint": "Working",
         "input": {"type": "object", "properties": {"body": {"type": "string"}}, "required": ["body"]}, "stdinField": "body"
-    }}}, "packages": {}});
-    let hash = demi_command_service::protocol::canonical_digest(&body).unwrap();
-    let mut manifest = body;
-    manifest["hash"] = hash.into();
+    });
+    let manifest =
+        demi_runner_protocol::manifest::Manifest::build([serde_json::from_value(tree).unwrap()], [])
+            .unwrap();
+    let manifest = serde_json::to_value(manifest).unwrap();
     let mut dispatch = Dispatch::new(&root_path, manifest, pipes.clone()).await;
     let mut outgoing = std::mem::replace(&mut dispatch.outgoing, mpsc::channel(1).1);
     let reached = Arc::new(AtomicUsize::new(0));
