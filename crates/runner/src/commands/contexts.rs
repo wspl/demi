@@ -152,27 +152,12 @@ impl Contexts {
             .map(|installed| installed.value.clone())
             .filter(|manifest| manifest.hash == manifest_hash)
             .ok_or_else(|| io::Error::other("job manifest is not installed"))?;
-        let aliases = tempfile::Builder::new()
-            .prefix("client-")
-            .tempdir_in(&self.directory)?;
-        crate::fs::chmod(aliases.path(), 0o700).await?;
-        for root in manifest.roots.keys() {
-            #[cfg(unix)]
-            tokio::fs::symlink(&self.executable, aliases.path().join(root)).await?;
-            #[cfg(windows)]
-            {
-                let destination = aliases.path().join(format!("{root}.exe"));
-                match tokio::fs::hard_link(&self.executable, &destination).await {
-                    Ok(()) => {}
-                    // Windows hard links cannot cross volumes. A job-owned copy
-                    // also works without requiring symbolic-link privileges.
-                    Err(error) if error.raw_os_error() == Some(17) => {
-                        tokio::fs::copy(&self.executable, destination).await?;
-                    }
-                    Err(error) => return Err(error),
-                }
-            }
-        }
+        let aliases = aliases(
+            self.directory.clone(),
+            self.executable.clone(),
+            manifest.roots.keys().cloned().collect(),
+        )
+        .await?;
         let id = uuid::Uuid::new_v4().simple().to_string();
         let context = Arc::new(ExecutionContext {
             id: id.clone(),
@@ -263,6 +248,45 @@ impl Contexts {
             live.value.cancel.cancel();
         }
     }
+}
+
+/// A private directory with one alias of the runner per root command, made
+/// in one blocking call, off the control thread.
+async fn aliases(
+    directory: PathBuf,
+    executable: PathBuf,
+    roots: Vec<String>,
+) -> io::Result<tempfile::TempDir> {
+    tokio::task::spawn_blocking(move || {
+        let mut builder = tempfile::Builder::new();
+        builder.prefix("client-");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            builder.permissions(std::fs::Permissions::from_mode(0o700));
+        }
+        let aliases = builder.tempdir_in(&directory)?;
+        for root in roots {
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(&executable, aliases.path().join(root))?;
+            #[cfg(windows)]
+            {
+                let destination = aliases.path().join(format!("{root}.exe"));
+                match std::fs::hard_link(&executable, &destination) {
+                    Ok(()) => {}
+                    // Windows hard links cannot cross volumes. A job-owned copy
+                    // also works without requiring symbolic-link privileges.
+                    Err(error) if error.raw_os_error() == Some(17) => {
+                        std::fs::copy(&executable, destination)?;
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+        }
+        Ok(aliases)
+    })
+    .await
+    .map_err(io::Error::other)?
 }
 
 impl ExecutionContext {

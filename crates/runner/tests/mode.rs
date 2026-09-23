@@ -72,6 +72,7 @@ async fn backend_job_invokes_same_binary_alias_and_drain_releases_installation()
             env: BTreeMap::from([("HOME".into(), home.clone())]),
             token: Some("test-token".into()),
             volumes: vec![],
+            shell: demi_runner::shell::ShellRuntime::current(),
             runner: RunnerInfo {
                 native_target: Some(demi_runner::services::target().into()),
                 name: "test".into(),

@@ -11,6 +11,7 @@ use crate::{
     git::GitService,
     net::NetStreams,
     pipes::PipeClient,
+    shell::ShellRuntime,
     tasks::{TaskCommand, TaskKind, TaskSpec, TaskTable},
 };
 
@@ -44,10 +45,11 @@ impl HostServer {
         default_cwd: PathBuf,
         device_env: BTreeMap<String, String>,
         pipes: PipeClient,
+        shell: ShellRuntime,
     ) -> Self {
         let cancel = CancellationToken::new();
         Self {
-            tasks: TaskTable::new(output.clone(), dispatcher, output_dir, pipes.clone()),
+            tasks: TaskTable::new(output.clone(), dispatcher, output_dir, pipes.clone(), shell),
             default_cwd,
             device_env,
             net: NetStreams::new(output.clone(), pipes.clone(), cancel.clone()),

@@ -32,7 +32,7 @@ fn table(
     let token = Arc::new(RwLock::new(Some("test-token".into())));
     let pipes = PipeClient::new("http://127.0.0.1:1", token).unwrap();
     (
-        TaskTable::new(output, None, root.join("logs"), pipes),
+        TaskTable::new(output, None, root.join("logs"), pipes, demi_runner::shell::ShellRuntime::current()),
         receiver,
     )
 }
@@ -219,8 +219,9 @@ async fn shell_cancellation_reports_the_requesting_signal() {
             root.path().into(),
             BTreeMap::new(),
             true,
-            scope.clone(),
+            scope.clone(), &demi_runner::shell::ShellRuntime::current(),
         )
+            .await
         .unwrap();
         wait_for_job_ready(&mut job).await;
         assert!(job.signal("SIGUSR1").await.is_err());
@@ -291,8 +292,9 @@ async fn jobs_share_the_runner_process_and_cancellation_is_isolated() {
             root.path().into(),
             BTreeMap::new(),
             true,
-            scope.clone(),
+            scope.clone(), &demi_runner::shell::ShellRuntime::current(),
         )
+            .await
         .unwrap();
         wait_for_job_ready(&mut blocked).await;
         let mut sibling = Job::start(
@@ -300,8 +302,9 @@ async fn jobs_share_the_runner_process_and_cancellation_is_isolated() {
             root.path().into(),
             BTreeMap::new(),
             false,
-            Scope::new(CancellationToken::new(), None),
+            Scope::new(CancellationToken::new(), None), &demi_runner::shell::ShellRuntime::current(),
         )
+            .await
         .unwrap();
         tokio::time::sleep(Duration::from_millis(30)).await;
         blocked.cancel();
@@ -349,8 +352,9 @@ async fn cancellation_reaps_external_programs_started_by_native_utilities() {
             root.path().into(),
             BTreeMap::new(),
             false,
-            scope.clone(),
+            scope.clone(), &demi_runner::shell::ShellRuntime::current(),
         )
+            .await
         .unwrap();
         let pid = tokio::time::timeout(Duration::from_secs(3), async {
             loop {
@@ -394,8 +398,9 @@ async fn job_completion_preserves_process_substitution_output() {
         root.path().into(),
         BTreeMap::new(),
         false,
-        Scope::new(CancellationToken::new(), None),
+        Scope::new(CancellationToken::new(), None), &demi_runner::shell::ShellRuntime::current(),
     )
+            .await
     .unwrap();
     let (exit, _) = tokio::time::timeout(Duration::from_secs(5), job.wait())
         .await

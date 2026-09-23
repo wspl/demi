@@ -98,7 +98,7 @@ async fn manage(state: RunnerState, action: &str) -> io::Result<u8> {
     Ok(0)
 }
 
-async fn runner(args: Vec<String>) -> io::Result<u8> {
+async fn runner(args: Vec<String>, shell: demi_runner::shell::ShellRuntime) -> io::Result<u8> {
     let action = args.first().map(String::as_str).unwrap_or("");
     if !matches!(action, "run" | "status" | "drain") {
         return Err(usage());
@@ -214,6 +214,7 @@ async fn runner(args: Vec<String>) -> io::Result<u8> {
         } else {
             vec![]
         },
+        shell,
     };
     let stop = CancellationToken::new();
     let running = mode::run(options, stop.clone());
@@ -297,19 +298,36 @@ fn main() {
         .file_stem()
         .and_then(|name| name.to_str())
         .unwrap_or("");
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(2)
-        .enable_all()
-        .build()
-        .expect("runner runtime");
+    // Shutdown leaves the runtimes' remaining threads to the process exit
+    // below; runner shutdown has joined its owned jobs and services already.
     let result = if name != "demi-runner" {
-        // A command alias has no log of its own; the runner it calls logs.
+        // A command alias serves one invocation (`concurrency.md` § Runner)
+        // and has no log of its own; the runner it calls logs.
         tracing_subscriber::registry()
             .with(host_log::Console.with_filter(LevelFilter::WARN))
             .init();
-        runtime.block_on(command(name.into(), args[1..].to_vec()))
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("command runtime");
+        let result = runtime.block_on(command(name.into(), args[1..].to_vec()));
+        runtime.shutdown_background();
+        result
     } else {
-        runtime.block_on(runner(args[1..].to_vec()))
+        // The control thread's state belongs to one registration, so it runs
+        // alone; shell jobs have a runtime of their own.
+        let shell = demi_runner::shell::ShellRuntime::build().expect("shell runtime");
+        let control = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build_local(tokio::runtime::LocalOptions::default())
+            .expect("control runtime");
+        let result = control.block_on(runner(
+            args[1..].to_vec(),
+            demi_runner::shell::ShellRuntime::new(&shell),
+        ));
+        control.shutdown_background();
+        shell.shutdown_background();
+        result
     };
     let code = match result {
         Ok(code) => code,
@@ -318,7 +336,5 @@ fn main() {
             1
         }
     };
-    // Runner shutdown has joined its owned jobs and services.
-    runtime.shutdown_background();
     std::process::exit(i32::from(code));
 }

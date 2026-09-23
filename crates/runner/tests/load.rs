@@ -286,7 +286,7 @@ async fn filesystem_requests_wait_instead_of_failing() {
             root.path().join("logs"),
             root.path().into(),
             BTreeMap::new(),
-            pipes,
+            pipes, demi_runner::shell::ShellRuntime::current(),
         );
         for index in 0..500 {
             host.handle_filesystem(Inbound::FsReaddir {
@@ -352,7 +352,7 @@ async fn working_tree_requests_wait_instead_of_failing() {
             logs.path().join("logs"),
             logs.path().into(),
             BTreeMap::new(),
-            pipes,
+            pipes, demi_runner::shell::ShellRuntime::current(),
         );
         for (index, (_dir, repo)) in repositories.iter().enumerate() {
             host.handle_git(Inbound::GitChanges {

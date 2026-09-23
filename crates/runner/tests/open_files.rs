@@ -240,7 +240,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
         root_path.join("logs"),
         root_path.clone(),
         BTreeMap::new(),
-        pipes.clone(),
+        pipes.clone(), demi_runner::shell::ShellRuntime::current(),
     ));
     {
         let host = host.clone();
@@ -375,8 +375,9 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
                 cwd.clone(),
                 BTreeMap::new(),
                 false,
-                Scope::new(CancellationToken::new(), None),
+                Scope::new(CancellationToken::new(), None), &demi_runner::shell::ShellRuntime::current(),
             )
+            .await
             .map_err(|error| error.to_string())?;
             let (exit, _) = job.wait().await;
             let written = std::fs::read_to_string(cwd.join("piped.txt")).unwrap_or_default();
