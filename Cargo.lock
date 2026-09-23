@@ -1441,6 +1441,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "demi-shell"
+version = "0.1.3"
+dependencies = [
+ "bytes",
+ "demi-command-service",
+ "demi-command-tree",
+ "demi-core",
+ "demi-shell",
+ "futures-util",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "demi-web-api"
 version = "0.1.3"
 dependencies = [

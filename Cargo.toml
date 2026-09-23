@@ -15,6 +15,7 @@ members = [
   "crates/gates",
   "crates/runner",
   "crates/runner-protocol",
+  "crates/shell",
   "crates/web-api",
 ]
 
