@@ -5,4 +5,5 @@
 mod blocks;
 mod encodings;
 mod lookups;
+mod provider;
 mod schemas;

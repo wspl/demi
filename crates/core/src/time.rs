@@ -1,5 +1,6 @@
 //! Times in JSON: an RFC 3339 string in UTC with millisecond precision
-//! (`storage.md` § Encodings and digests).
+//! (`storage.md` § Encodings and digests), and the clock wall time is read
+//! from.
 
 use std::{borrow::Cow, fmt, str::FromStr};
 
@@ -104,5 +105,22 @@ impl JsonSchema for Timestamp {
 
     fn json_schema(_: &mut SchemaGenerator) -> Schema {
         json_schema!({ "type": "string", "format": "date-time" })
+    }
+}
+
+/// Where wall-clock time is read: the times records and answers carry. It is
+/// injected so that a test can fix it (`concurrency.md` § Tests and time);
+/// durations measured in memory use Tokio's clock instead.
+pub trait Clock: Send + Sync {
+    fn now(&self) -> Timestamp;
+}
+
+/// The system's clock, cut to the millisecond.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SystemClock;
+
+impl Clock for SystemClock {
+    fn now(&self) -> Timestamp {
+        Timestamp::truncate(jiff::Timestamp::now())
     }
 }

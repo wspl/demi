@@ -101,14 +101,22 @@ next to the wire's types, so that a command program depends on one crate.
   - agent messages (`AgentMessage`, `CompletionId`);
   - the session phase, queued messages and pending steers;
   - provider failure facts (`ProviderFailureFacts`, `ProviderErrorDiagnostics`);
+  - what the product shows of a provider entry: its model catalog
+    (`ProviderModelList`, `ProviderModel`, `ServiceTier`, `ModelCost`), which
+    carries portable facts only and never a source label such as
+    `codex-backend`, `models.dev` or `cache`; its authentication and runtime
+    states (`AuthState`, `RuntimeState`); its subscription accounts as the
+    browser sees them (`AccountInfo`, `LoginPending`); and an account's quota
+    snapshot (`QuotaSnapshot`, `QuotaWindow`, `QuotaPlan` and their sets);
   - the identities blocks and frames name (`BlockId`, `TurnId`, `NodeId`,
     `WakeupId`, `ShellId`, `CommandId`, `OperationId`);
   - the file-type table the product previews by (`preview_media_type`,
     `shows_in_place`), and the media types a model accepts with their sniffing
     (`sniff_model_media_type`);
-  - base64 bytes (`B64Bytes`), times (`Timestamp`), the schema marker of
-    nullable fields (`Nullable`), and the decode function of every boundary
-    that receives these types (`decode`).
+  - base64 bytes (`B64Bytes`), times (`Timestamp`), the wall clock times are
+    read from (`Clock`, `SystemClock`), the schema marker of nullable fields
+    (`Nullable`), and the decode function of every boundary that receives
+    these types (`decode`).
 - **Public boundary:** the types and functions above.
 - **Must not:** contain concrete provider names, catalog source names, shell
   runtime details, Host details, user-interface concepts, transport URLs or
@@ -291,17 +299,14 @@ next to the wire's types, so that a command program depends on one crate.
     the OpenAI-shaped Responses and Chat Completions formats with their stream
     mappers;
   - OAuth device flows (`provider::oauth`), the credential pool contract with
-    single-flight refresh, quota (`ProviderQuota`), token accounting, the
-    models.dev client and the model catalog shape.
+    single-flight refresh, quota (`ProviderQuota`), token accounting and the
+    models.dev client; the catalog, state, account and quota shapes they
+    return are `core`'s, because the browser receives them.
 - **Public boundary:** the items above; `provider::testing` supplies scripted
   runtimes (`ScriptedRuntime`). Behavior: [Providers](../providers/providers.md),
   [Models](../providers/models.md),
   [Usage and quota](../providers/usage-and-quota.md) and
   [Failures and recovery](../agent/failures-and-recovery.md).
-- **Model catalog boundary:** common catalog state exposes portable fields
-  only: model ids, display metadata, capability metadata, service tiers, the
-  fetch time, staleness and warnings. It never exposes a provider-specific
-  source label such as `codex-backend`, `models.dev` or `cache`.
 - **Must not:** depend on concrete providers, the agent runtime, `shell` or a
   Host implementation.
 
