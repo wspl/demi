@@ -6,9 +6,6 @@ use serde_with::rust::unwrap_or_skip;
 
 use crate::DecodeError;
 
-/// The file operations, as the package descriptor lists them.
-pub const OPERATIONS: &[&str] = &["file.read", "file.create", "file.edit", "file.patch"];
-
 /// `file.read`: writes the file's bytes to stdout.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(deny_unknown_fields)]
@@ -62,24 +59,34 @@ pub struct PatchArgs {
     pub patch: String,
 }
 
-/// A decoded `file.*` invocation: the operation and its checked arguments.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FileOperation {
-    Read(ReadArgs),
-    Create(CreateArgs),
-    Edit(EditArgs),
-    Patch(PatchArgs),
+/// Declares the operations: the enum of decoded arguments and the operation
+/// list.
+macro_rules! operations {
+    ($($name:literal => $variant:ident($args:ty),)*) => {
+        /// A decoded `file.*` invocation: the operation and its checked arguments.
+        #[derive(Debug, Clone, PartialEq, Eq)]
+        pub enum FileOperation {
+            $($variant($args),)*
+        }
+
+        impl FileOperation {
+            /// Decodes the arguments of the operation named `operation`.
+            pub fn parse(operation: &str, args: serde_json::Value) -> Result<Self, DecodeError> {
+                match operation {
+                    $($name => crate::decode(args).map(Self::$variant),)*
+                    _ => Err(DecodeError::UnknownOperation(operation.to_owned())),
+                }
+            }
+        }
+
+        /// The file operations, as the package descriptor lists them.
+        pub const OPERATIONS: &[&str] = &[$($name,)*];
+    };
 }
 
-impl FileOperation {
-    /// Decodes the arguments of the operation named `operation`.
-    pub fn parse(operation: &str, args: serde_json::Value) -> Result<Self, DecodeError> {
-        match operation {
-            "file.read" => crate::decode(args).map(Self::Read),
-            "file.create" => crate::decode(args).map(Self::Create),
-            "file.edit" => crate::decode(args).map(Self::Edit),
-            "file.patch" => crate::decode(args).map(Self::Patch),
-            _ => Err(DecodeError::UnknownOperation(operation.to_owned())),
-        }
-    }
+operations! {
+    "file.read" => Read(ReadArgs),
+    "file.create" => Create(CreateArgs),
+    "file.edit" => Edit(EditArgs),
+    "file.patch" => Patch(PatchArgs),
 }

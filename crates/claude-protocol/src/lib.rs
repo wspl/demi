@@ -8,8 +8,32 @@ use std::{collections::BTreeMap, path::PathBuf};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::DeserializeOwned};
 use serde_json::Value;
 
-/// The package's operations, as its descriptor lists them.
-pub const OPERATIONS: &[&str] = &["claude.ensure", "claude.status"];
+/// The package's operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Operation {
+    /// `claude.ensure`: installs the version a release record names.
+    Ensure,
+    /// `claude.status`: lists the installed versions.
+    Status,
+}
+
+impl Operation {
+    /// Every operation, in the order the descriptor lists them.
+    pub const ALL: [Operation; 2] = [Self::Ensure, Self::Status];
+
+    /// The operation's name, such as `claude.ensure`.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Ensure => "claude.ensure",
+            Self::Status => "claude.status",
+        }
+    }
+
+    /// The operation named `name`, if the package has it.
+    pub fn parse(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|operation| operation.name() == name)
+    }
+}
 
 /// Why a record was refused.
 #[derive(Debug, thiserror::Error)]

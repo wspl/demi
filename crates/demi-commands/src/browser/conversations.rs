@@ -3,6 +3,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use bytes::Bytes;
+use demi_builtin_protocol::DecodeError;
 use demi_command_service::{
     ConversationContext, InvocationContext, ServiceError,
     protocol::{CommandLocale, Completion, ConversationRequest, ConversationStatus},
@@ -10,7 +11,7 @@ use demi_command_service::{
 use tokio::sync::{Mutex, watch};
 use tokio_util::{
     sync::{CancellationToken, DropGuard},
-    task::TaskTracker,
+    task::{TaskTracker, task_tracker::TaskTrackerToken},
 };
 
 use super::{
@@ -258,38 +259,15 @@ pub(crate) struct Conversations {
 }
 
 impl Conversations {
+    /// Runs one browser command, or reports why its input was refused.
     pub async fn invoke(
         &self,
         context: InvocationContext,
+        operation: std::result::Result<BrowserOperation, DecodeError>,
     ) -> std::result::Result<Completion, ServiceError> {
-        // Registration and the release fence share the map lock: release can never
-        // miss an admitted command, and a fenced controller admits no new work.
-        let (controller, _command) = {
-            let mut controllers = self.controllers.lock().await;
-            let controller = controllers
-                .entry(context.request.context.conversation.clone())
-                .or_insert_with(|| {
-                    Arc::new(Controller {
-                        state: Mutex::new(State::Absent),
-                        installation: self.installation.clone(),
-                        cancellation: CancellationToken::new(),
-                        commands: TaskTracker::new(),
-                        started: watch::channel(0).0,
-                    })
-                })
-                .clone();
-            if controller.cancellation.is_cancelled() {
-                return Err(ServiceError::Cancelled);
-            }
-            let command = controller.commands.token();
-            (controller, command)
-        };
-        // A view ends itself on release, so it can tell its page why.
-        if context.request.operation == super::live::OPERATION {
-            return super::live::serve(controller, context).await;
-        }
+        let (controller, _command) = self.admit(&context).await?;
         let cancellation = context.cancellation.clone();
-        let work = self.invoke_admitted(&controller, context);
+        let work = self.invoke_admitted(&controller, context, operation);
         tokio::pin!(work);
         tokio::select! {
             biased;
@@ -303,20 +281,52 @@ impl Conversations {
         }
     }
 
+    /// Serves a live view of the conversation's browser. A view ends itself
+    /// on release, so it can tell its page why.
+    pub async fn live(
+        &self,
+        context: InvocationContext,
+    ) -> std::result::Result<Completion, ServiceError> {
+        let (controller, _command) = self.admit(&context).await?;
+        super::live::serve(controller, context).await
+    }
+
+    /// Admits an invocation into its conversation's controller, made on first
+    /// use. Registration and the release fence share the map lock: release can
+    /// never miss an admitted command, and a fenced controller admits no new work.
+    async fn admit(
+        &self,
+        context: &InvocationContext,
+    ) -> std::result::Result<(Arc<Controller>, TaskTrackerToken), ServiceError> {
+        let mut controllers = self.controllers.lock().await;
+        let controller = controllers
+            .entry(context.request.context.conversation.clone())
+            .or_insert_with(|| {
+                Arc::new(Controller {
+                    state: Mutex::new(State::Absent),
+                    installation: self.installation.clone(),
+                    cancellation: CancellationToken::new(),
+                    commands: TaskTracker::new(),
+                    started: watch::channel(0).0,
+                })
+            })
+            .clone();
+        if controller.cancellation.is_cancelled() {
+            return Err(ServiceError::Cancelled);
+        }
+        let command = controller.commands.token();
+        Ok((controller, command))
+    }
+
     async fn invoke_admitted(
         &self,
         controller: &Controller,
         mut context: InvocationContext,
+        operation: std::result::Result<BrowserOperation, DecodeError>,
     ) -> std::result::Result<Completion, ServiceError> {
-        let operation = context
-            .request
-            .operation
-            .strip_prefix("browser.")
-            .ok_or_else(|| ServiceError::Handler("not a browser operation".into()))?
-            .to_owned();
         let result = async {
-            let command = BrowserOperation::parse(&operation, context.request.args.clone())
-                .map_err(|error| BrowserError::Configuration(error.to_string()))?;
+            let command =
+                operation.map_err(|error| BrowserError::Configuration(error.to_string()))?;
             let cancellation = context.cancellation.child_token();
             let _cancel_on_drop = cancellation.clone().drop_guard();
             let deadline = tokio::time::Instant::now() + command.timeout();

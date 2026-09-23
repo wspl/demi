@@ -151,6 +151,25 @@ async fn publication_creates_or_replaces_whole_files() {
 }
 
 #[tokio::test]
+async fn a_cancelled_publication_publishes_nothing() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("output");
+    let cancel = CancellationToken::new();
+    cancel.cancel();
+    // The whole input is ready at once, so only the cancellation stops it.
+    let result = publish(
+        &path,
+        &mut std::io::Cursor::new(BODY.to_vec()),
+        publication(Mode::CreateNew, Permissions::Default),
+        &cancel,
+    )
+    .await;
+    assert!(matches!(result, Err(Error::Cancelled)));
+    // Neither the file nor its staged copy is left.
+    assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 0);
+}
+
+#[tokio::test]
 async fn a_staged_file_appears_only_when_published() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("tool");

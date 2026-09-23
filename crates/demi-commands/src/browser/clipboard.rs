@@ -239,14 +239,13 @@ pub(super) async fn execute(
                         .map_err(|error| BrowserError::InvalidResult(error.to_string()))
                 })
                 .await?;
-            let directory = crate::files::resolve_path(
+            let directory = super::output::resolve(
                 &context.request.cwd,
                 input
                     .output_dir
                     .as_ref()
                     .expect("output directory selected"),
-            )
-            .map_err(BrowserError::Configuration)?;
+            )?;
             operation
                 .run(async {
                     tokio::fs::create_dir_all(&directory).await?;

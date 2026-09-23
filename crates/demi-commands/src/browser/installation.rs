@@ -1,25 +1,26 @@
-//! Pinned Chrome for Testing archives, verified before atomic installation.
+//! The pinned Chrome for Testing release, installed once per service and
+//! verified before use (`browser.md` § Browser distribution).
 
-use std::{
-    fs::File,
-    io::{Read, Seek, SeekFrom},
-    path::{Path, PathBuf},
-    time::Duration,
-};
+use std::path::{Path, PathBuf};
 
+use demi_artifact::{Digest, InstallLock};
+use demi_builtin_protocol::release::{BrowserInstallation, BrowserRelease, ReleasePlatform};
 use demi_command_service::protocol::host_target;
-use futures_util::StreamExt;
-use sha2::{Digest, Sha256};
-use tokio::{io::AsyncWriteExt, sync::Mutex};
+use tokio::sync::OnceCell;
 use tokio_util::sync::CancellationToken;
-
-use demi_builtin_protocol::release::{BrowserInstallation, BrowserRelease, BrowserRuntimeConfig};
 
 use super::{BrowserError, Result};
 
+/// Where the Cloud image preinstalls the release.
+#[cfg(unix)]
+const IMAGE_ROOT: &str = "/opt/demi/browsers";
+/// The most bytes an installed executable may have, for its digest.
+const EXECUTABLE_BYTES: u64 = 1024 * 1024 * 1024;
+
 #[derive(Default)]
 pub(super) struct Installation {
-    installed: Mutex<Option<PathBuf>>,
+    /// The verified executable, once a caller installed or found it.
+    installed: OnceCell<PathBuf>,
 }
 
 /// The pinned Chrome for Testing release (`browser.md` § Browser distribution).
@@ -34,203 +35,146 @@ pub fn pinned_version() -> Result<String> {
 }
 
 impl Installation {
-    /// Install the release once per service; each browser retains its own profile.
+    /// The release's verified executable, installed on first use. Callers
+    /// that arrive meanwhile wait for it and stop waiting when cancelled; a
+    /// cancelled install lets the next caller try again. The install's own
+    /// work watches the same token, so dropping it on cancellation leaves
+    /// nothing running.
     pub async fn executable(&self, cancel: &CancellationToken) -> Result<PathBuf> {
-        let mut installed = tokio::select! {
-            _ = cancel.cancelled() => return Err(BrowserError::Cancelled),
-            lock = self.installed.lock() => lock,
-        };
-        if let Some(path) = &*installed {
-            return Ok(path.clone());
+        tokio::select! {
+            biased;
+            _ = cancel.cancelled() => Err(BrowserError::Cancelled),
+            result = self.installed.get_or_try_init(|| install(cancel)) => result.cloned(),
         }
-        let release = release()?;
-        let record = release
-            .platforms
-            .into_iter()
-            .find(|record| record.target == host_target())
-            .ok_or_else(|| {
-                BrowserError::Configuration(format!(
-                    "Chrome for Testing {} is unavailable on {}",
-                    release.version,
-                    host_target()
-                ))
-            })?;
-        #[cfg(unix)]
-        if let Some(executable) = verify_installation(
-            &PathBuf::from("/opt/demi/browsers").join(&record.sha256),
-            &record.sha256,
-            &record.executable,
-            cancel,
-        )
-        .await?
-        {
-            *installed = Some(executable.clone());
-            return Ok(executable);
-        }
-        let home = std::env::var(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
-            .map_err(|error| BrowserError::Configuration(error.to_string()))?;
-        let config = BrowserRuntimeConfig::new(home)
-            .map_err(|error| BrowserError::Configuration(error.to_string()))?;
-        let home = PathBuf::from(config.home);
-        if !home.is_absolute() {
-            return Err(BrowserError::Configuration(
-                "browser installation home must be absolute".into(),
-            ));
-        }
-        let root = home.join(".demi/browsers");
-        tokio::fs::create_dir_all(&root).await?;
-        let lock = File::options()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(root.join(format!("{}.lock", record.sha256)))?;
-        loop {
-            match lock.try_lock() {
-                Ok(()) => break,
-                Err(std::fs::TryLockError::WouldBlock) => {
-                    tokio::select! {
-                        _ = cancel.cancelled() => return Err(BrowserError::Cancelled),
-                        _ = tokio::time::sleep(Duration::from_millis(50)) => {},
-                    }
-                }
-                Err(std::fs::TryLockError::Error(error)) => return Err(error.into()),
-            }
-        }
-        let destination = root.join(&record.sha256);
-        let executable = destination.join(&record.executable);
-        if verify_installation(&destination, &record.sha256, &record.executable, cancel)
-            .await?
-            .is_none()
-        {
-            let temporary = tempfile::Builder::new()
-                .prefix("chrome-install-")
-                .tempdir_in(&root)?;
-            let archive_path = temporary.path().join("chrome.zip");
-            let http = reqwest::Client::builder()
-                .https_only(true)
-                .redirect(reqwest::redirect::Policy::none())
-                .connect_timeout(Duration::from_secs(15))
-                .timeout(Duration::from_secs(300))
-                .build()
-                .map_err(|error| BrowserError::Configuration(error.to_string()))?;
-            let response = tokio::select! {
-                _ = cancel.cancelled() => return Err(BrowserError::Cancelled),
-                response = http.get(&record.url).send() => response.map_err(|error| BrowserError::Configuration(error.to_string()))?,
-            }.error_for_status().map_err(|error| BrowserError::Configuration(error.to_string()))?;
-            let mut stream = response.bytes_stream();
-            let mut output = tokio::fs::File::create(&archive_path).await?;
-            let mut hash = Sha256::new();
-            let mut size = 0_u64;
-            loop {
-                let chunk = tokio::select! {
-                    _ = cancel.cancelled() => return Err(BrowserError::Cancelled),
-                    chunk = stream.next() => chunk,
-                };
-                let Some(chunk) = chunk else {
-                    break;
-                };
-                let chunk =
-                    chunk.map_err(|error| BrowserError::Configuration(error.to_string()))?;
-                size += chunk.len() as u64;
-                if size > record.size {
-                    return Err(BrowserError::Configuration(
-                        "Chrome archive exceeds pinned size".into(),
-                    ));
-                }
-                hash.update(&chunk);
-                output.write_all(&chunk).await?;
-            }
-            output.flush().await?;
-            drop(output);
-            if size != record.size || format!("{:x}", hash.finalize()) != record.sha256 {
-                return Err(BrowserError::Configuration(
-                    "Chrome archive failed size or SHA-256 verification".into(),
-                ));
-            }
-            let extraction = temporary.path().join("extracted");
-            let extract_to = extraction.clone();
-            let cancelled = cancel.clone();
-            // Join extraction even on cancellation, so the temporary directory has one owner.
-            tokio::task::spawn_blocking(move || {
-                let reader = ChromeArchive {
-                    file: File::open(archive_path)?,
-                    cancelled,
-                };
-                let mut archive = zip::ZipArchive::new(reader).map_err(std::io::Error::other)?;
-                archive.extract(extract_to).map_err(std::io::Error::other)
-            })
-            .await??;
-            let digest = demi_artifact::digest(
-                &extraction.join(&record.executable),
-                1024 * 1024 * 1024,
-                cancel,
-            )
-            .await
-            .map_err(|error| BrowserError::Configuration(error.to_string()))?;
-            let receipt = BrowserInstallation {
-                archive_hash: record.sha256,
-                executable_hash: digest.sha256,
-            };
-            tokio::fs::write(
-                extraction.join("receipt.json"),
-                serde_json::to_vec(&receipt)
-                    .map_err(|error| BrowserError::Configuration(error.to_string()))?,
-            )
-            .await?;
-            if cancel.is_cancelled() {
-                return Err(BrowserError::Cancelled);
-            }
-            tokio::fs::rename(extraction, &destination).await?;
-        }
-        *installed = Some(executable.clone());
-        Ok(executable)
     }
 }
 
-/// Validate a pinned Chrome installation before using either image or user storage.
-async fn verify_installation(
+/// Finds the release preinstalled in the image or under the user's home, or
+/// installs it under the home while holding the release's install lock, so
+/// another service installing it at the same time finds this one's result.
+async fn install(cancel: &CancellationToken) -> Result<PathBuf> {
+    let release = release()?;
+    let version = release.version;
+    let record = release
+        .platforms
+        .into_iter()
+        .find(|record| record.target == host_target())
+        .ok_or_else(|| {
+            BrowserError::Installation(format!("{version} is unavailable on {}", host_target()))
+        })?;
+    #[cfg(unix)]
+    if let Some(executable) =
+        verified(&Path::new(IMAGE_ROOT).join(&record.sha256), &record, &version, cancel).await?
+    {
+        return Ok(executable);
+    }
+    let home = std::env::home_dir()
+        .filter(|home| home.is_absolute())
+        .ok_or_else(|| {
+            BrowserError::Installation(format!(
+                "{version} needs an absolute home directory to install into"
+            ))
+        })?;
+    let root = home.join(".demi/browsers");
+    tokio::fs::create_dir_all(&root).await?;
+    let _lock = InstallLock::acquire(&root.join(format!("{}.lock", record.sha256)), cancel)
+        .await
+        .map_err(|error| failed(&version, error))?;
+    let destination = root.join(&record.sha256);
+    if let Some(executable) = verified(&destination, &record, &version, cancel).await? {
+        return Ok(executable);
+    }
+    let temporary = tempfile::Builder::new()
+        .prefix("chrome-install-")
+        .tempdir_in(&root)?;
+    let archive = temporary.path().join("chrome.zip");
+    let client = demi_artifact::client().map_err(|error| failed(&version, error))?;
+    let mut output = tokio::fs::File::create(&archive).await?;
+    demi_artifact::download(
+        &client,
+        &record.url,
+        &Digest {
+            size: record.size,
+            sha256: record.sha256.clone(),
+        },
+        &mut output,
+        cancel,
+    )
+    .await
+    .map_err(|error| failed(&version, error))?;
+    drop(output);
+    let extraction = temporary.path().join("extracted");
+    demi_artifact::extract_zip(&archive, &extraction, cancel)
+        .await
+        .map_err(|error| failed(&version, error))?;
+    let executable = demi_artifact::digest(
+        &extraction.join(&record.executable),
+        EXECUTABLE_BYTES,
+        cancel,
+    )
+    .await
+    .map_err(|error| failed(&version, error))?;
+    let receipt = BrowserInstallation {
+        archive_hash: record.sha256.clone(),
+        executable_hash: executable.sha256,
+    };
+    demi_artifact::receipt::write(&extraction, &receipt)
+        .await
+        .map_err(|error| failed(&version, error))?;
+    if cancel.is_cancelled() {
+        return Err(BrowserError::Cancelled);
+    }
+    demi_artifact::publish_directory(&extraction, &destination)
+        .await
+        .map_err(|error| failed(&version, error))?;
+    Ok(destination.join(&record.executable))
+}
+
+/// The installation at `destination`, checked against its receipt; none
+/// when nothing is installed there. One that fails the check fails the
+/// install: nothing falls back to another location.
+async fn verified(
     destination: &Path,
-    archive_hash: &str,
-    executable: &str,
+    record: &ReleasePlatform,
+    version: &str,
     cancel: &CancellationToken,
 ) -> Result<Option<PathBuf>> {
     if !tokio::fs::try_exists(destination).await? {
         return Ok(None);
     }
-    let receipt = BrowserInstallation::parse(
-        &tokio::fs::read(destination.join("receipt.json")).await?,
-    )
-    .map_err(|error| {
-        BrowserError::Configuration(format!("invalid Chrome installation receipt: {error}"))
-    })?;
-    let executable = destination.join(executable);
-    let actual = demi_artifact::digest(&executable, 1024 * 1024 * 1024, cancel)
+    let receipt = demi_artifact::receipt::read(destination)
         .await
-        .map_err(|error| BrowserError::Configuration(error.to_string()))?;
-    if receipt.archive_hash != archive_hash || receipt.executable_hash != actual.sha256 {
-        return Err(BrowserError::Configuration(
-            "installed Chrome failed integrity verification".into(),
-        ));
+        .map_err(|error| failed(version, error))?
+        .ok_or_else(|| BrowserError::Installation(format!("{version} installation has no receipt")))?;
+    let receipt = BrowserInstallation::parse(&receipt).map_err(|error| {
+        BrowserError::Installation(format!("{version} installation has an invalid receipt: {error}"))
+    })?;
+    let executable = destination.join(&record.executable);
+    let actual = demi_artifact::digest(&executable, EXECUTABLE_BYTES, cancel)
+        .await
+        .map_err(|error| failed(version, error))?;
+    if receipt.archive_hash != record.sha256 || receipt.executable_hash != actual.sha256 {
+        return Err(BrowserError::Installation(format!(
+            "{version} installation failed its integrity check"
+        )));
     }
     Ok(Some(executable))
 }
 
-/// zip has safe extraction and CRC checks but no cancellation API; stop its reads.
-struct ChromeArchive {
-    file: File,
-    cancelled: CancellationToken,
-}
-impl Read for ChromeArchive {
-    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
-        if self.cancelled.is_cancelled() {
-            return Err(std::io::Error::other("Chrome installation cancelled"));
+/// What a failure of the verified-bytes library means for the install.
+fn failed(version: &str, error: demi_artifact::Error) -> BrowserError {
+    use demi_artifact::Error;
+    match error {
+        Error::Cancelled => BrowserError::Cancelled,
+        Error::Io(error) => BrowserError::Io(error),
+        error @ (Error::Download(_) | Error::Rejected { .. }) => {
+            BrowserError::Installation(format!("{version} download failed: {error}"))
         }
-        self.file.read(buffer)
-    }
-}
-impl Seek for ChromeArchive {
-    fn seek(&mut self, position: SeekFrom) -> std::io::Result<u64> {
-        self.file.seek(position)
+        error @ (Error::TooLarge { .. } | Error::Size { .. } | Error::Digest) => {
+            BrowserError::Installation(format!("{version} failed verification: {error}"))
+        }
+        error @ Error::Archive(_) => {
+            BrowserError::Installation(format!("{version} could not be extracted: {error}"))
+        }
     }
 }

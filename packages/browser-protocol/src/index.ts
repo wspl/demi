@@ -205,6 +205,3 @@ export const browserInstallationSchema = z.strictObject({
   archiveHash: z.string().regex(/^[a-f0-9]{64}$/),
   executableHash: z.string().regex(/^[a-f0-9]{64}$/),
 })
-export const browserRuntimeConfigSchema = z.strictObject({
-  home: z.string().min(1).regex(/^[^\0]*$/),
-})

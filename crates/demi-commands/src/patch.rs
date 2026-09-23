@@ -3,7 +3,51 @@ use std::{collections::HashSet, fs, path::PathBuf, sync::LazyLock};
 use regex::Regex;
 use tokio_util::sync::CancellationToken;
 
-use crate::files::{atomic_write, check_cancelled, resolve_path};
+use crate::files::{FileError, atomic_write, check_cancelled, resolve};
+
+/// Why a patch does not apply; its message is what the agent reads.
+#[derive(Debug, thiserror::Error)]
+pub enum PatchError {
+    #[error("Patch has no file path")]
+    NoPath,
+    #[error(transparent)]
+    NotText(#[from] std::str::Utf8Error),
+    #[error("Patch does not apply to {label}: {source}")]
+    DoesNotApply {
+        label: String,
+        source: Box<PatchError>,
+    },
+    #[error("Delete patch leaves file content")]
+    DeleteLeavesContent,
+    #[error("Patch destination already exists")]
+    DestinationExists,
+    #[error("Patch changes the same path more than once")]
+    PathTwice,
+    #[error("Patch hunk position is out of range")]
+    HunkOutOfRange,
+    #[error("Patch hunk starts before file")]
+    HunkBeforeFile,
+    #[error("Patch hunk line counts do not match header")]
+    HunkCounts,
+    #[error("Patch does not apply at line {0}")]
+    Mismatch(usize),
+    #[error("New header precedes old header")]
+    NewBeforeOld,
+    #[error("Invalid patch hunk header")]
+    HunkHeader,
+    #[error("Invalid hunk count")]
+    HunkCount,
+    #[error("Hunk before file header")]
+    HunkBeforeHeader,
+    #[error("Invalid hunk start")]
+    HunkStart,
+    #[error("Newline marker without patch line")]
+    NewlineMarker,
+    #[error("Invalid patch line: {0}")]
+    Line(String),
+    #[error("Invalid patch: missing file headers or hunks")]
+    Incomplete,
+}
 
 struct FilePatch {
     old: Option<String>,
@@ -36,7 +80,7 @@ pub fn apply(
     diff: &str,
     cancellation: &CancellationToken,
     mut recording: Option<&mut demi_command_service::edits::Recording>,
-) -> Result<String, String> {
+) -> Result<String, FileError> {
     let patches = parse(diff, cancellation)?;
     let mut changes = Vec::new();
     let mut touched = HashSet::new();
@@ -45,45 +89,44 @@ pub fn apply(
         let old_path = patch
             .old
             .as_ref()
-            .map(|path| resolve_path(cwd, path))
+            .map(|path| resolve(cwd, path))
             .transpose()?;
         let new_path = patch
             .new
             .as_ref()
-            .map(|path| resolve_path(cwd, path))
+            .map(|path| resolve(cwd, path))
             .transpose()?;
-        let before = old_path
-            .as_ref()
-            .map(fs::read)
-            .transpose()
-            .map_err(|error| error.to_string())?;
+        let before = old_path.as_ref().map(fs::read).transpose()?;
         let original = std::str::from_utf8(before.as_deref().unwrap_or_default())
-            .map_err(|error| error.to_string())?;
+            .map_err(PatchError::from)?;
         let label = patch
             .old
             .as_deref()
             .or(patch.new.as_deref())
-            .ok_or("Patch has no file path")?;
-        let updated = apply_hunks(original, &patch.hunks, cancellation)
-            .map_err(|error| format!("Patch does not apply to {label}: {error}"))?;
+            .ok_or(PatchError::NoPath)?;
+        let updated = apply_hunks(original, &patch.hunks, cancellation).map_err(|error| {
+            match error {
+                FileError::Patch(source) => FileError::Patch(PatchError::DoesNotApply {
+                    label: label.to_owned(),
+                    source: Box::new(source),
+                }),
+                error => error,
+            }
+        })?;
         if new_path.is_none() && !updated.is_empty() {
-            return Err("Delete patch leaves file content".into());
+            return Err(PatchError::DeleteLeavesContent.into());
         }
         if new_path != old_path
             && new_path
                 .as_ref()
                 .is_some_and(|path| fs::symlink_metadata(path).is_ok())
         {
-            return Err("Patch destination already exists".into());
+            return Err(PatchError::DestinationExists.into());
         }
         if let Some(path) = new_path.clone() {
             let same = new_path == old_path;
             let permissions = if same {
-                Some(
-                    fs::metadata(&path)
-                        .map_err(|error| error.to_string())?
-                        .permissions(),
-                )
+                Some(fs::metadata(&path)?.permissions())
             } else {
                 None
             };
@@ -97,11 +140,7 @@ pub fn apply(
         if old_path != new_path
             && let Some(path) = old_path
         {
-            let permissions = Some(
-                fs::metadata(&path)
-                    .map_err(|error| error.to_string())?
-                    .permissions(),
-            );
+            let permissions = Some(fs::metadata(&path)?.permissions());
             changes.push(Change {
                 path,
                 before,
@@ -112,7 +151,7 @@ pub fn apply(
     }
     for change in &changes {
         if !touched.insert(change.path.clone()) {
-            return Err("Patch changes the same path more than once".into());
+            return Err(PatchError::PathTwice.into());
         }
     }
     changes.retain(|change| change.before != change.after);
@@ -128,43 +167,52 @@ pub fn apply(
 fn commit_changes(
     changes: &[Change],
     cancellation: &CancellationToken,
-    mut write: impl FnMut(&Change) -> Result<(), String>,
+    mut write: impl FnMut(&Change) -> Result<(), FileError>,
     mut recording: Option<&mut demi_command_service::edits::Recording>,
-) -> Result<(), String> {
+) -> Result<(), FileError> {
     for (index, change) in changes.iter().enumerate() {
         let result = check_cancelled(cancellation).and_then(|()| write(change));
-        if let Err(mut error) = result {
+        if let Err(error) = result {
+            let mut rollbacks = Vec::new();
             for change in changes[..index].iter().rev() {
-                if let Err(rollback) = restore(change) {
-                    error.push_str(&format!("\nRollback failed: {rollback}"));
-                } else if let Some(recording) = &mut recording {
-                    recording.restored(&change.path);
+                match restore(change) {
+                    Err(rollback) => rollbacks.push(rollback),
+                    Ok(()) => {
+                        if let Some(recording) = &mut recording {
+                            recording.restored(&change.path);
+                        }
+                    }
                 }
             }
-            return Err(error);
+            if rollbacks.is_empty() {
+                return Err(error);
+            }
+            return Err(FileError::Rollback {
+                error: Box::new(error),
+                rollbacks,
+            });
         }
     }
     Ok(())
 }
 
-fn write_change(change: &Change) -> Result<(), String> {
+fn write_change(change: &Change) -> Result<(), FileError> {
     match &change.after {
         Some(bytes) => atomic_write(&change.path, bytes, change.before.is_none()),
-        None => fs::remove_file(&change.path).map_err(|error| error.to_string()),
+        None => Ok(fs::remove_file(&change.path)?),
     }
 }
 
-fn restore(change: &Change) -> Result<(), String> {
+fn restore(change: &Change) -> Result<(), FileError> {
     match &change.before {
         Some(bytes) => {
             atomic_write(&change.path, bytes, change.after.is_none())?;
             if let Some(permissions) = &change.permissions {
-                fs::set_permissions(&change.path, permissions.clone())
-                    .map_err(|error| error.to_string())?;
+                fs::set_permissions(&change.path, permissions.clone())?;
             }
             Ok(())
         }
-        None => fs::remove_file(&change.path).map_err(|error| error.to_string()),
+        None => Ok(fs::remove_file(&change.path)?),
     }
 }
 
@@ -172,7 +220,7 @@ fn apply_hunks(
     original: &str,
     hunks: &[Hunk],
     cancellation: &CancellationToken,
-) -> Result<String, String> {
+) -> Result<String, FileError> {
     let mut lines: Vec<String> = original.split_inclusive('\n').map(String::from).collect();
     let mut offset = 0isize;
     for hunk in hunks {
@@ -185,9 +233,9 @@ fn apply_hunks(
         let start = isize::try_from(original_start)
             .ok()
             .and_then(|start| start.checked_add(offset))
-            .ok_or("Patch hunk position is out of range")?;
+            .ok_or(PatchError::HunkOutOfRange)?;
         if start < 0 {
-            return Err("Patch hunk starts before file".into());
+            return Err(PatchError::HunkBeforeFile.into());
         }
         let start = start as usize;
         let old: Vec<_> = hunk
@@ -203,13 +251,13 @@ fn apply_hunks(
             .map(line_text)
             .collect();
         if old.len() != hunk.old_count || new.len() != hunk.new_count {
-            return Err("Patch hunk line counts do not match header".into());
+            return Err(PatchError::HunkCounts.into());
         }
         let end = start
             .checked_add(old.len())
-            .ok_or("Patch hunk position is out of range")?;
+            .ok_or(PatchError::HunkOutOfRange)?;
         if lines.get(start..end) != Some(old.as_slice()) {
-            return Err(format!("Patch does not apply at line {}", hunk.start));
+            return Err(PatchError::Mismatch(hunk.start).into());
         }
         offset += new.len() as isize - old.len() as isize;
         lines.splice(start..end, new);
@@ -232,7 +280,7 @@ static DATE_SUFFIX: LazyLock<Regex> = LazyLock::new(|| {
         .unwrap()
 });
 
-fn parse(diff: &str, cancellation: &CancellationToken) -> Result<Vec<FilePatch>, String> {
+fn parse(diff: &str, cancellation: &CancellationToken) -> Result<Vec<FilePatch>, FileError> {
     let mut patches: Vec<FilePatch> = Vec::new();
     let mut pending_old = None;
     for line in diff.split('\n') {
@@ -256,26 +304,23 @@ fn parse(diff: &str, cancellation: &CancellationToken) -> Result<Vec<FilePatch>,
             pending_old = Some(parse_path(path));
         } else if let Some(path) = line.strip_prefix("+++ ") {
             patches.push(FilePatch {
-                old: pending_old.take().ok_or("New header precedes old header")?,
+                old: pending_old.take().ok_or(PatchError::NewBeforeOld)?,
                 new: parse_path(path),
                 hunks: Vec::new(),
             });
         } else if line.starts_with("@@ ") {
-            let header = HEADER.captures(line).ok_or("Invalid patch hunk header")?;
-            let parse_count = |index| -> Result<usize, String> {
+            let header = HEADER.captures(line).ok_or(PatchError::HunkHeader)?;
+            let parse_count = |index| -> Result<usize, PatchError> {
                 header.get(index).map_or(Ok(1), |value| {
-                    value
-                        .as_str()
-                        .parse()
-                        .map_err(|_| "Invalid hunk count".into())
+                    value.as_str().parse().map_err(|_| PatchError::HunkCount)
                 })
             };
             patches
                 .last_mut()
-                .ok_or("Hunk before file header")?
+                .ok_or(PatchError::HunkBeforeHeader)?
                 .hunks
                 .push(Hunk {
-                    start: header[1].parse().map_err(|_| "Invalid hunk start")?,
+                    start: header[1].parse().map_err(|_| PatchError::HunkStart)?,
                     old_count: parse_count(2)?,
                     new_count: parse_count(3)?,
                     lines: Vec::new(),
@@ -290,12 +335,12 @@ fn parse(diff: &str, cancellation: &CancellationToken) -> Result<Vec<FilePatch>,
                 _ if line == "\\ No newline at end of file" => {
                     hunk.lines
                         .last_mut()
-                        .ok_or("Newline marker without patch line")?
+                        .ok_or(PatchError::NewlineMarker)?
                         .newline = false;
                 }
                 _ if line.is_empty() || line.starts_with("diff ") || line.starts_with("index ") => {
                 }
-                _ => return Err(format!("Invalid patch line: {line}")),
+                _ => return Err(PatchError::Line(line.to_owned()).into()),
             }
         }
     }
@@ -305,7 +350,7 @@ fn parse(diff: &str, cancellation: &CancellationToken) -> Result<Vec<FilePatch>,
             .iter()
             .any(|patch| patch.hunks.is_empty() || (patch.old.is_none() && patch.new.is_none()))
     {
-        return Err("Invalid patch: missing file headers or hunks".into());
+        return Err(PatchError::Incomplete.into());
     }
     Ok(patches)
 }
@@ -376,7 +421,7 @@ mod transaction_tests {
             &CancellationToken::new(),
             |change| {
                 if change.path.file_name().unwrap() == "second" {
-                    return Err("simulated write failure".into());
+                    return Err(std::io::Error::other("simulated write failure").into());
                 }
                 write_change(change)
             },
@@ -384,7 +429,7 @@ mod transaction_tests {
         );
         drop(recording);
         assert!(recorder.report().unwrap().files.is_empty());
-        assert_eq!(result.unwrap_err(), "simulated write failure");
+        assert_eq!(result.unwrap_err().to_string(), "simulated write failure");
         assert_eq!(
             fs::read(&changes[0].path).unwrap(),
             *changes[0].before.as_ref().unwrap()
