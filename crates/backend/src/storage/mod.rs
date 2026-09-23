@@ -1,6 +1,10 @@
-//! The databases (`storage.md`).
+//! The databases and the object store (`storage.md`).
 
+pub(crate) mod blobs;
+pub(crate) mod columns;
 pub(crate) mod control;
+pub(crate) mod conversations;
+pub(crate) mod objects;
 mod schema;
 mod sqlite;
 
@@ -27,4 +31,12 @@ pub enum StorageError {
     Time(jiff::Error),
     #[error("the database is closed")]
     Closed,
+    #[error("the object store failed: {0}")]
+    Objects(#[from] object_store::Error),
+    #[error("the file system failed: {0}")]
+    Io(#[from] std::io::Error),
+    /// Work handed to a blocking thread ended without an answer, because it
+    /// panicked or the runtime is shutting down.
+    #[error("blocking storage work did not finish: {0}")]
+    Interrupted(#[from] tokio::task::JoinError),
 }

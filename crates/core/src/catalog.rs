@@ -6,7 +6,10 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{FileExtension, Nullable, Timestamp};
+use crate::{
+    ATTACHMENT_FILE_EXTENSIONS, FileExtension, Model, ModelSelection, Nullable, ThinkingCapability,
+    ThinkingConfig, ThinkingSummary, Timestamp, VIDEO_FILE_EXTENSIONS,
+};
 
 /// An entry's catalog as one read of its source returned it. The backend
 /// keeps it in its catalog cache and reads it back from storage, so it
@@ -110,6 +113,82 @@ pub struct ProviderModel {
     #[schemars(with = "Nullable<ModelCost>")]
     #[garde(skip)]
     pub cost: Option<ModelCost>,
+}
+
+impl ProviderModel {
+    /// The selection a conversation infers with when it picks this model of
+    /// entry `provider_id` with `thinking` and `service_tier_id`: the one
+    /// conversion of a catalog model (`models.md` § Request parameters).
+    /// A context window the catalog does not know is zero.
+    pub fn selection(
+        &self,
+        provider_id: &str,
+        thinking: Option<ThinkingConfig>,
+        service_tier_id: Option<String>,
+    ) -> ModelSelection {
+        ModelSelection {
+            provider_id: provider_id.to_owned(),
+            model: Model {
+                id: self.id.clone(),
+                name: self.display_name.clone(),
+                context_window: self.context_window.unwrap_or(0),
+                input_limit: None,
+                output_limit: self.output_limit,
+                thinking: self.thinking_capabilities(),
+                accepted_extensions: self.accepted_file_extensions(),
+            },
+            thinking,
+            service_tier_id,
+        }
+    }
+
+    /// The types the model reads natively (`models.md` § Accepted
+    /// attachment types): the exact list when the catalog states one;
+    /// otherwise the attachment types when it is known to read attachments
+    /// and the video types when it is known to read video; null while
+    /// attachment support is unknown and video is not known.
+    pub fn accepted_file_extensions(&self) -> Option<Vec<FileExtension>> {
+        if let Some(exact) = &self.accepted_extensions {
+            return Some(exact.clone());
+        }
+        let attachments = self.supports_attachments;
+        let video = self.supports_video == Some(true);
+        if attachments.is_none() && !video {
+            return None;
+        }
+        let mut extensions = Vec::new();
+        if attachments == Some(true) {
+            extensions.extend(ATTACHMENT_FILE_EXTENSIONS);
+        }
+        if video {
+            extensions.extend(VIDEO_FILE_EXTENSIONS);
+        }
+        Some(extensions)
+    }
+
+    /// The thinking settings the product can offer for the model: none to
+    /// choose when reasoning is unsupported, its effort levels with every
+    /// summary choice when it names efforts, and nothing otherwise.
+    pub fn thinking_capabilities(&self) -> Vec<ThinkingCapability> {
+        if self.supports_reasoning == Some(false) {
+            return vec![ThinkingCapability::Disabled {}];
+        }
+        let Some(efforts) = self.supported_thinking_efforts.as_ref().filter(|efforts| !efforts.is_empty()) else {
+            return Vec::new();
+        };
+        vec![ThinkingCapability::Effort {
+            efforts: efforts.clone(),
+            default_effort: self.default_thinking_effort.clone(),
+            summaries: vec![
+                ThinkingSummary::Auto,
+                ThinkingSummary::Concise,
+                ThinkingSummary::Detailed,
+                ThinkingSummary::Off,
+                ThinkingSummary::On,
+            ],
+            default_summary: None,
+        }]
+    }
 }
 
 /// A service tier a model offers. The product's Fast switch selects the tier
