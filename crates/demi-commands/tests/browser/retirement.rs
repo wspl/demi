@@ -258,10 +258,9 @@ async fn chrome_process_tree_and_profile_retire_together() {
     }
 }
 
-mod browser_families;
 
 /// Wait until a concurrent browser command holds this fixture tab's admission.
-async fn wait_until_busy(fixture: &browser_families::BrowserFixture, tab: &str) {
+async fn wait_until_busy(fixture: &crate::families::BrowserFixture, tab: &str) {
     tokio::time::timeout(std::time::Duration::from_secs(5), async {
         loop {
             let (_, result) = fixture
@@ -327,7 +326,7 @@ fn chrome_profiles() -> std::collections::BTreeMap<i32, PathBuf> {
 #[ignore = "installs the pinned Chrome release and exercises conversation retirement"]
 async fn conversation_release_cancels_only_its_commands_and_retires_its_profile() {
     use serde_json::json;
-    browser_families::with_browser_fixture(|first| async move {
+    crate::families::with_browser_fixture(|first| async move {
         let mut second = first.clone();
         second.conversation = "second-conversation".into();
         let first_tab = first.open("fixture.html").await;
@@ -404,7 +403,7 @@ async fn conversation_release_cancels_only_its_commands_and_retires_its_profile(
 #[ignore = "installs the pinned Chrome release and verifies trusted invocation identity"]
 async fn browser_uses_trusted_conversation_and_caller_despite_script_environment() {
     use serde_json::json;
-    browser_families::with_browser_fixture(|mut first| async move {
+    crate::families::with_browser_fixture(|mut first| async move {
         let mut second = first.clone();
         second.conversation = "other-conversation".into();
         second.caller = "other-agent".into();
@@ -452,8 +451,6 @@ async fn browser_uses_trusted_conversation_and_caller_despite_script_environment
     .await;
 }
 
-#[path = "browser/fixture.rs"]
-mod browser_fixture;
 
 #[tokio::test]
 #[ignore = "requires DEMI_TEST_CHROME; verifies joined retirement after failed assertions"]
@@ -486,7 +483,7 @@ async fn fixture_assertions_retire_chrome_and_profiles_before_resuming_panic() {
             assert_eq!("actual", "expected", "deliberate fixture assertion");
         };
         let result = if harness == "direct" {
-            AssertUnwindSafe(browser_fixture::with_fixture(|browser, base| async move {
+            AssertUnwindSafe(crate::fixture::with_fixture(|browser, base| async move {
                 browser
                     .open(&base, &CancellationToken::new(), Duration::from_secs(10))
                     .await?;
@@ -496,7 +493,7 @@ async fn fixture_assertions_retire_chrome_and_profiles_before_resuming_panic() {
             .catch_unwind()
             .await
         } else {
-            AssertUnwindSafe(browser_families::with_browser_fixture(
+            AssertUnwindSafe(crate::families::with_browser_fixture(
                 |fixture| async move {
                     fixture.open("repairs.html").await;
                     fail();
@@ -534,7 +531,7 @@ async fn fixture_assertions_retire_chrome_and_profiles_before_resuming_panic() {
 #[ignore = "requires DEMI_TEST_CHROME; verifies the last-tab closing outcome"]
 async fn last_tab_close_fails_its_running_command_as_browser_lost() {
     use serde_json::json;
-    browser_families::with_browser_fixture(|fixture| async move {
+    crate::families::with_browser_fixture(|fixture| async move {
         let tab = fixture.open("fixture.html").await;
         let waiting = fixture.result(
             "browser.wait",
@@ -562,7 +559,7 @@ async fn last_tab_close_fails_its_running_command_as_browser_lost() {
 #[ignore = "requires installed pinned Chrome for Testing release"]
 async fn a_new_open_recovers_after_chrome_crashes_without_replaying_old_tabs() {
     use serde_json::json;
-    browser_families::with_browser_fixture(|fixture| async move {
+    crate::families::with_browser_fixture(|fixture| async move {
         let old = fixture.open("cdp.html").await;
         fixture
             .call(

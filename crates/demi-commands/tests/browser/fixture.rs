@@ -4,8 +4,6 @@ use futures_util::FutureExt;
 use std::{future::Future, path::PathBuf};
 use tokio_util::sync::CancellationToken;
 
-#[path = "server.rs"]
-mod browser_server;
 
 /// Serve deterministic browser fixtures, including failures before HTTP headers.
 pub async fn with_fixture<F, W>(exercise: F)
@@ -14,7 +12,7 @@ where
     W: Future<Output = Result<()>>,
 {
     let executable = PathBuf::from(std::env::var_os("DEMI_TEST_CHROME").expect("DEMI_TEST_CHROME"));
-    let server = browser_server::Server::start(include_str!("repairs.html")).await;
+    let server = crate::server::Server::start(include_str!("repairs.html")).await;
     let base = server.base.clone();
     let result = with_browser(
         LaunchOptions::pinned(

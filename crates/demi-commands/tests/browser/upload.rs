@@ -1,6 +1,5 @@
-mod browser_families;
 
-use browser_families::with_browser_fixture;
+use crate::families::with_browser_fixture;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 

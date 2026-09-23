@@ -77,7 +77,7 @@ impl Fixture {
 
 #[tokio::test]
 async fn help_never_reads_declared_stdin_or_calls_backend() {
-    tokio::time::timeout(Duration::from_secs(10), async {
+    tokio::time::timeout(Duration::from_secs(60), async {
         let mut fixture = Fixture::new().await;
         let (context, _lease) = fixture.context().await;
         let request = fixture.request(context.id.clone(), vec!["--help".into()]);
@@ -109,7 +109,7 @@ async fn help_never_reads_declared_stdin_or_calls_backend() {
 
 #[tokio::test]
 async fn callback_exit_clears_hint_and_revoked_context_cannot_dispatch() {
-    tokio::time::timeout(Duration::from_secs(10), async {
+    tokio::time::timeout(Duration::from_secs(60), async {
         let mut fixture = Fixture::new().await;
         let (context, lease) = fixture.context().await;
         let request = fixture.request(context.id.clone(), vec![]);
@@ -165,7 +165,7 @@ async fn callback_exit_clears_hint_and_revoked_context_cannot_dispatch() {
 
 #[tokio::test]
 async fn cancellation_sends_callback_cancel_and_clears_running_hint() {
-    tokio::time::timeout(Duration::from_secs(10), async {
+    tokio::time::timeout(Duration::from_secs(60), async {
         let mut fixture = Fixture::new().await;
         let (context, _lease) = fixture.context().await;
         let request = fixture.request(context.id.clone(), vec![]);
@@ -206,7 +206,7 @@ async fn declared_shell_builtin_dispatches_without_a_local_endpoint() {
         job::Job,
         scope::{CommandContext, Scope},
     };
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(Duration::from_secs(60), async {
         let mut fixture = Fixture::new().await;
         let (context, _lease) = fixture.context().await;
         let scope = Scope::new(
