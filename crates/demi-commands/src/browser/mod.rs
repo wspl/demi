@@ -28,6 +28,7 @@ mod probe;
 mod process;
 mod protocol;
 mod query;
+mod registry;
 mod screenshot;
 mod select;
 mod selection;

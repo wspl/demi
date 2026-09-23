@@ -357,8 +357,7 @@ impl DebugConnection {
         tab: &BrowserTab,
         events: Arc<Events>,
     ) -> Result<Self> {
-        let browser = environment.browser.upgrade().ok_or(BrowserError::Closed)?;
-        let address = browser.lock().await.websocket_address().clone();
+        let address = environment.browser.call()?.websocket_address().clone();
         let mut socket = Connection::<WireEvent>::connect(address).await?;
         let attached = roundtrip(
             &mut socket,
@@ -868,8 +867,7 @@ mod tests {
                 let cancel = CancellationToken::new();
                 let timeout = Duration::from_secs(30);
                 let tab = environment.open("about:blank", &cancel, timeout).await?;
-                let browser = environment.browser.upgrade().ok_or(BrowserError::Closed)?;
-                let address = browser.lock().await.websocket_address().clone();
+                let address = environment.browser.call()?.websocket_address().clone();
                 let mut socket = Connection::<WireEvent>::connect(address).await?;
                 let worker_url = format!(
                     "chrome-extension://{}/background.js",
@@ -879,9 +877,9 @@ mod tests {
                 for round in 0..4 {
                     let target = tokio::time::timeout(timeout, async {
                         loop {
-                            let targets = browser
-                                .lock()
-                                .await
+                            let targets = environment
+                                .browser
+                                .call()?
                                 .execute(GetTargetsParams::default())
                                 .await?;
                             // Target discovery precedes worker initialization. The

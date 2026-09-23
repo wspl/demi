@@ -947,13 +947,13 @@ async fn two_viewers_share_a_tab_and_the_last_to_operate_decides() {
                 .await;
             assert_eq!(stream["height"], 700);
         }
-        let screen = evaluate(
+        // The page's pixel ratio settles a moment after the new picture starts.
+        eventually(
             &fixture,
             &tab,
-            "[devicePixelRatio, screen.width, innerWidth, innerHeight]",
+            "devicePixelRatio === 1 && screen.width === 1920 && innerWidth === 1000 && innerHeight === 700",
         )
         .await;
-        assert_eq!(screen, json!([1, 1920, 1000, 700]));
         // It stays so when the second viewer leaves, until the first operates.
         assert_eq!(second.close().await.exit_code, 0);
         first.click(&tab, 100.0, 25.0);

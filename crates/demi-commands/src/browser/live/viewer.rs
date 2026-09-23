@@ -33,7 +33,7 @@ use super::{
 };
 use crate::browser::{
     BrowserEnvironment, BrowserError, BrowserTab,
-    conversations::Controller,
+    conversations::ConversationBrowser,
     operation::CONTROL_TIMEOUT,
     protocol::{TabId, ViewportMode},
 };
@@ -50,7 +50,7 @@ enum Failure {
 }
 
 pub(in crate::browser) async fn serve(
-    controller: Arc<Controller>,
+    browser: Arc<ConversationBrowser>,
     context: InvocationContext,
 ) -> Result<Completion, ServiceError> {
     let InvocationContext {
@@ -62,7 +62,7 @@ pub(in crate::browser) async fn serve(
     let (writer, writing) = Writer::start(output);
     let (inbound, uploads, _reading) = read(input);
     let mut viewer = Viewer {
-        controller,
+        browser,
         cancel: cancellation,
         writer,
         inbound,
@@ -142,7 +142,7 @@ fn read(
 }
 
 struct Viewer {
-    controller: Arc<Controller>,
+    browser: Arc<ConversationBrowser>,
     cancel: CancellationToken,
     writer: Writer,
     inbound: Inbounds,
@@ -184,8 +184,8 @@ impl Viewer {
     /// request (`web-api.md` § Conversation browser tabs).
     async fn environment(&mut self) -> Result<Option<BrowserEnvironment>, Failure> {
         loop {
-            let mut started = self.controller.started();
-            match self.controller.environment(None, &self.cancel).await {
+            let mut lifecycle = self.browser.lifecycle();
+            match self.browser.environment(None, &self.cancel).await {
                 Ok(Some(environment)) => return Ok(Some(environment)),
                 Err(BrowserError::Cancelled) => return Err(Failure::Cancelled),
                 Err(BrowserError::Closed) => {
@@ -202,16 +202,17 @@ impl Viewer {
                     watched: None,
                 })
                 .await;
-            let controller = self.controller.clone();
+            let browser = self.browser.clone();
             let cancel = self.cancel.clone();
             loop {
                 let message = tokio::select! {
-                    _ = controller.cancellation.cancelled() => {
+                    _ = browser.cancellation.cancelled() => {
                         self.end(EndReason::Released).await;
                         return Ok(None);
                     }
                     _ = cancel.cancelled() => return Err(Failure::Cancelled),
-                    _ = started.changed() => break,
+                    // A browser started or ended.
+                    _ = lifecycle.changed() => break,
                     message = self.inbound.recv() => match message {
                         Some(Ok(message)) => Some(message),
                         Some(Err(error)) => return Err(Failure::Protocol(error)),
@@ -265,7 +266,7 @@ impl Viewer {
         let result = loop {
             tokio::select! {
                 biased;
-                _ = self.controller.cancellation.cancelled() => {
+                _ = self.browser.cancellation.cancelled() => {
                     self.end(EndReason::Released).await;
                     break Ok(());
                 }
@@ -477,7 +478,7 @@ struct Session<'a> {
 impl Session<'_> {
     /// The browser's tabs and the one this viewer watches.
     async fn state(&mut self) {
-        let listed = match self
+        let listing = match self
             .environment
             .listed(&CancellationToken::new(), CONTROL_TIMEOUT)
             .await
@@ -494,18 +495,19 @@ impl Session<'_> {
             }
         };
         if let Some(watched) = &self.watched
-            && !listed.iter().any(|(tab, _)| tab.id() == watched.tab.id())
+            && listing.find(watched.tab.id()).is_none()
         {
             self.watch(None).await;
         }
-        let tabs = listed
+        let tabs = listing
+            .tabs
             .iter()
-            .map(|(tab, info)| LiveTab {
-                id: tab.id().clone(),
-                title: info.title.clone(),
-                url: info.url.clone(),
-                created_by: tab.created_by.clone(),
-                viewport: tab.viewport(),
+            .map(|listed| LiveTab {
+                id: listed.tab.id().clone(),
+                title: listed.title.clone(),
+                url: listed.url.clone(),
+                created_by: listed.tab.created_by.clone(),
+                viewport: listed.tab.viewport(),
             })
             .collect();
         self.writer

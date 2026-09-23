@@ -122,11 +122,6 @@ impl Hub {
         self.changes.clone()
     }
 
-    /// Tabs opened, closed or changed.
-    pub fn changed(&self) {
-        self.changes.send_modify(|revision| *revision += 1);
-    }
-
     pub(super) fn subscribe(&self) -> watch::Receiver<u64> {
         self.changes.subscribe()
     }
