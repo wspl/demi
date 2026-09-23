@@ -16,8 +16,11 @@ use std::{
 };
 
 use gix::bstr::{BStr, BString, ByteSlice};
-use tokio::sync::Semaphore;
-use tokio_util::sync::CancellationToken;
+use tokio::{
+    sync::{Semaphore, mpsc, oneshot},
+    task::JoinSet,
+};
+use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
 use crate::connection::wire::{self as wire, Frame, Inbound};
 use demi_command_service::paths::resolve;
@@ -71,14 +74,20 @@ impl Changes {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum GitError {
+    #[error("not inside a git repository")]
     NotRepository,
+    #[error("the working-tree request timed out")]
     Timeout,
+    #[error("the file is too large")]
     TooLarge,
+    #[error("the working-tree request was cancelled")]
     Cancelled,
+    #[error("{0}")]
     Internal(String),
-    Io(io::Error),
+    #[error("{0}")]
+    Io(#[from] io::Error),
 }
 
 impl GitError {
@@ -94,28 +103,30 @@ impl GitError {
     }
 
     pub fn message(&self) -> String {
-        match self {
-            GitError::NotRepository => "not inside a git repository".into(),
-            GitError::Timeout => "the working-tree request timed out".into(),
-            GitError::TooLarge => "the file is too large".into(),
-            GitError::Cancelled => "the working-tree request was cancelled".into(),
-            GitError::Internal(message) => message.clone(),
-            GitError::Io(error) => error.to_string(),
-        }
+        self.to_string()
     }
 }
 
-impl std::fmt::Display for GitError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str(&self.message())
-    }
-}
-
-impl std::error::Error for GitError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+/// Requests that share one computation each get its failure. A copied IO
+/// error keeps its kind, its operating-system code and its words, which is
+/// all a reply and the open-file wait read.
+impl Clone for GitError {
+    fn clone(&self) -> Self {
         match self {
-            GitError::Io(error) => Some(error),
-            _ => None,
+            GitError::NotRepository => GitError::NotRepository,
+            GitError::Timeout => GitError::Timeout,
+            GitError::TooLarge => GitError::TooLarge,
+            GitError::Cancelled => GitError::Cancelled,
+            GitError::Internal(message) => GitError::Internal(message.clone()),
+            // Out of open files stays so, whatever the error wraps: the
+            // request then waits (`runner.md` § Load).
+            GitError::Io(error) if demi_command_service::descriptors::exhausted(error) => {
+                GitError::Io(demi_command_service::descriptors::exhaustion())
+            }
+            GitError::Io(error) => GitError::Io(match error.raw_os_error() {
+                Some(code) => io::Error::from_raw_os_error(code),
+                None => io::Error::new(error.kind(), error.to_string()),
+            }),
         }
     }
 }
@@ -129,26 +140,53 @@ fn internal<E: std::error::Error + Send + Sync + 'static>(error: E) -> GitError 
     GitError::Internal(error.to_string())
 }
 
-/// The working-tree service of one backend connection: its watched
-/// directories and the bound on concurrent computations.
+/// The working-tree service of one backend connection (`runner.md`
+/// § Working tree). One owner task keeps each requested directory's baseline
+/// and watch, at most eight, and drops one after fifteen minutes without a
+/// request. Requests for a directory that arrive while it is being computed
+/// wait for the next computation, which they all share.
 #[derive(Clone)]
 pub struct GitService {
-    shared: Arc<Shared>,
+    requests: mpsc::Sender<ChangesRequest>,
+    /// The owner ends with the last handle.
+    _owner: Arc<AbortOnDropHandle<()>>,
 }
 
-struct Shared {
-    roots: Mutex<HashMap<PathBuf, Arc<Root>>>,
+struct ChangesRequest {
+    root: PathBuf,
+    reply: oneshot::Sender<Result<Changes, GitError>>,
+    cancel: CancellationToken,
+}
+
+/// Requests waiting for the owner; a sender waits for room.
+const REQUESTS: usize = 64;
+
+struct Owner {
+    roots: HashMap<PathBuf, Root>,
     computations: Arc<Semaphore>,
     max_files: usize,
+    /// Each computation hands back its root's state with the answer.
+    running: JoinSet<(PathBuf, RootState, Result<Changes, GitError>)>,
 }
 
-/// One requested directory: its baseline, its watch, and what the watch
-/// recorded since the baseline was computed.
+/// One requested directory: its state, the paths its watch recorded, and
+/// the requests waiting for it.
 struct Root {
-    path: PathBuf,
-    state: tokio::sync::Mutex<RootState>,
+    /// Absent while a computation holds it.
+    state: Option<RootState>,
+    /// The watch's own thread records here, so the section is short and
+    /// shared across threads; nothing awaits while holding it.
     touched: Arc<Mutex<Touched>>,
-    last_used: Mutex<Instant>,
+    last_used: Instant,
+    /// Waiting for the computation that runs now.
+    current: Vec<Waiter>,
+    /// Arrived during it; they share the next one.
+    queued: Vec<Waiter>,
+}
+
+struct Waiter {
+    reply: oneshot::Sender<Result<Changes, GitError>>,
+    cancel: CancellationToken,
 }
 
 struct RootState {
@@ -216,12 +254,16 @@ impl Default for GitService {
 
 impl GitService {
     pub fn with_limits(max_files: usize) -> Self {
+        let (requests, received) = mpsc::channel(REQUESTS);
+        let owner = Owner {
+            roots: HashMap::new(),
+            computations: Arc::new(Semaphore::new(CONCURRENT_COMPUTATIONS)),
+            max_files,
+            running: JoinSet::new(),
+        };
         GitService {
-            shared: Arc::new(Shared {
-                roots: Mutex::new(HashMap::new()),
-                computations: Arc::new(Semaphore::new(CONCURRENT_COMPUTATIONS)),
-                max_files,
-            }),
+            requests,
+            _owner: Arc::new(AbortOnDropHandle::new(tokio::spawn(owner.run(received)))),
         }
     }
 
@@ -234,96 +276,22 @@ impl GitService {
         if cancel.is_cancelled() {
             return Err(GitError::Cancelled);
         }
-        let canonical = tokio::fs::canonicalize(root).await.map_err(GitError::Io)?;
-        let root = self.root(canonical);
-        let mut state = tokio::select! {
-            guard = root.state.lock() => guard,
+        let root = tokio::fs::canonicalize(root).await?;
+        let (reply, answer) = oneshot::channel();
+        let request = ChangesRequest {
+            root,
+            reply,
+            cancel: cancel.clone(),
+        };
+        let ended = || GitError::Internal("the working-tree service ended".into());
+        tokio::select! {
             _ = cancel.cancelled() => return Err(GitError::Cancelled),
-        };
-        let root_path = root.path.clone();
-        let located = blocking(cancel, move || {
-            Ok(locate(&root_path)?.map(|located| {
-                let rules = rules_above(&root_path, &located);
-                (located, rules)
-            }))
-        })
-        .await?;
-        let Some((located, rules)) = located else {
-            // A directory that stops being a repository loses its baseline and watch.
-            state.baseline = None;
-            state.watcher = None;
-            return Ok(Changes::outside_repository());
-        };
-        if !state.watch_tried {
-            let root_path = root.path.clone();
-            let git_dir = located.git_dir.clone();
-            let touched = root.touched.clone();
-            state.watcher = blocking(cancel, move || {
-                Ok(start_watch(&root_path, &git_dir, touched))
-            })
-            .await?;
-            state.watch_tried = true;
+            sent = self.requests.send(request) => sent.map_err(|_| ended())?,
         }
-        let touched = {
-            let mut touched = lock(&root.touched);
-            std::mem::take(&mut *touched)
-        };
-        if touched.broken {
-            state.watcher = None;
+        tokio::select! {
+            _ = cancel.cancelled() => Err(GitError::Cancelled),
+            answer = answer => answer.map_err(|_| ended())?,
         }
-        let watched = state.watcher.is_some();
-        let scope = match &state.baseline {
-            Some(baseline) if watched && !touched.whole && baseline.rules_above == rules => {
-                let scope = paths_scope(&touched.paths, &located, baseline);
-                match scope {
-                    Some(scope) => scope,
-                    None => return Ok(baseline.to_changes(true)),
-                }
-            }
-            _ => Scope::Whole,
-        };
-        // Past the computation limit a request waits its turn (`runner.md` § Load).
-        let _permit = tokio::select! {
-            permit = self.shared.computations.clone().acquire_owned() => {
-                permit.expect("working-tree computations are never closed")
-            }
-            _ = cancel.cancelled() => return Err(GitError::Cancelled),
-        };
-        let interrupt = Arc::new(AtomicBool::new(false));
-        let computed = {
-            let located = located.clone();
-            let interrupt = interrupt.clone();
-            let max_files = self.shared.max_files;
-            let scope_pathspecs = match &scope {
-                Scope::Whole => None,
-                Scope::Paths { pathspecs, .. } => Some(pathspecs.clone()),
-            };
-            interruptible(cancel, interrupt, move |flag| {
-                compute(&located, scope_pathspecs, flag, max_files)
-            })
-            .await?
-        };
-        let mut baseline = match scope {
-            Scope::Whole => Baseline {
-                head: computed.head,
-                files: computed.files,
-                renames: computed.renames,
-                rules_above: rules,
-                truncated: computed.truncated,
-            },
-            Scope::Paths { root_relative, .. } => {
-                let mut baseline = state
-                    .baseline
-                    .take()
-                    .expect("a paths scope needs a baseline");
-                baseline.merge(computed, &root_relative);
-                baseline
-            }
-        };
-        baseline.truncate(self.shared.max_files);
-        let changes = baseline.to_changes(watched);
-        state.baseline = Some(baseline);
-        Ok(changes)
     }
 
     /// The file at `path` under `root` as the last commit has it.
@@ -336,7 +304,7 @@ impl GitService {
         if cancel.is_cancelled() {
             return Err(GitError::Cancelled);
         }
-        let root = tokio::fs::canonicalize(root).await.map_err(GitError::Io)?;
+        let root = tokio::fs::canonicalize(root).await?;
         let path = path.to_owned();
         blocking(cancel, move || {
             let located = locate(&root)?.ok_or(GitError::NotRepository)?;
@@ -362,39 +330,207 @@ impl GitService {
         })
         .await
     }
+}
 
-    /// The root's state, made on first use; idle roots leave and the oldest
-    /// makes room past the cap.
-    fn root(&self, path: PathBuf) -> Arc<Root> {
-        let mut roots = lock(&self.shared.roots);
-        let now = Instant::now();
-        roots.retain(|_, root| now.duration_since(*lock(&root.last_used)) < IDLE);
-        if let Some(root) = roots.get(&path) {
-            *lock(&root.last_used) = now;
-            return root.clone();
-        }
-        if roots.len() >= MAX_ROOTS {
-            let oldest = roots
-                .iter()
-                .min_by_key(|(_, root)| *lock(&root.last_used))
-                .map(|(path, _)| path.clone());
-            if let Some(oldest) = oldest {
-                roots.remove(&oldest);
+impl Owner {
+    async fn run(mut self, mut requests: mpsc::Receiver<ChangesRequest>) {
+        let mut idle = tokio::time::interval(Duration::from_secs(60));
+        idle.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            tokio::select! {
+                request = requests.recv() => match request {
+                    Some(request) => self.request(request),
+                    None => return,
+                },
+                Some(computed) = self.running.join_next() => {
+                    let (path, state, result) =
+                        computed.expect("working-tree computations do not panic");
+                    self.computed(path, state, result);
+                }
+                _ = idle.tick() => self.expire(),
             }
         }
-        let root = Arc::new(Root {
-            path: path.clone(),
-            state: tokio::sync::Mutex::new(RootState {
+    }
+
+    fn request(&mut self, request: ChangesRequest) {
+        self.expire();
+        let now = Instant::now();
+        if !self.roots.contains_key(&request.root) && self.roots.len() >= MAX_ROOTS {
+            // The oldest directory no request is waiting for makes room.
+            let oldest = self
+                .roots
+                .iter()
+                .filter(|(_, root)| root.state.is_some())
+                .min_by_key(|(_, root)| root.last_used)
+                .map(|(path, _)| path.clone());
+            if let Some(oldest) = oldest {
+                self.roots.remove(&oldest);
+            }
+        }
+        let root = self.roots.entry(request.root.clone()).or_insert_with(|| Root {
+            state: Some(RootState {
                 baseline: None,
                 watcher: None,
                 watch_tried: false,
             }),
             touched: Arc::new(Mutex::new(Touched::default())),
-            last_used: Mutex::new(now),
+            last_used: now,
+            current: Vec::new(),
+            queued: Vec::new(),
         });
-        roots.insert(path, root.clone());
-        root
+        root.last_used = now;
+        root.queued.push(Waiter {
+            reply: request.reply,
+            cancel: request.cancel,
+        });
+        self.start(request.root);
     }
+
+    /// Starts the computation the queued requests of `path` share, unless one
+    /// runs.
+    fn start(&mut self, path: PathBuf) {
+        let Some(root) = self.roots.get_mut(&path) else {
+            return;
+        };
+        root.queued.retain(|waiter| !waiter.reply.is_closed());
+        if root.queued.is_empty() {
+            return;
+        }
+        let Some(state) = root.state.take() else {
+            return;
+        };
+        root.current = std::mem::take(&mut root.queued);
+        // Requests share their connection's cancellation.
+        let cancel = root.current[0].cancel.clone();
+        let touched = root.touched.clone();
+        let computations = self.computations.clone();
+        let max_files = self.max_files;
+        self.running.spawn(async move {
+            let mut state = state;
+            let result =
+                changes(&path, &mut state, &touched, &computations, max_files, &cancel).await;
+            (path, state, result)
+        });
+    }
+
+    fn computed(&mut self, path: PathBuf, state: RootState, result: Result<Changes, GitError>) {
+        let Some(root) = self.roots.get_mut(&path) else {
+            return;
+        };
+        root.state = Some(state);
+        let mut waiters = root.current.drain(..);
+        let first = waiters.next();
+        // A request that gave up no longer waits for the answer.
+        for waiter in waiters {
+            let _gone = waiter.reply.send(result.clone());
+        }
+        if let Some(waiter) = first {
+            let _gone = waiter.reply.send(result);
+        }
+        self.start(path);
+    }
+
+    /// Drops directories without a request for fifteen minutes.
+    fn expire(&mut self) {
+        let now = Instant::now();
+        self.roots.retain(|_, root| {
+            root.state.is_none()
+                || !root.queued.is_empty()
+                || now.duration_since(root.last_used) < IDLE
+        });
+    }
+}
+
+/// The changes under `path` from its state: incremental when the watch
+/// recorded few paths since the baseline, a whole walk otherwise.
+async fn changes(
+    path: &Path,
+    state: &mut RootState,
+    touched_paths: &Arc<Mutex<Touched>>,
+    computations: &Arc<Semaphore>,
+    max_files: usize,
+    cancel: &CancellationToken,
+) -> Result<Changes, GitError> {
+    let root_path = path.to_owned();
+    let located = blocking(cancel, move || {
+        Ok(locate(&root_path)?.map(|located| {
+            let rules = rules_above(&root_path, &located);
+            (located, rules)
+        }))
+    })
+    .await?;
+    let Some((located, rules)) = located else {
+        // A directory that stops being a repository loses its baseline and watch.
+        state.baseline = None;
+        state.watcher = None;
+        return Ok(Changes::outside_repository());
+    };
+    if !state.watch_tried {
+        let root_path = path.to_owned();
+        let git_dir = located.git_dir.clone();
+        let touched = touched_paths.clone();
+        state.watcher = blocking(cancel, move || {
+            Ok(start_watch(&root_path, &git_dir, touched))
+        })
+        .await?;
+        state.watch_tried = true;
+    }
+    let touched = std::mem::take(&mut *lock(touched_paths));
+    if touched.broken {
+        state.watcher = None;
+    }
+    let watched = state.watcher.is_some();
+    let scope = match &state.baseline {
+        Some(baseline) if watched && !touched.whole && baseline.rules_above == rules => {
+            let scope = paths_scope(&touched.paths, &located, baseline);
+            match scope {
+                Some(scope) => scope,
+                None => return Ok(baseline.to_changes(true)),
+            }
+        }
+        _ => Scope::Whole,
+    };
+    // Past the computation limit a request waits its turn (`runner.md` § Load).
+    let _permit = tokio::select! {
+        permit = computations.clone().acquire_owned() => {
+            permit.expect("working-tree computations are never closed")
+        }
+        _ = cancel.cancelled() => return Err(GitError::Cancelled),
+    };
+    let interrupt = Arc::new(AtomicBool::new(false));
+    let computed = {
+        let located = located.clone();
+        let interrupt = interrupt.clone();
+        let scope_pathspecs = match &scope {
+            Scope::Whole => None,
+            Scope::Paths { pathspecs, .. } => Some(pathspecs.clone()),
+        };
+        interruptible(cancel, interrupt, move |flag| {
+            compute(&located, scope_pathspecs, flag, max_files)
+        })
+        .await?
+    };
+    let mut baseline = match scope {
+        Scope::Whole => Baseline {
+            head: computed.head,
+            files: computed.files,
+            renames: computed.renames,
+            rules_above: rules,
+            truncated: computed.truncated,
+        },
+        Scope::Paths { root_relative, .. } => {
+            let mut baseline = state
+                .baseline
+                .take()
+                .expect("a paths scope needs a baseline");
+            baseline.merge(computed, &root_relative);
+            baseline
+        }
+    };
+    baseline.truncate(max_files);
+    let changes = baseline.to_changes(watched);
+    state.baseline = Some(baseline);
+    Ok(changes)
 }
 
 impl Baseline {
@@ -441,10 +577,9 @@ impl Baseline {
     }
 }
 
+/// A poisoned lock means a panic mid-update, which nothing may paper over.
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-    mutex
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+    mutex.lock().expect("the watch's record is intact")
 }
 
 /// Runs `work` on a blocking thread; a panic there answers `internal`.

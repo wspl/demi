@@ -190,6 +190,7 @@ impl Owner<'_> {
                 Some(work) = self.work.join_next() => {
                     self.worked(work.expect("connection work does not panic"))?;
                 }
+                Some(()) = self.volumes.checked() => {}
                 message = transport.input.recv() => match message {
                     Some(message) => {
                         if let Some(end) = self.route(message).await? {

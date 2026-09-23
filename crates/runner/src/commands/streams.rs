@@ -3,10 +3,7 @@
 //! context, then carry bytes between the invocation and the two pipes the
 //! request named.
 
-use std::{
-    io,
-    sync::{Arc, Mutex},
-};
+use std::{io, sync::Arc};
 
 use bytes::Bytes;
 use demi_command_service::{
@@ -166,59 +163,43 @@ impl ServiceStreams {
             log.event("opened");
             let (pulls, demanded) = mpsc::channel(1);
             let completed = CancellationToken::new();
-            let exchange = TaskTracker::new();
             // Input pipe → the invocation's input, one chunk per pull; input
             // EOF ends the invocation's input.
-            exchange.spawn({
-                let pipes = pipes.clone();
-                let reply = reply.clone();
-                let cancel = stream.clone();
-                let completed = completed.clone();
-                let reporting = reporting.clone();
-                async move {
-                    let result = tokio::select! {
-                        biased;
-                        // The invocation is over; it asks for no more input.
-                        _ = completed.cancelled() => Ok(()),
-                        result = pump_input(pipes, &input.url, command_input, demanded, &cancel) => result,
-                    };
-                    if result.is_err() {
-                        cancel.cancel();
-                    }
-                    report_pipe(&reply, input.id, result, &reporting).await;
+            let feed_pipes = pipes.clone();
+            let feed = async {
+                let result = tokio::select! {
+                    biased;
+                    // The invocation is over; it asks for no more input.
+                    _ = completed.cancelled() => Ok(()),
+                    result = pump_input(feed_pipes, &input.url, command_input, demanded, &stream) => result,
+                };
+                if result.is_err() {
+                    stream.cancel();
                 }
-            });
+                report_pipe(&reply, input.id, result, &reporting).await;
+            };
             // The invocation's standard output → output pipe; its completion
             // ends the upload.
-            let outcome = Arc::new(Mutex::new(None));
-            exchange.spawn({
-                let reply = reply.clone();
-                let cancel = stream.clone();
-                let log = log.clone();
-                let outcome = outcome.clone();
-                async move {
-                    let result = pump_output(
-                        pipes,
-                        &output.url,
-                        command_output,
-                        pulls,
-                        &completed,
-                        &cancel,
-                        &log,
-                        &outcome,
-                    )
-                    .await;
-                    if result.is_err() {
-                        cancel.cancel();
-                    }
-                    report_pipe(&reply, output.id, result, &reporting).await;
+            let drain = async {
+                let (result, outcome) = pump_output(
+                    pipes,
+                    &output.url,
+                    command_output,
+                    pulls,
+                    &completed,
+                    &stream,
+                    &log,
+                )
+                .await;
+                if result.is_err() {
+                    stream.cancel();
                 }
-            });
-            exchange.close();
-            exchange.wait().await;
+                report_pipe(&reply, output.id, result, &reporting).await;
+                outcome
+            };
+            let ((), done) = tokio::join!(feed, drain);
             // A one-shot call has no page to tell: its caller learns the
             // exit code and the operation's own words from this message.
-            let done = outcome.lock().unwrap().take();
             if let Some(Outcome { exit_code, stderr }) = done {
                 match wire::encode(&wire::Outbound::ServiceDone { stream_id, exit_code, stderr }) {
                     Ok(message) => {
@@ -324,8 +305,9 @@ async fn pump_output(
     completed: &CancellationToken,
     cancel: &CancellationToken,
     log: &StreamLog,
-    outcome: &Mutex<Option<Outcome>>,
-) -> io::Result<()> {
+) -> (io::Result<()>, Option<Outcome>) {
+    let mut outcome = None;
+    let slot = &mut outcome;
     let (sender, receiver) = mpsc::channel::<io::Result<Bytes>>(OUTPUT_QUEUE);
     let records = async move {
         // A byte is at most one UTF-16 unit of the text `service_done` carries.
@@ -363,7 +345,7 @@ async fn pump_output(
                             log.event(&format!("failed: {}: {}", error.code, error.message));
                         }
                         let stderr = tail.text();
-                        *outcome.lock().unwrap() = Some(Outcome {
+                        *slot = Some(Outcome {
                             exit_code: completion.exit_code,
                             stderr,
                         });
@@ -415,7 +397,7 @@ async fn pump_output(
         }
     });
     let (result, ()) = tokio::join!(pipes.put(url, body, cancel), records);
-    result
+    (result, outcome)
 }
 
 async fn send_error(
