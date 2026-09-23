@@ -201,7 +201,7 @@ where
         ended: ended.clone(),
     };
     let _end_on_drop = ended.clone().drop_guard();
-    let captures = Arc::new(super::live::capture::Captures::default());
+    let captures = super::live::capture::CaptureChannel::open(&observers, ended.clone());
     capture.serve(captures.clone(), &observers, ended.clone());
     let live = Arc::new(super::live::Hub::new(
         captures,
@@ -239,7 +239,6 @@ where
         pump_ended.cancel();
         result
     }));
-    let mut registered = None;
     let outcome = tokio::select! {
         biased;
         _ = stop.cancelled() => Err(BrowserError::Cancelled),
@@ -262,7 +261,6 @@ where
                 live.changes(),
             )
             .await?;
-            registered = Some(tabs.clone());
             let environment = BrowserEnvironment {
                 browser: handle.clone(),
                 ended: ended.clone(),
@@ -276,15 +274,11 @@ where
             work(environment).await
         } => result,
     };
+    // Every task of the environment ends with it: the tabs' debugging
+    // owners close their connections as they end.
     ended.cancel();
     observers.close();
     observers.wait().await;
-    let mut debug_cleanup = Ok(());
-    if let Some(tabs) = registered {
-        for listed in &tabs.latest().tabs {
-            debug_cleanup = after_cleanup(debug_cleanup, super::cdp::release(&listed.tab).await);
-        }
-    }
     // No call starts once the environment ended, and each ends within the
     // request timeout while the pump still runs; then only this owner holds
     // the browser. A call that outlived the wait leaves the browser with it,
@@ -294,7 +288,7 @@ where
     let retired = retire_browser(Arc::into_inner(browser), pump, &mut process).await;
     let cleanup = remove_profile(profile, retired).await;
     drop(profile_lock);
-    after_cleanup(after_cleanup(outcome, debug_cleanup), cleanup)
+    after_cleanup(outcome, cleanup)
 }
 
 /// Removes what browsers left behind when their service ended without
@@ -380,20 +374,16 @@ impl BrowserEnvironment {
                 &operation,
             )
             .await?;
-        let mut references = tab
-            .state
-            .operations
-            .try_lock()
-            .map_err(|_| BrowserError::Busy)?;
+        let mut session = tab.state.gate.try_checkout().ok_or(BrowserError::Busy)?;
         let url = tab
             .navigate(
                 super::navigation::Navigation::Url(url.into()),
                 load,
                 &operation,
-                &mut references,
+                &mut session.references,
             )
             .await?;
-        drop(references);
+        drop(session);
         Ok((tab, url))
     }
 
@@ -469,19 +459,14 @@ impl BrowserEnvironment {
     }
 
     /// Snapshot another caller's debug ownership without issuing browser commands.
-    pub(super) async fn debugging_callers(&self, id: &str, caller: Option<&str>) -> Vec<String> {
-        let tab = self
-            .tabs
+    pub(super) fn debugging_callers(&self, id: &str, caller: Option<&str>) -> Vec<String> {
+        self.tabs
             .latest()
             .tabs
             .iter()
             .map(|listed| &listed.tab)
             .find(|tab| tab.id().as_str() == id && !tab.ended.is_cancelled())
-            .cloned();
-        match tab {
-            Some(tab) => tab.state.cdp.lock().await.other_callers(caller),
-            None => Vec::new(),
-        }
+            .map_or_else(Vec::new, |tab| tab.state.debug.other_callers(caller))
     }
 
     pub async fn tabs(

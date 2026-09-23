@@ -17,6 +17,7 @@ use demi_builtin_protocol::{
 };
 use demi_command_service::Output;
 use tokio::{sync::mpsc, time::Instant};
+use tokio_util::sync::CancellationToken;
 
 use super::frames;
 
@@ -32,6 +33,8 @@ pub(super) struct Writer {
     control: mpsc::Sender<Bytes>,
     video: mpsc::Sender<Bytes>,
     queued: Arc<AtomicUsize>,
+    /// Ends a wait for room in the control queue; never, for the viewer's own.
+    ended: CancellationToken,
 }
 
 impl Writer {
@@ -45,9 +48,20 @@ impl Writer {
                 control,
                 video,
                 queued,
+                ended: CancellationToken::new(),
             },
             task,
         )
+    }
+
+    /// This writer for a task of the environment, which retirement joins: a
+    /// page that stops reading holds the task back only until `ended`, after
+    /// which what it had to say no longer matters.
+    pub fn until(&self, ended: &CancellationToken) -> Self {
+        Self {
+            ended: ended.clone(),
+            ..self.clone()
+        }
     }
 
     /// Queues a control message. A message outside the protocol's bounds
@@ -55,10 +69,16 @@ impl Writer {
     /// from a page observer's defect.
     pub async fn control(&self, message: &LiveModuleMessage) {
         if let Err(report) = garde::Validate::validate(message) {
-            eprintln!("live view message refused: {}", DecodeError::from(report));
+            tracing::warn!("live view message refused: {}", DecodeError::from(report));
             return;
         }
-        let _ended = self.control.send(frames::control(message)).await;
+        let bytes = frames::control(message);
+        tokio::select! {
+            biased;
+            _ = self.ended.cancelled() => {}
+            // The view ended, and its page with it.
+            _ended = self.control.send(bytes) => {}
+        }
     }
 
     /// Something the viewer asked for failed; the stream goes on.

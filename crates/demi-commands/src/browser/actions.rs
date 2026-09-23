@@ -92,7 +92,7 @@ impl BrowserTab {
         Operation::for_tab(self, cancel, tokio::time::Instant::now() + timeout)
             .run(async {
                 let (url, title) = self.target_info().await?;
-                let dialog = self.state.dialog.borrow().as_ref().map(|dialog| Dialog {
+                let dialog = self.state.dialog.open().map(|dialog| Dialog {
                     r#type: super::tab::dialog_type(&dialog.r#type),
                     message: dialog.message.clone(),
                 });
@@ -114,12 +114,12 @@ impl BrowserTab {
         deadline: tokio::time::Instant,
     ) -> Result<TabResult> {
         let operation = Operation::for_tab(self, cancel, deadline);
-        let mut references = self
+        let mut session = self
             .state
-            .operations
-            .try_lock()
-            .map_err(|_| operation.failure(BrowserError::Busy, self.id().as_str(), None))?;
-        self.command_admitted(command, cancel, deadline, &mut references)
+            .gate
+            .try_checkout()
+            .ok_or_else(|| operation.failure(BrowserError::Busy, self.id().as_str(), None))?;
+        self.command_admitted(command, cancel, deadline, &mut session.references)
             .await
     }
 
@@ -138,7 +138,7 @@ impl BrowserTab {
             BrowserOperation::DialogInspect(_)
                 | BrowserOperation::DialogAccept(_)
                 | BrowserOperation::DialogDismiss(_)
-        ) && self.state.dialog.borrow().is_some()
+        ) && self.state.dialog.is_open()
         {
             return Err(operation.failure(BrowserError::DialogBlocked, self.id().as_str(), None));
         }
@@ -192,7 +192,7 @@ impl BrowserTab {
                     ))
                 }),
                 BrowserOperation::Logs(input) => Box::pin(async {
-                    Ok(TabResult::Logs(self.state.console.lock().await.read(input)?))
+                    Ok(TabResult::Logs(self.state.console.read(input).await?))
                 }),
                 BrowserOperation::Drag(input) => {
                     Box::pin(async { Ok(TabResult::Action(self.drag(input, &operation).await?)) })
@@ -698,7 +698,7 @@ impl BrowserTab {
                     Ok(TabResult::Action(ActionResult::new("select", json!(values))))
                 }),
                 BrowserOperation::DialogInspect(_) => Box::pin(async {
-                    let dialog = self.state.dialog.borrow().as_ref().map(|dialog| Dialog {
+                    let dialog = self.state.dialog.open().map(|dialog| Dialog {
                         r#type: super::tab::dialog_type(&dialog.r#type),
                         message: dialog.message.clone(),
                     });
@@ -709,8 +709,7 @@ impl BrowserTab {
                         let dialog = self
                             .state
                             .dialog
-                            .borrow()
-                            .clone()
+                            .open()
                             .ok_or(BrowserError::DialogNotFound)?;
                         if let BrowserOperation::DialogAccept(input) = command
                         && (dialog.r#type == chromiumoxide::cdp::browser_protocol::page::DialogType::Alert ||
@@ -722,7 +721,7 @@ impl BrowserTab {
                             BrowserOperation::DialogAccept(input) => input.text.clone(),
                             _ => None,
                         };
-                        self.answer_dialog(&dialog, accept, text).await?;
+                        self.state.dialog.answer(&dialog, accept, text).await?;
                         Ok(TabResult::Dialog(DialogResult {
                             r#type: super::tab::dialog_type(&dialog.r#type),
                             outcome: if accept {

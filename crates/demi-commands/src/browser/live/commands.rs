@@ -19,15 +19,30 @@ pub(super) enum Command {
     Mode { tab: TabId, mode: ViewportMode },
 }
 
-/// Runs a viewer's commands in order, beside its input and pictures.
+/// Commands a viewer sent that have not run yet; a full queue holds back
+/// the viewer's messages.
+const COMMANDS: usize = 8;
+
+/// Runs a viewer's commands in order, beside its input and pictures, until
+/// the viewer leaves or the environment ends.
 pub(super) fn start(
-    environment: BrowserEnvironment,
+    environment: &BrowserEnvironment,
     membership: Weak<Membership>,
     writer: Writer,
-) -> mpsc::UnboundedSender<Command> {
-    let (commands, mut receiver) = mpsc::unbounded_channel();
-    tokio::spawn(async move {
-        while let Some(command) = receiver.recv().await {
+) -> mpsc::Sender<Command> {
+    let (commands, mut receiver) = mpsc::channel(COMMANDS);
+    let environment = environment.clone();
+    let writer = writer.until(&environment.ended);
+    environment.observers.clone().spawn(async move {
+        loop {
+            let command = tokio::select! {
+                biased;
+                _ = environment.ended.cancelled() => break,
+                command = receiver.recv() => match command {
+                    Some(command) => command,
+                    None => break,
+                },
+            };
             let result = run(&environment, &membership, command).await;
             if let Err(error) = result
                 && !environment.ended.is_cancelled()
@@ -71,14 +86,17 @@ pub(super) async fn find(environment: &BrowserEnvironment, id: &TabId) -> Result
 
 /// Answers the tab's dialog for the viewer, unless someone answered first.
 pub(super) fn answer(tab: BrowserTab, accept: bool, text: Option<String>, writer: Writer) {
-    tokio::spawn(async move {
-        let Some(dialog) = tab.state.dialog.borrow().clone() else {
+    let tasks = tab.state.tasks.clone();
+    let writer = writer.until(&tab.ended);
+    // The dialog's owner ends with the tab, and its answer with the owner.
+    tasks.spawn(async move {
+        let Some(dialog) = tab.state.dialog.open() else {
             return;
         };
         // Only a prompt takes text.
         let text = text.filter(|_| dialog.r#type.as_ref() == "prompt" && accept);
-        if let Err(error) = tab.answer_dialog(&dialog, accept, text).await
-            && tab.state.dialog.borrow().is_some()
+        if let Err(error) = tab.state.dialog.answer(&dialog, accept, text).await
+            && tab.state.dialog.is_open()
         {
             writer.notice(error.code(), &error.to_string()).await;
         }

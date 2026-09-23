@@ -44,17 +44,17 @@ pub(super) async fn execute(
         for (tab, requested) in batch.tabs().iter().zip(&input.url) {
             let operation = Operation::for_tab(tab, cancel, deadline);
             let item = async {
-                let mut references = tab.state.operations.try_lock().map_err(|_| BrowserError::Busy)?;
+                let mut session = tab.state.gate.try_checkout().ok_or(BrowserError::Busy)?;
                 let url = tab
                     .navigate(
                         Navigation::Url(requested.clone()),
                         Load::DomContentLoaded,
                         &operation,
-                        &mut references,
+                        &mut session.references,
                     )
                     .await?;
                 let content = operation
-                    .run(tab.content(input.format.unwrap_or_default(), &mut references))
+                    .run(tab.content(input.format.unwrap_or_default(), &mut session.references))
                     .await?;
                 let title = operation.run(async { Ok(tab.page.get_title().await?.unwrap_or_default()) }).await?;
                 Ok((url, title, content))
