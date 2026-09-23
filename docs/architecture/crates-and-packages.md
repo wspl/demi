@@ -244,8 +244,11 @@ next to the wire's types, so that a command program depends on one crate.
   (`MachineResponse`: `ok`, `error` and `death`), each operation's result
   (`Operation::Output`) and the line codec (`decode_request`,
   `decode_response`, `encode_line`, `MAX_LINE_BYTES`); machine image state
-  (`MachineImageState`, `RuntimeState`, `Volume`); and the Cloud image manifest
-  (`CloudImageManifest`).
+  (`MachineImageState`, `RuntimeState`, `Volume`) and the names of stored
+  images (`DeviceId`, `GenerationId`, `BaseVersion`: one path component
+  each); and the Cloud image manifest (`image::CloudImageManifest`), which
+  embeds `runner-protocol`'s runner release and `command-service`'s package
+  descriptors.
 - **Public boundary:** the items above. The backend's machine-manager client
   and the manager link it; `xtask` writes the image manifest with it. Behavior:
   [Managed Cloud hosts](../cloud/managed-hosts.md).
@@ -653,7 +656,7 @@ command-tree -> none
 builtin-protocol -> none
 claude-protocol -> none
 runner-protocol -> command-service, command-tree
-machines-protocol -> runner-protocol
+machines-protocol -> command-service, runner-protocol
 web-api -> agent-protocol, builtin-protocol, core, runner-protocol
 gates -> none
 artifact -> none

@@ -151,7 +151,7 @@ joins them with the connection.
 loop thread: LocalRuntime; owns the manager state
   the socket server and its connections; one task per request
   one DeviceWorker per device: owns its sandbox and runs that device's
-    operations in order; a sandbox death is one more message in its queue
+    operations in order; it takes a sandbox's exit between two operations
   Admission: a fair semaphore; device operations share it,
     reconcile and shutdown take it whole
 blocking pool, through one entry point: file work and fsync, mounts, loop and
