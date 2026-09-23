@@ -9,9 +9,9 @@ use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use demi_backend::{AccountMail, Backend, BackendConfig, MailError, VerificationMail};
+use demi_backend::{AccountMail, Backend, BackendConfig, FamilyRegistry, LoginTiming, MailError, VerificationMail};
 use demi_core::Clock;
-use demi_web_api::auth::{Identity, UserDto};
+use demi_web_api::auth::{Identity, Role, UserDto};
 use demi_web_api::error::{ErrorBody, ErrorCode};
 use demi_web_api::settings::InstanceMode;
 use jiff::{SignedDuration, Timestamp};
@@ -77,6 +77,9 @@ pub struct Harness {
     mail: bool,
     web_directory: Option<PathBuf>,
     mode: InstanceMode,
+    families: FamilyRegistry,
+    models_dev_url: Option<String>,
+    logins: LoginTiming,
 }
 
 impl Harness {
@@ -90,7 +93,58 @@ impl Harness {
             mail: false,
             web_directory: None,
             mode: InstanceMode::Shared,
+            families: FamilyRegistry::builtin(),
+            models_dev_url: None,
+            logins: LoginTiming::default(),
         }
+    }
+
+    /// The provider families the backend assembles entries with.
+    pub fn with_families(mut self, families: FamilyRegistry) -> Self {
+        self.families = families;
+        self
+    }
+
+    /// Where the backend reads the models.dev document.
+    pub fn with_models_dev(mut self, url: String) -> Self {
+        self.models_dev_url = Some(url);
+        self
+    }
+
+    pub fn with_logins(mut self, logins: LoginTiming) -> Self {
+        self.logins = logins;
+        self
+    }
+
+    /// The control database, opened beside the backend's own connection.
+    pub fn control_database(&self) -> rusqlite::Connection {
+        let connection = rusqlite::Connection::open(self.data_dir().join("control.sqlite")).unwrap();
+        connection.busy_timeout(std::time::Duration::from_secs(5)).unwrap();
+        connection
+    }
+
+    /// An account setup did not create, written to the control database:
+    /// account administration is not a route of this backend yet.
+    pub fn add_user(&self, email: &str, password: &str, role: Role) {
+        use argon2::password_hash::rand_core::OsRng;
+        use argon2::password_hash::{PasswordHasher as _, SaltString};
+        let hash = argon2::Argon2::default()
+            .hash_password(password.as_bytes(), &SaltString::generate(&mut OsRng))
+            .unwrap()
+            .to_string();
+        self.control_database()
+            .execute(
+                "INSERT INTO users (id, email, nickname, password_hash, role, created_at)
+                 VALUES (?1, ?2, '', ?3, ?4, ?5)",
+                rusqlite::params![
+                    uuid::Uuid::new_v4().to_string(),
+                    email,
+                    hash,
+                    role.to_string(),
+                    self.clock.now().as_millisecond()
+                ],
+            )
+            .unwrap();
     }
 
     pub fn with_mode(mut self, mode: InstanceMode) -> Self {
@@ -120,10 +174,20 @@ impl Harness {
     }
 
     pub async fn start(&self) -> TestBackend {
+        self.start_in_mode(self.mode).await
+    }
+
+    /// The backend over this harness's data, in `mode`.
+    pub async fn start_in_mode(&self, mode: InstanceMode) -> TestBackend {
         let address = SocketAddr::from((Ipv4Addr::LOCALHOST, 0));
-        let mut config = BackendConfig::new(self.data_dir(), address, self.mode);
+        let mut config = BackendConfig::new(self.data_dir(), address, mode);
         config.clock = self.clock.clone();
         config.web_directory = self.web_directory.clone();
+        config.families = self.families.clone();
+        config.logins = self.logins;
+        if let Some(url) = &self.models_dev_url {
+            config.models_dev_url = url.parse().unwrap();
+        }
         if self.mail {
             config.account_mail = Some(self.mailbox.clone());
         }
@@ -227,6 +291,14 @@ impl TestBackend {
 
     pub async fn patch(&self, path: &str, session: &Session, body: Value) -> Answer {
         self.send(Method::PATCH, path, Some(&session.cookie), Some(body)).await
+    }
+
+    pub async fn put(&self, path: &str, session: &Session, body: Value) -> Answer {
+        self.send(Method::PUT, path, Some(&session.cookie), Some(body)).await
+    }
+
+    pub async fn delete(&self, path: &str, session: &Session) -> Answer {
+        self.send(Method::DELETE, path, Some(&session.cookie), None).await
     }
 
     /// A GET with the session's cookie and extra headers.

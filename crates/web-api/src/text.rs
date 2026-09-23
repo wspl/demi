@@ -8,6 +8,7 @@ use garde::rules::length::utf16::HasUtf16CodeUnits;
 use regex::Regex;
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Serialize};
+use url::Url;
 
 /// An email address as the product keeps it: trimmed and lowercased, at most
 /// 254 UTF-16 code units, and of the form the browser's schema accepts. The
@@ -117,6 +118,59 @@ impl JsonSchema for Trimmed {
     }
 }
 
+/// The base URL of a vendor's API, as an entry configures it: an `http` or
+/// `https` URL (`providers.md` § Endpoints).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub struct EndpointUrl(Url);
+
+/// Why a text is not an endpoint.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("must be an http or https URL")]
+pub struct NotEndpoint;
+
+impl EndpointUrl {
+    pub fn url(&self) -> &Url {
+        &self.0
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
+impl TryFrom<String> for EndpointUrl {
+    type Error = NotEndpoint;
+
+    fn try_from(text: String) -> Result<Self, NotEndpoint> {
+        let url = Url::parse(&text).map_err(|_| NotEndpoint)?;
+        if !matches!(url.scheme(), "http" | "https") || !url.has_host() {
+            return Err(NotEndpoint);
+        }
+        Ok(Self(url))
+    }
+}
+
+impl From<EndpointUrl> for String {
+    fn from(endpoint: EndpointUrl) -> Self {
+        endpoint.0.into()
+    }
+}
+
+impl JsonSchema for EndpointUrl {
+    fn inline_schema() -> bool {
+        true
+    }
+
+    fn schema_name() -> Cow<'static, str> {
+        "EndpointUrl".into()
+    }
+
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
+        json_schema!({ "type": "string", "format": "uri" })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -152,6 +206,16 @@ mod tests {
             "",
         ] {
             assert_eq!(email(refused), Err(EmailError::Malformed), "{refused}");
+        }
+    }
+
+    #[test]
+    fn an_endpoint_is_an_http_or_https_url() {
+        let endpoint = |text: &str| EndpointUrl::try_from(text.to_owned()).map(|endpoint| endpoint.as_str().to_owned());
+        assert_eq!(endpoint("https://api.kimi.com/coding/v1"), Ok("https://api.kimi.com/coding/v1".to_owned()));
+        assert_eq!(endpoint("http://127.0.0.1:8080"), Ok("http://127.0.0.1:8080/".to_owned()));
+        for refused in ["", "api.openai.com/v1", "ftp://example.test/", "file:///etc", "https://"] {
+            assert_eq!(endpoint(refused), Err(NotEndpoint), "{refused}");
         }
     }
 

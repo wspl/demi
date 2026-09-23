@@ -5,8 +5,10 @@ pub(crate) mod columns;
 pub(crate) mod control;
 pub(crate) mod conversations;
 pub(crate) mod objects;
+pub(crate) mod providers;
 mod schema;
 mod sqlite;
+pub(crate) mod usage;
 
 /// Why a storage operation failed.
 #[derive(Debug, thiserror::Error)]
