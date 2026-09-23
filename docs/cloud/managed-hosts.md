@@ -160,8 +160,8 @@ directory. Each device has one worker that runs the device's operations one at
 a time, in arrival order
 ([Machine manager](../architecture/concurrency.md#machine-manager) describes
 the manager's threads). The manager learns that a sandbox exited by waiting on
-it through `runsc`, and the exit reaches the device's worker as one more
-message, so it is handled between operations, never during one. `reconcile`
+it through `runsc`, and the device's worker takes the exit between two
+operations, never during one. `reconcile`
 and shutdown wait for the device operations in flight, and every request that
 arrives after them waits until they finish.
 
