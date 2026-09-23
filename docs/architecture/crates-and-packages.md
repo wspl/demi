@@ -312,10 +312,15 @@ next to the wire's types, so that a command program depends on one crate.
     server-sent events, the two-step decode of payloads tagged by `type`, and
     the OpenAI-shaped Responses and Chat Completions formats with their stream
     mappers;
-  - OAuth device flows (`provider::oauth`), the credential pool contract with
-    single-flight refresh, quota (`ProviderQuota`), token accounting and the
-    models.dev client; the catalog, state, account and quota shapes they
-    return are `core`'s, because the browser receives them.
+  - OAuth device flows (`provider::oauth`); the credential pool contract
+    (`CredentialPool`, `AccountDocument`) with one refresh at a time per
+    account (`RefreshGates`), the one refresh protocol of every family
+    (`renew`), a pool held in memory for logins and tests
+    (`MemoryCredentialPool`), and the account operations every subscription
+    family shares (`Accounts`, over a family's `AccountKit`); quota
+    (`ProviderQuota`), token accounting and the models.dev client; the
+    catalog, state, account and quota shapes they return are `core`'s,
+    because the browser receives them.
 - **Public boundary:** the items above; `provider::testing` supplies scripted
   runtimes (`ScriptedRuntime`), a scripted vendor server (`MockVendor`) and a
   fixed clock (`FixedClock`). Behavior: [Providers](../providers/providers.md),
@@ -673,7 +678,7 @@ machines-protocol -> command-service, runner-protocol
 web-api -> agent-protocol, builtin-protocol, command-service, core, runner-protocol
 gates -> none
 artifact -> none
-provider -> core
+provider -> core, gates
 provider-anthropic-api -> core, provider
 provider-openai-api -> provider
 provider-google -> provider

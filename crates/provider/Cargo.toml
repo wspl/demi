@@ -19,6 +19,7 @@ testing = ["dep:axum"]
 
 [dependencies]
 demi-core = { path = "../core" }
+demi-gates = { path = "../gates" }
 async-stream = "0.3"
 axum = { version = "0.8", optional = true }
 bytes.workspace = true
@@ -31,6 +32,7 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 serde.workspace = true
 serde_json.workspace = true
 serde_path_to_error = "0.1"
+sha2 = "0.10"
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
