@@ -318,7 +318,9 @@ next to the wire's types, so that a command program depends on one crate.
     (`renew`), a pool held in memory for logins and tests
     (`MemoryCredentialPool`), and the account operations every subscription
     family shares (`Accounts`, over a family's `AccountKit`); quota
-    (`ProviderQuota`), token accounting and the models.dev client; the
+    (`ProviderQuota`), token accounting, and the models.dev client
+    (`provider::models_dev`: the one copy of the document a backend keeps,
+    `ModelsDevClient`, and its vendors and models as catalog models); the
     catalog, state, account and quota shapes they return are `core`'s,
     because the browser receives them.
 - **Public boundary:** the items above; `provider::testing` supplies scripted
