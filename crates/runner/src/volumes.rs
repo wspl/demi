@@ -197,15 +197,13 @@ async fn send(
     }
 }
 
+/// Flushes the managed filesystems, or every filesystem where one cannot be
+/// named.
 fn sync_filesystems(mounts: &[PathBuf]) -> io::Result<()> {
     #[cfg(target_os = "linux")]
     if !mounts.is_empty() {
-        use std::os::fd::AsRawFd;
         for mount in mounts {
-            let file = std::fs::File::open(mount)?;
-            if unsafe { libc::syncfs(file.as_raw_fd()) } != 0 {
-                return Err(io::Error::last_os_error());
-            }
+            rustix::fs::syncfs(std::fs::File::open(mount)?)?;
         }
         return Ok(());
     }
@@ -213,9 +211,7 @@ fn sync_filesystems(mounts: &[PathBuf]) -> io::Result<()> {
     let _ = mounts;
     #[cfg(unix)]
     {
-        unsafe {
-            libc::sync();
-        }
+        rustix::fs::sync();
         Ok(())
     }
     #[cfg(windows)]
@@ -225,17 +221,11 @@ fn sync_filesystems(mounts: &[PathBuf]) -> io::Result<()> {
     ))
 }
 
+/// A mounted filesystem's size and the space an unprivileged writer has left.
 fn usage(mount: &std::path::Path) -> io::Result<(u64, u64)> {
     #[cfg(target_os = "linux")]
     {
-        use std::os::unix::ffi::OsStrExt;
-        let path =
-            std::ffi::CString::new(mount.as_os_str().as_bytes()).map_err(io::Error::other)?;
-        let mut usage = std::mem::MaybeUninit::<libc::statvfs>::uninit();
-        if unsafe { libc::statvfs(path.as_ptr(), usage.as_mut_ptr()) } != 0 {
-            return Err(io::Error::last_os_error());
-        }
-        let usage = unsafe { usage.assume_init() };
+        let usage = rustix::fs::statvfs(mount)?;
         let total = usage
             .f_blocks
             .checked_mul(usage.f_frsize)
