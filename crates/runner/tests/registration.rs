@@ -4,7 +4,7 @@ use demi_runner::connection::wire::{
 };
 use demi_runner::{
     commands::command_client::{Stdio, forward},
-    mode::{self, Options},
+    registration::{self, Options},
     state::RunnerState,
 };
 use futures_util::{SinkExt, StreamExt};
@@ -89,7 +89,7 @@ async fn backend_job_invokes_same_binary_alias_and_drain_releases_installation()
         };
         let stop = CancellationToken::new();
         let _guard = stop.clone().drop_guard();
-        let mut running = tokio::spawn(mode::run(options, stop));
+        let mut running = tokio::spawn(registration::run(options, stop));
         let (socket, _) = tokio::select! {
             accepted = listener.accept() => accepted.unwrap(),
             result = &mut running => panic!("runner exited before backend connection: {result:?}"),

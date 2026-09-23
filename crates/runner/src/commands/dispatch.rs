@@ -1,12 +1,14 @@
 //! The local API validates declarations before routing native and callback work.
 
 use crate::{
+    commands::artifacts::JobArtifacts,
     commands::command_client::RawCommand,
     commands::command_output::CommandOutput,
     commands::contexts::Contexts,
-    commands::rpc::{self, Calls},
+    commands::rpc,
     management::{self, Management},
-    services::{ArtifactResolver, ServiceHandle},
+    pipes::PipeClient,
+    services::ServiceHandle,
 };
 use bytes::Bytes;
 use demi_command_service::protocol::{Completion, Invocation, LocalInvocation, Record};
@@ -14,12 +16,13 @@ use demi_command_service::{Handler, Input, InvocationContext, ServiceError};
 use std::{future::Future, pin::Pin, sync::Arc};
 use tokio::sync::mpsc;
 
+/// Runs the declared commands of live contexts, for the local endpoint and
+/// for declared builtins alike.
 #[derive(Clone)]
 pub struct Dispatcher {
     pub contexts: Contexts,
     pub services: ServiceHandle,
-    pub resolver: Arc<dyn ArtifactResolver>,
-    pub calls: Arc<Calls>,
+    pub pipes: PipeClient,
     pub management: Arc<Management>,
 }
 
@@ -117,25 +120,28 @@ impl Dispatcher {
             };
             let parsed = parsed.validate(leaf, body).map_err(handler)?;
             let output = CommandOutput::new(invocation.output, parsed.json);
-            let _hint = self
-                .calls
-                .running_hint(&context.job_id, leaf.running_hint.as_deref())
-                .await?;
+            let _hint = rpc::running_hint(
+                &context.connection,
+                &context.job_id,
+                leaf.running_hint.as_deref(),
+            )
+            .await?;
             let code = if let Some(binding) = leaf.binding() {
                 let descriptor = context
                     .manifest
                     .packages
                     .get(&binding.descriptor_hash)
                     .ok_or_else(|| handler("native descriptor is not in this manifest"))?;
+                let resolver = Arc::new(JobArtifacts::new(self.contexts.clone()));
                 let mut resident = self
                     .services
-                    .acquire(descriptor, self.resolver.clone(), &invocation.cancellation)
+                    .acquire(descriptor, resolver, &invocation.cancellation)
                     .await
                     .map_err(handler)?;
                 let request = Invocation {
                     context: context.command.clone(),
                     json: Some(parsed.json),
-                    edits: context.edits.get().cloned(),
+                    edits: Some(context.edits.clone()),
                     operation: binding.operation.clone(),
                     invocation_id: invocation.request.invocation_id,
                     args: parsed.values.into(),
@@ -164,23 +170,23 @@ impl Dispatcher {
             } else {
                 let mut argv = vec![raw.root.clone()];
                 argv.extend(raw.argv);
-                self.calls
-                    .invoke(
-                        rpc::Request {
-                            context: context.clone(),
-                            root: raw.root,
-                            argv,
-                            parsed,
-                            cwd: invocation.request.cwd,
-                            env: invocation.request.env,
-                            live: raw.live,
-                            finite: !raw.live && leaf.stdin_field.is_none(),
-                        },
-                        invocation.input,
-                        output.clone(),
-                        invocation.cancellation.clone(),
-                    )
-                    .await?
+                rpc::invoke(
+                    &self.pipes,
+                    rpc::Request {
+                        context: context.clone(),
+                        root: raw.root,
+                        argv,
+                        parsed,
+                        cwd: invocation.request.cwd,
+                        env: invocation.request.env,
+                        live: raw.live,
+                        finite: !raw.live && leaf.stdin_field.is_none(),
+                    },
+                    invocation.input,
+                    output.clone(),
+                    invocation.cancellation.clone(),
+                )
+                .await?
             };
             output.finish(code, leaf.json_output()).await?;
             Ok(completed(code))
