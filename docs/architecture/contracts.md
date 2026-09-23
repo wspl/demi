@@ -168,14 +168,16 @@ Zod source and z.infer types
   file-type table. Anything else fails generation and names the type.
 - **Rules only Rust checks.** garde `custom` rules are not in the schema and
   are not emitted. Such a rule is checked by the backend alone.
-- **Strict and tolerant objects.** A type the backend receives refuses unknown
-  fields (`deny_unknown_fields`), and its schema is a strict object. A type the
-  browser receives accepts unknown fields, and its schema is a tolerant object.
-  A type both ends receive is strict, because the backend's check guards
-  state: a model selection arrives in `open` and travels in every block, and
-  a block is read back from the conversation database and sent to the page.
-  So the server frames and their outcomes are tolerant, while the blocks and
-  selections they carry are strict.
+- **Strict and tolerant objects.** Each end judges what it receives. In Rust,
+  a type the backend receives refuses unknown fields (`deny_unknown_fields`).
+  That includes the types both ends receive, because the backend's check
+  guards its state: a model selection arrives in `open` and travels in every
+  block, and a block is read back from the conversation database. In the
+  browser, the schema of every type the browser receives is a tolerant
+  object, including the blocks and selections inside server frames: a page
+  left open across a deploy that adds a field keeps working and ignores the
+  field. The emitter writes a strict object only for a type the browser never
+  receives, such as a client frame.
 - **Checked on arrival.** `agent-client` validates every frame it receives, and
   `web` validates every REST response before applying it to state.
 - **One patch applier.** Transcript patches have one applier,
