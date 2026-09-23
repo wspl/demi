@@ -1303,6 +1303,7 @@ dependencies = [
  "h2",
  "http",
  "libc",
+ "schemars",
  "serde",
  "serde_json",
  "serde_json_canonicalizer",
