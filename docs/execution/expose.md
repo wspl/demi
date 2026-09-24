@@ -145,18 +145,36 @@ steps 4 and 5 and holds the lease until the exchange, or the copy after an
 upgrade, ends. Destroying the expose ends the lease, and the edge closes the
 visitor's connection at once.
 
-The relay rewrites `Host` to the expose's `address`, adds
-`X-Forwarded-For`, `X-Forwarded-Host` (the expose hostname) and
-`X-Forwarded-Proto`, and removes hop-by-hop headers, except that an upgrade
-request keeps the `Upgrade` and `Connection` headers its handshake needs.
-Every other request asks the service to close its connection after the answer
-(`Connection: close`), so each visitor request is its own network stream.
-Header names keep the case they arrived with, in both directions, and a
-repeated header such as `Set-Cookie` keeps its separate lines. The relay
-changes nothing else: no caching, no compression, no HTML rewriting, no
-injected scripts. A service that builds absolute URLs from `Host` therefore
-builds them with its local address; one that honors the forwarded headers
-builds public ones.
+The relay rewrites `Host` to the expose's `address`, appends the visitor's
+address to `X-Forwarded-For`, sets `X-Forwarded-Host` to the `Host` the
+visitor sent and `X-Forwarded-Proto` to the scheme the visitor used, as the
+session cookie's HTTPS detection sees it, and removes the headers that
+concern one connection only: `Connection`, `Keep-Alive`, `Proxy-Connection`,
+`Proxy-Authenticate`, `Proxy-Authorization`, `TE`, `Trailer`,
+`Transfer-Encoding`, `Upgrade`, and the names a `Connection` header lists. An
+upgrade request and its `101` answer keep the `Upgrade` and `Connection`
+headers the handshake needs. Every other request asks the service to close
+its connection after the answer (`Connection: close`), so each visitor
+request is its own network stream. The relay changes nothing else: no
+caching, no compression, no HTML rewriting, no injected scripts. A service
+that builds absolute URLs from `Host` therefore builds them with its local
+address; one that honors the forwarded headers builds public ones.
+
+Header lines keep their name's case in both directions, and the lines of a
+repeated header, such as two `Set-Cookie`, stay separate and in their order.
+Three things differ from the bytes as sent, none of which HTTP gives a
+meaning:
+
+- The lines of one name are written together, where the name first
+  appeared: a visitor's `A: 1`, `B: 2`, `A: 3` reaches the service as
+  `A: 1`, `A: 3`, `B: 2`.
+- A header the relay writes takes the case of the message's own line of that
+  name, and is lowercase when the message had none: `Connection: close` after
+  a visitor's `Connection: keep-alive`, `x-forwarded-for` otherwise.
+- Each side's framing is the relay's own: a length the sender stated stays,
+  a chunked body is chunked again, possibly at other boundaries, and an
+  answer without a `Date` gets one, as HTTP requires of a server that
+  forwards it.
 
 Limits, defined once here:
 
@@ -289,12 +307,13 @@ The backend forwards with the HTTP/1 client of hyper, the HTTP library its own
 server runs on, instead of reading and re-framing the exchange itself. One
 implementation of HTTP framing then serves both the product routes and the
 relay, so lengths, chunked bodies and upgrades are handled in one place. The
-client keeps header case, so a service receives each request as the visitor
-sent it. Forwarding an upgrade before answering the visitor lets the visitor
-see the service's real answer, a 101 with the service's headers or its
-refusal. After the upgrade no HTTP is left to interpret, so the relay copies
-bytes, and a WebSocket's messages, extensions and close codes pass through
-unchanged.
+server and the client both keep header case, so a service receives each
+request as the visitor sent it, except that hyper's header map writes a
+repeated name's lines together. Forwarding an upgrade before answering the
+visitor lets the visitor see the service's real answer, a 101 with the
+service's headers or its refusal. After the upgrade no HTTP is left to
+interpret, so the relay copies bytes, and a WebSocket's messages, extensions
+and close codes pass through unchanged.
 
 There is no protection on the URL because the feature exists to hand a link
 to someone; the one-hour lifetime and the random id bound the exposure, and
@@ -311,16 +330,18 @@ the WebSocket check is not required, a WebSocket client is. Never a real
 model.
 
 1. `add` on a paired device and on Cloud prints a URL; `curl` of it returns
-   the fixture service's response with `Host` rewritten and the forwarded
-   headers present; the fixture records what it received. Header names
-   arrive in the case the client sent them, and two `Set-Cookie` headers in a
-   response reach the client as two.
-2. An 8 MiB request body and an 8 MiB response body arrive byte-equal with
-   the relay's memory bounded; a server-sent-event stream reaches the client
-   as events are emitted.
-3. A WebSocket echo through the relay carries text and binary both ways and
-   propagates close codes in both directions; a service that refuses the
-   upgrade reaches the client with its own status and body.
+   the fixture service's response with `Host` rewritten, the forwarded
+   headers present and the connection-level headers gone; the fixture records
+   what it received. Header names arrive in the case the client sent them,
+   both ways, and two `Set-Cookie` headers in a response reach the client as
+   two, in their order.
+2. An 8 MiB request body and an 8 MiB response body, both chunked, arrive
+   byte-equal with the relay's memory bounded; a server-sent-event stream
+   reaches the client as events are emitted, and the service sees its
+   connection's input end only after the stream ended.
+3. A WebSocket echo through the relay carries text, binary and pings both
+   ways and propagates close codes in both directions; a service that
+   refuses the upgrade reaches the client with its own status and body.
 4. Expiry: with an injected clock, a request one second after `expiresAt`
    answers 404 and the record is gone; `renew` before expiry extends it.
 5. Cloud stop destroys the exposes on that device; a paired device going

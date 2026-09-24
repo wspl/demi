@@ -8,6 +8,7 @@ pub(crate) mod control;
 pub(crate) mod conversation_index;
 pub(crate) mod conversations;
 pub(crate) mod devices;
+pub(crate) mod exposes;
 pub(crate) mod forks;
 pub(crate) mod managed;
 pub(crate) mod objects;

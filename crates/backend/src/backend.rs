@@ -24,6 +24,7 @@ use crate::auth::sessions::WebSessions;
 use crate::config::{BackendConfig, ConversationTuning, LifecycleTuning, RunnerTuning};
 use crate::conversation::stream::UserStreams;
 use crate::edge::{AppState, Edge, Site};
+use crate::expose::ExposeDomain;
 use crate::llm::assembly::ProviderAssembly;
 use crate::llm::catalog_cache::ModelCatalogCache;
 use crate::llm::claude_cli::CliInstalls;
@@ -85,6 +86,8 @@ pub(crate) struct Services {
     pub(crate) cloud: CloudServices,
     /// When a conversation's Host resources are reclaimed.
     pub(crate) lifecycle: LifecycleTuning,
+    /// The domain of expose hostnames; without it, exposes are unavailable.
+    pub(crate) expose_domain: Option<ExposeDomain>,
 }
 
 /// What the provider services start with.
@@ -172,6 +175,7 @@ impl Services {
         user_streams: &BTreeMap<String, NativeOperation>,
         cloud: CloudServices,
         lifecycle: LifecycleTuning,
+        expose_domain: Option<ExposeDomain>,
     ) -> Result<Self, StartError> {
         let Storage {
             control,
@@ -222,6 +226,7 @@ impl Services {
             native,
             cloud,
             lifecycle,
+            expose_domain,
         })
     }
 
@@ -259,6 +264,7 @@ impl Services {
             &BTreeMap::new(),
             CloudServices::new(machines, crate::config::CloudTuning::default()),
             LifecycleTuning::default(),
+            None,
         )
         .await;
         Arc::new(services.unwrap())
@@ -382,6 +388,7 @@ impl Backend {
             &config.user_streams,
             CloudServices::new(machines, config.cloud),
             config.lifecycle,
+            config.expose_domain,
         );
         let services = Arc::new(services.await?);
         let shards = match ShardPool::start(config.shards, services.clone()).await {
