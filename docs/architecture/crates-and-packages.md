@@ -520,7 +520,10 @@ Each crate implements the provider contract for one vendor family.
   Cloud's and the idle clock's times and limits (`CloudTuning`,
   `LifecycleTuning`), the native command packages their commands bind to
   (`NativeCatalog`, which the executable makes with `publish_native` from
-  `DEMI_NATIVE_CONFIG`) and the user stream declarations.
+  `DEMI_NATIVE_CONFIG`) and the user stream declarations. For suites that
+  start the executable, the example program `scripted_machines` runs the
+  scripted machine manager of its scenarios
+  ([Browser-contract suite](../delivery/scenarios.md#browser-contract-suite)).
 - **Must not:** be linked by another crate; put business logic in the HTTP
   layer beyond routing and validation; return secrets or proxy model traffic;
   spawn `runsc` or image tools itself (every sandbox and disk operation goes to
@@ -684,7 +687,8 @@ packages under `packages/`.
 - **Public boundary:** `bun run web:dev` and the production build; no library
   API.
 - **Must not:** import `web-gallery`, or import Node outside the
-  browser-contract suite, which starts the backend and runner processes.
+  browser-contract suite, which starts the backend, runner and scripted
+  machine manager processes.
 
 #### `@demicodes/web-gallery`
 
