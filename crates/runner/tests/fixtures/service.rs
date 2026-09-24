@@ -73,8 +73,7 @@ impl Handler for Fixture {
                             std::hint::spin_loop();
                         }
                     })
-                    .await
-                    .map_err(|error| ServiceError::Handler(error.to_string()))?;
+                    .await?;
                 }
                 "result" => {
                     context
@@ -87,12 +86,12 @@ impl Handler for Fixture {
                         .await?;
                     match context.request.env.get("RESULT").map(String::as_str) {
                         Some("error") => {
-                            return Err(ServiceError::Handler("command failed".into()));
+                            return Err(ServiceError::failed("command failed"));
                         }
                         _ => exit_code = 17,
                     }
                 }
-                _ => return Err(ServiceError::Handler("unknown fixture operation".into())),
+                operation => return Err(ServiceError::UnknownOperation(operation.into())),
             }
             Ok(Completion {
                 exit_code,
@@ -111,13 +110,13 @@ impl Handler for Fixture {
                 match &context.request {
                     // A service that cannot say what it holds.
                     ConversationRequest::Status {} if held.contains("unanswerable") => {
-                        return Err(ServiceError::Handler("fixture status unavailable".into()));
+                        return Err(ServiceError::failed("fixture status unavailable"));
                     }
                     ConversationRequest::Status {} => {
                         serde_json::json!({ "conversations": *held })
                     }
                     ConversationRequest::Release { conversation } if conversation == "fail" => {
-                        return Err(ServiceError::Handler("fixture cleanup failed".into()));
+                        return Err(ServiceError::failed("fixture cleanup failed"));
                     }
                     ConversationRequest::Release { conversation } => {
                         held.remove(conversation);

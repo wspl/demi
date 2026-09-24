@@ -245,6 +245,8 @@ async fn shell_cancellation_reports_the_requesting_signal() {
             .unwrap();
         let expected = signal.map_or("SIGKILL".to_owned(), |signal| signal.to_string());
         assert_eq!(exit.signal, Some(expected));
+        // Bash's own exit code is its interruption's, not the job's.
+        assert_eq!(exit.code, None);
         assert!(exit.error.is_none());
         assert_eq!(scope.tasks.len(), 0);
     }

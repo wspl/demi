@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, realpath } from 'node:fs/promises'
+import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect } from 'bun:test'
@@ -108,6 +108,8 @@ export class World {
     readonly frames: WireFrame[],
     public backend: TestBackend,
     readonly dataDir: string,
+    /** Whether the world made its data directory, and removes it. */
+    private readonly ownsDataDir: boolean,
     readonly model: ScriptedModel,
     readonly selection: {
       providerId: string;
@@ -125,6 +127,7 @@ export class World {
         config: { sweepMs: 60_000 }
       }
     }
+    const ownsDataDir = options.dataDir === undefined
     const dataDir = options.dataDir ??
       (await mkdtemp(join(tmpdir(), 'demi-scenario-')))
     const model = new ScriptedModel()
@@ -135,6 +138,7 @@ export class World {
       frames,
       backend,
       dataDir,
+      ownsDataDir,
       model,
       selectionFor(providerId),
       new Map(),
@@ -421,6 +425,16 @@ export class World {
       for (const device of this.devices.values())
         await device.runner.stop()
       await this.backend.close()
+      // A runner's state holds a copy of every native package it ran.
+      for (const device of this.devices.values()) {
+        await rm(device.home, { recursive: true, force: true })
+        await rm(device.stateDir, { recursive: true, force: true })
+      }
+      const fake = this.options.managedHosts?.provisioner
+      if (fake instanceof FakeProvisioner)
+        await fake.dispose()
+      if (this.ownsDataDir)
+        await rm(this.dataDir, { recursive: true, force: true })
     }
   }
 

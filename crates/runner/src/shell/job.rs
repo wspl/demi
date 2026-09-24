@@ -179,23 +179,28 @@ impl Job {
                     (None, None)
                 }
             };
-            (
+            // A cancelled job reports the signal that asked for its end, or
+            // `SIGKILL`, and no exit code: bash's own is the interruption's
+            // (`runner.md` § Cancellation and completion).
+            let exit = if owner_cancel.is_cancelled() {
                 ProcessExit {
-                    code,
-                    signal: owner_cancel.is_cancelled().then(|| {
+                    code: None,
+                    signal: Some(
                         owner_signal
                             .get()
                             .cloned()
-                            .unwrap_or_else(|| "SIGKILL".into())
-                    }),
-                    error: if owner_cancel.is_cancelled() {
-                        None
-                    } else {
-                        error
-                    },
-                },
-                cwd,
-            )
+                            .unwrap_or_else(|| "SIGKILL".into()),
+                    ),
+                    error: None,
+                }
+            } else {
+                ProcessExit {
+                    code,
+                    signal: None,
+                    error,
+                }
+            };
+            (exit, cwd)
         });
         Ok(Self {
             input,
