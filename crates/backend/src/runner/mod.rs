@@ -14,6 +14,7 @@ pub(crate) mod host_commands;
 pub(crate) mod install;
 pub(crate) mod native;
 mod policy;
+pub(crate) mod publication;
 pub(crate) mod router;
 
 use demi_shell::HostKey;

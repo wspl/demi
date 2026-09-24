@@ -253,9 +253,16 @@ async fn entry(backend: &TestBackend, master: &Session, body: Value) -> String {
 
 /// An Anthropic entry whose endpoint is `vendor`.
 pub(crate) async fn anthropic(backend: &TestBackend, master: &Session, vendor: &MockVendor) -> String {
+    anthropic_at(backend, master, vendor, "").await
+}
+
+/// An Anthropic entry whose endpoint is `vendor` under `prefix`, so that
+/// conversations on entries of their own get their own answers however
+/// their requests interleave.
+pub(crate) async fn anthropic_at(backend: &TestBackend, master: &Session, vendor: &MockVendor, prefix: &str) -> String {
     let body = json!({
         "source": "custom", "providerType": "anthropic", "label": "Work", "apiKey": "sk-ant-test",
-        "baseUrl": vendor.url("/v1")
+        "baseUrl": vendor.url(&format!("{prefix}/v1"))
     });
     entry(backend, master, body).await
 }

@@ -71,6 +71,15 @@ demi_core::id!(
     schema = { "type": "string", "pattern": UUID_PATTERN }
 );
 
+demi_core::id!(
+    /// A Cloud reset's id, which the page chooses: a UUID. A retry with the
+    /// same id is the same reset (`managed-hosts.md` § System reset).
+    OperationId,
+    check = uuid,
+    error = NotUuid,
+    schema = { "type": "string", "pattern": UUID_PATTERN }
+);
+
 #[cfg(test)]
 mod tests {
     use super::*;

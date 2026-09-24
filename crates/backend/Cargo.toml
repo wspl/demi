@@ -17,6 +17,7 @@ demi-artifact = { path = "../artifact" }
 demi-builtin-protocol = { path = "../builtin-protocol" }
 demi-coding-agent = { path = "../coding-agent" }
 demi-command-service = { path = "../command-service" }
+demi-command-tree = { path = "../command-tree" }
 demi-core = { path = "../core" }
 demi-gates = { path = "../gates" }
 demi-host-remote = { path = "../host-remote" }

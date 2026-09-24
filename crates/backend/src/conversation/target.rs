@@ -21,8 +21,9 @@ pub(crate) fn cloud_session_directory(id: &ConversationId, home: Option<&str>) -
 /// A conversation's selection resolved: the device its work runs on, and
 /// the directory the work starts in there. A Cloud has no device until its
 /// first use makes it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase")]
+#[garde(allow_unvalidated)]
 pub(crate) enum ExecutionTarget {
     Cloud {
         device_id: Option<DeviceId>,
@@ -56,7 +57,8 @@ impl ExecutionTarget {
 
 /// The latest target switch, which every node's next context block
 /// describes.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[garde(allow_unvalidated)]
 pub(crate) struct TargetSwitch {
     pub(crate) from: ExecutionTarget,
     pub(crate) to: ExecutionTarget,

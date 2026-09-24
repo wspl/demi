@@ -810,6 +810,14 @@ impl AgentSession {
         }
     }
 
+    /// Stops the running action and returns once it recorded the stop;
+    /// what waits to run stays, and runs once admission lets it.
+    pub(crate) async fn stop_running(&self) {
+        if let Some(cancel) = self.shared.update(SessionCore::stop_running) {
+            cancel.recorded().await;
+        }
+    }
+
     /// Records a model switch; it lands at the next action, or also at the
     /// next continuation boundary when it is immediate. A runtime the switch
     /// replaces is closed once it serves no run.

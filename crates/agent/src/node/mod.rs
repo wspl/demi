@@ -107,6 +107,12 @@ impl<H: AgentHarness> Node<H> {
             .collect()
     }
 
+    /// Ends the node's shells on every Host, their running commands with
+    /// them; a later tool call makes fresh ones.
+    pub(crate) async fn end_shells(&self) {
+        self.runtime.environments.end_all().await;
+    }
+
     /// The harness commands a child of this node inherits: this node's,
     /// before the `demi agent` graft.
     pub(crate) fn inherited_commands(&self) -> &Rc<CommandSet> {
