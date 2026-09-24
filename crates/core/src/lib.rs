@@ -2,8 +2,8 @@
 //! (`crates-and-packages.md` § core): transcript blocks, user and tool
 //! content, models and their selection, token usage, tool views, agent
 //! messages, the session's phase, queue and pending steers, provider failure
-//! facts, what the product shows of a provider entry (its model catalog,
-//! authentication and runtime states, accounts and quota snapshots), the
+//! facts, what the product shows of a provider entry (its model catalog, wire
+//! format, authentication and runtime states, accounts and quota snapshots), the
 //! file-type table, model media sniffing, the JSON forms of bytes and times,
 //! and the wall clock. It holds types, their checks and pure lookups; no IO.
 //!
@@ -59,7 +59,7 @@ pub use model::{
     ThinkingConfig, ThinkingSummary, TokenUsage, VIDEO_FILE_EXTENSIONS, file_extension_support,
     model_accepts_video,
 };
-pub use provider_state::{AccountInfo, AuthState, LoginPending, RuntimeState};
+pub use provider_state::{AccountInfo, AuthState, LoginPending, RuntimeState, WireApi};
 pub use quota::{
     QuotaPlan, QuotaScope, QuotaSeverity, QuotaSnapshot, QuotaUnit, QuotaWindow, SnapshotSource,
 };

@@ -5,6 +5,7 @@
 //! `shards.of(user).call(..)`: the closure is `Send`, the future it starts
 //! runs on the shard and need not be, and the answer is `Send`.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::future::Future;
 use std::io;
@@ -12,6 +13,7 @@ use std::num::NonZeroUsize;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use demi_host_remote::{ARRIVAL, Pipes};
 use demi_web_api::ids::UserId;
 use futures_util::future::LocalBoxFuture;
 use sha2::{Digest, Sha256};
@@ -20,6 +22,9 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 use crate::backend::Services;
+use crate::usage::rate_limit::{REQUESTS_PER_WINDOW, RequestRateLimit};
+use crate::runner::devices::Devices;
+use crate::runner::router::CommandRouter;
 
 /// Where the shards run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,15 +45,86 @@ const QUEUE: usize = 256;
 pub(crate) struct Shard {
     user: UserId,
     services: Arc<Services>,
+    /// The HTTP client of the shard's thread, which the runtimes built here
+    /// send with: hyper ties a pooled connection to the runtime that made it.
+    http: reqwest::Client,
+    /// The user's request rate limit, which every runtime of the user's
+    /// conversations counts against.
+    rate_limit: Rc<RefCell<RequestRateLimit>>,
+    /// The user's devices, each with its runner connection.
+    devices: Devices,
+    /// The pipes of the user's devices.
+    pipes: Pipes,
+    /// Each agent node's commands, for the rpc calls of its jobs.
+    commands: CommandRouter,
+    /// Every task the shard spawns, which its close waits for.
+    tasks: TaskTracker,
+    /// Cancelled when the shard starts closing: it takes no new runner.
+    closing: CancellationToken,
 }
 
 impl Shard {
+    fn new(user: UserId, services: Arc<Services>, http: reqwest::Client) -> Self {
+        Self {
+            user,
+            services,
+            http,
+            rate_limit: Rc::new(RefCell::new(RequestRateLimit::new(REQUESTS_PER_WINDOW))),
+            devices: Devices::default(),
+            pipes: Pipes::new(ARRIVAL),
+            commands: CommandRouter::default(),
+            tasks: TaskTracker::new(),
+            closing: CancellationToken::new(),
+        }
+    }
+
     pub(crate) fn user(&self) -> &UserId {
         &self.user
     }
 
     pub(crate) fn services(&self) -> &Services {
         &self.services
+    }
+
+    pub(crate) fn http(&self) -> &reqwest::Client {
+        &self.http
+    }
+
+    #[expect(dead_code, reason = "the conversations' metered runtimes count against it")]
+    pub(crate) fn rate_limit(&self) -> &Rc<RefCell<RequestRateLimit>> {
+        &self.rate_limit
+    }
+
+    pub(crate) fn devices(&self) -> &Devices {
+        &self.devices
+    }
+
+    pub(crate) fn pipes(&self) -> &Pipes {
+        &self.pipes
+    }
+
+    pub(crate) fn commands(&self) -> &CommandRouter {
+        &self.commands
+    }
+
+    pub(crate) fn tasks(&self) -> &TaskTracker {
+        &self.tasks
+    }
+
+    /// Whether the shard is closing and starts no new work.
+    pub(crate) fn is_closing(&self) -> bool {
+        self.closing.is_cancelled()
+    }
+
+    /// Ends the user's work in order (`backend.md` § Startup and shutdown):
+    /// the runner connections close, their work ends with them, and then the
+    /// pipes fail.
+    async fn close(&self) {
+        self.closing.cancel();
+        self.devices.disconnect_all("backend shutting down");
+        self.tasks.close();
+        self.tasks.wait().await;
+        self.pipes.close().await;
     }
 }
 
@@ -99,6 +175,26 @@ impl ShardRef<'_> {
         Fut: Future<Output = T> + 'static,
         T: Send + 'static,
     {
+        self.run(work, false).await
+    }
+
+    /// A call the shard also serves while it closes, such as a runner's pipe
+    /// request, which the shard's own shutdown steps may need.
+    pub(crate) async fn call_while_closing<F, Fut, T>(&self, work: F) -> Result<T, ShardUnavailable>
+    where
+        F: FnOnce(Rc<Shard>, CancellationToken) -> Fut + Send + 'static,
+        Fut: Future<Output = T> + 'static,
+        T: Send + 'static,
+    {
+        self.run(work, true).await
+    }
+
+    async fn run<F, Fut, T>(&self, work: F, while_closing: bool) -> Result<T, ShardUnavailable>
+    where
+        F: FnOnce(Rc<Shard>, CancellationToken) -> Fut + Send + 'static,
+        Fut: Future<Output = T> + 'static,
+        T: Send + 'static,
+    {
         let cancel = CancellationToken::new();
         let _requester = cancel.clone().drop_guard();
         let (answer, answered) = oneshot::channel();
@@ -107,6 +203,7 @@ impl ShardRef<'_> {
             work,
             cancel,
             answer,
+            while_closing,
         };
         self.queue
             .send(Message::Call(Box::new(job)))
@@ -115,6 +212,25 @@ impl ShardRef<'_> {
         // An answer dropped unsent means the call panicked.
         answered.await.unwrap_or(Err(ShardUnavailable::Failed))
     }
+
+    /// Moves `work`, such as serving an upgraded socket, into the user's
+    /// shard, where it runs as the shard's task until it ends. It answers
+    /// once the work is queued; a closing shard refuses it, and dropping the
+    /// work drops what it holds.
+    pub(crate) async fn adopt<F, Fut>(&self, work: F) -> Result<(), ShardUnavailable>
+    where
+        F: FnOnce(Rc<Shard>) -> Fut + Send + 'static,
+        Fut: Future<Output = ()> + 'static,
+    {
+        let job = AdoptJob {
+            user: self.user.clone(),
+            work,
+        };
+        self.queue
+            .send(Message::Call(Box::new(job)))
+            .await
+            .map_err(|_| ShardUnavailable::Closing)
+    }
 }
 
 enum Message {
@@ -122,9 +238,11 @@ enum Message {
     Close(oneshot::Sender<()>),
 }
 
-/// A call on its way to a shard, which either runs it or refuses it.
+/// Work on its way to a shard, which either runs it or refuses it.
 trait Job: Send {
     fn user(&self) -> &UserId;
+    /// Whether the shard runs it while it closes.
+    fn while_closing(&self) -> bool;
     fn run(self: Box<Self>, shard: Rc<Shard>) -> LocalBoxFuture<'static, ()>;
     fn refuse(self: Box<Self>);
 }
@@ -134,6 +252,7 @@ struct CallJob<F, T> {
     work: F,
     cancel: CancellationToken,
     answer: oneshot::Sender<Result<T, ShardUnavailable>>,
+    while_closing: bool,
 }
 
 impl<F, Fut, T> Job for CallJob<F, T>
@@ -144,6 +263,10 @@ where
 {
     fn user(&self) -> &UserId {
         &self.user
+    }
+
+    fn while_closing(&self) -> bool {
+        self.while_closing
     }
 
     fn run(self: Box<Self>, shard: Rc<Shard>) -> LocalBoxFuture<'static, ()> {
@@ -161,6 +284,39 @@ where
     fn refuse(self: Box<Self>) {
         // A requester that went away needs no refusal either.
         let _ = self.answer.send(Err(ShardUnavailable::Closing));
+    }
+}
+
+struct AdoptJob<F> {
+    user: UserId,
+    work: F,
+}
+
+impl<F, Fut> Job for AdoptJob<F>
+where
+    F: FnOnce(Rc<Shard>) -> Fut + Send + 'static,
+    Fut: Future<Output = ()> + 'static,
+{
+    fn user(&self) -> &UserId {
+        &self.user
+    }
+
+    fn while_closing(&self) -> bool {
+        false
+    }
+
+    fn run(self: Box<Self>, shard: Rc<Shard>) -> LocalBoxFuture<'static, ()> {
+        let work = self.work;
+        Box::pin(async move {
+            // The work belongs to the shard, whose close waits for it.
+            let tasks = shard.tasks.clone();
+            tasks.spawn_local(work(shard));
+        })
+    }
+
+    fn refuse(self: Box<Self>) {
+        // Dropping the work drops what it holds, such as a socket, which
+        // closes it.
     }
 }
 
@@ -280,8 +436,11 @@ async fn spawn_thread(
 
 /// A shard thread's loop: it creates each user's shard on the user's first
 /// call and runs every call as a task of its own until the pool closes.
+/// Closing, it refuses new calls, except those a shard serves while it
+/// closes, closes every shard, and waits for the calls still running.
 async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
     let calls = TaskTracker::new();
+    let http = reqwest::Client::new();
     let mut shards: HashMap<UserId, Rc<Shard>> = HashMap::new();
     let mut closer = None;
     while let Some(message) = queue.recv().await {
@@ -289,12 +448,7 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
             Message::Call(job) => {
                 let shard = shards
                     .entry(job.user().clone())
-                    .or_insert_with_key(|user| {
-                        Rc::new(Shard {
-                            user: user.clone(),
-                            services: services.clone(),
-                        })
-                    })
+                    .or_insert_with_key(|user| Rc::new(Shard::new(user.clone(), services.clone(), http.clone())))
                     .clone();
                 calls.spawn_local(job.run(shard));
             }
@@ -304,11 +458,34 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
             }
         }
     }
+    let closing = futures_util::future::join_all(shards.values().map(|shard| shard.close()));
+    tokio::pin!(closing);
+    loop {
+        tokio::select! {
+            _ = &mut closing => break,
+            message = queue.recv() => match message {
+                // A shard that closes takes no new user.
+                Some(Message::Call(job)) => match shards.get(job.user()) {
+                    Some(shard) if job.while_closing() => {
+                        calls.spawn_local(job.run(shard.clone()));
+                    }
+                    _ => job.refuse(),
+                },
+                // Only the pool closes, once.
+                Some(Message::Close(done)) => drop(done),
+                // Every sender is gone: nothing more arrives while the
+                // shards close.
+                None => {
+                    (&mut closing).await;
+                    break;
+                }
+            },
+        }
+    }
     queue.close();
     while let Some(message) = queue.recv().await {
         match message {
             Message::Call(job) => job.refuse(),
-            // Only the pool closes, once.
             Message::Close(done) => drop(done),
         }
     }

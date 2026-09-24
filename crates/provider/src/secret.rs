@@ -28,11 +28,13 @@ impl Secret {
 
     /// The credential as a header value that HTTP logging hides.
     pub fn header_value(&self) -> HeaderValue {
-        // A secret has no control character, which is what a header value
-        // refuses.
-        let mut value = HeaderValue::from_str(&self.0).expect("a secret is a header value");
-        value.set_sensitive(true);
-        value
+        sensitive(&self.0)
+    }
+
+    /// `Bearer` and the credential, as an `authorization` header value that
+    /// HTTP logging hides.
+    pub fn bearer(&self) -> HeaderValue {
+        sensitive(&format!("Bearer {}", self.0))
     }
 }
 
@@ -60,4 +62,12 @@ impl Serialize for Secret {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(&self.0)
     }
+}
+
+fn sensitive(text: &str) -> HeaderValue {
+    // A secret has no control character, which is what a header value
+    // refuses.
+    let mut value = HeaderValue::from_str(text).expect("a secret is a header value");
+    value.set_sensitive(true);
+    value
 }
