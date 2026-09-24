@@ -43,6 +43,13 @@ pub(crate) trait SessionRuntime {
         &self,
         call: ToolInvocation,
     ) -> LocalBoxFuture<'_, Result<ToolOutcome, ToolFailure>>;
+
+    /// Releases what the node's tools hold, such as its shell environments
+    /// and the commands they run, once its session is disposed; the session's
+    /// dispose finishes only after it. Nothing by default.
+    fn dispose(&self) -> LocalBoxFuture<'_, ()> {
+        Box::pin(async {})
+    }
 }
 
 /// One call of a tool.
@@ -95,13 +102,6 @@ pub(crate) enum ToolEffect {
     /// `yield`: schedule one wakeup `duration_ms` after the action ends, and
     /// end the turn after this round of tools unless input arrived during
     /// it. The call's result says `yield scheduled` with the wakeup's id.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the yield tool of the standard tools (task 4B) makes it"
-        )
-    )]
     ScheduleYield { duration_ms: u32 },
 }
 

@@ -184,6 +184,7 @@ impl<H: AgentHarness> Tree<H> {
             commands,
             first_message: None,
             store: store.clone(),
+            shells: deps.shells.clone(),
             admission: admission.clone(),
             ids: deps.ids.clone(),
             clock: deps.clock.clone(),
