@@ -6,12 +6,12 @@
 
 use std::sync::Arc;
 
-use demi_core::Timestamp;
+use demi_core::{Timestamp, WireApi};
 use demi_provider::Secret;
 use demi_provider::credentials::{CredentialPool, MemoryCredentialPool, RefreshGates, decode_secret};
 use demi_web_api::auth::{Role, UserDto};
 use demi_web_api::ids::{CredentialId, ProviderId, UserId};
-use demi_web_api::providers::{ConfiguredModels, CredentialKind, ProviderDto, WireApi};
+use demi_web_api::providers::{ConfiguredModels, CredentialKind, ProviderDto};
 use demi_web_api::settings::InstanceMode;
 use demi_web_api::text::EndpointUrl;
 use garde::Validate;

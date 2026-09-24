@@ -3,12 +3,12 @@
 
 use std::time::Duration;
 
-use demi_core::{FailureSource, TokenUsage};
+use demi_core::{FailureSource, TokenUsage, WireApi};
 use demi_provider::{
     ErrorCode, Provider, ProviderEvent, RuntimeEnv, Secret,
     testing::{FixedClock, MockResponse, MockVendor, inference_request, sse_body},
 };
-use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider, VendorPolicy, WireApi};
+use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider, VendorPolicy};
 use serde_json::json;
 use std::sync::Arc;
 

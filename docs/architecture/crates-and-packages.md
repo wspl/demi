@@ -107,10 +107,12 @@ next to the wire's types, so that a command program depends on one crate.
     carries portable facts only and never a source label such as
     `codex-backend`, `models.dev` or `cache`, with the one conversion of a
     catalog model into a selection (`ProviderModel::selection`, with the
-    attachment types it derives, `ATTACHMENT_FILE_EXTENSIONS`); its authentication and runtime
-    states (`AuthState`, `RuntimeState`); its subscription accounts as the
-    browser sees them (`AccountInfo`, `LoginPending`); and an account's quota
-    snapshot (`QuotaSnapshot`, `QuotaWindow`, `QuotaPlan` and their sets);
+    attachment types it derives, `ATTACHMENT_FILE_EXTENSIONS`); the wire
+    format an `openai` entry speaks (`WireApi`), which its configuration names
+    and its provider sends; its authentication and runtime states
+    (`AuthState`, `RuntimeState`); its subscription accounts as the browser
+    sees them (`AccountInfo`, `LoginPending`); and an account's quota snapshot
+    (`QuotaSnapshot`, `QuotaWindow`, `QuotaPlan` and their sets);
   - the identities blocks and frames name (`BlockId`, `TurnId`, `NodeId`,
     `WakeupId`, `ShellId`, `CommandId`, `OperationId`), and the macro every
     crate declares a checked identity with (`id!`): a string newtype that

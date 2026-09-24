@@ -1,9 +1,9 @@
 //! What the provider says about itself: its entry, its needs, its state and
 //! its model directory.
 
-use demi_core::{AuthState, RuntimeState, Timestamp};
+use demi_core::{AuthState, RuntimeState, Timestamp, WireApi};
 use demi_provider::{Provider, testing::MockVendor};
-use demi_provider_openai_api::{VendorPolicy, WireApi};
+use demi_provider_openai_api::VendorPolicy;
 
 use crate::provider_at;
 

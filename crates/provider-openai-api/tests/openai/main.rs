@@ -10,11 +10,12 @@ mod stream;
 
 use std::sync::Arc;
 
+use demi_core::WireApi;
 use demi_provider::{
     InferenceRequest, Provider, ProviderEvent, ProviderRuntime, RuntimeEnv, Secret,
     testing::{FixedClock, MockResponse, MockVendor},
 };
-use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider, VendorPolicy, WireApi};
+use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider, VendorPolicy};
 use futures_util::StreamExt;
 
 /// When the scripted vendor answers.

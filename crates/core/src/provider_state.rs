@@ -1,14 +1,30 @@
-//! What the product shows about a provider entry besides its catalog: whether
-//! its credential is usable, whether it can run, and its subscription
-//! accounts (`providers.md` § Provider contract, § Credential vault). The
-//! backend reads these when it answers and never stores them, so they accept
-//! unknown fields.
+//! What the product shows about a provider entry besides its catalog: the
+//! wire format it speaks, whether its credential is usable, whether it can
+//! run, and its subscription accounts (`providers.md` § Provider contract, §
+//! Credential vault). The backend reads the states when it answers and never
+//! stores them, so they accept unknown fields.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
 use crate::{Nullable, Timestamp};
+
+/// The wire format an `openai` entry speaks (`providers.md` § Endpoints): the
+/// Responses API, or Chat Completions as OpenAI-compatible vendors serve it.
+/// An entry that names none speaks Responses.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+pub enum WireApi {
+    /// `…/responses`.
+    #[default]
+    #[serde(rename = "responses")]
+    Responses,
+    /// `…/chat/completions`.
+    #[serde(rename = "chat-completions")]
+    ChatCompletions,
+}
+
+serde_plain::derive_display_from_serialize!(WireApi);
 
 /// Whether a provider's credential is present and usable. Reading it never
 /// makes an inference request.

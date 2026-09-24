@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use demi_core::{
     AuthState, Clock, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
-    RuntimeState, Timestamp,
+    RuntimeState, Timestamp, WireApi,
 };
 use demi_provider::{
     Capabilities, CatalogError, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
@@ -47,16 +47,6 @@ pub struct OpenAiConfig {
 impl OpenAiConfig {
     /// The base URL of an entry that names none (`providers.md` § Endpoints).
     pub const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
-}
-
-/// The wire protocol an entry speaks.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum WireApi {
-    /// `…/responses`.
-    #[default]
-    Responses,
-    /// `…/chat/completions`, as OpenAI-compatible vendors serve it.
-    ChatCompletions,
 }
 
 /// A vendor's request requirements, which the backend's vendor policy

@@ -8,13 +8,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use demi_backend::FamilyRegistry;
+use demi_core::WireApi;
 use demi_provider::CatalogError;
 use demi_provider::testing::{MockResponse, MockVendor, RecordedRequest, sse_body};
 use demi_web_api::auth::Role;
 use demi_web_api::error::ErrorCode;
 use demi_web_api::providers::{
     Availability, CredentialKind, ModelCatalog, ProviderAnswer, ProviderDto, Providers, TestResult, VendorCatalog,
-    WireApi,
 };
 use demi_web_api::settings::InstanceMode;
 use jiff::SignedDuration;
