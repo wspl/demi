@@ -141,7 +141,9 @@ async fn a_whole_batch_reaches_the_agent_before_any_answer_and_a_later_call_is_a
         );
         // Only after the first answer does the CLI send the second call,
         // which is answered at once.
-        cli.call("call-beta", 3, "toolu_beta", "printf beta");
+        // The CLI may reuse a JSON-RPC id once its request was answered; the
+        // answer still goes back in the control request that carried it.
+        cli.call("call-beta", 2, "toolu_beta", "printf beta");
         let beta = cli.mcp_reply("call-beta").await;
         assert_eq!(
             beta["result"]["content"],
