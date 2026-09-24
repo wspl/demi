@@ -12,6 +12,7 @@ mod command_state;
 
 use std::rc::Rc;
 
+use demi_agent_protocol::{JobPhase, SubagentJob};
 use demi_core::{
     AgentMessage, AgentMessageEvent, Block, CompletionId, ModelSelection, NodeId, OperationId,
     QueuedMessage, SessionPhase, Timestamp, TurnId, WakeupId,
@@ -148,7 +149,9 @@ pub struct NodeRecord {
     /// node that inherits its parent's setup.
     pub profile: Option<String>,
     /// When the node's current round started, in milliseconds since the Unix
-    /// epoch; it names one execution round of the node.
+    /// epoch; it names one execution round of the node. The tree gives every
+    /// round from its clock, and a store refuses a record whose round is not
+    /// a [`Timestamp`].
     pub round: u64,
     pub can_spawn_subagents: bool,
     /// How the node closed; none while it is live.
@@ -158,6 +161,39 @@ pub struct NodeRecord {
 }
 
 impl NodeRecord {
+    /// When the node's current round started.
+    pub fn started_at(&self) -> Timestamp {
+        i64::try_from(self.round)
+            .ok()
+            .and_then(|millisecond| Timestamp::from_millisecond(millisecond).ok())
+            .expect("a store refuses a round that is not a time")
+    }
+
+    /// A child as the `subagent` frames and the conversation's transcript
+    /// route describe it (`subagents.md` § Protocol): running while it is
+    /// live, else as it closed, with the result of a completed round. The
+    /// root, which no node spawned, has none.
+    pub fn job(&self) -> Option<SubagentJob> {
+        let parent = self.parent.clone()?;
+        let result = match self.closed.as_ref().map(|close| &close.phase) {
+            Some(ClosePhase::Completed { result }) => Some(result.clone()),
+            _ => None,
+        };
+        Some(SubagentJob {
+            subagent_id: self.id.clone(),
+            parent_session_id: parent,
+            description: self.description.clone(),
+            profile: self.profile.clone(),
+            phase: self
+                .closed
+                .as_ref()
+                .map_or(JobPhase::Running, |close| close.phase.job_phase()),
+            started_at: self.started_at(),
+            ended_at: self.closed.as_ref().map(|close| close.at),
+            result,
+        })
+    }
+
     /// The record of a conversation's root, whose id is the conversation's.
     pub fn root(id: NodeId, now: Timestamp) -> Self {
         Self {
@@ -192,6 +228,17 @@ pub enum ClosePhase {
     Error {
         failure: String,
     },
+}
+
+impl ClosePhase {
+    /// The phase a closed job shows.
+    pub fn job_phase(&self) -> JobPhase {
+        match self {
+            Self::Completed { .. } => JobPhase::Completed,
+            Self::Aborted => JobPhase::Aborted,
+            Self::Error { .. } => JobPhase::Error,
+        }
+    }
 }
 
 /// The state row of a node's checkpoint: everything the session saves
