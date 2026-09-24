@@ -58,7 +58,7 @@ import GalleryFindBar from '../components/GalleryFindBar.vue'
 import GalleryUserMessageLengths from '../components/GalleryUserMessageLengths.vue'
 import { submitMessageEdit, type MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import { firstRunningTerminalId } from '@demicodes/web-ui/agent/terminals'
-import type { ThinkingConfig, UserContentBlock } from '@demicodes/core'
+import type { ThinkingConfig, UserContentBlock } from '@demicodes/protocol'
 import { composerAttachment, encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/attachments'
 import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
@@ -334,16 +334,8 @@ const sessionFlow = useTurnFlow({
 const session = sessionFlow.state
 session.pendingSteers = [{ id: 'pending-1', content: steerPrompt }]
 session.queue = [
-  {
-    id: 'q1',
-    text: 'Also add a case for the expired cookie.',
-    content: [{ type: 'text', text: 'Also add a case for the expired cookie.' }],
-  },
-  {
-    id: 'q2',
-    text: 'Keep the light-mode screenshot in the same PR.',
-    content: [{ type: 'text', text: 'Keep the light-mode screenshot in the same PR.' }],
-  },
+  { id: 'q1', content: [{ type: 'text', text: 'Also add a case for the expired cookie.' }] },
+  { id: 'q2', content: [{ type: 'text', text: 'Keep the light-mode screenshot in the same PR.' }] },
 ]
 const streamFlow = useTurnFlow({ id: 'gallery-stream' })
 const turnFlow = useTurnFlow({ id: 'gallery-turn' })
@@ -397,7 +389,8 @@ const attachmentBubble: UserContentBlock[] = [
   {
     type: 'document',
     source: {
-      data: new Uint8Array(),
+      type: 'binary',
+      data: '',
       mediaType: 'application/pdf',
       fileName: 'login-failure.pdf',
     },
@@ -515,12 +508,15 @@ function deletePendingSteer(id: string): void {
   takePendingSteer(id)
 }
 
+/**
+ * As the product delivers a pending steer now: Stop writes the steer into the
+ * stopped turn, before its marker, and Continue goes on with it from there.
+ */
 function interruptPendingSteer(id: string): void {
   const pending = takePendingSteer(id)
   if (!pending) {
     return
   }
-  sessionFlow.stop()
   session.blocks = [
     ...session.blocks,
     {
@@ -532,15 +528,12 @@ function interruptPendingSteer(id: string): void {
       content: pending.content,
     },
   ]
-  sessionFlow.turn(pending.content)
+  sessionFlow.stop()
+  sessionFlow.resume()
 }
 
 function queueDraft(content: UserContentBlock[]): void {
-  session.queue.push({
-    id: `q${nextQueue++}`,
-    text: content.flatMap((part) => part.type === 'text' ? [part.text] : []).join(''),
-    content,
-  })
+  session.queue.push({ id: `q${nextQueue++}`, content })
 }
 
 function removeQueued(id: string): void {

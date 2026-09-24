@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { ThinkingConfig } from '@demicodes/core'
+import type { ThinkingConfig } from '@demicodes/protocol'
 import { CircleX, Sparkles, TriangleAlert, Zap } from '@lucide/vue'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'

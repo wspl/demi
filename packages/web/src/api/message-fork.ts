@@ -1,14 +1,12 @@
-import { modelSelectionSchema } from '@demicodes/web-ui/transport/protocol'
-import { z } from 'zod'
 import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
 import { apiRequest, jsonBody, readResponse } from './client'
-import { conversationSummarySchema } from './contracts'
+import { forkAnswerSchema, type ForkRequest } from './generated/web-api'
 
 export async function forkConversation(sourceId: string, request: MessageForkRequest, signal: AbortSignal) {
   const response = await apiRequest(`/conversations/${encodeURIComponent(sourceId)}/fork`, {
-    method: 'POST', signal, ...jsonBody(request),
+    method: 'POST', signal, ...jsonBody(request satisfies ForkRequest),
   })
-  const result = await readResponse(response, z.object({ conversation: conversationSummarySchema, model: modelSelectionSchema }))
+  const result = await readResponse(response, forkAnswerSchema)
   signal.throwIfAborted()
   return result
 }

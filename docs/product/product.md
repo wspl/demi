@@ -99,6 +99,12 @@ inspection. [Message editing](../agent/message-editing.md) and
 boundaries. Interactive stdin is an agent-protocol capability; exposing a
 terminal input control remains separate from read-only job inspection.
 
+A pending steer can be delivered at once instead of at the next continuation
+boundary. The page then stops the running turn, which writes the steer into
+the transcript as the stop records it ([Stop](../agent/runtime.md#stop)), and
+continues the turn, so the model reads the steer next and it is never sent
+twice.
+
 ### Recovering an unfinished turn
 
 A turn can end without finishing in two ways, and the agent can go on from
@@ -454,13 +460,21 @@ Each user has one Cloud device shared by all their Cloud projects. Those project
 can access each other's files; they are not isolation boundaries. Creating or
 removing project metadata does not allocate or delete a machine.
 
-Settings shows lifecycle state, storage usage and limits, and Reset environment.
+Settings shows the Cloud's storage and Reset environment, but not its lifecycle
+state. A stopped Cloud is not unavailable: the next operation that needs it
+wakes it ([Resolve a target](../execution/sessions-and-targets.md#resolve-a-target)),
+and a label such as "Sleeping" would suggest otherwise. Storage is the current
+capacity of each writable filesystem, system and home, against the most it may
+grow to ([Lifecycle and capacity](../cloud/managed-hosts.md#lifecycle-and-capacity));
+while the capacities are unknown, as before the Cloud's first start, it shows
+only the limits.
+
 The confirmation explains that reset stops all of the user's Cloud work, replaces
 system packages and settings, and preserves home files. Acceptance starts an
-operation; the UI follows progress and offers retry of the same operation ID
-on failure, including when the guest is offline. Project links and history remain
-intact. Reset is a user Cloud action, not a project action.
+operation; the confirmation follows its progress and offers retry of the same
+operation ID on failure, including when the guest is offline. Project links and
+history remain intact. Reset is a user Cloud action, not a project action.
 
 [Managed hosts](../cloud/managed-hosts.md) owns lifecycle and durability
-guarantees. `web-ui` owns the status and reset interaction, while product and
-gallery provide real state or fixtures to that same component.
+guarantees. `web-ui` owns the Cloud settings and the reset interaction, while
+product and gallery provide real state or fixtures to that same component.

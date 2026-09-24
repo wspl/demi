@@ -1,5 +1,5 @@
 /** Presentation models for the settings surfaces. Hosts map their own state onto these. */
-import { VIDEO_FILE_EXTENSIONS } from '@demicodes/core'
+import { VIDEO_FILE_EXTENSIONS } from '@demicodes/protocol'
 import type { Component } from 'vue'
 
 /** A section id. Hosts choose their own set; the built-in four cover the product today. */

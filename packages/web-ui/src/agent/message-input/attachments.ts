@@ -1,13 +1,10 @@
-import type { UserContentBlock } from '@demicodes/core'
-import { ATTACHMENT_SNIPPET_MAX_CHARS, attachmentSnippet, isTextAttachment, sniffModelMediaType } from '@demicodes/core'
-
 /** A failed upload keeps its capsule, which offers Retry; the toast says why it failed. */
 export type AttachmentPhase = 'uploading' | 'ready' | 'failed'
 
 /**
- * A local file on its way to the message. Every file reaches the host's
- * working directory on send and the message names its path; media the model
- * reads natively also rides inline (`product.md` § Attachments).
+ * A local file on its way to the message. It is uploaded as it is added, and
+ * the message names the upload; on send the backend writes the file to the
+ * Host (`product.md` § Attachments).
  */
 export interface ComposerFileAttachment {
   kind: 'file'
@@ -17,7 +14,7 @@ export interface ComposerFileAttachment {
   phase: AttachmentPhase
   /** 0–1 while `phase` is `uploading`. */
   progress?: number
-  /** The opening of a text file, for the tile that shows it as a page. */
+  /** The opening of a text file, as the backend answered its upload. */
   snippet?: string
 }
 
@@ -53,6 +50,29 @@ export interface AttachmentUploadUpdate {
   phase: AttachmentPhase
   progress?: number
 }
+
+/**
+ * What the backend answered for an upload (`web-api.md` § Uploads and
+ * media): the id a message names the file by, the media type it read from
+ * the bytes, where the bytes are in the user's blobs, and a text file's
+ * opening, which the capsule shows.
+ */
+export interface UploadedFile {
+  id: string
+  mediaType: string
+  sha256: string
+  snippet?: string
+}
+
+/**
+ * The product's upload of one file, which the main composer and the edit
+ * composer share: it sends the bytes, reports the fraction sent, and answers
+ * what the backend made of the file.
+ */
+export type UploadFile = (
+  file: File,
+  options: { signal: AbortSignal; progress: (fraction: number) => void },
+) => Promise<UploadedFile>
 
 export const ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024
 
@@ -90,25 +110,6 @@ export function pastedTextFile(text: string, existingNames: Iterable<string>): F
   return new File([text], name, { type: 'text/plain' })
 }
 
-/** The opening of a text file, by the same rule the transcript's attachment record uses. */
-export async function readTextSnippet(file: File): Promise<string | null> {
-  if (!isTextAttachment(file.name, file.type)) {
-    return null
-  }
-  const head = await file.slice(0, ATTACHMENT_SNIPPET_MAX_CHARS * 4).text()
-  return attachmentSnippet(head)
-}
-
-/** Fills `snippet` on a text attachment once the file's opening has been read. */
-export async function attachTextSnippet(
-  item: ComposerFileAttachment,
-  file: File,
-): Promise<void> {
-  const snippet = await readTextSnippet(file)
-  if (snippet) {
-    item.snippet = snippet
-  }
-}
 export function clampUnit(value: number): number {
   if (!Number.isFinite(value) || value <= 0) {
     return 0
@@ -235,13 +236,14 @@ export function decodeRemoteReference(reference: string): {
   }
 }
 
+/** Why a message cannot go yet, from the phases of the files it uploads; nothing when all are ready. */
 export function attachmentSendBlockReason(
-  items: readonly ComposerAttachment[],
+  phases: readonly AttachmentPhase[],
 ): string | undefined {
-  if (items.some((item) => item.kind === 'file' && item.phase === 'failed')) {
+  if (phases.includes('failed')) {
     return 'Retry or remove the attachments that did not upload'
   }
-  if (items.some((item) => item.kind === 'file' && item.phase === 'uploading')) {
+  if (phases.includes('uploading')) {
     return 'Wait for attachments to finish uploading'
   }
 }
@@ -328,6 +330,11 @@ export class AttachmentUploadQueue {
     }
   }
 
+  /** Whether an upload of `id` is in flight. */
+  has(id: string): boolean {
+    return this.#jobs.has(id)
+  }
+
   cancel(id: string): void {
     this.#jobs.get(id)?.abort()
     this.#jobs.delete(id)
@@ -337,95 +344,6 @@ export class AttachmentUploadQueue {
     for (const id of [...this.#jobs.keys()]) {
       this.cancel(id)
     }
-  }
-}
-
-export interface FileToUserContentOptions {
-  signal?: AbortSignal
-  onProgress?: (progress: number) => void
-}
-
-function abortError(): DOMException {
-  return new DOMException('The operation was aborted.', 'AbortError')
-}
-
-function readFileBytes(
-  file: File,
-  options?: FileToUserContentOptions,
-): Promise<Uint8Array> {
-  if (!options?.signal && !options?.onProgress) {
-    return file.arrayBuffer().then((buffer) => new Uint8Array(buffer))
-  }
-  if (options.signal?.aborted) {
-    return Promise.reject(abortError())
-  }
-  if (typeof FileReader === 'undefined') {
-    options.onProgress?.(0)
-    return file.arrayBuffer().then((buffer) => {
-      options.onProgress?.(1)
-      return new Uint8Array(buffer)
-    })
-  }
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    const onAbort = () => reader.abort()
-    options.signal?.addEventListener('abort', onAbort, { once: true })
-    const done = () => options.signal?.removeEventListener('abort', onAbort)
-    reader.onprogress = (event) => {
-      if (event.lengthComputable && event.total > 0) {
-        options.onProgress?.(event.loaded / event.total)
-      }
-    }
-    reader.onload = () => {
-      done()
-      options.onProgress?.(1)
-      resolve(new Uint8Array(reader.result as ArrayBuffer))
-    }
-    reader.onerror = () => {
-      done()
-      reject(reader.error ?? new Error('read failed'))
-    }
-    reader.onabort = () => {
-      done()
-      reject(abortError())
-    }
-    reader.readAsArrayBuffer(file)
-  })
-}
-
-export async function fileToUserContent(
-  file: File,
-  options?: FileToUserContentOptions,
-): Promise<UserContentBlock> {
-  const bytes = await readFileBytes(file, options)
-  const sniffed = sniffModelMediaType(bytes)
-  if (sniffed?.kind === 'image') {
-    return {
-      type: 'image',
-      source: {
-        type: 'binary',
-        data: bytes,
-        mediaType: sniffed.mediaType,
-      },
-    }
-  }
-  if (sniffed?.kind === 'video') {
-    return {
-      type: 'video',
-      source: {
-        type: 'binary',
-        data: bytes,
-        mediaType: sniffed.mediaType,
-      },
-    }
-  }
-  return {
-    type: 'document',
-    source: {
-      data: bytes,
-      mediaType: file.type || 'application/octet-stream',
-      fileName: file.name,
-    },
   }
 }
 

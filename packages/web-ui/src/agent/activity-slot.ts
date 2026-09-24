@@ -1,4 +1,4 @@
-import type { SessionPhase } from '@demicodes/core'
+import type { SessionPhase } from '@demicodes/protocol'
 import { CHROME_ROLL_MS } from '../ui/chrome-roll'
 import type { MessageListBlock } from './pending-steers'
 import { isQueueTailBlock } from './queued-messages'

@@ -1,54 +1,33 @@
 import { expect, test } from 'bun:test'
-import { AgentClient, type ServerFrame } from '@demicodes/agent/client'
 import { deferred } from '@demicodes/utils'
 import { ConversationCache } from '../conversation-cache'
 import { ConversationRuntime, type RuntimeState } from '../conversation-runtime'
+import { clientHarness, model } from './agent-harness'
 
 function fixture(id: string) {
-  const model = {
-    providerId: 'stub', thinking: null,
-    model: {
-      id: 'stub', name: 'Stub', contextWindow: 1000, outputLimit: null,
-      inputLimit: null, thinking: [], acceptedExtensions: [],
-    },
-  }
   const state: RuntimeState = {
-    id, cwd: '/', blocks: [], phase: 'idle', queue: [], pendingSteers: [],
+    blocks: [], phase: 'idle', queue: [], pendingSteers: [],
     model: { providerId: 'stub', modelId: 'stub', thinkingEffort: null, serviceTierId: null },
     lastError: null, load: 'loading', pendingAction: null,
     failures: {},
   }
-  let receive: (frame: ServerFrame) => void = () => {}
-  let connections = 0
-  let closes = 0
+  const harnesses: ReturnType<typeof clientHarness>[] = []
   const runtime = new ConversationRuntime({
     state,
-    prepareModel: async () => ({ providerId: 'stub', model }),
+    prepareModel: async () => model,
     connect: async () => {
-      connections += 1
-      return new AgentClient({
-        send(frame) {
-          if (frame.type === 'open') {
-            receive({ type: 'opened' })
-          }
-        },
-        close() {
-          closes += 1
-        },
-        onFrame(handler) {
-          receive = handler
-          return () => {
-            receive = () => {}
-          }
-        },
-      })
+      const harness = clientHarness()
+      harnesses.push(harness)
+      return harness.client
     },
   })
   return {
-    runtime, state,
-    receive: (frame: ServerFrame) => receive(frame),
-    connections: () => connections,
-    closes: () => closes,
+    id,
+    runtime,
+    state,
+    receive: (frame: Parameters<ReturnType<typeof clientHarness>['receive']>[0]) => harnesses.at(-1)?.receive(frame),
+    connections: () => harnesses.length,
+    closes: () => harnesses.reduce((sum, harness) => sum + harness.closes(), 0),
   }
 }
 
@@ -58,7 +37,7 @@ test('cached runtimes stay live across switches and all detach on cleanup', asyn
   const second = fixture('second')
   try {
     for (const item of [first, second, first, second]) {
-      await cache.open(item.state.id, async (entry) => {
+      await cache.open(item.id, async (entry) => {
         entry.runtime = item.runtime
         await item.runtime.connect()
       })
