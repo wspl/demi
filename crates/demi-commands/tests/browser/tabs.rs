@@ -82,14 +82,42 @@ async fn an_action_names_the_tabs_it_opened() {
             .find(|listed| listed["id"] == opened[0])
             .unwrap_or_else(|| panic!("the list holds the popup: {tabs}"));
         assert_eq!(popup["createdBy"], json!({"kind": "page", "opener": tab}));
-        // A later action does not name the tab again.
-        fixture
-            .call("browser.close", json!({"tab": opened[0]}))
-            .await;
+        // A later action does not name the tab again; the popup stays in front.
         let again = fixture
             .call("browser.click", json!({"tab": tab, "css": "#stay"}))
             .await;
         assert!(again.get("openedTabs").is_none(), "{again}");
+        fixture
+    })
+    .await;
+}
+
+/// An action works in a tab that is not the front tab of its window: its
+/// hidden document runs no animation frames (`browser.md` § Actionability
+/// and coordinates).
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn an_action_works_in_the_older_of_two_open_tabs() {
+    with_browser_fixture(|fixture| async move {
+        let older = fixture.open("popups.html").await;
+        let newer = fixture.open("popups.html").await;
+        let visibility = |tab: &str| {
+            fixture.call(
+                "browser.eval",
+                json!({"tab": tab, "expression": "document.visibilityState"}),
+            )
+        };
+        assert_eq!(visibility(&older).await["value"], "hidden");
+        assert_eq!(visibility(&newer).await["value"], "visible");
+        fixture
+            .call("browser.click", json!({"tab": older, "css": "#stay"}))
+            .await;
+        let clicks = fixture
+            .call("browser.eval", json!({"tab": older, "expression": "window.stays"}))
+            .await;
+        assert_eq!(clicks["value"], 1);
+        // Neither tab came to the front.
+        assert_eq!(visibility(&older).await["value"], "hidden");
         fixture
     })
     .await;
