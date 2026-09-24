@@ -1,5 +1,11 @@
 # @demicodes/utils
 
+## 0.25.5
+
+### Patch Changes
+
+- befc035: Validate new user and tool images before storage or delivery, replacing corrupt image blocks with `Image data is corrupted.` while preserving neighboring content. Existing history is not scanned or rewritten during inference or recovery.
+
 ## 0.25.4
 
 ## 0.25.3

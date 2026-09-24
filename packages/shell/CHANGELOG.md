@@ -1,5 +1,12 @@
 # @demicodes/shell
 
+## 0.25.5
+
+### Patch Changes
+
+- Updated dependencies [befc035]
+  - @demicodes/utils@0.25.5
+
 ## 0.25.4
 
 ### Patch Changes

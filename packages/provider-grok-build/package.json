@@ -1,7 +1,7 @@
 {
   "name": "@demicodes/provider-grok-build",
   "description": "Grok Build provider adapter for Demi (reuses ~/.grok OAuth session).",
-  "version": "0.25.4",
+  "version": "0.25.5",
   "private": false,
   "type": "module",
   "exports": {
