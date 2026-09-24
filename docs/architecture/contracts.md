@@ -6,8 +6,8 @@ block works like this:
 
 1. A developer adds the field to the `Block` type in the `core` crate, with its
    serde and garde attributes.
-2. `bun run contracts` runs `cargo xtask contracts`, which rewrites the
-   generated TypeScript in `packages/protocol/src/generated/`.
+2. `bun run contracts` builds the workspace and runs `xtask contracts`, which
+   rewrites the generated TypeScript in `packages/protocol/src/generated/`.
 3. `bun run typecheck:web` reports every place in the frontend that the new
    field breaks.
 4. The backend validates the field when it decodes a block, and the browser's
@@ -145,7 +145,7 @@ The browser's contract types and validators are generated from the Rust types:
 Rust type (serde + schemars + garde)
    |  schemars: the JSON Schema of serde's actual representation, in memory
    v
-cargo xtask contracts: the emitter, which fails on anything outside its subset
+xtask contracts: the emitter, which fails on anything outside its subset
    |
    v
 Zod source and z.infer types
@@ -154,21 +154,45 @@ Zod source and z.infer types
    -> packages/web/src/api/generated/    web: the web-api REST types
 ```
 
-- **Generation.** `bun run contracts` runs `cargo xtask contracts`. Generated
-  files are not committed; scripts that need them run generation first. Cargo
-  builds never run the emitter and need no JavaScript tooling.
+- **Generation.** `bun run contracts` builds the workspace with its one Cargo
+  selection and runs `target/debug/xtask contracts`. Generated files are not
+  committed; the scripts that need them (`typecheck`, `typecheck:web`,
+  `test`) run generation first. Cargo builds never run the emitter and need
+  no JavaScript tooling.
+- **What is emitted.** The emitter starts from a list of root types in
+  `xtask`, each with what the browser does with it: receives it or sends it.
+  Every type a root refers to is emitted with it. The roots of
+  `@demicodes/protocol` are core's types, the socket's frames and the live
+  view's messages; its schemas and types are in `generated/contracts.ts` and
+  its tables in `generated/tables.ts`, which the package's entry re-exports.
+  The roots of `web` are the web-api request and response bodies; its
+  `src/api/generated/web-api.ts` imports the schemas it shares with
+  `@demicodes/protocol` from there. A new body type is added to the roots with
+  its direction.
 - **One constraint definition.** A garde attribute drives both the Rust check
   and the emitted schema: schemars reads garde's attributes, including
   `length(chars, ...)`, and emits `minLength` and `maxLength`. Internally
   tagged enums become `oneOf` with `const` tags, which the emitter turns into
   discriminated unions.
-- **Supported subset.** Objects, internally tagged enums, string enums and
-  literals, arrays and records, optional and nullable fields, bounds and
-  patterns, recursion through `$ref` (`z.lazy`), base64 bytes, `date-time`
-  strings, JSON values (`z.json()`), flattened plain structs (merged
-  properties), one named instantiation of a generic root type, strict and
-  tolerant objects, and constant tables with generated lookups, such as the
-  file-type table. Anything else fails generation and names the type.
+- **Supported subset.** Objects; internally tagged enums, as discriminated
+  unions, including a newtype variant of a struct, which becomes the struct
+  extended with the tag; string enums and literals; arrays and records;
+  optional fields (`.optional()`, which refuses `null`) and nullable ones
+  (`.nullable()`, which must be present); string lengths and patterns;
+  integer and number bounds, an integer also bounded by its type and by
+  JavaScript's safe range; base64 bytes (`z.base64()`); times as core's
+  `Timestamp` writes them (`z.iso.datetime({ precision: 3 })`: UTC with three
+  fractional digits, the contract's one spelling); email addresses and URLs;
+  JSON values (`z.json()`); flattened plain structs (merged properties); one
+  named instantiation of a generic root type; recursion through `$ref`, as a
+  getter of the object property that refers back, which Zod types
+  recursively; strict and tolerant objects; and constant tables with
+  generated lookups: the file-type table, the file types a model reads and
+  the live view's frame constants. A pattern must not use what Rust's `regex`
+  and the browser's engine read differently: `\d`, `\w`, `\s`, `\b`, `.`,
+  groups other than `(?:`, Unicode properties or Rust's class syntax; the
+  browser matches patterns by code point (the `u` flag), as Rust does.
+  Anything else fails generation and names the type and the place.
 - **Rules only Rust checks.** garde `custom` rules are not in the schema and
   are not emitted. Such a rule is checked by the backend alone.
 - **Strict and tolerant objects.** Each end judges what it receives. In Rust,
@@ -180,7 +204,8 @@ Zod source and z.infer types
   object, including the blocks and selections inside server frames: a page
   left open across a deploy that adds a field keeps working and ignores the
   field. The emitter writes a strict object only for a type the browser never
-  receives, such as a client frame.
+  receives, such as a client frame, and refuses to generate one whose Rust
+  type accepts unknown fields: the backend receives it.
 - **Checked on arrival.** `agent-client` validates every frame it receives, and
   `web` validates every REST response before applying it to state.
 - **One patch applier.** Transcript patches have one applier,
