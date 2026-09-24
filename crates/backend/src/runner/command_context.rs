@@ -9,7 +9,6 @@ use crate::storage::StorageError;
 use crate::storage::control::ControlService;
 
 /// The locale commands receive until the user's browser reports one.
-#[expect(dead_code, reason = "jobs and user streams build their context with it")]
 pub(crate) fn default_locale() -> CommandLocale {
     CommandLocale {
         time_zone: "UTC".into(),
@@ -19,7 +18,6 @@ pub(crate) fn default_locale() -> CommandLocale {
 
 /// The context of work `caller` starts for `conversation`, whose owner is
 /// `user`: the user's reported locale, or the default before one.
-#[expect(dead_code, reason = "jobs and user streams build their context with it")]
 pub(crate) async fn command_context(
     control: &ControlService,
     user: &UserId,

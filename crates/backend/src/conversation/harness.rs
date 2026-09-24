@@ -1,17 +1,18 @@
 //! The harness the backend's conversations run (`runtime.md` § Sessions and
 //! turns). Interim: it stands in for the coding agent's harness,
-//! `CodingHarness` of the `coding-agent` crate, which replaces it with its
-//! system prompt and the `demi` commands, and the conversation's host access
-//! gives its nodes their Hosts and shell environments. Until then a
-//! conversation chats without a Host, so its shell tools answer that none is
-//! there.
+//! `CodingHarness` of the `coding-agent` crate, which replaces its system
+//! prompt and gives it the `demi` commands. A node's Host is the
+//! conversation's current main Host, which the conversation's host access
+//! resolves.
 
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 
-use demi_agent::{AgentHarness, EnvironmentScope, PromptContext, ShellEnvironmentFactory};
+use demi_agent::{AgentHarness, PromptContext};
 use demi_host_remote::RemoteHost;
-use demi_shell::{CommandSet, HostError, HostErrorKind, ShellEnvironment};
-use futures_util::future::LocalBoxFuture;
+use demi_shell::{CommandSet, HostError};
+
+use super::conversation_of;
+use crate::shard::Shard;
 
 /// The coding agent's name, which every checkpoint records.
 const NAME: &str = "coding";
@@ -19,15 +20,18 @@ const NAME: &str = "coding";
 const SYSTEM_PROMPT: &str = "You are a coding agent. Answer the user's questions about their code.";
 
 /// The interim conversation harness: the coding agent's name, a system
-/// prompt, no commands, and no Host.
+/// prompt, no commands, and the conversation's Host.
 pub(crate) struct ConversationHarness {
     commands: Rc<CommandSet>,
+    /// Weak: the shard owns the agent server that holds this harness.
+    shard: Weak<Shard>,
 }
 
 impl ConversationHarness {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(shard: Weak<Shard>) -> Self {
         Self {
             commands: Rc::new(CommandSet::new()),
+            shard,
         }
     }
 }
@@ -39,6 +43,14 @@ impl AgentHarness for ConversationHarness {
         NAME
     }
 
+    async fn host(&self, context: PromptContext<'_>) -> Result<Rc<RemoteHost>, HostError> {
+        let shard = self
+            .shard
+            .upgrade()
+            .ok_or_else(|| HostError::offline("the backend is shutting down"))?;
+        shard.conversation_host(&conversation_of(context.root)).await
+    }
+
     fn commands(&self) -> Rc<CommandSet> {
         self.commands.clone()
     }
@@ -46,25 +58,5 @@ impl AgentHarness for ConversationHarness {
     /// The harness has no commands, so their help is empty.
     async fn system_prompt(&self, _context: PromptContext<'_>, _commands: &str) -> String {
         SYSTEM_PROMPT.to_owned()
-    }
-}
-
-/// The shell environments of the interim harness's nodes, which have no
-/// Host to make them on. Interim: host-remote's factory over the
-/// conversation's host access replaces it.
-pub(crate) struct NoShellEnvironments;
-
-impl ShellEnvironmentFactory<RemoteHost> for NoShellEnvironments {
-    fn create<'a>(
-        &'a self,
-        _scope: EnvironmentScope<'a>,
-        _host: Rc<RemoteHost>,
-    ) -> LocalBoxFuture<'a, Result<Rc<dyn ShellEnvironment>, HostError>> {
-        Box::pin(async {
-            Err(HostError::new(
-                HostErrorKind::Unavailable,
-                "conversations reach no Host on this backend yet",
-            ))
-        })
     }
 }

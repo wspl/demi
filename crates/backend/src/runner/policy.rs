@@ -9,11 +9,12 @@ use std::rc::{Rc, Weak};
 use demi_host_remote::{JobOrigin, LinkPolicy};
 use demi_runner_protocol::wire::VolumeName;
 use demi_shell::{PortError, RpcError, RpcInvocation, RpcPort, StorageOp, StorageReply};
-use demi_web_api::ids::DeviceId;
+use demi_web_api::ids::{ConversationId, DeviceId};
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
 
 use super::conversation_of;
+use crate::conversation::root_of;
 use crate::shard::Shard;
 
 /// The rules of one device's connection, in its user's shard.
@@ -57,18 +58,26 @@ impl LinkPolicy for ShardPolicy {
         }
     }
 
+    /// The job's command storage is its node's in the conversation's agent
+    /// tree, at the command generation the job started in; a write commits
+    /// only while `call` lives.
     fn storage(
         &self,
         job: Rc<JobOrigin>,
         op: StorageOp,
-        // The command router does not bind a write to its call yet; the
-        // agent's `command_storage` takes it (task 4D).
-        _call: CancellationToken,
+        call: CancellationToken,
     ) -> LocalBoxFuture<'static, Result<StorageReply, PortError>> {
-        match self.shard() {
-            Ok(shard) => shard.commands().storage(&job, op),
-            Err(reason) => Box::pin(async move { Err(PortError::Ended(reason)) }),
-        }
+        let shard = self.shard();
+        Box::pin(async move {
+            let shard = shard.map_err(PortError::Ended)?;
+            let caller = job
+                .caller
+                .as_ref()
+                .ok_or_else(|| PortError::Storage("the job has no command storage".into()))?;
+            let conversation = ConversationId::try_from(job.context.conversation.as_str())
+                .map_err(|_| PortError::Storage("the job belongs to no conversation".into()))?;
+            shard.agent().command_storage(&root_of(&conversation), caller, op, call).await
+        })
     }
 
     fn grow_volume(&self, volume: VolumeName, bytes: u64) -> LocalBoxFuture<'static, Result<(), String>> {
