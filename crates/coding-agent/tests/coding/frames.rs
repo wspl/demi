@@ -2,13 +2,14 @@
 //! root's running commands, writes to them and stops them, and finds the
 //! ones still owned when it attaches or asks for a fresh transcript.
 
-use std::time::Duration;
+use std::{cell::RefCell, rc::Rc, time::Duration};
 
 use demi_agent_protocol::{ClientFrame, ServerFrame, ShellStatus};
 use demi_core::CommandId;
-use demi_provider::testing::{ScriptedRuntime, Turn};
+use demi_provider::testing::{ScriptedRuntime, Turn, event};
+use serde_json::json;
 
-use crate::support::{Fixture, exec, reply, turn, within};
+use crate::support::{Fixture, exec, last_result, preview, reply, turn, within};
 
 /// The statuses among `frames`, in order.
 fn shell_outputs(frames: &[ServerFrame]) -> Vec<ShellStatus> {
@@ -155,6 +156,68 @@ async fn a_client_sees_the_roots_live_commands_writes_to_them_and_stops_them() {
         assert!(stopped > 0);
         tokio::time::sleep(Duration::from_millis(300)).await;
         assert_eq!(size(), stopped);
+        fixture.stop().await;
+    })
+    .await;
+}
+
+/// The page and the model each keep their own place in a command's output:
+/// the page reading a running command's output leaves all of it to the
+/// model's next `shell_status` (`runtime.md` § Results and previews).
+#[tokio::test(flavor = "local")]
+async fn the_pages_read_of_a_running_command_leaves_its_output_to_the_model() {
+    within(async {
+        let command: Rc<RefCell<Option<CommandId>>> = Rc::default();
+        let checked: Rc<RefCell<String>> = Rc::default();
+        let asked = command.clone();
+        let seen = checked.clone();
+        let script = ScriptedRuntime::new([
+            // The output comes after the exec's window: nothing of it is in
+            // the exec's result.
+            Turn::Events(vec![exec("later", "sleep 0.3; echo later; read line", 100)]),
+            Turn::Respond(Box::new(|_| reply("started"))),
+            Turn::Respond(Box::new(move |_| {
+                vec![event::tool_call(
+                    "check",
+                    "shell_status",
+                    json!({"commandId": asked.borrow().clone().expect("the command started")}),
+                )]
+            })),
+            Turn::Respond(Box::new(move |request| {
+                *seen.borrow_mut() = last_result(request);
+                reply("checked")
+            })),
+        ]);
+        let fixture = Fixture::start(&script).await;
+        let mut client = fixture.opened().await;
+        let frames = turn(&mut client, "message-1", "Start it.").await;
+        let started = command_of(&shell_outputs(&frames)[0]).clone();
+        *command.borrow_mut() = Some(started.clone());
+
+        // The page reads the output as it comes.
+        let mut read = String::new();
+        while !read.contains("later") {
+            client.send(ClientFrame::SyncTranscript {}).await;
+            let outputs = shell_outputs(&client.received());
+            let [status] = &outputs[..] else {
+                panic!("{outputs:?}");
+            };
+            assert_eq!(command_of(status), &started);
+            read.push_str(&status.command().output.text);
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+
+        // The model's look still shows all of it.
+        turn(&mut client, "message-2", "Check it.").await;
+        let result = checked.borrow().clone();
+        assert!(preview(&result).contains("later"), "{result}");
+
+        client
+            .send(ClientFrame::ShellAbort {
+                command_id: started,
+            })
+            .await;
+        client.received();
         fixture.stop().await;
     })
     .await;
