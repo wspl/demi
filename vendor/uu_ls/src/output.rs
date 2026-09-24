@@ -46,7 +46,6 @@
 //! Alternatively, use [`StreamingOutput`] when you want a reusable streaming sink
 //! that collects `EntryInfo` objects as they arrive.
 
-use uucore::context::FileKindExt as _;
 use crate::{Config, PathData};
 use std::ffi::OsString;
 use uucore::context::fs::{FileType, Metadata};
@@ -285,6 +284,7 @@ impl LsOutput for StreamingOutput {
 
 #[cfg(test)]
 mod tests {
+    use uucore::context::FileKindExt as _;
     use super::*;
 
     #[test]
