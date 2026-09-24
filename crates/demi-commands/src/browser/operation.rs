@@ -1,8 +1,4 @@
-use std::{
-    future::Future,
-    sync::atomic::{AtomicU8, Ordering},
-    time::Duration,
-};
+use std::{future::Future, time::Duration};
 
 use chromiumoxide::error::CdpError;
 use demi_builtin_protocol::browser::{ActionProgress, AssetsExportResult, BrowserErrorCode, ErrorDetails};
@@ -112,7 +108,9 @@ pub(super) struct Operation<'a> {
     ended: &'a CancellationToken,
     cancelled: &'a CancellationToken,
     deadline: Instant,
-    progress: AtomicU8,
+    /// How far the action's input got. A std mutex: set and read in
+    /// passing, never across an await.
+    progress: std::sync::Mutex<ActionProgress>,
     connection_failure: Option<&'a tokio::sync::watch::Sender<Option<String>>>,
 }
 
@@ -134,7 +132,7 @@ impl<'a> Operation<'a> {
             ended,
             cancelled,
             deadline,
-            progress: AtomicU8::new(0),
+            progress: std::sync::Mutex::new(ActionProgress::NotStarted),
             connection_failure: None,
         }
     }
@@ -150,34 +148,35 @@ impl<'a> Operation<'a> {
         operation
     }
 
+    /// The input is on its way: its outcome is unknown until it is
+    /// delivered.
     pub fn begin_input(&self) {
-        self.progress.store(1, Ordering::SeqCst);
+        self.set_progress(ActionProgress::Unknown);
     }
 
     pub fn input_not_delivered(&self) {
-        self.progress.store(0, Ordering::SeqCst);
+        self.set_progress(ActionProgress::NotStarted);
     }
 
     pub fn complete_input(&self) {
-        self.progress.store(2, Ordering::SeqCst);
+        self.set_progress(ActionProgress::Completed);
+    }
+
+    fn set_progress(&self, progress: ActionProgress) {
+        *self.progress.lock().expect("the input progress is intact") = progress;
     }
 
     pub fn failure(&self, error: BrowserError, tab: &str, url: Option<&str>) -> BrowserError {
-        let progress = self.progress.load(Ordering::SeqCst);
-        let error = if progress != 0 && error.is_connection_loss() {
+        let progress = *self.progress.lock().expect("the input progress is intact");
+        let error = if progress != ActionProgress::NotStarted && error.is_connection_loss() {
             BrowserError::OutcomeUnknown {
                 source: Box::new(error),
             }
         } else {
             error
         };
-        let action = match progress {
-            0 => ActionProgress::NotStarted,
-            2 => ActionProgress::Completed,
-            _ => ActionProgress::Unknown,
-        };
         let mut details = error.details();
-        details.action.get_or_insert(action);
+        details.action.get_or_insert(progress);
         details.tab.get_or_insert_with(|| tab.to_owned());
         if details.url.is_none() {
             details.url = url.map(str::to_owned);
