@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Bot } from '@lucide/vue'
-import type { AgentMessage } from '@demicodes/core'
+import type { AgentMessage } from '@demicodes/protocol'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import StreamedMarkdown from '@demicodes/web-ui/ui/StreamedMarkdown.vue'
 import FunctionalBlock from './FunctionalBlock.vue'

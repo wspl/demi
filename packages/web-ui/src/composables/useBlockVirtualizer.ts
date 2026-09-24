@@ -30,7 +30,6 @@ const BLOCK_HEIGHT_ESTIMATES: Record<string, number> = {
   abort: 28,
   compaction_boundary: 36,
   compaction_marker: 0,
-  extension_state_snapshot: 0,
 }
 
 export interface ScrollAnchor {

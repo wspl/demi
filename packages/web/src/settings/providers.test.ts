@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
-import { productStateSchema, type ProductState } from '../api/contracts'
+import { productStateSchema, type ProductState } from '../api/unported'
 import { useProduct } from '../state/product'
 import { useProviderSettings } from './providers'
 import { dismissToast, toasts } from '@demicodes/web-ui/infra/toast'
@@ -29,9 +29,6 @@ beforeEach(async () => {
     devices: [],
     workspaces: [],
     conversations: [],
-    cloud: { device: null, state: 'unallocated', operation: null, error: null, limits: { systemBytes: 0, homeBytes: 0 } },
-    exposes: [],
-    exposeDomain: null,
     providers: [
       {
         id: 'configured',
@@ -42,8 +39,8 @@ beforeEach(async () => {
         vendorId: null,
         baseUrl: null,
         models: null,
-        keyConfigured: true,
-        details: null,
+        createdAt: '2026-09-10T00:00:00.000Z',
+        details: { type: 'failed', message: 'Not read in this test' },
       },
     ],
   })

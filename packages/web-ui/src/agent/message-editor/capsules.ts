@@ -39,6 +39,11 @@ export interface TransferContext {
   transfer(id: string): MessageTransfer | undefined
   carries(id: string): boolean
   retry(id: string): void
+  /**
+   * The file as the composer knows it now, which the capsule the document
+   * saved may predate: an upload's answer brings a text file's opening.
+   */
+  current(id: string): MessageCapsule | undefined
 }
 
 /**
@@ -108,8 +113,8 @@ export function composerTransfer(item: ComposerAttachment): MessageTransfer | un
 
 /**
  * A file a message carried, as its capsule shows it: its attachment record
- * with the picture of the media block before it, a media block alone, or a
- * reference to a file on another device.
+ * with the picture of the media block before it, a media block alone, a
+ * reference to a file on another device, or a file an edit uploaded.
  */
 export function contentCapsule(id: string, blocks: readonly MessageEditContent[]): MessageCapsule {
   let capsule: MessageCapsule = { id, name: 'file' }
@@ -120,20 +125,22 @@ export function contentCapsule(id: string, blocks: readonly MessageEditContent[]
     } else if (block.type === 'attachment') {
       capsule = { ...capsule, name: block.name, path: block.path, snippet: block.snippet }
     } else if (block.type === 'document') {
-      capsule = { ...capsule, name: block.source.fileName ?? capsule.name }
+      capsule = { ...capsule, name: block.source.fileName }
     } else if (block.type === 'image' || block.type === 'video') {
       capsule = { ...capsule, name: mediaName(block), image: block.type === 'image' ? block.source : undefined }
+    } else if (block.type === 'upload') {
+      const picture = block.mediaType.startsWith('image/')
+        ? { type: 'ref' as const, ref: block.sha256, mediaType: block.mediaType }
+        : undefined
+      capsule = { ...capsule, name: block.fileName, snippet: block.snippet, image: picture }
     }
   }
   return capsule
 }
 
-/** A media block's name, when no record names it: its file's, or its kind. */
+/** A media block's name, when no record names it: the leaf of its address, or its kind. */
 function mediaName(block: Extract<MessageEditContent, { type: 'image' | 'video' }>): string {
   const { source } = block
-  if (source.type === 'ref' && source.fileName) {
-    return source.fileName
-  }
   if (source.type === 'url') {
     const leaf = source.url.split(/[?#]/)[0]?.split('/').pop()
     if (leaf) {

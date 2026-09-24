@@ -1,15 +1,13 @@
-import { z } from 'zod'
 import {
   applyAttachmentUpdate,
   arrangeCapsuleFiles,
   attachmentFileError,
   AttachmentUploadQueue,
-  attachTextSnippet,
   composerAttachmentFromFile,
   composerFileNames,
   isComposerFile,
 } from '@demicodes/web-ui/agent/message-input/attachments'
-import { uploadBytes } from '../api/uploads'
+import { uploadAttachment } from '../api/uploads'
 import type { Conversation, ProductAttachment } from '../state/types'
 
 /** Owns file transfers and preview resources for one product account. */
@@ -24,14 +22,10 @@ export function createConversationUploads(
     const ready = await uploads.start(
       item.id,
       async (signal, report) => {
-        const result = await uploadBytes('/attachments', item.file, {
-          signal,
-          progress: (sent) => report(sent / item.file.size),
-        })
-        const attachment = z
-          .object({ attachment: z.object({ id: z.string() }) })
-          .parse(result).attachment
-        item.upload = { id: attachment.id }
+        const uploaded = await uploadAttachment(item.file, { signal, progress: report })
+        item.upload = { id: uploaded.id }
+        // The capsule shows the opening the backend read, as the message will carry it.
+        item.snippet = uploaded.snippet
       },
       (update) => applyAttachmentUpdate(item, update),
     ).catch((error: unknown) => {
@@ -54,10 +48,10 @@ export function createConversationUploads(
 
   /**
    * Takes files for a conversation's message and answers with what it took,
-   * for the composer to put their capsules where they belong in the text. A
-   * text file's opening is read first, since its capsule carries it.
+   * for the composer to put their capsules where they belong in the text.
+   * Each starts uploading at once; its capsule shows what the answer says.
    */
-  async function addFiles(conversation: Conversation, files: File[]): Promise<ProductAttachment[]> {
+  function addFiles(conversation: Conversation, files: File[]): ProductAttachment[] {
     const taken: ProductAttachment[] = []
     for (const file of files) {
       const error = attachmentFileError(file, composerFileNames(conversation.files))
@@ -70,7 +64,6 @@ export function createConversationUploads(
         file,
         upload: null,
       }
-      await attachTextSnippet(item, file)
       conversation.files.push(item)
       const reactiveItem = conversation.files.find(
         (attachment) => attachment.id === item.id,
@@ -120,8 +113,9 @@ export function createConversationUploads(
     for (const item of next.stopped) {
       uploads.cancel(item.id)
     }
+    // A file whose upload a deleted capsule stopped starts over; one still uploading goes on.
     for (const item of next.resumed) {
-      if (item.kind === 'file' && item.phase !== 'ready') {
+      if (item.kind === 'file' && item.phase !== 'ready' && !uploads.has(item.id)) {
         void uploadFile(item).catch(onError)
       }
     }

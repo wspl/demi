@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import type { LiveDialog } from '@demicodes/browser-protocol/live'
+import type { LiveDialog } from '@demicodes/protocol'
 import Button from '../ui/Button.vue'
 import TextInput from '../ui/TextInput.vue'
 
