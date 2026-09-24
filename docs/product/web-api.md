@@ -174,10 +174,18 @@ usage and limits, and the pending operation. `POST /api/cloud/reset` takes
 `{ operationId }`. The backend selects and records the shipped base version at
 admission. The response identifies the operation; the status response reports
 stopping, saving, rebuilding, booting, ready or failure. Retrying the same
-operation id returns the same operation. A reset affects every job on the
+operation id returns the same operation, and a reset with another operation id
+while one runs answers 409 `cloud_resetting`. A reset affects every job on the
 user's Cloud and preserves home. Requests cannot name another user's device or
 arbitrary image paths. Settings use this API even when the guest is offline or
 broken.
+
+An operation that needs the Cloud running and cannot have it answers 503 with
+the lifecycle's code: `cloud_resetting` while a reset holds the Cloud,
+`cloud_capacity` when every capacity permit of the backend is taken,
+`cloud_crash_loop` once repeated runtime losses have stopped its automatic
+boots, which a reset recovers, and `cloud_unavailable` when it cannot start or
+is changing state ([Lifecycle and capacity](../cloud/managed-hosts.md#lifecycle-and-capacity)).
 
 ## User streams
 
@@ -306,7 +314,8 @@ and never with product routes. Lifetime, relay behavior and the
 
 `POST /api/setup` and `POST /api/auth/login` take `{ email, password }`.
 `POST /api/users` takes `{ email, password, role }` with role `admin` or `user`.
-`PATCH /api/users/:id` resets a lower-ranked account with `{ password }`.
+`PATCH /api/users/:id` resets a lower-ranked account with `{ password }`; an
+id that names no account answers 404 `user_not_found`.
 Setup creates the only master account and answers 404 `already_set_up` after
 setup is complete. HTTP validation trims and lowercases addresses; storage
 uniqueness and lookups are case-insensitive. A password being set, at setup,
@@ -544,8 +553,9 @@ the stream that is not a WebSocket upgrade answers 426 `upgrade_required`.
 
 `POST /api/sidebar/reorder` takes `{ kind: "conversation" | "workspace", id,
 beforeId: string | null }`; null appends. Conversation moves stay within the same
-project and pin partition. [Storage](../backend/storage.md#control-records)
-owns persistent ordering. Activity timestamps never reorder rows.
+project and pin partition; a move out of them answers 409 `invalid_order`.
+[Storage](../backend/storage.md#control-records) owns persistent ordering.
+Activity timestamps never reorder rows.
 
 `GET /api/conversations?archived=true|false` includes `status`, `revision`,
 `readRevision`, `unread`, and `cwd`, the directory the conversation's work runs
