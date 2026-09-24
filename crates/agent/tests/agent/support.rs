@@ -9,12 +9,15 @@ use std::{
 };
 
 use demi_agent::{
-    AgentHarness, AgentServer, AgentTreeStore, Profile, PromptContext, ProviderResolver,
-    ResolveError, ServerConfig, ServerDeps,
+    AgentHarness, AgentServer, AgentTreeStore, FailureReader, Profile, PromptContext,
+    ProviderResolver, ResolveError, ServerConfig, ServerDeps,
     testing::{MemoryTreeStore, SequentialIds, TestClient, test_model},
 };
 use demi_agent_protocol::{ClientFrame, ServerFrame};
-use demi_core::{Block, ModelSelection, NodeId, TurnId, UserContentBlock};
+use demi_core::{
+    Block, ModelSelection, NodeId, ProviderErrorDiagnostics, ProviderFailureFacts, Timestamp,
+    TurnId, UserContentBlock,
+};
 use demi_provider::{
     InferenceItem, InferenceRequest, ProviderRun, ProviderRuntime,
     testing::{FixedClock, ScriptedRuntime, Turn},
@@ -84,6 +87,28 @@ impl RpcHandler for Hello {
     ) -> LocalBoxFuture<'_, Result<u8, RpcError>> {
         Box::pin(async { Ok(0) })
     }
+}
+
+/// Reads the facts of the `stub` provider's failure records: its vendor
+/// always asks for a minute's wait. Another provider's configuration is
+/// gone, so its records have none.
+pub struct Facts;
+
+impl FailureReader for Facts {
+    fn read(
+        &self,
+        provider: &str,
+        _diagnostics: &ProviderErrorDiagnostics,
+        received_at: Timestamp,
+    ) -> Option<ProviderFailureFacts> {
+        (provider == "stub").then(|| ProviderFailureFacts {
+            retry_at: Some(minute_after(received_at)),
+        })
+    }
+}
+
+pub fn minute_after(moment: Timestamp) -> Timestamp {
+    Timestamp::from_millisecond(moment.as_millisecond() + 60_000).expect("the time is in range")
 }
 
 /// Makes a provider's runtimes.
@@ -457,6 +482,7 @@ impl Fixture {
         let server = AgentServer::new(ServerDeps {
             harness: harness.clone(),
             providers: resolver.clone(),
+            failures: Rc::new(Facts),
             stores,
             clock: Arc::new(FixedClock(
                 "2026-09-24T12:00:00.000Z"
