@@ -536,18 +536,21 @@ live agent tree, otherwise completed/error/stopped from its latest terminal
 block, or idle. An unfinished checkpoint without a live session is
 interrupted.
 
-A conversation is running while its tree will go on working without the user:
-an agent of the tree is acting, or a child is still open. An open child counts
+A conversation is running while its tree will go on working without the user: an
+agent of the tree is acting, or a child is still open. An agent acts until the
+save that ends its action commits, although the page already shows its phase
+idle ([Saving](../agent/runtime.md#saving)), so once a conversation no longer
+runs, its transcript route shows what the live tree showed. An open child counts
 whatever it is doing, a wait for its own `yield` wakeup included, because it
 resumes by itself and its close wakes its parent
 ([Subagents](../agent/subagents.md#result)). A shell command that outlives its
 turn does not count: its exit wakes no one, so nothing follows until the user
 writes. For example, the root answers "two children are looking into it" and
-ends its turn: the conversation stays running until both children close and
-the root has answered their results. The root answers "the build has started"
-while `npm run build` still runs: the conversation is completed, and the
-command shows as running only on its terminal tab. `web-ui` applies the same
-rule to a conversation the page is attached to.
+ends its turn: the conversation stays running until both children close and the
+root has answered their results. The root answers "the build has started" while
+`npm run build` still runs: the conversation is completed, and the command shows
+as running only on its terminal tab. `web-ui` applies the same rule to a
+conversation the page is attached to.
 
 Checkpoint output changes advance a persisted revision; user input alone does
 not. A browser sends `POST /api/conversations/:id/read { revision }` for the

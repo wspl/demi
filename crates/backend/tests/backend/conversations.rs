@@ -239,6 +239,25 @@ async fn summaries(backend: &TestBackend, session: &Session) -> Vec<Conversation
     listed.json::<Conversations>().conversations
 }
 
+/// The conversation's summary once its tree has settled. The save that ends
+/// an action follows the idle phase the socket shows, and the tree works
+/// until that save commits (`runtime.md` § Saving), so the database holds a
+/// turn once the conversation no longer runs.
+async fn settled(backend: &TestBackend, session: &Session, id: &str) -> ConversationSummary {
+    let summary = || async {
+        summaries(backend, session)
+            .await
+            .into_iter()
+            .find(|summary| summary.id.as_str() == id)
+            .expect("the conversation is listed")
+    };
+    crate::support::eventually("the conversation settles", || async {
+        summary().await.status != ConversationStatus::Running
+    })
+    .await;
+    summary().await
+}
+
 async fn transcript(backend: &TestBackend, session: &Session, id: &str) -> Transcript {
     let read = backend.get(&format!("/api/conversations/{id}/transcript"), Some(session)).await;
     assert_eq!(read.status, StatusCode::OK, "{}", String::from_utf8_lossy(&read.body));
@@ -348,8 +367,10 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     assert_eq!(body["model"], "claude-opus-4-8");
     assert!(body["messages"][0].to_string().contains("Say hello"), "{body}");
 
-    // Live equals cold: the live tree's transcript is what the database
-    // holds, which the history route reads without a session.
+    // Live equals cold once the turn has settled: the live tree's transcript
+    // is what the database holds, which the history route reads without a
+    // session.
+    let summary = settled(&backend, &master, FIRST).await;
     let live = socket.live().await;
     assert_eq!(kinds(&live), ["user", "text", "response"]);
     assert_eq!(last_text(&live), "Hello there.");
@@ -357,7 +378,6 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     assert_eq!(cold.blocks, live);
     assert!(cold.failures.is_none() && cold.subagents.is_empty());
 
-    let summary = summaries(&backend, &master).await.remove(0);
     assert_eq!((summary.status, summary.unread), (ConversationStatus::Completed, true));
     assert!(summary.revision > 0);
     assert_eq!(
@@ -397,6 +417,7 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     reloaded.chat("m2", "Once more").await;
     let replayed = vendor.requests()[1].json();
     assert_eq!(replayed["messages"].as_array().unwrap().len(), 3, "{replayed}");
+    settled(&backend, &master, FIRST).await;
     assert_eq!(kinds(&transcript(&backend, &master, FIRST).await.blocks).len(), 6);
     backend.close().await;
 }
@@ -727,6 +748,7 @@ async fn an_edit_of_the_entry_reaches_the_next_request_and_a_deleted_entry_refus
     assert!(refused, "{turn:?}");
     assert_eq!(runs.calls().len(), 3);
     assert_eq!(usage(&backend, &master).await.totals[0].requests, 3);
+    settled(&backend, &master, FIRST).await;
     let blocks = transcript(&backend, &master, FIRST).await.blocks;
     assert_eq!(kinds(&blocks).last().map(String::as_str), Some("error"));
     backend.close().await;
@@ -751,8 +773,7 @@ async fn a_request_over_the_rate_limit_fails_without_reaching_the_vendor() {
     assert!(limited, "{turn:?}");
     assert_eq!(vendor.requests().len(), 1);
     assert_eq!(usage(&backend, &master).await.totals[0].requests, 1);
-    let summary = summaries(&backend, &master).await.remove(0);
-    assert_eq!(summary.status, ConversationStatus::Error);
+    assert_eq!(settled(&backend, &master, FIRST).await.status, ConversationStatus::Error);
     backend.close().await;
 }
 
@@ -818,6 +839,7 @@ async fn the_page_receives_what_the_provider_reads_from_an_error_blocks_record()
         _ => None,
     });
     let read = read.unwrap_or_else(|| panic!("no frame carried failure facts: {turn:?}"));
+    settled(&backend, &master, FIRST).await;
     let blocks = transcript(&backend, &master, FIRST).await;
     let Some(Block::Error(error)) = blocks.blocks.last() else {
         panic!("the turn failed: {:?}", blocks.blocks);
