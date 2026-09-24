@@ -20,7 +20,7 @@ pub(super) async fn models(
     AuthUser(user): AuthUser,
     QueryParams(Refresh { refresh }): QueryParams<Refresh>,
 ) -> Result<Json<ModelCatalog>, ApiError> {
-    let owner = services.vault.owner_for(&user).await?;
+    let owner = services.vault.owner_for(&user.id).await?;
     let entries = services.vault.entries(owner).await?;
     let providers = services.assembly.model_catalog(&entries, refresh.0).await;
     Ok(Json(ModelCatalog { providers }))

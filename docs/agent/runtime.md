@@ -680,8 +680,8 @@ frames.
 - Client frames are strict: an unknown field is refused. The client accepts
   server frames with fields it does not know.
 - A frame that does not match its schema is answered with an `error` whose code
-  is `invalid_frame`, and the connection stays open. A message that is not JSON
-  closes the connection.
+  is `invalid_frame`, and the connection stays open. A message that is not JSON,
+  or a binary one, closes the connection with close code 1007 `not_json`.
 - The backend handles one connection's frames one at a time, in arrival order.
   A frame waits for the conversation's admission and is refused while the
   conversation is archived
@@ -691,8 +691,10 @@ frames.
   behind it.
 - Every frame for one attachment, whether a reply or an event, goes through
   one outbox in causal order. The outbox holds at most 4,096 frames. When it is
-  full, the server closes the connection with a close code that says the
-  client lagged; the client reconnects and adopts the running tree.
+  full, the server closes the connection with close code 4001 `lagged`; the
+  client reconnects and adopts the running tree. A backend that shuts down
+  closes its conversation sockets with 1001 `backend_closing` before it
+  disposes the trees.
 - The open handshake is one step: nothing can happen to the session between
   `opened` and `pending_steers`, so the snapshot frames agree with each other.
 - Each `transcript_patch` carries the revision one past the previous frame's.

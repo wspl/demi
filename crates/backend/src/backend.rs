@@ -17,7 +17,7 @@ use crate::auth::email_change::{AccountMail, EmailChanges};
 use crate::auth::login_limiter::LoginLimiter;
 use crate::auth::passwords::{HashError, PasswordHasher};
 use crate::auth::sessions::WebSessions;
-use crate::config::{BackendConfig, RunnerTuning};
+use crate::config::{BackendConfig, ConversationTuning, RunnerTuning};
 use crate::edge::{AppState, Edge};
 use crate::llm::assembly::ProviderAssembly;
 use crate::llm::catalog_cache::ModelCatalogCache;
@@ -42,8 +42,9 @@ const CONVERSATION_DATABASES: &str = "conversations";
 /// known. The edge and every shard share them.
 pub(crate) struct Services {
     pub(crate) mode: InstanceMode,
+    /// The wall clock the backend reads times from.
+    pub(crate) clock: Arc<dyn demi_core::Clock>,
     pub(crate) control: ControlService,
-    #[expect(dead_code, reason = "the agent's tree store and the conversation summaries use it")]
     pub(crate) conversations: ConversationStores,
     pub(crate) blobs: BlobStores,
     pub(crate) hasher: PasswordHasher,
@@ -57,6 +58,7 @@ pub(crate) struct Services {
     /// Runners waiting to be paired, which have no user yet.
     pub(crate) claims: PendingClaims,
     pub(crate) runners: RunnerTuning,
+    pub(crate) conversation_tuning: ConversationTuning,
 }
 
 /// What the provider services start with.
@@ -133,6 +135,7 @@ impl Services {
         mail: Option<Arc<dyn AccountMail>>,
         providers: ProviderSetup,
         runners: RunnerTuning,
+        conversation_tuning: ConversationTuning,
     ) -> Result<Self, StartError> {
         let Storage {
             control,
@@ -140,6 +143,7 @@ impl Services {
             blobs,
         } = storage;
         let hasher = PasswordHasher::new().await?;
+        let clock = providers.clock.clone();
         let edge = tokio::runtime::Handle::current();
         // The shared services' own client; each shard thread builds its own.
         let http = reqwest::Client::builder().build().map_err(StartError::Http)?;
@@ -158,6 +162,7 @@ impl Services {
         let logins = LoginFlows::new(assembly.clone(), operations.clone(), providers.logins);
         Ok(Self {
             mode,
+            clock,
             sessions: WebSessions::new(control.clone()),
             limiter: LoginLimiter::new(),
             email: EmailChanges::new(control.clone(), hasher.clone(), mail, secret.email_code_key()),
@@ -171,6 +176,7 @@ impl Services {
             logins,
             claims: PendingClaims::new(runners.claims_per_minute),
             runners,
+            conversation_tuning,
         })
     }
 
@@ -193,7 +199,15 @@ impl Services {
             logins: LoginTiming::default(),
             clock,
         };
-        let services = Self::start(InstanceMode::Shared, storage, &secret, None, providers, RunnerTuning::default());
+        let services = Self::start(
+            InstanceMode::Shared,
+            storage,
+            &secret,
+            None,
+            providers,
+            RunnerTuning::default(),
+            ConversationTuning::default(),
+        );
         Arc::new(services.await.unwrap())
     }
 }
@@ -290,6 +304,7 @@ impl Backend {
             config.account_mail,
             providers,
             config.runners,
+            config.conversations,
         );
         let services = Arc::new(services.await?);
         let shards = match ShardPool::start(config.shards, services.clone()).await {

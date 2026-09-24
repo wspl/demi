@@ -135,6 +135,28 @@ pub struct BackendConfig {
     pub logins: LoginTiming,
     /// How runner connections are timed and pairing is limited.
     pub runners: RunnerTuning,
+    /// How conversations are served and their inference limited.
+    pub conversations: ConversationTuning,
+}
+
+/// How the backend serves conversations (`runtime.md` § Order and delivery,
+/// `usage-and-quota.md` § Rate limit). Tests lower the bounds.
+#[derive(Debug, Clone, Copy)]
+pub struct ConversationTuning {
+    /// The most frames a conversation socket's outbox holds; a client that
+    /// falls this far behind is disconnected as lagging.
+    pub outbox_frames: usize,
+    /// The provider requests a user's conversations may start in any minute.
+    pub requests_per_minute: usize,
+}
+
+impl Default for ConversationTuning {
+    fn default() -> Self {
+        Self {
+            outbox_frames: demi_agent::ServerConfig::default().outbox_frames,
+            requests_per_minute: crate::usage::rate_limit::REQUESTS_PER_WINDOW,
+        }
+    }
 }
 
 /// How the backend treats runner connections (`runner.md` § Connection and
@@ -182,6 +204,7 @@ impl BackendConfig {
             models_dev_url: ModelsDevClient::DEFAULT_URL.parse().expect("the models.dev address parses"),
             logins: LoginTiming::default(),
             runners: RunnerTuning::default(),
+            conversations: ConversationTuning::default(),
         }
     }
 }
