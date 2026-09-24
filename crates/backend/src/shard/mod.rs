@@ -29,6 +29,7 @@ use crate::backend::Services;
 use crate::conversation::host_access::Conversations;
 use crate::conversation::titles::Titles;
 use crate::conversation::{self, ConversationHarness, ConversationParts};
+use crate::llm::claude_cli::ClaudeCli;
 use crate::lifecycle::conversations::ConversationWatches;
 use crate::managed::Cloud;
 use crate::runner::devices::Devices;
@@ -84,6 +85,8 @@ pub(crate) struct Shard {
     cloud: Cloud,
     /// Each conversation's idle watch.
     idle_watches: ConversationWatches,
+    /// The Claude Code CLI work on the user's Cloud.
+    claude_cli: ClaudeCli,
 }
 
 impl Shard {
@@ -112,6 +115,7 @@ impl Shard {
             forks: KeyedSerialGate::new(),
             cloud: Cloud::default(),
             idle_watches: ConversationWatches::default(),
+            claude_cli: ClaudeCli::default(),
         }
     }
 
@@ -123,6 +127,10 @@ impl Shard {
 
     pub(crate) fn cloud(&self) -> &Cloud {
         &self.cloud
+    }
+
+    pub(crate) fn claude_cli(&self) -> &ClaudeCli {
+        &self.claude_cli
     }
 
     pub(crate) fn idle_watches(&self) -> &ConversationWatches {

@@ -926,11 +926,14 @@ async fn first_line(call: Call<Map<String, Value>>, port: RpcPort) -> Result<u8,
 
 #[tokio::test(flavor = "local")]
 async fn declared_commands_call_back_with_storage_input_and_cancellation() {
+    let started = Rc::new(Cell::new(false));
     let stopped = Rc::new(Cell::new(false));
     let hold = {
+        let started = started.clone();
         let stopped = stopped.clone();
         TypedRpc::new(move |call: Call<HoldArgs>, port: RpcPort| {
             let stopped = stopped.clone();
+            started.set(true);
             async move {
                 tokio::select! {
                     () = tokio::time::sleep(Duration::from_millis(call.args.ms)) => Ok(0),
@@ -1022,6 +1025,9 @@ async fn declared_commands_call_back_with_storage_input_and_cancellation() {
         .await
         .unwrap();
     assert!(matches!(holding.state, CommandState::Running { .. }));
+    // A job still starting has no call to stop yet: the stop is observed
+    // once the call runs.
+    until("the call's start", || started.get().then_some(())).await;
     let aborted = shell.abort(&holding.command_id, Reader::Model).await.unwrap();
     assert!(
         matches!(aborted.state, CommandState::Aborted),

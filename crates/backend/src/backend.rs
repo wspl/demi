@@ -26,6 +26,8 @@ use crate::conversation::stream::UserStreams;
 use crate::edge::{AppState, Edge, Site};
 use crate::llm::assembly::ProviderAssembly;
 use crate::llm::catalog_cache::ModelCatalogCache;
+use crate::llm::claude_cli::CliInstalls;
+use crate::llm::claude_releases::ClaudeReleases;
 use crate::llm::families::FamilyRegistry;
 use crate::llm::vendors::VendorCatalog;
 use crate::managed::{CloudServices, MachinesClient, recover_resets};
@@ -64,6 +66,10 @@ pub(crate) struct Services {
     pub(crate) email: EmailChanges,
     pub(crate) vault: Vault,
     pub(crate) assembly: Arc<ProviderAssembly>,
+    /// The vendor's Claude Code releases, which the CLI on each Cloud follows.
+    pub(crate) claude_releases: ClaudeReleases,
+    /// The outcome of the CLI installs no conversation asked for.
+    pub(crate) cli_installs: CliInstalls,
     pub(crate) operations: Arc<ProviderOperations>,
     pub(crate) logins: Arc<LoginFlows>,
     /// Runners waiting to be paired, which have no user yet.
@@ -85,6 +91,8 @@ pub(crate) struct Services {
 pub(crate) struct ProviderSetup {
     pub(crate) families: FamilyRegistry,
     pub(crate) models_dev_url: url::Url,
+    /// The Claude Code distribution.
+    pub(crate) claude_releases: url::Url,
     pub(crate) logins: LoginTiming,
     pub(crate) clock: Arc<dyn demi_core::Clock>,
 }
@@ -178,6 +186,7 @@ impl Services {
         let http = reqwest::Client::builder().build().map_err(StartError::Http)?;
         let vault = Vault::new(control.clone(), secret.vault_key(), mode);
         let models_dev = ModelsDevClient::new(http.clone(), providers.models_dev_url, providers.clock.clone());
+        let claude_releases = ClaudeReleases::new(&providers.claude_releases, edge.clone()).map_err(StartError::Http)?;
         let assembly = Arc::new(ProviderAssembly::new(
             vault.clone(),
             providers.families,
@@ -202,6 +211,8 @@ impl Services {
             changes,
             vault,
             assembly,
+            claude_releases,
+            cli_installs: CliInstalls::default(),
             operations,
             logins,
             claims: PendingClaims::new(runners.claims_per_minute),
@@ -240,6 +251,7 @@ impl Services {
         let providers = ProviderSetup {
             families: FamilyRegistry::builtin(),
             models_dev_url: ModelsDevClient::DEFAULT_URL.parse().unwrap(),
+            claude_releases: crate::llm::claude_releases::DEFAULT_RELEASES_URL.parse().unwrap(),
             logins: LoginTiming::default(),
             clock,
         };
@@ -363,6 +375,7 @@ impl Backend {
         let providers = ProviderSetup {
             families: config.families,
             models_dev_url: config.models_dev_url,
+            claude_releases: config.claude_releases,
             logins: config.logins,
             clock: config.clock,
         };
