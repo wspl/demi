@@ -460,6 +460,7 @@ impl<H: AgentHarness> Tree<H> {
             first_message,
             store: self.store.clone(),
             shells: deps.shells.clone(),
+            shell_output: None,
             admission: self.admission.clone(),
             ids: deps.ids.clone(),
             clock: deps.clock.clone(),

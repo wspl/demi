@@ -6,6 +6,7 @@
 //! session: it returns its outcome.
 
 mod environments;
+mod frames;
 mod input;
 mod result;
 
@@ -25,6 +26,7 @@ use futures_util::future::LocalBoxFuture;
 
 pub(crate) use environments::Environments;
 use environments::Handle;
+pub(crate) use frames::{shell_output, stored_running_commands};
 use input::{CommandInput, ShellExecInput, ShellWriteInput, YieldInput, parse};
 
 use crate::{
@@ -133,6 +135,9 @@ pub(crate) struct ShellAccess<'a, H: AgentHarness> {
     pub(crate) environments: &'a Environments,
     pub(crate) context: PromptContext<'a>,
     pub(crate) commands: &'a Rc<CommandSet>,
+    /// Where a running shell tool's status goes: the root's client; a
+    /// child's reaches no one.
+    pub(crate) progress: Option<&'a dyn Fn(&CommandStatus)>,
 }
 
 impl<H: AgentHarness> ShellAccess<'_, H> {
@@ -222,6 +227,7 @@ impl<H: AgentHarness> ShellAccess<'_, H> {
                     },
                 };
                 let status = environment.exec(request, cancel).await?;
+                self.report(&status);
                 finish(environment.as_ref(), status, &model).await
             }
             StandardTool::ShellStatus => {
@@ -233,11 +239,13 @@ impl<H: AgentHarness> ShellAccess<'_, H> {
             StandardTool::ShellWrite => {
                 let input: ShellWriteInput = parse(name, input).map_err(CallError::Refused)?;
                 let (environment, status) = self.write(&input.command_id, input.stdin.0).await?;
+                self.report(&status);
                 finish(environment.as_ref(), status, &model).await
             }
             StandardTool::ShellAbort => {
                 let input: CommandInput = parse(name, input).map_err(CallError::Refused)?;
                 let (environment, status) = self.abort(&input.command_id).await?;
+                self.report(&status);
                 // A stop the model asked for is never an error.
                 ToolOutcome {
                     is_error: false,
@@ -245,6 +253,21 @@ impl<H: AgentHarness> ShellAccess<'_, H> {
                 }
             }
         })
+    }
+
+    /// Sends a running shell tool's status to the root's client; a
+    /// `shell_status` call sends none.
+    fn report(&self, status: &CommandStatus) {
+        if let Some(progress) = self.progress {
+            progress(status);
+        }
+    }
+
+    /// The status of `command`, when an environment of the node owns it.
+    pub(crate) fn status_of(&self, command: &CommandId) -> Option<CommandStatus> {
+        // The environment that owns the command answers its status: nothing
+        // happens between the two, so it cannot forget the command meanwhile.
+        self.environments.owning(command)?.status(command).ok()
     }
 
     /// Writes `stdin` to a running command of the current Host.
