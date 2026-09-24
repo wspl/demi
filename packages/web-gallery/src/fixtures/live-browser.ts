@@ -1,16 +1,17 @@
 /**
- * A live browser view without a Host (`browser-live-view.md`): the gallery
+ * A live browser view without a Host (`live-view.md`): the gallery
  * draws a page, encodes it as the Host's capture would, and speaks the live
  * protocol, so the view's pictures, input, controls and dialogs show here.
  */
 import {
-  LIVE_FRAME_KIND,
+  LIVE_CONTROL_FRAME,
+  LIVE_VIDEO_FRAME,
   type LiveControl,
   type LiveModuleMessage,
   type LiveTab,
   type LiveViewerMessage,
-  type LiveViewport,
-} from '@demicodes/browser-protocol/live'
+  type BrowserViewport,
+} from '@demicodes/protocol'
 import type { OpenLiveStream, LiveStreamHandlers } from '@demicodes/web-ui/browser/session'
 import { CONTROL, META } from '@demicodes/web-ui/browser/input'
 import { BrowserTabsError, type BrowserTabInfo, type BrowserTabsApi } from '@demicodes/web-ui/browser/tabs'
@@ -29,7 +30,7 @@ function framed(kind: number, payload: Uint8Array): Uint8Array {
 }
 
 function message(value: LiveModuleMessage): Uint8Array {
-  return framed(LIVE_FRAME_KIND.control, encoder.encode(JSON.stringify(value)))
+  return framed(LIVE_CONTROL_FRAME, encoder.encode(JSON.stringify(value)))
 }
 
 function picture(
@@ -49,7 +50,7 @@ function picture(
   header.setUint16(44, size.width)
   header.setUint16(46, size.height)
   chunk.copyTo(payload.subarray(48))
-  return framed(LIVE_FRAME_KIND.video, payload)
+  return framed(LIVE_VIDEO_FRAME, payload)
 }
 
 const SELECT: LiveControl = {
@@ -134,7 +135,7 @@ class GalleryBrowser {
   /** The viewer's messages, as a module reads them. */
   receive(bytes: Uint8Array): void {
     const view = new DataView(bytes.buffer, bytes.byteOffset)
-    if (bytes.length < 5 || bytes[4] !== LIVE_FRAME_KIND.control) {
+    if (bytes.length < 5 || bytes[4] !== LIVE_CONTROL_FRAME) {
       return
     }
     const length = view.getUint32(0)
@@ -278,7 +279,7 @@ class GalleryBrowser {
   }
 
   /** A page worth looking at: a heading, a button, a field and a select. */
-  private paint(viewport: LiveViewport): void {
+  private paint(viewport: BrowserViewport): void {
     const context = this.canvas.getContext('2d')
     if (!context) {
       return

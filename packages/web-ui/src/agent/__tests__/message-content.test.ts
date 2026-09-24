@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import type { UserContentBlock } from '@demicodes/core'
+import type { UserContentBlock } from '@demicodes/protocol'
 import { ATTACHMENT_MARK as MARK } from '../../markdown/user-markdown'
 import { composerCapsule, composerTransfer, contentCapsule } from '../message-editor/capsules'
 import {

@@ -36,8 +36,8 @@ const cloud = ref<CloudState>(
     state: 'running',
     phase: null,
     error: null,
-    systemBytes: 16 * 1024 ** 3,
-    homeBytes: 32 * 1024 ** 3
+    volumes: { systemBytes: 6 * 1024 ** 3, homeBytes: 20 * 1024 ** 3 },
+    limits: { systemBytes: 16 * 1024 ** 3, homeBytes: 64 * 1024 ** 3 }
   }
 )
 // The request is pending until the server accepts it; every second request is refused, so the failed state has a page.
