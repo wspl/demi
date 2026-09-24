@@ -17,7 +17,9 @@ demi-core = { path = "../core" }
 demi-gates = { path = "../gates" }
 demi-provider = { path = "../provider" }
 demi-provider-anthropic-api = { path = "../provider-anthropic-api" }
+demi-provider-codex = { path = "../provider-codex" }
 demi-provider-google = { path = "../provider-google" }
+demi-provider-grok-build = { path = "../provider-grok-build" }
 demi-provider-openai-api = { path = "../provider-openai-api" }
 demi-web-api = { path = "../web-api" }
 aes-gcm = "0.10"
