@@ -219,3 +219,11 @@ check-cfg = [
     'cfg(target_os, values("cygwin"))',
     "cfg(wasi_runner)",
 ]
+
+[package.metadata.demi]
+maintainer = "demi-runner"
+patches = [
+    "Its thread pool's threads start through uucore::context, so they belong to the job and inherit its context",
+    "The compression program starts through uucore::context, and parallelism is the context's",
+    "Files, streams, the environment, printing and exit go through uucore::context, so a run embedded in a shell job uses the job's working directory, environment, standard streams and cancellation, and exit ends only the utility",
+]
