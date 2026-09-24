@@ -228,12 +228,32 @@ fn restore_session(
     runtime: TestRuntime,
     clock: Arc<dyn demi_core::Clock>,
 ) -> (AgentSession, Continuation) {
+    restore_configured(
+        checkpoint,
+        store,
+        provider,
+        runtime,
+        clock,
+        SessionConfig::default(),
+    )
+}
+
+/// Restores the node `root` from `checkpoint` with `config`, saving into
+/// `store`.
+fn restore_configured(
+    checkpoint: crate::store::Checkpoint,
+    store: &Rc<MemoryTreeStore>,
+    provider: &ScriptedRuntime,
+    runtime: TestRuntime,
+    clock: Arc<dyn demi_core::Clock>,
+    config: SessionConfig,
+) -> (AgentSession, Continuation) {
     let deps = SessionDeps {
         runtime: Rc::new(runtime),
         store: store.session_store(&root()),
         ids: Rc::new(SequentialIds::new("restored")),
         clock,
-        config: SessionConfig::default(),
+        config,
     };
     AgentSession::restore(checkpoint, root(), Box::new(provider.clone()), deps).unwrap()
 }
