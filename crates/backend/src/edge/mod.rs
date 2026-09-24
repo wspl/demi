@@ -8,6 +8,7 @@ mod assets;
 mod attachments;
 mod auth;
 mod blobs;
+mod browser;
 mod body;
 mod content;
 mod conversations;
@@ -203,6 +204,10 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/conversations/{id}/streams/{name}", get(streams::open))
         .route("/conversations/{id}/activity", post(streams::activity))
         .route("/conversations/{id}/panel", get(panel::read).put(panel::save))
+        .route("/conversations/{id}/browser/tabs", get(browser::list).post(browser::open))
+        .route("/conversations/{id}/browser/tabs/{tab}", delete(browser::close))
+        .route("/conversations/{id}/browser/tabs/{tab}/navigate", post(browser::navigate))
+        .route("/conversations/{id}/browser/tabs/{tab}/history", post(browser::history))
         .route("/sidebar/reorder", post(sidebar::reorder))
         .route("/workspaces", get(workspaces::list).post(workspaces::create))
         .route("/workspaces/{id}", patch(workspaces::rename).delete(workspaces::delete))
