@@ -15,16 +15,15 @@
 use std::{io::Read, process::ExitCode, rc::Rc, sync::Arc, time::Duration};
 
 use demi_agent::{
-    AgentHarness, AgentServer, AgentTreeStore, CompactionConfig, FailureReader, PromptContext,
-    ProviderResolver, RandomIds, ResolveError, ServerConfig, ServerDeps, SessionConfig,
+    AgentHarness, AgentServer, AgentTreeStore, CompactionConfig, PromptContext, ProviderResolver,
+    RandomIds, ResolveError, ServerConfig, ServerDeps, SessionConfig,
     store::{CheckpointState, CheckpointUpdate, CommandStateSnapshot, NodeRecord},
     testing::{MemoryTreeStore, TestClient, client_text},
     transcript::estimate::context_tokens,
 };
 use demi_agent_protocol::{ClientFrame, ServerFrame};
 use demi_core::{
-    Block, Clock, Model, ModelSelection, NodeId, ProviderErrorDiagnostics, ProviderFailureFacts,
-    SessionPhase, SystemClock, Timestamp, TurnId, WireApi,
+    Block, Clock, Model, ModelSelection, NodeId, SessionPhase, SystemClock, TurnId, WireApi,
 };
 use demi_provider::{Provider, ProviderRuntime, RuntimeEnv, Secret};
 use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider, VendorPolicy};
@@ -187,17 +186,6 @@ impl ProviderResolver for DeepSeek {
     }
 }
 
-impl FailureReader for DeepSeek {
-    fn read(
-        &self,
-        _provider: &str,
-        diagnostics: &ProviderErrorDiagnostics,
-        received_at: Timestamp,
-    ) -> Option<ProviderFailureFacts> {
-        Some(self.provider.read_failure(diagnostics, received_at))
-    }
-}
-
 /// The fixture opened as a conversation, and what the harness asks it.
 struct Conversation {
     server: Rc<AgentServer<FixtureHarness>>,
@@ -252,8 +240,7 @@ impl Conversation {
             harness: Rc::new(FixtureHarness {
                 name: fixture.harness,
             }),
-            providers: deepseek.clone(),
-            failures: deepseek,
+            providers: deepseek,
             stores: Rc::new(move |_: &NodeId| store.clone() as Rc<dyn AgentTreeStore>),
             clock: Arc::new(SystemClock),
             ids: Rc::new(RandomIds),

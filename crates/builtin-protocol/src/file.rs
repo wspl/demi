@@ -1,13 +1,14 @@
 //! The arguments of the `file.*` operations. Paths are relative to the
 //! invocation's working directory; the handler resolves and checks them.
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
 use crate::DecodeError;
 
 /// `file.read`: writes the file's bytes to stdout.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct ReadArgs {
     /// File path to read
@@ -16,7 +17,7 @@ pub struct ReadArgs {
 }
 
 /// `file.create`: creates a new file; an existing file is left as it is.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct CreateArgs {
     /// Target file path
@@ -28,7 +29,7 @@ pub struct CreateArgs {
 }
 
 /// `file.edit`: replaces one occurrence of exact text in an existing file.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct EditArgs {
     /// Target file path
@@ -42,16 +43,18 @@ pub struct EditArgs {
     pub new: String,
     /// 1-based occurrence to replace
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "usize")]
     #[garde(range(min = 1))]
     pub occurrence: Option<usize>,
     /// Line number used to choose the nearest occurrence
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "usize")]
     #[garde(range(min = 1))]
     pub context: Option<usize>,
 }
 
 /// `file.patch`: applies a unified diff to one or more files.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct PatchArgs {
     /// Unified diff content

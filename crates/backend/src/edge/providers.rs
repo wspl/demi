@@ -46,7 +46,7 @@ pub(super) async fn scoped(services: &Services, user: &UserDto, id: &str) -> Res
     let id = ProviderId::try_from(id).map_err(|_| ApiError::provider_not_found())?;
     services
         .vault
-        .visible(user, &id)
+        .visible(&user.id, &id)
         .await?
         .ok_or_else(ApiError::provider_not_found)
 }
@@ -63,7 +63,7 @@ pub(super) async fn list(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
 ) -> Result<Json<Providers>, ApiError> {
-    let owner = services.vault.owner_for(&user).await?;
+    let owner = services.vault.owner_for(&user.id).await?;
     let entries = services.vault.entries(owner).await?;
     Ok(Json(Providers {
         providers: entries.iter().map(ProviderEntry::dto).collect(),
@@ -76,7 +76,7 @@ pub(super) async fn catalog(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
 ) -> Result<Json<VendorCatalog>, ApiError> {
-    let owner = services.vault.owner_for(&user).await?;
+    let owner = services.vault.owner_for(&user.id).await?;
     let entries = services.vault.entries(owner).await?;
     let assembly = &services.assembly;
     let subscriptions = assembly
@@ -203,7 +203,7 @@ pub(super) async fn create(
             (provider_type, label, config)
         }
     };
-    let owner = services.vault.owner_for(&user).await?;
+    let owner = services.vault.owner_for(&user.id).await?;
     let entry = services
         .vault
         .create_api_key(owner, family, label.into_string(), config)

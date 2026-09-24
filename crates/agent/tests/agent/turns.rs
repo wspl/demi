@@ -6,27 +6,23 @@
 use std::{rc::Rc, time::Duration};
 
 use demi_agent::{
-    ServerConfig, attachments, read_failures,
+    ServerConfig, attachments,
     store::media::{BlobStore, externalize_frame},
     testing::{MemoryBlobs, MemoryTreeStore, TestClient, TestFiles, model_of, test_model},
 };
 use demi_agent_protocol::{
-    AbortResult, AbortTarget, ClientContent, ClientFrame, Failures, ModelSwitchApply, ServerFrame,
+    AbortResult, AbortTarget, ClientContent, ClientFrame, ModelSwitchApply, ServerFrame,
     TranscriptPatch,
 };
-use demi_core::{
-    B64Bytes, Block, FailureSource, MediaSource, ProviderFailureFacts, SessionPhase,
-    UserContentBlock,
-};
+use demi_core::{B64Bytes, Block, FailureSource, MediaSource, SessionPhase, UserContentBlock};
 use demi_provider::{
-    ErrorCode, InferenceItem, ProviderEvent, ProviderFailure,
+    ErrorCode, InferenceItem, ProviderEvent,
     testing::{ScriptedRuntime, Turn, event},
 };
 use serde_json::{Value, json};
 
 use crate::support::{
-    Facts, Fixture, Gate, conversation, held, is_idle, is_pending_steers, kinds, minute_after,
-    open, send, until,
+    Fixture, Gate, conversation, held, is_idle, is_pending_steers, kinds, open, send, until,
 };
 
 #[tokio::test(flavor = "local")]
@@ -177,64 +173,6 @@ async fn a_provider_failure_is_reported_once_and_recorded_with_its_diagnostics()
     };
     assert_eq!(record.code.as_deref(), Some("auth_expired"));
     assert_eq!(checkpoint.state.phase, SessionPhase::Idle);
-}
-
-#[tokio::test(flavor = "local")]
-async fn a_failures_facts_travel_beside_its_error_block_and_are_never_stored() {
-    let script = ScriptedRuntime::new([
-        Turn::Events(vec![ProviderEvent::Error(ProviderFailure::protocol(
-            "the usage limit has been reached",
-            r#"{"type":"error","error":{"resets_at":1790062659}}"#,
-        ))]),
-        Turn::Events(vec![event::error("no record", None)]),
-    ]);
-    let fixture = Fixture::new(&script);
-    let mut client = fixture.opened().await;
-    client.send(send("m1", "hi")).await;
-    let failed = client.next_until(is_idle).await;
-    client.send(send("m2", "again")).await;
-    let unrecorded = client.next_until(is_idle).await;
-    client.send(ClientFrame::SyncTranscript {}).await;
-    let synced = client.received();
-
-    let checkpoint = fixture.store.checkpoint(&conversation()).unwrap();
-    let Block::Error(error) = &checkpoint.transcript[1] else {
-        panic!("{:?}", checkpoint.transcript)
-    };
-    let expected: Failures = [(
-        error.id.clone(),
-        ProviderFailureFacts {
-            retry_at: Some(minute_after(error.created_at)),
-        },
-    )]
-    .into();
-    let patched: Vec<&Failures> = failed
-        .iter()
-        .filter_map(|frame| match frame {
-            ServerFrame::TranscriptPatch {
-                failures: Some(failures),
-                ..
-            } => Some(failures),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(patched, [&expected]);
-    // An error without a vendor's record yields no facts.
-    assert!(unrecorded.iter().all(|frame| !matches!(
-        frame,
-        ServerFrame::TranscriptPatch {
-            failures: Some(_),
-            ..
-        }
-    )));
-    let Some(ServerFrame::TranscriptReset { failures, .. }) = synced.first() else {
-        panic!("{synced:?}")
-    };
-    assert_eq!(failures.as_ref(), Some(&expected));
-    assert_eq!(
-        read_failures(&checkpoint.transcript, &Facts),
-        Some(expected)
-    );
 }
 
 #[tokio::test(flavor = "local")]

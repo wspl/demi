@@ -13,6 +13,7 @@ use std::num::NonZeroUsize;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use demi_agent::AgentServer;
 use demi_host_remote::{ARRIVAL, Pipes};
 use demi_web_api::ids::UserId;
 use futures_util::future::LocalBoxFuture;
@@ -22,7 +23,8 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 use crate::backend::Services;
-use crate::usage::rate_limit::{REQUESTS_PER_WINDOW, RequestRateLimit};
+use crate::conversation::{self, ConversationHarness};
+use crate::usage::rate_limit::RequestRateLimit;
 use crate::runner::devices::Devices;
 use crate::runner::router::CommandRouter;
 
@@ -48,9 +50,6 @@ pub(crate) struct Shard {
     /// The HTTP client of the shard's thread, which the runtimes built here
     /// send with: hyper ties a pooled connection to the runtime that made it.
     http: reqwest::Client,
-    /// The user's request rate limit, which every runtime of the user's
-    /// conversations counts against.
-    rate_limit: Rc<RefCell<RequestRateLimit>>,
     /// The user's devices, each with its runner connection.
     devices: Devices,
     /// The pipes of the user's devices.
@@ -61,20 +60,31 @@ pub(crate) struct Shard {
     tasks: TaskTracker,
     /// Cancelled when the shard starts closing: it takes no new runner.
     closing: CancellationToken,
+    /// The user's conversation trees.
+    agent: Rc<AgentServer<ConversationHarness>>,
+    /// The conversation sockets being served, which the close ends before
+    /// the agent shuts down, so no frame reaches it after.
+    conversation_sockets: TaskTracker,
 }
 
 impl Shard {
     fn new(user: UserId, services: Arc<Services>, http: reqwest::Client) -> Self {
+        // The user's request rate limit, which every runtime of the user's
+        // conversations counts against.
+        let limit = services.conversation_tuning.requests_per_minute;
+        let rate_limit = Rc::new(RefCell::new(RequestRateLimit::new(limit)));
+        let agent = conversation::agent_server(user.clone(), services.clone(), http.clone(), rate_limit);
         Self {
             user,
             services,
             http,
-            rate_limit: Rc::new(RefCell::new(RequestRateLimit::new(REQUESTS_PER_WINDOW))),
             devices: Devices::default(),
             pipes: Pipes::new(ARRIVAL),
             commands: CommandRouter::default(),
             tasks: TaskTracker::new(),
             closing: CancellationToken::new(),
+            agent,
+            conversation_sockets: TaskTracker::new(),
         }
     }
 
@@ -90,10 +100,6 @@ impl Shard {
         &self.http
     }
 
-    #[expect(dead_code, reason = "the conversations' metered runtimes count against it")]
-    pub(crate) fn rate_limit(&self) -> &Rc<RefCell<RequestRateLimit>> {
-        &self.rate_limit
-    }
 
     pub(crate) fn devices(&self) -> &Devices {
         &self.devices
@@ -116,11 +122,28 @@ impl Shard {
         self.closing.is_cancelled()
     }
 
+    /// Resolves once the shard starts closing.
+    pub(crate) fn closed(&self) -> tokio_util::sync::WaitForCancellationFuture<'_> {
+        self.closing.cancelled()
+    }
+
+    pub(crate) fn agent(&self) -> &Rc<AgentServer<ConversationHarness>> {
+        &self.agent
+    }
+
+    pub(crate) fn conversation_sockets(&self) -> &TaskTracker {
+        &self.conversation_sockets
+    }
+
     /// Ends the user's work in order (`backend.md` § Startup and shutdown):
-    /// the runner connections close, their work ends with them, and then the
-    /// pipes fail.
+    /// the conversation sockets end, the agent turns are aborted while their
+    /// runners are still connected, the runner connections close, their work
+    /// ends with them, and then the pipes fail.
     async fn close(&self) {
         self.closing.cancel();
+        self.conversation_sockets.close();
+        self.conversation_sockets.wait().await;
+        self.agent.shutdown().await;
         self.devices.disconnect_all("backend shutting down");
         self.tasks.close();
         self.tasks.wait().await;
