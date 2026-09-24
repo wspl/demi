@@ -1,0 +1,317 @@
+{
+  "refused": [
+    {
+      "why": "a session id and a working directory",
+      "fixture": "open",
+      "set": {
+        "/cwd": "/work",
+        "/sessionId": "s1"
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "a provider instead of a model",
+      "fixture": "open",
+      "remove": [
+        "/model"
+      ],
+      "set": {
+        "/provider": {
+          "providerId": "anthropic"
+        }
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "action metadata",
+      "fixture": "send",
+      "set": {
+        "/metadata": {}
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "a field on a frame that has none",
+      "fixture": "abort",
+      "set": {
+        "/force": true
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "a frame type the protocol does not have",
+      "value": {
+        "type": "shell_status",
+        "commandId": "cmd-1"
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "a frame without its message id",
+      "value": {
+        "type": "send",
+        "content": []
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "an empty message id",
+      "fixture": "send",
+      "set": {
+        "/messageId": ""
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "an unknown field in content",
+      "fixture": "send",
+      "set": {
+        "/content/0/lang": "en"
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "inline media bytes",
+      "fixture": "send",
+      "set": {
+        "/content/0": {
+          "type": "image",
+          "source": {
+            "type": "binary",
+            "data": "iVBORw0KGgo=",
+            "mediaType": "image/png"
+          }
+        }
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "an upload without its reference",
+      "fixture": "send",
+      "set": {
+        "/content/2/ref": ""
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "a file name with a separator",
+      "fixture": "send",
+      "set": {
+        "/content/2/fileName": "reports/a.pdf"
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "a file name with a backslash",
+      "fixture": "send",
+      "set": {
+        "/content/2/fileName": "reports\\a.pdf"
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "a file name with NUL",
+      "fixture": "send",
+      "set": {
+        "/content/2/fileName": "a\u0000.pdf"
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "the file name .",
+      "fixture": "send",
+      "set": {
+        "/content/2/fileName": "."
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "the file name ..",
+      "fixture": "send",
+      "set": {
+        "/content/2/fileName": ".."
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "a file name of 256 UTF-16 units",
+      "fixture": "send",
+      "set": {
+        "/content/2/fileName": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "a relative remote path",
+      "fixture": "send",
+      "set": {
+        "/content/3/path": "notes.md"
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "a remote path with NUL",
+      "fixture": "send",
+      "set": {
+        "/content/3/path": "/a\u0000b"
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "a remote file without its device",
+      "fixture": "send",
+      "set": {
+        "/content/3/deviceId": ""
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "an attachment reference in a send",
+      "fixture": "send",
+      "set": {
+        "/content/0": {
+          "type": "attachment",
+          "path": "/home/demi/.demi/attachments/c1/a.txt"
+        }
+      },
+      "browserRefuses": false
+    },
+    {
+      "why": "kept media in a steer",
+      "fixture": "steer",
+      "set": {
+        "/content/0": {
+          "type": "media",
+          "media": {
+            "type": "image",
+            "ref": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+            "mediaType": "image/png"
+          }
+        }
+      },
+      "browserRefuses": false
+    },
+    {
+      "why": "a switch timing that is null",
+      "fixture": "set_provider",
+      "set": {
+        "/apply": null
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "a switch timing outside the set",
+      "fixture": "set_provider",
+      "set": {
+        "/apply": "later"
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "an output limit of zero",
+      "fixture": "open",
+      "set": {
+        "/model/model/outputLimit": 0
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "an edit without content",
+      "fixture": "edit_and_send",
+      "set": {
+        "/request/content": []
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "an edit of blank text only",
+      "fixture": "edit_and_send",
+      "set": {
+        "/request/content": [
+          {
+            "type": "text",
+            "text": " \n﻿"
+          }
+        ]
+      },
+      "browserRefuses": false
+    },
+    {
+      "why": "an edit against a version without an epoch",
+      "fixture": "edit_and_send",
+      "set": {
+        "/request/version/epoch": ""
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "a negative revision",
+      "fixture": "edit_and_send",
+      "set": {
+        "/request/version/revision": -1
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "kept media whose reference is not a SHA-256",
+      "fixture": "edit_and_send",
+      "set": {
+        "/request/content/2/media/ref": "blob-1"
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "a kept document without its name",
+      "fixture": "edit_and_send",
+      "set": {
+        "/request/content/4/media/fileName": ""
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "an edit target that is empty",
+      "fixture": "edit_and_send",
+      "set": {
+        "/request/targetBlockId": ""
+      },
+      "browserRefuses": true
+    }
+  ],
+  "accepted": [
+    {
+      "why": "a file name of 255 UTF-16 units",
+      "fixture": "send",
+      "set": {
+        "/content/2/fileName": "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé"
+      }
+    },
+    {
+      "why": "a file name of 127 emoji, 254 UTF-16 units",
+      "fixture": "send",
+      "set": {
+        "/content/2/fileName": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"
+      }
+    },
+    {
+      "why": "a file name of three dots",
+      "fixture": "send",
+      "set": {
+        "/content/2/fileName": "..."
+      }
+    },
+    {
+      "why": "a file name that starts with two dots",
+      "fixture": "send",
+      "set": {
+        "/content/2/fileName": "..a"
+      }
+    },
+    {
+      "why": "a file name that starts with a dot",
+      "fixture": "send",
+      "set": {
+        "/content/2/fileName": ".env"
+      }
+    }
+  ]
+}

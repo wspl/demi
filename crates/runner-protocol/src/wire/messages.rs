@@ -733,7 +733,7 @@ pub struct GitChanges {
     pub repository: bool,
     /// Always written, null before the first commit.
     #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(required)]
+    #[schemars(with = "demi_core::Nullable<String>")]
     pub head: Option<String>,
     #[garde(dive)]
     pub files: Vec<GitChange>,

@@ -49,48 +49,40 @@ fn with(mut value: Value, pointer: &str, field: Value) -> Value {
     value
 }
 
-fn upload(file_name: &str) -> Value {
-    with(fixture("send"), "/content/2/fileName", json!(file_name))
+/// The frame a case of `fixtures/client-frames-mutations.json` describes:
+/// its value, or its fixture, by type, with the fields it names removed and
+/// set.
+fn mutated(case: &Value) -> Value {
+    if let Some(value) = case.get("value") {
+        return value.clone();
+    }
+    let mut value = fixture(case["fixture"].as_str().unwrap());
+    for pointer in case["remove"].as_array().into_iter().flatten() {
+        let (parent, key) = pointer.as_str().unwrap().rsplit_once('/').unwrap();
+        let object = value.pointer_mut(parent).unwrap().as_object_mut().unwrap();
+        assert!(object.remove(key).is_some(), "{pointer} is absent");
+    }
+    for (pointer, field) in case["set"].as_object().into_iter().flatten() {
+        value = with(value, pointer, field.clone());
+    }
+    value
 }
 
+fn mutations(kind: &str) -> Vec<(String, Value)> {
+    let table: Value = serde_json::from_str(include_str!("fixtures/client-frames-mutations.json")).unwrap();
+    table[kind]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|case| (case["why"].as_str().unwrap().to_owned(), mutated(case)))
+        .collect()
+}
+
+/// The cases the browser's generated schemas are checked with too; each
+/// refused one says whether the browser's schema refuses it as well.
 #[test]
 fn client_frames_refuse_unknown_fields_nulls_and_values_outside_their_bounds() {
-    let kept_attachment = json!({"type": "attachment", "path": "/home/demi/.demi/attachments/c1/a.txt"});
-    let kept_image = json!({"type": "media", "media": {"type": "image", "ref": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08", "mediaType": "image/png"}});
-    let refused = [
-        ("a session id and a working directory", with(with(fixture("open"), "/cwd", json!("/work")), "/sessionId", json!("s1"))),
-        ("a provider instead of a model", json!({"type": "open", "provider": fixture("open")["model"]})),
-        ("action metadata", with(fixture("send"), "/metadata", json!({}))),
-        ("a field on a frame that has none", with(fixture("abort"), "/force", json!(true))),
-        ("a frame type the protocol does not have", json!({"type": "shell_status", "commandId": "cmd-1"})),
-        ("a frame without its message id", json!({"type": "send", "content": []})),
-        ("an empty message id", with(fixture("send"), "/messageId", json!(""))),
-        ("an unknown field in content", with(fixture("send"), "/content/0/lang", json!("en"))),
-        ("inline media bytes", with(fixture("send"), "/content/0", json!({"type": "image", "source": {"type": "binary", "data": "iVBORw0KGgo=", "mediaType": "image/png"}}))),
-        ("an upload without its reference", with(fixture("send"), "/content/2/ref", json!(""))),
-        ("a file name with a separator", upload("reports/a.pdf")),
-        ("a file name with a backslash", upload(r"reports\a.pdf")),
-        ("a file name with NUL", upload("a\u{0}.pdf")),
-        ("the file name .", upload(".")),
-        ("the file name ..", upload("..")),
-        ("a file name of 256 UTF-16 units", upload(&"😀".repeat(128))),
-        ("a relative remote path", with(fixture("send"), "/content/3/path", json!("notes.md"))),
-        ("a remote path with NUL", with(fixture("send"), "/content/3/path", json!("/a\u{0}b"))),
-        ("a remote file without its device", with(fixture("send"), "/content/3/deviceId", json!(""))),
-        ("an attachment reference in a send", with(fixture("send"), "/content/0", kept_attachment)),
-        ("kept media in a steer", with(fixture("steer"), "/content/0", kept_image)),
-        ("a switch timing that is null", with(fixture("set_provider"), "/apply", Value::Null)),
-        ("a switch timing outside the set", with(fixture("set_provider"), "/apply", json!("later"))),
-        ("an output limit of zero", with(fixture("open"), "/model/model/outputLimit", json!(0))),
-        ("an edit without content", with(fixture("edit_and_send"), "/request/content", json!([]))),
-        ("an edit of blank text only", with(fixture("edit_and_send"), "/request/content", json!([{"type": "text", "text": " \n\u{feff}"}]))),
-        ("an edit against a version without an epoch", with(fixture("edit_and_send"), "/request/version/epoch", json!(""))),
-        ("a negative revision", with(fixture("edit_and_send"), "/request/version/revision", json!(-1))),
-        ("kept media whose reference is not a SHA-256", with(fixture("edit_and_send"), "/request/content/2/media/ref", json!("blob-1"))),
-        ("a kept document without its name", with(fixture("edit_and_send"), "/request/content/4/media/fileName", json!(""))),
-        ("an edit target that is empty", with(fixture("edit_and_send"), "/request/targetBlockId", json!(""))),
-    ];
-    for (why, frame) in refused {
+    for (why, frame) in mutations("refused") {
         match decode_client_frame(&frame.to_string()) {
             Err(FrameError::Invalid(_)) => {}
             other => panic!("{why}: {other:?} for {frame}"),
@@ -98,11 +90,11 @@ fn client_frames_refuse_unknown_fields_nulls_and_values_outside_their_bounds() {
     }
 }
 
+/// A file name counts UTF-16 units and may start with dots.
 #[test]
-fn a_file_name_counts_utf16_units_and_may_start_with_dots() {
-    for name in ["é".repeat(255), "😀".repeat(127), "...".into(), "..a".into(), ".env".into()] {
-        let frame = upload(&name);
-        assert!(decode_client_frame(&frame.to_string()).is_ok(), "{name}");
+fn client_frames_accept_values_at_their_bounds() {
+    for (why, frame) in mutations("accepted") {
+        assert!(decode_client_frame(&frame.to_string()).is_ok(), "{why}: {frame}");
     }
 }
 
@@ -114,7 +106,9 @@ fn a_message_that_is_not_json_is_told_from_an_invalid_frame() {
     for text in ["[1, 2]", "{\"type\": \"nope\"}", "null"] {
         assert!(matches!(decode_client_frame(text), Err(FrameError::Invalid(_))), "{text:?}");
     }
-    let error = decode_client_frame(&upload("..").to_string()).unwrap_err().to_string();
+    let error = decode_client_frame(&with(fixture("send"), "/content/2/fileName", json!("..")).to_string())
+        .unwrap_err()
+        .to_string();
     assert!(error.contains("content[2].file_name"), "{error}");
     let error = decode_client_frame(&with(fixture("send"), "/content/0", json!({"type": "attachment", "path": "/a"})).to_string())
         .unwrap_err()
