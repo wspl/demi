@@ -10,6 +10,7 @@
 
 pub mod attachments;
 pub mod auth;
+pub mod cloud;
 pub mod conversations;
 pub mod devices;
 pub mod error;

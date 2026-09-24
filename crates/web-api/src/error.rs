@@ -117,6 +117,14 @@ pub enum ErrorCode {
     HostStopped,
     /// The Cloud cannot start.
     CloudUnavailable,
+    /// Every Cloud the backend can run at once is running, booting, saving
+    /// or resetting; a stopped one starts once another stops.
+    CloudCapacity,
+    /// The Cloud stopped by itself three times within ten minutes and does
+    /// not start again by itself; a reset starts it.
+    CloudCrashLoop,
+    /// Another reset of the Cloud is running.
+    ResetInProgress,
     /// The Host's filesystem refused the operation: nothing at the path, or
     /// no permission for it.
     FsError,
