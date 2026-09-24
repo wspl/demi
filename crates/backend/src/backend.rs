@@ -3,12 +3,14 @@
 //! `Backend::close` shuts them down in order (`backend.md` § Startup and
 //! shutdown).
 
+use std::collections::BTreeMap;
 use std::fmt;
 use std::io;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use demi_command_tree::NativeOperation;
 use demi_web_api::settings::InstanceMode;
 
 use demi_provider::models_dev::ModelsDevClient;
@@ -18,7 +20,8 @@ use crate::auth::login_limiter::LoginLimiter;
 use crate::auth::passwords::{HashError, PasswordHasher};
 use crate::auth::sessions::WebSessions;
 use crate::config::{BackendConfig, ConversationTuning, RunnerTuning};
-use crate::edge::{AppState, Edge, Installation};
+use crate::conversation::stream::UserStreams;
+use crate::edge::{AppState, Edge, Site};
 use crate::llm::assembly::ProviderAssembly;
 use crate::llm::catalog_cache::ModelCatalogCache;
 use crate::llm::families::FamilyRegistry;
@@ -66,6 +69,8 @@ pub(crate) struct Services {
     pub(crate) conversation_tuning: ConversationTuning,
     /// The native packages each shard's catalog is built from.
     pub(crate) native: NativeCatalog,
+    /// The user streams a page may open.
+    pub(crate) user_streams: UserStreams,
 }
 
 /// What the provider services start with.
@@ -148,6 +153,7 @@ impl Services {
         runners: RunnerTuning,
         conversation_tuning: ConversationTuning,
         native: NativeCatalog,
+        user_streams: &BTreeMap<String, NativeOperation>,
     ) -> Result<Self, StartError> {
         let Storage {
             control,
@@ -191,6 +197,7 @@ impl Services {
             claims: PendingClaims::new(runners.claims_per_minute),
             runners,
             conversation_tuning,
+            user_streams: UserStreams::new(user_streams, &native),
             native,
         })
     }
@@ -223,8 +230,10 @@ impl Services {
             RunnerTuning::default(),
             ConversationTuning::default(),
             NativeCatalog::unpublished(),
-        );
-        Arc::new(services.await.unwrap())
+            &BTreeMap::new(),
+        )
+        .await;
+        Arc::new(services.unwrap())
     }
 }
 
@@ -328,6 +337,7 @@ impl Backend {
             config.runners,
             config.conversations,
             config.native,
+            &config.user_streams,
         );
         let services = Arc::new(services.await?);
         let shards = match ShardPool::start(config.shards, services.clone()).await {
@@ -347,9 +357,9 @@ impl Backend {
         let state = AppState {
             services: services.clone(),
             shards: shards.shards(),
-            installation: Arc::new(Installation {
-                releases: config.runner_releases,
+            site: Arc::new(Site {
                 public_url: config.public_url,
+                runner_releases: config.runner_releases,
             }),
         };
         let edge = match Edge::start(config.address, state, config.web_directory).await {

@@ -185,18 +185,22 @@ Reading the status never wakes the Cloud. `POST /api/cloud/reset` takes
 `{ operationId }`, a UUID the page chooses, and answers 202 `{ operation }`.
 The backend selects and records the shipped base version at admission.
 Retrying the same operation id returns the same operation, and retrying one
-that failed resumes it; another reset while one runs answers 409
-`reset_in_progress`, and a stopped Cloud that finds no capacity answers 409
-`cloud_capacity`. A reset affects every job on the user's Cloud and preserves
-home. Requests cannot name another user's device or arbitrary image paths.
-Settings use this API even when the guest is offline or broken.
+that failed resumes it; a reset with another operation id while one runs
+answers 409 `cloud_resetting`, and a stopped Cloud that finds no capacity
+permit answers 409 `cloud_capacity`. A reset affects every job on the user's
+Cloud and preserves home. Requests cannot name another user's device or
+arbitrary image paths. Settings use this API even when the guest is offline or
+broken.
 
-An operation whose Cloud cannot start answers 503: `cloud_capacity` when the
-backend runs as many Clouds as it can
-([Lifecycle and capacity](../cloud/managed-hosts.md#lifecycle-and-capacity)),
-`cloud_crash_loop` when the Cloud stopped by itself three times within ten
-minutes, which a reset starts again, and `cloud_unavailable` when its boot or
-the machine manager failed.
+An operation that needs the Cloud running waits while a reset holds it
+([How a conversation uses a device](../execution/sessions-and-targets.md#how-a-conversation-uses-a-device)),
+and answers 503 with the lifecycle's code when it cannot have it:
+`cloud_capacity` when every capacity permit of the backend is taken,
+`cloud_crash_loop` once repeated runtime losses have stopped its automatic
+boots, which a reset recovers, and `cloud_unavailable` when it cannot start,
+when the reset it waited for failed, or when it reached the Cloud through a
+Host handle while the Cloud was changing state
+([Lifecycle and capacity](../cloud/managed-hosts.md#lifecycle-and-capacity)).
 
 ## User streams
 
@@ -325,7 +329,8 @@ and never with product routes. Lifetime, relay behavior and the
 
 `POST /api/setup` and `POST /api/auth/login` take `{ email, password }`.
 `POST /api/users` takes `{ email, password, role }` with role `admin` or `user`.
-`PATCH /api/users/:id` resets a lower-ranked account with `{ password }`.
+`PATCH /api/users/:id` resets a lower-ranked account with `{ password }`; an
+id that names no account answers 404 `user_not_found`.
 Setup creates the only master account and answers 404 `already_set_up` after
 setup is complete. HTTP validation trims and lowercases addresses; storage
 uniqueness and lookups are case-insensitive. A password being set, at setup,
@@ -563,8 +568,9 @@ the stream that is not a WebSocket upgrade answers 426 `upgrade_required`.
 
 `POST /api/sidebar/reorder` takes `{ kind: "conversation" | "workspace", id,
 beforeId: string | null }`; null appends. Conversation moves stay within the same
-project and pin partition. [Storage](../backend/storage.md#control-records)
-owns persistent ordering. Activity timestamps never reorder rows.
+project and pin partition; a move out of them answers 409 `invalid_order`.
+[Storage](../backend/storage.md#control-records) owns persistent ordering.
+Activity timestamps never reorder rows.
 
 `GET /api/conversations?archived=true|false` includes `status`, `revision`,
 `readRevision`, `unread`, and `cwd`, the directory the conversation's work runs
