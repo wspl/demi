@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@demicodes/core": "workspace:^",
+    "@demicodes/protocol": "workspace:^",
     "@demicodes/web-ui": "workspace:^",
     "@lucide/vue": "^1.40.0",
     "vue": "^3.5.21",

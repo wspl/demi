@@ -28,6 +28,7 @@ members = [
   "crates/runner-protocol",
   "crates/shell",
   "crates/web-api",
+  "crates/xtask",
 ]
 
 [workspace.package]
