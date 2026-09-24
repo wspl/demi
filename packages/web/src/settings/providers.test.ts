@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
-import { productStateSchema, type ProductState } from '../api/contracts'
+import { productState } from '../__tests__/product-state'
+import type { ProductState } from '../api/unported'
 import { useProduct } from '../state/product'
 import { useProviderSettings } from './providers'
 import { dismissToast, toasts } from '@demicodes/web-ui/infra/toast'
@@ -16,22 +17,7 @@ let probe: (body: string, signal: AbortSignal | null | undefined) => Promise<Res
 beforeEach(async () => {
   pinia = createPinia()
   setActivePinia(pinia)
-  state = productStateSchema.parse({
-    user: {
-      id: 'user',
-      email: 'test@example.test',
-      nickname: 'Test',
-      role: 'master',
-      createdAt: '2026-09-10T00:00:00.000Z',
-    },
-    mode: 'shared',
-    preferences: { appearance: {}, shortcuts: {} },
-    devices: [],
-    workspaces: [],
-    conversations: [],
-    cloud: { device: null, state: 'unallocated', operation: null, error: null, limits: { systemBytes: 0, homeBytes: 0 } },
-    exposes: [],
-    exposeDomain: null,
+  state = productState({
     providers: [
       {
         id: 'configured',
@@ -42,8 +28,8 @@ beforeEach(async () => {
         vendorId: null,
         baseUrl: null,
         models: null,
-        keyConfigured: true,
-        details: null,
+        createdAt: '2026-09-10T00:00:00.000Z',
+        details: { type: 'failed', message: 'Not read in this test' },
       },
     ],
   })

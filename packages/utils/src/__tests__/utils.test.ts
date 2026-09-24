@@ -3,8 +3,6 @@ import {
   AbortError,
   abortable,
   asError,
-  asRecord,
-  asString,
   clamp,
   concatBytes,
   createId,
@@ -15,7 +13,6 @@ import {
   errorMessage,
   isAbortError,
   isRecord,
-  numberOrZero,
   shortHash,
   sliceHead,
   sliceTail,
@@ -33,13 +30,6 @@ test('guards', () => {
   expect(isRecord([])).toBe(false)
   expect(isRecord(null)).toBe(false)
   expect(isRecord('x')).toBe(false)
-  expect(asRecord({ a: 1 })).toEqual({ a: 1 })
-  expect(() => asRecord([], 'nope')).toThrow('nope')
-  expect(asString('s')).toBe('s')
-  expect(asString(1)).toBeUndefined()
-  expect(numberOrZero(3)).toBe(3)
-  expect(numberOrZero(Number.NaN)).toBe(0)
-  expect(numberOrZero('3')).toBe(0)
 })
 
 test('errors', () => {

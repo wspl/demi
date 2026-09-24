@@ -1,10 +1,13 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
-import { z } from 'zod'
 import { SerialQueue } from '@demicodes/utils'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
-import { preferencesSchema, type Locale, type PreferencesPatch } from '../api/contracts'
+import {
+  userPreferencesSchema,
+  type CommandLocale,
+  type PreferencesPatch,
+} from '../api/generated/web-api'
 import { useProduct } from './product'
 
 export const DEFAULT_KEYS = [
@@ -96,7 +99,7 @@ export const usePreferences = defineStore('preferences', () => {
         ...(pending.value.lastModel ? { lastModel: pending.value.lastModel } : {}),
         appearance: { ...pending.value.appearance },
         shortcuts: { ...pending.value.shortcuts },
-      }
+      } satisfies PreferencesPatch
       if (
         !Object.keys(patch.appearance).length &&
         !Object.keys(patch.shortcuts).length &&
@@ -111,7 +114,7 @@ export const usePreferences = defineStore('preferences', () => {
           ...jsonBody(patch),
           signal: current.signal,
         })
-        await readResponse(response, z.object({ preferences: preferencesSchema }))
+        await readResponse(response, userPreferencesSchema)
         await product.refresh()
       } catch (error) {
         if (!current.signal.aborted) {
@@ -157,10 +160,10 @@ export const usePreferences = defineStore('preferences', () => {
       try {
         const response = await apiRequest('/settings/preferences', {
           method: 'PATCH',
-          ...jsonBody({ locale }),
+          ...jsonBody({ locale } satisfies PreferencesPatch),
           signal: current.signal,
         })
-        await readResponse(response, z.object({ preferences: preferencesSchema }))
+        await readResponse(response, userPreferencesSchema)
         await product.refresh()
       } catch (error) {
         if (!current.signal.aborted) {
@@ -200,7 +203,7 @@ export const usePreferences = defineStore('preferences', () => {
  * The browser's own time zone and languages, as the backend stores them;
  * null when the browser reports neither.
  */
-function browserLocale(): Locale | null {
+function browserLocale(): CommandLocale | null {
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
   const reported = navigator.languages?.length ? navigator.languages : [navigator.language]
   try {

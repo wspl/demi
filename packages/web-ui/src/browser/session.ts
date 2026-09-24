@@ -5,18 +5,19 @@
  * the viewer's input while the stream is alive.
  */
 import {
+  LIVE_CAPTURE_FAILED,
   LIVE_FILE_CHUNK_BYTES,
   LIVE_STALL_MS,
   liveViewerMessageSchema,
+  type BrowserViewport,
   type LiveControl,
   type LiveDialog,
   type LiveTab,
   type LiveViewerMessage,
-  type LiveViewport,
-} from '@demicodes/browser-protocol/live'
+} from '@demicodes/protocol'
 import { reactive } from 'vue'
 import { reportError } from '../infra/errors'
-import { LiveFrameReader, encodeFile, encodeMessage, type LiveBytes, type LiveVideoFrame } from './frames'
+import { LiveFrameReader, encodeFile, encodeMessage, type LiveBytes, type LiveFrame, type LiveVideoFrame } from './frames'
 import type { PanelSize } from './view'
 
 /** The bytes of one view, as the product or the gallery carries them. */
@@ -42,8 +43,8 @@ export interface PictureSink {
   stop(): void
 }
 
-/** The module's notice that it has no picture of the watched tab; it retries by itself. */
-const CAPTURE_FAILED = 'capture_failed'
+/** Why the page ended a view whose module sent a frame the protocol refuses. */
+export const REFUSED_FRAME = 'invalid_frame'
 
 export type LiveConnection = 'opening' | 'live' | 'stalled' | 'ended'
 
@@ -107,7 +108,6 @@ export class LiveSession {
     ended: null,
   })
 
-  private readonly reader = new LiveFrameReader()
   private stream: LiveStream | null = null
   private pictures: PictureSink | null = null
   private generation = 0
@@ -137,18 +137,20 @@ export class LiveSession {
   }
 
   /** The viewport of the tab this view watches, or none. */
-  get viewport(): LiveViewport | null {
+  get viewport(): BrowserViewport | null {
     return this.state.tabs.find((tab) => tab.id === this.state.watched)?.viewport ?? null
   }
 
   start(): void {
     this.received = this.time()
+    // Each view reads its own stream from the first byte.
+    const reader = new LiveFrameReader()
     // A view ends once: the module's `ended` and the socket's close both say so, and a
     // stream this session already left says nothing about the one that followed it.
     const stream = this.options.open({
       data: (bytes) => {
         if (this.stream === stream) {
-          this.receive(bytes)
+          this.receive(reader, bytes)
         }
       },
       closed: (reason) => {
@@ -238,14 +240,23 @@ export class LiveSession {
     }
   }
 
-  private receive(bytes: Uint8Array): void {
+  private receive(reader: LiveFrameReader, bytes: Uint8Array): void {
     this.received = this.time()
     if (this.state.connection === 'stalled') {
       this.state.connection = 'live'
       // What the decoder missed while nothing arrived starts again.
       this.resync()
     }
-    for (const frame of this.reader.read(bytes)) {
+    let frames: LiveFrame[]
+    try {
+      frames = reader.read(bytes)
+    } catch (error) {
+      // The module ships with this page, so a frame the protocol refuses is its defect.
+      reportError('The live view received a frame the protocol refuses', error)
+      this.end(REFUSED_FRAME)
+      return
+    }
+    for (const frame of frames) {
       if (frame.kind === 'video') {
         this.picture(frame.frame)
         continue
@@ -309,7 +320,7 @@ export class LiveSession {
     }
     this.pictures?.show(frame)
     // A picture of the watched tab is the view working again: what it could not do before no longer holds.
-    if (this.state.notice?.code === CAPTURE_FAILED) {
+    if (this.state.notice?.code === LIVE_CAPTURE_FAILED) {
       this.state.notice = null
     }
   }

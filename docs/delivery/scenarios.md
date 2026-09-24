@@ -12,7 +12,7 @@ Three suites drive the whole backend:
 | Suite | Where it lives | How it reaches the backend | Model | Hosts |
 | --- | --- | --- | --- | --- |
 | Backend scenarios | Rust integration tests of the backend crate (`crates/backend/tests`) | HTTP and the conversation WebSocket, with the agent protocol's typed frames | A scripted provider family | Real runner processes; a scripted machine manager for the Cloud |
-| Browser-contract suite | Tests of `packages/web` | The web application's API client and `AgentClient`, against the backend executable | A scripted Anthropic-compatible endpoint | A real runner |
+| Browser-contract suite | Tests of `packages/web` | The web application's API client and `AgentClient`, against the backend executable | A scripted Anthropic-compatible endpoint | A real runner; the backend scenarios' scripted machine manager, which no path asks for the Cloud |
 | Real-machine suites | Rust tests that run only when environment variables supply their resources | As the backend scenarios | Scripted | A real machine manager, gVisor sandbox, and shipped image; real Chrome; the real Claude Code CLI |
 
 ## System under test
@@ -174,9 +174,20 @@ validate every response and frame on arrival, as they do in the page
 The model is an Anthropic-compatible HTTP endpoint that the suite scripts and
 the backend's Anthropic API provider calls; tools run on a real runner.
 
+The backend reconciles with its machine manager when it starts, before it
+serves, and again when it closes
+([Control and ownership](../cloud/managed-hosts.md#control-and-ownership)).
+The suite therefore starts the backend with the backend scenarios'
+[scripted machine manager](#system-under-test), run as the backend crate's
+example program `scripted_machines`, and stops the backend before the
+manager. The program prints the manager's socket path as its first line,
+which the suite passes as `DEMI_MACHINES_SOCKET`, and serves until its
+standard input closes or it is terminated; the runners it started end with
+it.
+
 | Path | Required observation |
 |---|---|
-| Sign-in | A user signs in through the API client, and the session admits the conversation WebSocket |
+| Sign-in | A user signs in through the API client, and the session admits the account snapshot and the conversation WebSocket |
 | Create and chat | A conversation created through the API runs a turn, and the client receives the scripted reply and the end of the turn |
 | Tools | A scripted tool call runs on the real runner, and its result appears in the transcript |
 | Reload | After a reload, the transcript the client assembled from live patches equals the cold transcript the backend serves |

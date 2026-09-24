@@ -1,6 +1,6 @@
 import { expect, spyOn, test } from 'bun:test'
 import { effectScope, nextTick, ref } from 'vue'
-import type { Block } from '@demicodes/core'
+import type { Block } from '@demicodes/protocol'
 import type { SessionLoad } from '../session-status'
 import { useChromeEntrance } from '../useChromeEntrance'
 

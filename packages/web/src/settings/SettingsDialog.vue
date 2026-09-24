@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { z } from 'zod'
 import SettingsDialog from '@demicodes/web-ui/settings/SettingsDialog.vue'
 import SettingsAccount from '@demicodes/web-ui/settings/SettingsAccount.vue'
 import SettingsArchived from '@demicodes/web-ui/settings/SettingsArchived.vue'
@@ -13,7 +12,14 @@ import { SETTINGS_SECTIONS } from '@demicodes/web-ui/settings/sections'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
-import { identitySchema } from '../api/contracts'
+import {
+  emailChangeStartedSchema,
+  identitySchema,
+  type EmailChangeConfirm,
+  type EmailChangeStart,
+  type NicknamePatch,
+  type PasswordChange,
+} from '../api/generated/web-api'
 import { useSession } from '../auth/session'
 import { useResources } from '../state/resources'
 import { useProduct } from '../state/product'
@@ -77,7 +83,7 @@ async function rename(nickname: string): Promise<void> {
     const response = await apiRequest('/auth/me', {
       method: 'PATCH',
       signal: lifetime.signal,
-      ...jsonBody({ nickname: nickname.trim() }),
+      ...jsonBody({ nickname: nickname.trim() } satisfies NicknamePatch),
     })
     const { user } = await readResponse(response, identitySchema)
     lifetime.signal.throwIfAborted()
@@ -144,15 +150,10 @@ async function submitEmail(email: string, password: string): Promise<void> {
       ...jsonBody({
         email,
         password,
-      }),
+      } satisfies EmailChangeStart),
       signal: controller.signal,
     })
-    const result = await readResponse(
-      response,
-      z.object({
-        challenge: z.object({ id: z.string().min(1) }),
-      }),
-    )
+    const result = await readResponse(response, emailChangeStartedSchema)
     controller.signal.throwIfAborted()
     challengeId = result.challenge.id
     emailPhase.value = {
@@ -206,7 +207,7 @@ async function verifyEmail(code: string): Promise<void> {
       ...jsonBody({
         id: challengeId,
         code,
-      }),
+      } satisfies EmailChangeConfirm),
       signal: controller.signal,
     })
     const { user } = await readResponse(response, identitySchema)
@@ -270,7 +271,7 @@ async function submitPassword(current: string, next: string): Promise<void> {
       ...jsonBody({
         current,
         next,
-      }),
+      } satisfies PasswordChange),
       signal: controller.signal,
     })
     controller.signal.throwIfAborted()
