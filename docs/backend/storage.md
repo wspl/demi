@@ -104,15 +104,19 @@ input, which the multi-worker control service also relies on
   and progress under device and operation IDs. These records make interrupted
   multi-step work discoverable; they are not cross-database transactions.
 - **Providers:** `providers` stores owner, family, credential kind, label,
-  sealed configuration, and the active account of a subscription entry.
-  `provider_credentials` stores one subscription account per row: entry,
-  identity key (unique within the entry), label and detail, the sealed secret
-  document, a version that every secret write advances, the account's usage
-  snapshot, and timestamps. Rows are removed with their entry. A partial
+  an API-key entry's sealed configuration, and a subscription entry's active
+  account; a subscription entry has no configuration, since its credentials
+  are its accounts. `provider_credentials` stores one subscription account per
+  row: entry, identity key (unique within the entry), label and detail, how
+  the account arrived, the sealed secret document, a version that every secret
+  write advances, the account's usage snapshot, and the time of its last
+  write. Writing an account into an entry that has no active account selects
+  it in the same transaction. Rows are removed with their entry. A partial
   unique index enforces one subscription entry per owner and family. The owner
   is always a user: a shared instance's entries are the master's.
-  `model_catalogs` stores one validated cache record per provider entry,
-  removed with that entry. See
+  `model_catalogs` stores one validated cache record per provider entry, the
+  catalog with its key and the time of its last check, removed with that
+  entry. See
   [Providers](../providers/providers.md#credential-vault) and
   [Models](../providers/models.md#catalog-cache).
 - **Usage and attachments:** `usage_ledger` stores user, conversation,

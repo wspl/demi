@@ -24,6 +24,10 @@ pub(super) const JSON_BODY_LIMIT: usize = 1024 * 1024;
 /// type answers 400 `invalid_body` naming the field and the reason.
 pub(super) struct JsonBody<T>(pub(super) T);
 
+/// A JSON body a route may also receive empty, which then reads as `T`'s
+/// default; any other body follows [`JsonBody`]'s rules.
+pub(super) struct OptionalJsonBody<T>(pub(super) T);
+
 fn too_large() -> ApiError {
     ApiError::new(
         StatusCode::PAYLOAD_TOO_LARGE,
@@ -40,6 +44,29 @@ where
     type Rejection = ApiError;
 
     async fn from_request(request: Request, state: &S) -> Result<Self, ApiError> {
+        let bytes = read(request, state).await?;
+        Ok(Self(decode(&bytes)?))
+    }
+}
+
+impl<S, T> FromRequest<S> for OptionalJsonBody<T>
+where
+    S: Send + Sync,
+    T: DeserializeOwned + Validate<Context = ()> + Default,
+{
+    type Rejection = ApiError;
+
+    async fn from_request(request: Request, state: &S) -> Result<Self, ApiError> {
+        let bytes = read(request, state).await?;
+        if bytes.is_empty() {
+            return Ok(Self(T::default()));
+        }
+        Ok(Self(decode(&bytes)?))
+    }
+}
+
+/// The body's bytes, within the limit.
+async fn read<S: Send + Sync>(request: Request, state: &S) -> Result<Bytes, ApiError> {
         let declared = request
             .headers()
             .get(CONTENT_LENGTH)
@@ -48,15 +75,18 @@ where
         if declared.is_some_and(|length| length > JSON_BODY_LIMIT as u64) {
             return Err(too_large());
         }
-        let bytes = Bytes::from_request(request, state).await.map_err(|rejection| match rejection {
+        Bytes::from_request(request, state).await.map_err(|rejection| match rejection {
             BytesRejection::FailedToBufferBody(FailedToBufferBody::LengthLimitError(_)) => too_large(),
             other => ApiError::invalid_body(other.body_text()),
-        })?;
-        let Json(value) = Json::<T>::from_bytes(&bytes).map_err(|rejection| ApiError::invalid_body(rejection.body_text()))?;
-        value.validate().map_err(|report| {
-            let problems: Vec<String> = report.iter().map(|(path, error)| format!("{path}: {error}")).collect();
-            ApiError::invalid_body(problems.join("; "))
-        })?;
-        Ok(Self(value))
-    }
+        })
+}
+
+/// `bytes` as `T`, checked by its rules.
+fn decode<T: DeserializeOwned + Validate<Context = ()>>(bytes: &[u8]) -> Result<T, ApiError> {
+    let Json(value) = Json::<T>::from_bytes(bytes).map_err(|rejection| ApiError::invalid_body(rejection.body_text()))?;
+    value.validate().map_err(|report| {
+        let problems: Vec<String> = report.iter().map(|(path, error)| format!("{path}: {error}")).collect();
+        ApiError::invalid_body(problems.join("; "))
+    })?;
+    Ok(value)
 }

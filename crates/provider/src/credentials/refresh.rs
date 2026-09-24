@@ -146,18 +146,19 @@ pub async fn read_secret<S: SecretDocument>(doc: &dyn AccountDocument) -> Result
     })
 }
 
-/// Refreshes an account's secret by the one protocol of `providers.md` §
-/// Token refresh: take the account's turn; read the stored document again
-/// and use it when `still_due` says it no longer needs a refresh, because
-/// another refresher stored new tokens meanwhile; otherwise ask the vendor
-/// through `refresh`. A refreshed secret is stored over the version read,
-/// and when another writer stored first, its secret is used instead. A
-/// refusal uses the tokens another writer stored meanwhile, and fails only
-/// when nobody did. The turn ends however this returns, cancellation
-/// included.
+/// An account's secret, refreshed by the one protocol of `providers.md` §
+/// Token refresh when `due` says it needs a refresh: take the account's
+/// turn; read the stored document again and use it when `due` no longer
+/// says so, because another refresher stored new tokens meanwhile;
+/// otherwise ask the vendor through `refresh`. A refreshed secret is stored
+/// over the version read, and when another writer stored first, its secret
+/// is used instead. A refusal uses the tokens another writer stored
+/// meanwhile, and fails only when nobody did. A secret that is not due is
+/// used without taking the turn. The turn ends however this returns,
+/// cancellation included.
 pub async fn renew<S, E, F, R>(
     doc: &dyn AccountDocument,
-    still_due: impl Fn(&S) -> bool,
+    due: impl Fn(&S) -> bool,
     refresh: F,
 ) -> Result<S, RenewError<E>>
 where
@@ -165,9 +166,13 @@ where
     F: FnOnce(S) -> R,
     R: Future<Output = Result<S, E>>,
 {
+    let stored = read_secret::<S>(doc).await?;
+    if !due(&stored.secret) {
+        return Ok(stored.secret);
+    }
     let _turn = doc.refresh_turn().await;
     let latest = read_secret::<S>(doc).await?;
-    if !still_due(&latest.secret) {
+    if !due(&latest.secret) {
         return Ok(latest.secret);
     }
     let version = latest.version;

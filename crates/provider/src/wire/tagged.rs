@@ -6,7 +6,7 @@
 
 use std::borrow::Cow;
 
-use serde::{Deserialize, Deserializer, de};
+use serde::{Deserialize, Deserializer, de, de::DeserializeOwned};
 
 /// A payload a vendor tags by `type`, of which a set of tags is registered.
 /// [`tagged_wire!`](crate::tagged_wire) declares one.
@@ -100,6 +100,18 @@ pub fn decode_tagged<T: TaggedWire>(text: &str) -> Result<Option<T>, WireError> 
     }
 }
 
+/// Decodes one vendor payload that carries no `type` tag, such as a Chat
+/// Completions chunk: the error names the offending field's path.
+pub fn decode_untagged<T: DeserializeOwned>(text: &str) -> Result<T, WireError> {
+    let mut json = serde_json::Deserializer::from_str(text);
+    let decoded = serde_path_to_error::deserialize(&mut json).map_err(WireError)?;
+    json.end().map_err(|error| {
+        let root = serde_path_to_error::Track::new().path();
+        WireError(serde_path_to_error::Error::new(root, error))
+    })?;
+    Ok(decoded)
+}
+
 /// A tagged payload nested inside another, such as a stream event's content
 /// block: `None` when its tag is not registered.
 #[derive(Debug, Clone, PartialEq)]
@@ -127,28 +139,53 @@ impl<'de, T: TaggedWire> Deserialize<'de> for Tagged<T> {
     }
 }
 
-/// A field Demi only reports back to the user, such as a vendor error's
-/// message: anything but a string reads as absent, so a malformed error
-/// payload still surfaces as that error instead of as a protocol failure.
-/// Use it with `#[serde(default)]`.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ReportedString(pub Option<String>);
+/// A field Demi only reads to report or to label, such as a vendor error's
+/// message or a claim of a token: a value that is not a `T` reads as absent,
+/// so a malformed error payload still surfaces as that error instead of as a
+/// protocol failure. Use it with `#[serde(default)]`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reported<T>(pub Option<T>);
 
-impl ReportedString {
-    pub fn as_deref(&self) -> Option<&str> {
-        self.0.as_deref()
+/// A reported text, such as a vendor error's message.
+pub type ReportedString = Reported<String>;
+
+impl<T> Default for Reported<T> {
+    fn default() -> Self {
+        Self(None)
     }
+}
 
-    pub fn into_inner(self) -> Option<String> {
+impl<T> Reported<T> {
+    pub fn into_inner(self) -> Option<T> {
         self.0
     }
 }
 
-impl<'de> Deserialize<'de> for ReportedString {
+impl Reported<String> {
+    pub fn as_deref(&self) -> Option<&str> {
+        self.0.as_deref()
+    }
+}
+
+impl<'de, T: DeserializeOwned> Deserialize<'de> for Reported<T> {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        match serde_json::Value::deserialize(deserializer)? {
-            serde_json::Value::String(value) => Ok(Self(Some(value))),
-            _ => Ok(Self(None)),
+        let value = serde_json::Value::deserialize(deserializer)?;
+        // A value of another shape is what this type reads as absent.
+        Ok(Self(T::deserialize(value).ok()))
+    }
+}
+
+/// Text a vendor must not send empty, such as a tool call's name or a device
+/// code: an empty string is a malformed payload.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NonEmpty(pub String);
+
+impl<'de> Deserialize<'de> for NonEmpty {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        if text.is_empty() {
+            return Err(de::Error::invalid_length(0, &"a nonempty string"));
         }
+        Ok(Self(text))
     }
 }
