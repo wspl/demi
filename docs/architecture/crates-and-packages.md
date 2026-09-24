@@ -717,9 +717,9 @@ core -> none
 agent-protocol -> core
 command-service -> none
 command-tree -> none
-builtin-protocol -> none
+builtin-protocol -> core
 claude-protocol -> none
-runner-protocol -> command-service, command-tree
+runner-protocol -> command-service, command-tree, core
 machines-protocol -> command-service, runner-protocol
 web-api -> agent-protocol, builtin-protocol, command-service, core, runner-protocol
 gates -> none
