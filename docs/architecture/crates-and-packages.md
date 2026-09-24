@@ -409,13 +409,24 @@ Each crate implements the provider contract for one vendor family.
     `shell_write`, `shell_abort` and `yield`), with the durable dispatch of
     every tool call;
   - the `demi agent` command group;
-  - the harness trait (`AgentHarness`), where a session's provider runtimes
-    come from (`ProviderResolver`), and the tree store contract
-    (`AgentTreeStore`, `SessionStore`, with the node records and checkpoints
-    they carry in `store`).
+  - the harness trait (`AgentHarness`) with its subagent profiles
+    (`Profile`), where a session's provider runtimes come from
+    (`ProviderResolver`), and the tree store contract (`AgentTreeStore`,
+    `SessionStore`, with the node records and checkpoints they carry in
+    `store`);
+  - what the backend answers for a frame: the files its content refers to
+    (`ContentResolver`) and the facts of its error blocks' failure records
+    (`FailureReader`, read through `read_failures`, which the transcript
+    route calls too);
+  - the mapping of media between inline bytes and blob references
+    (`store::media`, over the `BlobStore` a store or the conversation socket
+    reaches), the blocks an upload becomes with its recorded media type and
+    opening (`attachments`), and the conversation title request and its rules
+    (`title`).
 - **Public boundary:** the items above; `agent::testing` supplies an in-memory
-  tree store (`MemoryTreeStore`), the tree store contract's cases that every
-  realization passes (`store_contract`), predictable identities
+  tree store (`MemoryTreeStore`), which keeps media by reference over an
+  in-memory blob namespace (`MemoryBlobs`), the tree store contract's cases
+  that every realization passes (`store_contract`), predictable identities
   (`SequentialIds`) and a test client that drives a connection
   (`TestClient`). A product supplies
   the harness, the providers, a shell environment per Host and a tree store;
@@ -428,7 +439,10 @@ Each crate implements the provider contract for one vendor family.
   go, and `AgentServer` never sees a blob store.
 - **Must not:** depend on concrete providers, Host implementations or user
   interfaces; own a shell interpreter; own a socket. The backend owns the
-  conversation socket and hands the agent decoded frames.
+  conversation socket and hands the agent decoded frames. The one exception is
+  the compaction fixture's harness, a program run by hand against a real model,
+  which the `compaction-fixture` feature builds with the OpenAI-compatible
+  provider and no build of the one selection enables.
 
 #### `coding-agent`
 

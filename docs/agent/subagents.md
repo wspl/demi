@@ -353,7 +353,8 @@ nearest second.
 
 Renders the session tree of this conversation from the root down, marking the
 caller's own position. Live agents show phase, elapsed and last-event ages,
-profile, description, execution, and activity, and are ordered by spawn time.
+profile, description, execution, and activity, and are ordered by spawn time,
+and by the order they joined the tree when those are equal.
 Each node's archived children follow its live ones, newest first, with their
 closed phase and age:
 
@@ -508,7 +509,11 @@ Never copied into a child:
 ## Abort
 
 `demi agent abort <id>` and an explicit abort of the parent's tree stop the
-named node and its descendants. Siblings are untouched. A finished creation
+named node and its descendants. Siblings are untouched. An abort, like a
+terminal failure, first stops what the child still runs, which records the
+stop in its transcript, and then closes the child's own children. Their
+completions are saved in the child's final checkpoint as waiting input and
+open no turn; the child's next round reads them. A finished creation
 command's cancellation has no authority over its child. Dispose saves the
 checkpoints and detaches a subtree for restore; it does not archive it as
 aborted.
@@ -639,7 +644,9 @@ request and its response. The supervisor owns the persisted child and its
 completion delivery. Once the start reservation is committed, creating or
 reopening the child runs to completion even if the invoking call is cancelled:
 the child survives an abort of the shell job, and a retry with the same request
-ID returns it. File and process work that the child performs uses its own
+ID returns it. A start under way counts as a live child of its owner: the owner
+does not close under it, and an abort of the owner waits for it and then closes
+the new child with the rest of the subtree. File and process work that the child performs uses its own
 runner-backed shell environments.
 
 ## Protocol
