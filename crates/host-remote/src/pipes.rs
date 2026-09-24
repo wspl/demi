@@ -246,6 +246,18 @@ impl Pipes {
         self.mint(None, Some(device))
     }
 
+    /// The pipe `id` names, while its record lives: a call's relayed pipe,
+    /// for a handler that hands one of its ends to a job elsewhere.
+    pub fn pipe(&self, id: &str) -> Option<Pipe> {
+        let slots = self.0.slots.borrow();
+        let slot = slots.get(id)?;
+        Some(Pipe {
+            id: id.into(),
+            pipes: self.clone(),
+            core: slot.core.clone(),
+        })
+    }
+
     /// The source end of pipe `id` for `device`'s `PUT`.
     pub fn claim_source(&self, id: &str, device: &str) -> Result<DeviceSource, PipeRefusal> {
         let mut slots = self.0.slots.borrow_mut();
