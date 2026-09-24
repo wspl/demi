@@ -414,8 +414,10 @@ Each crate implements the provider contract for one vendor family.
     (`AgentTreeStore`, `SessionStore`, with the node records and checkpoints
     they carry in `store`).
 - **Public boundary:** the items above; `agent::testing` supplies an in-memory
-  tree store (`MemoryTreeStore`), predictable identities (`SequentialIds`) and
-  a test client that drives a connection (`TestClient`). A product supplies
+  tree store (`MemoryTreeStore`), the tree store contract's cases that every
+  realization passes (`store_contract`), predictable identities
+  (`SequentialIds`) and a test client that drives a connection
+  (`TestClient`). A product supplies
   the harness, the providers, a shell environment per Host and a tree store;
   the agent never knows which shell engine runs. Behavior:
   [Agent runtime](../agent/runtime.md), [Subagents](../agent/subagents.md)
