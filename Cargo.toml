@@ -20,6 +20,7 @@ members = [
   "crates/machines-protocol",
   "crates/provider",
   "crates/provider-anthropic-api",
+  "crates/provider-claude-code",
   "crates/provider-codex",
   "crates/provider-google",
   "crates/provider-grok-build",

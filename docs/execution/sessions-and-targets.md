@@ -286,7 +286,7 @@ touches no conversation's files. This table names every way to a Host:
 | The conversation's host access | The agent's tool calls and shell jobs; attachments, the working tree, file text and file transfers; one-shot user calls that start work, such as opening a browser tab | The conversation's file gate while the operation runs, and, for a Cloud, the Cloud's admission | Woken; a running reset is waited for |
 | User-stream admission, a form of the conversation's host access | User streams; one-shot user calls that must not wake the Host | The file gate while admitting only | Not woken: the caller learns that the Host is stopped |
 | [Lifecycle access](#lifecycle-access), a form of the conversation's host access | The conversation release | Nothing: the release is a runner message, sent only to a connected paired device | Never sent to a Cloud |
-| Device access | The public relay of a [Host expose](expose.md#the-public-relay); the [device log](../product/web-api.md#device-log); browsing a paired device's directories to choose a target | Nothing: the caller must own the device, and its runner must be connected | Not woken |
+| Device access | The public relay of a [Host expose](expose.md#the-public-relay); the [device log](../product/web-api.md#device-log); browsing a paired device's directories to choose a target; the [Claude Code versions](../providers/claude-code.md#what-the-user-sees) a provider's settings show | Nothing: the caller must own the device, and its runner must be connected | Not woken |
 | Machine access | Creating a Cloud project; [placing a provider's process](../providers/claude-code.md#where-it-runs) on the user's Cloud | The Cloud's admission; no file gate | Woken; a running reset is waited for |
 
 Device access and machine access touch no conversation's files, so they take no
@@ -294,7 +294,8 @@ file gate and check no conversation's binding. Device access reaches a device
 the caller owns (for the relay, the expose's owner) only while its runner is
 connected. It never wakes a stopped Cloud: a stop has already destroyed the
 device's exposes, a log is read when its Host runs again, and directory
-browsing never names a Cloud. Machine access is for work that needs the user's
+browsing never names a Cloud, and showing a version is never a reason to wake
+one. Machine access is for work that needs the user's
 Cloud itself rather than a conversation's files on it. Creating a Cloud project
 makes the project's directory before any conversation uses it. A provider's
 process runs in a directory of Demi's on the Cloud, for a conversation's

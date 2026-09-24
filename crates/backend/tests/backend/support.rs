@@ -37,6 +37,11 @@ use crate::machines::ScriptedManager;
 /// reads the catalog serves its document with `Harness::with_models_dev`.
 const NO_MODELS_DEV: &str = "http://127.0.0.1:9/api.json";
 
+/// Where a scenario that serves no Claude Code distribution finds none,
+/// likewise; one that installs the CLI serves it with
+/// `Harness::with_claude_releases`.
+const NO_CLAUDE_RELEASES: &str = "http://127.0.0.1:9/claude-code-releases";
+
 pub const MASTER_EMAIL: &str = "master@example.test";
 pub const MASTER_PASSWORD: &str = "master-pass-1";
 pub const SESSION_COOKIE: &str = "demi_session";
@@ -96,6 +101,7 @@ pub struct Harness {
     mode: InstanceMode,
     families: FamilyRegistry,
     models_dev_url: Option<String>,
+    claude_releases: Option<String>,
     logins: LoginTiming,
     pub runners: RunnerTuning,
     pub conversations: ConversationTuning,
@@ -121,6 +127,7 @@ impl Harness {
             mode: InstanceMode::Shared,
             families: FamilyRegistry::builtin(),
             models_dev_url: None,
+            claude_releases: None,
             logins: LoginTiming::default(),
             // Liveness would ping every 30 s; the tests end runners
             // themselves.
@@ -191,6 +198,26 @@ impl Harness {
     /// Where the backend reads the models.dev document.
     pub fn with_models_dev(mut self, url: String) -> Self {
         self.models_dev_url = Some(url);
+        self
+    }
+
+    /// Where the backend reads the Claude Code distribution.
+    pub fn with_claude_releases(mut self, url: String) -> Self {
+        self.claude_releases = Some(url);
+        self
+    }
+
+    /// A Claude Code provider's CLI is listed and installed by the
+    /// `demi.claude` package the workspace built, which a Cloud's runner on
+    /// this machine runs from where it was built.
+    pub fn with_claude_package(mut self) -> Self {
+        let claude = Arc::new(NativeFixture::package(
+            demi_claude_protocol::PACKAGE,
+            built_program("demi-claude"),
+            demi_claude_protocol::Operation::ALL.map(demi_claude_protocol::Operation::name),
+        ));
+        let packages = vec![claude.descriptor.clone()];
+        self.native = Some(NativeCatalog::new(packages, move || claude.resolver()).unwrap());
         self
     }
 
@@ -289,6 +316,7 @@ impl Harness {
             config.user_streams = streams.clone();
         }
         config.models_dev_url = self.models_dev_url.as_deref().unwrap_or(NO_MODELS_DEV).parse().unwrap();
+        config.claude_releases = self.claude_releases.as_deref().unwrap_or(NO_CLAUDE_RELEASES).parse().unwrap();
         if self.mail {
             config.account_mail = Some(self.mailbox.clone());
         }

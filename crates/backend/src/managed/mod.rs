@@ -24,6 +24,7 @@ use demi_runner_protocol::values::BackendUrl;
 use tokio::sync::mpsc;
 use url::Url;
 
+pub(crate) use self::access::MachineAccess;
 pub(crate) use self::capacity::CloudCapacity;
 pub(crate) use self::client::MachinesClient;
 pub(crate) use self::machine::{Cloud, CloudAdmission, CloudError};

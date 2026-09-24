@@ -6,6 +6,8 @@
 pub(crate) mod assembly;
 pub(crate) mod catalog;
 pub(crate) mod catalog_cache;
+pub(crate) mod claude_cli;
+pub(crate) mod claude_releases;
 pub(crate) mod connection_test;
 pub(crate) mod details;
 pub(crate) mod families;

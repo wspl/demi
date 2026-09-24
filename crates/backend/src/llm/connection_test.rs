@@ -1,30 +1,36 @@
 //! The provider **Test** (`web-api.md` § Model configuration and provider
 //! inspection): one real, minimal request to the model the user names, with
 //! the account the user names or the active one. It runs on the acting
-//! user's shard, which builds the runtime with its own HTTP client. A test
-//! that ran and failed is a result carrying the provider's own reason.
+//! user's shard, which builds the runtime with its own HTTP client, or over
+//! the acting user's Cloud for a provider that runs a process. A test that
+//! ran and failed is a result carrying the provider's own reason.
 
 use std::num::NonZeroU32;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use demi_core::UserContentBlock;
 use demi_provider::{InferenceItem, InferenceRequest, Provider, ProviderEvent, RuntimeEnv};
+use demi_web_api::ids::CredentialId;
 use demi_web_api::providers::TestResult;
 use futures_util::StreamExt;
 use tokio_util::sync::CancellationToken;
 
 use super::catalog::configured_selection;
+use super::claude_cli::{CloudPlacement, ProcessWork};
 use crate::shard::Shard;
 use crate::vault::entries::ProviderEntry;
 
 impl Shard {
-    /// Tests `provider`, the entry's provider for the account under test,
-    /// with the entry's model `model_id`. `cancel` ends the test when the
-    /// requester leaves.
+    /// Tests `provider`, the entry's provider for `account` or for its
+    /// active account without one, with the entry's model `model_id`. A
+    /// provider that runs a process runs it on the user's Cloud. `cancel`
+    /// ends the test when the requester leaves.
     pub(crate) async fn test_provider(
         &self,
         entry: ProviderEntry,
         provider: Arc<dyn Provider>,
+        account: Option<CredentialId>,
         model_id: String,
         cancel: CancellationToken,
     ) -> TestResult {
@@ -47,14 +53,23 @@ impl Shard {
             Ok(selection) => selection,
             Err(error) => return failed(error.to_string()),
         };
-        if provider.capabilities().process_host {
-            return failed("This provider runs a process on the user's Cloud, which the test cannot reach yet".into());
-        }
-        let mut runtime = match provider.runtime(RuntimeEnv {
-            http: self.http().clone(),
-        }) {
+        let runtime = if provider.capabilities().process_host {
+            let work = ProcessWork::Account(entry.id.clone());
+            let placement = CloudPlacement::new(Rc::downgrade(&self.this()), work);
+            let account = account.as_ref().or(entry.active());
+            assembly
+                .process_runtime(&entry, account, placement)
+                .await
+                .map_err(|error| error.to_string())
+        } else {
+            let env = RuntimeEnv {
+                http: self.http().clone(),
+            };
+            provider.runtime(env).map_err(|error| error.to_string())
+        };
+        let mut runtime = match runtime {
             Ok(runtime) => runtime,
-            Err(error) => return failed(error.to_string()),
+            Err(message) => return failed(message),
         };
         let request_cancel = cancel.child_token();
         let request = InferenceRequest {

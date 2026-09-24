@@ -325,7 +325,8 @@ pub struct Process {
     /// Its standard output and standard error, each chunk in the order the
     /// Host received it; the stream ends when the process has ended.
     pub output: LocalBoxStream<'static, ProcessOutput>,
-    /// Writes to the process and signals it.
+    /// Writes to the process and signals it. Dropping it before the process
+    /// ended asks the Host to kill the process, without waiting.
     pub control: Box<dyn ProcessControl>,
     /// How the process ended.
     pub exit: LocalBoxFuture<'static, ProcessEnd>,

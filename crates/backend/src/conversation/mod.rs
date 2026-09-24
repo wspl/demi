@@ -74,7 +74,13 @@ pub(crate) fn conversation_parts(
         outbox_frames: services.conversation_tuning.outbox_frames,
         ..ServerConfig::default()
     };
-    let providers = Rc::new(ConversationProviders::new(user, services.clone(), http, rate_limit));
+    let providers = Rc::new(ConversationProviders::new(
+        shard.clone(),
+        user,
+        services.clone(),
+        http,
+        rate_limit,
+    ));
     let titles = Titles::new(providers.clone(), services.control.clone(), services.conversation_tuning.titles);
     let agent = AgentServer::new(ServerDeps {
         harness: Rc::new(conversation_harness(shard.clone(), &services.native)),
