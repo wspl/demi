@@ -60,10 +60,7 @@ impl Handler for DemiClaude {
                 cancellation,
             } = context;
             let Some(operation) = Operation::parse(&request.operation) else {
-                return Err(ServiceError::Handler(format!(
-                    "unknown operation {}",
-                    request.operation
-                )));
+                return Err(ServiceError::UnknownOperation(request.operation));
             };
             let result = match operation {
                 Operation::Ensure => ensure(&installer, input, &cancellation)
