@@ -3,13 +3,21 @@
 //! state and page synchronization).
 
 use demi_agent_protocol::{Failures, SubagentJob};
-use demi_core::{Block, Nullable, Timestamp};
+use demi_core::{Block, BlockId, ModelSelection, Nullable, Timestamp};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_with::rust::unwrap_or_skip;
+use serde_with::rust::{double_option, unwrap_or_skip};
 
+use crate::error::ErrorCode;
 use crate::ids::{ConversationId, DeviceId, ProviderId, WorkspaceId};
 use crate::query::StrictBool;
+use crate::text::Trimmed;
+
+/// The most UTF-16 code units a conversation's title has.
+pub const TITLE_MAX: usize = 256;
+
+/// The most items one batch changes.
+pub const BATCH_MAX: usize = 100;
 
 /// Where a conversation's work runs (`sessions-and-targets.md` § Resolve a
 /// target): the user's Cloud, a directory on a paired device, or a
@@ -158,6 +166,143 @@ pub struct SubagentHistory {
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "Failures")]
     pub failures: Option<Failures>,
+}
+
+/// `PATCH /conversations/:id`: the fields to change, each applied on its
+/// own; an absent field stays as it is.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConversationPatch {
+    /// A rename: 1 to 256 characters after trimming.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "Trimmed")]
+    #[garde(inner(length(utf16, min = 1, max = TITLE_MAX)))]
+    pub title: Option<Trimmed>,
+    /// Archive, or restore.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "bool")]
+    #[garde(skip)]
+    pub archived: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "bool")]
+    #[garde(skip)]
+    pub pinned: Option<bool>,
+    /// The provider entry and model the conversation selects, or null for
+    /// none.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "double_option")]
+    #[schemars(with = "Option<ModelChoice>")]
+    #[garde(dive)]
+    pub model: Option<Option<ModelChoice>>,
+    /// A switch of the conversation's execution target.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "ConversationTarget")]
+    #[garde(dive)]
+    pub target: Option<ConversationTarget>,
+}
+
+/// A provider entry of the user's scope and one of its models.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ModelChoice {
+    #[garde(skip)]
+    pub provider_id: ProviderId,
+    #[garde(length(utf16, min = 1))]
+    pub model_id: String,
+}
+
+/// A field of a conversation patch, as its result names it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PatchField {
+    Title,
+    Archived,
+    Pinned,
+    Model,
+    Target,
+}
+
+/// How one field of a patch went: applied, or refused with the code and
+/// the HTTP status it would answer alone.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "status", rename_all = "snake_case", rename_all_fields = "camelCase")]
+pub enum FieldResult {
+    Applied {
+        field: PatchField,
+    },
+    Failed {
+        field: PatchField,
+        code: ErrorCode,
+        message: String,
+        http_status: u16,
+    },
+}
+
+/// The answer of a patch: the conversation as it is now, and each field's
+/// result in the order they were applied, the archive first.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ConversationUpdate {
+    pub conversation: ConversationSummary,
+    pub results: Vec<FieldResult>,
+}
+
+/// `POST /conversations/batch`: up to 100 patches, each of one of the
+/// caller's conversations.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(deny_unknown_fields)]
+pub struct ConversationBatch {
+    #[garde(length(min = 1, max = BATCH_MAX), dive)]
+    pub items: Vec<BatchItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(deny_unknown_fields)]
+pub struct BatchItem {
+    #[garde(skip)]
+    pub id: ConversationId,
+    #[garde(dive)]
+    pub patch: ConversationPatch,
+}
+
+/// The answer of a batch: an outcome per item, in the order given.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct BatchAnswer {
+    pub results: Vec<BatchResult>,
+}
+
+/// One item's outcome: its patch's answer, or why the item was refused,
+/// such as a conversation the caller does not have.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "status", rename_all = "snake_case", rename_all_fields = "camelCase")]
+pub enum BatchResult {
+    Updated {
+        id: ConversationId,
+        conversation: ConversationSummary,
+        results: Vec<FieldResult>,
+    },
+    Refused {
+        id: ConversationId,
+        code: ErrorCode,
+        message: String,
+    },
+}
+
+/// `POST /conversations/:id/fork`: the new conversation's id, chosen by the
+/// browser, and the completed assistant text the history is kept through.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ForkRequest {
+    #[garde(skip)]
+    pub id: ConversationId,
+    #[garde(skip)]
+    pub block_id: BlockId,
+}
+
+/// The answer of a Fork: the new conversation and the complete model
+/// selection it inherited, which the composer starts from.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ForkAnswer {
+    pub conversation: ConversationSummary,
+    pub model: ModelSelection,
 }
 
 #[cfg(test)]

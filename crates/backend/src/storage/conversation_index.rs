@@ -11,6 +11,7 @@ use demi_web_api::conversations::ConversationTarget;
 use demi_web_api::ids::{ConversationId, DeviceId, ProviderId, UserId, WorkspaceId};
 use garde::Validate;
 use rusqlite::{Connection, OptionalExtension, Row, params};
+use serde::{Deserialize, Serialize};
 
 use super::StorageError;
 use super::columns::{decode, instant};
@@ -42,6 +43,30 @@ pub(crate) struct ConversationRecord {
 pub(crate) struct ConversationModel {
     pub(crate) provider: ProviderId,
     pub(crate) model: String,
+}
+
+/// A change of a conversation's record, which one index transaction
+/// applies.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ConversationChange {
+    /// Archive, or restore.
+    Archived(bool),
+    /// A rename: a title other than the current one, which becomes the
+    /// user's.
+    Title(String),
+    Pinned(bool),
+    /// The provider entry and model the conversation selects, or none.
+    Model(Option<ConversationModel>),
+}
+
+/// What a change found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ChangeOutcome {
+    Applied,
+    /// No conversation has the id.
+    Missing,
+    /// The conversation is archived, and the change is not its restore.
+    Archived,
 }
 
 /// What asking for a conversation of an id found.
@@ -118,25 +143,17 @@ impl ControlService {
             if reserved {
                 return Ok(Creation::Unavailable);
             }
-            let target = TargetColumns::of(&ConversationTarget::Cloud { path: None });
-            let inserted = transaction.execute(
-                "INSERT INTO conversations (id, user_id, title, title_origin, archived, pinned, sort_order,
-                   read_revision, target_kind, target_device_id, target_path, target_workspace_id, context_version,
-                   user_messages, titled_messages, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, 'placeholder', 0, 0,
-                   (SELECT COALESCE(MIN(sort_order), 0) - 1 FROM conversations WHERE user_id = ?2),
-                   0, ?4, ?5, ?6, ?7, 0, 0, 0, ?8, ?8)
-                 ON CONFLICT (id) DO NOTHING",
-                params![
-                    id.as_str(),
-                    owner.as_str(),
-                    PLACEHOLDER_TITLE,
-                    target.kind,
-                    target.device,
-                    target.path,
-                    target.workspace,
-                    now.as_millisecond()
-                ],
+            let inserted = insert_conversation(
+                &transaction,
+                &NewConversation {
+                    id: &id,
+                    owner: &owner,
+                    title: PLACEHOLDER_TITLE,
+                    origin: TitleOrigin::Placeholder,
+                    target: &ConversationTarget::Cloud { path: None },
+                    model: None,
+                    at: now,
+                },
             )?;
             let record = conversation_by_id(&transaction, &id)?.ok_or_else(|| StorageError::Corrupt {
                 table: "conversations",
@@ -217,6 +234,52 @@ impl ControlService {
         .await
     }
 
+    /// Applies `change` in one transaction. An archived conversation takes
+    /// nothing but its restore; a rename that repeats the current title
+    /// changes nothing, so the title keeps its origin.
+    pub(crate) async fn change_conversation(
+        &self,
+        id: ConversationId,
+        change: ConversationChange,
+    ) -> Result<ChangeOutcome, StorageError> {
+        self.call(move |connection, _| {
+            let transaction = connection.transaction()?;
+            let archived: Option<bool> = transaction
+                .query_row("SELECT archived FROM conversations WHERE id = ?1", [id.as_str()], |row| row.get(0))
+                .optional()?;
+            let Some(archived) = archived else {
+                return Ok(ChangeOutcome::Missing);
+            };
+            if archived && !matches!(change, ConversationChange::Archived(_)) {
+                return Ok(ChangeOutcome::Archived);
+            }
+            let id = id.as_str();
+            match &change {
+                ConversationChange::Archived(archived) => {
+                    transaction.execute("UPDATE conversations SET archived = ?2 WHERE id = ?1", params![id, archived])?
+                }
+                ConversationChange::Title(title) => transaction.execute(
+                    "UPDATE conversations SET title = ?2, title_origin = 'user' WHERE id = ?1 AND title <> ?2",
+                    params![id, title],
+                )?,
+                ConversationChange::Pinned(pinned) => {
+                    transaction.execute("UPDATE conversations SET pinned = ?2 WHERE id = ?1", params![id, pinned])?
+                }
+                ConversationChange::Model(model) => transaction.execute(
+                    "UPDATE conversations SET provider_id = ?2, model_id = ?3 WHERE id = ?1",
+                    params![
+                        id,
+                        model.as_ref().map(|model| model.provider.as_str()),
+                        model.as_ref().map(|model| model.model.as_str())
+                    ],
+                )?,
+            };
+            transaction.commit()?;
+            Ok(ChangeOutcome::Applied)
+        })
+        .await
+    }
+
     /// Records activity in the conversation now. Activity never reorders the
     /// sidebar.
     pub(crate) async fn touch_conversation(&self, id: ConversationId) -> Result<(), StorageError> {
@@ -229,6 +292,65 @@ impl ControlService {
         })
         .await
     }
+}
+
+/// Where a conversation's title came from (`product.md` § Conversation
+/// titles), as its column names it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TitleOrigin {
+    Placeholder,
+    User,
+}
+
+impl TitleOrigin {
+    fn column(self) -> &'static str {
+        match self {
+            Self::Placeholder => "placeholder",
+            Self::User => "user",
+        }
+    }
+}
+
+/// A conversation as it enters the index.
+pub(crate) struct NewConversation<'a> {
+    pub(crate) id: &'a ConversationId,
+    pub(crate) owner: &'a UserId,
+    pub(crate) title: &'a str,
+    pub(crate) origin: TitleOrigin,
+    pub(crate) target: &'a ConversationTarget,
+    pub(crate) model: Option<&'a ConversationModel>,
+    /// When it was created, and last active.
+    pub(crate) at: Timestamp,
+}
+
+/// Inserts `new` first in its owner's sidebar, unarchived and unpinned,
+/// unless a conversation has its id in any spelling; answers the rows it
+/// inserted.
+pub(crate) fn insert_conversation(connection: &Connection, new: &NewConversation<'_>) -> Result<usize, StorageError> {
+    let target = TargetColumns::of(new.target);
+    let inserted = connection.execute(
+        "INSERT INTO conversations (id, user_id, title, title_origin, archived, pinned, sort_order,
+           read_revision, target_kind, target_device_id, target_path, target_workspace_id, context_version,
+           provider_id, model_id, user_messages, titled_messages, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, 0, 0,
+           (SELECT COALESCE(MIN(sort_order), 0) - 1 FROM conversations WHERE user_id = ?2),
+           0, ?5, ?6, ?7, ?8, 0, ?9, ?10, 0, 0, ?11, ?11)
+         ON CONFLICT (id) DO NOTHING",
+        params![
+            new.id.as_str(),
+            new.owner.as_str(),
+            new.title,
+            new.origin.column(),
+            target.kind,
+            target.device,
+            target.path,
+            target.workspace,
+            new.model.map(|model| model.provider.as_str()),
+            new.model.map(|model| model.model.as_str()),
+            new.at.as_millisecond()
+        ],
+    )?;
+    Ok(inserted)
 }
 
 /// A revision as the INTEGER column holds it. The output revision advances
@@ -316,14 +438,20 @@ fn target_row(row: &Row<'_>) -> Result<ConversationTarget, StorageError> {
 
 /// A device attached to a conversation (`sessions-and-targets.md`
 /// § Attached hosts): a Host the conversation reaches besides its main one.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// A Fork keeps its source's in its operation's metadata.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct AttachedHostRecord {
+    #[garde(skip)]
     pub(crate) device: DeviceId,
     /// What the model and the user call the host; unique within the
     /// conversation.
+    #[garde(length(min = 1))]
     pub(crate) name: String,
     /// Where the last `demi host shell --host` there ended; none until one
     /// ran.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[garde(skip)]
     pub(crate) cwd: Option<String>,
 }
 

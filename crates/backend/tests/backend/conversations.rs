@@ -4,8 +4,9 @@
 //! state, a chat over the socket with an Anthropic endpoint the test
 //! scripts, a reload whose history is what the database holds, a client that
 //! falls behind, a takeover, the frames the backend refuses, provider edits
-//! and deletion at the inference boundary, the rate limit, and a shutdown in
-//! the middle of a turn. No test calls a real model.
+//! and deletion at the inference boundary, the rate limit, a shutdown in the
+//! middle of a turn, and the patches and batches of the sidebar. No test
+//! calls a real model.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -23,7 +24,10 @@ use demi_provider::{
     Capabilities, CatalogError, InferenceRequest, Provider, ProviderEvent, ProviderRun, ProviderRuntime, RuntimeEnv,
     RuntimeError,
 };
-use demi_web_api::conversations::{ConversationAnswer, ConversationStatus, ConversationSummary, Conversations, Transcript};
+use demi_web_api::conversations::{
+    BatchAnswer, BatchResult, ConversationAnswer, ConversationStatus, ConversationSummary, ConversationUpdate,
+    Conversations, FieldResult, PatchField, Transcript,
+};
 use demi_web_api::error::ErrorCode;
 use demi_web_api::providers::{CredentialKind, ProviderAnswer};
 use demi_web_api::state::ProductState;
@@ -40,8 +44,9 @@ use tokio_tungstenite::tungstenite::{self, Message};
 use crate::support::{Harness, MASTER_EMAIL, Session, TestBackend};
 
 /// The conversation ids the tests create.
-const FIRST: &str = "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b";
-const SECOND: &str = "7d1c2e3f-4a5b-4c1e-9d2b-0b6f7f3e8f3a";
+pub(crate) const FIRST: &str = "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b";
+pub(crate) const SECOND: &str = "7d1c2e3f-4a5b-4c1e-9d2b-0b6f7f3e8f3a";
+pub(crate) const THIRD: &str = "5a4b3c2d-1e0f-4a1b-8c2d-3e4f5a6b7c8d";
 
 /// The system prompt the backend's conversations run with.
 const SYSTEM_PROMPT: &str = "You are a coding agent. Answer the user's questions about their code.";
@@ -55,12 +60,12 @@ enum Received {
 }
 
 /// A page's conversation socket.
-struct Socket {
+pub(crate) struct Socket {
     socket: tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
 }
 
 impl Socket {
-    async fn connect(backend: &TestBackend, session: &Session, conversation: &str) -> Self {
+    pub(crate) async fn connect(backend: &TestBackend, session: &Session, conversation: &str) -> Self {
         match Self::try_connect(backend, session, conversation).await {
             Ok(socket) => socket,
             Err(status) => panic!("the stream refused the upgrade with {status}"),
@@ -68,7 +73,7 @@ impl Socket {
     }
 
     /// The socket, or the status the route answered instead of upgrading.
-    async fn try_connect(backend: &TestBackend, session: &Session, conversation: &str) -> Result<Self, u16> {
+    pub(crate) async fn try_connect(backend: &TestBackend, session: &Session, conversation: &str) -> Result<Self, u16> {
         let url = backend.ws_url(&format!("/api/conversations/{conversation}/stream"));
         let mut request = url.into_client_request().unwrap();
         request
@@ -81,7 +86,7 @@ impl Socket {
         }
     }
 
-    async fn send(&mut self, frame: &ClientFrame) {
+    pub(crate) async fn send(&mut self, frame: &ClientFrame) {
         self.send_text(serde_json::to_string(frame).unwrap()).await;
     }
 
@@ -106,7 +111,7 @@ impl Socket {
         }
     }
 
-    async fn frame(&mut self) -> ServerFrame {
+    pub(crate) async fn frame(&mut self) -> ServerFrame {
         match self.next().await {
             Received::Frame(frame) => frame,
             Received::Closed(code) => panic!("the socket closed with {code:?}"),
@@ -127,7 +132,7 @@ impl Socket {
     }
 
     /// Opens the conversation with `model` and reads the handshake.
-    async fn open(&mut self, model: &ModelSelection) -> Vec<ServerFrame> {
+    pub(crate) async fn open(&mut self, model: &ModelSelection) -> Vec<ServerFrame> {
         self.send(&ClientFrame::Open { model: model.clone() }).await;
         let handshake = self.until(|frame| matches!(frame, ServerFrame::PendingSteers { .. })).await;
         assert_eq!(handshake.first(), Some(&ServerFrame::Opened), "{handshake:?}");
@@ -136,13 +141,13 @@ impl Socket {
 
     /// Sends a message and reads the frames of its turn, to the phase that
     /// says it ended.
-    async fn chat(&mut self, id: &str, text: &str) -> Vec<ServerFrame> {
+    pub(crate) async fn chat(&mut self, id: &str, text: &str) -> Vec<ServerFrame> {
         self.send(&send(id, text)).await;
         self.until_idle().await
     }
 
     /// The frames up to the idle phase that follows a running one.
-    async fn until_idle(&mut self) -> Vec<ServerFrame> {
+    pub(crate) async fn until_idle(&mut self) -> Vec<ServerFrame> {
         let mut ran = false;
         let mut frames = Vec::new();
         loop {
@@ -162,8 +167,23 @@ impl Socket {
         }
     }
 
+    /// Stops the running turn, and reads its frames to both the answer of
+    /// the stop and the idle phase, which arrive in either order.
+    pub(crate) async fn stop(&mut self) {
+        self.send(&ClientFrame::Abort {}).await;
+        let mut answered = false;
+        let mut idle = false;
+        while !(answered && idle) {
+            match self.frame().await {
+                ServerFrame::AbortResult { .. } => answered = true,
+                ServerFrame::Phase { phase: SessionPhase::Idle } => idle = true,
+                _ => {}
+            }
+        }
+    }
+
     /// The live transcript, as a fresh reset sends it.
-    async fn live(&mut self) -> Vec<Block> {
+    pub(crate) async fn live(&mut self) -> Vec<Block> {
         self.send(&ClientFrame::SyncTranscript {}).await;
         let frames = self.until(|frame| matches!(frame, ServerFrame::TranscriptReset { .. })).await;
         match frames.into_iter().last() {
@@ -182,7 +202,7 @@ impl Socket {
     }
 }
 
-fn send(id: &str, text: &str) -> ClientFrame {
+pub(crate) fn send(id: &str, text: &str) -> ClientFrame {
     ClientFrame::Send {
         message_id: TurnId::try_from(id).unwrap(),
         content: client_text(text),
@@ -191,7 +211,7 @@ fn send(id: &str, text: &str) -> ClientFrame {
 
 /// A Messages API stream that answers `deltas`, in that many pieces, and
 /// reports `input` and `output` tokens.
-fn answer(deltas: &[&str], input: u64, output: u64) -> MockResponse {
+pub(crate) fn answer(deltas: &[&str], input: u64, output: u64) -> MockResponse {
     let mut frames = vec![
         json!({ "type": "message_start", "message": {
             "id": "msg_1", "type": "message", "role": "assistant", "model": "claude-opus-4-8", "content": [],
@@ -219,7 +239,7 @@ async fn entry(backend: &TestBackend, master: &Session, body: Value) -> String {
 }
 
 /// An Anthropic entry whose endpoint is `vendor`.
-async fn anthropic(backend: &TestBackend, master: &Session, vendor: &MockVendor) -> String {
+pub(crate) async fn anthropic(backend: &TestBackend, master: &Session, vendor: &MockVendor) -> String {
     let body = json!({
         "source": "custom", "providerType": "anthropic", "label": "Work", "apiKey": "sk-ant-test",
         "baseUrl": vendor.url("/v1")
@@ -227,19 +247,38 @@ async fn anthropic(backend: &TestBackend, master: &Session, vendor: &MockVendor)
     entry(backend, master, body).await
 }
 
-async fn create(backend: &TestBackend, session: &Session, id: &str) -> ConversationSummary {
+pub(crate) async fn create(backend: &TestBackend, session: &Session, id: &str) -> ConversationSummary {
     let created = backend.post("/api/conversations", Some(session), json!({ "id": id })).await;
     assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
     created.json::<ConversationAnswer>().conversation
 }
 
-async fn summaries(backend: &TestBackend, session: &Session) -> Vec<ConversationSummary> {
+pub(crate) async fn summaries(backend: &TestBackend, session: &Session) -> Vec<ConversationSummary> {
     let listed = backend.get("/api/conversations", Some(session)).await;
     assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
     listed.json::<Conversations>().conversations
 }
 
-async fn transcript(backend: &TestBackend, session: &Session, id: &str) -> Transcript {
+/// The conversation's summary once its tree has settled. The save that ends
+/// an action follows the idle phase the socket shows, and the tree works
+/// until that save commits (`runtime.md` § Saving), so the database holds a
+/// turn once the conversation no longer runs.
+pub(crate) async fn settled(backend: &TestBackend, session: &Session, id: &str) -> ConversationSummary {
+    let summary = || async {
+        summaries(backend, session)
+            .await
+            .into_iter()
+            .find(|summary| summary.id.as_str() == id)
+            .expect("the conversation is listed")
+    };
+    crate::support::eventually("the conversation settles", || async {
+        summary().await.status != ConversationStatus::Running
+    })
+    .await;
+    summary().await
+}
+
+pub(crate) async fn transcript(backend: &TestBackend, session: &Session, id: &str) -> Transcript {
     let read = backend.get(&format!("/api/conversations/{id}/transcript"), Some(session)).await;
     assert_eq!(read.status, StatusCode::OK, "{}", String::from_utf8_lossy(&read.body));
     read.json()
@@ -250,7 +289,7 @@ async fn usage(backend: &TestBackend, session: &Session) -> UsageTotals {
 }
 
 /// Each block's type.
-fn kinds(blocks: &[Block]) -> Vec<String> {
+pub(crate) fn kinds(blocks: &[Block]) -> Vec<String> {
     blocks
         .iter()
         .map(|block| serde_json::to_value(block).unwrap()["type"].as_str().unwrap().to_owned())
@@ -258,7 +297,7 @@ fn kinds(blocks: &[Block]) -> Vec<String> {
 }
 
 /// The text of the last text block.
-fn last_text(blocks: &[Block]) -> String {
+pub(crate) fn last_text(blocks: &[Block]) -> String {
     blocks
         .iter()
         .rev()
@@ -348,8 +387,10 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     assert_eq!(body["model"], "claude-opus-4-8");
     assert!(body["messages"][0].to_string().contains("Say hello"), "{body}");
 
-    // Live equals cold: the live tree's transcript is what the database
-    // holds, which the history route reads without a session.
+    // Live equals cold once the turn has settled: the live tree's transcript
+    // is what the database holds, which the history route reads without a
+    // session.
+    let summary = settled(&backend, &master, FIRST).await;
     let live = socket.live().await;
     assert_eq!(kinds(&live), ["user", "text", "response"]);
     assert_eq!(last_text(&live), "Hello there.");
@@ -357,7 +398,6 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     assert_eq!(cold.blocks, live);
     assert!(cold.failures.is_none() && cold.subagents.is_empty());
 
-    let summary = summaries(&backend, &master).await.remove(0);
     assert_eq!((summary.status, summary.unread), (ConversationStatus::Completed, true));
     assert!(summary.revision > 0);
     assert_eq!(
@@ -397,6 +437,7 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     reloaded.chat("m2", "Once more").await;
     let replayed = vendor.requests()[1].json();
     assert_eq!(replayed["messages"].as_array().unwrap().len(), 3, "{replayed}");
+    settled(&backend, &master, FIRST).await;
     assert_eq!(kinds(&transcript(&backend, &master, FIRST).await.blocks).len(), 6);
     backend.close().await;
 }
@@ -727,6 +768,7 @@ async fn an_edit_of_the_entry_reaches_the_next_request_and_a_deleted_entry_refus
     assert!(refused, "{turn:?}");
     assert_eq!(runs.calls().len(), 3);
     assert_eq!(usage(&backend, &master).await.totals[0].requests, 3);
+    settled(&backend, &master, FIRST).await;
     let blocks = transcript(&backend, &master, FIRST).await.blocks;
     assert_eq!(kinds(&blocks).last().map(String::as_str), Some("error"));
     backend.close().await;
@@ -751,8 +793,7 @@ async fn a_request_over_the_rate_limit_fails_without_reaching_the_vendor() {
     assert!(limited, "{turn:?}");
     assert_eq!(vendor.requests().len(), 1);
     assert_eq!(usage(&backend, &master).await.totals[0].requests, 1);
-    let summary = summaries(&backend, &master).await.remove(0);
-    assert_eq!(summary.status, ConversationStatus::Error);
+    assert_eq!(settled(&backend, &master, FIRST).await.status, ConversationStatus::Error);
     backend.close().await;
 }
 
@@ -818,6 +859,7 @@ async fn the_page_receives_what_the_provider_reads_from_an_error_blocks_record()
         _ => None,
     });
     let read = read.unwrap_or_else(|| panic!("no frame carried failure facts: {turn:?}"));
+    settled(&backend, &master, FIRST).await;
     let blocks = transcript(&backend, &master, FIRST).await;
     let Some(Block::Error(error)) = blocks.blocks.last() else {
         panic!("the turn failed: {:?}", blocks.blocks);
@@ -890,5 +932,189 @@ async fn a_deepseek_tool_continuation_sends_the_reasoning_back_to_the_compatible
         .unwrap_or_else(|| panic!("the continuation replays the tool call: {messages:?}"));
     assert_eq!(asked["reasoning_content"], "Read the current directory.");
     assert_eq!(last_text(&socket.live().await), "done");
+    backend.close().await;
+}
+
+fn applied(field: PatchField) -> FieldResult {
+    FieldResult::Applied { field }
+}
+
+#[tokio::test]
+async fn each_field_of_a_patch_applies_on_its_own_and_an_archived_conversation_takes_only_its_restore() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    harness.add_user("ana@example.test", "ana-pass-1", demi_web_api::auth::Role::User);
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    create(&backend, &master, SECOND).await;
+    let path = format!("/api/conversations/{FIRST}");
+    let listed = async || -> Vec<String> {
+        summaries(&backend, &master)
+            .await
+            .into_iter()
+            .map(|summary| summary.id.as_str().to_owned())
+            .collect()
+    };
+
+    let renamed = backend.patch(&path, &master, json!({ "title": "  Build failure  " })).await;
+    assert_eq!(renamed.status, StatusCode::OK);
+    let update = renamed.json::<ConversationUpdate>();
+    assert_eq!(update.results, [applied(PatchField::Title)]);
+    assert_eq!(update.conversation.title, "Build failure");
+    // The target the conversation has already is no switch.
+    let body = json!({
+        "pinned": true, "model": { "providerId": provider, "modelId": "claude-opus-4-8" }, "target": { "kind": "cloud" }
+    });
+    let chosen = backend.patch(&path, &master, body).await;
+    assert_eq!(chosen.status, StatusCode::OK);
+    let update = chosen.json::<ConversationUpdate>();
+    assert_eq!(
+        update.results,
+        [applied(PatchField::Pinned), applied(PatchField::Model), applied(PatchField::Target)]
+    );
+    let conversation = update.conversation;
+    assert_eq!(
+        (conversation.pinned, conversation.provider_id.as_ref().map(|id| id.as_str()), conversation.model_id.as_deref()),
+        (true, Some(provider.as_str()), Some("claude-opus-4-8"))
+    );
+    assert_eq!(listed().await, [FIRST, SECOND], "a pinned conversation leads");
+    // A patch of one field that is refused answers that field's refusal.
+    let foreign = backend
+        .patch(&path, &master, json!({ "model": { "providerId": "someone-elses", "modelId": "m" } }))
+        .await;
+    assert_eq!(foreign.refusal(), (StatusCode::NOT_FOUND, ErrorCode::ProviderNotFound));
+    let cleared = backend.patch(&path, &master, json!({ "model": null })).await;
+    let conversation = cleared.json::<ConversationUpdate>().conversation;
+    assert_eq!((conversation.provider_id, conversation.model_id), (None, None));
+
+    // The archive goes first, so the rename beside it is refused.
+    let archived = backend.patch(&path, &master, json!({ "title": "Renamed", "archived": true })).await;
+    assert_eq!(archived.status, StatusCode::MULTI_STATUS);
+    let update = archived.json::<ConversationUpdate>();
+    assert_eq!(update.results[0], applied(PatchField::Archived));
+    let FieldResult::Failed { field, code, http_status, .. } = &update.results[1] else {
+        panic!("the rename of an archived conversation is refused: {:?}", update.results);
+    };
+    assert_eq!((*field, *code, *http_status), (PatchField::Title, ErrorCode::ConversationArchived, 409));
+    assert_eq!((update.conversation.archived, update.conversation.title.as_str()), (true, "Build failure"));
+    assert_eq!(listed().await, [SECOND]);
+    let archived = backend.get("/api/conversations?archived=true", Some(&master)).await;
+    assert_eq!(archived.json::<Conversations>().conversations, [update.conversation]);
+    // Its history stays readable.
+    assert!(transcript(&backend, &master, FIRST).await.blocks.is_empty());
+    for body in [json!({ "pinned": false }), json!({ "target": { "kind": "cloud" } })] {
+        let refused = backend.patch(&path, &master, body.clone()).await;
+        assert_eq!(refused.refusal(), (StatusCode::CONFLICT, ErrorCode::ConversationArchived), "{body}");
+    }
+    let restored = backend.patch(&path, &master, json!({ "archived": false })).await;
+    assert_eq!(restored.status, StatusCode::OK);
+    assert_eq!(listed().await, [FIRST, SECOND], "the restore keeps the place and the pin");
+
+    // A body outside the patch's rules changes nothing, and neither does a
+    // conversation the caller does not have.
+    let bodies = [
+        json!({ "title": "   " }),
+        json!({ "title": "x".repeat(257) }),
+        json!({ "name": "x" }),
+        json!({ "model": { "providerId": provider } }),
+        json!({ "archived": "yes" }),
+    ];
+    for body in bodies {
+        let refused = backend.patch(&path, &master, body.clone()).await;
+        assert_eq!(refused.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody), "{body}");
+    }
+    let ana = backend.login("ana@example.test", "ana-pass-1").await;
+    for path in [path.clone(), "/api/conversations/not-a-uuid".into()] {
+        let foreign = backend.patch(&path, &ana, json!({ "pinned": true })).await;
+        assert_eq!(foreign.refusal(), (StatusCode::NOT_FOUND, ErrorCode::ConversationNotFound), "{path}");
+    }
+    assert_eq!(summaries(&backend, &master).await[0].title, "Build failure");
+    backend.close().await;
+}
+
+#[tokio::test]
+async fn an_archive_refuses_running_work_and_holds_the_open_socket_until_the_restore() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open(&model_of(&provider, "claude-opus-4-8")).await;
+    vendor.respond(MockResponse::event_stream(": thinking\n\n").stay_open());
+    socket.send(&send("m1", "take your time")).await;
+    vendor.received(1).await;
+
+    let path = format!("/api/conversations/{FIRST}");
+    let busy = backend.patch(&path, &master, json!({ "archived": true })).await;
+    assert_eq!(busy.refusal(), (StatusCode::CONFLICT, ErrorCode::TurnInFlight));
+
+    // Stopped and saved, the turn no longer holds the conversation.
+    socket.stop().await;
+    assert_eq!(settled(&backend, &master, FIRST).await.status, ConversationStatus::Stopped);
+    let archived = backend.patch(&path, &master, json!({ "archived": true })).await;
+    assert_eq!(archived.status, StatusCode::OK);
+    socket.send(&send("m2", "still there?")).await;
+    let ServerFrame::Error { code, .. } = socket.frame().await else {
+        panic!("an archived conversation refuses a message");
+    };
+    assert_eq!(code.as_deref(), Some("conversation_archived"));
+    assert_eq!(Socket::try_connect(&backend, &master, FIRST).await.err(), Some(409));
+
+    // Restored, the socket that stayed open runs a turn again.
+    let restored = backend.patch(&path, &master, json!({ "archived": false })).await;
+    assert_eq!(restored.status, StatusCode::OK);
+    vendor.respond(answer(&["back"], 1, 1));
+    socket.chat("m3", "and now?").await;
+    assert_eq!(last_text(&socket.live().await), "back");
+    assert_eq!(vendor.requests().len(), 2, "the refused message never reached the vendor");
+    backend.close().await;
+}
+
+#[tokio::test]
+async fn a_batch_answers_each_item_on_its_own() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    harness.add_user("ana@example.test", "ana-pass-1", demi_web_api::auth::Role::User);
+    create(&backend, &master, FIRST).await;
+    create(&backend, &master, SECOND).await;
+    let ana = backend.login("ana@example.test", "ana-pass-1").await;
+    create(&backend, &ana, THIRD).await;
+
+    let body = json!({ "items": [
+        { "id": FIRST, "patch": { "pinned": true } },
+        { "id": SECOND, "patch": { "archived": true, "title": "Old" } },
+        { "id": THIRD, "patch": { "pinned": true } },
+    ] });
+    let answered = backend.post("/api/conversations/batch", Some(&master), body).await;
+    assert_eq!(answered.status, StatusCode::MULTI_STATUS);
+    let results = answered.json::<BatchAnswer>().results;
+    let [first, second, third] = results.as_slice() else {
+        panic!("one outcome per item: {results:?}");
+    };
+    let BatchResult::Updated { id, conversation, results } = first else {
+        panic!("{first:?}");
+    };
+    assert_eq!((id.as_str(), conversation.pinned, results.as_slice()), (FIRST, true, &[applied(PatchField::Pinned)][..]));
+    let BatchResult::Updated { conversation, results, .. } = second else {
+        panic!("{second:?}");
+    };
+    assert!(conversation.archived);
+    assert!(matches!(
+        results.as_slice(),
+        [FieldResult::Applied { field: PatchField::Archived }, FieldResult::Failed { code: ErrorCode::ConversationArchived, .. }]
+    ));
+    let BatchResult::Refused { id, code, .. } = third else {
+        panic!("another user's conversation is refused: {third:?}");
+    };
+    assert_eq!((id.as_str(), *code), (THIRD, ErrorCode::ConversationNotFound));
+    assert!(!summaries(&backend, &ana).await[0].pinned);
+
+    let too_many: Vec<Value> = (0..101).map(|_| json!({ "id": FIRST, "patch": {} })).collect();
+    for body in [json!({ "items": [] }), json!({ "items": too_many }), json!({ "items": [{ "id": FIRST }] })] {
+        let refused = backend.post("/api/conversations/batch", Some(&master), body).await;
+        assert_eq!(refused.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody));
+    }
     backend.close().await;
 }
