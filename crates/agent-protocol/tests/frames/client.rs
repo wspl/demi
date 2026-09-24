@@ -90,7 +90,7 @@ fn client_frames_refuse_unknown_fields_nulls_and_values_outside_their_bounds() {
     }
 }
 
-/// A file name counts UTF-16 units and may start with dots.
+/// A file name counts Unicode scalar values and may start with dots.
 #[test]
 fn client_frames_accept_values_at_their_bounds() {
     for (why, frame) in mutations("accepted") {
