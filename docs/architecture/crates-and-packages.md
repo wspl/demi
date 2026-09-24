@@ -107,10 +107,12 @@ next to the wire's types, so that a command program depends on one crate.
     carries portable facts only and never a source label such as
     `codex-backend`, `models.dev` or `cache`, with the one conversion of a
     catalog model into a selection (`ProviderModel::selection`, with the
-    attachment types it derives, `ATTACHMENT_FILE_EXTENSIONS`); its authentication and runtime
-    states (`AuthState`, `RuntimeState`); its subscription accounts as the
-    browser sees them (`AccountInfo`, `LoginPending`); and an account's quota
-    snapshot (`QuotaSnapshot`, `QuotaWindow`, `QuotaPlan` and their sets);
+    attachment types it derives, `ATTACHMENT_FILE_EXTENSIONS`); the wire
+    format an `openai` entry speaks (`WireApi`), which its configuration names
+    and its provider sends; its authentication and runtime states
+    (`AuthState`, `RuntimeState`); its subscription accounts as the browser
+    sees them (`AccountInfo`, `LoginPending`); and an account's quota snapshot
+    (`QuotaSnapshot`, `QuotaWindow`, `QuotaPlan` and their sets);
   - the identities blocks and frames name (`BlockId`, `TurnId`, `NodeId`,
     `WakeupId`, `ShellId`, `CommandId`, `OperationId`), and the macro every
     crate declares a checked identity with (`id!`): a string newtype that
@@ -267,9 +269,11 @@ next to the wire's types, so that a command program depends on one crate.
   `ConversationPatch` and `ProviderDto`; the error body (`ErrorBody`) and
   `ErrorCode`, the one list of every error code the browser can see; and the
   identifier and text types those bodies use. It reuses the runner's
-  working-tree change and log-line types, `builtin-protocol`'s browser tab
+  working-tree change types (`GitChanges`), `builtin-protocol`'s browser tab
   types and `command-service`'s command locale (`CommandLocale`, which the
-  browser reports as a preference) instead of declaring them again.
+  browser reports as a preference) instead of declaring them again. A Host
+  log line is its own type: the runner wire carries its time as integer
+  milliseconds, the browser as an RFC 3339 time.
 - **Public boundary:** the types above; their TypeScript form is generated into
   `web`. Behavior: [Web API](../product/web-api.md).
 - **Must not:** hold route handling or domain logic.
@@ -316,11 +320,13 @@ next to the wire's types, so that a command program depends on one crate.
     (`CredentialPool`, `AccountDocument`) with one refresh at a time per
     account (`RefreshGates`), the one refresh protocol of every family
     (`renew`), a pool held in memory for logins and tests
-    (`MemoryCredentialPool`), and the account operations every subscription
-    family shares (`Accounts`, over a family's `AccountKit`); quota
-    (`ProviderQuota`), token accounting and the models.dev client; the
-    catalog, state, account and quota shapes they return are `core`'s,
-    because the browser receives them.
+    (`MemoryCredentialPool`), the account operations every subscription
+    family shares (`Accounts`, over a family's `AccountKit`), and why an
+    account could not be used (`AuthFailure`); quota (`ProviderQuota`), token
+    accounting, and the models.dev client (`provider::models_dev`: the one
+    copy of the document a backend keeps, `ModelsDevClient`, and its vendors
+    and models as catalog models); the catalog, state, account and quota
+    shapes they return are `core`'s, because the browser receives them.
 - **Public boundary:** the items above; `provider::testing` supplies scripted
   runtimes (`ScriptedRuntime`), a scripted vendor server (`MockVendor`) and a
   fixed clock (`FixedClock`). Behavior: [Providers](../providers/providers.md),
@@ -339,8 +345,8 @@ Each crate implements the provider contract for one vendor family.
 | `provider-anthropic-api` | The Anthropic Messages API: request and stream mapping, model metadata and failure reading |
 | `provider-openai-api` | The OpenAI Responses API, and the Chat Completions wire for OpenAI-compatible endpoints with their reasoning deltas and the opt-in replay of thinking as `reasoning_content`; model metadata |
 | `provider-google` | The Gemini `generateContent` API, the native wire rather than the OpenAI-compatible one: request and stream mapping, including thought summaries, thought signatures and tool-returned media as inline parts; model metadata |
-| `provider-codex` | The Codex Responses transport over server-sent events and WebSocket, device login, reading its failure records (usage-limit reset fields), the quota read from `x-codex-*` headers, and the model catalog |
-| `provider-grok-build` | RFC 8628 device login against `auth.x.ai`, OIDC token refresh, the Chat Completions transport to the Grok Build proxy, the model catalog from `/v1/models`, and the billing and subscription quota probe |
+| `provider-codex` | The Codex Responses transport over server-sent events and WebSocket, device login, token refresh, reading its failure records (usage-limit reset fields), the quota from its usage probe and the `x-codex-*` headers, and the model catalog |
+| `provider-grok-build` | RFC 8628 device login against `auth.x.ai`, OIDC token refresh, the Chat Completions transport to the Grok Build proxy, the model catalog from `/v1/models`, and the quota from the billing and subscription probe and the rate-limit headers |
 
 - **Public boundary:** each crate's `Provider` implementation and its
   configuration type; transports, body builders, stream parsers and
@@ -408,8 +414,10 @@ Each crate implements the provider contract for one vendor family.
     (`AgentTreeStore`, `SessionStore`, with the node records and checkpoints
     they carry in `store`).
 - **Public boundary:** the items above; `agent::testing` supplies an in-memory
-  tree store (`MemoryTreeStore`), predictable identities (`SequentialIds`) and
-  a test client that drives a connection (`TestClient`). A product supplies
+  tree store (`MemoryTreeStore`), the tree store contract's cases that every
+  realization passes (`store_contract`), predictable identities
+  (`SequentialIds`) and a test client that drives a connection
+  (`TestClient`). A product supplies
   the harness, the providers, a shell environment per Host and a tree store;
   the agent never knows which shell engine runs. Behavior:
   [Agent runtime](../agent/runtime.md), [Subagents](../agent/subagents.md)
@@ -439,8 +447,9 @@ Each crate implements the provider contract for one vendor family.
 #### `host-remote`
 
 - **Owns:** the backend's end of a runner:
-  - the connection engine (`LinkEngine`): routing replies by id, liveness and
-    rpc plumbing;
+  - the connection engine (`Link`, served by its `LinkDriver`): routing
+    replies by id, liveness and rpc plumbing, with the product's decisions on
+    calls behind `LinkPolicy`;
   - `RemoteHost`, a `Host` over a runner connection whose file contents travel
     through pipes, with job, working-tree, network, log and service facets;
   - pipe records (`Pipes`) and their `Send` ends;
@@ -448,8 +457,12 @@ Each crate implements the provider contract for one vendor family.
     runner jobs, and its factory;
   - building manifests from a command set.
 - **Public boundary:** the items above; `host_remote::testing` supplies a real
-  runner for one device (`RunnerFixture`) and an in-process fake runner
-  (`TestLink`). Behavior: [Runner](../execution/runner.md) and
+  runner process for a backend at any address, with a home and state of its
+  own (`RunnerProcess`), such a runner connected to a backend end of the
+  fixture's own for one device (`RunnerFixture`), an in-process fake runner
+  (`TestDevice`, whose connections are `TestLink`s), the runner's native
+  fixture package (`NativeFixture`) and a policy that runs every call in one
+  command set (`CommandPolicy`). Behavior: [Runner](../execution/runner.md) and
   [Native command execution](../execution/native-runtime.md), which owns
   [artifact-location admission](../execution/native-runtime.md#install-the-selected-executable).
 - **Must not:** own sockets or HTTP routes (the backend's connection tasks and
@@ -470,7 +483,10 @@ Each crate implements the provider contract for one vendor family.
   as the live view's `browser` stream. Its modules are listed in
   [Backend](../backend/backend.md#request-paths-and-responsibilities).
 - **Public boundary:** the `demi-backend` executable; `Backend::start` and
-  `BackendConfig` for tests.
+  `BackendConfig` for tests, with the parts a test replaces: the provider
+  families entries are assembled with (`FamilyRegistry`, `ProviderFamily` and
+  the arguments a family builds a provider from) and the login timing
+  (`LoginTiming`).
 - **Must not:** be linked by another crate; put business logic in the HTTP
   layer beyond routing and validation; return secrets or proxy model traffic;
   spawn `runsc` or image tools itself (every sandbox and disk operation goes to
@@ -686,15 +702,15 @@ gates -> none
 artifact -> none
 provider -> core, gates
 provider-anthropic-api -> core, provider
-provider-openai-api -> provider
-provider-google -> provider
-provider-codex -> provider
-provider-grok-build -> provider
+provider-openai-api -> core, provider
+provider-google -> core, provider
+provider-codex -> core, provider
+provider-grok-build -> core, provider
 provider-claude-code -> provider, shell
 shell -> command-service, command-tree, core
 agent -> agent-protocol, core, gates, provider, shell
 coding-agent -> agent, builtin-protocol, command-tree, core, shell
-host-remote -> command-service, command-tree, gates, runner-protocol, shell
+host-remote -> command-service, command-tree, core, gates, runner-protocol, shell
 backend -> agent, agent-protocol, artifact, builtin-protocol, claude-protocol, coding-agent, command-service, command-tree, core, gates, host-remote, machines-protocol, provider, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shell, web-api
 machines -> artifact, machines-protocol, runner-protocol
 runner -> artifact, command-service, command-tree, gates, runner-protocol

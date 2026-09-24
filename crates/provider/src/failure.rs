@@ -55,11 +55,7 @@ impl ProviderFailure {
     /// the error and its causes but never the endpoint, which stays inside
     /// the provider.
     pub fn transport(label: &str, error: reqwest::Error) -> Self {
-        let code = if error.is_builder() {
-            None
-        } else {
-            Some(ErrorCode::Overloaded)
-        };
+        let unbuilt = error.is_builder();
         let error = error.without_url();
         let mut message = format!("{label} API request failed: {error}");
         let mut cause = error.source();
@@ -68,9 +64,19 @@ impl ProviderFailure {
             message.push_str(&inner.to_string());
             cause = inner.source();
         }
+        let failure = Self::no_answer(message);
+        if unbuilt {
+            return Self { code: None, ..failure };
+        }
+        failure
+    }
+
+    /// No answer from the vendor, in Demi's words, such as a connection that
+    /// timed out: `overloaded`, from the source `transport`, with no record.
+    pub fn no_answer(message: impl Into<String>) -> Self {
         Self {
-            message,
-            code,
+            message: message.into(),
+            code: Some(ErrorCode::Overloaded),
             diagnostics: Some(diagnostics(FailureSource::Transport, None, None)),
             retry_after: None,
         }
@@ -132,6 +138,10 @@ pub(crate) fn diagnostics(
 pub enum ErrorCode {
     /// A quota or throttling failure.
     RateLimit,
+    /// The backend's own request rate limit refused the attempt before it
+    /// reached the vendor (`usage-and-quota.md` § Rate limit); unlike
+    /// `rate_limit`, the agent does not retry it by itself.
+    RateLimited,
     /// A transient failure: HTTP 5xx, a timeout, a network or socket failure.
     Overloaded,
     /// The request is larger than the model accepts.
@@ -156,6 +166,7 @@ impl ErrorCode {
     pub fn as_str(&self) -> &str {
         match self {
             Self::RateLimit => "rate_limit",
+            Self::RateLimited => "rate_limited",
             Self::Overloaded => "overloaded",
             Self::ContextLengthExceeded => "context_length_exceeded",
             Self::Incomplete => "incomplete",
@@ -188,7 +199,9 @@ impl ErrorCode {
     ///
     /// Words count only as whole words, with `_` and `-` separating them, so
     /// that `generate` is not `rate` and `unlimited` is not `limit`. `usage`
-    /// alone is a quota failure, as in Codex's `usage_limit_reached`.
+    /// decides only in the phrase `usage limit`, as in Codex's
+    /// `usage_limit_reached`: an `invalid usage` of a parameter is not a
+    /// quota failure.
     pub fn classify(code: Option<&str>, message: &str) -> Option<Self> {
         let code = code.filter(|code| !code.is_empty());
         let text = words(&format!("{} {message}", code.unwrap_or_default()));
@@ -216,6 +229,7 @@ impl FromStr for ErrorCode {
     fn from_str(code: &str) -> Result<Self, Infallible> {
         Ok(match code {
             "rate_limit" => Self::RateLimit,
+            "rate_limited" => Self::RateLimited,
             "overloaded" => Self::Overloaded,
             "context_length_exceeded" => Self::ContextLengthExceeded,
             "incomplete" => Self::Incomplete,
@@ -242,7 +256,7 @@ static CATEGORIES: LazyLock<[(ErrorCode, Regex); 4]> = LazyLock::new(|| {
         ),
         (
             ErrorCode::RateLimit,
-            pattern(r"\brate\b|\bratelimit\w*|\bquota\b|\busage\b|\bbilling\b|\bbalance\b"),
+            pattern(r"\brate\b|\bratelimit\w*|\bquota\b|\busage limit\b|\bbilling\b|\bbalance\b"),
         ),
         (
             ErrorCode::AuthExpired,

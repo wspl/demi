@@ -358,11 +358,18 @@ writes these overrides through its preference state adapter.
 `POST /api/providers` takes
 `{ source: "vendor", vendorId, label, apiKey, baseUrl?, models? }` or
 `{ source: "custom", providerType, wireApi?, label, apiKey, baseUrl?, models? }`.
-The first derives the family from the vendor catalog; the second names it
-explicitly. `wireApi` is `responses` or `chat-completions`. PATCH accepts label
-and, for API-key entries, key, endpoint, and model list. `baseUrl: null`
-removes the configured override. The Test endpoint deliberately makes a real
-inference request.
+The first derives the family, its wire and its endpoint from the vendor
+catalog, `GET /api/providers/catalog`, which lists the
+[vendors from models.dev](../providers/providers.md#vendors-from-modelsdev);
+the second names the family explicitly. `wireApi` is
+`responses` or `chat-completions`, and only a family that speaks both takes
+it. A label has 1 to 80 characters after trimming, a key is one line of text,
+and `baseUrl` is an `http` or `https` URL. PATCH accepts label and, for
+API-key entries, key, endpoint, and model list; a subscription entry takes
+only a new label (400 `subscription_only`). `baseUrl: null` removes the
+configured override. The Test endpoint deliberately makes a real inference
+request. A change of an entry, its accounts included, holds the entry while it
+runs; another change meanwhile answers 409 `provider_busy`.
 
 API providers accept `models` as a complete manual list of 1–1000 entries. Each entry supplies
 `id`, `displayName`, positive `contextWindow`, nullable `outputLimit`,
@@ -378,11 +385,16 @@ catalog never resends a failed message.
 
 `GET /api/models` is an account-wide catalog, independent of any conversation.
 Each provider carries its models, `sourceFetchedAt`, `stale` and `warnings`,
-its authentication and runtime health, and whether its transport is a
-process. One provider's catalog failure does not remove the other providers or
-saved models. A static catalog, or one never fetched, reports the Unix epoch
-as `sourceFetchedAt`. `refresh=true` waits for a shared forced refresh; how
-catalogs are cached and refreshed is defined in
+its authentication and runtime health, the `availability` the backend derives
+from that health, and whether its transport is a process. `availability` is
+`{ type: "unavailable", reason: "authentication", message }` while the
+credential is missing or refused, `{ type: "unavailable", reason: "runtime",
+message }` with the runtime's message while the provider cannot run, and
+`{ type: "available" }` otherwise, unknown health included. Each model carries
+the `selection` the backend built from it. One provider's catalog failure does
+not remove the other providers or saved models. A static catalog, or one never
+fetched, reports the Unix epoch as `sourceFetchedAt`. `refresh=true` waits for
+a shared forced refresh; how catalogs are cached and refreshed is defined in
 [Catalog cache](../providers/models.md#catalog-cache). The route does not wake
 Cloud or execute a model. The browser combines each provider's health with the
 state of the conversation's target and, for a provider whose transport is a
@@ -393,17 +405,26 @@ successful inference test.
 `GET /api/providers/:id/status` returns auth/runtime state, account metadata,
 active account, capabilities and quota. Each account carries its own `quota`,
 the last real snapshot kept for it; the top-level `quota` is the active
-account's. No query returns key/token material or raw vendor quota envelopes.
-`POST /api/providers/:id/quota` takes `{ credentialId? }` and refreshes that
-account's free quota probe (the active account's without one); cancelling the
-request stops the probe. An unknown account is `account_not_found`. A provider
-requiring inference for a probe returns `quota_requires_inference`; no data
-returns null, not a fabricated percentage
+account's. `quotaCapability` is `{ type: "none" }` for a family without quota,
+or `{ type: "supported", probe }` with the probe's cost, `free` or
+`inference`, or null for a family that only observes. No query returns
+key/token material or raw vendor quota envelopes.
+`POST /api/providers/:id/quota` takes `{ credentialId? }`, or no body, and
+refreshes that account's free quota probe (the active account's without one);
+cancelling the request stops the probe. An unknown account is
+`account_not_found`. A provider requiring inference for a probe returns
+`quota_requires_inference`, and a probe the vendor fails answers 502
+`quota_unavailable`; a family that cannot probe answers the kept snapshot, and
+no data returns null, not a fabricated percentage
 ([Vendor quota](../providers/usage-and-quota.md#vendor-quota)). Reading status
 never invokes inference.
 `POST /api/providers/:id/test` takes `{ modelId, credentialId? }` and tests
-with that account, in use or not. A provider whose transport is a process is
-tested on the acting user's Cloud, where its requests run too
+with that account, in use or not; an unknown account is `account_not_found`.
+The test sends one request to the model and answers `{ type: "passed", model }`
+when the provider answers, or `{ type: "failed", message, model? }` with the
+provider's own reason: a test that ran and failed is a result, not an error. A
+provider whose transport is a process is tested on the acting user's Cloud,
+where its requests run too
 ([Where it runs](../providers/claude-code.md#where-it-runs)); the test wakes
 it.
 
@@ -420,29 +441,40 @@ state and never the failure of adding the account.
 On a shared instance every user reads provider state, but only the master sees
 accounts, plan and usage: for everyone else `accounts` is empty, `active` names
 no account, `quota` is null and an authenticated `auth` carries no account
-label. Configuring, testing and refreshing usage are the master's
-([Scope](../providers/providers.md#scope)).
+label, in the status, in the account list and in the product state alike.
+Configuring, testing and refreshing usage are the master's, and anyone else is
+refused with 403 `forbidden` ([Scope](../providers/providers.md#scope)).
 
 ## Subscription accounts
 
 A Claude subscription account comes from importing a setup token.
-`POST /api/providers/setup-token` with `{ token, label }` creates the entry,
-and `POST /api/providers/:id/accounts` with `{ token }` adds another account
-to an existing one. An imported token becomes an account record of the
-[credential vault](../providers/providers.md#credential-vault) and is never
-returned. `GET /api/providers/:id/accounts` lists public account metadata and
-the active account. `PUT …/accounts/active` takes `{ credentialId }`.
-`DELETE …/accounts/:credentialId` refuses the active account: switch first,
-or delete the provider to remove its last account.
+`POST /api/providers/setup-token` with `{ token, label }` creates the entry
+(409 `provider_exists` when the scope has one), and
+`POST /api/providers/:id/accounts` with `{ token }` adds another account to an
+existing one; each answers 201. An imported token becomes an account record of
+the [credential vault](../providers/providers.md#credential-vault) and is never
+returned; a token the family refuses answers 400 `token_import_failed` with a
+message that does not repeat it. `GET /api/providers/:id/accounts` lists public
+account metadata and the active account as `{ accounts, active }`.
+`PUT …/accounts/active` takes `{ credentialId }` and answers `{ active }`.
+`DELETE …/accounts/:credentialId` refuses the active account with 409
+`active_account`: switch first, or delete the provider to remove its last
+account. An entry that does not take accounts this way answers 400
+`accounts_unsupported`.
 
 Codex/Grok use `POST /api/providers/subscription-login { providerType, label? }`
 for the first account and
 `POST /api/providers/:id/accounts/login` for another account on an existing
-provider. A start returns 202 with `{ login: { id, status: "pending" } }`.
-Poll `GET /api/providers/subscription-login/:id`; cancel with DELETE at the same
-path. Terminal results are retained for ten minutes. Login lifetime, credential
-publication, and account selection follow
-[Providers](../providers/providers.md#credential-vault).
+provider. A start returns 202 with `{ login: { id, status: "pending" } }`; a
+family without a device login answers 400 `no_login_flow`. Poll
+`GET /api/providers/subscription-login/:id`, which answers `{ login }` with
+`{ status: "pending", verificationUrl, userCode, expiresAt }`, the first two
+null until the vendor names them, then `{ status: "completed", providerId,
+credentialId }` with the account the login added, or `{ status: "failed",
+message }`. Cancel with DELETE at the same path. A login is its starter's to
+read and cancel; another id answers 404 `login_not_found`. Terminal results are
+retained for ten minutes. Login lifetime, credential publication, and account
+selection follow [Providers](../providers/providers.md#credential-vault).
 
 Provider account mutations obey the same shared-master/isolated-owner rule as
 configuration. A switch takes effect at the next request, while an
@@ -523,7 +555,11 @@ beyond current output are refused.
 `GET /api/state` returns the current user, mode, preferences, projects, active
 and archived conversation summaries, devices (the paired ones and the user's
 Cloud device, which the file and working-tree routes address alike), public
-provider status and Cloud state. It never starts Cloud or runs inference.
+provider status and Cloud state. Each provider entry of the user's scope
+carries its `details`: `{ type: "read", ... }` with what
+`GET /api/providers/:id/status` answers, or `{ type: "failed", message }` for
+an entry whose provider could not be read, which leaves the others intact. It
+never starts Cloud or runs inference.
 Responses use a private ETag; `If-None-Match` returns 304 when unchanged.
 Browsers revalidate on open, reconnect and a polling interval. This is a
 reconstructible snapshot, not an atomic transaction across the control and

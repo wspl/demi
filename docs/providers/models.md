@@ -86,7 +86,8 @@ A models.dev model becomes a catalog model as follows: `limit.context` and
 `limit.output` are its token limits, `attachment` is attachment support,
 `reasoning` is thinking support, the values of its `effort` reasoning option
 are its thinking efforts, `tool_call` is tool support, and `cost` is its
-prices.
+prices. A limit that is not a positive whole number, such as an output limit
+of 0, states no limit and reads as unknown.
 
 ### Directories
 
@@ -98,7 +99,7 @@ entry's catalog is kept.
 |---|---|
 | `anthropic`, `openai`, `google` | A list built into the provider for its family. Reading it makes no request. |
 | `codex` | The account's model list on the ChatGPT backend ([The Codex catalog](#the-codex-catalog)). |
-| `grok-build` | `GET /v1/models` on the Grok Build service, with the account's session. The service answers a `data` envelope or a bare list. A catalog that cannot be read is a failed refresh: the service is unreachable or refuses, the account has no session, the payload cannot be read, or it lists no model. |
+| `grok-build` | `GET /v1/models` on the Grok Build service, with the account's session. The service answers a `data` envelope or a bare list. A model is named by its `id`, else its `model`; one that names neither is skipped. Its efforts are its `reasoning_efforts`, and its default effort is the one flagged `default`, else its `reasoning_effort`, else the first. Every model takes tools and images; its context window is unknown unless the service states one. A catalog that cannot be read is a failed refresh: the service is unreachable or refuses, the account has no session, the payload cannot be read, or it lists no model. |
 | `claude-code` | The `anthropic` vendor of the models.dev document: the models whose id starts with `claude-` and whose version is 4.6 or later. Opus models come first, then Sonnet, then Haiku, then others, newest version first within each family. An id whose version cannot be read is skipped with a warning. Thinking cannot be turned off, because the CLI's `--effort` option only levels it. |
 
 ### The Codex catalog
@@ -125,8 +126,8 @@ inference.
   turning reasoning off. An advertised `none` effort stays a selectable level.
 - The model's `service_tiers` are its tiers, and `priority` is Fast.
 - A model whose `input_modalities` include `image` accepts attachments.
-- An HTTP 401 answer makes the provider refresh the account's credentials once,
-  forced, and read again.
+- An HTTP 401 answer makes the provider refresh the token it was refused with
+  ([Token refresh](providers.md#token-refresh)) and read again, once.
 
 Upstream references:
 [models request](https://github.com/openai/codex/blob/3dc1e2a58406dc69db5812539adfee7d89fa9ef7/codex-rs/codex-api/src/endpoint/models.rs),
@@ -288,6 +289,26 @@ For example, the `anthropic` family maps them onto the Messages API as follows:
 The efforts are the vendor's words, so a Claude model's `low` to `max` reach
 the API unchanged. The newest Claude models refuse a token budget, which is
 why an effort never becomes one.
+
+The OpenAI-shaped formats level thinking by effort only:
+
+| Thinking setting | Responses (`openai`, `codex`) | Chat Completions (`openai`, `grok-build`) |
+|---|---|---|
+| An effort | `reasoning: { effort, summary }`, the summary asked for, else `auto`; a summary turned off leaves `summary` out, and Codex receives `auto` | `reasoning_effort` |
+| The effort `none` | `reasoning: { effort: "none" }` | `reasoning_effort: "none"` |
+| Adaptive thinking at an effort | `reasoning: { effort, summary: "auto" }` | `reasoning_effort` |
+| A token budget, off, or none | No `reasoning` field | No `reasoning_effort` field |
+
+Gemini levels thinking by a token budget, `generationConfig.thinkingConfig`,
+and asks for thought summaries unless thinking is off, because the model
+thinks, and bills for it, either way:
+
+| Thinking setting | `thinkingConfig` |
+|---|---|
+| An effort, or adaptive thinking at an effort | `includeThoughts: true` and the effort's budget: `low` 4,096, `medium` 16,384, `high` 32,768, `xhigh` 65,536, `max` 98,304 tokens, and `medium`'s for any other effort |
+| A token budget | `includeThoughts: true` and the budget |
+| Off | `includeThoughts: false`, `thinkingBudget: 0` |
+| None | `includeThoughts: true` |
 
 A model's catalog says what the product can offer: the model's effort levels
 and its default, and whether thinking can be turned off. Codex and Claude Code

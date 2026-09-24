@@ -79,29 +79,42 @@ pub async fn http_failure(
 ) -> ProviderFailure {
     let status = response.status();
     let headers = response.headers().clone();
-    let body = match response.text().await {
-        Ok(body) => body,
-        // The status and headers still say what failed; the record keeps an
-        // empty body.
-        Err(_) => String::new(),
-    };
-    let message = if body.is_empty() {
-        format!("{label} API request failed with HTTP {}", status.as_u16())
-    } else {
-        format!("{label} API request failed with HTTP {}: {body}", status.as_u16())
-    };
-    let record = HttpFailureRecord::from_response(status, &headers, body);
-    let failure = ProviderFailure {
-        code: ErrorCode::from_http(status.as_u16(), &message),
-        message,
-        diagnostics: Some(diagnostics(
-            FailureSource::Http,
-            Some(status.as_u16()),
-            Some(record.to_json()),
-        )),
-        retry_after: None,
-    };
-    failure.with_retry_wait(reader, clock.now())
+    // The status and headers still say what failed; the record keeps an
+    // empty body.
+    let body = response.text().await.unwrap_or_default();
+    ProviderFailure::refused(label, status, &headers, body, reader, clock.now())
+}
+
+impl ProviderFailure {
+    /// [`http_failure`] of an answer already read, such as a refused
+    /// WebSocket handshake: the status, the headers and the body text, which
+    /// arrived at `received_at`.
+    pub fn refused(
+        label: &str,
+        status: StatusCode,
+        headers: &HeaderMap,
+        body: String,
+        reader: FailureReader,
+        received_at: Timestamp,
+    ) -> Self {
+        let message = if body.is_empty() {
+            format!("{label} API request failed with HTTP {}", status.as_u16())
+        } else {
+            format!("{label} API request failed with HTTP {}: {body}", status.as_u16())
+        };
+        let record = HttpFailureRecord::from_response(status, headers, body);
+        let failure = Self {
+            code: ErrorCode::from_http(status.as_u16(), &message),
+            message,
+            diagnostics: Some(diagnostics(
+                FailureSource::Http,
+                Some(status.as_u16()),
+                Some(record.to_json()),
+            )),
+            retry_after: None,
+        };
+        failure.with_retry_wait(reader, received_at)
+    }
 }
 
 /// The standard reading of a failure record, which every provider can use:
