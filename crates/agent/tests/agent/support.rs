@@ -36,6 +36,8 @@ pub struct TestHarness {
     pub profiles: Vec<Profile>,
     /// Handed out once, before the next request.
     pub context: RefCell<VecDeque<String>>,
+    /// The context texts each request's context hook was given.
+    pub seen: RefCell<Vec<Vec<String>>>,
     /// The command help each system prompt was given.
     pub prompts: RefCell<Vec<String>>,
 }
@@ -71,7 +73,10 @@ impl AgentHarness for TestHarness {
         self.preamble.clone()
     }
 
-    async fn context(&self, _context: PromptContext<'_>) -> Option<String> {
+    async fn context(&self, _context: PromptContext<'_>, seen: &[&str]) -> Option<String> {
+        self.seen
+            .borrow_mut()
+            .push(seen.iter().map(|text| (*text).to_owned()).collect());
         self.context.borrow_mut().pop_front()
     }
 }

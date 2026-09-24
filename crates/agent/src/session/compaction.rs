@@ -346,7 +346,7 @@ impl SessionRuntime for CopyRuntime {
         self.session.preamble()
     }
 
-    fn context(&self) -> LocalBoxFuture<'_, Option<String>> {
+    fn context<'a>(&'a self, _seen: &'a [&'a str]) -> LocalBoxFuture<'a, Option<String>> {
         Box::pin(async { None })
     }
 
