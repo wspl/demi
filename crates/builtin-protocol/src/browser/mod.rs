@@ -4,6 +4,7 @@
 pub use failure::{ActionProgress, BrowserErrorCode, BrowserFailure, ErrorDetails, FailureDocument};
 pub use operations::*;
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
@@ -60,7 +61,7 @@ pub fn handle(prefix: &str, random: [u8; 16]) -> String {
 macro_rules! handle {
     ($(#[$meta:meta])* $name:ident, $prefix:literal, $what:literal) => {
         $(#[$meta])*
-        #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+        #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
         #[serde(try_from = "String")]
         pub struct $name(String);
 
@@ -166,11 +167,12 @@ closed_set! {
 }
 
 closed_set! {
-    /// A modifier key held during pointer input.
+    /// A modifier key held during pointer input. `ControlOrMeta` is Meta on
+    /// macOS and Control elsewhere; the variant has no doc of its own, which
+    /// would make the set's JSON Schema a union.
     pub enum Modifier {
         Alt = "Alt",
         Control = "Control",
-        /// Meta on macOS, Control elsewhere.
         ControlOrMeta = "ControlOrMeta",
         Meta = "Meta",
         Shift = "Shift",
@@ -303,14 +305,17 @@ macro_rules! locator_struct {
             pub struct $name { $($before)* } {
                 /// Frame references, outermost to innermost
                 #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+                #[schemars(with = "Vec<NodeRef>")]
                 #[garde(skip)]
                 pub frame: Option<Vec<NodeRef>>,
                 /// Explicit zero-based match index
                 #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+                #[schemars(with = "usize")]
                 #[garde(range(max = MAX_NODES - 1))]
                 pub nth: Option<usize>,
                 /// Container node reference
                 #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+                #[schemars(with = "NodeRef")]
                 #[garde(skip)]
                 pub within: Option<NodeRef>,
                 $($after)*
@@ -323,51 +328,62 @@ macro_rules! locator_struct {
         pub struct $name:ident { $($before:tt)* } { $($after:tt)* }
     ) => {
         $(#[$meta])*
-        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, garde::Validate)]
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
         #[serde(rename_all = "kebab-case", deny_unknown_fields)]
         pub struct $name {
             $($before)*
             /// A node reference returned by inspect or find
             #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+            #[schemars(with = "NodeRef")]
             #[garde(skip)]
             pub r#ref: Option<NodeRef>,
             /// Accessible role, ASCII case-insensitive, such as button, textbox, or date
             #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+            #[schemars(with = "String")]
             #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
             pub role: Option<String>,
             /// Accessible name, with --role
             #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+            #[schemars(with = "String")]
             #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
             pub name: Option<String>,
             /// Accessible-name regular expression, with --role
             #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+            #[schemars(with = "String")]
             #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
             pub name_pattern: Option<String>,
             /// Rendered-text regular expression
             #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+            #[schemars(with = "String")]
             #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
             pub text_pattern: Option<String>,
             /// Associated label text (label for, wrapping label, or aria-labelledby)
             #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+            #[schemars(with = "String")]
             #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
             pub label: Option<String>,
             #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+            #[schemars(with = "String")]
             #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
             pub placeholder: Option<String>,
             /// Visible text to match
             #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+            #[schemars(with = "String")]
             #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
             pub text_match: Option<String>,
             /// data-testid attribute
             #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+            #[schemars(with = "String")]
             #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
             pub test_id: Option<String>,
             /// CSS selector
             #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+            #[schemars(with = "String")]
             #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
             pub css: Option<String>,
             /// Match the complete name or text
             #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+            #[schemars(with = "bool")]
             #[garde(skip)]
             pub exact: Option<bool>,
             $($after)*
@@ -430,40 +446,51 @@ impl From<BrowserQueryMatch> for BrowserTarget {
 /// A declarative query tree (`browser.md` § Queries): one base, `match`,
 /// `and` or `or`, narrowed by a container, a frame, what the element has or
 /// lacks, its text, its visibility and an index.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, garde::Validate)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowserQuery {
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "BrowserQueryMatch")]
     #[garde(dive)]
     pub r#match: Option<BrowserQueryMatch>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "Box<BrowserQuery>")]
     #[garde(dive)]
     pub within: Option<Box<BrowserQuery>>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "Box<BrowserQuery>")]
     #[garde(dive)]
     pub frame: Option<Box<BrowserQuery>>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "Vec<BrowserQuery>")]
     #[garde(length(min = 1), dive)]
     pub and: Option<Vec<BrowserQuery>>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "Vec<BrowserQuery>")]
     #[garde(length(min = 1), dive)]
     pub or: Option<Vec<BrowserQuery>>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "Box<BrowserQuery>")]
     #[garde(dive)]
     pub has: Option<Box<BrowserQuery>>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "Box<BrowserQuery>")]
     #[garde(dive)]
     pub has_not: Option<Box<BrowserQuery>>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
     #[garde(length(utf16, max = STDIN_BYTES))]
     pub has_text: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
     #[garde(length(utf16, max = STDIN_BYTES))]
     pub has_not_text: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "bool")]
     #[garde(skip)]
     pub visible: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "usize")]
     #[garde(skip)]
     pub nth: Option<usize>,
 }
@@ -502,7 +529,7 @@ impl BrowserQuery {
 }
 
 /// A node's value: an input's text, or a range or progress number.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum NodeValue {
     Text(String),
@@ -510,7 +537,7 @@ pub enum NodeValue {
 }
 
 /// A node's box in viewport CSS pixels.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Bounds {
     pub x: f64,
@@ -520,45 +547,55 @@ pub struct Bounds {
 }
 
 /// One accessibility node that `find` matched or `probe` found under a point.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct BrowserNode {
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "NodeRef")]
     pub r#ref: Option<NodeRef>,
     pub role: String,
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "NodeValue")]
     pub value: Option<NodeValue>,
     pub depth: usize,
     pub states: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "Bounds")]
     pub bounds: Option<Bounds>,
 }
 
 /// One node of the tree `inspect` returns: an accessibility node, or a DOM
 /// element with its tag.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct BrowserTreeNode {
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "NodeRef")]
     pub r#ref: Option<NodeRef>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
     pub role: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
     pub name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "NodeValue")]
     pub value: Option<NodeValue>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
     pub tag: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "Vec<String>")]
     pub states: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "Vec<BrowserTreeNode>")]
     pub children: Option<Vec<BrowserTreeNode>>,
 }
 
 /// Who opened a tab: an agent node, a page's `window.open`, a temporary
 /// command such as `content.fetch`, or the user.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
 pub enum BrowserCreatedBy {
     Agent {
@@ -579,7 +616,7 @@ pub enum BrowserCreatedBy {
 }
 
 /// A tab as `tabs` lists it and the conversation browser tab routes return it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowserTab {
     pub id: TabId,
@@ -590,7 +627,7 @@ pub struct BrowserTab {
 
 /// A tab's viewport (`live-view.md` § Modes): its CSS size, the pixel ratio
 /// it renders at, and who decides them.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, garde::Validate)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowserViewport {
     #[garde(range(min = 1))]
@@ -604,7 +641,7 @@ pub struct BrowserViewport {
 }
 
 /// A JavaScript dialog a tab shows.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Dialog {
     pub r#type: DialogType,
