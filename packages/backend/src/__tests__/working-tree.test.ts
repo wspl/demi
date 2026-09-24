@@ -1,9 +1,9 @@
 import { readdirSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { expect, test } from 'bun:test'
-import { startRunner } from '@demicodes/host-remote/testing'
+import { afterEach, expect, test } from 'bun:test'
+import { startRunner, type Runner } from '@demicodes/host-remote/testing'
 import { MAX_MESSAGE_BYTES } from '@demicodes/runner-protocol'
 import { delay, waitFor } from '@demicodes/utils'
 import { LocalControlService } from '../storage/control'
@@ -31,13 +31,24 @@ function git(cwd: string, ...args: string[]): void {
   expect(result.exitCode).toBe(0)
 }
 
+/** The runners and directories a test made, which go after it. */
+const made: { runners: Runner[]; directories: string[] } = { runners: [], directories: [] }
+afterEach(async () => {
+  for (const runner of made.runners.splice(0))
+    await runner.stop()
+  for (const directory of made.directories.splice(0))
+    await rm(directory, { recursive: true, force: true })
+})
+
 /** A conversation whose execution directory is `runnerDir` on a paired device running a real runner. */
 async function pairedConversation() {
   const dataDir = await mkdtemp(join(tmpdir(), 'demi-wt-'))
   const stateDir = await mkdtemp(join(tmpdir(), 'demi-wt-state-'))
   const runnerDir = await mkdtemp(join(tmpdir(), 'demi-wt-runner-'))
+  made.directories.push(dataDir, stateDir, runnerDir)
   const backend = await openBackend({ dataDir, port: 0, runner: { pingIntervalMs: 0 } })
   const runner = await startRunner({ backendUrl: backend.url, stateDir, home: runnerDir, name: 'test-device' })
+  made.runners.push(runner)
   await waitFor(() => runner.codes.length > 0, undefined, { timeoutMs: 5_000 })
   const claimed = await api(backend, '/api/devices/claim', {
     method: 'POST',
