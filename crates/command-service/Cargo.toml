@@ -10,6 +10,11 @@ rust-version.workspace = true
 # No doc examples: rustdoc has nothing to test.
 doctest = false
 
+[features]
+# Built programs and a started service binary for tests
+# (`command_service::testing`).
+testing = []
+
 [dependencies]
 bytes.workspace = true
 futures-util.workspace = true
