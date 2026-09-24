@@ -593,7 +593,11 @@ Each release directory contains `descriptor.json` and one executable under each
 target triple, named by `executable`, a basename without an extension. Windows
 filenames end in `.exe`. Relative directories resolve against the configuration
 file's directory. `prefix` defaults to `native` and is one or more
-`/`-separated segments of letters, digits, `_` and `-`.
+`/`-separated segments of letters, digits, `_` and `-`. An explicit empty
+`releases` list means no native packages: the backend publishes nothing and
+starts with an empty catalog, so conversations offer no `demi file` or
+`demi browser` commands. A missing `DEMI_NATIVE_CONFIG` is an error, since
+only the explicit empty list means none.
 
 ```json
 {
