@@ -157,6 +157,13 @@ impl BrowserTab {
             .run(async { Ok(self.page.url().await?) })
             .await
             .map_err(|error| operation.failure(error, self.id().as_str(), None))?;
+        // The pages the page opened before an action, so that its result
+        // names only those the action opened (`browser.md` § One tab registry).
+        let opened_before = if opens_tabs(command) {
+            operation.run(self.opened()).await.ok()
+        } else {
+            None
+        };
         let work = async {
             let xy = match command {
                 BrowserOperation::Click(input) => input.xy.as_ref(),
@@ -908,6 +915,22 @@ impl BrowserTab {
             self.release_objects().await
         };
         let result = super::operation::after_cleanup(result, cleanup);
+        let result = match (result, opened_before) {
+            (Ok(TabResult::Action(mut action)), Some(before)) => {
+                // A tab the action opened is registered, and can be operated,
+                // before the result names it. One the registry could not
+                // register in time appears in a later `tabs`.
+                let registered = operation.run(self.popups());
+                if let Ok(Ok(after)) =
+                    tokio::time::timeout(super::operation::CONTROL_TIMEOUT, registered).await
+                {
+                    let opened: Vec<_> = after.into_iter().filter(|id| !before.contains(id)).collect();
+                    action.opened_tabs = (!opened.is_empty()).then_some(opened);
+                }
+                Ok(TabResult::Action(action))
+            }
+            (result, _) => result,
+        };
         if navigation
             .as_ref()
             .is_some_and(NavigationObservation::document_changed)
@@ -992,6 +1015,24 @@ impl BrowserTab {
         }
         Ok(point)
     }
+}
+
+/// Whether `command` is a pointer or form action, whose result names the tabs
+/// it opened.
+fn opens_tabs(command: &BrowserOperation) -> bool {
+    matches!(
+        command,
+        BrowserOperation::Click(_)
+            | BrowserOperation::Move(_)
+            | BrowserOperation::Drag(_)
+            | BrowserOperation::Scroll(_)
+            | BrowserOperation::Fill(_)
+            | BrowserOperation::Type(_)
+            | BrowserOperation::Key(_)
+            | BrowserOperation::Check(_)
+            | BrowserOperation::Select(_)
+            | BrowserOperation::SelectText(_)
+    )
 }
 
 /// Targeted browser commands carry the shared locator shape in their generated schema.

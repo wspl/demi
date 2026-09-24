@@ -1,6 +1,6 @@
 //! The test backend: a data directory, a clock the test moves, a mailbox
-//! that captures verification codes, and an HTTP client that sends a
-//! session's cookie.
+//! that captures verification codes, a machine manager the test scripts,
+//! and an HTTP client that sends a session's cookie.
 
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -12,8 +12,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use demi_backend::{
-    AccountMail, Backend, BackendConfig, ConversationTuning, FamilyRegistry, LoginTiming, MailError, NativeCatalog,
-    RunnerTuning, VerificationMail,
+    AccountMail, Backend, BackendConfig, CloudTuning, ConversationTuning, FamilyRegistry, LifecycleTuning, LoginTiming,
+    MailError, NativeCatalog, RunnerTuning, VerificationMail,
 };
 use demi_builtin_protocol::Operation;
 use demi_coding_agent::BUILTIN_PACKAGE;
@@ -29,6 +29,8 @@ use reqwest::header::{COOKIE, HeaderMap, SET_COOKIE};
 use reqwest::{Method, StatusCode};
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
+
+use crate::machines::ScriptedManager;
 
 /// Where a scenario that serves no models.dev document finds none: a port
 /// nothing listens on. No scenario reaches the public models.dev; one that
@@ -100,6 +102,10 @@ pub struct Harness {
     runner_releases: Option<PathBuf>,
     native: Option<NativeCatalog>,
     user_streams: Option<BTreeMap<String, NativeOperation>>,
+    pub lifecycle: LifecycleTuning,
+    pub cloud: CloudTuning,
+    /// Runs the Clouds of every backend this harness starts.
+    pub manager: ScriptedManager,
 }
 
 impl Harness {
@@ -131,6 +137,9 @@ impl Harness {
             runner_releases: None,
             native: None,
             user_streams: None,
+            lifecycle: LifecycleTuning::default(),
+            cloud: CloudTuning::default(),
+            manager: ScriptedManager::start(),
         }
     }
 
@@ -263,7 +272,9 @@ impl Harness {
     }
 
     async fn launch(&self, address: SocketAddr, mode: InstanceMode) -> TestBackend {
-        let mut config = BackendConfig::new(self.data_dir(), address, mode);
+        let mut config = BackendConfig::new(self.data_dir(), address, mode, self.manager.socket().to_owned());
+        config.lifecycle = self.lifecycle;
+        config.cloud = self.cloud;
         config.clock = self.clock.clone();
         config.web_directory = self.web_directory.clone();
         config.families = self.families.clone();
@@ -356,6 +367,11 @@ pub struct Session {
 impl TestBackend {
     pub async fn close(self) {
         self.backend.close().await.unwrap();
+    }
+
+    /// Shuts the backend down and answers the steps that failed.
+    pub async fn close_reporting(self) -> Result<(), demi_backend::ShutdownErrors> {
+        self.backend.close().await
     }
 
     pub fn address(&self) -> SocketAddr {

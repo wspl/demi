@@ -6,7 +6,6 @@
 // spell-checker:ignore (ToDO) datelike datetime filetime mktime strtime timelike utime DATETIME UTIME futimens
 // spell-checker:ignore (FORMATS) MMDDhhmm YYYYMMDDHHMM YYMMDDHHMM YYYYMMDDHHMMS CREAT ENXIO RDONLY utimensat
 
-use uucore::context::FileKindExt as _;
 use uucore::context::PathExt as _;
 pub mod error;
 mod platform;
@@ -481,7 +480,7 @@ fn touch_file(
     let metadata_result = if opts.no_deref {
         path.context_symlink_metadata()
     } else {
-        uucore::context::fs::metadata(&path)
+        fs::metadata(&path)
     };
 
     if let Err(e) = metadata_result {
