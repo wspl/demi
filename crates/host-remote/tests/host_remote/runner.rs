@@ -681,6 +681,10 @@ async fn file_contents_travel_whole_or_in_ranges_and_never_in_a_message() {
         "new"
     );
 
+    // An empty directory lists as no entries.
+    std::fs::create_dir(format!("{home}/empty")).unwrap();
+    assert_eq!(host.fs().read_dir(&format!("{home}/empty")).await.unwrap(), []);
+
     // A message over the limit fails its own request, in either direction.
     let request = host
         .fs()

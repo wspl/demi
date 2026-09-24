@@ -791,6 +791,9 @@ impl HostFs for RemoteHost {
                 })
                 .await?;
             match listing {
+                // The reply's shape is not tagged, so an empty listing reads
+                // as the names a listing without file types answers.
+                FsResult::Readdir(Readdir::Names(names)) if names.is_empty() => Ok(Vec::new()),
                 FsResult::Readdir(Readdir::Entries(entries)) => Ok(entries
                     .into_iter()
                     .map(|entry| DirEntry {
