@@ -232,8 +232,8 @@ impl BackendConfig {
             logins: LoginTiming::default(),
             runners: RunnerTuning::default(),
             conversations: ConversationTuning::default(),
-            // Interim: the artifact module publishes the releases
-            // `DEMI_NATIVE_CONFIG` names and makes the catalog from them.
+            // The product's start publishes the releases `DEMI_NATIVE_CONFIG`
+            // names and sets the catalog of them.
             native: NativeCatalog::unpublished(),
         }
     }

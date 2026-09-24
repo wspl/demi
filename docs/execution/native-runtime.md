@@ -578,12 +578,22 @@ objects. Interrupted publication can leave unreferenced blobs, but it cannot
 expose a partial release or overwrite an existing version's meaning. Multipart
 ETags must not be treated as SHA-256 checksums.
 
+Under the configured prefix, an executable is `blobs/<sha256>`, a descriptor's
+canonical JSON is `descriptors/<digest>.json`, and the package/version mapping
+is `packages/<id>/<version>.json`, with the version percent-encoded as a URI
+component. Each object carries its SHA-256 as `sha256` metadata: an object
+already in place counts as the one being published when its size and that
+metadata match, and as a conflict otherwise. A runner downloads an executable
+from a GET URL signed for five minutes.
+
 ### Backend deployment configuration
 
 `DEMI_NATIVE_CONFIG` names a JSON file read by the backend artifact module.
 Each release directory contains `descriptor.json` and one executable under each
-target triple. Windows filenames end in `.exe`. Relative directories resolve
-against the configuration file's directory.
+target triple, named by `executable`, a basename without an extension. Windows
+filenames end in `.exe`. Relative directories resolve against the configuration
+file's directory. `prefix` defaults to `native` and is one or more
+`/`-separated segments of letters, digits, `_` and `-`.
 
 ```json
 {
