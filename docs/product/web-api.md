@@ -70,8 +70,8 @@ define, a missing required field, or a value outside its bounds answers 400
 `invalid_body`, with a message that names the field and the reason; the
 backend never drops an unknown field silently. A request that takes one of
 several shapes names its shape in one field, such as a workspace's `kind`.
-String lengths count UTF-16 code units, as the browser counts them
-([Validation at entry](../architecture/contracts.md#validation-at-entry)).
+String lengths count Unicode scalar values, as the browser's schemas count
+them ([Validation at entry](../architecture/contracts.md#validation-at-entry)).
 
 ### Query parameters
 

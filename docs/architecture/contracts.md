@@ -107,10 +107,13 @@ Every value from outside a process follows the same rule:
   ends check it with `jsonschema` and word a failure the same way
   ([Parse input and render help](../execution/commands.md#parse-input-and-render-help)).
 
-String lengths the browser also checks count UTF-16 code units, garde's
-`utf16` mode: Zod counts UTF-16 code units, and garde's default counts bytes,
-so the one attribute gives both ends the same limit. Command inputs count
-Unicode scalar values instead, as JSON Schema does
+A string length counts Unicode scalar values, garde's `chars` mode, wherever
+a bound is checked: in the browser's schemas and in command inputs alike.
+Zod 4 counts code points and JSON Schema counts characters, which are the
+same for every string serde accepts, while garde's default counts bytes and
+JavaScript's `length` counts UTF-16 code units. So the one attribute gives
+both ends the same limit. For example, `😀` is one scalar value and two UTF-16
+code units, so a file name of 255 of them fits a limit of 255
 ([Commands](../execution/commands.md)). Truncation and token estimates have
 their own units, defined with the rules that use them
 ([Token estimates](../agent/compaction.md#token-estimates)).
@@ -156,7 +159,7 @@ Zod source and z.infer types
   builds never run the emitter and need no JavaScript tooling.
 - **One constraint definition.** A garde attribute drives both the Rust check
   and the emitted schema: schemars reads garde's attributes, including
-  `length(utf16, ...)`, and emits `minLength` and `maxLength`. Internally
+  `length(chars, ...)`, and emits `minLength` and `maxLength`. Internally
   tagged enums become `oneOf` with `const` tags, which the emitter turns into
   discriminated unions.
 - **Supported subset.** Objects, internally tagged enums, string enums and

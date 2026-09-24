@@ -83,10 +83,11 @@ fn inputs_refuse_unknown_fields_nulls_and_values_outside_their_bounds() {
     for (operation, args) in invalid {
         assert!(parse(operation, args.clone()).is_err(), "{operation} {args}");
     }
-    // A limit counts UTF-16 code units, as the page's schemas do: 😀 is two.
-    let emoji = "😀".repeat(2049);
+    // A limit counts Unicode scalar values, as the page's schemas and JSON
+    // Schema do: 😀 is one, though two UTF-16 units.
+    let emoji = "😀".repeat(4097);
     assert!(parse("click", json!({"tab": TAB, "css": emoji})).is_err());
-    assert!(parse("click", json!({"tab": TAB, "css": "😀".repeat(2048)})).is_ok());
+    assert!(parse("click", json!({"tab": TAB, "css": "😀".repeat(4096)})).is_ok());
 }
 
 #[test]

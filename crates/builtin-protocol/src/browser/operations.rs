@@ -151,7 +151,7 @@ macro_rules! input {
 input!(@struct
     /// `open`: opens a tab at a URL, starting the browser when it does not run.
     OpenInput {
-        #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+        #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
         pub url: String,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "Load")]
@@ -227,7 +227,7 @@ input! {
     tab
     /// `goto`: navigates a tab to a URL.
     pub struct GotoInput {
-        #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+        #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
         pub url: String,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "Load")]
@@ -380,7 +380,7 @@ input! {
         /// JSON query tree when --query is supplied
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
-        #[garde(length(utf16, max = STDIN_BYTES))]
+        #[garde(length(chars, max = STDIN_BYTES))]
         pub body: Option<String>,
     }
 }
@@ -406,7 +406,7 @@ input! {
         pub property: Option<ReadProperty>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
-        #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+        #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
         pub attribute: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "bool")]
@@ -430,7 +430,7 @@ input! {
         /// New output file on this Host
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
-        #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+        #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
         pub output: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "bool")]
@@ -443,7 +443,7 @@ input! {
         /// CSS rectangle: x,y,width,height
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
-        #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+        #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
         pub clip: Option<String>,
     }
 }
@@ -472,7 +472,7 @@ input! {
     /// `probe`: lists the nodes under a viewport point.
     pub struct ProbeInput {
         /// Viewport CSS coordinates: x,y
-        #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+        #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
         pub xy: String,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "bool")]
@@ -481,7 +481,7 @@ input! {
         /// New output file on this Host
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
-        #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+        #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
         pub output: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "bool")]
@@ -508,7 +508,7 @@ input! {
         /// Viewport CSS coordinates: x,y
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
-        #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+        #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
         pub xy: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "Vec<Modifier>")]
@@ -525,7 +525,7 @@ input! {
         /// Expected URL glob after the action
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
-        #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+        #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
         pub wait_url: Option<String>,
     }
 }
@@ -537,7 +537,7 @@ input! {
         /// Viewport CSS coordinates: x,y
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
-        #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+        #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
         pub xy: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "Vec<Modifier>")]
@@ -551,7 +551,7 @@ input! {
     /// `drag`: drags the pointer through viewport points.
     pub struct DragInput {
         /// Viewport CSS coordinates x,y, at least two
-        #[garde(length(min = 2), inner(length(utf16, min = 1, max = LOCATOR_LENGTH)))]
+        #[garde(length(min = 2), inner(length(chars, min = 1, max = LOCATOR_LENGTH)))]
         pub point: Vec<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "Vec<Modifier>")]
@@ -567,7 +567,7 @@ input! {
         /// Viewport CSS coordinates: x,y
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
-        #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+        #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
         pub xy: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "Vec<Modifier>")]
@@ -588,12 +588,12 @@ input! {
     targeted
     /// `fill`: replaces the value of the target's field.
     pub struct FillInput {
-        #[garde(length(utf16, max = STDIN_BYTES))]
+        #[garde(length(chars, max = STDIN_BYTES))]
         pub text: String,
         /// Expected URL glob after the action
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
-        #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+        #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
         pub wait_url: Option<String>,
     }
 }
@@ -602,7 +602,7 @@ input! {
     targeted
     /// `type`: types text key by key, into the target or the focused element.
     pub struct TypeInput {
-        #[garde(length(utf16, max = STDIN_BYTES))]
+        #[garde(length(chars, max = STDIN_BYTES))]
         pub text: String,
     }
 }
@@ -611,12 +611,12 @@ input! {
     targeted
     /// `key`: presses a key or a chord.
     pub struct KeyInput {
-        #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+        #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
         pub key: String,
         /// Expected URL glob after the action
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
-        #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+        #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
         pub wait_url: Option<String>,
     }
 }
@@ -637,11 +637,11 @@ input! {
     pub struct SelectInput {
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "Vec<String>")]
-        #[garde(inner(inner(length(utf16, max = STDIN_BYTES))))]
+        #[garde(inner(inner(length(chars, max = STDIN_BYTES))))]
         pub value: Option<Vec<String>>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "Vec<String>")]
-        #[garde(inner(inner(length(utf16, max = STDIN_BYTES))))]
+        #[garde(inner(inner(length(chars, max = STDIN_BYTES))))]
         pub option_label: Option<Vec<String>>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "Vec<usize>")]
@@ -655,7 +655,7 @@ input! {
     /// `select-text`: selects text inside the target, or places the cursor
     /// before or after it.
     pub struct SelectTextInput {
-        #[garde(length(utf16, max = STDIN_BYTES))]
+        #[garde(length(chars, max = STDIN_BYTES))]
         pub text: String,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "TextCursor")]
@@ -663,11 +663,11 @@ input! {
         pub cursor: Option<TextCursor>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
-        #[garde(length(utf16, max = STDIN_BYTES))]
+        #[garde(length(chars, max = STDIN_BYTES))]
         pub prefix: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
-        #[garde(length(utf16, max = STDIN_BYTES))]
+        #[garde(length(chars, max = STDIN_BYTES))]
         pub suffix: Option<String>,
     }
 }
@@ -715,7 +715,7 @@ input! {
     pub struct WaitInput {
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
-        #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+        #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
         pub url: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "Load")]
@@ -746,7 +746,7 @@ input! {
     targeted
     /// `upload`: sets the files of the target's file input.
     pub struct UploadInput {
-        #[garde(length(min = 1), inner(length(utf16, min = 1, max = LOCATOR_LENGTH)))]
+        #[garde(length(min = 1), inner(length(chars, min = 1, max = LOCATOR_LENGTH)))]
         pub file: Vec<String>,
     }
 }
@@ -765,7 +765,7 @@ input! {
         /// Viewport CSS coordinates: x,y
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
-        #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+        #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
         pub xy: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "Vec<Modifier>")]
@@ -774,7 +774,7 @@ input! {
         /// New output file on this Host
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
-        #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+        #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
         pub output: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "bool")]
@@ -822,7 +822,7 @@ input! {
         /// Output directory on the invoking Host
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
-        #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+        #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
         pub output_dir: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "bool")]
@@ -852,7 +852,7 @@ input! {
     /// `eval`: evaluates a read-only expression in the page, or a function of
     /// the target's element.
     pub struct EvalInput {
-        #[garde(length(utf16, max = STDIN_BYTES))]
+        #[garde(length(chars, max = STDIN_BYTES))]
         pub expression: String,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "bool")]
@@ -877,12 +877,12 @@ input! {
         pub level: Option<Vec<LogLevel>>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
-        #[garde(length(utf16, max = STDIN_BYTES))]
+        #[garde(length(chars, max = STDIN_BYTES))]
         pub filter: Option<String>,
         /// Cursor returned by a previous read
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
-        #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+        #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
         pub after: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "usize")]
@@ -963,7 +963,7 @@ input! {
     pub struct DialogAcceptInput {
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
-        #[garde(length(utf16, max = STDIN_BYTES))]
+        #[garde(length(chars, max = STDIN_BYTES))]
         pub text: Option<String>,
     }
 }
@@ -1027,13 +1027,13 @@ input! {
     tab
     /// `cdp.send`: sends one CDP command with JSON parameters.
     pub struct CdpSendInput {
-        #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+        #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
         pub method: String,
-        #[garde(length(utf16, max = STDIN_BYTES))]
+        #[garde(length(chars, max = STDIN_BYTES))]
         pub params: String,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
-        #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+        #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
         pub target: Option<String>,
     }
 }
@@ -1052,12 +1052,12 @@ input! {
     pub struct CdpEventsInput {
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "Vec<String>")]
-        #[garde(inner(inner(length(utf16, min = 1, max = LOCATOR_LENGTH))))]
+        #[garde(inner(inner(length(chars, min = 1, max = LOCATOR_LENGTH))))]
         pub method: Option<Vec<String>>,
         /// Cursor returned by a previous read
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
-        #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+        #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
         pub after: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "usize")]
@@ -1065,7 +1065,7 @@ input! {
         pub limit: Option<usize>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
-        #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+        #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
         pub target: Option<String>,
     }
 }
@@ -1100,7 +1100,7 @@ input! {
         /// New output file on this Host
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
-        #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+        #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
         pub output: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "bool")]
@@ -1130,7 +1130,7 @@ pub enum ContentReadResult {
 input! {
     /// `content.fetch`: loads URLs in temporary tabs and reads their content.
     pub struct ContentFetchInput {
-        #[garde(length(min = 1, max = FETCH_URLS), inner(length(utf16, min = 1, max = LOCATOR_LENGTH)))]
+        #[garde(length(min = 1, max = FETCH_URLS), inner(length(chars, min = 1, max = LOCATOR_LENGTH)))]
         pub url: Vec<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "ContentFormat")]
@@ -1197,18 +1197,18 @@ input! {
     tab
     /// `assets.export`: saves an inventory's assets to a directory with a manifest.
     pub struct AssetsExportInput {
-        #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+        #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
         pub inventory: String,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "Vec<String>")]
-        #[garde(inner(inner(length(utf16, min = 1, max = LOCATOR_LENGTH))))]
+        #[garde(inner(inner(length(chars, min = 1, max = LOCATOR_LENGTH))))]
         pub id: Option<Vec<String>>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "Vec<AssetKind>")]
         #[garde(skip)]
         pub kind: Option<Vec<AssetKind>>,
         /// Output directory on the invoking Host
-        #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+        #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
         pub output_dir: String,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "bool")]
@@ -1291,12 +1291,12 @@ input! {
     tab
     /// `webmcp.call`: calls one of the page's WebMCP tools with JSON arguments.
     pub struct WebmcpCallInput {
-        #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+        #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
         pub tool: String,
         /// The generation `webmcp.list` returned
-        #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+        #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
         pub tools: String,
-        #[garde(length(utf16, max = STDIN_BYTES))]
+        #[garde(length(chars, max = STDIN_BYTES))]
         pub arguments: String,
     }
 }

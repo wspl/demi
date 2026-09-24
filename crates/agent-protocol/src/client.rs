@@ -314,13 +314,13 @@ pub enum ClientContent {
     /// backend writes it to the Host before the session sees the content.
     Upload {
         /// The upload's attachment id.
-        #[garde(length(utf16, min = 1))]
+        #[garde(length(chars, min = 1))]
         r#ref: String,
         /// The name the file is written under: no path separator, no NUL,
         /// and neither `.` nor `..`. The pattern has no lookaround, so that
         /// the browser's engine and Rust's read it alike.
         #[garde(
-            length(utf16, min = 1, max = 255),
+            length(chars, min = 1, max = 255),
             pattern(r"^(?:[^./\\\x00][^/\\\x00]*|\.[^./\\\x00][^/\\\x00]*|\.\.[^/\\\x00]+)$")
         )]
         file_name: String,
@@ -328,10 +328,10 @@ pub enum ClientContent {
     /// A file on a paired device, read at execution time
     /// (`web-api.md` § Device files and remote references).
     RemoteFile {
-        #[garde(length(utf16, min = 1))]
+        #[garde(length(chars, min = 1))]
         device_id: String,
         /// Absolute.
-        #[garde(length(utf16, min = 1, max = 4096), pattern(r"^/[^\x00]*$"))]
+        #[garde(length(chars, min = 1, max = 4096), pattern(r"^/[^\x00]*$"))]
         path: String,
     },
     /// In an edit: native media the edited message holds, by blob reference.
@@ -342,7 +342,7 @@ pub enum ClientContent {
     /// In an edit: an attachment record of the edited message, by the path
     /// the record holds (`message-editing.md` § Files the edit keeps).
     Attachment {
-        #[garde(length(utf16, min = 1, max = 4096))]
+        #[garde(length(chars, min = 1, max = 4096))]
         path: String,
     },
 }
@@ -380,7 +380,7 @@ pub enum MediaRef {
         r#ref: BlobRef,
         #[garde(skip)]
         media_type: String,
-        #[garde(length(utf16, min = 1))]
+        #[garde(length(chars, min = 1))]
         file_name: String,
     },
 }

@@ -4,21 +4,21 @@ use std::borrow::Cow;
 use std::sync::LazyLock;
 
 use demi_core::trim;
-use garde::rules::length::utf16::HasUtf16CodeUnits;
+use garde::rules::length::chars::HasChars;
 use regex::Regex;
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
 /// An email address as the product keeps it: trimmed and lowercased, at most
-/// 254 UTF-16 code units, and of the form the browser's schema accepts. The
+/// 254 characters, and of the form the browser's schema accepts. The
 /// type cannot hold another value, so storage lookups and uniqueness see one
 /// spelling of each address.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String")]
 pub struct EmailAddress(String);
 
-/// The most UTF-16 code units an email address has.
+/// The most characters (Unicode scalar values) an email address has.
 pub const EMAIL_MAX: usize = 254;
 
 /// Why a text is not an email address.
@@ -41,7 +41,7 @@ impl TryFrom<String> for EmailAddress {
 
     fn try_from(text: String) -> Result<Self, EmailError> {
         let address = trim(&text).to_lowercase();
-        if address.encode_utf16().count() > EMAIL_MAX {
+        if address.chars().count() > EMAIL_MAX {
             return Err(EmailError::TooLong);
         }
         if !is_email(&address) {
@@ -98,9 +98,9 @@ impl From<String> for Trimmed {
     }
 }
 
-impl HasUtf16CodeUnits for Trimmed {
-    fn num_code_units(&self) -> usize {
-        self.0.encode_utf16().count()
+impl HasChars for Trimmed {
+    fn num_chars(&self) -> usize {
+        self.0.chars().count()
     }
 }
 
@@ -223,7 +223,7 @@ mod tests {
     fn text_is_trimmed_of_the_white_space_javascript_trims() {
         let text: Trimmed = serde_json::from_str(r#""﻿  New name \t ""#).unwrap();
         assert_eq!(text.as_str(), "New name");
-        assert_eq!(text.num_code_units(), 8);
+        assert_eq!(text.num_chars(), 8);
         // U+0085 is not white space to JavaScript's trim.
         let kept: Trimmed = serde_json::from_str(r#""\u0085name""#).unwrap();
         assert_eq!(kept.as_str(), "\u{85}name");

@@ -45,11 +45,11 @@ impl CommandCaller {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CommandLocale {
-    #[garde(length(utf16, min = 1, max = 64))]
+    #[garde(length(chars, min = 1, max = 64))]
     pub time_zone: String,
     #[garde(
         length(min = 1, max = COMMAND_LOCALE_LANGUAGES),
-        inner(length(utf16, min = 1, max = 64))
+        inner(length(chars, min = 1, max = 64))
     )]
     pub languages: Vec<String>,
 }
