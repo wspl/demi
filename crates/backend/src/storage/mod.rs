@@ -3,7 +3,13 @@
 pub(crate) mod blobs;
 pub(crate) mod columns;
 pub(crate) mod control;
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "the conversation routes and the conversation's host access use the index")
+)]
+pub(crate) mod conversation_index;
 pub(crate) mod conversations;
+pub(crate) mod devices;
 pub(crate) mod objects;
 pub(crate) mod providers;
 mod schema;

@@ -7,6 +7,7 @@ mod blobs;
 mod edge;
 mod families;
 mod providers;
+mod runners;
 mod settings;
 mod startup;
 mod state;
