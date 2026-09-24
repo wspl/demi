@@ -48,3 +48,49 @@ async fn commands_on_another_tab_run_while_one_tab_is_held() {
     })
     .await;
 }
+
+/// A click that opens a tab names it once the registry holds it, and a click
+/// that opens none names nothing (`browser.md` § One tab registry).
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn an_action_names_the_tabs_it_opened() {
+    with_browser_fixture(|fixture| async move {
+        let tab = fixture.open("popups.html").await;
+        let plain = fixture
+            .call("browser.click", json!({"tab": tab, "css": "#stay"}))
+            .await;
+        assert!(plain.get("openedTabs").is_none(), "{plain}");
+        let clicked = fixture
+            .call("browser.click", json!({"tab": tab, "css": "#open"}))
+            .await;
+        let opened = clicked["openedTabs"]
+            .as_array()
+            .unwrap_or_else(|| panic!("the click names the tab it opened: {clicked}"))
+            .clone();
+        assert_eq!(opened.len(), 1, "{clicked}");
+        // The named tab is registered: it can be operated at once, and the
+        // list says who opened it.
+        let info = fixture
+            .call("browser.info", json!({"tab": opened[0]}))
+            .await;
+        assert_eq!(info["url"], "about:blank");
+        let tabs = fixture.call("browser.tabs", json!({})).await;
+        let popup = tabs["tabs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|listed| listed["id"] == opened[0])
+            .unwrap_or_else(|| panic!("the list holds the popup: {tabs}"));
+        assert_eq!(popup["createdBy"], json!({"kind": "page", "opener": tab}));
+        // A later action does not name the tab again.
+        fixture
+            .call("browser.close", json!({"tab": opened[0]}))
+            .await;
+        let again = fixture
+            .call("browser.click", json!({"tab": tab, "css": "#stay"}))
+            .await;
+        assert!(again.get("openedTabs").is_none(), "{again}");
+        fixture
+    })
+    .await;
+}
