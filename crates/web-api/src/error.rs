@@ -118,8 +118,8 @@ pub enum ErrorCode {
     /// The Cloud cannot start, or it is changing state and admits no
     /// operation now.
     CloudUnavailable,
-    /// A reset holds the Cloud: it admits no operation, and no second reset,
-    /// until the reset ends.
+    /// Another reset holds the Cloud. An operation waits for a reset; a
+    /// second reset is refused.
     CloudResetting,
     /// Every Cloud capacity permit of the backend is taken, so the Cloud
     /// cannot start now; nothing queues for a permit.

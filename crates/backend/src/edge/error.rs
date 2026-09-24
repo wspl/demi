@@ -11,6 +11,7 @@ use demi_shell::HostError;
 use crate::auth::email_change::EmailChangeError;
 use crate::auth::passwords::HashError;
 use crate::conversation::host_access::{HostAccessError, host_error_code};
+use crate::conversation::stream::StreamError;
 use crate::llm::assembly::AssemblyError;
 use crate::runner::files::{TextError, TextRefusal};
 use crate::shard::ShardUnavailable;
@@ -197,6 +198,18 @@ impl From<HostAccessError> for ApiError {
             HostAccessError::Host(error) => Self::host_operation(error),
             HostAccessError::Cancelled | HostAccessError::Storage(_) => Self::internal(&error),
             error => {
+                let (code, status) = error.code();
+                Self::new(status_of(status), code, error.to_string())
+            }
+        }
+    }
+}
+
+impl From<StreamError> for ApiError {
+    fn from(error: StreamError) -> Self {
+        match error {
+            StreamError::Access(error) => error.into(),
+            StreamError::Failed(_) => {
                 let (code, status) = error.code();
                 Self::new(status_of(status), code, error.to_string())
             }

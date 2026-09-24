@@ -4,6 +4,7 @@
 //! runtimes the sessions infer with, the conversations' summaries, and the
 //! failure facts of their history.
 
+mod announcement;
 mod failure_facts;
 mod fork;
 mod harness;
@@ -12,6 +13,7 @@ mod providers;
 pub(crate) mod remote_files;
 mod shells;
 mod socket;
+pub(crate) mod stream;
 mod summary;
 pub(crate) mod target;
 pub(crate) mod transfer;
