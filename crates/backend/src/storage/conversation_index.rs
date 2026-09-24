@@ -14,8 +14,9 @@ use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 
 use super::StorageError;
-use super::columns::{decode, instant};
+use super::columns::{decode, instant, to_json};
 use super::control::ControlService;
+use crate::conversation::target::TargetSwitch;
 
 /// A conversation as the index holds it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,10 +46,20 @@ pub(crate) struct ConversationModel {
     pub(crate) model: String,
 }
 
-/// A change of a conversation's record, which one index transaction
+/// A change a user asks of a conversation, which `Shard::transition`
 /// applies.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ConversationChange {
+    Record(RecordChange),
+    /// A switch of the main target (`sessions-and-targets.md` § Switch the
+    /// main target), which the target compare-and-set commits.
+    Target(ConversationTarget),
+}
+
+/// A change of a conversation's record, which one index transaction
+/// applies.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RecordChange {
     /// Archive, or restore.
     Archived(bool),
     /// A rename: a title other than the current one, which becomes the
@@ -57,6 +68,14 @@ pub(crate) enum ConversationChange {
     Pinned(bool),
     /// The provider entry and model the conversation selects, or none.
     Model(Option<ConversationModel>),
+    /// A device of the user's attached (`sessions-and-targets.md` § Attached
+    /// hosts); one attached already stays as it is.
+    Attach(AttachedHostRecord),
+    /// An attached host's new name, unique within the conversation.
+    Rename { device: DeviceId, name: String },
+    /// A detach of an attached device; a device that is not attached
+    /// detaches as nothing.
+    Detach(DeviceId),
 }
 
 /// What a change found.
@@ -67,6 +86,10 @@ pub(crate) enum ChangeOutcome {
     Missing,
     /// The conversation is archived, and the change is not its restore.
     Archived,
+    /// The rename names a device that is not attached.
+    NotAttached,
+    /// Another attached host has the name.
+    NameTaken,
 }
 
 /// What asking for a conversation of an id found.
@@ -240,9 +263,9 @@ impl ControlService {
     pub(crate) async fn change_conversation(
         &self,
         id: ConversationId,
-        change: ConversationChange,
+        change: RecordChange,
     ) -> Result<ChangeOutcome, StorageError> {
-        self.call(move |connection, _| {
+        self.call(move |connection, now| {
             let transaction = connection.transaction()?;
             let archived: Option<bool> = transaction
                 .query_row("SELECT archived FROM conversations WHERE id = ?1", [id.as_str()], |row| row.get(0))
@@ -250,29 +273,67 @@ impl ControlService {
             let Some(archived) = archived else {
                 return Ok(ChangeOutcome::Missing);
             };
-            if archived && !matches!(change, ConversationChange::Archived(_)) {
+            if archived && !matches!(change, RecordChange::Archived(_)) {
                 return Ok(ChangeOutcome::Archived);
             }
-            let id = id.as_str();
             match &change {
-                ConversationChange::Archived(archived) => {
-                    transaction.execute("UPDATE conversations SET archived = ?2 WHERE id = ?1", params![id, archived])?
-                }
-                ConversationChange::Title(title) => transaction.execute(
-                    "UPDATE conversations SET title = ?2, title_origin = 'user' WHERE id = ?1 AND title <> ?2",
-                    params![id, title],
+                RecordChange::Archived(archived) => transaction.execute(
+                    "UPDATE conversations SET archived = ?2 WHERE id = ?1",
+                    params![id.as_str(), archived],
                 )?,
-                ConversationChange::Pinned(pinned) => {
-                    transaction.execute("UPDATE conversations SET pinned = ?2 WHERE id = ?1", params![id, pinned])?
-                }
-                ConversationChange::Model(model) => transaction.execute(
+                RecordChange::Title(title) => transaction.execute(
+                    "UPDATE conversations SET title = ?2, title_origin = 'user' WHERE id = ?1 AND title <> ?2",
+                    params![id.as_str(), title],
+                )?,
+                RecordChange::Pinned(pinned) => transaction.execute(
+                    "UPDATE conversations SET pinned = ?2 WHERE id = ?1",
+                    params![id.as_str(), pinned],
+                )?,
+                RecordChange::Model(model) => transaction.execute(
                     "UPDATE conversations SET provider_id = ?2, model_id = ?3 WHERE id = ?1",
                     params![
-                        id,
+                        id.as_str(),
                         model.as_ref().map(|model| model.provider.as_str()),
                         model.as_ref().map(|model| model.model.as_str())
                     ],
                 )?,
+                RecordChange::Attach(host) => {
+                    if insert_attached_host(&transaction, &id, host, now)? {
+                        advance_context(&transaction, &id)?;
+                    }
+                    1
+                }
+                RecordChange::Rename { device, name } => {
+                    let holders: Vec<String> = transaction
+                        .prepare_cached(
+                            "SELECT device_id FROM conversation_hosts
+                             WHERE conversation_id = ?1 AND (device_id = ?2 OR name = ?3)",
+                        )?
+                        .query_map(params![id.as_str(), device.as_str(), name], |row| row.get(0))?
+                        .collect::<Result<_, _>>()?;
+                    if !holders.iter().any(|holder| holder == device.as_str()) {
+                        return Ok(ChangeOutcome::NotAttached);
+                    }
+                    if holders.iter().any(|holder| holder != device.as_str()) {
+                        return Ok(ChangeOutcome::NameTaken);
+                    }
+                    transaction.execute(
+                        "UPDATE conversation_hosts SET name = ?3 WHERE conversation_id = ?1 AND device_id = ?2",
+                        params![id.as_str(), device.as_str(), name],
+                    )?;
+                    advance_context(&transaction, &id)?;
+                    1
+                }
+                RecordChange::Detach(device) => {
+                    let removed = transaction.execute(
+                        "DELETE FROM conversation_hosts WHERE conversation_id = ?1 AND device_id = ?2",
+                        params![id.as_str(), device.as_str()],
+                    )?;
+                    if removed > 0 {
+                        advance_context(&transaction, &id)?;
+                    }
+                    removed
+                }
             };
             transaction.commit()?;
             Ok(ChangeOutcome::Applied)
@@ -458,31 +519,96 @@ pub(crate) struct AttachedHostRecord {
 impl ControlService {
     /// The conversation's attached hosts, first attached first.
     pub(crate) async fn attached_hosts(&self, id: ConversationId) -> Result<Vec<AttachedHostRecord>, StorageError> {
-        self.call(move |connection, _| {
-            let mut statement = connection.prepare_cached(
-                "SELECT device_id, name, cwd FROM conversation_hosts WHERE conversation_id = ?1
-                 ORDER BY attached_at, name",
-            )?;
-            let mut rows = statement.query([id.as_str()])?;
-            let mut hosts = Vec::new();
-            while let Some(row) = rows.next()? {
-                hosts.push(AttachedHostRecord {
-                    device: decode(
-                        "conversation_hosts",
-                        "device_id",
-                        DeviceId::try_from(row.get::<_, String>("device_id")?),
-                    )?,
-                    name: row.get("name")?,
-                    cwd: row.get("cwd")?,
-                });
-            }
-            Ok(hosts)
-        })
-        .await
+        let listed = self.call(move |connection, _| attached_rows(connection, &id)).await?;
+        Ok(listed.into_iter().map(|(host, _)| host).collect())
+    }
+
+    /// The conversation's attached hosts with when each was attached, first
+    /// attached first, as the browser lists them.
+    pub(crate) async fn attached_host_listing(
+        &self,
+        id: ConversationId,
+    ) -> Result<Vec<(AttachedHostRecord, Timestamp)>, StorageError> {
+        self.call(move |connection, _| attached_rows(connection, &id)).await
     }
 }
 
+/// The two ends of a target switch.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SwitchEnds {
+    /// The device the switch leaves, attached afterwards where it was left.
+    pub(crate) departed: Option<(DeviceId, String)>,
+    /// The device the switch reaches, detached if it was attached: a Host is
+    /// main or attached, never both.
+    pub(crate) arriving: Option<DeviceId>,
+}
+
 impl ControlService {
+    /// The target switch's write, against the target the switch started
+    /// from: false, writing nothing, when the target is no longer
+    /// `expected`, so of two switches from one target exactly one wins. The
+    /// winner records `switch` for every node's next context block and
+    /// advances the execution-context revision.
+    pub(crate) async fn switch_conversation_target(
+        &self,
+        id: ConversationId,
+        expected: ConversationTarget,
+        to: ConversationTarget,
+        switch: TargetSwitch,
+        ends: SwitchEnds,
+    ) -> Result<bool, StorageError> {
+        self.call(move |connection, now| {
+            let transaction = connection.transaction()?;
+            let from = TargetColumns::of(&expected);
+            let target = TargetColumns::of(&to);
+            // `IS` compares NULL as equal to NULL, which `=` does not.
+            let won = transaction.execute(
+                "UPDATE conversations SET target_kind = ?2, target_device_id = ?3, target_path = ?4,
+                   target_workspace_id = ?5, last_switch = ?6, context_version = context_version + 1, updated_at = ?7
+                 WHERE id = ?1 AND target_kind = ?8 AND target_device_id IS ?9 AND target_path IS ?10
+                   AND target_workspace_id IS ?11",
+                params![
+                    id.as_str(),
+                    target.kind,
+                    target.device,
+                    target.path,
+                    target.workspace,
+                    to_json(&switch),
+                    now.as_millisecond(),
+                    from.kind,
+                    from.device,
+                    from.path,
+                    from.workspace
+                ],
+            )? > 0;
+            if !won {
+                return Ok(false);
+            }
+            if let Some(arriving) = &ends.arriving {
+                transaction.execute(
+                    "DELETE FROM conversation_hosts WHERE conversation_id = ?1 AND device_id = ?2",
+                    params![id.as_str(), arriving.as_str()],
+                )?;
+            }
+            if let Some((departed, cwd)) = &ends.departed
+                && Some(departed) != ends.arriving.as_ref()
+            {
+                let name: Option<String> = transaction
+                    .query_row("SELECT name FROM devices WHERE id = ?1", [departed.as_str()], |row| row.get(0))
+                    .optional()?;
+                let host = AttachedHostRecord {
+                    name: name.unwrap_or_else(|| departed.to_string()),
+                    device: departed.clone(),
+                    cwd: Some(cwd.clone()),
+                };
+                insert_attached_host(&transaction, &id, &host, now)?;
+            }
+            transaction.commit()?;
+            Ok(true)
+        })
+        .await
+    }
+
     /// Records where the last `demi host shell --host` on the attached
     /// `device` ended, which is where the next one there starts.
     pub(crate) async fn set_attached_cwd(
@@ -500,22 +626,29 @@ impl ControlService {
         })
         .await
     }
+}
 
-    /// Attaches `host` to the conversation unless it is attached already;
-    /// true when it attached, which the conversation's nodes hear of at their
-    /// next context block.
-    pub(crate) async fn attach_host(&self, id: ConversationId, host: AttachedHostRecord) -> Result<bool, StorageError> {
-        self.call(move |connection, now| {
-            let transaction = connection.transaction()?;
-            let attached = insert_attached_host(&transaction, &id, &host, now)?;
-            if attached {
-                advance_context(&transaction, &id)?;
-            }
-            transaction.commit()?;
-            Ok(attached)
-        })
-        .await
+/// The `conversation_hosts` rows of the conversation, first attached first.
+fn attached_rows(
+    connection: &Connection,
+    id: &ConversationId,
+) -> Result<Vec<(AttachedHostRecord, Timestamp)>, StorageError> {
+    const TABLE: &str = "conversation_hosts";
+    let mut statement = connection.prepare_cached(
+        "SELECT device_id, name, cwd, attached_at FROM conversation_hosts WHERE conversation_id = ?1
+         ORDER BY attached_at, name",
+    )?;
+    let mut rows = statement.query([id.as_str()])?;
+    let mut hosts = Vec::new();
+    while let Some(row) = rows.next()? {
+        let host = AttachedHostRecord {
+            device: decode(TABLE, "device_id", DeviceId::try_from(row.get::<_, String>("device_id")?))?,
+            name: row.get("name")?,
+            cwd: row.get("cwd")?,
+        };
+        hosts.push((host, instant(row, TABLE, "attached_at")?));
     }
+    Ok(hosts)
 }
 
 /// Attaches `device` to the conversation under the first free name within
@@ -701,6 +834,78 @@ mod tests {
         ];
         expected.sort_by(|first, second| first.name.cmp(&second.name));
         assert_eq!(attached, expected);
+        control.close().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn of_two_switches_from_one_target_one_wins_and_its_announcement_stays() {
+        use crate::conversation::target::{ExecutionTarget, TargetSwitch};
+
+        let data = tempfile::tempdir().unwrap();
+        let control = ControlService::open(&data.path().join("control.sqlite"), Arc::new(demi_core::SystemClock))
+            .await
+            .unwrap();
+        let master = testing::master(&control).await.id;
+        let id = created(control.create_conversation(master.clone(), conversation(1)).await.unwrap()).id;
+        let hash = crate::auth::sessions::TokenHash::of("laptop");
+        let laptop = control
+            .create_device(master.clone(), "laptop".into(), "linux".into(), hash)
+            .await
+            .unwrap()
+            .id;
+        let cloud = ConversationTarget::Cloud { path: None };
+        let from = ExecutionTarget::Cloud {
+            device_id: None,
+            path: format!("/home/demi/sessions/{id}"),
+        };
+        let switch_to = |path: &str| {
+            let to = ConversationTarget::Device {
+                device_id: laptop.clone(),
+                path: path.into(),
+            };
+            let switch = TargetSwitch {
+                from: from.clone(),
+                to: ExecutionTarget::Device {
+                    device_id: laptop.clone(),
+                    path: path.into(),
+                },
+            };
+            let ends = SwitchEnds {
+                departed: None,
+                arriving: Some(laptop.clone()),
+            };
+            control.switch_conversation_target(id.clone(), cloud.clone(), to, switch, ends)
+        };
+        let (first, second) = tokio::join!(switch_to("/first"), switch_to("/second"));
+        assert_eq!((first.unwrap(), second.unwrap()), (true, false));
+        let record = control.conversation(id.clone()).await.unwrap().unwrap();
+        assert_eq!(
+            (record.target, record.context_version),
+            (
+                ConversationTarget::Device {
+                    device_id: laptop.clone(),
+                    path: "/first".into()
+                },
+                1
+            )
+        );
+        // The winner's announcement is the one every node reads.
+        let announced: String = control
+            .call(move |connection, _| {
+                Ok(connection.query_row("SELECT last_switch FROM conversations WHERE id = ?1", [id.as_str()], |row| {
+                    row.get(0)
+                })?)
+            })
+            .await
+            .unwrap();
+        let announced: TargetSwitch = serde_json::from_str(&announced).unwrap();
+        assert_eq!(
+            announced.to,
+            ExecutionTarget::Device {
+                device_id: laptop,
+                path: "/first".into()
+            }
+        );
         control.close().await.unwrap();
     }
 }

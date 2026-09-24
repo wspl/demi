@@ -4,6 +4,7 @@
 
 use demi_web_api::conversations::ConversationTarget;
 use demi_web_api::ids::{ConversationId, DeviceId, WorkspaceId};
+use serde::{Deserialize, Serialize};
 
 use crate::shard::Shard;
 use crate::storage::StorageError;
@@ -20,7 +21,8 @@ pub(crate) fn cloud_session_directory(id: &ConversationId, home: Option<&str>) -
 /// A conversation's selection resolved: the device its work runs on, and
 /// the directory the work starts in there. A Cloud has no device until its
 /// first use makes it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub(crate) enum ExecutionTarget {
     Cloud {
         device_id: Option<DeviceId>,
@@ -50,6 +52,14 @@ impl ExecutionTarget {
             Self::Cloud { path, .. } | Self::Device { path, .. } | Self::Workspace { path, .. } => path,
         }
     }
+}
+
+/// The latest target switch, which every node's next context block
+/// describes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct TargetSwitch {
+    pub(crate) from: ExecutionTarget,
+    pub(crate) to: ExecutionTarget,
 }
 
 impl Shard {
