@@ -26,6 +26,22 @@ pub enum Role {
 serde_plain::derive_display_from_serialize!(Role);
 serde_plain::derive_fromstr_from_deserialize!(Role);
 
+impl Role {
+    /// Whether this role administers `other`: a role acts only on the roles
+    /// below it, so nobody acts on a peer or on the master.
+    pub fn outranks(self, other: Role) -> bool {
+        self.rank() > other.rank()
+    }
+
+    fn rank(self) -> u8 {
+        match self {
+            Self::Master => 2,
+            Self::Admin => 1,
+            Self::User => 0,
+        }
+    }
+}
+
 /// An account as the browser sees it; its password hash never leaves the
 /// backend.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
