@@ -249,6 +249,7 @@ async fn run(
         cwd: call.cwd,
         env: call.env,
         context: origin.context.clone(),
+        caller: origin.caller.clone(),
         stdin: call.stdin,
         pipes: Some(RelayedPipes {
             stdin: stdin.as_ref().map(|pipe| pipe.id().to_owned()),
