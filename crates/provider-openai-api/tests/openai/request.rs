@@ -5,13 +5,13 @@ use std::{num::NonZeroU32, sync::Arc};
 
 use demi_core::{
     B64Bytes, DocumentSource, MediaSource, ThinkingConfig, ThinkingSummary, TokenUsage,
-    ToolMediaSource, ToolResultContentBlock, UserContentBlock,
+    ToolMediaSource, ToolResultContentBlock, UserContentBlock, WireApi,
 };
 use demi_provider::{
     InferenceItem, InferenceRequest, Provider, ProviderEvent, RuntimeEnv, ToolDefinition,
     testing::{MockVendor, inference_request},
 };
-use demi_provider_openai_api::{VendorPolicy, WireApi};
+use demi_provider_openai_api::VendorPolicy;
 use serde_json::{Value, json};
 
 use crate::{body_of, done, provider_at, run};

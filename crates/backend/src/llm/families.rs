@@ -7,7 +7,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use demi_core::Clock;
+use demi_core::{Clock, WireApi};
 use demi_provider::credentials::CredentialPool;
 use demi_provider::models_dev::ModelsDevClient;
 use demi_provider::quota::QuotaSnapshotStore;
@@ -15,7 +15,7 @@ use demi_provider::{Provider, Secret};
 use demi_provider_anthropic_api::{AnthropicConfig, AnthropicProvider};
 use demi_provider_google::{GoogleConfig, GoogleProvider};
 use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider, VendorPolicy};
-use demi_web_api::providers::{CredentialKind, WireApi};
+use demi_web_api::providers::CredentialKind;
 use url::Url;
 
 /// A provider family: `anthropic`, `codex`, or a test's scripted one.
@@ -164,17 +164,13 @@ impl ProviderFamily for OpenAiFamily {
         let FamilyCredential::ApiKey(settings) = args.credential else {
             return Err(FamilyError::WrongCredential);
         };
-        // An entry that names no wire speaks Responses.
-        let wire = match settings.wire_api {
-            None | Some(WireApi::Responses) => demi_provider_openai_api::WireApi::Responses,
-            Some(WireApi::ChatCompletions) => demi_provider_openai_api::WireApi::ChatCompletions,
-        };
         let config = OpenAiConfig {
             id: args.entry_id,
             display_name: args.label,
             api_key: settings.api_key,
             base_url: settings.base_url,
-            wire,
+            // An entry that names no wire speaks Responses.
+            wire: settings.wire_api.unwrap_or_default(),
             policy: settings.vendor,
         };
         Ok(Arc::new(OpenAiProvider::new(config, args.clock)))
