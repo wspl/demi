@@ -52,7 +52,7 @@ pub struct ConfiguredModel {
     /// Null for no model-specific limit; never beyond the context window.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<u32>")]
-    #[garde(inner(range(min = 1)), custom(within(self.context_window)))]
+    #[garde(range(min = 1), custom(within(self.context_window)))]
     pub output_limit: Option<u32>,
     /// The vendor's effort levels; empty for a model without thinking.
     #[garde(length(max = 32), inner(length(utf16, min = 1, max = 64)))]
@@ -60,12 +60,12 @@ pub struct ConfiguredModel {
     /// The types the model reads natively: `[]` for none, null when unknown.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<Vec<FileExtension>>")]
-    #[garde(inner(length(max = 64)))]
+    #[garde(length(max = 64))]
     pub accepted_extensions: Option<Vec<FileExtension>>,
     /// The service tier the model's Fast is; null for none.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
-    #[garde(inner(length(utf16, min = 1, max = 64)))]
+    #[garde(length(utf16, min = 1, max = 64))]
     pub fast_tier: Option<String>,
 }
 
@@ -155,11 +155,11 @@ pub enum CreateProvider {
 pub struct ProviderPatch {
     #[serde(default, with = "unwrap_or_skip")]
     #[schemars(with = "Trimmed")]
-    #[garde(inner(length(utf16, min = 1, max = LABEL_MAX)))]
+    #[garde(length(utf16, min = 1, max = LABEL_MAX))]
     pub label: Option<Trimmed>,
     #[serde(default, with = "unwrap_or_skip")]
     #[schemars(with = "String")]
-    #[garde(inner(length(min = 1)))]
+    #[garde(length(min = 1))]
     pub api_key: Option<String>,
     #[serde(default, with = "double_option")]
     #[schemars(with = "Option<EndpointUrl>")]
@@ -439,7 +439,7 @@ pub struct SubscriptionLogin {
     /// The new entry's label; the family's subscription name without it.
     #[serde(default, with = "unwrap_or_skip")]
     #[schemars(with = "Trimmed")]
-    #[garde(inner(length(utf16, min = 1, max = LABEL_MAX)))]
+    #[garde(length(utf16, min = 1, max = LABEL_MAX))]
     pub label: Option<Trimmed>,
 }
 

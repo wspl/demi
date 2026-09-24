@@ -1,0 +1,339 @@
+{
+  "refused": [
+    {
+      "why": "an unknown field",
+      "fixture": "u1",
+      "set": {
+        "/unknown": 1
+      },
+      "browserRefuses": false
+    },
+    {
+      "why": "a hidden flag",
+      "fixture": "u1",
+      "set": {
+        "/hidden": true
+      },
+      "browserRefuses": false
+    },
+    {
+      "why": "a resolved content field",
+      "fixture": "u1",
+      "set": {
+        "/resolvedContent": []
+      },
+      "browserRefuses": false
+    },
+    {
+      "why": "a nullable field that is absent",
+      "fixture": "u1",
+      "remove": [
+        "/preamble"
+      ],
+      "browserRefuses": true
+    },
+    {
+      "why": "an optional field that is null",
+      "fixture": "u1",
+      "set": {
+        "/content/8/snippet": null
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "a block kind the transcript does not have",
+      "fixture": "r1",
+      "set": {
+        "/type": "extension_state_snapshot"
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "an empty id",
+      "fixture": "u1",
+      "set": {
+        "/id": ""
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "a time that is not RFC 3339",
+      "fixture": "u1",
+      "set": {
+        "/createdAt": "yesterday"
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "a time finer than a millisecond",
+      "fixture": "u1",
+      "set": {
+        "/createdAt": "2026-09-21T14:13:20.000123Z"
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "client content in a stored block",
+      "fixture": "u1",
+      "set": {
+        "/content/0": {
+          "type": "upload",
+          "ref": "a1",
+          "fileName": "a.txt"
+        }
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "an untagged media source",
+      "fixture": "u1",
+      "set": {
+        "/content/1/source": {
+          "mediaType": "image/png",
+          "data": "iVBORw0KGgo="
+        }
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "bytes that are not base64",
+      "fixture": "u1",
+      "set": {
+        "/content/1/source/data": "not base64!"
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "a blob reference that is not a SHA-256",
+      "fixture": "u1",
+      "set": {
+        "/content/2/source/ref": "sha-1-2-3"
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "a blob reference that is not a string",
+      "fixture": "u1",
+      "set": {
+        "/content/2/source/ref": 42
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "a document source without its tag",
+      "fixture": "u1",
+      "set": {
+        "/content/5/source": {
+          "data": "JVBERi0xLjc=",
+          "mediaType": "application/pdf",
+          "fileName": "spec.pdf"
+        }
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "an attachment without a name",
+      "fixture": "u1",
+      "set": {
+        "/content/8/name": ""
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "an attachment hash that is not a SHA-256",
+      "fixture": "u1",
+      "set": {
+        "/content/8/sha256": "abc"
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "a size beyond JavaScript's safe integers",
+      "fixture": "u1",
+      "set": {
+        "/content/8/sizeBytes": 9007199254740992
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "an output limit of zero",
+      "fixture": "u1",
+      "set": {
+        "/model/model/outputLimit": 0
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "an output limit that is not whole",
+      "fixture": "u1",
+      "set": {
+        "/model/model/outputLimit": 1.5
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "an extension outside the native set",
+      "fixture": "u1",
+      "set": {
+        "/model/model/acceptedExtensions/0": "txt"
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "a selection without its service tier",
+      "fixture": "u1",
+      "remove": [
+        "/model/serviceTierId"
+      ],
+      "browserRefuses": true
+    },
+    {
+      "why": "a field on a capability that has none",
+      "fixture": "u1",
+      "set": {
+        "/model/model/thinking/3/extra": 1
+      },
+      "browserRefuses": false
+    },
+    {
+      "why": "an effort setting without its summary",
+      "fixture": "u1",
+      "set": {
+        "/model/thinking": {
+          "type": "effort",
+          "effort": "high"
+        }
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "a receipt whose block is not its message's",
+      "fixture": "m1",
+      "set": {
+        "/id": "m2"
+      },
+      "browserRefuses": false
+    },
+    {
+      "why": "an explicit agent message that is blank",
+      "fixture": "m1",
+      "set": {
+        "/message/content": " ﻿\n"
+      },
+      "browserRefuses": false
+    },
+    {
+      "why": "a round that is negative",
+      "fixture": "m1",
+      "set": {
+        "/message/sender/round": -1
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "a completion whose id names another round",
+      "fixture": "subagent:child-1:1790000000000",
+      "set": {
+        "/id": "subagent:child-1:1",
+        "/message/id": "subagent:child-1:1"
+      },
+      "browserRefuses": false
+    },
+    {
+      "why": "a forkable flag that is null",
+      "fixture": "t1",
+      "set": {
+        "/forkable": null
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "a streaming output field",
+      "fixture": "tc1",
+      "set": {
+        "/streamingOutput": []
+      },
+      "browserRefuses": false
+    },
+    {
+      "why": "a tool call status the transcript does not have",
+      "fixture": "tc1",
+      "set": {
+        "/status": "running"
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "a view kind no tool has",
+      "fixture": "tc2",
+      "set": {
+        "/view/kind": "tool_error"
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "an exit code that is null",
+      "fixture": "tc2",
+      "set": {
+        "/view/exitCode": null
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "an edited file without segments",
+      "fixture": "tc2",
+      "set": {
+        "/view/files/0/edits": []
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "an unknown view field",
+      "fixture": "tc2",
+      "set": {
+        "/view/unknown": 1
+      },
+      "browserRefuses": false
+    },
+    {
+      "why": "a negative repeat count",
+      "fixture": "tc3",
+      "set": {
+        "/view/count": -1
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "diagnostics that are null",
+      "fixture": "e1",
+      "set": {
+        "/diagnostics": null
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "a failure source outside the set",
+      "fixture": "e1",
+      "set": {
+        "/diagnostics/source": "vendor"
+      },
+      "browserRefuses": true
+    },
+    {
+      "why": "an error without its code",
+      "fixture": "e2",
+      "remove": [
+        "/code"
+      ],
+      "browserRefuses": true
+    },
+    {
+      "why": "a marker without its boundary",
+      "fixture": "cm1",
+      "set": {
+        "/boundaryId": ""
+      },
+      "browserRefuses": true
+    }
+  ]
+}

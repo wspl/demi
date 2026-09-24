@@ -57,15 +57,21 @@ pub fn handle(prefix: &str, random: [u8; 16]) -> String {
     format!("{prefix}_{}", base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(random))
 }
 
-/// Declares a [`handle`] with a fixed prefix as a checked newtype.
+/// Declares a [`handle`] with a fixed prefix as a checked newtype. Its
+/// pattern is both its check and its schema, which the browser reads.
 macro_rules! handle {
     ($(#[$meta:meta])* $name:ident, $prefix:literal, $what:literal) => {
         $(#[$meta])*
         #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
         #[serde(try_from = "String")]
+        #[schemars(extend("pattern" = $name::PATTERN))]
         pub struct $name(String);
 
         impl $name {
+            /// What a handle with this prefix looks like: the prefix, an
+            /// underscore and 22 characters of URL-safe base64.
+            pub const PATTERN: &str = concat!("^", $prefix, "_[A-Za-z0-9_-]{22}$");
+
             /// The handle of 16 random bytes.
             pub fn from_random(random: [u8; 16]) -> Self {
                 Self(handle($prefix, random))
@@ -80,15 +86,10 @@ macro_rules! handle {
             type Error = String;
 
             fn try_from(value: String) -> Result<Self, Self::Error> {
-                let valid = value
-                    .strip_prefix(concat!($prefix, "_"))
-                    .is_some_and(|rest| {
-                        rest.len() == 22
-                            && rest
-                                .bytes()
-                                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
-                    });
-                if valid {
+                static PATTERN: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+                    regex::Regex::new($name::PATTERN).expect("the handle pattern compiles")
+                });
+                if PATTERN.is_match(&value) {
                     Ok(Self(value))
                 } else {
                     Err(format!(concat!("{:?} is not a ", $what), value))

@@ -7,29 +7,35 @@ use demi_core::{
     is_blank, model_accepts_media_type, model_accepts_video, preview_media_type, shows_in_place,
     sniff_model_media_type, trim,
 };
+use serde_json::Value;
+
+/// The cases of `fixtures/file-types.json`, which the page's generated
+/// lookups are checked with too.
+fn file_type_cases(lookup: &str) -> Vec<(String, Value)> {
+    let cases: Value = serde_json::from_str(include_str!("fixtures/file-types.json")).unwrap();
+    cases[lookup]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|case| (case[0].as_str().unwrap().to_owned(), case[1].clone()))
+        .collect()
+}
 
 #[test]
 fn a_file_is_known_by_its_extension_whatever_its_case_or_separator() {
-    assert_eq!(preview_media_type("/work/assets/logo.SVG"), Some("image/svg+xml"));
-    assert_eq!(preview_media_type(r"C:\work\clip.m4v"), Some("video/mp4"));
-    assert_eq!(preview_media_type("notes/README.md"), Some("text/markdown"));
-    assert_eq!(preview_media_type("voice.opus"), Some("audio/ogg"));
-    assert_eq!(preview_media_type("/work/photo.jpeg"), Some("image/jpeg"));
-    assert_eq!(preview_media_type("/work/app.bin"), None);
-    assert_eq!(preview_media_type("/work/Makefile"), None);
-    assert_eq!(preview_media_type("/work/trailing."), None);
-    // A leading dot names a hidden file, not an extension.
-    assert_eq!(preview_media_type("/work/.png"), None);
-    assert_eq!(preview_media_type("/work.d/file"), None);
+    // Among the cases: a leading dot names a hidden file, not an extension,
+    // and only ASCII letters fold, so the Kelvin sign in `mar\u{212a}down`
+    // names no type.
+    for (path, expected) in file_type_cases("previewMediaType") {
+        assert_eq!(preview_media_type(&path), expected.as_str(), "{path}");
+    }
 }
 
 #[test]
 fn the_page_shows_media_in_place_and_renders_markdown_from_its_text() {
-    assert!(shows_in_place("image/svg+xml"));
-    assert!(shows_in_place("application/pdf"));
-    assert!(shows_in_place("audio/webm"));
-    assert!(!shows_in_place("text/markdown"));
-    assert!(!shows_in_place("text/html"));
+    for (media_type, expected) in file_type_cases("showsInPlace") {
+        assert_eq!(shows_in_place(&media_type), expected.as_bool().unwrap(), "{media_type}");
+    }
 }
 
 /// `parts` joined and padded with zeros to 16 bytes.
