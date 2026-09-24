@@ -13,6 +13,7 @@
 // spell-checker:ignore atimensec mtimensec ctimensec opath chmods fakeroot fakechroot
 
 use crate::context::FileKindExt as _;
+#[cfg(test)]
 use crate::context::PathExt as _;
 #[cfg(test)]
 use std::os::unix::ffi::OsStringExt;

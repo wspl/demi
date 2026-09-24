@@ -14,6 +14,11 @@ use super::control::ControlService;
 
 const WORKSPACE_COLUMNS: &str = "id, user_id, device_id, path, name, created_at";
 
+/// A new workspace's id, which the backend assigns.
+pub(crate) fn new_workspace_id() -> WorkspaceId {
+    WorkspaceId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty")
+}
+
 /// A `workspaces` row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct WorkspaceRecord {
@@ -69,18 +74,18 @@ impl ControlService {
         .await
     }
 
-    /// A new workspace at `path` on the user's `device`, after the user's
-    /// others; `None`, writing nothing, when the device is not the user's.
-    /// The device is looked up in the same statement, so a revocation cannot
-    /// slip between the check and the write.
+    /// The new workspace `id` at `path` on the user's `device`, after the
+    /// user's others; `None`, writing nothing, when the device is not the
+    /// user's. The device is looked up in the same statement, so a
+    /// revocation cannot slip between the check and the write.
     pub(crate) async fn create_workspace(
         &self,
+        id: WorkspaceId,
         user: UserId,
         device: DeviceId,
         path: String,
         name: String,
     ) -> Result<Option<WorkspaceRecord>, StorageError> {
-        let id = WorkspaceId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty");
         self.call(move |connection, now| {
             let created = connection.execute(
                 "INSERT INTO workspaces (id, user_id, device_id, path, name, sort_order, created_at)

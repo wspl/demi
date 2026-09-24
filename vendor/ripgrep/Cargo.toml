@@ -169,3 +169,11 @@ version = "0.2"
 
 [dependencies.same-file]
 version = "1"
+
+[package.metadata.demi]
+maintainer = "demi-runner"
+patches = [
+    "A library entry point in place of the rg binary, with its build script, allocator, test target and release profiles left out",
+    "Output belongs to one invocation (src/invocation.rs, added): parallel searches buffer into the invocation's stdout instead of the process's",
+    "Paths, the configuration file and standard input are the shell job's, through uucore::context",
+]
