@@ -34,16 +34,8 @@ pub fn native_fixture_binary() -> PathBuf {
     built_program("demi-native-fixture")
 }
 
-/// A program Cargo built into the target directory this test runs from,
-/// such as a workspace crate's executable.
-pub fn built_program(name: &str) -> PathBuf {
-    let executable = std::env::current_exe().expect("the test knows its executable");
-    let directory = executable
-        .parent()
-        .and_then(Path::parent)
-        .expect("a test runs from the target directory's deps");
-    directory.join(format!("{name}{}", std::env::consts::EXE_SUFFIX))
-}
+/// A program Cargo built beside the test, as every test finds one.
+pub use demi_command_service::testing::built_program;
 
 /// How a runner process starts.
 #[derive(Debug, Clone)]

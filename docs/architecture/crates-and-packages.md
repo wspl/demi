@@ -167,7 +167,8 @@ next to the wire's types, so that a command program depends on one crate.
     a lack of open file descriptors.
 - **Public boundary:** the protocol types, the client, the service entry point,
   the handler and IO traits, and the edit recorder; `command_service::testing`
-  starts a service binary and drives it with a client. The runner and every
+  finds the programs a test starts beside it (`built_program`) and starts a
+  service binary and drives it with a client (`ServiceProcess`). The runner and every
   command program use this one SDK; a command program depends on it without
   depending on the runner or on Demi's command implementations.
 - **Must not:** implement commands, download artifacts, start command

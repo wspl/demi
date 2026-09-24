@@ -23,8 +23,15 @@ pub enum ServiceError {
     Json(#[from] serde_json::Error),
     #[error("command cancelled")]
     Cancelled,
+    /// The service has no such operation.
+    #[error("unknown operation {0}")]
+    UnknownOperation(String),
+    /// The command failed; the cause says why, and is the whole message.
+    #[error(transparent)]
+    Failed(Box<dyn std::error::Error + Send + Sync>),
+    /// The handler's task panicked or was aborted.
     #[error("command handler failed: {0}")]
-    Handler(String),
+    Task(#[from] tokio::task::JoinError),
     #[error("conversation cleanup failed; retire the service process: {0}")]
     ConversationCleanup(String),
     #[error("handler exceeded cancellation deadline; retire the service process")]
@@ -33,6 +40,14 @@ pub enum ServiceError {
     HandshakeTimeout,
     #[error("service rejected HTTP request with status {0}")]
     Rejected(u16),
+}
+
+impl ServiceError {
+    /// A command that failed for `cause`: an error of the handler's own, or
+    /// a message.
+    pub fn failed(cause: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> Self {
+        Self::Failed(cause.into())
+    }
 }
 
 /// Pull-driven input shared by local dispatch and HTTP/2 services.
@@ -55,25 +70,9 @@ impl Input {
         Self(InputSource::Local(sync_wrapper::SyncWrapper::new(Box::pin(stream))))
     }
 
-    pub(crate) fn new(stream: RecvStream) -> Self {
-        Self(InputSource::Http(HttpInput::new(stream)))
-    }
-
-    pub(crate) fn set_output(&mut self, output: Output) {
-        if let InputSource::Http(input) = &mut self.0 {
-            input.set_output(output);
-        }
-    }
-
-    pub(crate) async fn metadata<T: serde::de::DeserializeOwned>(
-        &mut self,
-    ) -> Result<T, ServiceError> {
-        match &mut self.0 {
-            InputSource::Http(input) => input.metadata().await,
-            InputSource::Local(_) => Err(ServiceError::Handler(
-                "local input has no wire metadata".into(),
-            )),
-        }
+    /// The input of an invocation whose metadata `input` has read.
+    pub(crate) fn http(input: HttpInput) -> Self {
+        Self(InputSource::Http(input))
     }
 
     pub async fn next(&mut self) -> Result<Option<Bytes>, ServiceError> {
@@ -86,7 +85,8 @@ impl Input {
     }
 }
 
-struct HttpInput {
+/// An invocation's HTTP/2 request body: its metadata, then its input.
+pub(crate) struct HttpInput {
     stream: RecvStream,
     pending: Bytes,
     output: Option<Output>,

@@ -19,7 +19,7 @@ use crate::protocol::{
 };
 use crate::{
     Input, ServiceError,
-    stream::{CONNECTION_WINDOW, send_bytes},
+    stream::{CONNECTION_WINDOW, HttpInput, send_bytes},
 };
 
 const OUTPUT_QUEUE_RECORDS: usize = 4;
@@ -278,18 +278,18 @@ async fn invoke<H: Handler + ?Sized>(
     conversation: bool,
 ) -> Result<(), ServiceError> {
     let _cancel_on_drop = cancellation.drop_guard_ref();
-    let mut input = Input::new(request.into_body());
+    let mut body = HttpInput::new(request.into_body());
     enum Call<M> {
         Invocation(Box<M>),
         Conversation(ConversationRequest),
     }
     let metadata = async {
         if conversation {
-            let request: ConversationRequest = input.metadata().await?;
+            let request: ConversationRequest = body.metadata().await?;
             request.validate()?;
             Ok::<_, ServiceError>(Call::Conversation(request))
         } else {
-            let request: H::Metadata = input.metadata().await?;
+            let request: H::Metadata = body.metadata().await?;
             request.validate()?;
             Ok(Call::Invocation(Box::new(request)))
         }
@@ -322,10 +322,10 @@ async fn invoke<H: Handler + ?Sized>(
             cancellation: cancellation.clone(),
         }),
         Call::Invocation(request) => {
-            input.set_output(output.clone());
+            body.set_output(output.clone());
             handler.invoke(InvocationContext {
                 request: *request,
-                input,
+                input: Input::http(body),
                 output,
                 cancellation: cancellation.clone(),
             })
@@ -404,7 +404,7 @@ async fn invoke<H: Handler + ?Sized>(
             }),
         },
         Err(error) if release => return Err(ServiceError::ConversationCleanup(error.to_string())),
-        Err(error) => return Err(ServiceError::Handler(error.to_string())),
+        Err(error) => return Err(ServiceError::Task(error)),
     };
     let cleanup_failure = (release && completion.exit_code != 0).then(|| {
         format!(
