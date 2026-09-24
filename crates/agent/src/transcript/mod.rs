@@ -2,13 +2,20 @@
 //! patches that record every change to them, the model's replay of them, and
 //! the token estimates compaction decides by.
 
+mod cut;
 pub mod estimate;
 mod journal;
 mod log;
 mod replay;
 
+pub use cut::CutError;
+pub(crate) use cut::{
+    before_user, compaction_window, last_assistant_text, resume_point, rewind, through_assistant,
+};
 pub(crate) use journal::PatchBatch;
 pub(crate) use log::TranscriptLog;
+#[cfg(test)]
+pub(crate) use replay::agent_message_envelope;
 pub(crate) use replay::{replay, tool_input};
 
 use demi_core::{Block, WakeupPlacement};
