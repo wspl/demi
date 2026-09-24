@@ -125,6 +125,20 @@ export class FakeProvisioner implements ManagedHostProvisioner {
       await this.stop(guest)
   }
 
+  /**
+   * Removes the guests' disks, once no backend will wake them again: they
+   * outlive a backend's restart, and a guest's state holds a copy of every
+   * native package its runner ran.
+   */
+  async dispose(): Promise<void> {
+    await this.close()
+    for (const guest of this.guests.values()) {
+      await rm(guest.homeDir, { recursive: true, force: true })
+      await rm(guest.stateDir, { recursive: true, force: true })
+    }
+    this.guests.clear()
+  }
+
   private guest(owner: string): Guest {
     const guest = this.guests.get(owner)
     if (!guest)

@@ -47,7 +47,7 @@ impl Handler for Dispatcher {
             let result = match context.request.operation.as_str() {
                 "raw" => dispatcher.command(context).await,
                 "manage" => dispatcher.manage(context).await,
-                _ => Err(handler("unknown runner operation")),
+                operation => Err(ServiceError::UnknownOperation(operation.into())),
             };
             match result {
                 Err(ServiceError::Cancelled) => Err(ServiceError::Cancelled),
@@ -70,7 +70,7 @@ impl Dispatcher {
     ) -> Result<Completion, ServiceError> {
         let request: management::Request = serde_json::from_value(context.request.args)?;
         if !self.management.authorize(&request) {
-            return Err(handler("invalid management secret"));
+            return Err(ServiceError::failed(DispatchError::Secret));
         }
         if matches!(request.action, management::Action::Drain) {
             self.management.draining.cancel();
@@ -87,13 +87,13 @@ impl Dispatcher {
         mut invocation: InvocationContext<LocalInvocation>,
     ) -> Result<Completion, ServiceError> {
         let raw: RawCommand = serde_json::from_value(invocation.request.args.clone())?;
-        let context = self.contexts.get(&raw.context).map_err(handler)?;
+        let context = self.contexts.get(&raw.context).map_err(ServiceError::failed)?;
         let execute = async {
             let root = context.manifest.roots.get(&raw.root).ok_or_else(|| {
-                handler(format!("{}: not a root command of this manifest", raw.root))
+                ServiceError::failed(DispatchError::NotARoot(raw.root.clone()))
             })?;
-            let selected = root.tree.select(&raw.argv).map_err(handler)?;
-            let parsed = selected.parse(&raw.argv).map_err(handler)?;
+            let selected = root.tree.select(&raw.argv).map_err(ServiceError::failed)?;
+            let parsed = selected.parse(&raw.argv).map_err(ServiceError::failed)?;
             if parsed.help {
                 let path = selected.path.join(" ");
                 invocation
@@ -105,23 +105,23 @@ impl Dispatcher {
             let leaf = selected
                 .node
                 .leaf()
-                .ok_or_else(|| handler("missing command leaf"))?;
+                .ok_or_else(|| ServiceError::failed(DispatchError::NotALeaf))?;
             let body = if leaf.stdin_field.is_some() {
                 // A terminal is the live channel, not a finite command body.
                 let mut bytes = Vec::new();
                 if !raw.live {
                     while let Some(chunk) = invocation.input.next().await? {
                         if bytes.len() + chunk.len() > BODY_BYTES {
-                            return Err(handler("command body exceeds 1 MiB"));
+                            return Err(ServiceError::failed(DispatchError::BodyTooLarge));
                         }
                         bytes.extend_from_slice(&chunk);
                     }
                 }
-                Some(String::from_utf8(bytes).map_err(handler)?)
+                Some(String::from_utf8(bytes).map_err(ServiceError::failed)?)
             } else {
                 None
             };
-            let parsed = parsed.validate(leaf, body).map_err(handler)?;
+            let parsed = parsed.validate(leaf, body).map_err(ServiceError::failed)?;
             let mut output = CommandOutput::new(invocation.output, parsed.json);
             let _hint = rpc::running_hint(
                 &context.connection,
@@ -134,13 +134,13 @@ impl Dispatcher {
                     .manifest
                     .packages
                     .get(&binding.descriptor_hash)
-                    .ok_or_else(|| handler("native descriptor is not in this manifest"))?;
+                    .ok_or_else(|| ServiceError::failed(DispatchError::MissingDescriptor))?;
                 let resolver = Arc::new(JobArtifacts::new(self.contexts.clone()));
                 let mut resident = self
                     .services
                     .acquire(descriptor, resolver, &invocation.cancellation)
                     .await
-                    .map_err(handler)?;
+                    .map_err(ServiceError::failed)?;
                 let request = Invocation {
                     context: context.command.clone(),
                     json: Some(parsed.json),
@@ -167,7 +167,7 @@ impl Dispatcher {
                     // A call that failed with its service reports how the
                     // service ended (`native-runtime.md` § Invocation protocol).
                     Err(Failed::Service(error)) => {
-                        return Err(handler(resident.failure(error).await));
+                        return Err(ServiceError::failed(resident.failure(error).await));
                     }
                 }
             } else {
@@ -239,6 +239,17 @@ fn completed(exit_code: u8) -> Completion {
         error: None,
     }
 }
-fn handler(error: impl std::fmt::Display) -> ServiceError {
-    ServiceError::Handler(error.to_string())
+/// Why the runner could not run a command a job asked for.
+#[derive(Debug, thiserror::Error)]
+enum DispatchError {
+    #[error("invalid management secret")]
+    Secret,
+    #[error("{0}: not a root command of this manifest")]
+    NotARoot(String),
+    #[error("missing command leaf")]
+    NotALeaf,
+    #[error("command body exceeds 1 MiB")]
+    BodyTooLarge,
+    #[error("native descriptor is not in this manifest")]
+    MissingDescriptor,
 }

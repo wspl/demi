@@ -58,9 +58,28 @@ impl Handler for DemiCommands {
                 Box::pin(async move { browsers.invoke(context, Err(error)).await })
             }
             Ok(Operation::Live) => Box::pin(async move { browsers.live(context).await }),
-            Err(error @ OperationError::Unknown(_)) => {
-                Box::pin(async move { Err(ServiceError::Handler(error.to_string())) })
+            Err(OperationError::Unknown(operation)) => {
+                Box::pin(async move { Err(ServiceError::UnknownOperation(operation)) })
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// The release tooling reads the package's id from the crate's Cargo
+    /// metadata; the contract's id is the one the coding agent binds to.
+    #[test]
+    fn the_cargo_metadata_names_the_contracts_package() {
+        let manifest = include_str!("../Cargo.toml");
+        let metadata = manifest
+            .split_once("[package.metadata.demi]")
+            .expect("the crate declares its package")
+            .1;
+        let id = metadata
+            .lines()
+            .find_map(|line| line.strip_prefix("id = "))
+            .expect("the package has an id");
+        assert_eq!(id, format!("\"{}\"", demi_builtin_protocol::PACKAGE));
     }
 }

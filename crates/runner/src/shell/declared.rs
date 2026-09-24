@@ -62,8 +62,7 @@ pub(super) fn execute(
                         bytes.truncate(count);
                         Ok(Bytes::from(bytes))
                     })
-                    .await
-                    .map_err(|error| ServiceError::Handler(error.to_string()))??;
+                    .await??;
                 Ok::<_, ServiceError>((!bytes.is_empty()).then_some((bytes, (file, scope))))
             },
         ));

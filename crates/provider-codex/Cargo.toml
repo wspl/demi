@@ -23,7 +23,7 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
-tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
+tokio-tungstenite = { version = "0.29", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
 tokio-util.workspace = true
 
 [dev-dependencies]

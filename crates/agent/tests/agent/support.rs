@@ -1,17 +1,20 @@
-//! What the scenarios share: a harness, a provider resolver over scripted
-//! runtimes, a server over an in-memory tree store, and frame builders.
+//! What the scenarios share: a harness, a provider runtime that answers each
+//! node of a tree from its own script, a server over an in-memory tree
+//! store, and frame builders.
 
 use std::{
     cell::RefCell,
-    collections::{HashMap, VecDeque},
+    collections::VecDeque,
     rc::Rc,
     sync::Arc,
 };
 
 use demi_agent::{
-    AgentHarness, AgentServer, AgentTreeStore, Profile, PromptContext, ProviderResolver,
-    ResolveError, ServerConfig, ServerDeps,
-    testing::{MemoryTreeStore, NoHost, NoShells, SequentialIds, TestClient, test_model},
+    AgentHarness, AgentServer, AgentTreeStore, Profile, PromptContext, ServerConfig, ServerDeps,
+    testing::{
+        MemoryTreeStore, NoHost, NoShells, ScriptedProviders, SequentialIds, TestClient,
+        test_model,
+    },
 };
 use demi_agent_protocol::{ClientFrame, ServerFrame};
 use demi_core::{Block, ModelSelection, NodeId, TurnId, UserContentBlock};
@@ -90,54 +93,6 @@ impl RpcHandler for Hello {
         _port: RpcPort,
     ) -> LocalBoxFuture<'_, Result<u8, RpcError>> {
         Box::pin(async { Ok(0) })
-    }
-}
-
-/// Makes a provider's runtimes.
-type Runtimes = Rc<dyn Fn() -> Box<dyn ProviderRuntime>>;
-
-/// Runtimes by provider id: every runtime of one provider plays that
-/// provider's one script.
-#[derive(Default)]
-pub struct Resolver {
-    runtimes: RefCell<HashMap<String, Runtimes>>,
-    /// Every resolution asked for: the conversation and the provider.
-    pub calls: RefCell<Vec<(NodeId, String)>>,
-}
-
-impl Resolver {
-    pub fn provide(&self, provider: &str, runtime: &ScriptedRuntime) {
-        let runtime = runtime.clone();
-        self.provide_with(provider, Rc::new(move || Box::new(runtime.clone())));
-    }
-
-    pub fn provide_model(&self, provider: &str, model: &Model) {
-        let model = model.clone();
-        self.provide_with(provider, Rc::new(move || Box::new(model.clone())));
-    }
-
-    fn provide_with(&self, provider: &str, runtimes: Runtimes) {
-        self.runtimes
-            .borrow_mut()
-            .insert(provider.to_owned(), runtimes);
-    }
-}
-
-impl ProviderResolver for Resolver {
-    fn runtime<'a>(
-        &'a self,
-        root: &'a NodeId,
-        model: &'a ModelSelection,
-    ) -> LocalBoxFuture<'a, Result<Box<dyn ProviderRuntime>, ResolveError>> {
-        self.calls
-            .borrow_mut()
-            .push((root.clone(), model.provider_id.clone()));
-        let runtimes = self.runtimes.borrow().get(&model.provider_id).cloned();
-        let provider = model.provider_id.clone();
-        Box::pin(async move {
-            let runtimes = runtimes.ok_or(ResolveError::Unknown(provider))?;
-            Ok(runtimes())
-        })
     }
 }
 
@@ -438,7 +393,7 @@ pub async fn agent(
 pub struct Fixture {
     pub server: Rc<AgentServer<TestHarness>>,
     pub store: Rc<MemoryTreeStore>,
-    pub resolver: Rc<Resolver>,
+    pub resolver: Rc<ScriptedProviders>,
     pub harness: Rc<TestHarness>,
 }
 
@@ -453,7 +408,7 @@ impl Fixture {
         store: Rc<MemoryTreeStore>,
         config: ServerConfig,
     ) -> Self {
-        let resolver = Rc::new(Resolver::default());
+        let resolver = Rc::new(ScriptedProviders::default());
         resolver.provide("stub", script);
         Self::build(resolver, TestHarness::default(), store, config)
     }
@@ -466,13 +421,13 @@ impl Fixture {
         store: Rc<MemoryTreeStore>,
         config: ServerConfig,
     ) -> Self {
-        let resolver = Rc::new(Resolver::default());
-        resolver.provide_model("stub", model);
+        let resolver = Rc::new(ScriptedProviders::default());
+        resolver.provide_runtime("stub", model.clone());
         Self::build(resolver, harness, store, config)
     }
 
     fn build(
-        resolver: Rc<Resolver>,
+        resolver: Rc<ScriptedProviders>,
         harness: TestHarness,
         store: Rc<MemoryTreeStore>,
         config: ServerConfig,
