@@ -10,10 +10,10 @@ use std::{
     rc::{Rc, Weak},
 };
 
-use demi_agent_protocol::{JobPhase, ServerFrame, SubagentEvent, SubagentJob, TranscriptPatch};
+use demi_agent_protocol::{JobPhase, ServerFrame, SubagentEvent, TranscriptPatch};
 use demi_core::{
     AgentMessage, AgentMessageEvent, Block, BlockId, CompletionId, CompletionOutcome, NodeId,
-    QueuedMessage, Sender, Timestamp, ToolCallBlock, ToolCallStatus, TurnId, UserContentBlock,
+    QueuedMessage, Sender, ToolCallBlock, ToolCallStatus, TurnId, UserContentBlock,
 };
 use demi_gates::Purpose;
 use demi_shell::{RpcError, RpcPort};
@@ -47,6 +47,8 @@ const OWNER_CLOSING: &str = "owner session is closing";
 /// A live child: its node, and what its supervision keeps about it.
 pub(crate) struct Child<H: AgentHarness> {
     node: Rc<Node<H>>,
+    /// When it joined the tree, which orders children of one round.
+    order: u64,
     /// Set in the one step that decides the child closes; a message sent to
     /// it after that step is refused.
     closing: Cell<bool>,
@@ -79,8 +81,9 @@ impl<H: AgentHarness> Child<H> {
             .expect("a child's record names its parent")
     }
 
-    fn round(&self) -> u64 {
-        self.node.record().round
+    /// Its place among its siblings: by spawn time, then as it joined.
+    fn rank(&self) -> (u64, u64) {
+        (self.node.record().round, self.order)
     }
 
     pub(super) fn stop_supervision(&self) {
@@ -155,7 +158,7 @@ impl<H: AgentHarness> Tree<H> {
             .filter(|child| child.parent() == owner)
             .cloned()
             .collect();
-        children.sort_by(|a, b| (a.round(), a.id()).cmp(&(b.round(), b.id())));
+        children.sort_by_key(|child| child.rank());
         children
     }
 
@@ -218,8 +221,10 @@ impl<H: AgentHarness> Tree<H> {
     /// Starts a child of `caller` for `demi agent spawn` or `resume`
     /// (`subagents.md` § Creation command ownership): reserves the request
     /// in the caller's command storage through `port`, then creates or
-    /// reopens the child in a task of the tree, which runs to its end even
-    /// when the call is cancelled. Starts of one owner take turns.
+    /// reopens the child. The start runs in a task of the tree, so once its
+    /// reservation is committed it runs to its end even when the call is
+    /// cancelled; a reservation the cancelled call could not commit starts
+    /// nothing. Starts of one owner take turns.
     pub(crate) async fn start(
         self: &Rc<Self>,
         caller: &NodeId,
@@ -227,17 +232,18 @@ impl<H: AgentHarness> Tree<H> {
         request: String,
         port: &RpcPort,
     ) -> Result<NodeId, String> {
-        let turn = self.starts.acquire(caller.clone()).await;
-        let owner = self.owner(caller)?;
-        let lease = owner
-            .lifecycle()
-            .try_enter(Purpose::Maintenance)
-            .ok_or("Cannot change children while a transcript edit is being prepared")?;
-        let receipt = self.reserve(&input, &request, port).await?;
         let tree = self.clone();
+        let caller = caller.clone();
+        let port = port.clone();
         let started = self.lifecycle.spawn_local(async move {
-            let _turn = turn;
-            let _lease = lease;
+            let _turn = tree.starts.acquire(caller.clone()).await;
+            let owner = tree.owner(&caller)?;
+            let _starting = Starting::new(&tree, &caller);
+            let _lease = owner
+                .lifecycle()
+                .try_enter(Purpose::Maintenance)
+                .ok_or("Cannot change children while a transcript edit is being prepared")?;
+            let receipt = tree.reserve(&input, &request, &port).await?;
             tree.finish_start(&owner, receipt).await
         });
         started
@@ -518,6 +524,7 @@ impl<H: AgentHarness> Tree<H> {
             });
             Child {
                 node: node.clone(),
+                order: self.joined.get(),
                 closing: Cell::new(false),
                 failure: RefCell::new(None),
                 wake: Rc::new(Notify::new()),
@@ -527,6 +534,7 @@ impl<H: AgentHarness> Tree<H> {
                 supervision: RefCell::new(None),
             }
         });
+        self.joined.set(self.joined.get() + 1);
         self.children
             .borrow_mut()
             .insert(child.id().clone(), child.clone());
@@ -602,7 +610,8 @@ impl<H: AgentHarness> Tree<H> {
             let quiescent = status.settle == Settle::Settled
                 && !status.wakeups
                 && !status.agent_input
-                && self.children_of(child.id()).is_empty();
+                && self.children_of(child.id()).is_empty()
+                && !self.starting.borrow().contains_key(child.id());
             if !quiescent {
                 return Decision::Wait;
             }
@@ -658,8 +667,14 @@ impl<H: AgentHarness> Tree<H> {
         };
         let session = child.node.session();
         if kind != CloseKind::Completed {
-            Box::pin(self.abort_children_of(child.id())).await;
+            // Nothing runs again: the completions of its subtree wait in
+            // its final checkpoint for a later round.
+            session.hold();
             stop_all(session).await;
+            // A start of its own under way ends first, so its child is
+            // closed with the others.
+            let _turn = self.starts.acquire(child.id().clone()).await;
+            Box::pin(self.abort_children_of(child.id())).await;
         }
         let phase = match kind {
             CloseKind::Completed => ClosePhase::Completed {
@@ -686,9 +701,13 @@ impl<H: AgentHarness> Tree<H> {
         self.bump();
         match committed {
             Ok(()) => {
+                let closed = NodeRecord {
+                    closed: Some(close.clone()),
+                    ..record.clone()
+                };
                 self.sink.emit(ServerFrame::Subagent {
                     event: SubagentEvent::Closed,
-                    job: job_of(&record, Some(&close)),
+                    job: closed.job().expect("a child has a job"),
                 });
                 if let Some(owner) = &owner {
                     self.deliver(owner, &record, &close).await;
@@ -828,7 +847,7 @@ impl<H: AgentHarness> Tree<H> {
                 let close = record.closed.as_ref().expect("an archived child is closed");
                 children.push(ListNode {
                     kind: EntryKind::Archived,
-                    phase: close_phase(&close.phase),
+                    phase: close.phase.job_phase(),
                     closed_ago_ms: Some(age(now, close.at.as_millisecond())),
                     line: None,
                     children: Vec::new(),
@@ -877,6 +896,40 @@ impl<H: AgentHarness> Tree<H> {
         let snapshot = snapshot(&child, now);
         let text = show_text(&snapshot);
         Some((snapshot, text))
+    }
+}
+
+/// A start under way past its owner's check: while it lasts, the owner is
+/// not quiescent. It ends with a change of the tree, so the owner's
+/// supervision looks again.
+struct Starting<H: AgentHarness> {
+    tree: Rc<Tree<H>>,
+    owner: NodeId,
+}
+
+impl<H: AgentHarness> Starting<H> {
+    fn new(tree: &Rc<Tree<H>>, owner: &NodeId) -> Self {
+        *tree.starting.borrow_mut().entry(owner.clone()).or_default() += 1;
+        Self {
+            tree: tree.clone(),
+            owner: owner.clone(),
+        }
+    }
+}
+
+impl<H: AgentHarness> Drop for Starting<H> {
+    fn drop(&mut self) {
+        {
+            let mut starting = self.tree.starting.borrow_mut();
+            let count = starting
+                .get_mut(&self.owner)
+                .expect("a start under way is counted");
+            *count -= 1;
+            if *count == 0 {
+                starting.remove(&self.owner);
+            }
+        }
+        self.tree.bump();
     }
 }
 
@@ -931,7 +984,7 @@ fn child_frames<H: AgentHarness>(child: &Child<H>) -> [ServerFrame; 2] {
     [
         ServerFrame::Subagent {
             event: SubagentEvent::Started,
-            job: job_of(child.node.record(), None),
+            job: child.node.record().job().expect("a child has a job"),
         },
         ServerFrame::SubagentTranscriptReset {
             subagent_id: child.id().clone(),
@@ -940,38 +993,6 @@ fn child_frames<H: AgentHarness>(child: &Child<H>) -> [ServerFrame; 2] {
             failures: None,
         },
     ]
-}
-
-/// A child as its `subagent` frames describe it: running, or as it closed.
-fn job_of(record: &NodeRecord, close: Option<&NodeClose>) -> SubagentJob {
-    let (phase, result) = match close.map(|close| &close.phase) {
-        None => (JobPhase::Running, None),
-        Some(ClosePhase::Completed { result }) => (JobPhase::Completed, Some(result.clone())),
-        Some(ClosePhase::Aborted) => (JobPhase::Aborted, None),
-        Some(ClosePhase::Error { .. }) => (JobPhase::Error, None),
-    };
-    SubagentJob {
-        subagent_id: record.id.clone(),
-        parent_session_id: record
-            .parent
-            .clone()
-            .expect("a child's record names its parent"),
-        description: record.description.clone(),
-        profile: record.profile.clone(),
-        phase,
-        started_at: round_time(record.round),
-        ended_at: close.map(|close| close.at),
-        result,
-    }
-}
-
-/// When a round started. The tree gives every round from its clock, and the
-/// tree store refuses a record whose round is not a time.
-fn round_time(round: u64) -> Timestamp {
-    i64::try_from(round)
-        .ok()
-        .and_then(|millisecond| Timestamp::from_millisecond(millisecond).ok())
-        .expect("a round is a time in milliseconds")
 }
 
 /// A closed round's completion message (`subagents.md` § Message
@@ -1001,14 +1022,6 @@ fn completion(record: &NodeRecord, close: &NodeClose) -> AgentMessage {
         timestamp: close.at,
         content,
         event: AgentMessageEvent::Completion { outcome },
-    }
-}
-
-fn close_phase(phase: &ClosePhase) -> JobPhase {
-    match phase {
-        ClosePhase::Completed { .. } => JobPhase::Completed,
-        ClosePhase::Aborted => JobPhase::Aborted,
-        ClosePhase::Error { .. } => JobPhase::Error,
     }
 }
 
@@ -1367,14 +1380,13 @@ fn snapshot<H: AgentHarness>(child: &Child<H>, now: i64) -> AgentSnapshot {
         (Execution::ToolExecuting, Some(tool)) => tool.started_at,
         _ => telemetry.last_event_at,
     };
-    let round = i64::try_from(record.round).unwrap_or(i64::MAX);
     AgentSnapshot {
         subagent_id: record.id.clone(),
         parent_session_id: child.parent().clone(),
         description: record.description.clone(),
         profile: record.profile.clone(),
         phase: JobPhase::Running,
-        elapsed_ms: age(now, round),
+        elapsed_ms: age(now, record.started_at().as_millisecond()),
         last_event_ms: age(now, telemetry.last_event_at),
         execution,
         activity,
