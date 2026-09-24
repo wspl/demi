@@ -16,6 +16,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use demi_agent::AgentServer;
+use demi_gates::KeyedSerialGate;
 use demi_host_remote::{ARRIVAL, Pipes};
 use demi_web_api::ids::UserId;
 use futures_util::future::LocalBoxFuture;
@@ -70,6 +71,8 @@ pub(crate) struct Shard {
     /// The conversation sockets being served, which the close ends before
     /// the agent shuts down, so no frame reaches it after.
     conversation_sockets: TaskTracker,
+    /// Fork requests, one at a time per destination id in lowercase.
+    forks: KeyedSerialGate<String>,
 }
 
 impl Shard {
@@ -91,6 +94,7 @@ impl Shard {
             closing: CancellationToken::new(),
             agent,
             conversation_sockets: TaskTracker::new(),
+            forks: KeyedSerialGate::new(),
         }
     }
 
@@ -142,6 +146,10 @@ impl Shard {
 
     pub(crate) fn conversation_sockets(&self) -> &TaskTracker {
         &self.conversation_sockets
+    }
+
+    pub(crate) fn forks(&self) -> &KeyedSerialGate<String> {
+        &self.forks
     }
 
     /// Ends the user's work in order (`backend.md` § Startup and shutdown):
