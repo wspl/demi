@@ -111,6 +111,13 @@ Each node observes the latest execution-context revision before its next inferen
 Its persisted context block describes the switch, attached hosts, and any Cloud
 reset. Observation is node-specific: the root seeing an update does not consume
 it for a child. Product execution context is independent of custom profile prompts.
+The node's own context blocks are the record of what it saw. A block names its
+revision, and a node whose transcript holds the current one gets no block. A
+switch is announced to a node once: the previous and current targets, that no
+files moved, and how to reach the device left behind with `demi host shell
+--host`. A later change is announced as a change of the attached hosts. Every
+block ends with the attached hosts, each with its connection and the directory
+its shells start in.
 
 ## Attached hosts
 
