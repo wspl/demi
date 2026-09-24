@@ -1,5 +1,5 @@
 import { apiRequest, readResponse } from './client'
-import { exposeAnswerSchema } from './unported'
+import { exposeAnswerSchema } from './generated/web-api'
 
 /** The list comes from the `GET /api/state` snapshot; only writes go through these. */
 

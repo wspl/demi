@@ -1,11 +1,11 @@
 import type { z } from 'zod'
-import { productStateSchema, type ProductState } from '../api/unported'
+import { productStateSchema, type ProductState } from '../api/generated/web-api'
 
 /**
  * A product state as `GET /state` answers it, for the page's tests: a master
- * of a shared instance with no providers, workspaces, devices or
- * conversations, whose Cloud is not made yet. Each of `parts` replaces a
- * whole top-level field.
+ * of a shared instance with no providers, workspaces, devices, exposes or
+ * conversations, without an expose domain, whose Cloud is not made yet. Each
+ * of `parts` replaces a whole top-level field.
  */
 export function productState(parts: Partial<z.input<typeof productStateSchema>> = {}): ProductState {
   return productStateSchema.parse({
@@ -21,6 +21,8 @@ export function productState(parts: Partial<z.input<typeof productStateSchema>> 
     providers: [],
     workspaces: [],
     devices: [],
+    exposes: [],
+    exposeDomain: null,
     conversations: [],
     cloud: {
       device: null,

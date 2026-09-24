@@ -19,24 +19,24 @@ import { ahead } from './time'
 export function demoExposes(): ExposeMenuEntry[] {
   return [
     {
-      id: 'k7x2m9qw4p3s6t8v0w2y4z6a8b',
+      id: 'k7x2maqw4p3s6tavaw2y4z6aab',
       address: '127.0.0.1:5173',
       hostName: 'zan-mbp',
-      url: 'https://k7x2m9qw4p3s6t8v0w2y4z6a8b.expose.demi.example/',
+      url: 'https://k7x2maqw4p3s6tavaw2y4z6aab.expose.demi.example/',
       expiresAt: ahead(52 * 60_000),
     },
     {
-      id: 'q9w8e7r6t5y4u3i2o1p0a1s2d3',
+      id: 'q7w6e7r6t5y4u3i2o3p2a4s2d3',
       address: '127.0.0.1:3000',
       hostName: 'zan-mbp',
-      url: 'https://q9w8e7r6t5y4u3i2o1p0a1s2d3.expose.demi.example/',
+      url: 'https://q7w6e7r6t5y4u3i2o3p2a4s2d3.expose.demi.example/',
       expiresAt: ahead(45_000),
     },
     {
-      id: 'm3n5p7r9t1v3w5x7y9z1a3c5e',
+      id: 'm3n5p7rgtxv3w5x7yez4a3c5ek',
       address: '127.0.0.1:8080',
       hostName: 'Cloud',
-      url: 'https://m3n5p7r9t1v3w5x7y9z1a3c5e.expose.demi.example/',
+      url: 'https://m3n5p7rgtxv3w5x7yez4a3c5ek.expose.demi.example/',
       expiresAt: ahead(9 * 60_000),
     },
   ]
