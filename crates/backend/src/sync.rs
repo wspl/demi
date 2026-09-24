@@ -39,6 +39,7 @@ impl Shard {
         let devices = self.device_list().await?;
         let mut conversations = self.conversation_summaries(false).await?;
         conversations.extend(self.conversation_summaries(true).await?);
+        let cloud = self.cloud_status().await?;
         Ok(ProductState {
             user,
             mode: services.mode,
@@ -46,6 +47,7 @@ impl Shard {
             providers,
             devices,
             conversations,
+            cloud,
         })
     }
 }

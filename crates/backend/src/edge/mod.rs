@@ -9,6 +9,7 @@ mod attachments;
 mod auth;
 mod blobs;
 mod body;
+mod cloud;
 mod content;
 mod conversations;
 mod cookies;
@@ -72,6 +73,8 @@ impl Edge {
     ) -> io::Result<Self> {
         let tcp = TcpListener::bind(address).await?;
         let local_addr = tcp.local_addr()?;
+        // Before the first request: a Cloud's boot names this URL.
+        state.services.cloud.listening(state.site.public_url.as_ref(), local_addr);
         let closing = CancellationToken::new();
         let connections = CancellationToken::new();
         let stop = CancellationToken::new();
@@ -196,6 +199,8 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/conversations/{id}/stream", get(conversations::stream))
         .route("/conversations/{id}/streams/{name}", get(streams::open))
         .route("/conversations/{id}/activity", post(streams::activity))
+        .route("/cloud", get(cloud::status))
+        .route("/cloud/reset", post(cloud::reset))
         .route("/devices", get(devices::list))
         .route("/devices/claim", post(devices::claim))
         .route("/devices/{id}", delete(devices::revoke))
