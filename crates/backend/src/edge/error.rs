@@ -39,6 +39,10 @@ impl ApiError {
         Self::new(StatusCode::BAD_REQUEST, ErrorCode::InvalidBody, message)
     }
 
+    pub(crate) fn invalid_query(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::BAD_REQUEST, ErrorCode::InvalidQuery, message)
+    }
+
     pub(crate) fn backend_closing() -> Self {
         Self::new(
             StatusCode::SERVICE_UNAVAILABLE,
