@@ -48,9 +48,7 @@ pub struct RuntimeRelease {
 }
 
 impl RuntimeRelease {
-    // The release manifest stays with the runtime's build inputs until they
-    // move into this crate with the deployment scripts.
-    const MANIFEST: &str = include_str!("../../../../packages/machines/runtime/release.json");
+    const MANIFEST: &str = include_str!("../../runtime/release.json");
 
     pub fn pinned() -> Self {
         serde_json::from_str(Self::MANIFEST).expect("the pinned runtime release is valid")

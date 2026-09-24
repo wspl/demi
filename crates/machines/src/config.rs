@@ -407,4 +407,104 @@ mod tests {
         assert!(matches!(Config::parse(args, Vec::new()), Err(ConfigError::MissingSocket)));
         assert!(parse(&["--recover", "--recover-namespace"], &[]).is_err());
     }
+
+    /// The installer's unit and settings (`scripts/install-managed-hosts.sh`),
+    /// written beneath a staging root: systemd accepts the unit, and the
+    /// settings configure this manager.
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "needs root: run the Linux suite with --ignored as root"]
+    fn the_installer_writes_a_unit_systemd_accepts_and_settings_this_manager_reads() {
+        use std::{os::unix::fs::PermissionsExt, process::Command};
+
+        use crate::{
+            blocking::OffLoop,
+            linux::{loopdev, mount, testing::isolate},
+        };
+
+        isolate();
+        let off = OffLoop::in_test();
+        let directory = tempfile::tempdir().unwrap();
+        // The state directory lives on its own ext4 filesystem.
+        let image = directory.path().join("data.img");
+        std::fs::File::create(&image).unwrap().set_len(64 << 20).unwrap();
+        let formatted = Command::new("mkfs.ext4").args(["-q", "-F"]).arg(&image).status().unwrap();
+        assert!(formatted.success());
+        let data = directory.path().join("data");
+        std::fs::create_dir(&data).unwrap();
+        let device = loopdev::attach(&off, &image).unwrap();
+        mount::ext4(&off, &device.path(), &data).unwrap();
+        drop(device);
+        let release = directory.path().join("image");
+        std::fs::create_dir(&release).unwrap();
+        std::fs::write(release.join("manifest.json"), "{}").unwrap();
+        let manager = directory.path().join("demi-machines");
+        std::fs::write(&manager, "#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&manager, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let root = directory.path().join("root");
+        let script = concat!(env!("CARGO_MANIFEST_DIR"), "/scripts/install-managed-hosts.sh");
+        let installed = Command::new("bash")
+            .arg(script)
+            .arg("--root")
+            .arg(&root)
+            .args(["--user", "root", "--manager"])
+            .arg(&manager)
+            .arg("--image")
+            .arg(&release)
+            .args(["--backend-url", "https://backend.example.com", "--dns", "1.1.1.1,8.8.8.8", "--data"])
+            .arg(&data)
+            .args(["--slots", "16"])
+            .output()
+            .unwrap();
+        assert!(installed.status.success(), "{}", String::from_utf8_lossy(&installed.stderr));
+
+        let unit_path = root.join("etc/systemd/system/demi-machines.service");
+        let unit = std::fs::read_to_string(&unit_path).unwrap();
+        let manager = manager.display();
+        for directive in [
+            "Type=notify".to_owned(),
+            "KillMode=mixed".to_owned(),
+            "TimeoutStartSec=infinity".to_owned(),
+            "TimeoutStopSec=infinity".to_owned(),
+            "PrivateMounts=yes".to_owned(),
+            "UMask=0077".to_owned(),
+            "Group=demi-cloud".to_owned(),
+            "EnvironmentFile=/etc/demi-machines/manager.env".to_owned(),
+            format!("ExecStart={manager}"),
+            format!("ExecStopPost={manager} --recover"),
+        ] {
+            assert!(unit.lines().any(|line| line == directive), "{directive} is missing:\n{unit}");
+        }
+        let verified = Command::new("systemd-analyze").arg("verify").arg(&unit_path).output().unwrap();
+        let warnings = String::from_utf8_lossy(&verified.stderr);
+        assert!(verified.status.success(), "{warnings}");
+        assert!(!warnings.contains("demi-machines.service"), "{warnings}");
+
+        // Each setting is one this manager knows, passed as the flag clap
+        // gives it, and together they configure the manager.
+        let settings = std::fs::read_to_string(root.join("etc/demi-machines/manager.env")).unwrap();
+        let command = Cli::command();
+        let mut args = vec![OsString::from("demi-machines")];
+        let mut vars = Vec::new();
+        for line in settings.lines() {
+            let (name, value) = line.split_once('=').expect("a setting is NAME=VALUE");
+            let flag = command
+                .get_arguments()
+                .find(|argument| argument.get_env().is_some_and(|env| env == name))
+                .and_then(clap::Arg::get_long)
+                .unwrap_or_else(|| panic!("{name} is not a setting of this manager"));
+            args.push(format!("--{flag}={value}").into());
+            vars.push((OsString::from(name), OsString::from(value)));
+        }
+        let config = Config::parse(args, vars).expect("the installed settings");
+        assert_eq!(config.mode, Mode::Serve);
+        assert_eq!(config.data, data);
+        assert_eq!(config.image, release);
+        assert_eq!(config.socket.as_deref(), Some(Path::new("/run/demi-cloud/machines.sock")));
+        assert_eq!(config.backend_url.as_str(), "https://backend.example.com/");
+        assert_eq!(config.dns, [Ipv4Addr::new(1, 1, 1, 1), Ipv4Addr::new(8, 8, 8, 8)]);
+        assert_eq!(config.slots, 16);
+        assert!(config.runsc.starts_with("/opt/gvisor"), "{}", config.runsc.display());
+        mount::unmount(&off, &data).unwrap();
+    }
 }
