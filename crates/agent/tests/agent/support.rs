@@ -20,8 +20,8 @@ use demi_provider::{
     testing::{FixedClock, ScriptedRuntime, Turn},
 };
 use demi_shell::{
-    CommandSet, GroupBuilder, LeafBuilder, PortError, PortRequest, PortResponse, PortTransport,
-    RpcError, RpcHandler, RpcInvocation, RpcPort,
+    CommandSet, GroupBuilder, JobCaller, LeafBuilder, PortError, PortRequest, PortResponse,
+    PortTransport, RpcError, RpcHandler, RpcInvocation, RpcPort, StorageOp, StorageReply,
 };
 use futures_util::{StreamExt, future::LocalBoxFuture, stream};
 use serde_json::{Value, json};
@@ -315,11 +315,12 @@ pub struct CommandRun {
     pub stderr: String,
 }
 
-/// A job's port: its output kept, and its command storage the node's, bound
-/// to the job's generation and the call's cancellation.
+/// A job's port: its output kept, and its command storage the node's at
+/// the generation the job recorded, while its call lives.
 struct NodePort {
-    node: Rc<demi_agent::Node<TestHarness>>,
-    lifetimes: Vec<CancellationToken>,
+    server: Rc<AgentServer<TestHarness>>,
+    caller: JobCaller,
+    call: CancellationToken,
     stdout: RefCell<Vec<u8>>,
     stderr: RefCell<Vec<u8>>,
 }
@@ -340,7 +341,10 @@ impl PortTransport for NodePort {
                     Ok(PortResponse::Input { bytes: None })
                 }
                 PortRequest::Storage { op } => {
-                    let reply = self.node.storage(op, self.lifetimes.clone()).await?;
+                    let reply = self
+                        .server
+                        .command_storage(&conversation(), &self.caller, op, self.call.clone())
+                        .await?;
                     Ok(PortResponse::Storage { reply })
                 }
             }
@@ -378,8 +382,9 @@ pub async fn agent_call(
     }))
     .expect("the invocation is well formed");
     let port = Rc::new(NodePort {
-        lifetimes: vec![live.command_generation(), cancel.clone()],
-        node: live.clone(),
+        server: server.clone(),
+        caller: live.job_caller(),
+        call: cancel.clone(),
         stdout: RefCell::new(Vec::new()),
         stderr: RefCell::new(Vec::new()),
     });
@@ -394,6 +399,22 @@ pub async fn agent_call(
         stdout,
         stderr,
     })
+}
+
+/// `op` on the command storage of the root `root`, as a job that starts now
+/// would send it.
+pub async fn command_storage(
+    server: &Rc<AgentServer<TestHarness>>,
+    root: &NodeId,
+    op: StorageOp,
+) -> Result<StorageReply, PortError> {
+    let caller = server
+        .node(root, root)
+        .expect("the conversation is open")
+        .job_caller();
+    server
+        .command_storage(root, &caller, op, CancellationToken::new())
+        .await
 }
 
 /// `demi agent <verb>` run to its end as a job of `node`.

@@ -40,12 +40,6 @@ impl Generation {
 }
 
 impl AgentSession {
-    /// The command-storage generation current now, which a job started now
-    /// is bound to.
-    pub(crate) fn command_generation(&self) -> CancellationToken {
-        self.shared.read(|core| core.generation.token.clone())
-    }
-
     /// The number of the generation current now, which a job started now
     /// records.
     pub(crate) fn generation_number(&self) -> u64 {
