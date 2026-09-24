@@ -1,29 +1,22 @@
 import { shallowRef, triggerRef } from 'vue'
-import type {
-  AgentClient,
-  ClientSessionEvent,
-  ProviderSelection,
-  EditRequest,
-  TranscriptVersion,
-} from '@demicodes/agent/client'
-import type { UserContentBlock } from '@demicodes/core'
-import { ProviderStreamError } from '@demicodes/agent/client'
+import { SessionError, type AgentClient, type ClientSessionEvent } from '@demicodes/agent-client'
+import { asError } from '@demicodes/utils'
+import type { ClientContent, EditRequest, ModelSelection, TranscriptVersion } from '@demicodes/protocol'
 import { AgentSocketError } from '../transport/agent-socket'
+import { hasAcceptedSubmission } from './submission'
 import type { ConversationState } from './types'
 
 /**
- * A rejected action whose failure the transcript already records as an error
- * block: the record tells it, so the caller shows nothing else.
+ * A rejected action whose failure the session reported as an `error` frame:
+ * a failed turn is a record in the transcript, and a refused frame or a
+ * failed save is the session's `lastError`, so the caller shows nothing else.
  */
 export function isRecordedTurnFailure(error: unknown): boolean {
-  return error instanceof ProviderStreamError
+  return error instanceof SessionError
 }
-import { hasAcceptedSubmission } from './submission'
 
 export type RuntimeState = Pick<
   ConversationState,
-  | 'id'
-  | 'cwd'
   | 'blocks'
   | 'phase'
   | 'queue'
@@ -38,7 +31,7 @@ export type RuntimeState = Pick<
 export interface ConversationRuntimeOptions {
   state: RuntimeState
   connect: (signal: AbortSignal) => Promise<AgentClient>
-  prepareModel: () => Promise<ProviderSelection>
+  prepareModel: () => Promise<ModelSelection>
   onEvent?: (event: ClientSessionEvent) => void
   /** The wait before the first reconnect attempt; every later one doubles it, up to `maxMs`. */
   reconnect?: { baseMs: number; maxMs: number }
@@ -75,12 +68,7 @@ export class ConversationRuntime {
     return this.client.value !== null
   }
 
-  async send(content: UserContentBlock[]): Promise<void> {
-    this.options.state.lastError = null
-    await (await this.ensureOpen()).send(content)
-  }
-
-  async submit(content: UserContentBlock[], messageId?: string): Promise<void> {
+  async submit(content: ClientContent[], messageId?: string): Promise<void> {
     this.options.state.lastError = null
     const client = await this.ensureOpen()
     if (messageId && hasAcceptedSubmission(this.options.state, messageId)) {
@@ -130,23 +118,22 @@ export class ConversationRuntime {
     await (await this.ensureOpen()).steerQueuedMessage(id)
   }
 
-  async steer(content: UserContentBlock[]): Promise<void> {
-    await (await this.ensureOpen()).steer(content)
-  }
-
   async deletePendingSteer(id: string): Promise<void> {
     const client = await this.ensureOpen()
     client.cancelPendingSteer(id)
   }
 
+  /**
+   * Delivers a pending steer now: Stop writes the steers still pending into
+   * the stopped turn, and Continue goes on from there with it
+   * (`product.md` § Conversations and projects).
+   */
   async interruptPendingSteer(id: string): Promise<void> {
-    const pending = this.options.state.pendingSteers.find((item) => item.id === id)
-    if (!pending) {
+    if (!this.options.state.pendingSteers.some((item) => item.id === id)) {
       return
     }
-    await this.deletePendingSteer(id)
     await this.abort()
-    await this.send(pending.content)
+    await this.resume()
   }
 
   async setModel(): Promise<void> {
@@ -155,9 +142,9 @@ export class ConversationRuntime {
     if (!client || !controller) {
       return
     }
-    const provider = await this.options.prepareModel()
+    const model = await this.options.prepareModel()
     controller.signal.throwIfAborted()
-    client.setProvider(provider)
+    client.setProvider(model)
   }
 
   async abort(): Promise<void> {
@@ -292,8 +279,11 @@ export class ConversationRuntime {
       () => attempt.abort(new AgentSocketError('The conversation did not open in time')),
       OPEN_TIMEOUT_MS,
     )
+    // A deadline or a release while the session opens ends the connection, which ends the wait.
+    const disconnect = () => client?.disconnect(asError(attempt.signal.reason))
+    attempt.signal.addEventListener('abort', disconnect, { once: true })
     try {
-      const provider = await this.options.prepareModel()
+      const model = await this.options.prepareModel()
       attempt.signal.throwIfAborted()
       client = await this.options.connect(attempt.signal)
       attempt.signal.throwIfAborted()
@@ -303,7 +293,7 @@ export class ConversationRuntime {
           triggerRef(this.client)
         }
       })
-      await client.open(provider, this.options.state.cwd, this.options.state.id)
+      await client.open(model)
       attempt.signal.throwIfAborted()
       this.client.value = client
       this.unsubscribe = unsubscribe
@@ -318,6 +308,7 @@ export class ConversationRuntime {
     } finally {
       clearTimeout(timeout)
       controller.signal.removeEventListener('abort', abortAttempt)
+      attempt.signal.removeEventListener('abort', disconnect)
     }
   }
 

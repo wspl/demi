@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import type { Block, SessionPhase, ToolCallStatus } from '@demicodes/core'
+import type { Block, SessionPhase, ToolCallStatus } from '@demicodes/protocol'
 import type { MessageListBlock } from '../pending-steers'
 import { activitySlotKind, type PendingAction } from '../activity-slot'
 import type { SessionLoad } from '../session-status'
@@ -142,7 +142,6 @@ function toolCallBlock(status: ToolCallStatus): MessageListBlock {
     toolName: 'shell_exec',
     input: '{"script":"ls"}',
     status,
-    streamingOutput: [],
     output: [],
     view: null,
   }

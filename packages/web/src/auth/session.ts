@@ -1,9 +1,8 @@
 import { defineStore } from 'pinia'
-import type { z } from 'zod'
-import { identitySchema } from '../api/contracts'
+import { identitySchema, type Credentials, type UserDto } from '../api/generated/web-api'
 import { apiRequest, ApiError, jsonBody } from '../api/client'
 
-type User = z.infer<typeof identitySchema>['user']
+type User = UserDto
 type SessionState =
   | { status: 'checking' }
   | {
@@ -71,7 +70,7 @@ export const useSession = defineStore('session', {
         ...jsonBody({
           email,
           password,
-        }),
+        } satisfies Credentials),
         signal,
       })
       const user = await readIdentity(response)

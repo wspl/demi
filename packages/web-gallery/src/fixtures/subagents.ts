@@ -1,4 +1,4 @@
-import type { Block } from '@demicodes/core'
+import type { Block } from '@demicodes/protocol'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import { demoModel, shellView, thinkingText } from './blocks'
 import { ago } from './time'
@@ -60,7 +60,6 @@ function shell(
       description,
     }),
     status,
-    streamingOutput: [],
     output: [],
     view: shellView({
       commandId: `cmd-${id}`,

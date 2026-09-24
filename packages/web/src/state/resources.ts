@@ -1,8 +1,12 @@
 import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
-import { z } from 'zod'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
-import { workspaceSchema, type ProductState } from '../api/contracts'
+import {
+  workspaceAnswerSchema,
+  type CreateWorkspace,
+  type DeviceDto,
+  type SidebarReorder,
+} from '../api/generated/web-api'
 import { useSession } from '../auth/session'
 import { useProduct } from './product'
 import { usePreferences } from './preferences'
@@ -14,7 +18,7 @@ import type { Device, Project } from './types'
 
 /** Product data and page state. Components own interaction and presentation. */
 /** A snapshot device as the file browser and the work panel take it. */
-function productDevice(device: NonNullable<ProductState['devices']>[number]): Device {
+function productDevice(device: DeviceDto): Device {
   return {
     id: device.id,
     kind: device.kind,
@@ -135,7 +139,7 @@ export const useResources = defineStore('resources', () => {
       id: provider.id,
       label: provider.label,
       isAvailable: !local.value.hiddenProviders.includes(provider.id) &&
-        catalog.find(item => item.providerId === provider.id)?.availability.available === true,
+        catalog.find(item => item.providerId === provider.id)?.availability.type === 'available',
     }))
   })
 
@@ -205,35 +209,19 @@ export const useResources = defineStore('resources', () => {
         kind: 'workspace',
         id,
         beforeId,
-      }),
+      } satisfies SidebarReorder),
     })
     await product.revalidate()
   }
 
-  async function createProject(
-    draft:
-      | {
-          cloud: true
-          name: string
-        }
-      | {
-          deviceId: string
-          path: string
-          name: string
-        },
-  ): Promise<string> {
+  async function createProject(draft: CreateWorkspace): Promise<string> {
     const current = controller
     const response = await apiRequest('/workspaces', {
       method: 'POST',
       signal: controller.signal,
       ...jsonBody(draft),
     })
-    const { workspace } = await readResponse(
-      response,
-      z.object({
-        workspace: workspaceSchema,
-      }),
-    )
+    const { workspace } = await readResponse(response, workspaceAnswerSchema)
     await product.revalidate()
     current.signal.throwIfAborted()
     rememberProject(workspace.id)
