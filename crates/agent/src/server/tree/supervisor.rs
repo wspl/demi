@@ -430,7 +430,7 @@ impl<H: AgentHarness> Tree<H> {
         let server = self.server.upgrade().ok_or("the agent server is gone")?;
         let deps = &server.deps;
         let profile = self.profile(record.profile.as_deref())?;
-        let _activity = self.admission.enter(Purpose::Demand).await;
+        let activity = self.admission.enter(Purpose::Demand).await;
         let runtime = owner
             .session()
             .fork_runtime()
@@ -481,6 +481,9 @@ impl<H: AgentHarness> Tree<H> {
         {
             self.report(format!("subagent {id} did not save its start: {error}"));
         }
+        // Each start of the subtree enters the admission on its own; one held
+        // across them would wait behind a reservation that waits for it.
+        drop(activity);
         self.restore_children(&child.node).await;
         self.supervise(&child);
         Ok(id)
@@ -656,10 +659,10 @@ impl<H: AgentHarness> Tree<H> {
     }
 
     /// Closes a child (`subagents.md` § Result, § Abort): an abort or a
-    /// failure first closes its subtree and stops what it still runs; its
-    /// session saves its final checkpoint, the close is committed, the child
-    /// leaves the directory with a `closed` frame, and its completion goes to
-    /// its parent, whose save marks it delivered.
+    /// failure first stops what it still runs and then closes its subtree;
+    /// its session saves its final checkpoint, the close is committed, the
+    /// child leaves the directory with a `closed` frame, and its completion
+    /// goes to its parent, whose save marks it delivered.
     async fn close(self: &Rc<Self>, child: &Rc<Child<H>>, kind: CloseKind) {
         let record = child.node.record().clone();
         let owner = self.node(child.parent());
