@@ -14,9 +14,13 @@ use demi_agent::{EnvironmentScope, ShellEnvironmentFactory};
 use demi_command_service::protocol::{ArtifactLocation, CommandCaller, PackageArtifact};
 use demi_host_remote::{
     ArtifactResolver, CommandCatalog, ContextSource, EnvironmentOptions, HostAccess, RemoteHost, RemoteShellEnvironment,
+    RetainEdits,
 };
-use demi_core::{CommandId, ShellId};
-use demi_shell::{CommandStatus, ExecRequest, Host, HostError, HostErrorKind, HostKey, ShellEnvironment, ShellError};
+use demi_runner_protocol::wire::JobFileChange;
+use demi_core::{CommandId, EditedFile, ShellId};
+use demi_shell::{
+    CommandStatus, ExecRequest, Host, HostError, HostErrorKind, HostFs, HostKey, ShellEnvironment, ShellError,
+};
 use demi_web_api::ids::{ConversationId, DeviceId};
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
@@ -27,6 +31,7 @@ use crate::runner::command_context::command_context;
 use crate::runner::device_of;
 use crate::runner::router::CommandRegistration;
 use crate::shard::Shard;
+use crate::storage::changes::ChangeStore;
 
 impl Shard {
     /// A node's Host: the conversation's current main Host. The host access
@@ -133,6 +138,11 @@ impl ShellEnvironmentFactory<RemoteHost> for ShardShellEnvironments {
                 shard: self.shard.clone(),
                 conversation: conversation.clone(),
             }));
+            options.retain = Some(Rc::new(KeptEdits {
+                changes: shard.services().changes.clone(),
+                conversation: conversation.clone(),
+                host: host.clone(),
+            }));
             let selection = self
                 .catalog
                 .select(scope.commands)
@@ -187,6 +197,28 @@ impl HostAccess for JobAccess {
                 .upgrade()
                 .ok_or_else(|| HostError::offline("the backend is shutting down"))?;
             shard.run_job(&self.conversation, host, &cancel, job).await
+        })
+    }
+}
+
+/// Keeps the edits of each job's commands in the change store
+/// (`edit-tracking.md` § The change store), reading their copies from the
+/// job's Host inside its host access, before the command reads as ended.
+struct KeptEdits {
+    changes: ChangeStore,
+    conversation: ConversationId,
+    host: Rc<RemoteHost>,
+}
+
+impl RetainEdits for KeptEdits {
+    fn retain<'a>(
+        &'a self,
+        command: &'a CommandId,
+        files: &'a [JobFileChange],
+    ) -> LocalBoxFuture<'a, Result<Vec<EditedFile>, String>> {
+        Box::pin(async move {
+            let read = async |path: &str| HostFs::read_file(&*self.host, path).await;
+            Ok(self.changes.retain(&self.conversation, command, read, files).await)
         })
     }
 }
