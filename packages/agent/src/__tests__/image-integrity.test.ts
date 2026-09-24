@@ -4,7 +4,7 @@ import type { ToolResultContentBlock, UserContentBlock } from '@demicodes/core'
 import type { AgentProvider, InferenceSteer } from '@demicodes/provider'
 import { StubProvider, createProviderRun, events } from '@demicodes/provider/testing'
 import { bytesToBase64, deferred } from '@demicodes/utils'
-import { filterCorruptImages, filterInferenceImages } from '../image-integrity'
+import { filterCorruptImages } from '../image-integrity'
 import { createRuntime, createSession, makeTranscript, model, text } from './helpers'
 
 const png = new Uint8Array(readFileSync(new URL('../../../utils/src/__tests__/fixtures/images/valid.png', import.meta.url)))
@@ -16,9 +16,7 @@ const badUser: UserContentBlock = { type: 'image', source: { type: 'binary', dat
 test('filters only the broken attachment, preserving neighbors and source records', () => {
   const output = [{ type: 'text', text: 'before' }, broken, valid, { type: 'text', text: 'after' }] as ToolResultContentBlock[]
   const before = structuredClone(output)
-  expect(filterInferenceImages([{ type: 'tool_result', toolUseId: 't', output, isError: false }])).toEqual([
-    { type: 'tool_result', toolUseId: 't', output: [output[0], corrupt, valid, output[3]], isError: false },
-  ])
+  expect(filterCorruptImages(output)).toEqual([output[0], corrupt, valid, output[3]])
   expect(output).toEqual(before)
 })
 
@@ -32,14 +30,14 @@ test('checks binary user images, inline data URLs, and malformed base64', () => 
   expect(filterCorruptImages([remote])).toEqual([remote])
 })
 
-test('content cache cannot reuse a valid verdict after source mutation', () => {
+test('new content is validated independently after source mutation', () => {
   const image = structuredClone(valid)
   expect(filterCorruptImages([image])).toEqual([valid])
   image.source.data = broken.source.data
   expect(filterCorruptImages([image])).toEqual([corrupt])
 })
 
-test('resume excludes a corrupt historical tool image without rerunning the tool or editing its record', async () => {
+test('resume does not scan or rewrite historical images', async () => {
   const transcript = makeTranscript()
   transcript.pushUserTurn('old-turn', model, text('screenshot'))
   transcript.applyProviderEvent(model, events.toolCall('old-tool', 'screenshot', {}))
@@ -48,7 +46,7 @@ test('resume excludes a corrupt historical tool image without rerunning the tool
   transcript.applyProviderEvent(model, events.error('Invalid image', 'invalid_value'))
   const original = structuredClone(transcript.blocks.find(block => block.type === 'tool_call'))
   const provider = new StubProvider([(request) => {
-    expect(request.items.find(item => item.type === 'tool_result')).toEqual({ type: 'tool_result', toolUseId: 'old-tool', output: [corrupt, valid], isError: false })
+    expect(request.items.find(item => item.type === 'tool_result')).toEqual({ type: 'tool_result', toolUseId: 'old-tool', output: [broken, valid], isError: false })
     return [events.text('continued'), events.response()]
   }])
   let toolCalls = 0
@@ -88,3 +86,16 @@ test('direct provider steering cannot bypass image validation', async () => {
     expect(received.map(input => input.content)).toEqual([[corrupt]])
   } finally { finish.resolve(); await running }
 })
+
+for (const resolved of [false, true]) {
+  test(`new user images are filtered before storage and inference (resolver=${resolved})`, async () => {
+    const provider = new StubProvider([request => {
+      expect(request.items.find(item => item.type === 'user_message')).toMatchObject({ content: [{ type: 'text', text: 'preamble' }, corrupt] })
+      return [events.text('done'), events.response()]
+    }])
+    const runtime = createRuntime(resolved ? { resolveReferences: async () => [badUser] } : {})
+    const session = createSession(provider, runtime)
+    await session.send(resolved ? text('reference') : [badUser])
+    expect(session.transcript().blocks.find(block => block.type === 'user')).toMatchObject({ content: [corrupt] })
+  })
+}

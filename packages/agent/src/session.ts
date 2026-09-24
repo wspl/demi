@@ -361,7 +361,7 @@ export class AgentSession<State> {
           id: blockId,
           sessionId: this.agentSessionId,
           turnId,
-          content: filterCorruptImages(resolvedContent),
+          content: resolvedContent,
         })
       } catch (error) {
         const normalized = asError(error)
@@ -691,6 +691,7 @@ export class AgentSession<State> {
   }
 
   private async steerInternal(content: UserContentBlock[], id: string, hidden = false): Promise<void> {
+    content = filterCorruptImages(content)
     const delivery = this.steerDelivery()
     const turnId = this.currentTurnId()
     if (delivery.type === 'provider') {
@@ -698,7 +699,7 @@ export class AgentSession<State> {
         id,
         sessionId: this.agentSessionId,
         turnId,
-        content: filterCorruptImages(content),
+        content,
       })
       this.transcriptLog.pushSteer(turnId, this.model, content, id, hidden)
       await this.commitTranscript()
@@ -930,7 +931,7 @@ export class AgentSession<State> {
 
   private async resolveReferences(content: UserContentBlock[]): Promise<UserContentBlock[]> {
     const resolver = this.runtime.resolveReferences
-    if (!resolver) return content
+    if (!resolver) return filterCorruptImages(content)
     const signal = this.currentSignal()
     const resolved = await abortable(
       Promise.resolve(
@@ -948,7 +949,7 @@ export class AgentSession<State> {
       ),
       signal,
     )
-    return resolved
+    return filterCorruptImages(resolved)
   }
 
   private async executeRetry(): Promise<void> {

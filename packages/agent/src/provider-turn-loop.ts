@@ -1,4 +1,4 @@
-import { filterCorruptImages, filterInferenceImages } from './image-integrity'
+import { filterCorruptImages } from './image-integrity'
 import { AbortError, abortable, asError, delay, isAbortError, parseJsonOrString, throwIfAborted } from '@demicodes/utils'
 import type { ModelSelection, ProviderErrorDiagnostics, TokenUsage } from '@demicodes/core'
 import type { AgentProvider, InferenceRequest, ProviderEvent, ProviderRun, ToolDefinition } from '@demicodes/provider'
@@ -336,7 +336,7 @@ export class ProviderTurnLoop<State> {
       modelId: this.host.model.model.id,
       systemPrompt,
       cwd: this.host.cwd,
-      items: filterInferenceImages(this.host.transcript.collectInferenceItems()),
+      items: this.host.transcript.collectInferenceItems(),
       tools,
       thinking: this.host.model.thinking,
       serviceTierId: this.host.model.serviceTierId ?? null,

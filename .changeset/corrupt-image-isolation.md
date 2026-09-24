@@ -3,4 +3,4 @@
 "@demicodes/utils": patch
 ---
 
-Validate image integrity before attachment and inference, replacing corrupt image blocks with `Image data is corrupted.` while preserving neighboring content and existing transcript history. Apply the same guard to direct provider steering and session recovery.
+Validate new user and tool images before storage or delivery, replacing corrupt image blocks with `Image data is corrupted.` while preserving neighboring content. Existing history is not scanned or rewritten during inference or recovery.
