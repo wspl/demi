@@ -6,7 +6,7 @@
 
 use std::rc::Rc;
 
-use demi_core::NodeId;
+use demi_core::{ModelSelection, NodeId};
 use demi_shell::CommandSet;
 
 /// The node a harness hook is asked about.
@@ -36,6 +36,13 @@ pub trait AgentHarness: 'static {
     /// its system prompt once, when it is assembled.
     fn commands(&self) -> Rc<CommandSet>;
 
+    /// The named subagent profiles `demi agent spawn --profile` selects
+    /// (`subagents.md` § Profiles); none by default. Omitting `--profile`
+    /// always inherits the parent, and the name `default` is reserved.
+    fn profiles(&self) -> Vec<Profile> {
+        Vec::new()
+    }
+
     /// The system prompt of a node's requests. `commands` is the rendered
     /// help of the node's commands, empty when it has none.
     async fn system_prompt(&self, context: PromptContext<'_>, commands: &str) -> String;
@@ -51,5 +58,37 @@ pub trait AgentHarness: 'static {
     /// such as a target switch; none when nothing changed, and by default.
     async fn context(&self, _context: PromptContext<'_>) -> Option<String> {
         None
+    }
+}
+
+/// A named subagent configuration (`subagents.md` § Profiles): every field
+/// overrides what the child would inherit from its parent.
+#[derive(Clone)]
+pub struct Profile {
+    /// The `--profile` value.
+    pub name: String,
+    /// What the profile is for, listed in the spawn command's help.
+    pub description: String,
+    /// Replaces the parent's system prompt and drops its preamble; it is
+    /// given the node's context and the rendered help of its commands.
+    pub system_prompt: Option<Rc<dyn Fn(PromptContext<'_>, &str) -> String>>,
+    /// Narrows the parent's harness commands for the child.
+    pub commands: Option<Rc<dyn Fn(&CommandSet) -> CommandSet>>,
+    /// Whether the profile's children may spawn children of their own.
+    pub can_spawn_subagents: bool,
+    /// A model used instead of the parent's, on a fork of the parent's
+    /// provider runtime.
+    pub model: Option<ModelSelection>,
+}
+
+impl std::fmt::Debug for Profile {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Profile")
+            .field("name", &self.name)
+            .field("description", &self.description)
+            .field("can_spawn_subagents", &self.can_spawn_subagents)
+            .field("model", &self.model)
+            .finish_non_exhaustive()
     }
 }

@@ -37,9 +37,12 @@ fn update(queue: Vec<QueuedMessage>, blocks: Vec<Block>) -> CheckpointUpdate {
         state: CheckpointState {
             phase: SessionPhase::Idle,
             queue,
+            agent_inputs: Vec::new(),
+            wakeups: Vec::new(),
             cwd: "/w".into(),
             model: test_model(),
             harness: "test".into(),
+            edits: Vec::new(),
         },
         command_state: Some(CommandStateSnapshot::initial()),
         block_count: blocks.len(),

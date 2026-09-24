@@ -137,7 +137,7 @@ async fn frames_that_need_a_session_are_refused_without_one_and_while_it_is_busy
         },
         ClientFrame::Steer {
             steer_id: steer_id.clone(),
-            content: demi_agent::testing::text("steer"),
+            content: demi_agent::testing::client_text("steer"),
         },
         ClientFrame::SetProvider {
             model: test_model(),
@@ -266,7 +266,11 @@ async fn a_client_that_stops_reading_is_closed_as_lagging_and_a_reopen_adopts_th
     assert_eq!(fixture.resolver.calls.borrow().len(), 1);
 
     // A connection whose socket is gone detaches, and its outbox ends.
-    let (connection, mut frames) = fixture.server.connect(conversation(), "/workspace".into());
+    let (connection, mut frames) = fixture.server.connect(
+        conversation(),
+        "/workspace".into(),
+        demi_agent::testing::TestFiles::new(),
+    );
     connection.handle(open(test_model())).await;
     drop(connection);
     let mut drained = Vec::new();

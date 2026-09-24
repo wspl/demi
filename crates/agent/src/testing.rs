@@ -9,13 +9,15 @@ use std::{
     rc::Rc,
 };
 
-use demi_agent_protocol::ServerFrame;
-use demi_core::{Block, Model, ModelSelection, NodeId, QueuedMessage, UserContentBlock};
+use demi_agent_protocol::{ClientContent, ClientFrame, ServerFrame};
+use demi_core::{
+    Block, Clock, Model, ModelSelection, NodeId, QueuedMessage, Timestamp, UserContentBlock,
+};
 use futures_util::future::LocalBoxFuture;
 
 use crate::{
-    AgentHarness, AgentServer, AgentTreeStore, Connection, FrameRx, IdSource, Outgoing,
-    SessionStore,
+    AgentHarness, AgentServer, AgentTreeStore, Connection, ContentError, ContentResolver,
+    FileReference, FrameRx, IdSource, Outgoing, SessionStore,
     store::{
         Checkpoint, CheckpointState, CheckpointUpdate, CommandStateSnapshot, CommitGuard,
         NodeClose, NodeRecord, StoreError,
@@ -76,6 +78,87 @@ pub fn text(text: &str) -> Vec<UserContentBlock> {
     }]
 }
 
+/// A message's content of one text, as the browser sends it.
+pub fn client_text(text: &str) -> Vec<ClientContent> {
+    vec![ClientContent::Text {
+        text: text.to_owned(),
+    }]
+}
+
+/// A wall clock that moves with Tokio's, so that a test on the paused clock
+/// moves the times records carry too: `start` plus the Tokio time elapsed
+/// since the clock was made.
+#[derive(Debug)]
+pub struct TokioClock {
+    start: Timestamp,
+    origin: tokio::time::Instant,
+}
+
+impl TokioClock {
+    pub fn new(start: Timestamp) -> Self {
+        Self {
+            start,
+            origin: tokio::time::Instant::now(),
+        }
+    }
+}
+
+impl Clock for TokioClock {
+    fn now(&self) -> Timestamp {
+        let elapsed = i64::try_from(self.origin.elapsed().as_millis()).unwrap_or(i64::MAX);
+        Timestamp::from_millisecond(self.start.as_millisecond().saturating_add(elapsed))
+            .expect("a test's time stays in range")
+    }
+}
+
+/// Uploads a test gave the blocks they resolve to; every other file
+/// reference is refused, as a backend refuses one it does not hold.
+#[derive(Debug, Default)]
+pub struct TestFiles {
+    uploads: RefCell<BTreeMap<String, Vec<UserContentBlock>>>,
+}
+
+impl TestFiles {
+    pub fn new() -> Rc<Self> {
+        Rc::new(Self::default())
+    }
+
+    /// The upload `reference` resolves to `blocks`.
+    pub fn upload(&self, reference: &str, blocks: Vec<UserContentBlock>) {
+        self.uploads
+            .borrow_mut()
+            .insert(reference.to_owned(), blocks);
+    }
+}
+
+impl ContentResolver for TestFiles {
+    fn resolve<'a>(
+        &'a self,
+        files: Vec<FileReference>,
+    ) -> LocalBoxFuture<'a, Result<Vec<Vec<UserContentBlock>>, ContentError>> {
+        Box::pin(async move {
+            files
+                .into_iter()
+                .map(|file| match file {
+                    FileReference::Upload { r#ref, .. } => self
+                        .uploads
+                        .borrow()
+                        .get(&r#ref)
+                        .cloned()
+                        .ok_or(ContentError {
+                            message: format!("upload {ref} is not available"),
+                            code: Some("frame_delivery_failed".to_owned()),
+                        }),
+                    FileReference::RemoteFile { device_id, .. } => Err(ContentError {
+                        message: format!("device {device_id} is not paired"),
+                        code: Some("frame_delivery_failed".to_owned()),
+                    }),
+                })
+                .collect()
+        })
+    }
+}
+
 /// One node as the store holds it.
 #[derive(Debug, Clone)]
 struct StoredNode {
@@ -94,6 +177,33 @@ struct Stored {
     saves: Vec<(NodeId, CheckpointUpdate)>,
     created: u64,
     failing_saves: usize,
+    hold: Option<Rc<Hold>>,
+}
+
+/// Saves waiting until a test lets them commit.
+#[derive(Debug, Default)]
+struct Hold {
+    waiting: Cell<usize>,
+    open: Cell<bool>,
+    released: tokio::sync::Notify,
+}
+
+/// A hold on a [`MemoryTreeStore`]'s saves: each waits until
+/// [`release`](Self::release), as a save behind a slow database would.
+#[derive(Debug)]
+pub struct SaveGate(Rc<Hold>);
+
+impl SaveGate {
+    /// How many saves wait.
+    pub fn waiting(&self) -> usize {
+        self.0.waiting.get()
+    }
+
+    /// Lets the waiting saves and every later one commit.
+    pub fn release(&self) {
+        self.0.open.set(true);
+        self.0.released.notify_waiters();
+    }
 }
 
 /// The in-memory tree store: the contract's semantics with nothing durable.
@@ -137,6 +247,13 @@ impl MemoryTreeStore {
     /// Refuses the next `count` saves, as a failing database would.
     pub fn fail_saves(&self, count: usize) {
         self.stored.borrow_mut().failing_saves = count;
+    }
+
+    /// Holds every save from now on until the gate is released.
+    pub fn hold_saves(&self) -> SaveGate {
+        let hold = Rc::new(Hold::default());
+        self.stored.borrow_mut().hold = Some(hold.clone());
+        SaveGate(hold)
     }
 }
 
@@ -217,6 +334,20 @@ impl SessionStore for MemorySessionStore {
         guard: &'a CommitGuard,
     ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
         Box::pin(async move {
+            let hold = self.stored.borrow().hold.clone();
+            if let Some(hold) = hold {
+                hold.waiting.set(hold.waiting.get() + 1);
+                while !hold.open.get() {
+                    let released = hold.released.notified();
+                    tokio::pin!(released);
+                    released.as_mut().enable();
+                    if hold.open.get() {
+                        break;
+                    }
+                    released.await;
+                }
+                hold.waiting.set(hold.waiting.get() - 1);
+            }
             guard.check()?;
             let mut stored = self.stored.borrow_mut();
             if stored.failing_saves > 0 {
@@ -376,14 +507,25 @@ pub struct TestClient<H: AgentHarness> {
 }
 
 impl<H: AgentHarness> TestClient<H> {
-    /// A client of the conversation `root`, whose new tree works in `cwd`.
+    /// A client of the conversation `root`, whose new tree works in `cwd`,
+    /// whose frames refer to no file.
     pub fn connect(server: &Rc<AgentServer<H>>, root: &NodeId, cwd: &str) -> Self {
-        let (connection, frames) = server.connect(root.clone(), cwd.to_owned());
+        Self::connect_with(server, root, cwd, TestFiles::new())
+    }
+
+    /// A client whose frames' files `files` resolves.
+    pub fn connect_with(
+        server: &Rc<AgentServer<H>>,
+        root: &NodeId,
+        cwd: &str,
+        files: Rc<dyn ContentResolver>,
+    ) -> Self {
+        let (connection, frames) = server.connect(root.clone(), cwd.to_owned(), files);
         Self { connection, frames }
     }
 
     /// Hands `frame` to the connection and waits until it is handled.
-    pub async fn send(&self, frame: demi_agent_protocol::ClientFrame<UserContentBlock>) {
+    pub async fn send(&self, frame: ClientFrame) {
         self.connection.handle(frame).await;
     }
 
