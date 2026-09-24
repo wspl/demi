@@ -7,10 +7,10 @@
 
 use std::{rc::Rc, sync::Arc};
 
+use demi_agent_protocol::ServerFrame;
 use demi_core::{Clock, CommandId, ModelSelection, NodeId, QueuedMessage};
 use demi_gates::{ActivityGate, GateLease, Purpose, Reservation};
 use demi_provider::{ProviderRuntime, ToolDefinition};
-use demi_agent_protocol::ServerFrame;
 use demi_shell::{CommandSet, CommandStatus, JobCaller, PortError, StorageOp, StorageReply};
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
@@ -107,7 +107,10 @@ impl<H: AgentHarness> Node<H> {
 
     /// Stops a running command through the node's environment for the
     /// conversation's current Host, as `shell_abort` asks.
-    pub(crate) async fn shell_abort(&self, command: &CommandId) -> Result<CommandStatus, CallError> {
+    pub(crate) async fn shell_abort(
+        &self,
+        command: &CommandId,
+    ) -> Result<CommandStatus, CallError> {
         let (_, status) = self.runtime.shell_access().abort(command).await?;
         Ok(status)
     }
