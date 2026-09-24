@@ -15,7 +15,7 @@ use demi_core::{
 };
 use demi_provider::{
     Capabilities, CatalogError, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
-    RuntimeEnv, RuntimeError, Secret, read_http_failure,
+    RuntimeEnv, RuntimeError, Secret, endpoint_url, read_http_failure,
 };
 use futures_util::{
     StreamExt,
@@ -66,22 +66,11 @@ impl AnthropicProvider {
                 id: config.id,
                 display_name: config.display_name,
                 api_key: config.api_key.header_value(),
-                messages_url: messages_url(base),
+                messages_url: endpoint_url(&base, "/messages"),
                 clock,
             }),
         }
     }
-}
-
-/// `base` with `/messages` appended, unless its path already ends with it.
-fn messages_url(mut base: Url) -> Url {
-    let path = base.path().trim_end_matches('/').to_owned();
-    if path.ends_with("/messages") {
-        base.set_path(&path);
-    } else {
-        base.set_path(&format!("{path}/messages"));
-    }
-    base
 }
 
 impl Provider for AnthropicProvider {

@@ -8,7 +8,7 @@ use demi_core::{
     B64Bytes, DocumentSource, MediaSource, ThinkingConfig, ThinkingSummary, ToolMediaSource,
     ToolResultContentBlock, UserContentBlock, attachment_tag, is_blank,
 };
-use demi_provider::{InferenceItem, InferenceRequest, ToolDefinition};
+use demi_provider::{InferenceItem, InferenceRequest, ToolDefinition, UnloadedMedia, json_body};
 use serde::Serialize;
 
 /// The prefix this provider puts on the signatures and redacted data it
@@ -24,16 +24,9 @@ const DEFAULT_MAX_TOKENS: u32 = 32_000;
 /// keeps below `max_tokens`.
 const MIN_THINKING_BUDGET: u32 = 1_024;
 
-/// Media the session did not load back before the request: it names the
-/// blob.
-#[derive(Debug)]
-pub(crate) struct UnloadedMedia(pub(crate) String);
-
 /// The JSON body of `request`.
 pub(crate) fn encode(request: &InferenceRequest) -> Result<Vec<u8>, UnloadedMedia> {
-    let body = body(request)?;
-    // The body is strings, numbers and JSON values, which always serialize.
-    Ok(serde_json::to_vec(&body).expect("a request body serializes"))
+    Ok(json_body(&body(request)?))
 }
 
 #[derive(Serialize)]

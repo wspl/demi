@@ -145,7 +145,7 @@ impl Handler for Lifecycle {
                 cancelled.notify_one();
                 return Err(ServiceError::Cancelled);
             }
-            Err(ServiceError::Handler("profile cleanup failed".into()))
+            Err(ServiceError::failed("profile cleanup failed"))
         })
     }
 
