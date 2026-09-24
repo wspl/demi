@@ -1827,6 +1827,7 @@ name = "demi-web-api"
 version = "0.1.3"
 dependencies = [
  "demi-agent-protocol",
+ "demi-builtin-protocol",
  "demi-command-service",
  "demi-core",
  "demi-runner-protocol",
