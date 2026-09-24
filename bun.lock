@@ -32,6 +32,14 @@
         "@demicodes/host-remote": "workspace:^",
       },
     },
+    "packages/agent-client": {
+      "name": "@demicodes/agent-client",
+      "version": "0.24.0",
+      "dependencies": {
+        "@demicodes/protocol": "workspace:^",
+        "@demicodes/utils": "workspace:^",
+      },
+    },
     "packages/backend": {
       "name": "@demicodes/backend",
       "version": "0.20.0",
@@ -139,6 +147,13 @@
         "@demicodes/utils": "workspace:^",
         "ipaddr.js": "^2.5.0",
         "tar": "^7.5.22",
+        "zod": "^4.0.0",
+      },
+    },
+    "packages/protocol": {
+      "name": "@demicodes/protocol",
+      "version": "0.24.0",
+      "dependencies": {
         "zod": "^4.0.0",
       },
     },
@@ -255,6 +270,7 @@
       "version": "0.24.0",
       "dependencies": {
         "@demicodes/core": "workspace:^",
+        "@demicodes/protocol": "workspace:^",
         "@demicodes/utils": "workspace:^",
         "@demicodes/web-ui": "workspace:^",
         "@lucide/vue": "^1.40.0",
@@ -526,6 +542,8 @@
 
     "@demicodes/agent": ["@demicodes/agent@workspace:packages/agent"],
 
+    "@demicodes/agent-client": ["@demicodes/agent-client@workspace:packages/agent-client"],
+
     "@demicodes/backend": ["@demicodes/backend@workspace:packages/backend"],
 
     "@demicodes/browser-protocol": ["@demicodes/browser-protocol@workspace:packages/browser-protocol"],
@@ -541,6 +559,8 @@
     "@demicodes/host-remote": ["@demicodes/host-remote@workspace:packages/host-remote"],
 
     "@demicodes/machines": ["@demicodes/machines@workspace:packages/machines"],
+
+    "@demicodes/protocol": ["@demicodes/protocol@workspace:packages/protocol"],
 
     "@demicodes/provider": ["@demicodes/provider@workspace:packages/provider"],
 
