@@ -6,6 +6,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::auth::UserDto;
+use crate::cloud::CloudStatus;
 use crate::conversations::ConversationSummary;
 use crate::devices::DeviceDto;
 use crate::exposes::ExposeDto;
@@ -18,10 +19,9 @@ use crate::workspaces::WorkspaceDto;
 /// workspaces in their order, the user's devices, the paired ones and the
 /// Cloud, the user's live exposes, soonest expiry first, with the domain of
 /// their hostnames, null when the instance has none and exposes are off,
-/// and the summaries of the user's conversations, the active ones first,
-/// then the archived. The backend
-/// assembles it on each request, without waking a Cloud or running
-/// inference.
+/// the summaries of the user's conversations, the active ones first, then
+/// the archived, and the Cloud's status. The backend assembles it on each
+/// request, without waking a Cloud or running inference.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ProductState {
@@ -36,4 +36,5 @@ pub struct ProductState {
     #[schemars(with = "Nullable<String>")]
     pub expose_domain: Option<String>,
     pub conversations: Vec<ConversationSummary>,
+    pub cloud: CloudStatus,
 }

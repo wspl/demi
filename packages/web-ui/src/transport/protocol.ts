@@ -34,16 +34,7 @@ export interface ModelInfo {
   serviceTiers: ModelServiceTier[] | null
 }
 
-// The agent owns the session contract; an embedder reads it through here so it
-// never has to describe a frame, a block or a tool view a second time.
-export {
-  modelSelectionSchema,
-  editRequestSchema,
-  blockSchema,
-  failuresSchema,
-  refSourceSchema,
-  shellToolViewSchema,
-} from '@demicodes/agent/client'
-export type { ProviderSelection, ClientFrame, ClientSessionEvent } from '@demicodes/agent/client'
-
-export { applyTranscriptPatches } from '@demicodes/agent/client'
+// The session's events and the one transcript patch applier, which a host
+// reads through here: it reaches `@demicodes/agent-client` only through this
+// package.
+export { applyTranscriptPatches, type ClientSessionEvent } from '@demicodes/agent-client'

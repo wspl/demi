@@ -1,6 +1,6 @@
 {
   "name": "@demicodes/utils",
-  "description": "Shared zero-dependency utilities for Demi (type guards, errors, async, bytes, strings, paths, JSON).",
+  "description": "Small generic helpers shared by the Demi browser packages.",
   "version": "0.24.0",
   "private": false,
   "type": "module",

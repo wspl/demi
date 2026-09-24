@@ -5,8 +5,8 @@
 
 // spell-checker:ignore (ToDO) ENOTDIR
 
+#[cfg(unix)]
 use uucore::context::FileKindExt as _;
-use uucore::context::PathExt as _;
 use clap::builder::ValueParser;
 use clap::{Arg, ArgAction, Command};
 use std::ffi::OsString;

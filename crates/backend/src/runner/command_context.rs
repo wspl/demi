@@ -3,7 +3,7 @@
 //! The backend is its only source and builds it when the work starts.
 
 use demi_command_service::protocol::{CommandCaller, CommandContext, CommandLocale};
-use demi_web_api::ids::{ConversationId, UserId};
+use demi_web_api::ids::{ConversationId, ProviderId, UserId};
 
 use crate::storage::StorageError;
 use crate::storage::control::ControlService;
@@ -24,9 +24,29 @@ pub(crate) async fn command_context(
     conversation: &ConversationId,
     caller: CommandCaller,
 ) -> Result<CommandContext, StorageError> {
+    context(control, user, conversation.to_string(), caller).await
+}
+
+/// The context of `user`'s work for the provider entry `provider` that
+/// belongs to no conversation, such as installing its CLI
+/// (`claude-code.md` § The package): it names the entry.
+pub(crate) async fn provider_context(
+    control: &ControlService,
+    user: &UserId,
+    provider: &ProviderId,
+) -> Result<CommandContext, StorageError> {
+    context(control, user, format!("provider-{provider}"), CommandCaller::User {}).await
+}
+
+async fn context(
+    control: &ControlService,
+    user: &UserId,
+    scope: String,
+    caller: CommandCaller,
+) -> Result<CommandContext, StorageError> {
     let preferences = control.preferences(user.clone()).await?;
     Ok(CommandContext {
-        conversation: conversation.to_string(),
+        conversation: scope,
         caller,
         locale: preferences.locale.unwrap_or_else(default_locale),
     })

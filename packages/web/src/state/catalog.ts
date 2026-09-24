@@ -5,11 +5,12 @@ import type {
   SettingsProviderModel,
   SettingsWireApi,
 } from '@demicodes/web-ui/settings/types'
+import type { AuthState, RuntimeState } from '@demicodes/protocol'
 import type {
-  BackendProvider,
   CatalogModel,
   CatalogProvider,
-} from '../api/contracts'
+  ProviderState,
+} from '../api/generated/web-api'
 import type { LocalState } from './local'
 
 export interface ProductProvider extends SettingsProviderEntry {
@@ -55,11 +56,7 @@ export function modelInfo(model: CatalogModel): ModelInfo {
           canDisable: model.canDisableThinking !== false,
         }
       : null,
-    serviceTiers:
-      model.serviceTiers?.map((tier) => ({
-        ...tier,
-        fast: tier.fast === true,
-      })) ?? null,
+    serviceTiers: model.serviceTiers.map((tier) => ({ id: tier.id, label: tier.label, fast: tier.fast })),
   }
 }
 
@@ -77,29 +74,32 @@ export function settingsModel(
       model.selection.model.acceptedExtensions?.map(
         (extension) => `.${extension}`,
       ) ?? null,
-    fastTier: model.serviceTiers?.find((tier) => tier.fast)?.id ?? null,
+    fastTier: model.serviceTiers.find((tier) => tier.fast)?.id ?? null,
     enabled: !hidden.includes(model.id),
   }
 }
 
+/** What a provider's health says in words, when it says anything. */
+function healthMessage(health: AuthState | RuntimeState): string | undefined {
+  return 'message' in health ? health.message : undefined
+}
+
 export function providerView(
-  entry: BackendProvider,
+  entry: ProviderState,
   catalog: CatalogProvider | undefined,
   local: LocalState,
 ): ProductProvider {
-  const details = entry.details
+  const details = entry.details.type === 'read' ? entry.details : null
   const auth = details?.auth.status
   const runtime = details?.runtime.status
   const state =
-    entry.error || auth === 'error' || runtime === 'error'
+    !details || auth === 'error' || runtime === 'error'
       ? 'error'
       : auth === 'unauthenticated'
         ? 'signed-out'
         : runtime === 'unavailable'
           ? 'unreachable'
-          : details
-            ? 'ready'
-            : 'unconfigured'
+          : 'ready'
   return {
     id: entry.id,
     name: entry.label,
@@ -107,7 +107,8 @@ export function providerView(
     providerType: entry.providerType,
     configured: true,
     runsOnHost: details?.requiresProcessCapableHost ?? catalog?.requiresProcessCapableHost ?? false,
-    keyConfigured: entry.keyConfigured,
+    // An API-key entry is created with its key, which is kept until the entry goes.
+    keyConfigured: entry.kind === 'api_key',
     vendorId: entry.vendorId,
     baseUrl: entry.baseUrl ?? '',
     wireApi: wireApi(entry.providerType, entry.wireApi),
@@ -119,7 +120,9 @@ export function providerView(
     // A healthy provider's messages are notes ("Uses the … API"), not failures.
     detail: state === 'ready'
       ? undefined
-      : entry.error ?? details?.auth.message ?? details?.runtime.message,
+      : entry.details.type === 'failed'
+        ? entry.details.message
+        : healthMessage(entry.details.auth) ?? healthMessage(entry.details.runtime),
     enabled: !local.hiddenProviders.includes(entry.id),
     models:
       catalog?.models.map((model) =>
@@ -131,8 +134,8 @@ export function providerView(
         label: account.label,
         // The plan the vendor reports with the account's usage. How an account signed
         // in (`chatgpt`, `oidc`) is not a plan and is not shown.
-        plan: account.quota?.plan?.label ?? account.quota?.plan?.id ?? '',
-        active: account.id === details.active?.credentialId,
+        plan: account.quota?.plan?.label || account.quota?.plan?.id || '',
+        active: account.id === details.active,
         quota: account.quota?.windows.flatMap((window) => {
           if (window.usedPercent === null) {
             return []
@@ -140,7 +143,7 @@ export function providerView(
           return [
             {
               id: window.id,
-              label: window.label ?? window.id.replaceAll('_', ' '),
+              label: window.label || window.id.replaceAll('_', ' '),
               used: window.usedPercent,
               max: 100,
               resets: window.resetsAt ? formatRelativeTime(window.resetsAt) : null,
@@ -148,9 +151,8 @@ export function providerView(
           ]
         }) ?? [],
       })) ?? [],
-    autoRefreshUsage: details?.quotaCapability.mode === 'supported'
-      && details.quotaCapability.canProbe === true
-      && details.quotaCapability.probeCost === 'free',
+    autoRefreshUsage: details?.quotaCapability.type === 'supported'
+      && details.quotaCapability.probe === 'free',
     logo: null,
   }
 }

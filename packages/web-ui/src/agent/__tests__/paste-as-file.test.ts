@@ -4,7 +4,6 @@ import {
   PASTE_AS_FILE_MIN_LINES,
   pastedTextFile,
   pastedTextIsLong,
-  readTextSnippet,
 } from '../message-input/attachments'
 
 test('a paste is long by characters or by lines', () => {
@@ -22,11 +21,4 @@ test('a pasted text file is plain text named past the names already attached', a
   expect(await first.text()).toBe('body')
   const third = pastedTextFile('body', ['pasted-text.txt', 'pasted-text-2.txt'])
   expect(third.name).toBe('pasted-text-3.txt')
-})
-
-test('the snippet is the opening of a text file only', async () => {
-  const text = new File(['  first line\r\nsecond line\n'], 'notes.txt', { type: 'text/plain' })
-  expect(await readTextSnippet(text)).toBe('first line\nsecond line\n')
-  const image = new File([new Uint8Array([0x89, 0x50])], 'shot.png', { type: 'image/png' })
-  expect(await readTextSnippet(image)).toBeNull()
 })

@@ -1,4 +1,4 @@
-import type { Block, UserContentBlock } from '@demicodes/core'
+import type { Block, UserContentBlock } from '@demicodes/protocol'
 import type { QueueDividerBlock, QueuedRenderBlock } from './queued-messages'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
 

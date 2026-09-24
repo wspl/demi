@@ -1,4 +1,4 @@
-import type { ThinkingConfig, TokenUsage } from '@demicodes/core'
+import type { ThinkingConfig, TokenUsage } from '@demicodes/protocol'
 import type { ModelInfo, ProviderInfo } from '@demicodes/web-ui/transport/protocol'
 
 export const demoProviders: ProviderInfo[] = [

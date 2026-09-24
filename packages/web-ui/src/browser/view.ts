@@ -3,7 +3,7 @@
  * pointer means in the tab (`live-view.md` § Modes). A Web tab is the
  * panel's own size; Mobile and Custom keep theirs, scaled to fit and centred.
  */
-import type { LiveTab, LiveViewport } from '@demicodes/browser-protocol/live'
+import type { LiveTab, BrowserViewport } from '@demicodes/protocol'
 
 export interface PanelSize {
   width: number
@@ -29,7 +29,7 @@ export function panelSize(width: number, height: number): PanelSize {
 }
 
 /** The picture at its own size when it fits, scaled down when it does not. */
-export function placePicture(viewport: LiveViewport, panel: PanelSize): Placement {
+export function placePicture(viewport: BrowserViewport, panel: PanelSize): Placement {
   const scale = Math.min(1, panel.width / viewport.width, panel.height / viewport.height)
   const width = viewport.width * scale
   const height = viewport.height * scale
@@ -56,7 +56,7 @@ export function deviceSnap(origin: number, devicePixelRatio: number): number {
 /** The tab's CSS coordinates under a point of the panel. */
 export function tabPoint(
   point: { x: number; y: number },
-  viewport: LiveViewport,
+  viewport: BrowserViewport,
   placement: Placement,
 ): { x: number; y: number } {
   const inside = (value: number, length: number) => Math.max(0, Math.min(length, value))
@@ -81,13 +81,13 @@ export function panelRect(
 
 /** What the viewport menu offers and shows for a tab. */
 export interface ViewportChoice {
-  mode: LiveViewport['mode']
+  mode: BrowserViewport['mode']
   label: string
   /** Only the agent gives a tab its Custom size; the menu cannot choose one. */
   selectable: boolean
 }
 
-export function viewportChoices(viewport: LiveViewport): ViewportChoice[] {
+export function viewportChoices(viewport: BrowserViewport): ViewportChoice[] {
   const choices: ViewportChoice[] = [
     { mode: 'web', label: 'Web', selectable: true },
     { mode: 'mobile', label: 'Mobile', selectable: true },
