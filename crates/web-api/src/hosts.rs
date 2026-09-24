@@ -51,6 +51,6 @@ pub struct AttachHost {
 #[serde(deny_unknown_fields)]
 pub struct RenameHost {
     #[schemars(with = "Trimmed")]
-    #[garde(length(utf16, min = 1, max = HOST_NAME_MAX))]
+    #[garde(length(chars, min = 1, max = HOST_NAME_MAX))]
     pub name: Trimmed,
 }
