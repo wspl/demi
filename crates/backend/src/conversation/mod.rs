@@ -12,6 +12,7 @@ mod providers;
 pub(crate) mod remote_files;
 mod shells;
 mod socket;
+pub(crate) mod stream;
 mod summary;
 pub(crate) mod target;
 pub(crate) mod transfer;
