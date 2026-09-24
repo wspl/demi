@@ -1,11 +1,14 @@
 //! Test support: an in-process fake runner ([`TestLink`]) over the real
-//! connection driver, a real runner for one device ([`RunnerFixture`]), the
-//! native fixture package its tests run, and a connection policy that runs
-//! every call in one command set.
+//! connection driver, a real runner process for a backend at any address
+//! ([`RunnerProcess`]) and one connected to a backend end of its own for one
+//! device ([`RunnerFixture`]), the native fixture package their tests run,
+//! and a connection policy that runs every call in one command set.
 
+mod process;
 mod runner;
 
-pub use runner::{FixtureOptions, RunnerFixture, native_fixture_binary, runner_binary};
+pub use process::{RunnerProcess, RunnerProcessOptions, native_fixture_binary, runner_binary};
+pub use runner::{FixtureOptions, RunnerFixture};
 
 use std::{
     cell::RefCell,
