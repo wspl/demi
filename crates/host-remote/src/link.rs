@@ -66,11 +66,13 @@ pub trait LinkPolicy {
         port: RpcPort,
     ) -> LocalBoxFuture<'static, Result<u8, RpcError>>;
 
-    /// One operation on the command storage `job` is bound to.
+    /// One operation on the command storage `job` is bound to, for a call
+    /// that lives while `call` does: a write commits only while it lives.
     fn storage(
         &self,
         job: Rc<JobOrigin>,
         op: StorageOp,
+        call: CancellationToken,
     ) -> LocalBoxFuture<'static, Result<StorageReply, PortError>>;
 
     /// A managed guest asks for a larger volume.

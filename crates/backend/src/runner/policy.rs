@@ -11,6 +11,7 @@ use demi_runner_protocol::wire::VolumeName;
 use demi_shell::{PortError, RpcError, RpcInvocation, RpcPort, StorageOp, StorageReply};
 use demi_web_api::ids::DeviceId;
 use futures_util::future::LocalBoxFuture;
+use tokio_util::sync::CancellationToken;
 
 use super::conversation_of;
 use crate::shard::Shard;
@@ -56,7 +57,14 @@ impl LinkPolicy for ShardPolicy {
         }
     }
 
-    fn storage(&self, job: Rc<JobOrigin>, op: StorageOp) -> LocalBoxFuture<'static, Result<StorageReply, PortError>> {
+    fn storage(
+        &self,
+        job: Rc<JobOrigin>,
+        op: StorageOp,
+        // The command router does not bind a write to its call yet; the
+        // agent's `command_storage` takes it (task 4D).
+        _call: CancellationToken,
+    ) -> LocalBoxFuture<'static, Result<StorageReply, PortError>> {
         match self.shard() {
             Ok(shard) => shard.commands().storage(&job, op),
             Err(reason) => Box::pin(async move { Err(PortError::Ended(reason)) }),

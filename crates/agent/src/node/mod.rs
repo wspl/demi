@@ -10,7 +10,7 @@ use std::{rc::Rc, sync::Arc};
 use demi_core::{Clock, ModelSelection, NodeId, QueuedMessage};
 use demi_gates::{ActivityGate, GateLease, Purpose, Reservation};
 use demi_provider::{ProviderRuntime, ToolDefinition};
-use demi_shell::{CommandSet, PortError, StorageOp, StorageReply};
+use demi_shell::{CommandSet, JobCaller, PortError, StorageOp, StorageReply};
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
 
@@ -70,6 +70,15 @@ impl<H: AgentHarness> Node<H> {
     /// concurrency).
     pub fn command_generation(&self) -> CancellationToken {
         self.session.command_generation()
+    }
+
+    /// Whose command storage a job the node starts now reaches: this node,
+    /// at its current generation.
+    pub fn job_caller(&self) -> JobCaller {
+        JobCaller {
+            node: self.record.id.clone(),
+            generation: self.session.generation_number(),
+        }
     }
 
     /// Serves one command-storage message of a job of this node, bound to
