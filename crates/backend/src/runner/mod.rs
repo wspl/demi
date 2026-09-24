@@ -20,7 +20,6 @@ use demi_web_api::ids::{ConversationId, DeviceId};
 pub(crate) enum HostOwner<'a> {
     /// A conversation's main or attached Host, reached through the
     /// conversation's host access.
-    #[expect(dead_code, reason = "the conversation's host access makes its Hosts")]
     Conversation(&'a ConversationId),
     /// Device access, which touches no conversation's files.
     DeviceAccess,

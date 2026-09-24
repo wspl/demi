@@ -43,7 +43,7 @@ pub(super) async fn blob(
             .find(|(key, _)| key == "type")
             .map(|(_, media_type)| media_type.into_owned())
     });
-    let mut headers = content_headers(requested.as_deref());
+    let mut headers = content_headers(requested.as_deref(), false, None);
     headers.insert(CACHE_CONTROL, HeaderValue::from_static("private, max-age=31536000, immutable"));
     headers.insert(VARY, HeaderValue::from_static("Cookie"));
     Ok((headers, bytes).into_response())

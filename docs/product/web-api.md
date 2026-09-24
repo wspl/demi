@@ -607,7 +607,8 @@ answers 413 `directory_too_large`.
 
 All three operations use [conversation Host access](../execution/sessions-and-targets.md#host-operations),
 including Cloud wake and the file gate. Archived conversations answer 409
-`conversation_archived`. A paired device without a live runner answers 409
+`conversation_archived`, and a conversation whose target device no longer
+exists answers 404 `device_not_found`. A paired device without a live runner answers 409
 `device_offline`; a Cloud that cannot wake answers 503 with the lifecycle's code.
 A file over 8 MiB answers 413 `file_too_large`, the same limit a retained edit
 snapshot has ([Edit tracking](../execution/edit-tracking.md#scope)); one that

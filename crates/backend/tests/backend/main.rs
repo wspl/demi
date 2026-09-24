@@ -7,6 +7,7 @@ mod blobs;
 mod conversations;
 mod edge;
 mod families;
+mod files;
 mod providers;
 mod runners;
 mod settings;
