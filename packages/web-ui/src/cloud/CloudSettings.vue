@@ -20,14 +20,23 @@ const emit = defineEmits<{
 const open = ref(false)
 const submitted = ref(false)
 const operationId = ref('')
+/**
+ * Whether the Cloud's latest reset is the one this dialog asked for. Until
+ * the status names it, the phase and failure there belong to an earlier
+ * reset: after one that ended ready, a new confirmation would otherwise read
+ * "Cloud is ready." while its own request is still pending.
+ */
+const own = computed(() => submitted.value && props.cloud.operationId === operationId.value)
+const phase = computed(() => (own.value ? props.cloud.phase : null))
+const error = computed(() => props.resetError || (own.value ? props.cloud.error : null))
 const busy = computed(
   () =>
     props.resetPending ||
     props.cloud.state === 'resetting' ||
     (submitted.value &&
       !props.resetError &&
-      props.cloud.phase !== 'ready' &&
-      props.cloud.phase !== 'failed'),
+      phase.value !== 'ready' &&
+      phase.value !== 'failed'),
 )
 /**
  * Each filesystem's current size against the most it may grow to; before the
@@ -70,9 +79,9 @@ function reset() {
     <CloudResetDialog
       :is-open="open"
       :overlay-store="overlayStore"
-      :phase="cloud.phase"
+      :phase="phase"
       :submitted="submitted"
-      :error="resetError || cloud.error || null"
+      :error="error"
       :busy="busy"
       @close="open = false"
       @reset="reset"
