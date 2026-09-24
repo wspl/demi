@@ -15,12 +15,13 @@ use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    AgentHarness, IdSource, PromptContext,
+    AgentHarness, IdSource, PromptContext, ShellEnvironmentFactory,
     session::{
         AgentSession, Continuation, RestoreError, SessionConfig, SessionDeps, SessionInit,
         SessionRuntime, ToolFailure, ToolInvocation, ToolOutcome,
     },
     store::{AgentTreeStore, NodeRecord, StoreError},
+    tools::{self, Environments, ShellAccess},
 };
 
 /// A node's place in its tree, which sets its lifecycle policy: a child
@@ -150,7 +151,7 @@ pub(crate) enum Prompt {
 /// What the session calls in its node: the tree's admission, the prompts
 /// with the node's context and rendered command help, the tools, and the
 /// hold on its children that an edit needs.
-pub(crate) struct NodeRuntime<H> {
+pub(crate) struct NodeRuntime<H: AgentHarness> {
     node: NodeId,
     root: NodeId,
     cwd: String,
@@ -165,6 +166,9 @@ pub(crate) struct NodeRuntime<H> {
     admission: ActivityGate,
     lifecycle: ActivityGate,
     store: Rc<dyn AgentTreeStore>,
+    shells: Rc<dyn ShellEnvironmentFactory<H::Host>>,
+    /// The node's shell environment on each Host its tools used.
+    environments: Environments,
 }
 
 impl<H: AgentHarness> NodeRuntime<H> {
@@ -173,6 +177,17 @@ impl<H: AgentHarness> NodeRuntime<H> {
             node: &self.node,
             root: &self.root,
             cwd: &self.cwd,
+        }
+    }
+
+    /// What the standard tools reach the node's shells through.
+    fn shell_access(&self) -> ShellAccess<'_, H> {
+        ShellAccess {
+            harness: &self.harness,
+            shells: self.shells.as_ref(),
+            environments: &self.environments,
+            context: self.prompt_context(),
+            commands: &self.commands,
         }
     }
 }
@@ -239,24 +254,27 @@ impl<H: AgentHarness> SessionRuntime for NodeRuntime<H> {
         Box::pin(self.harness.context(self.prompt_context()))
     }
 
-    /// The standard tools arrive with the shell environments they run in;
-    /// until then the model has none, and a call it makes anyway completes as
-    /// `Tool not found`.
+    /// The standard tools, and only these.
     fn tools(&self) -> Arc<[ToolDefinition]> {
-        Arc::from([])
+        tools::definitions()
     }
 
     fn invoke_tool(
         &self,
         call: ToolInvocation,
     ) -> LocalBoxFuture<'_, Result<ToolOutcome, ToolFailure>> {
-        let outcome = ToolOutcome::error(format!("Tool not found: {}", call.tool_name));
-        Box::pin(async move { Ok(outcome) })
+        Box::pin(async move { self.shell_access().invoke(call).await })
+    }
+
+    /// Ends the node's shells on every Host, their running commands with
+    /// them.
+    fn dispose(&self) -> LocalBoxFuture<'_, ()> {
+        Box::pin(self.environments.dispose())
     }
 }
 
 /// What makes a node itself, and what it is built with.
-pub(crate) struct NodeSpec<H> {
+pub(crate) struct NodeSpec<H: AgentHarness> {
     /// The record a new node is created with; a stored node keeps its own.
     pub(crate) record: NodeRecord,
     pub(crate) role: NodeRole,
@@ -276,6 +294,7 @@ pub(crate) struct NodeSpec<H> {
     /// node the process loses before its first save still has it.
     pub(crate) first_message: Option<QueuedMessage>,
     pub(crate) store: Rc<dyn AgentTreeStore>,
+    pub(crate) shells: Rc<dyn ShellEnvironmentFactory<H::Host>>,
     pub(crate) admission: ActivityGate,
     pub(crate) ids: Rc<dyn IdSource>,
     pub(crate) clock: Arc<dyn Clock>,
@@ -320,6 +339,7 @@ pub(crate) async fn assemble<H: AgentHarness>(
         commands,
         first_message,
         store,
+        shells,
         admission,
         ids,
         clock,
@@ -354,6 +374,8 @@ pub(crate) async fn assemble<H: AgentHarness>(
         admission,
         lifecycle: ActivityGate::new(),
         store: store.clone(),
+        shells,
+        environments: Environments::default(),
     });
     let deps = SessionDeps {
         runtime: node_runtime.clone(),
