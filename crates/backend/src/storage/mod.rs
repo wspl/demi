@@ -1,6 +1,7 @@
 //! The databases and the object store (`storage.md`).
 
 pub(crate) mod blobs;
+pub(crate) mod changes;
 pub(crate) mod columns;
 pub(crate) mod control;
 pub(crate) mod conversation_index;

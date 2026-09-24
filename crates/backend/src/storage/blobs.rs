@@ -94,7 +94,7 @@ mod tests {
     #[tokio::test]
     async fn blobs_are_named_by_their_bytes_stored_once_and_kept_per_user() {
         let data = tempfile::tempdir().unwrap();
-        let blobs = BlobStores::new(objects::open(data.path()).await.unwrap());
+        let blobs = BlobStores::new(objects::open(data.path(), None).await.unwrap());
         let ana = blobs.for_user(&user("ana"));
 
         let name = ana.put(Bytes::from_static(b"\x0a\x14\x1e")).await.unwrap();

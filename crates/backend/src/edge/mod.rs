@@ -210,6 +210,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/conversations/{id}/changes", get(files::changes))
         .route("/conversations/{id}/changes/file", get(files::changed_file))
         .route("/conversations/{id}/changes/raw", get(files::committed))
+        .route("/conversations/{id}/commands/{command}/changes/file", get(files::retained_edit))
         .fallback(no_route)
         .method_not_allowed_fallback(no_route)
         // After the fallbacks, so the gate covers them too.

@@ -108,6 +108,7 @@ impl Config {
         let public_url = crate::runner::install::backend_url(&self.public_url).map_err(|_| ConfigError::PublicUrl)?;
         config.public_url = Some(public_url);
         config.runner_releases = self.runner_release_dir.clone();
+        config.change_store = self.change_store_config.clone();
         Ok(config)
     }
 }
@@ -129,6 +130,9 @@ pub struct BackendConfig {
     /// The runner releases the installer routes serve; without them, the
     /// installers answer 503.
     pub runner_releases: Option<PathBuf>,
+    /// The JSON file that puts the object store in an S3 bucket; without it,
+    /// the data directory holds it.
+    pub change_store: Option<PathBuf>,
     /// The instance secret; without it, the one in the data directory, which
     /// the first start creates.
     pub instance_secret: Option<InstanceSecret>,
@@ -209,6 +213,7 @@ impl BackendConfig {
             web_directory: None,
             public_url: None,
             runner_releases: None,
+            change_store: None,
             instance_secret: None,
             account_mail: None,
             clock: Arc::new(SystemClock),
