@@ -15,20 +15,24 @@ demi-artifact = { path = "../artifact" }
 demi-command-service = { path = "../command-service" }
 demi-core = { path = "../core" }
 demi-gates = { path = "../gates" }
+demi-host-remote = { path = "../host-remote" }
 demi-provider = { path = "../provider" }
 demi-provider-anthropic-api = { path = "../provider-anthropic-api" }
 demi-provider-google = { path = "../provider-google" }
 demi-provider-openai-api = { path = "../provider-openai-api" }
+demi-runner-protocol = { path = "../runner-protocol" }
+demi-shell = { path = "../shell" }
 demi-web-api = { path = "../web-api" }
 aes-gcm = "0.10"
 # `std` for `password_hash::Error` as a `std::error::Error`; `password-hash`'s
 # `getrandom` gives `SaltString::generate` its operating-system RNG.
 argon2 = { version = "0.5", features = ["std"] }
-axum = "0.8"
-axum-extra = { version = "0.12", features = ["cookie"] }
+axum = { version = "0.8", features = ["ws"] }
+axum-extra = { version = "0.12", features = ["cookie", "typed-header"] }
 bytes.workspace = true
 clap = { version = "4", features = ["derive", "env"] }
 cookie = "0.18"
+data-encoding = "2"
 futures-util.workspace = true
 garde.workspace = true
 hashlink = "0.12"
@@ -66,6 +70,8 @@ url = "2"
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
+demi-host-remote = { path = "../host-remote", features = ["testing"] }
 demi-provider = { path = "../provider", features = ["testing"] }
 tempfile = "3"
 tokio = { workspace = true, features = ["test-util"] }
+tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect"] }
