@@ -13,8 +13,8 @@ mod command_state;
 use std::rc::Rc;
 
 use demi_core::{
-    AgentMessageEvent, Block, CompletionId, ModelSelection, NodeId, QueuedMessage, SessionPhase,
-    Timestamp,
+    AgentMessage, AgentMessageEvent, Block, CompletionId, ModelSelection, NodeId, OperationId,
+    QueuedMessage, SessionPhase, Timestamp, TurnId, WakeupId,
 };
 use futures_util::future::LocalBoxFuture;
 use serde::{Deserialize, Serialize};
@@ -206,6 +206,13 @@ pub struct CheckpointState {
     /// The queued messages, in the order they run.
     #[garde(dive)]
     pub queue: Vec<QueuedMessage>,
+    /// The agent messages waiting for a continuation boundary, in admission
+    /// order.
+    #[garde(dive)]
+    pub agent_inputs: Vec<PendingAgentInput>,
+    /// The yield wakeups not yet written into the transcript, fired or not.
+    #[garde(dive)]
+    pub wakeups: Vec<ScheduledWakeup>,
     #[garde(length(min = 1))]
     pub cwd: String,
     #[garde(dive)]
@@ -213,6 +220,57 @@ pub struct CheckpointState {
     /// The name of the harness that saved it.
     #[garde(length(min = 1))]
     pub harness: String,
+    /// The receipts of the accepted edits.
+    #[garde(dive)]
+    pub edits: Vec<EditReceipt>,
+}
+
+/// An agent message the session admitted and has not yet written into its
+/// transcript (`subagents.md` § Durable ownership and replay). Its id and
+/// body live only in the message.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PendingAgentInput {
+    /// The turn it was admitted for; a continuation writes it into its own.
+    #[garde(skip)]
+    pub turn_id: TurnId,
+    /// The model selection current at admission, which its block records.
+    #[garde(dive)]
+    pub model: ModelSelection,
+    #[garde(dive)]
+    pub message: AgentMessage,
+}
+
+/// A yield wakeup (`runtime.md` § Yield wakeups).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScheduledWakeup {
+    #[garde(skip)]
+    pub id: WakeupId,
+    /// How long after the scheduling action ended it fires.
+    #[garde(range(min = 1))]
+    pub duration_ms: u32,
+    /// When it is due, in wall-clock time; null until the action that
+    /// scheduled it ended.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[garde(skip)]
+    pub due_at: Option<Timestamp>,
+}
+
+/// The receipt of an accepted edit (`message-editing.md` § Commit and
+/// idempotency).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct EditReceipt {
+    #[garde(skip)]
+    pub operation_id: OperationId,
+    /// The SHA-256 of the request's RFC 8785 canonical JSON, as the browser
+    /// sent it, in lowercase hexadecimal.
+    #[garde(pattern(r"^[0-9a-f]{64}$"))]
+    pub digest: String,
+    /// The replacement's turn.
+    #[garde(skip)]
+    pub turn_id: TurnId,
 }
 
 /// A node's checkpoint as the store gives it back.
@@ -237,19 +295,24 @@ pub struct CheckpointUpdate {
 }
 
 impl CheckpointUpdate {
-    /// The child rounds whose completion receipts this save carries, which
-    /// the save marks delivered.
+    /// The child rounds whose completion receipts this save carries, as
+    /// waiting agent input or as `agent_message` blocks, which the save marks
+    /// delivered.
     pub fn carried_completions(&self) -> Result<Vec<CompletionId>, StoreError> {
+        let waiting = self.state.agent_inputs.iter().map(|input| &input.message);
+        let written = self
+            .changed_blocks
+            .iter()
+            .filter_map(|(_, block)| match block {
+                Block::AgentMessage(receipt) => Some(&receipt.message),
+                _ => None,
+            });
         let mut rounds = Vec::new();
-        for (_, block) in &self.changed_blocks {
-            let Block::AgentMessage(receipt) = block else {
+        for message in waiting.chain(written) {
+            let AgentMessageEvent::Completion { .. } = message.event else {
                 continue;
             };
-            let AgentMessageEvent::Completion { .. } = receipt.message.event else {
-                continue;
-            };
-            let round: CompletionId = receipt
-                .message
+            let round: CompletionId = message
                 .id
                 .as_str()
                 .parse()

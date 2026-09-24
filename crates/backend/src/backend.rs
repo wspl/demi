@@ -17,12 +17,13 @@ use crate::auth::email_change::{AccountMail, EmailChanges};
 use crate::auth::login_limiter::LoginLimiter;
 use crate::auth::passwords::{HashError, PasswordHasher};
 use crate::auth::sessions::WebSessions;
-use crate::config::BackendConfig;
+use crate::config::{BackendConfig, RunnerTuning};
 use crate::edge::{AppState, Edge};
 use crate::llm::assembly::ProviderAssembly;
 use crate::llm::catalog_cache::ModelCatalogCache;
 use crate::llm::families::FamilyRegistry;
 use crate::llm::vendors::VendorCatalog;
+use crate::runner::claims::PendingClaims;
 use crate::shard::ShardPool;
 use crate::storage::blobs::BlobStores;
 use crate::storage::control::ControlService;
@@ -53,6 +54,9 @@ pub(crate) struct Services {
     pub(crate) assembly: Arc<ProviderAssembly>,
     pub(crate) operations: Arc<ProviderOperations>,
     pub(crate) logins: Arc<LoginFlows>,
+    /// Runners waiting to be paired, which have no user yet.
+    pub(crate) claims: PendingClaims,
+    pub(crate) runners: RunnerTuning,
 }
 
 /// What the provider services start with.
@@ -128,6 +132,7 @@ impl Services {
         secret: &InstanceSecret,
         mail: Option<Arc<dyn AccountMail>>,
         providers: ProviderSetup,
+        runners: RunnerTuning,
     ) -> Result<Self, StartError> {
         let Storage {
             control,
@@ -164,6 +169,8 @@ impl Services {
             assembly,
             operations,
             logins,
+            claims: PendingClaims::new(runners.claims_per_minute),
+            runners,
         })
     }
 
@@ -186,7 +193,8 @@ impl Services {
             logins: LoginTiming::default(),
             clock,
         };
-        Arc::new(Self::start(InstanceMode::Shared, storage, &secret, None, providers).await.unwrap())
+        let services = Self::start(InstanceMode::Shared, storage, &secret, None, providers, RunnerTuning::default());
+        Arc::new(services.await.unwrap())
     }
 }
 
@@ -275,7 +283,15 @@ impl Backend {
             logins: config.logins,
             clock: config.clock,
         };
-        let services = Arc::new(Services::start(config.mode, storage.clone(), secret, config.account_mail, providers).await?);
+        let services = Services::start(
+            config.mode,
+            storage.clone(),
+            secret,
+            config.account_mail,
+            providers,
+            config.runners,
+        );
+        let services = Arc::new(services.await?);
         let shards = match ShardPool::start(config.shards, services.clone()).await {
             Ok(shards) => shards,
             Err(error) => {
@@ -321,6 +337,7 @@ impl Backend {
         self.edge.stop_accepting();
         self.services.logins.close().await;
         self.shards.close().await;
+        self.services.claims.close();
         if let Err(error) = self.edge.close().await {
             failures.push(ShutdownError::Edge(error));
         }
