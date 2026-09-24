@@ -139,10 +139,19 @@ take minutes. `KillMode=mixed` sends the stop signal to the manager alone, so it
 drains its devices with its own child processes; systemd kills whatever remains
 only after the manager exits. The unit's stop-post command then runs the
 manager's recovery (`--recover`), which has work to do only when the drain did
-not finish ([Startup and recovery](managed-hosts.md#startup-and-recovery)). No
-host shell command supplied by a user becomes a privileged launcher argument.
-The installer operates only on its own service, network namespace/interface
-names, cgroup subtree, and nftables table.
+not finish ([Startup and recovery](managed-hosts.md#startup-and-recovery)).
+Stopping has no timeout either (`TimeoutStopSec=infinity`): the drain and the
+recovery check and publish filesystems, and killing a check midway does more
+harm than waiting. No host shell command supplied by a user becomes a
+privileged launcher argument. The installer operates only on its own service,
+network namespace/interface names, cgroup subtree, and nftables table.
+
+The unit reads the manager's settings from `/etc/demi-machines/manager.env`,
+which the installer writes from its arguments. When a manager is already
+installed, the installer stops it under its current unit, so that manager's own
+stop-post recovery runs, and only then puts the new unit in place and starts
+it. With `--root <directory>`, the installer writes the unit and the settings
+beneath that directory for review and changes nothing else.
 
 After installing the Linux dependencies and the manager binary and publishing an
 image, install the service with absolute paths:
@@ -175,18 +184,25 @@ profile as Linux deployment. It has no nested virtualization requirement.
 separate persistent data disk, manager service, network policy, and Unix socket
 forwarding. The service runs the manager built for the VM's architecture, which
 the Mac cross-compiles with its own tools
-([Builds and releases](../delivery/builds-and-releases.md)). The Mac backend
-connects at `~/.lima/demi-machines/sock/demi-machines.sock`; the script prints
-the guest-reachable Mac URL to configure. Verify the connection by starting a
+([Builds and releases](../delivery/builds-and-releases.md)); the script copies
+that build into the VM under its SHA-256, so a later build never replaces the
+executable of a running manager. The Mac backend connects at
+`~/.lima/demi-machines/sock/demi-machines.sock`; the script prints the
+guest-reachable Mac URL to configure. Verify the connection by starting a
 managed device through the backend. Do not assume a particular Lima gateway
 address works on every installation.
 
 With an image already built inside Lima:
 
 ```sh
+cargo zigbuild --release --locked --target aarch64-unknown-linux-musl -p demi-machines
 bash crates/machines/scripts/lima-machines.sh \
+  --manager target/aarch64-unknown-linux-musl/release/demi-machines \
   --image /opt/demi-cloud/releases/build-id --dns 1.1.1.1
 ```
+
+`--root <directory>` passes on to the installer, which then only writes the unit
+and settings beneath that directory inside the VM.
 
 The script prepares its default state directory on the Lima data disk. To use
 another one, pass `--data` with a prepared Linux state directory.

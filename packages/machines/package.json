@@ -19,9 +19,7 @@
   },
   "files": [
     "dist",
-    "scripts",
-    "lima",
-    "runtime"
+    "scripts"
   ],
   "scripts": {
     "build": "tsdown"

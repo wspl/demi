@@ -16,9 +16,10 @@ use axum::response::{IntoResponse, Response};
 use demi_core::preview_media_type;
 use demi_shell::{FileStat, HostFs, MkdirOptions, RmOptions};
 use demi_web_api::error::ErrorCode;
+use demi_core::CommandId;
 use demi_web_api::files::{
-    ChangeSides, CommittedFileQuery, CreateDirectory, CreatedDirectory, Directory, DirectoryQuery, FileQuery, FileText,
-    RawFileQuery, RemoveQuery, TreeFileQuery, UploadQuery, WorkingTreeChanges,
+    ChangeSides, CommittedFileQuery, CreateDirectory, CreatedDirectory, Directory, DirectoryQuery, EditQuery, FileQuery,
+    FileText, RawFileQuery, RemoveQuery, TreeFileQuery, UploadQuery, WorkingTreeChanges,
 };
 use demi_web_api::ids::{ConversationId, DeviceId, UserId};
 use typed_path::Utf8TypedPath;
@@ -34,6 +35,7 @@ use super::transfer::{TRANSFER_IDLE, UploadEnd, copy_upload, paced_body};
 use crate::conversation::host_access::{ConversationHost, HostAccessError, Refusal};
 use crate::conversation::transfer::{Download, DownloadRequest, RangeAnswer, Upload, file_version};
 use crate::runner::files::{TextError, browse_directory, read_text_file, text_of};
+use crate::storage::changes::command_files;
 
 pub(super) async fn list(
     State(state): State<AppState>,
@@ -353,6 +355,37 @@ pub(super) async fn committed(
         }
         _ => Ok((part.status(), answer).into_response()),
     }
+}
+
+/// One retained edit segment of a command (`edit-tracking.md` § The change
+/// store): its two sides from the change store, without the Host, for an
+/// archived conversation too.
+pub(super) async fn retained_edit(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path((id, command)): Path<(String, String)>,
+    QueryParams(EditQuery { path, edit }): QueryParams<EditQuery>,
+) -> Result<Json<ChangeSides>, ApiError> {
+    let services = &state.services;
+    let record = super::conversations::owned(services, &user.id, &id).await?;
+    let not_kept = || ApiError::new(StatusCode::NOT_FOUND, ErrorCode::NotFound, "No retained edit");
+    let command = CommandId::try_from(command).map_err(|_| not_kept())?;
+    let listed = {
+        let command = command.clone();
+        services
+            .conversations
+            .read(&record.id, move |connection| command_files(connection, &command))
+            .await?
+            .flatten()
+    };
+    let files = listed.ok_or_else(not_kept)?;
+    let edit = usize::try_from(edit).map_err(|_| not_kept())?;
+    let sides = services
+        .changes
+        .read(&record.id, &command, &files, path.as_str(), edit)
+        .await?
+        .ok_or_else(not_kept)?;
+    Ok(Json(sides))
 }
 
 /// Runs `operation` on the conversation's Host through its host access: the
