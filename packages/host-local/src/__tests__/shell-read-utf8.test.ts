@@ -19,6 +19,7 @@ test('read preserves UTF-8 JSONL through real child process stdin and argv', asy
       timeoutMs: 10000,
     })
     expect(result.status).toBe('exited')
+    if (result.status !== 'exited') throw new Error('Expected command to exit')
     expect(result.stderr?.tail).toBe('')
     expect(result.exitCode).toBe(0)
     expect(await readFile(join(root, 'piped'), 'utf8')).toBe(content)
