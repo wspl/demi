@@ -155,6 +155,18 @@ pub enum ErrorCode {
     /// The Host could not open the stream: its service failed to start or
     /// refused it.
     StreamFailed,
+    /// Another user's conversation holds the id, or a Fork reserved it.
+    IdUnavailable,
+    /// A read acknowledgement names output the conversation does not have
+    /// yet.
+    InvalidRevision,
+    /// A conversation socket's frame does not match its schema; the socket
+    /// stays open.
+    InvalidFrame,
+    /// The backend could not prepare a conversation socket's frame for its
+    /// session, such as a storage failure; the frames behind it still
+    /// arrive.
+    FrameDeliveryFailed,
 }
 
 serde_plain::derive_display_from_serialize!(ErrorCode);

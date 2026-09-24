@@ -152,9 +152,9 @@ impl Vault {
 
     /// Whose entries `user` infers with (`product.md` § Instance mode): their
     /// own on an isolated instance, the master's on a shared one.
-    pub(crate) async fn owner_for(&self, user: &UserDto) -> Result<UserId, StorageError> {
+    pub(crate) async fn owner_for(&self, user: &UserId) -> Result<UserId, StorageError> {
         if self.0.mode == InstanceMode::Isolated {
-            return Ok(user.id.clone());
+            return Ok(user.clone());
         }
         let master = self
             .0
@@ -176,7 +176,7 @@ impl Vault {
     }
 
     /// The entry `id` when it is one of `user`'s scope.
-    pub(crate) async fn visible(&self, user: &UserDto, id: &ProviderId) -> Result<Option<ProviderEntry>, StorageError> {
+    pub(crate) async fn visible(&self, user: &UserId, id: &ProviderId) -> Result<Option<ProviderEntry>, StorageError> {
         let owner = self.owner_for(user).await?;
         let entry = self.entry(id.clone()).await?;
         Ok(entry.filter(|entry| entry.owner == owner))

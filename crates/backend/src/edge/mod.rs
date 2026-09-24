@@ -9,6 +9,7 @@ mod auth;
 mod blobs;
 mod body;
 mod content;
+mod conversations;
 mod cookies;
 mod devices;
 mod error;
@@ -170,6 +171,10 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/providers/{id}/accounts/{credential}", delete(accounts::remove))
         .route("/usage", get(usage::totals))
         .route("/usage/instance", get(usage::instance))
+        .route("/conversations", get(conversations::list).post(conversations::create))
+        .route("/conversations/{id}/transcript", get(conversations::transcript))
+        .route("/conversations/{id}/read", post(conversations::read))
+        .route("/conversations/{id}/stream", get(conversations::stream))
         .route("/devices", get(devices::list))
         .route("/devices/claim", post(devices::claim))
         .route("/devices/{id}", delete(devices::revoke))

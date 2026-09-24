@@ -485,8 +485,8 @@ Each crate implements the provider contract for one vendor family.
 - **Public boundary:** the `demi-backend` executable; `Backend::start` and
   `BackendConfig` for tests, with the parts a test replaces: the provider
   families entries are assembled with (`FamilyRegistry`, `ProviderFamily` and
-  the arguments a family builds a provider from) and the login timing
-  (`LoginTiming`).
+  the arguments a family builds a provider from), the login timing
+  (`LoginTiming`) and the conversations' bounds (`ConversationTuning`).
 - **Must not:** be linked by another crate; put business logic in the HTTP
   layer beyond routing and validation; return secrets or proxy model traffic;
   spawn `runsc` or image tools itself (every sandbox and disk operation goes to
