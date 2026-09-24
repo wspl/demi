@@ -1,3 +1,4 @@
+import { CORRUPT_IMAGE_TEXT } from './image-integrity'
 import { asRecord, asString, sliceHead } from '@demicodes/utils'
 import type {
   BashAuditEvent,
@@ -11,7 +12,7 @@ import type {
   ShellWriteInput,
   ShellStreamView,
 } from '@demicodes/shell'
-import { bytesToBase64 } from '@demicodes/utils'
+import { bytesToBase64, hasImageIntegrity } from '@demicodes/utils'
 import { modelAcceptsMediaType, sniffModelMediaType, type Model, type ModelMediaKind, type ToolResultContentBlock } from '@demicodes/core'
 import type { AgentTool, AgentToolInvokeContext, AgentToolInvokeResult } from './types'
 
@@ -352,6 +353,9 @@ function binaryStreamVerdict(
     return {
       note: `Binary stdout is ${media.mediaType} (${binary.totalBytes} bytes), over the ${cap}-byte ${media.kind} cap; it was not attached and the raw bytes remain readable at ${binPath}. Produce a smaller version — for video, fewer frames or a lower resolution — and re-run.`,
     }
+  }
+  if (media.kind === 'image' && !hasImageIntegrity(binary.data, media.mediaType)) {
+    return { note: CORRUPT_IMAGE_TEXT }
   }
   const source = { mediaType: media.mediaType, data: bytesToBase64(binary.data) }
   return {
