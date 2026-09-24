@@ -483,6 +483,24 @@ impl ControlService {
 }
 
 impl ControlService {
+    /// Records where the last `demi host shell --host` on the attached
+    /// `device` ended, which is where the next one there starts.
+    pub(crate) async fn set_attached_cwd(
+        &self,
+        id: ConversationId,
+        device: DeviceId,
+        cwd: String,
+    ) -> Result<(), StorageError> {
+        self.call(move |connection, _| {
+            connection.execute(
+                "UPDATE conversation_hosts SET cwd = ?3 WHERE conversation_id = ?1 AND device_id = ?2",
+                params![id.as_str(), device.as_str(), cwd],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
     /// Attaches `host` to the conversation unless it is attached already;
     /// true when it attached, which the conversation's nodes hear of at their
     /// next context block.

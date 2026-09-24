@@ -1,25 +1,19 @@
 //! Each agent node's commands, for the rpc calls its jobs make
 //! (`commands.md` § Handle an rpc call). A node registers its command set
-//! and command storage while one of its shell environments lives; a job's
-//! call names its node, and the relay dispatches the call to that node's
-//! commands, provided the node belongs to the job's conversation. The
-//! registration is removed with the last environment that holds it.
+//! while one of its shell environments lives; a job's call names its node,
+//! and the relay dispatches the call to that node's commands, provided the
+//! node belongs to the job's conversation. The registration is removed with
+//! the last environment that holds it. A job's command storage is its node's
+//! in the agent, which the connection's policy reaches.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
-use demi_host_remote::JobOrigin;
-use demi_shell::{CommandSet, PortError, RpcError, RpcInvocation, RpcPort, StorageOp, StorageReply};
+use demi_host_remote::{CommandSelection, JobOrigin};
+use demi_shell::{CommandSet, RpcError, RpcInvocation, RpcPort};
 use demi_web_api::ids::ConversationId;
 use futures_util::future::LocalBoxFuture;
-
-/// An agent node's command storage (`command-state-history.md`), which the
-/// agent keeps; a job's calls read and write it at the history generation
-/// the job started in.
-pub(crate) trait NodeStorage {
-    fn apply(&self, generation: u64, op: StorageOp) -> LocalBoxFuture<'_, Result<StorageReply, PortError>>;
-}
 
 /// The registered nodes of one user's shard.
 #[derive(Default)]
@@ -32,14 +26,15 @@ struct Node {
     id: String,
     conversation: ConversationId,
     commands: Rc<CommandSet>,
-    storage: Rc<dyn NodeStorage>,
+    /// The manifest of `commands`, which a job the node starts elsewhere
+    /// runs with.
+    selection: CommandSelection,
     nodes: Weak<RefCell<HashMap<String, Weak<Node>>>>,
 }
 
 /// A node's hold on its registration; the last one dropped removes it.
 #[derive(Clone)]
-#[expect(dead_code, reason = "a node's shell environments hold its registration")]
-pub(crate) struct CommandRegistration(Rc<Node>);
+pub(crate) struct CommandRegistration(#[expect(dead_code, reason = "held for its drop")] Rc<Node>);
 
 impl Drop for Node {
     fn drop(&mut self) {
@@ -56,16 +51,15 @@ impl Drop for Node {
 }
 
 impl CommandRouter {
-    /// Registers `node` of `conversation` with its commands and storage. A
-    /// node registered already keeps its registration, which the answer
-    /// shares.
-    #[expect(dead_code, reason = "a node's shell environments register its commands")]
+    /// Registers `node` of `conversation` with its commands and their
+    /// manifest. A node registered already keeps its registration, which
+    /// the answer shares.
     pub(crate) fn register(
         &self,
         node: &str,
         conversation: &ConversationId,
         commands: Rc<CommandSet>,
-        storage: Rc<dyn NodeStorage>,
+        selection: CommandSelection,
     ) -> CommandRegistration {
         let mut nodes = self.nodes.borrow_mut();
         if let Some(registered) = nodes.get(node).and_then(Weak::upgrade) {
@@ -75,7 +69,7 @@ impl CommandRouter {
             id: node.to_owned(),
             conversation: conversation.clone(),
             commands,
-            storage,
+            selection,
             nodes: Rc::downgrade(&self.nodes),
         });
         nodes.insert(node.to_owned(), Rc::downgrade(&registered));
@@ -102,6 +96,13 @@ impl CommandRouter {
         Ok(registered)
     }
 
+    /// The manifest of `node`'s commands, provided it is registered for
+    /// `conversation`: what a job the node starts on another Host runs with.
+    pub(crate) fn selection_of(&self, node: &str, conversation: &ConversationId) -> Option<CommandSelection> {
+        let registered = self.nodes.borrow().get(node).and_then(Weak::upgrade)?;
+        (registered.conversation == *conversation).then(|| registered.selection.clone())
+    }
+
     /// Runs the call `job` made, in its node's commands.
     pub(crate) fn dispatch(
         &self,
@@ -113,17 +114,6 @@ impl CommandRouter {
         Box::pin(async move {
             let node = node.map_err(RpcError::Failed)?;
             node.commands.dispatch(invocation, port).await
-        })
-    }
-
-    /// One operation of `job` on its node's command storage.
-    pub(crate) fn storage(&self, job: &JobOrigin, op: StorageOp) -> LocalBoxFuture<'static, Result<StorageReply, PortError>> {
-        let node = self.node_of(job);
-        let generation = job.caller.as_ref().map(|caller| caller.generation);
-        Box::pin(async move {
-            let node = node.map_err(PortError::Storage)?;
-            let generation = generation.ok_or_else(|| PortError::Storage("the job has no command storage".into()))?;
-            node.storage.apply(generation, op).await
         })
     }
 }
