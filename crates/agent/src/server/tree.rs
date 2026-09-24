@@ -45,8 +45,14 @@ pub struct Tree<H: AgentHarness> {
     /// Bumped whenever a child starts or closes, which every supervision
     /// and the eviction watch.
     changes: watch::Sender<u64>,
+    /// How many children have joined the tree, which orders siblings of one
+    /// spawn time.
+    joined: Cell<u64>,
     /// Serializes the starts of each node's children.
     starts: KeyedSerialGate<NodeId>,
+    /// The starts under way past their owner's check, by owner: a node
+    /// with one is not quiescent, as if the child were live already.
+    starting: RefCell<HashMap<NodeId, usize>>,
     /// Starts past their reservation, and closes: what dispose waits for.
     lifecycle: TaskTracker,
     /// Every action of the tree holds a lease on it, and so does a child's
@@ -217,7 +223,9 @@ impl<H: AgentHarness> Tree<H> {
                 root: Rc::new(assembled.node),
                 children: RefCell::new(HashMap::new()),
                 changes,
+                joined: Cell::new(0),
                 starts: KeyedSerialGate::new(),
+                starting: RefCell::new(HashMap::new()),
                 lifecycle: TaskTracker::new(),
                 admission,
                 profiles,
@@ -269,7 +277,9 @@ impl<H: AgentHarness> Tree<H> {
     /// Whether the tree does nothing by itself: no child is live, and the
     /// root runs and waits for nothing and has no wakeup scheduled.
     pub fn is_quiescent(&self) -> bool {
-        self.children.borrow().is_empty() && quiescent(&self.root.session().status())
+        self.children.borrow().is_empty()
+            && self.starting.borrow().is_empty()
+            && quiescent(&self.root.session().status())
     }
 
     /// Attaches a connection and sends it the open handshake in one step, so

@@ -783,6 +783,14 @@ impl AgentSession {
         self.shared.update(SessionCore::wake);
     }
 
+    /// Keeps waiting input from opening a continuation until the next
+    /// action starts, as a restored interrupted session does: a closing
+    /// child admits what its own children deliver, keeps it in its final
+    /// checkpoint, and runs nothing more.
+    pub(crate) fn hold(&self) {
+        self.shared.update(|core| core.held = true);
+    }
+
     /// Stops one thing (`runtime.md` § Stop): the running action, which has
     /// recorded the stop when this returns; else the first waiting action;
     /// else the oldest scheduled wakeup. Whether another `abort` would stop
