@@ -6,11 +6,11 @@ use axum::http::{Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use demi_web_api::error::{ErrorBody, ErrorCode};
 
-use demi_shell::{HostError, HostErrorKind};
+use demi_shell::HostError;
 
 use crate::auth::email_change::EmailChangeError;
 use crate::auth::passwords::HashError;
-use crate::conversation::host_access::{HostAccessError, Refusal};
+use crate::conversation::host_access::{HostAccessError, host_error_code};
 use crate::llm::assembly::AssemblyError;
 use crate::runner::files::{TextError, TextRefusal};
 use crate::shard::ShardUnavailable;
@@ -88,22 +88,10 @@ impl ApiError {
         Self::new(StatusCode::CONFLICT, ErrorCode::DeviceOffline, "The device's runner is not connected")
     }
 
-    /// A Host's failure of a file operation: nothing at the path answers 404,
-    /// no permission 403, a listing over the runner's message limit 413.
+    /// A Host's failure of a file operation (`host_error_code`).
     pub(crate) fn host_operation(error: HostError) -> Self {
-        match &error.kind {
-            HostErrorKind::Offline => Self::device_offline(),
-            HostErrorKind::Unavailable => Self::new(StatusCode::SERVICE_UNAVAILABLE, ErrorCode::CloudUnavailable, error.message),
-            HostErrorKind::TooLarge => Self::new(StatusCode::PAYLOAD_TOO_LARGE, ErrorCode::DirectoryTooLarge, error.message),
-            HostErrorKind::Failed { code } => match code.as_deref() {
-                Some("ENOENT") => Self::new(StatusCode::NOT_FOUND, ErrorCode::FsError, error.message),
-                Some("EACCES" | "EPERM") => Self::new(StatusCode::FORBIDDEN, ErrorCode::FsError, error.message),
-                _ => Self::new(StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::HostOperationFailed, error.message),
-            },
-            HostErrorKind::Protocol | HostErrorKind::Interrupted => {
-                Self::new(StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::HostOperationFailed, error.message)
-            }
-        }
+        let (code, status) = host_error_code(&error);
+        Self::new(status_of(status), code, error.message)
     }
 
     /// A Host's failure of a working-tree operation: the runner's git codes,
@@ -206,24 +194,19 @@ impl From<EmailChangeError> for ApiError {
 impl From<HostAccessError> for ApiError {
     fn from(error: HostAccessError) -> Self {
         match error {
-            HostAccessError::Missing => Self::new(StatusCode::NOT_FOUND, ErrorCode::ConversationNotFound, "No such conversation"),
-            HostAccessError::Refused(refusal) => {
-                let message = refusal.to_string();
-                match refusal {
-                    Refusal::Archived => Self::new(StatusCode::CONFLICT, ErrorCode::ConversationArchived, message),
-                    Refusal::NotAttached => Self::new(StatusCode::NOT_FOUND, ErrorCode::HostNotAttached, message),
-                    Refusal::Busy => Self::new(StatusCode::CONFLICT, ErrorCode::ConversationBusy, message),
-                    Refusal::Stopped => Self::new(StatusCode::CONFLICT, ErrorCode::HostStopped, message),
-                    Refusal::DeviceGone => Self::new(StatusCode::NOT_FOUND, ErrorCode::DeviceNotFound, message),
-                }
-            }
-            HostAccessError::Cloud(unavailable) => {
-                Self::new(StatusCode::SERVICE_UNAVAILABLE, ErrorCode::CloudUnavailable, unavailable.to_string())
-            }
             HostAccessError::Host(error) => Self::host_operation(error),
             HostAccessError::Cancelled | HostAccessError::Storage(_) => Self::internal(&error),
+            error => {
+                let (code, status) = error.code();
+                Self::new(status_of(status), code, error.to_string())
+            }
         }
     }
+}
+
+/// An HTTP status a refusal names.
+fn status_of(status: u16) -> StatusCode {
+    StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 impl From<TextError> for ApiError {

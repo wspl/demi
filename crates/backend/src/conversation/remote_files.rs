@@ -13,7 +13,7 @@ use demi_web_api::ids::{ConversationId, DeviceId};
 
 use crate::shard::Shard;
 use crate::storage::StorageError;
-use crate::storage::conversation_index::AttachedHostRecord;
+use crate::storage::conversation_index::{AttachedHostRecord, ChangeOutcome, RecordChange};
 use crate::storage::devices::DeviceRecord;
 
 /// A file a message names on one of the user's devices.
@@ -86,7 +86,12 @@ impl Shard {
                 name: device.name,
                 cwd: None,
             };
-            control.attach_host(record.id.clone(), host).await?;
+            let attached = control
+                .change_conversation(record.id.clone(), RecordChange::Attach(host))
+                .await?;
+            if attached != ChangeOutcome::Applied {
+                return Err(RemoteFileRefusal::NotAccessible);
+            }
         }
         Ok(references)
     }
