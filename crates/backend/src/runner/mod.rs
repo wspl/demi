@@ -27,6 +27,9 @@ pub(crate) enum HostOwner<'a> {
     Conversation(&'a ConversationId),
     /// Device access, which touches no conversation's files.
     DeviceAccess,
+    /// Machine access: the user's Cloud itself, for work that is no
+    /// conversation's.
+    MachineAccess,
 }
 
 /// A Host's value identity: handles with equal keys are the same Host, the
@@ -35,6 +38,7 @@ pub(crate) fn host_key(device: &DeviceId, owner: HostOwner<'_>, cwd: &str) -> Ho
     match owner {
         HostOwner::Conversation(conversation) => HostKey::new(format!("conversation {conversation} {device} {cwd}")),
         HostOwner::DeviceAccess => HostKey::new(format!("device {device} {cwd}")),
+        HostOwner::MachineAccess => HostKey::new(format!("machine {device} {cwd}")),
     }
 }
 

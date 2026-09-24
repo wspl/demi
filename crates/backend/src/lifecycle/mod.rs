@@ -11,7 +11,6 @@
 
 pub(crate) mod conversations;
 
-use std::any::Any;
 use std::future::Future;
 use std::time::Duration;
 
@@ -46,12 +45,9 @@ impl Activity {
     }
 }
 
-/// A resource reserved for its retirement: what holds it, released when
-/// the retirement ends, and the retirement itself.
-pub(crate) struct Retirement {
-    pub(crate) held: Box<dyn Any>,
-    pub(crate) run: LocalBoxFuture<'static, Result<(), String>>,
-}
+/// A resource's retirement, which holds the resource's reservation until
+/// it ends; dropped before it starts, it lets the reservation go.
+pub(crate) type Retirement = LocalBoxFuture<'static, Result<(), String>>;
 
 /// How a watch reads, reserves and retires its resource.
 pub(crate) trait IdlePolicy {
@@ -128,11 +124,7 @@ pub(crate) async fn watch(policy: impl IdlePolicy, window: Duration, poll: Durat
             idle_since = idle_start(idle_since, again, Instant::now());
             continue;
         }
-        let Retirement { held, run } = retirement;
-        let retiring = tasks.spawn_local(async move {
-            let _held = held;
-            run.await
-        });
+        let retiring = tasks.spawn_local(retirement);
         match retiring.await {
             Ok(Ok(())) => return,
             Ok(Err(error)) => {
@@ -190,9 +182,13 @@ mod tests {
             if let Some(waiting) = waiting {
                 let _ = waiting.await;
             }
-            Ok(self.gate.try_reserve().map(|reservation| Retirement {
-                held: Box::new(reservation),
-                run: (self.retire)(),
+            Ok(self.gate.try_reserve().map(|reservation| {
+                let retire = (self.retire)();
+                let retirement: Retirement = Box::pin(async move {
+                    let _held = reservation;
+                    retire.await
+                });
+                retirement
             }))
         }
 

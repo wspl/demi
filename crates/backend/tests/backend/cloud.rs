@@ -468,19 +468,67 @@ async fn a_boot_whose_runner_never_connects_fails_saves_what_it_started_and_says
 }
 
 #[tokio::test]
-async fn a_stopped_clouds_device_log_answers_that_it_is_offline_and_wakes_nothing() {
+async fn the_clouds_device_log_answers_while_it_runs_and_a_stopped_cloud_says_so_without_waking() {
     let mut harness = Harness::new();
     harness.lifecycle = idle_after(Duration::from_millis(400));
     harness.cloud.sweep = Duration::from_millis(50);
     let (backend, master) = harness.start_set_up().await;
     create(&backend, &master, FIRST).await;
-    let listed = backend.get(&format!("/api/conversations/{FIRST}/fs"), Some(&master)).await;
+    let listing = format!("/api/conversations/{FIRST}/fs");
+    let listed = backend.get(&listing, Some(&master)).await;
     assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
     let device = the_cloud(&harness);
+    let log = format!("/api/devices/{device}/log");
+    // The runner writes a line to its files a moment after it connected.
+    let onlines = || async {
+        let read = backend.get(&log, Some(&master)).await;
+        if read.status != StatusCode::OK {
+            return 0;
+        }
+        let lines = read.json::<demi_web_api::devices::DeviceLog>().lines;
+        lines.iter().filter(|line| line.text == "online").count()
+    };
+    eventually("the running Cloud's log says it is online", || async { onlines().await == 1 }).await;
+
     until_status(&backend, &master, "the idle Cloud stops", |status| status.state == CloudState::Off).await;
-    let log = backend.get(&format!("/api/devices/{device}/log"), Some(&master)).await;
-    assert_eq!(log.refusal(), (StatusCode::CONFLICT, ErrorCode::DeviceOffline));
+    let stopped = backend.get(&log, Some(&master)).await;
+    assert_eq!(stopped.refusal(), (StatusCode::CONFLICT, ErrorCode::DeviceOffline));
     assert_eq!(harness.manager.count(&format!("wake:{device}")), 1);
+
+    // Woken, it answers again, with what it wrote before it stopped.
+    let listed = backend.get(&listing, Some(&master)).await;
+    assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
+    eventually("the woken Cloud's log keeps the earlier boot", || async { onlines().await == 2 }).await;
+    backend.close().await;
+}
+
+#[tokio::test]
+async fn the_clouds_files_and_todos_and_the_usage_ledger_survive_a_backend_restart() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new().with_builtin_package();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/a").await;
+    create(&backend, &master, FIRST).await;
+    let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/a").await;
+    let script = "demi file create notes.md <<'EOF'\nkeep me\nEOF\ndemi todo add \"still here\"";
+    let stored = work.turn(vec![shell("t1", script, 20_000), say("stored")]).await;
+    assert!(stored.received[0].contains("Created notes.md"), "{}", stored.received[0]);
+    let requests = |usage: demi_web_api::usage::UsageTotals| usage.totals.iter().map(|group| group.requests).sum::<u64>();
+    let before = requests(backend.get("/api/usage", Some(&master)).await.json());
+
+    // The backend's close saves the Cloud; the next start boots nothing
+    // until a command needs it.
+    let address = backend.address();
+    backend.close().await;
+    let backend = harness.start_at(address).await;
+    work.reconnect(&backend, &master, FIRST, &provider).await;
+    let found = work.turn(vec![shell("t2", "cat notes.md && demi todo list", 20_000), say("found")]).await;
+    assert!(found.received[0].contains("keep me"), "{}", found.received[0]);
+    assert!(found.received[0].contains("still here"), "{}", found.received[0]);
+    let after = requests(backend.get("/api/usage", Some(&master)).await.json());
+    assert_eq!(after, before + 2);
+    let device = the_cloud(&harness);
+    assert_eq!(harness.manager.count(&format!("wake:{device}")), 2);
     backend.close().await;
 }
 
@@ -659,5 +707,61 @@ async fn at_its_lifetime_cap_the_cloud_ends_the_jobs_nothing_attends_and_stops()
     })
     .await;
     until_status(&backend, &master, "the Cloud is off", |status| status.state == CloudState::Off).await;
+    backend.close().await;
+}
+
+#[tokio::test]
+async fn cloud_projects_share_the_users_one_machine_and_a_deleted_project_keeps_its_files() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new().with_builtin_package();
+    let (backend, master) = harness.start_set_up().await;
+    let project = |name: &str| {
+        let body = json!({ "kind": "cloud", "name": name });
+        let (backend, master) = (&backend, &master);
+        async move {
+            let created = backend.post("/api/workspaces", Some(master), body).await;
+            assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
+            created.json::<demi_web_api::workspaces::WorkspaceAnswer>().workspace
+        }
+    };
+    // Two projects made at once are directories of one Cloud, booted once.
+    let (first, second) = tokio::join!(project("first"), project("second"));
+    let device = the_cloud(&harness);
+    assert_eq!((first.device_id.as_str(), second.device_id.as_str()), (device.as_str(), device.as_str()));
+    let home = harness.manager.home(&device);
+    assert_eq!(first.path, format!("{home}/projects/{}", first.id));
+    assert_ne!(first.path, second.path);
+    assert!(std::path::Path::new(&second.path).is_dir());
+    assert_eq!(harness.manager.count(&format!("wake:{device}")), 1);
+
+    let first_model = anthropic_at(&backend, &master, &vendor, "/a").await;
+    let second_model = anthropic_at(&backend, &master, &vendor, "/b").await;
+    for (id, workspace) in [(FIRST, &first), (SECOND, &second)] {
+        create(&backend, &master, id).await;
+        let target = json!({ "target": { "kind": "workspace", "workspaceId": workspace.id } });
+        let moved = backend.patch(&format!("/api/conversations/{id}"), &master, target).await;
+        assert_eq!(moved.status, StatusCode::OK, "{}", String::from_utf8_lossy(&moved.body));
+    }
+    let mut a = Driven::open(&backend, &master, &vendor, FIRST, &first_model, "/a").await;
+    let mut b = Driven::open(&backend, &master, &vendor, SECOND, &second_model, "/b").await;
+    let wrote = a.turn(vec![shell("a1", "printf shared > note", 20_000), say("written")]).await;
+    assert!(wrote.received[0].contains("exitCode: 0"), "{}", wrote.received[0]);
+    let read = format!("cat '{}/note'", first.path);
+    let seen = b.turn(vec![shell("b1", &read, 20_000), say("read")]).await;
+    assert!(seen.received[0].contains("shared"), "{}", seen.received[0]);
+
+    // A project a conversation targets stays; once none does, it goes and
+    // its files stay.
+    let in_use = backend.delete(&format!("/api/workspaces/{}", first.id), &master).await;
+    assert_eq!(in_use.refusal(), (StatusCode::CONFLICT, ErrorCode::WorkspaceInUse));
+    crate::conversations::settled(&backend, &master, FIRST).await;
+    let away = backend
+        .patch(&format!("/api/conversations/{FIRST}"), &master, json!({ "target": { "kind": "cloud" } }))
+        .await;
+    assert_eq!(away.status, StatusCode::OK, "{}", String::from_utf8_lossy(&away.body));
+    let deleted = backend.delete(&format!("/api/workspaces/{}", first.id), &master).await;
+    assert_eq!(deleted.status, StatusCode::NO_CONTENT, "{}", String::from_utf8_lossy(&deleted.body));
+    let kept = b.turn(vec![shell("b2", &read, 20_000), say("still there")]).await;
+    assert!(kept.received[0].contains("shared"), "{}", kept.received[0]);
     backend.close().await;
 }
