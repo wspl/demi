@@ -31,7 +31,8 @@ pub(crate) fn conversation_harness(shard: Weak<Shard>, native: &NativeCatalog) -
 }
 
 /// Where a shard's conversations run: each conversation's current main
-/// Host. Interim: a target switch's announcement comes with the switch.
+/// Host, and the context block that tells a node the conversation's
+/// execution context changed.
 pub(crate) struct ShardHosts {
     /// Weak: the shard owns the agent server that holds the harness.
     shard: Weak<Shard>,
@@ -46,5 +47,18 @@ impl HostResolver for ShardHosts {
             .upgrade()
             .ok_or_else(|| HostError::offline("the backend is shutting down"))?;
         shard.conversation_host(&conversation_of(context.root)).await
+    }
+
+    async fn context(&self, context: PromptContext<'_>, seen: &[&str]) -> Option<String> {
+        let shard = self.shard.upgrade()?;
+        match shard.execution_context(&conversation_of(context.root), seen).await {
+            Ok(text) => text,
+            Err(error) => {
+                // Nothing records the block as seen, so the node reads it
+                // before its next request.
+                tracing::warn!(error = &error as &dyn std::error::Error, "the execution context cannot be read");
+                None
+            }
+        }
     }
 }
