@@ -118,6 +118,7 @@ pub fn web() -> Vec<Root> {
         receives::<conversations::ConversationUpdate>(),
         sends::<conversations::ConversationBatch>(),
         receives::<conversations::BatchAnswer>(),
+        sends::<conversations::TitleRequest>(),
         sends::<conversations::ForkRequest>(),
         receives::<conversations::ForkAnswer>(),
         receives::<attachments::AttachmentAnswer>(),
