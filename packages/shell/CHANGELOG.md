@@ -1,5 +1,12 @@
 # @demicodes/shell
 
+## 0.25.6
+
+### Patch Changes
+
+- 89c84d6: Preserve UTF-8 in mapfile/readarray variables and real process arguments and stdin using just-bash 3.1.0-demi.8.
+  - @demicodes/utils@0.25.6
+
 ## 0.25.5
 
 ### Patch Changes

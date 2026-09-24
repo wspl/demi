@@ -1,5 +1,23 @@
 # @demicodes/repl
 
+## 0.25.6
+
+### Patch Changes
+
+- Updated dependencies [89c84d6]
+  - @demicodes/shell@0.25.6
+  - @demicodes/host-local@0.25.6
+  - @demicodes/agent@0.25.6
+  - @demicodes/coding-agent@0.25.6
+  - @demicodes/core@0.25.6
+  - @demicodes/provider@0.25.6
+  - @demicodes/provider-anthropic-api@0.25.6
+  - @demicodes/provider-claude-code@0.25.6
+  - @demicodes/provider-codex@0.25.6
+  - @demicodes/provider-grok-build@0.25.6
+  - @demicodes/provider-openai-api@0.25.6
+  - @demicodes/utils@0.25.6
+
 ## 0.25.5
 
 ### Patch Changes
