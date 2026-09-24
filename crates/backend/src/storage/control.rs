@@ -137,6 +137,53 @@ impl ControlService {
         .await
     }
 
+    /// Every account, in the order they were created.
+    pub(crate) async fn users(&self) -> Result<Vec<UserDto>, StorageError> {
+        self.call(|connection, _| {
+            let mut statement =
+                connection.prepare_cached(&format!("SELECT {USER_COLUMNS} FROM users ORDER BY created_at, rowid"))?;
+            let mut rows = statement.query([])?;
+            let mut users = Vec::new();
+            while let Some(row) = rows.next()? {
+                users.push(user_row(row)?);
+            }
+            Ok(users)
+        })
+        .await
+    }
+
+    /// A new account of `role`; `None`, writing nothing, when an account has
+    /// the address already.
+    pub(crate) async fn create_user(
+        &self,
+        email: EmailAddress,
+        password_hash: PasswordHash,
+        role: Role,
+    ) -> Result<Option<UserDto>, StorageError> {
+        let id = UserId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty");
+        self.call(move |connection, now| {
+            let created = connection.execute(
+                "INSERT INTO users (id, email, nickname, password_hash, role, created_at)
+                 VALUES (?1, ?2, '', ?3, ?4, ?5) ON CONFLICT (email) DO NOTHING",
+                params![
+                    id.as_str(),
+                    email.as_str(),
+                    password_hash.as_str(),
+                    role.to_string(),
+                    now.as_millisecond()
+                ],
+            )?;
+            Ok((created > 0).then(|| UserDto {
+                id,
+                email,
+                nickname: String::new(),
+                role,
+                created_at: now,
+            }))
+        })
+        .await
+    }
+
     pub(crate) async fn email_in_use(&self, email: EmailAddress) -> Result<bool, StorageError> {
         self.call(move |connection, _| {
             let found = connection.query_row(
