@@ -77,6 +77,7 @@ fn invocation(path: &[&str], args: Value) -> RpcInvocation {
         cwd: "/".into(),
         env: BTreeMap::new(),
         context: test_command_context(),
+        caller: None,
         stdin: false,
         pipes: None,
     }
