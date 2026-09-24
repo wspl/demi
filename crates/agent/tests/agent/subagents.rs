@@ -420,6 +420,13 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
         json!({ "id": root().as_str() }),
     )
     .await;
+    let show_archived = agent(
+        &fixture.server,
+        &alpha,
+        "show",
+        json!({ "id": delta.as_str() }),
+    )
+    .await;
 
     assert_eq!(across.stdout, format!("sent to {beta}\n"));
     assert_eq!(to_parent.stdout, format!("sent to {alpha}\n"));
@@ -518,6 +525,10 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
     assert_eq!(
         refused(&show_root),
         format!("demi agent show: no live agent \"{}\"\n", root())
+    );
+    assert_eq!(
+        refused(&show_archived),
+        format!("demi agent show: no live agent \"{delta}\"\n")
     );
 
     // A child with a message waiting does not close before it reads it.
@@ -751,6 +762,26 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
         )
         .await
         .unwrap();
+    // Archived under that profile: its resume is refused and it stays.
+    let archived = NodeId::try_from("archived").unwrap();
+    store
+        .create_node(
+            child_record("archived", "conversation", Some("retired")),
+            checkpoint(Vec::new(), Vec::new()),
+        )
+        .await
+        .unwrap();
+    store
+        .close_node(
+            &archived,
+            NodeClose {
+                phase: ClosePhase::Aborted,
+                at: Timestamp::UNIX_EPOCH,
+            },
+        )
+        .await
+        .unwrap();
+    store.mark_delivered(&archived, 1).await.unwrap();
     store
         .create_node(
             child_record("orphan-child", "orphan", None),
@@ -802,6 +833,18 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
     );
     let frames = client.received();
     assert!(frames.iter().any(is_pending_steers));
+    let resumed = agent(
+        &fixture.server,
+        &root(),
+        "resume",
+        json!({ "id": "archived", "message": "again" }),
+    )
+    .await;
+    assert_eq!(
+        refused(&resumed),
+        "demi agent resume: unknown profile \"retired\" (available: none; omit --profile to inherit the parent)\n"
+    );
+    assert_eq!(closed_phase(&fixture, &archived), Some(ClosePhase::Aborted));
 }
 
 #[tokio::test(flavor = "local")]
@@ -1033,6 +1076,13 @@ async fn profiles_and_the_spawn_restriction_shape_a_childs_prompt_and_commands()
         json!({ "prompt": "task x", "profile": "nope" }),
     )
     .await;
+    let named_default = agent(
+        &fixture.server,
+        &root(),
+        "spawn",
+        json!({ "prompt": "task x", "profile": "default" }),
+    )
+    .await;
     let explorer_child = spawn(
         &fixture,
         &root(),
@@ -1080,6 +1130,10 @@ async fn profiles_and_the_spawn_restriction_shape_a_childs_prompt_and_commands()
     assert_eq!(
         refused(&unknown),
         "demi agent spawn: unknown profile \"nope\" (available: explorer)\n"
+    );
+    assert_eq!(
+        refused(&named_default),
+        "demi agent spawn: unknown profile \"default\" (available: explorer)\n"
     );
     let explored = &model.requests_of("task explore")[0];
     assert!(explored.system_prompt.starts_with("explorer prompt\n"));
@@ -1171,4 +1225,159 @@ async fn a_detached_tree_with_a_live_child_is_not_evicted_and_one_without_is() {
         )
     );
     assert_eq!(root_receipts(&fixture).len(), 1);
+}
+
+#[tokio::test(flavor = "local")]
+async fn a_child_whose_turn_fails_closes_as_an_error_and_a_silent_one_completes_empty() {
+    let model = Model::default();
+    model.root([said("noted"), said("noted")]);
+    model.child(
+        "task fails",
+        [Turn::Events(vec![event::error("the vendor refused", None)])],
+    );
+    model.child("task silent", [Turn::Events(vec![event::response(1, 1)])]);
+    let fixture = fixture(&model, TestHarness::default());
+    let mut client = fixture.opened().await;
+
+    let failing = spawn(&fixture, &root(), json!({ "prompt": "task fails" })).await;
+    frames_until(&mut client, is_closed(&failing)).await;
+    let silent = spawn(&fixture, &root(), json!({ "prompt": "task silent" })).await;
+    frames_until(&mut client, is_closed(&silent)).await;
+    until(|| root_receipts(&fixture).len() == 2).await;
+
+    assert_eq!(
+        closed_phase(&fixture, &failing),
+        Some(ClosePhase::Error {
+            failure: "the vendor refused".into()
+        })
+    );
+    assert_eq!(
+        closed_phase(&fixture, &silent),
+        Some(ClosePhase::Completed {
+            result: String::new()
+        })
+    );
+    let outcomes: Vec<(NodeId, String, AgentMessageEvent)> = root_receipts(&fixture)
+        .into_iter()
+        .map(|message| (message.sender.id, message.content, message.event))
+        .collect();
+    assert_eq!(
+        outcomes,
+        [
+            (
+                failing,
+                "the vendor refused".to_owned(),
+                AgentMessageEvent::Completion {
+                    outcome: CompletionOutcome::Failed
+                }
+            ),
+            (
+                silent,
+                String::new(),
+                AgentMessageEvent::Completion {
+                    outcome: CompletionOutcome::Completed
+                }
+            ),
+        ]
+    );
+}
+
+#[tokio::test(flavor = "local")]
+async fn a_grandchild_completes_into_its_parent_which_then_completes_into_the_woken_root() {
+    let model = Model::default();
+    let gate = Gate::new();
+    model.root([said("heard"), said("noted"), said("noted")]);
+    model.child(
+        "task parent",
+        [
+            held_said(&gate, "delegating"),
+            Turn::Respond(Box::new(|request| {
+                assert!(request_text(request).contains("grandchild done"));
+                vec![event::text("parent done"), event::response(1, 1)]
+            })),
+        ],
+    );
+    model.child("task grandchild", [said("grandchild done")]);
+    let fixture = fixture(&model, TestHarness::default());
+    let mut client = fixture.opened().await;
+    let parent = spawn(&fixture, &root(), json!({ "prompt": "task parent" })).await;
+
+    // A message to the idle root wakes it.
+    let status = agent(
+        &fixture.server,
+        &parent,
+        "send",
+        json!({ "id": "parent", "message": "status: delegating" }),
+    )
+    .await;
+    frames_until(&mut client, is_idle).await;
+    let grandchild_start = tokio::task::spawn_local({
+        let server = fixture.server.clone();
+        let parent = parent.clone();
+        async move {
+            agent(
+                &server,
+                &parent,
+                "spawn",
+                json!({ "prompt": "task grandchild" }),
+            )
+            .await
+        }
+    });
+    gate.open();
+    let grandchild = child_id(&grandchild_start.await.unwrap());
+    let frames = frames_until(&mut client, is_closed(&parent)).await;
+    until(|| root_receipts(&fixture).len() == 2).await;
+
+    assert_eq!(status.stdout, format!("sent to {}\n", root()));
+    let closes: Vec<(NodeId, NodeId, JobPhase)> = frames
+        .iter()
+        .filter_map(|frame| match frame {
+            ServerFrame::Subagent {
+                event: SubagentEvent::Closed,
+                job,
+            } => Some((
+                job.subagent_id.clone(),
+                job.parent_session_id.clone(),
+                job.phase,
+            )),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        closes,
+        [
+            (grandchild.clone(), parent.clone(), JobPhase::Completed),
+            (parent.clone(), root(), JobPhase::Completed)
+        ]
+    );
+    let parent_blocks = fixture.store.checkpoint(&parent).unwrap().transcript;
+    let heard: Vec<&AgentMessage> = parent_blocks
+        .iter()
+        .filter_map(|block| match block {
+            Block::AgentMessage(receipt) => Some(&receipt.message),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(heard.len(), 1);
+    assert_eq!(heard[0].sender.id, grandchild);
+    let received: Vec<(AgentMessageEvent, String)> = root_receipts(&fixture)
+        .into_iter()
+        .map(|message| (message.event, message.content))
+        .collect();
+    assert_eq!(
+        received,
+        [
+            (
+                AgentMessageEvent::Message {},
+                "status: delegating".to_owned()
+            ),
+            (
+                AgentMessageEvent::Completion {
+                    outcome: CompletionOutcome::Completed
+                },
+                "parent done".to_owned()
+            ),
+        ]
+    );
 }

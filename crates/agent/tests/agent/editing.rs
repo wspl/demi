@@ -87,8 +87,44 @@ fn rejected(reason: &str) -> EditOutcome {
     }
 }
 
-async fn three_turns(client: &mut TestClient<TestHarness>) {
-    for (id, text) in [("m1", "A"), ("m2", "B"), ("m3", "C")] {
+/// Writes `value` under `todo` in the root's command storage.
+async fn write_todo(fixture: &Fixture, value: i64) -> StorageReply {
+    fixture
+        .server
+        .node(&conversation(), &conversation())
+        .unwrap()
+        .storage(
+            StorageOp::WriteIf {
+                key: "todo".into(),
+                value: Some(json!(value)),
+                expected: None,
+            },
+            Vec::new(),
+        )
+        .await
+        .unwrap()
+}
+
+async fn read_todo(fixture: &Fixture) -> StorageReply {
+    fixture
+        .server
+        .node(&conversation(), &conversation())
+        .unwrap()
+        .storage(StorageOp::Read { key: "todo".into() }, Vec::new())
+        .await
+        .unwrap()
+}
+
+/// A, B and C, each answered, with the command storage's `todo` at 1 before
+/// B and at 2 before C.
+async fn three_turns(fixture: &Fixture, client: &mut TestClient<TestHarness>) {
+    for (value, (id, text)) in [("m1", "A"), ("m2", "B"), ("m3", "C")]
+        .into_iter()
+        .enumerate()
+    {
+        if value > 0 {
+            write_todo(fixture, value as i64).await;
+        }
         client.send(send(id, text)).await;
         frames_until(client, is_idle).await;
     }
@@ -104,7 +140,7 @@ async fn an_edit_replaces_its_message_and_what_follows_once_and_infers_on_a_fres
     ]);
     let fixture = Fixture::new(&script);
     let mut client = fixture.opened().await;
-    three_turns(&mut client).await;
+    three_turns(&fixture, &mut client).await;
     let target = user_block(&fixture, "m2");
     let before = session_of(&fixture).transcript();
     let answer_a = before.blocks[1].id().clone();
@@ -211,20 +247,41 @@ async fn an_edit_replaces_its_message_and_what_follows_once_and_infers_on_a_fres
         rejected("The conversation changed; reopen the message to edit it")
     );
     assert_eq!(script.remaining(), 0);
+    // Command state is back at the version before B.
+    assert_eq!(
+        read_todo(&fixture).await,
+        StorageReply::Value {
+            value: Some(json!(1)),
+            revision: Revision(1)
+        }
+    );
 
-    // A snapshot taken before a restart is stale after it.
+    // A snapshot taken before a restart is stale after it, and an accepted
+    // operation keeps its receipt.
     client.send(ClientFrame::Close {}).await;
     frames_until(&mut client, |frame| *frame == ServerFrame::Closed).await;
     let mut reopened = fixture.client();
     reopened.send(open(test_model())).await;
     reopened.received();
-    let target = user_block(&fixture, turn_id.as_str());
+    let replacement_block = user_block(&fixture, turn_id.as_str());
     reopened
-        .send(edit("op3", &target, &accepted.version, client_text("B4")))
+        .send(edit(
+            "op3",
+            &replacement_block,
+            &accepted.version,
+            client_text("B4"),
+        ))
         .await;
     assert_eq!(
         edit_outcome(&reopened.received()),
         rejected("The conversation changed; reopen the message to edit it")
+    );
+    reopened
+        .send(edit("op1", &target, &before.version, client_text("B2")))
+        .await;
+    assert_eq!(
+        edit_outcome(&reopened.received()),
+        EditOutcome::Accepted { turn_id }
     );
 }
 
@@ -252,11 +309,17 @@ async fn an_edit_is_refused_while_work_waits_and_a_failed_save_changes_nothing()
     frames_until(&mut client, is_idle).await;
 
     let before = session_of(&fixture).transcript();
+    let generation = fixture
+        .server
+        .node(&conversation(), &conversation())
+        .unwrap()
+        .command_generation();
     fixture.store.fail_saves(1);
     client
         .send(edit("op2", &target, &before.version, client_text("A2")))
         .await;
     let failed = edit_outcome(&client.received());
+    let generation_kept = !generation.is_cancelled();
     let after_failure = session_of(&fixture).transcript();
     let stored = fixture.store.checkpoint(&conversation()).unwrap();
     client
@@ -270,6 +333,7 @@ async fn an_edit_is_refused_while_work_waits_and_a_failed_save_changes_nothing()
     );
     assert_eq!(failed, rejected("the database refused the save"));
     assert_eq!(after_failure, before);
+    assert!(generation_kept, "a rejected edit ends no job's storage");
     assert_eq!(stored.transcript, before.blocks);
     assert!(stored.state.edits.is_empty());
     assert!(matches!(
@@ -503,6 +567,15 @@ async fn command_storage_writes_compare_the_revision_and_a_rewrite_ends_older_jo
         .storage(write(3, None), vec![root.command_generation()])
         .await
         .unwrap();
+    // A job's `demi agent list` reads the tree through the same node.
+    let listed = agent(&fixture.server, &conversation(), "list", json!({})).await;
+    fixture.store.fail_saves(1);
+    let failed = root.storage(write(4, None), Vec::new()).await;
+    let after_failure = read_todo(&fixture).await;
+    let generation = root.command_generation();
+    client.send(ClientFrame::Close {}).await;
+    frames_until(&mut client, |frame| *frame == ServerFrame::Closed).await;
+    let after_dispose = root.storage(write(5, None), vec![generation]).await;
 
     assert_eq!(
         first,
@@ -545,11 +618,26 @@ async fn command_storage_writes_compare_the_revision_and_a_rewrite_ends_older_jo
             revision: Revision(2)
         }
     );
-    // A job's `demi agent list` reads the tree through the same node.
     assert_eq!(
-        agent(&fixture.server, &conversation(), "list", json!({}))
-            .await
-            .stdout,
+        listed.stdout,
         format!("● {}  (root session) ← you\n", conversation())
+    );
+    // A commit that failed leaves the head as it was; dispose ends the jobs.
+    assert_eq!(
+        failed,
+        Err(PortError::Storage("the database refused the save".into()))
+    );
+    assert_eq!(
+        after_failure,
+        StorageReply::Value {
+            value: Some(json!(3)),
+            revision: Revision(2)
+        }
+    );
+    assert_eq!(
+        after_dispose,
+        Err(PortError::Storage(
+            "the command storage handle is no longer current".into()
+        ))
     );
 }
