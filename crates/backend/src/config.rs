@@ -14,6 +14,7 @@ use demi_provider::models_dev::ModelsDevClient;
 
 use crate::auth::email_change::AccountMail;
 use crate::llm::families::FamilyRegistry;
+use crate::runner::native::NativeCatalog;
 use crate::shard::ShardPlacement;
 use crate::vault::logins::LoginTiming;
 use crate::vault::secret::InstanceSecret;
@@ -148,6 +149,8 @@ pub struct BackendConfig {
     pub runners: RunnerTuning,
     /// How conversations are served and their inference limited.
     pub conversations: ConversationTuning,
+    /// The native command packages the conversations' commands bind to.
+    pub native: NativeCatalog,
 }
 
 /// How the backend serves conversations (`runtime.md` § Order and delivery,
@@ -218,6 +221,9 @@ impl BackendConfig {
             logins: LoginTiming::default(),
             runners: RunnerTuning::default(),
             conversations: ConversationTuning::default(),
+            // Interim: the artifact module publishes the releases
+            // `DEMI_NATIVE_CONFIG` names and makes the catalog from them.
+            native: NativeCatalog::unpublished(),
         }
     }
 }

@@ -11,9 +11,9 @@ use std::rc::{Rc, Weak};
 
 use bytes::Bytes;
 use demi_agent::{EnvironmentScope, ShellEnvironmentFactory};
-use demi_command_service::protocol::{ArtifactLocation, CommandCaller, PackageArtifact};
+use demi_command_service::protocol::CommandCaller;
 use demi_host_remote::{
-    ArtifactResolver, CommandCatalog, ContextSource, EnvironmentOptions, HostAccess, RemoteHost, RemoteShellEnvironment,
+    CommandCatalog, ContextSource, EnvironmentOptions, HostAccess, RemoteHost, RemoteShellEnvironment,
 };
 use demi_core::{CommandId, ShellId};
 use demi_shell::{CommandStatus, ExecRequest, Host, HostError, HostErrorKind, HostKey, ShellEnvironment, ShellError};
@@ -91,9 +91,7 @@ pub(crate) struct ShardShellEnvironments {
 }
 
 impl ShardShellEnvironments {
-    pub(crate) fn new(shard: Weak<Shard>) -> Self {
-        let catalog = CommandCatalog::new(Vec::new(), Rc::new(Unpublished))
-            .expect("a catalog of no packages is valid");
+    pub(crate) fn new(shard: Weak<Shard>, catalog: CommandCatalog) -> Self {
         Self { shard, catalog }
     }
 }
@@ -148,23 +146,6 @@ impl ShellEnvironmentFactory<RemoteHost> for ShardShellEnvironments {
                 _registration: registration,
             }) as Rc<dyn ShellEnvironment>)
         })
-    }
-}
-
-/// The native packages' artifacts (`native-runtime.md` § Publish artifacts
-/// before enabling commands). This backend publishes none yet, so no
-/// manifest names a native command and nothing asks.
-struct Unpublished;
-
-impl ArtifactResolver for Unpublished {
-    fn resolve(
-        &self,
-        _artifact: &PackageArtifact,
-        target: &str,
-        _cancel: CancellationToken,
-    ) -> LocalBoxFuture<'static, Result<ArtifactLocation, String>> {
-        let message = format!("no native package is published for {target}");
-        Box::pin(async move { Err(message) })
     }
 }
 

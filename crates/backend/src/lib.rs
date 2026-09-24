@@ -23,6 +23,7 @@ pub use llm::families::{
     AccountBinding, ApiKeyArgs, FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry, ProviderFamily,
     SubscriptionArgs,
 };
+pub use runner::native::NativeCatalog;
 pub use shard::ShardPlacement;
 pub use vault::logins::LoginTiming;
 pub use vault::secret::{InstanceSecret, SecretError};

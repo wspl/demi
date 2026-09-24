@@ -12,6 +12,7 @@ use std::time::Duration;
 use demi_backend::{FamilyRegistry, LoginTiming};
 use demi_core::{QuotaWindow, SnapshotSource};
 use demi_provider::quota::ProbeCost;
+use demi_provider::testing::{MockResponse, MockVendor};
 use demi_web_api::auth::Role;
 use demi_web_api::error::ErrorCode;
 use demi_web_api::providers::{
@@ -221,7 +222,13 @@ async fn a_setup_token_becomes_a_sealed_account_that_no_answer_returns() {
 #[tokio::test]
 async fn concurrent_device_logins_publish_one_entry_and_the_other_stores_nothing() {
     let scripts = scripts(Some(ProbeCost::Free));
-    let harness = Harness::new().with_families(scripts.families);
+    // The catalog this scenario reads lists the vendors of a models.dev
+    // document that names none.
+    let vendor = MockVendor::start().await;
+    vendor.respond_at("/api.json", MockResponse::status(200).chunk("{}"));
+    let harness = Harness::new()
+        .with_families(scripts.families)
+        .with_models_dev(vendor.url("/api.json"));
     let (backend, master) = harness.start_set_up().await;
     let login = "/api/providers/subscription-login";
     for (body, refusal) in [

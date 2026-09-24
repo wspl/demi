@@ -28,6 +28,7 @@ use demi_web_api::ids::{ConversationId, UserId};
 pub(crate) use self::failure_facts::failure_facts;
 pub(crate) use self::fork::{ForkRefusal, recover_forks};
 pub(crate) use self::harness::ConversationHarness;
+use self::harness::conversation_harness;
 use self::providers::ConversationProviders;
 use self::shells::ShardShellEnvironments;
 use crate::backend::Services;
@@ -60,9 +61,9 @@ pub(crate) fn agent_server(
         ..ServerConfig::default()
     };
     AgentServer::new(ServerDeps {
-        harness: Rc::new(ConversationHarness::new(shard.clone())),
+        harness: Rc::new(conversation_harness(shard.clone(), &services.native)),
         providers: Rc::new(ConversationProviders::new(user, services.clone(), http, rate_limit)),
-        shells: Rc::new(ShardShellEnvironments::new(shard)),
+        shells: Rc::new(ShardShellEnvironments::new(shard, services.native.catalog())),
         stores,
         clock: services.clock.clone(),
         ids: Rc::new(RandomIds),
