@@ -38,7 +38,7 @@ pub struct DirectoryEntry {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct CreateDirectory {
-    #[garde(length(utf16, min = 1))]
+    #[garde(length(chars, min = 1))]
     pub path: String,
 }
 

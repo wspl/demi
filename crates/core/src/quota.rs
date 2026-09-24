@@ -48,7 +48,7 @@ serde_plain::derive_fromstr_from_deserialize!(SnapshotSource);
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct QuotaPlan {
-    #[garde(length(utf16, min = 1))]
+    #[garde(length(chars, min = 1))]
     pub id: String,
     #[garde(skip)]
     pub label: String,
@@ -59,7 +59,7 @@ pub struct QuotaPlan {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct QuotaWindow {
     /// A stable id, such as `primary`, `five_hour` or `monthly`.
-    #[garde(length(utf16, min = 1))]
+    #[garde(length(chars, min = 1))]
     pub id: String,
     /// The name the user knows the window by, such as `5-hour`.
     #[garde(skip)]

@@ -121,10 +121,10 @@ pub enum UserContentBlock {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Attachment {
-    #[garde(length(utf16, min = 1))]
+    #[garde(length(chars, min = 1))]
     pub name: String,
     /// Absolute, on the conversation's Host.
-    #[garde(length(utf16, min = 1))]
+    #[garde(length(chars, min = 1))]
     pub path: String,
     #[garde(skip)]
     pub media_type: String,
