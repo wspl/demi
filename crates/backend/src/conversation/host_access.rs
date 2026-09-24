@@ -146,7 +146,7 @@ pub(crate) enum Refusal {
 /// The Cloud cannot start (`managed-hosts.md`).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
-pub(crate) struct CloudUnavailable(String);
+pub(crate) struct CloudUnavailable(pub(crate) String);
 
 /// A hold of the Cloud's admission: the Cloud keeps running while an
 /// admitted operation holds it.

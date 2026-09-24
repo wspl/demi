@@ -5,6 +5,7 @@
 //! failure facts of their history.
 
 mod announcement;
+mod cloud_workspace;
 mod failure_facts;
 mod fork;
 mod harness;

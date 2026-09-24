@@ -9,11 +9,13 @@ use crate::conversations::ConversationSummary;
 use crate::devices::DeviceDto;
 use crate::providers::ProviderState;
 use crate::settings::{InstanceMode, Preferences};
+use crate::workspaces::WorkspaceDto;
 
 /// `GET /state`: the signed-in user, the instance mode, the user's
 /// preferences, the provider entries the user infers with, the user's
-/// devices, the paired ones and the Cloud, and the summaries of the user's
-/// conversations, the active ones first, then the archived. The backend
+/// workspaces in their order, the user's devices, the paired ones and the
+/// Cloud, and the summaries of the user's conversations, the active ones
+/// first, then the archived. The backend
 /// assembles it on each request, without waking a Cloud or running
 /// inference.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -23,6 +25,7 @@ pub struct ProductState {
     pub mode: InstanceMode,
     pub preferences: Preferences,
     pub providers: Vec<ProviderState>,
+    pub workspaces: Vec<WorkspaceDto>,
     pub devices: Vec<DeviceDto>,
     pub conversations: Vec<ConversationSummary>,
 }
