@@ -51,6 +51,12 @@ impl axum::serve::Listener for EdgeListener {
                 () = self.closing.cancelled() => {}
                 // axum's own accept, which waits out and logs transient errors.
                 (stream, peer) = axum::serve::Listener::accept(tcp) => {
+                    // Small frames leave at once (`backend.md` § Runtime
+                    // model). A connection that keeps Nagle's algorithm
+                    // still works, only later, so it is served anyway.
+                    if let Err(error) = stream.set_nodelay(true) {
+                        tracing::debug!("a connection from {peer} keeps Nagle's algorithm: {error}");
+                    }
                     return (ConnectionIo::new(stream, &self.connections), peer);
                 }
             }
