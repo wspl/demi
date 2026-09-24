@@ -12,7 +12,9 @@ doctest = false
 
 [dependencies]
 base64 = "0.22"
+demi-core = { path = "../core" }
 garde.workspace = true
+regex = "1"
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
