@@ -58,6 +58,15 @@ impl Journal {
         });
     }
 
+    /// Replaces every block: the patches recorded before it are superseded.
+    pub(super) fn replace_all(&mut self, blocks: &[Block]) {
+        self.patches.clear();
+        self.touched.clear();
+        self.patches.push(TranscriptPatch::Replace {
+            value: blocks.to_vec(),
+        });
+    }
+
     pub(super) fn take(&mut self) -> Option<(Vec<TranscriptPatch>, Vec<BlockId>)> {
         if self.patches.is_empty() {
             return None;
