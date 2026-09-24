@@ -4,11 +4,12 @@ import { join, resolve } from 'node:path'
 import type { Subprocess, WebSocketOptions } from 'bun'
 
 // The browser-contract suite's world (`scenarios.md` § Browser-contract
-// suite): the backend executable on a data directory of its own, real
-// runners, and a browser for the web application's API client and the agent
-// socket, which carries the session cookie as a page's requests do.
+// suite): the backend executable on a data directory of its own with the
+// backend's scripted machine manager, real runners, and a browser for the web
+// application's API client and the agent socket, which carries the session
+// cookie as a page's requests do.
 
-/** How long a process may take to start: the backend to answer, a runner to print its code. */
+/** How long a process may take to start: the backend to answer, a runner to print its code, the manager its socket. */
 const START_MS = 15_000
 /** How long a process may take to stop before it is killed. */
 const STOP_MS = 5_000
@@ -76,11 +77,85 @@ export interface Backend {
 }
 
 /**
- * Starts the backend executable on a new data directory under `root`. It
- * has no machine manager and publishes no native command release: a
- * conversation reaches a Host only on a paired runner.
+ * Starts the backend executable on a new data directory under `root`, with
+ * the backend's scripted machine manager, which it reconciles with before it
+ * serves. It publishes no native command release, and no test uses the
+ * Cloud: a conversation reaches a Host only on a paired runner.
  */
 export async function startBackend(root: string): Promise<Backend> {
+  const machines = await startMachineManager()
+  try {
+    const backend = await launchBackend(root, machines.socket)
+    return {
+      origin: backend.origin,
+      log: backend.log,
+      async stop() {
+        // The backend reconciles with the manager as it shuts down, so the
+        // manager stops after it.
+        try {
+          await backend.stop()
+        } finally {
+          await machines.stop()
+        }
+      },
+    }
+  } catch (error) {
+    await machines.stop()
+    throw error
+  }
+}
+
+/** The backend scenarios' scripted machine manager, serving until `stop`. */
+interface MachineManager {
+  /** The Unix socket it serves, for `DEMI_MACHINES_SOCKET`. */
+  socket: string
+  stop(): Promise<void>
+}
+
+/**
+ * Starts the scripted machine manager, which the backend crate builds as its
+ * example program `scripted_machines`. It prints its socket as its first
+ * line. Its input stays open while this process runs, so it also ends when
+ * the tests end without stopping it.
+ */
+async function startMachineManager(): Promise<MachineManager> {
+  const child = Bun.spawn([testProgram('examples/scripted_machines')], {
+    stdin: 'pipe',
+    stdout: 'pipe',
+    stderr: 'pipe',
+  })
+  const lines: string[] = []
+  // Only the first settlement counts: the first line on standard output is
+  // the socket, and a manager that printed it has started, whenever it
+  // exits later.
+  const printed = Promise.withResolvers<string>()
+  const reading = Promise.all([
+    readLines(child.stdout, (line) => {
+      lines.push(line)
+      printed.resolve(line)
+    }),
+    readLines(child.stderr, (line) => lines.push(line)),
+  ])
+  const log = () => lines.join('\n')
+  void child.exited.then((code) => printed.reject(new Error(`The machine manager exited with ${code}:\n${log()}`)))
+  const timeout = setTimeout(() => printed.reject(new Error(`The machine manager printed no socket within ${START_MS} ms:\n${log()}`)), START_MS)
+  const stop = async () => {
+    await terminate(child)
+    await reading
+  }
+  try {
+    const socket = await printed.promise
+    return { socket, stop }
+  } catch (error) {
+    await stop()
+    throw error
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+/** The backend executable on a new data directory under `root`, with the machine manager at `socket`. */
+async function launchBackend(root: string, socket: string): Promise<Backend> {
   const data = join(root, 'backend')
   const port = freePort()
   const origin = `http://127.0.0.1:${port}`
@@ -95,7 +170,7 @@ export async function startBackend(root: string): Promise<Backend> {
       DEMI_BACKEND_PORT: String(port),
       DEMI_INSTANCE_MODE: 'shared',
       DEMI_BACKEND_PUBLIC_URL: origin,
-      DEMI_MACHINES_SOCKET: join(root, 'machines.sock'),
+      DEMI_MACHINES_SOCKET: socket,
       DEMI_NATIVE_CONFIG: native,
     },
     stdout: 'pipe',
