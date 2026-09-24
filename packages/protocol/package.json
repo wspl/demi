@@ -1,0 +1,38 @@
+{
+  "name": "@demicodes/protocol",
+  "description": "The TypeScript form of Demi's Rust contracts: Zod schemas, types and lookups generated from them.",
+  "version": "0.24.0",
+  "private": false,
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "dependencies": {
+    "zod": "^4.0.0"
+  },
+  "license": "Apache-2.0",
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "bun run --cwd ../.. contracts && tsdown",
+    "typecheck": "tsgo --noEmit -p tsconfig.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wspl/demi.git",
+    "directory": "packages/protocol"
+  },
+  "homepage": "https://github.com/wspl/demi/tree/main/packages/protocol#readme",
+  "bugs": "https://github.com/wspl/demi/issues"
+}

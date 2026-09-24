@@ -1,0 +1,39 @@
+{
+  "name": "@demicodes/agent-client",
+  "description": "The browser's client of Demi's conversation socket: AgentClient, its WebSocket transport and the transcript patch applier.",
+  "version": "0.24.0",
+  "private": false,
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
+  "dependencies": {
+    "@demicodes/protocol": "workspace:^",
+    "@demicodes/utils": "workspace:^"
+  },
+  "license": "Apache-2.0",
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsgo --noEmit -p tsconfig.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wspl/demi.git",
+    "directory": "packages/agent-client"
+  },
+  "homepage": "https://github.com/wspl/demi/tree/main/packages/agent-client#readme",
+  "bugs": "https://github.com/wspl/demi/issues"
+}

@@ -587,7 +587,8 @@ Each crate implements the provider contract for one vendor family.
 
 - **Owns:** the repository's development commands: `cargo xtask check`
   (formatting, clippy with the workspace lints, the tests and the crate
-  boundary check), `cargo xtask contracts` (the TypeScript emitter,
+  boundary check), `xtask contracts` (the TypeScript emitter, which
+  `bun run contracts` runs after it builds the workspace;
   [Contracts](contracts.md#generated-typescript)), `cargo xtask test` (builds
   the binaries tests start and exports their paths), native build and release
   packaging for every executable, and Cloud image packaging.
@@ -607,9 +608,9 @@ packages under `packages/`.
 - **Owns:** the TypeScript form of the Rust contracts the browser reads: Zod
   schemas and `z.infer` types for agent frames, transcript blocks and patches,
   content, tool views, models, failure facts and the live view's messages, and
-  the file-type table with its lookups. `cargo xtask contracts` generates all
-  of it into `src/generated/`; nothing in it is written by hand, and nothing
-  generated is committed.
+  the file-type table with its lookups. `xtask contracts` generates all of it
+  into `src/generated/`, which the package's entry re-exports; nothing else is
+  written, and nothing generated is committed.
 - **Public boundary:** the generated schemas, types and lookups.
 - **Must not:** declare a schema by hand or import another workspace package.
 
