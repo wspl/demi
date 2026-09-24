@@ -4,7 +4,7 @@
 
 use std::{
     cell::RefCell,
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     net::SocketAddr,
     rc::Rc,
     sync::{Arc, Mutex},
@@ -197,6 +197,14 @@ impl Clock for FixedClock {
     }
 }
 
+/// A JWT whose payload is `claims`, with a signature nobody checks, as the
+/// tokens vendors issue: providers read claims without verifying them.
+pub fn jwt(claims: &serde_json::Value) -> String {
+    use base64::Engine;
+    let encode = |value: &str| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(value);
+    format!("{}.{}.signature", encode(r#"{"alg":"none","typ":"JWT"}"#), encode(&claims.to_string()))
+}
+
 /// A server-sent events body with one `data:` frame per payload.
 pub fn sse_body(payloads: &[serde_json::Value]) -> String {
     payloads
@@ -219,11 +227,15 @@ struct VendorState {
     script: Mutex<VendorScript>,
     /// Signalled when a client leaves a response that was still open.
     disconnected: Notify,
+    /// Signalled whenever a request arrives.
+    requested: Notify,
 }
 
 #[derive(Default)]
 struct VendorScript {
     responses: VecDeque<MockResponse>,
+    /// Answers for one path, which a request to it takes before the others.
+    routes: HashMap<String, VecDeque<MockResponse>>,
     requests: Vec<RecordedRequest>,
 }
 
@@ -265,6 +277,8 @@ enum Ending {
     Complete,
     /// The body stays open until the client leaves.
     Open,
+    /// The server never answers: no status, no headers.
+    Silent,
     /// The connection breaks before the body ends.
     Broken,
 }
@@ -314,6 +328,15 @@ impl MockResponse {
         self.ending = Ending::Broken;
         self
     }
+
+    /// A request that is never answered: the server reads it and sends
+    /// nothing, not even a status.
+    pub fn silent() -> Self {
+        Self {
+            ending: Ending::Silent,
+            ..Self::status(200)
+        }
+    }
 }
 
 impl MockVendor {
@@ -325,6 +348,7 @@ impl MockVendor {
         let state = Arc::new(VendorState {
             script: Mutex::new(VendorScript::default()),
             disconnected: Notify::new(),
+            requested: Notify::new(),
         });
         let router = Router::new().fallback(answer).with_state(state.clone());
         let server = tokio::spawn(async move {
@@ -350,9 +374,40 @@ impl MockVendor {
         self.lock().responses.push_back(response);
     }
 
+    /// Queues the answer to the next request to `path`, such as
+    /// `/oauth/token`, which it takes before the answers of
+    /// [`respond`](Self::respond): concurrent requests to different paths
+    /// then get their own answers whatever order they arrive in.
+    pub fn respond_at(&self, path: &str, response: MockResponse) {
+        self.lock()
+            .routes
+            .entry(path.to_owned())
+            .or_default()
+            .push_back(response);
+    }
+
     /// Every request received so far, in order.
     pub fn requests(&self) -> Vec<RecordedRequest> {
         self.lock().requests.clone()
+    }
+
+    /// Waits until the vendor has received `count` requests, at most five
+    /// seconds.
+    pub async fn received(&self, count: usize) {
+        let arrived = async {
+            loop {
+                // Created before the count is read, so a request that arrives
+                // in between still wakes it.
+                let next = self.state.requested.notified();
+                if self.lock().requests.len() >= count {
+                    return;
+                }
+                next.await;
+            }
+        };
+        tokio::time::timeout(Duration::from_secs(5), arrived)
+            .await
+            .expect("the vendor receives the requests");
     }
 
     /// Waits until a client leaves a response that was still open, at most
@@ -375,22 +430,32 @@ async fn answer(State(state): State<Arc<VendorState>>, request: Request) -> Resp
         .expect("the request body arrives");
     let next = {
         let mut script = state.script.lock().expect("the vendor script is not poisoned");
+        let routed = script
+            .routes
+            .get_mut(parts.uri.path())
+            .and_then(VecDeque::pop_front);
         script.requests.push(RecordedRequest {
             method: parts.method,
             uri: parts.uri,
             headers: parts.headers,
             body,
         });
-        script.responses.pop_front()
+        state.requested.notify_waiters();
+        routed.or_else(|| script.responses.pop_front())
     };
     let Some(scripted) = next else {
         let mut response = Response::new(Body::from("MockVendor: no response scripted"));
         *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
         return response;
     };
+    if let Ending::Silent = scripted.ending {
+        // The handler never returns, so the server sends nothing; the
+        // connection closes when the client leaves or the vendor stops.
+        return std::future::pending().await;
+    }
     let chunks = stream::iter(scripted.chunks.into_iter().map(Ok::<_, std::io::Error>));
     let body: BoxStream<'static, Result<Bytes, std::io::Error>> = match scripted.ending {
-        Ending::Complete => chunks.boxed(),
+        Ending::Complete | Ending::Silent => chunks.boxed(),
         Ending::Open => {
             let guard = LeaveGuard(state.clone());
             let pings = stream::unfold(guard, |guard| async move {

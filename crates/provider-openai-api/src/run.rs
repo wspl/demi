@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use demi_core::WireApi;
 use demi_provider::{
     InferenceRequest, ProviderEvent, ProviderFailure, encode_body, http_failure, read_http_failure,
     wire::{Vendor, chat_completions, responses},
@@ -10,7 +11,7 @@ use demi_provider::{
 use futures_util::{Stream, StreamExt};
 use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 
-use crate::{SIGNATURE_TAG, Shared, WireApi, request};
+use crate::{SIGNATURE_TAG, Shared, request};
 
 /// How failure messages name the vendor.
 const LABEL: &str = "OpenAI";
