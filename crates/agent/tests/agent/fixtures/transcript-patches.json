@@ -282,7 +282,7 @@
               "output": [
                 {
                   "type": "text",
-                  "text": "Tool not found: shell_exec"
+                  "text": "shell_exec input is invalid:\nmissing field `timeoutMs`"
                 }
               ],
               "view": null
@@ -483,7 +483,7 @@
         "output": [
           {
             "type": "text",
-            "text": "Tool not found: shell_exec"
+            "text": "shell_exec input is invalid:\nmissing field `timeoutMs`"
           }
         ],
         "view": null
