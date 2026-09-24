@@ -52,6 +52,7 @@ icu_collator = "2"
 icu_locale = "2"
 icu_time = { version = "2", default-features = false, features = ["compiled_data"] }
 jiff.workspace = true
+mime = "0.3"
 object_store = { version = "0.13", default-features = false, features = ["fs"] }
 password-hash = { version = "0.5", features = ["getrandom"] }
 percent-encoding = "2"
