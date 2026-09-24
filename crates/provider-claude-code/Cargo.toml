@@ -1,0 +1,42 @@
+[package]
+name = "demi-provider-claude-code"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+# No doc examples: rustdoc has nothing to test. The tests are in
+# tests/claude_code, so the library needs no test harness of its own.
+doctest = false
+test = false
+
+[dependencies]
+demi-core = { path = "../core" }
+demi-provider = { path = "../provider" }
+demi-shell = { path = "../shell" }
+async-stream = "0.3"
+base64.workspace = true
+bytes.workspace = true
+# The in-memory transport of the SDK MCP server: rmcp takes any sink and
+# stream of its messages, and these channels are both.
+futures-channel = { version = "0.3", features = ["sink"] }
+futures-util.workspace = true
+http.workspace = true
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+# The SDK MCP server; `local` runs its service loop and handlers on the
+# user's shard, which is one thread.
+rmcp = { version = "3.4", default-features = false, features = ["local", "server"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.10"
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util = { workspace = true, features = ["codec"] }
+tracing.workspace = true
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+demi-provider = { path = "../provider", features = ["testing"] }
+# Closing a process that ignores SIGTERM is tested on a paused clock.
+tokio = { workspace = true, features = ["test-util"] }
