@@ -8,6 +8,7 @@
 mod commands;
 mod connection;
 mod content;
+mod failures;
 mod tree;
 
 use std::{
@@ -26,6 +27,7 @@ use tokio_util::task::TaskTracker;
 
 pub use connection::{Connection, FrameRx, Outgoing};
 pub use content::{ContentError, ContentResolver, FileReference};
+pub use failures::{FailureReader, read_failures};
 pub use tree::Tree;
 
 use crate::{
@@ -90,6 +92,8 @@ impl Default for ServerConfig {
 pub struct ServerDeps<H> {
     pub harness: Rc<H>,
     pub providers: Rc<dyn ProviderResolver>,
+    /// Reads the facts of the failure records the frames' error blocks keep.
+    pub failures: Rc<dyn FailureReader>,
     pub stores: TreeStores,
     pub clock: Arc<dyn Clock>,
     pub ids: Rc<dyn IdSource>,

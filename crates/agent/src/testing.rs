@@ -11,9 +11,11 @@ use std::{
 
 use demi_agent_protocol::{ClientContent, ClientFrame, ServerFrame};
 use demi_core::{
-    Block, Clock, Model, ModelSelection, NodeId, QueuedMessage, Timestamp, UserContentBlock,
+    B64Bytes, BlobRef, Block, Clock, Model, ModelSelection, NodeId, QueuedMessage, Timestamp,
+    UserContentBlock,
 };
 use futures_util::future::LocalBoxFuture;
+use sha2::{Digest, Sha256};
 
 use crate::{
     AgentHarness, AgentServer, AgentTreeStore, Connection, ContentError, ContentResolver,
@@ -21,6 +23,7 @@ use crate::{
     store::{
         Checkpoint, CheckpointState, CheckpointUpdate, CommandStateSnapshot, CommitGuard,
         NodeClose, NodeRecord, StoreError,
+        media::{self, BlobStore},
     },
 };
 
@@ -207,10 +210,12 @@ impl SaveGate {
 }
 
 /// The in-memory tree store: the contract's semantics with nothing durable.
-/// One store may hold any number of trees, and it records every save.
-#[derive(Debug, Default)]
+/// One store may hold any number of trees, and it records every save. Given
+/// a blob namespace, it keeps media by reference as a product's store does.
+#[derive(Default)]
 pub struct MemoryTreeStore {
     stored: Rc<RefCell<Stored>>,
+    blobs: Option<Rc<dyn BlobStore>>,
 }
 
 impl MemoryTreeStore {
@@ -218,11 +223,21 @@ impl MemoryTreeStore {
         Rc::new(Self::default())
     }
 
+    /// A store that moves media into `blobs` before it saves a block and
+    /// puts the bytes back when it loads one.
+    pub fn with_blobs(blobs: Rc<dyn BlobStore>) -> Rc<Self> {
+        Rc::new(Self {
+            stored: Rc::default(),
+            blobs: Some(blobs),
+        })
+    }
+
     /// Another store holding what this one holds now, as a process that died
     /// at this moment left it.
     pub fn copy(&self) -> Rc<Self> {
         Rc::new(Self {
             stored: Rc::new(RefCell::new(self.stored.borrow().clone())),
+            blobs: self.blobs.clone(),
         })
     }
 
@@ -231,7 +246,8 @@ impl MemoryTreeStore {
         self.stored.borrow().saves.clone()
     }
 
-    /// The node's checkpoint as a load would read it.
+    /// The node's checkpoint as the store keeps it: media by reference when
+    /// the store has a blob namespace.
     pub fn checkpoint(&self, id: &NodeId) -> Option<Checkpoint> {
         load(&self.stored.borrow(), id).ok().flatten()
     }
@@ -321,9 +337,24 @@ fn apply_save(
     Ok(())
 }
 
+/// Moves the inline media of `update`'s blocks into `blobs`, when there are
+/// any.
+async fn externalized(
+    mut update: CheckpointUpdate,
+    blobs: Option<&dyn BlobStore>,
+) -> Result<CheckpointUpdate, StoreError> {
+    if let Some(blobs) = blobs {
+        for (_, block) in &mut update.changed_blocks {
+            media::externalize(block, blobs).await?;
+        }
+    }
+    Ok(update)
+}
+
 /// One node's checkpoint store in a [`MemoryTreeStore`].
 struct MemorySessionStore {
     stored: Rc<RefCell<Stored>>,
+    blobs: Option<Rc<dyn BlobStore>>,
     id: NodeId,
 }
 
@@ -334,6 +365,7 @@ impl SessionStore for MemorySessionStore {
         guard: &'a CommitGuard,
     ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
         Box::pin(async move {
+            let update = externalized(update, self.blobs.as_deref()).await?;
             let hold = self.stored.borrow().hold.clone();
             if let Some(hold) = hold {
                 hold.waiting.set(hold.waiting.get() + 1);
@@ -361,7 +393,16 @@ impl SessionStore for MemorySessionStore {
     }
 
     fn load(&self) -> LocalBoxFuture<'_, Result<Option<Checkpoint>, StoreError>> {
-        Box::pin(async move { load(&self.stored.borrow(), &self.id) })
+        Box::pin(async move {
+            let loaded = load(&self.stored.borrow(), &self.id)?;
+            let (Some(mut checkpoint), Some(blobs)) = (loaded.clone(), &self.blobs) else {
+                return Ok(loaded);
+            };
+            for block in &mut checkpoint.transcript {
+                media::rehydrate(block, &**blobs).await?;
+            }
+            Ok(Some(checkpoint))
+        })
     }
 }
 
@@ -398,6 +439,7 @@ impl AgentTreeStore for MemoryTreeStore {
         initial: CheckpointUpdate,
     ) -> LocalBoxFuture<'_, Result<(), StoreError>> {
         Box::pin(async move {
+            let initial = externalized(initial, self.blobs.as_deref()).await?;
             let mut stored = self.stored.borrow_mut();
             if stored.nodes.contains_key(&record.id) {
                 return Err(StoreError::Failed(format!(
@@ -426,6 +468,7 @@ impl AgentTreeStore for MemoryTreeStore {
     fn session_store(&self, id: &NodeId) -> Rc<dyn SessionStore> {
         Rc::new(MemorySessionStore {
             stored: self.stored.clone(),
+            blobs: self.blobs.clone(),
             id: id.clone(),
         })
     }
@@ -496,6 +539,46 @@ impl AgentTreeStore for MemoryTreeStore {
             }
             Ok(())
         })
+    }
+}
+
+/// A blob namespace in memory, naming bytes by their SHA-256 as a real one
+/// does.
+#[derive(Debug, Default)]
+pub struct MemoryBlobs {
+    blobs: RefCell<BTreeMap<BlobRef, B64Bytes>>,
+}
+
+impl MemoryBlobs {
+    pub fn new() -> Rc<Self> {
+        Rc::new(Self::default())
+    }
+
+    /// Whether the namespace holds `blob`.
+    pub fn holds(&self, blob: &BlobRef) -> bool {
+        self.blobs.borrow().contains_key(blob)
+    }
+
+    /// Loses `blob`, as a namespace whose file went missing would.
+    pub fn forget(&self, blob: &BlobRef) {
+        self.blobs.borrow_mut().remove(blob);
+    }
+}
+
+impl BlobStore for MemoryBlobs {
+    fn put(&self, bytes: B64Bytes) -> LocalBoxFuture<'_, Result<BlobRef, StoreError>> {
+        let name = format!("{:x}", Sha256::digest(bytes.as_bytes()));
+        let blob = BlobRef::try_from(name).expect("a SHA-256 in hexadecimal names a blob");
+        self.blobs.borrow_mut().insert(blob.clone(), bytes);
+        Box::pin(async move { Ok(blob) })
+    }
+
+    fn get<'a>(
+        &'a self,
+        blob: &'a BlobRef,
+    ) -> LocalBoxFuture<'a, Result<Option<B64Bytes>, StoreError>> {
+        let bytes = self.blobs.borrow().get(blob).cloned();
+        Box::pin(async move { Ok(bytes) })
     }
 }
 
@@ -578,16 +661,19 @@ impl<H: AgentHarness> TestClient<H> {
 /// the same cases.
 pub mod store_contract {
     use demi_core::{
-        AgentMessage, AgentMessageBlock, AgentMessageEvent, Block, CompletionId, CompletionOutcome,
-        NodeId, QueuedMessage, Sender, SessionPhase, Timestamp, TurnId, UserBlock,
+        AgentMessage, AgentMessageBlock, AgentMessageEvent, B64Bytes, BlobRef, Block, CompletionId,
+        CompletionOutcome, MediaSource, NodeId, QueuedMessage, Sender, SessionPhase, Timestamp,
+        TurnId, UserBlock, UserContentBlock,
     };
+
+    use sha2::{Digest, Sha256};
 
     use super::{test_model, text};
     use crate::{
         AgentTreeStore,
         store::{
             CheckpointState, CheckpointUpdate, ClosePhase, CommandStateSnapshot, NodeClose,
-            NodeRecord,
+            NodeRecord, media::BlobStore,
         },
     };
 
@@ -906,5 +992,61 @@ pub mod store_contract {
             .await
             .expect("the save commits");
         assert!(delivered(store, "child").await);
+    }
+
+    /// A store with the blob namespace `blobs` keeps a block's media there
+    /// and puts the bytes back when it loads it; a blob that `forget` lost
+    /// loads as the text that names it.
+    pub async fn media_travels_by_reference(
+        store: &dyn AgentTreeStore,
+        blobs: &dyn BlobStore,
+        forget: &dyn Fn(&BlobRef),
+    ) {
+        let bytes = B64Bytes::new(vec![0x89, b'P', b'N', b'G', 0, 1, 2, 3, 4, 5, 6, 7]);
+        let image = UserContentBlock::Image {
+            source: MediaSource::Binary {
+                data: bytes.clone(),
+                media_type: "image/png".into(),
+            },
+        };
+        let user = Block::User(UserBlock {
+            id: "u1".try_into().expect("a test block id is not empty"),
+            turn_id: TurnId::try_from("m1").expect("a test turn id is not empty"),
+            created_at: Timestamp::UNIX_EPOCH,
+            model: test_model(),
+            content: vec![image.clone()],
+            preamble: None,
+        });
+        create(
+            store,
+            record("root", None, 1),
+            update(Vec::new(), vec![user]),
+        )
+        .await;
+        let content = |checkpoint: Option<crate::store::Checkpoint>| {
+            let checkpoint = checkpoint.expect("the node has a checkpoint");
+            match &checkpoint.transcript[0] {
+                Block::User(user) => user.content.clone(),
+                other => panic!("{other:?} is not the user block"),
+            }
+        };
+        let root = store.session_store(&id("root"));
+        let loaded = root.load().await.expect("the store reads its checkpoints");
+        assert_eq!(content(loaded), [image]);
+        let name = format!("{:x}", Sha256::digest(bytes.as_bytes()));
+        let blob = BlobRef::try_from(name).expect("a SHA-256 in hexadecimal names a blob");
+        assert_eq!(
+            blobs.get(&blob).await.expect("the namespace reads bytes"),
+            Some(bytes),
+            "the save published the bytes"
+        );
+        forget(&blob);
+        let loaded = root.load().await.expect("the store reads its checkpoints");
+        assert_eq!(
+            content(loaded),
+            [UserContentBlock::Text {
+                text: format!("[missing image blob {blob}]")
+            }]
+        );
     }
 }

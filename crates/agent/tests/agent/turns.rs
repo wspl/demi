@@ -6,31 +6,28 @@
 use std::{rc::Rc, time::Duration};
 
 use demi_agent::{
-    ServerConfig,
-    testing::{MemoryTreeStore, model_of, test_model},
+    ServerConfig, attachments, read_failures,
+    store::media::{BlobStore, externalize_frame},
+    testing::{MemoryBlobs, MemoryTreeStore, TestClient, TestFiles, model_of, test_model},
 };
-use demi_agent_protocol::{AbortResult, AbortTarget, ClientFrame, ModelSwitchApply, ServerFrame};
-use demi_core::{Block, FailureSource, SessionPhase};
+use demi_agent_protocol::{
+    AbortResult, AbortTarget, ClientContent, ClientFrame, Failures, ModelSwitchApply, ServerFrame,
+    TranscriptPatch,
+};
+use demi_core::{
+    B64Bytes, Block, FailureSource, MediaSource, ProviderFailureFacts, SessionPhase,
+    UserContentBlock,
+};
 use demi_provider::{
-    ErrorCode, InferenceItem, ProviderEvent,
+    ErrorCode, InferenceItem, ProviderEvent, ProviderFailure,
     testing::{ScriptedRuntime, Turn, event},
 };
-use futures_util::StreamExt;
 use serde_json::{Value, json};
-use tokio::sync::oneshot;
 
-use crate::support::{Fixture, conversation, is_idle, is_pending_steers, kinds, open, send, until};
-
-/// A run that waits until the test lets it go, then plays `events`.
-fn held(events: Vec<ProviderEvent>) -> (Turn, oneshot::Sender<()>) {
-    let (release, released) = oneshot::channel::<()>();
-    let turn = Turn::Stream(Box::new(move |_| {
-        futures_util::stream::once(released)
-            .flat_map(move |_| futures_util::stream::iter(events.clone()))
-            .boxed_local()
-    }));
-    (turn, release)
-}
+use crate::support::{
+    Facts, Fixture, Gate, conversation, held, is_idle, is_pending_steers, kinds, minute_after,
+    open, send, until,
+};
 
 #[tokio::test(flavor = "local")]
 async fn a_message_runs_to_its_response_and_its_patches_rebuild_the_transcript() {
@@ -183,6 +180,193 @@ async fn a_provider_failure_is_reported_once_and_recorded_with_its_diagnostics()
 }
 
 #[tokio::test(flavor = "local")]
+async fn a_failures_facts_travel_beside_its_error_block_and_are_never_stored() {
+    let script = ScriptedRuntime::new([
+        Turn::Events(vec![ProviderEvent::Error(ProviderFailure::protocol(
+            "the usage limit has been reached",
+            r#"{"type":"error","error":{"resets_at":1790062659}}"#,
+        ))]),
+        Turn::Events(vec![event::error("no record", None)]),
+    ]);
+    let fixture = Fixture::new(&script);
+    let mut client = fixture.opened().await;
+    client.send(send("m1", "hi")).await;
+    let failed = client.next_until(is_idle).await;
+    client.send(send("m2", "again")).await;
+    let unrecorded = client.next_until(is_idle).await;
+    client.send(ClientFrame::SyncTranscript {}).await;
+    let synced = client.received();
+
+    let checkpoint = fixture.store.checkpoint(&conversation()).unwrap();
+    let Block::Error(error) = &checkpoint.transcript[1] else {
+        panic!("{:?}", checkpoint.transcript)
+    };
+    let expected: Failures = [(
+        error.id.clone(),
+        ProviderFailureFacts {
+            retry_at: Some(minute_after(error.created_at)),
+        },
+    )]
+    .into();
+    let patched: Vec<&Failures> = failed
+        .iter()
+        .filter_map(|frame| match frame {
+            ServerFrame::TranscriptPatch {
+                failures: Some(failures),
+                ..
+            } => Some(failures),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(patched, [&expected]);
+    // An error without a vendor's record yields no facts.
+    assert!(unrecorded.iter().all(|frame| !matches!(
+        frame,
+        ServerFrame::TranscriptPatch {
+            failures: Some(_),
+            ..
+        }
+    )));
+    let Some(ServerFrame::TranscriptReset { failures, .. }) = synced.first() else {
+        panic!("{synced:?}")
+    };
+    assert_eq!(failures.as_ref(), Some(&expected));
+    assert_eq!(
+        read_failures(&checkpoint.transcript, &Facts),
+        Some(expected)
+    );
+}
+
+#[tokio::test(flavor = "local")]
+async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_reference() {
+    const PNG: [u8; 12] = [
+        0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe, 0x01,
+    ];
+    let image = UserContentBlock::Image {
+        source: MediaSource::Binary {
+            data: B64Bytes::new(PNG.to_vec()),
+            media_type: "image/png".into(),
+        },
+    };
+    let seen = |expected: Vec<UserContentBlock>, answer: &'static str| {
+        Turn::Respond(Box::new(move |request| {
+            let first = request.items.first().cloned();
+            assert_eq!(
+                first,
+                Some(InferenceItem::UserMessage { content: expected })
+            );
+            vec![event::text(answer), event::response(1, 1)]
+        }))
+    };
+    let blobs = MemoryBlobs::new();
+    let uploaded = blobs.put(B64Bytes::new(PNG.to_vec())).await.unwrap();
+    let path = "/home/demi/.demi/attachments/conversation/tiny.png";
+    let blocks = attachments::upload_blocks(attachments::Upload {
+        name: "tiny.png",
+        path,
+        media_type: "image/png",
+        sha256: &uploaded,
+        bytes: &PNG,
+    });
+    let record = blocks[1].clone();
+    let text = UserContentBlock::Text {
+        text: "describe this".into(),
+    };
+    let script = ScriptedRuntime::new([
+        seen(
+            vec![text.clone(), image.clone(), record.clone()],
+            "a tiny png",
+        ),
+        seen(
+            vec![text.clone(), image.clone(), record.clone()],
+            "still a png",
+        ),
+        seen(
+            vec![
+                text.clone(),
+                UserContentBlock::Text {
+                    text: format!("[missing image blob {uploaded}]"),
+                },
+                record.clone(),
+            ],
+            "the image is gone",
+        ),
+    ]);
+    let store = MemoryTreeStore::with_blobs(blobs.clone());
+    let fixture = Fixture::with(&script, store, ServerConfig::default());
+    let files = TestFiles::new();
+    files.upload("upload-1", blocks);
+    let mut client =
+        TestClient::connect_with(&fixture.server, &conversation(), "/workspace", files);
+    client.send(open(test_model())).await;
+    client.next_until(is_pending_steers).await;
+    client
+        .send(ClientFrame::Send {
+            message_id: crate::support::turn("m1"),
+            content: vec![
+                ClientContent::Text {
+                    text: "describe this".into(),
+                },
+                ClientContent::Upload {
+                    r#ref: "upload-1".into(),
+                    file_name: "tiny.png".into(),
+                },
+            ],
+        })
+        .await;
+    let frames = client.next_until(is_idle).await;
+
+    // At rest and on the wire, the image is its reference.
+    let by_reference = UserContentBlock::Image {
+        source: MediaSource::Ref {
+            r#ref: uploaded.clone(),
+            media_type: "image/png".into(),
+        },
+    };
+    let stored = fixture.store.checkpoint(&conversation()).unwrap();
+    let Block::User(user) = &stored.transcript[0] else {
+        panic!("{:?}", stored.transcript)
+    };
+    assert_eq!(
+        user.content,
+        [text.clone(), by_reference.clone(), record.clone()]
+    );
+    let mut added = frames
+        .into_iter()
+        .find(|frame| matches!(frame, ServerFrame::TranscriptPatch { patches, .. }
+            if patches.iter().any(|patch| matches!(patch, TranscriptPatch::Add { value: Block::User(_), .. }))))
+        .unwrap();
+    externalize_frame(&mut added, &*blobs).await.unwrap();
+    let ServerFrame::TranscriptPatch { patches, .. } = &added else {
+        unreachable!()
+    };
+    let Some(TranscriptPatch::Add {
+        value: Block::User(sent),
+        ..
+    }) = patches.first()
+    else {
+        panic!("{patches:?}")
+    };
+    assert_eq!(sent.content, [text.clone(), by_reference, record.clone()]);
+
+    // Loaded again, the model reads the bytes; a blob that is gone is named.
+    for message in ["m2", "m3"] {
+        client.send(ClientFrame::Close {}).await;
+        client
+            .next_until(|frame| *frame == ServerFrame::Closed)
+            .await;
+        if message == "m3" {
+            blobs.forget(&uploaded);
+        }
+        client.send(open(test_model())).await;
+        client.next_until(is_pending_steers).await;
+        client.send(send(message, "and now?")).await;
+        client.next_until(is_idle).await;
+    }
+    assert_eq!(script.remaining(), 0);
+}
+
+#[tokio::test(flavor = "local")]
 async fn stop_during_a_stream_answers_after_the_stopped_marker_and_the_queued_message_runs_next() {
     let script = ScriptedRuntime::new([
         Turn::pending(),
@@ -316,10 +500,14 @@ async fn an_immediate_switch_lands_inside_the_running_turn_and_a_next_turn_switc
         ),
         (None, ["test-model", "test-model", "model-b"]),
     ] {
-        let (first, release) = held(vec![
-            event::tool_call("call-1", "shell_exec", json!({})),
-            event::response(1, 1),
-        ]);
+        let release = Gate::new();
+        let first = held(
+            &release,
+            vec![
+                event::tool_call("call-1", "shell_exec", json!({})),
+                event::response(1, 1),
+            ],
+        );
         let script = ScriptedRuntime::new([
             first,
             Turn::Events(vec![event::text("one"), event::response(1, 1)]),
@@ -335,7 +523,7 @@ async fn an_immediate_switch_lands_inside_the_running_turn_and_a_next_turn_switc
                 apply,
             })
             .await;
-        release.send(()).unwrap();
+        release.open();
         client.next_until(is_idle).await;
         client.send(send("m2", "second")).await;
         client.next_until(is_idle).await;
@@ -447,8 +635,12 @@ async fn the_system_prompt_has_the_command_help_and_a_context_change_is_saved_be
 
 #[tokio::test(flavor = "local")]
 async fn messages_sent_during_a_turn_wait_in_the_queue_which_the_client_reorders_and_empties() {
-    let (first, release) = held(vec![event::text("one"), event::response(1, 1)]);
-    let (third, release_third) = held(vec![event::text("two"), event::response(1, 1)]);
+    let (release, release_third) = (Gate::new(), Gate::new());
+    let first = held(&release, vec![event::text("one"), event::response(1, 1)]);
+    let third = held(
+        &release_third,
+        vec![event::text("two"), event::response(1, 1)],
+    );
     let script = ScriptedRuntime::new([
         first,
         Turn::Events(vec![event::text("three"), event::response(1, 1)]),
@@ -498,10 +690,10 @@ async fn messages_sent_during_a_turn_wait_in_the_queue_which_the_client_reorders
         ]
     );
     // m1 and m3 run; while m2 runs, the queue that is left is cleared.
-    release.send(()).unwrap();
+    release.open();
     until(|| script.requests().len() == 3).await;
     client.send(ClientFrame::ClearMessageQueue {}).await;
-    release_third.send(()).unwrap();
+    release_third.open();
     let tree = fixture.server.tree(&conversation()).unwrap();
     tree.root().session().settled().await;
     let users: Vec<String> = tree

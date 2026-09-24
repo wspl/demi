@@ -13,6 +13,7 @@
 //! and shared state sits in `Rc` and `RefCell` behind synchronous methods, so
 //! no borrow crosses an await (`concurrency.md` § The user shard).
 
+pub mod attachments;
 mod harness;
 mod ids;
 mod node;
@@ -21,14 +22,16 @@ mod session;
 pub mod store;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
+pub mod title;
 pub mod transcript;
 
 pub use harness::{AgentHarness, Profile, PromptContext};
 pub use ids::{IdSource, RandomIds};
 pub use node::Node;
 pub use server::{
-    AgentServer, Connection, ContentError, ContentResolver, FileReference, FrameRx, Outgoing,
-    ProviderResolver, ResolveError, ServerConfig, ServerDeps, Tree, TreeStores,
+    AgentServer, Connection, ContentError, ContentResolver, FailureReader, FileReference, FrameRx,
+    Outgoing, ProviderResolver, ResolveError, ServerConfig, ServerDeps, Tree, TreeStores,
+    read_failures,
 };
 pub use session::{
     AgentSession, CompactionConfig, ForkError, RetryPolicy, SessionConfig, TranscriptSnapshot,
