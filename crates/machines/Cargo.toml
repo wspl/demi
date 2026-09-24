@@ -18,6 +18,8 @@ path = "src/main.rs"
 # Acceptance builds: `DEMI_MACHINES_FAULT=<point>` aborts the process at that
 # point (`managed-hosts.md` § Verification).
 fault-injection = []
+# The Cloud image fixtures of the manager's process tests (`tests/manager`).
+testing = ["dep:tempfile"]
 
 [dependencies]
 demi-artifact = { path = "../artifact" }
@@ -31,6 +33,7 @@ nftables = "0.6"
 oci-spec = { version = "0.10", default-features = false, features = ["runtime"] }
 serde.workspace = true
 serde_json.workspace = true
+tempfile = { version = "3", optional = true }
 tar = { version = "0.4", default-features = false }
 thiserror.workspace = true
 tokio.workspace = true
@@ -57,3 +60,9 @@ sha2 = { version = "0.10", features = ["asm"] }
 [dev-dependencies]
 tempfile = "3"
 tokio = { workspace = true, features = ["test-util"] }
+
+# The manager as a process; Linux only, as root (`tests/manager`).
+[[test]]
+name = "manager"
+path = "tests/manager/main.rs"
+required-features = ["testing"]
