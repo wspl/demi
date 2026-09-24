@@ -16,7 +16,7 @@ pub(crate) use journal::PatchBatch;
 pub(crate) use log::TranscriptLog;
 #[cfg(test)]
 pub(crate) use replay::agent_message_envelope;
-pub(crate) use replay::{replay, tool_input};
+pub(crate) use replay::{char_offset, replay, tool_input};
 
 use demi_core::{Block, WakeupPlacement};
 

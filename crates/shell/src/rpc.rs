@@ -14,6 +14,8 @@ use serde_json::{Map, Value};
 use serde_with::rust::unwrap_or_skip;
 use tokio_util::sync::{CancellationToken, WaitForCancellationFuture};
 
+use crate::JobCaller;
+
 /// One `rpc` call: the leaf it names, its validated arguments, and the
 /// invoking process's surroundings (`commands.md` § Handle an rpc call).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -32,6 +34,14 @@ pub struct RpcInvocation {
     pub env: BTreeMap<String, String>,
     /// The invoking job's command context, from the backend's record of it.
     pub context: CommandContext,
+    /// Whose command storage the invoking job reaches, which a job the
+    /// handler starts elsewhere carries on; none for a job no agent started.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    pub caller: Option<JobCaller>,
     /// Whether the calling process has a pipe on its standard input.
     pub stdin: bool,
     /// The pipes relayed for the call's standard input and output, which a
