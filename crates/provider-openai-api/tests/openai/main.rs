@@ -10,18 +10,24 @@ mod stream;
 
 use std::sync::Arc;
 
+use demi_core::WireApi;
 use demi_provider::{
     InferenceRequest, Provider, ProviderEvent, ProviderRuntime, RuntimeEnv, Secret,
     testing::{FixedClock, MockResponse, MockVendor},
 };
-use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider, VendorPolicy, WireApi};
+use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider, VendorPolicy};
 use futures_util::StreamExt;
 
 /// When the scripted vendor answers.
 pub(crate) const NOW: &str = "2026-09-18T14:00:00.000Z";
 
 /// A provider whose endpoint is `base` on the scripted vendor.
-pub(crate) fn provider_at(vendor: &MockVendor, base: &str, wire: WireApi, policy: VendorPolicy) -> OpenAiProvider {
+pub(crate) fn provider_at(
+    vendor: &MockVendor,
+    base: &str,
+    wire: WireApi,
+    policy: VendorPolicy,
+) -> OpenAiProvider {
     let config = OpenAiConfig {
         id: "openai-work".into(),
         display_name: "Work".into(),
@@ -34,7 +40,11 @@ pub(crate) fn provider_at(vendor: &MockVendor, base: &str, wire: WireApi, policy
 }
 
 /// A runtime of a provider at `/v1` on the scripted vendor.
-pub(crate) fn runtime(vendor: &MockVendor, wire: WireApi, policy: VendorPolicy) -> Box<dyn ProviderRuntime> {
+pub(crate) fn runtime(
+    vendor: &MockVendor,
+    wire: WireApi,
+    policy: VendorPolicy,
+) -> Box<dyn ProviderRuntime> {
     provider_at(vendor, "/v1", wire, policy)
         .runtime(RuntimeEnv {
             http: reqwest::Client::new(),
@@ -42,7 +52,10 @@ pub(crate) fn runtime(vendor: &MockVendor, wire: WireApi, policy: VendorPolicy) 
         .unwrap()
 }
 
-pub(crate) async fn run(runtime: &mut dyn ProviderRuntime, request: InferenceRequest) -> Vec<ProviderEvent> {
+pub(crate) async fn run(
+    runtime: &mut dyn ProviderRuntime,
+    request: InferenceRequest,
+) -> Vec<ProviderEvent> {
     runtime.run(request).collect().await
 }
 
@@ -52,7 +65,11 @@ pub(crate) fn done() -> MockResponse {
 }
 
 /// The body the vendor received for `request` over `wire`.
-pub(crate) async fn body_of(wire: WireApi, policy: VendorPolicy, request: InferenceRequest) -> serde_json::Value {
+pub(crate) async fn body_of(
+    wire: WireApi,
+    policy: VendorPolicy,
+    request: InferenceRequest,
+) -> serde_json::Value {
     let vendor = MockVendor::start().await;
     vendor.respond(done());
     run(runtime(&vendor, wire, policy).as_mut(), request).await;

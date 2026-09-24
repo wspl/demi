@@ -199,7 +199,7 @@ async fn a_malformed_mapped_event_is_a_protocol_failure_that_names_its_field() {
         (json!({ "type": "response.output_item.done", "item": { "type": "reasoning", "summary": [{ "type": "summary_text" }] } }), "text"),
     ];
     for (frame, field) in cases {
-        let failure = failure_of(events(&[frame.clone()]).await);
+        let failure = failure_of(events(std::slice::from_ref(&frame)).await);
         assert_eq!(failure.code, None, "{frame}");
         assert!(failure.message.contains(field), "{frame}: {}", failure.message);
         let diagnostics = failure.diagnostics.unwrap();

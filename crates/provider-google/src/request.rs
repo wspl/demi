@@ -9,7 +9,10 @@ use demi_core::{
     DocumentSource, MediaSource, ThinkingConfig, ToolMediaSource, ToolResultContentBlock,
     UserContentBlock, attachment_tag, is_blank,
 };
-use demi_provider::{InferenceItem, InferenceRequest, ToolDefinition, UnloadedMedia, json_body, openai_request::tool_arguments};
+use demi_provider::{
+    InferenceItem, InferenceRequest, ToolDefinition, UnloadedMedia, json_body,
+    openai_request::tool_arguments,
+};
 use serde::Serialize;
 
 use crate::SIGNATURE_TAG;
@@ -41,7 +44,11 @@ pub(crate) fn encode(request: &InferenceRequest) -> Result<Vec<u8>, UnloadedMedi
             Vec::new()
         } else {
             vec![Tools {
-                function_declarations: request.tools.iter().map(FunctionDeclaration::from).collect(),
+                function_declarations: request
+                    .tools
+                    .iter()
+                    .map(FunctionDeclaration::from)
+                    .collect(),
             }]
         },
         generation_config: GenerationConfig {
@@ -238,7 +245,12 @@ fn contents(items: &[InferenceItem]) -> Result<Vec<Content<'_>>, UnloadedMedia> 
             }
             InferenceItem::AssistantText { text, .. } => {
                 pending_signature = None;
-                (Role::Model, vec![Part::Text { text: Cow::Borrowed(text) }])
+                (
+                    Role::Model,
+                    vec![Part::Text {
+                        text: Cow::Borrowed(text),
+                    }],
+                )
             }
             InferenceItem::AssistantThinking { signature, .. } => {
                 // Gemini derives its thought text again; only the signature
@@ -269,19 +281,28 @@ fn contents(items: &[InferenceItem]) -> Result<Vec<Content<'_>>, UnloadedMedia> 
                     None => {
                         as_text.push(tool_use_id);
                         let text = format!("[called {tool_name} with {}]", tool_arguments(input));
-                        Part::Text { text: Cow::Owned(text) }
+                        Part::Text {
+                            text: Cow::Owned(text),
+                        }
                     }
                 };
                 (Role::Model, vec![part])
             }
             InferenceItem::ToolResult {
-                tool_use_id, output, ..
+                tool_use_id,
+                output,
+                ..
             } => {
                 pending_signature = None;
-                let name = tool_names.get(tool_use_id.as_str()).copied().unwrap_or("tool");
+                let name = tool_names
+                    .get(tool_use_id.as_str())
+                    .copied()
+                    .unwrap_or("tool");
                 let parts = if as_text.contains(&tool_use_id.as_str()) {
                     let text = format!("[{name} returned] {}", output_text(output));
-                    vec![Part::Text { text: Cow::Owned(text) }]
+                    vec![Part::Text {
+                        text: Cow::Owned(text),
+                    }]
                 } else {
                     function_response(tool_use_id, name, output)?
                 };
@@ -301,7 +322,9 @@ fn contents(items: &[InferenceItem]) -> Result<Vec<Content<'_>>, UnloadedMedia> 
 
 /// A signature this provider received, without its tag.
 fn own_signature(tagged: &str) -> Option<&str> {
-    tagged.strip_prefix(SIGNATURE_TAG).filter(|signature| !signature.is_empty())
+    tagged
+        .strip_prefix(SIGNATURE_TAG)
+        .filter(|signature| !signature.is_empty())
 }
 
 /// A message's content: text, references and attachment tags as text; images,
@@ -312,7 +335,9 @@ fn user_parts(content: &[UserContentBlock]) -> Result<Vec<Part<'_>>, UnloadedMed
         .iter()
         .map(|block| {
             Ok(match block {
-                UserContentBlock::Text { text } => Part::Text { text: Cow::Borrowed(text) },
+                UserContentBlock::Text { text } => Part::Text {
+                    text: Cow::Borrowed(text),
+                },
                 UserContentBlock::Reference { reference } => Part::Text {
                     text: Cow::Borrowed(reference),
                 },
@@ -320,16 +345,24 @@ fn user_parts(content: &[UserContentBlock]) -> Result<Vec<Part<'_>>, UnloadedMed
                     text: Cow::Owned(attachment_tag(attachment)),
                 },
                 UserContentBlock::Document { source } => match source {
-                    DocumentSource::Binary { data, media_type, .. } => inline(media_type, data),
-                    DocumentSource::Ref { r#ref, .. } => return Err(UnloadedMedia(r#ref.to_string())),
+                    DocumentSource::Binary {
+                        data, media_type, ..
+                    } => inline(media_type, data),
+                    DocumentSource::Ref { r#ref, .. } => {
+                        return Err(UnloadedMedia(r#ref.to_string()));
+                    }
                 },
-                UserContentBlock::Image { source } | UserContentBlock::Video { source } => match source {
-                    MediaSource::Binary { data, media_type } => inline(media_type, data),
-                    MediaSource::Url { url } => Part::FileData {
-                        file_data: FileUri { file_uri: url },
-                    },
-                    MediaSource::Ref { r#ref, .. } => return Err(UnloadedMedia(r#ref.to_string())),
-                },
+                UserContentBlock::Image { source } | UserContentBlock::Video { source } => {
+                    match source {
+                        MediaSource::Binary { data, media_type } => inline(media_type, data),
+                        MediaSource::Url { url } => Part::FileData {
+                            file_data: FileUri { file_uri: url },
+                        },
+                        MediaSource::Ref { r#ref, .. } => {
+                            return Err(UnloadedMedia(r#ref.to_string()));
+                        }
+                    }
+                }
             })
         })
         .collect()
@@ -369,7 +402,9 @@ fn function_response<'a>(
     }];
     for block in output {
         let source = match block {
-            ToolResultContentBlock::Image { source } | ToolResultContentBlock::Video { source } => source,
+            ToolResultContentBlock::Image { source } | ToolResultContentBlock::Video { source } => {
+                source
+            }
             ToolResultContentBlock::Text { .. } => continue,
         };
         match source {
@@ -388,7 +423,8 @@ fn output_text(output: &[ToolResultContentBlock]) -> String {
         .map(|block| match block {
             ToolResultContentBlock::Text { text } => text.clone(),
             ToolResultContentBlock::Image { source } | ToolResultContentBlock::Video { source } => {
-                let (ToolMediaSource::Binary { media_type, .. } | ToolMediaSource::Ref { media_type, .. }) = source;
+                let (ToolMediaSource::Binary { media_type, .. }
+                | ToolMediaSource::Ref { media_type, .. }) = source;
                 format!("[{media_type}]")
             }
         })
