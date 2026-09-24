@@ -28,12 +28,12 @@ const FORKED: &str = "3e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a03";
 
 /// The model's shell call `id` running `script`, watched for at most
 /// `timeout_ms`.
-fn shell(id: &str, script: &str, timeout_ms: u64) -> MockResponse {
+pub(crate) fn shell(id: &str, script: &str, timeout_ms: u64) -> MockResponse {
     tool_use(id, "shell_exec", &json!({ "description": id, "script": script, "timeoutMs": timeout_ms }))
 }
 
 /// The model's closing words.
-fn say(text: &str) -> MockResponse {
+pub(crate) fn say(text: &str) -> MockResponse {
     answer(&[text], 1, 1)
 }
 
@@ -47,7 +47,7 @@ fn directory(device: &Paired, name: &str) -> PathBuf {
 /// Moves the conversation to `path` on `device`, as the page's target
 /// switch does, once the tree saved its last turn: a switch refuses running
 /// work.
-async fn switch(backend: &TestBackend, master: &Session, id: &str, device: &Paired, path: &Path) {
+pub(crate) async fn switch(backend: &TestBackend, master: &Session, id: &str, device: &Paired, path: &Path) {
     settled(backend, master, id).await;
     let target = json!({ "target": { "kind": "device", "deviceId": device.id(), "path": path.to_str().unwrap() } });
     let moved = backend.patch(&format!("/api/conversations/{id}"), master, target).await;
@@ -56,10 +56,10 @@ async fn switch(backend: &TestBackend, master: &Session, id: &str, device: &Pair
 
 /// A conversation the test drives: its socket, and the path of the scripted
 /// endpoint its model answers from.
-struct Driven<'a> {
+pub(crate) struct Driven<'a> {
     vendor: &'a MockVendor,
     route: String,
-    socket: Socket,
+    pub(crate) socket: Socket,
     /// The tool calls whose results were read already.
     seen: HashSet<String>,
     sent: usize,
@@ -68,7 +68,7 @@ struct Driven<'a> {
 impl<'a> Driven<'a> {
     /// Opens the conversation `id` with the model of `provider`, whose
     /// endpoint is under `prefix`.
-    async fn open(
+    pub(crate) async fn open(
         backend: &TestBackend,
         master: &Session,
         vendor: &'a MockVendor,
@@ -93,13 +93,13 @@ impl<'a> Driven<'a> {
 
     /// Opens the conversation again, as a reload after a restart does; the
     /// tool results read already stay read.
-    async fn reconnect(&mut self, backend: &TestBackend, master: &Session, id: &str, provider: &str) {
+    pub(crate) async fn reconnect(&mut self, backend: &TestBackend, master: &Session, id: &str, provider: &str) {
         self.socket = Self::connect(backend, master, id, provider).await;
     }
 
     /// Scripts the model's answers and sends a message, without waiting for
     /// its turn; answers how many requests the vendor had before.
-    async fn start(&mut self, answers: Vec<MockResponse>) -> usize {
+    pub(crate) async fn start(&mut self, answers: Vec<MockResponse>) -> usize {
         let before = self.vendor.requests().len();
         for response in answers {
             self.vendor.respond_at(&self.route, response);
@@ -112,14 +112,14 @@ impl<'a> Driven<'a> {
 
     /// Scripts the model's answers, sends a message and waits for its turn
     /// to end.
-    async fn turn(&mut self, answers: Vec<MockResponse>) -> Turn {
+    pub(crate) async fn turn(&mut self, answers: Vec<MockResponse>) -> Turn {
         let before = self.start(answers).await;
         self.socket.until_idle().await;
         self.observe(before)
     }
 
     /// What the requests since the `before`th showed the model.
-    fn observe(&mut self, before: usize) -> Turn {
+    pub(crate) fn observe(&mut self, before: usize) -> Turn {
         let requests: Vec<Value> = self.vendor.requests()[before..]
             .iter()
             .filter(|request| request.uri.path() == self.route)
@@ -160,16 +160,16 @@ async fn until_exists(path: &Path) {
 }
 
 /// A turn as the model saw it.
-struct Turn {
+pub(crate) struct Turn {
     /// Each tool result the model received, in order.
-    received: Vec<String>,
+    pub(crate) received: Vec<String>,
     /// The requests the turn made.
-    requests: Vec<Value>,
+    pub(crate) requests: Vec<Value>,
 }
 
 impl Turn {
     /// The text of the turn's first request, context blocks included.
-    fn first_request(&self) -> String {
+    pub(crate) fn first_request(&self) -> String {
         self.requests[0]["messages"].to_string()
     }
 }

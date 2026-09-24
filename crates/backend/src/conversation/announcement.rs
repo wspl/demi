@@ -3,9 +3,10 @@
 //! § Switch the main target): after a switch, the departed and current
 //! targets, that no files moved, and the departed device under the name it
 //! stays attached as; after a change of the attached hosts, that change.
-//! Either block ends with the attached hosts as they now stand. What a node
-//! saw is the context blocks of its own transcript: each block names the
-//! revision it describes, and a switch is announced to a node once.
+//! Either block ends with the attached hosts as they now stand, and a block
+//! after a reset of the user's Cloud says so first. What a node saw is the
+//! context blocks of its own transcript: each block names the revision it
+//! describes, and a switch and a reset are each announced to a node once.
 
 use demi_web_api::ids::ConversationId;
 
@@ -16,6 +17,9 @@ use crate::storage::conversation_index::AttachedHostRecord;
 
 /// The line that opens a switch's announcement.
 const SWITCHED: &str = "[Execution target switched]";
+
+/// What a node learns once the user's Cloud was reset.
+const CLOUD_RESET: &str = "Cloud was reset: system packages and configuration were rebuilt from the base image. Files under /home remain. Running processes, temporary files, and previous shell state are gone; check the environment before continuing.";
 
 impl Shard {
     /// The context block for a node of the conversation `id` whose
@@ -39,6 +43,15 @@ impl Shard {
         }
         let attached = control.attached_hosts(record.id.clone()).await?;
         let mut lines = vec![marker];
+        // A Cloud reset is announced to a node once (`managed-hosts.md`
+        // § System reset).
+        if let Some(reset) = control.announced_cloud_reset(record.id.clone()).await? {
+            let reset = format!("[Cloud reset {reset}]");
+            if !seen.iter().any(|text| text.contains(&reset)) {
+                lines.push(reset);
+                lines.push(CLOUD_RESET.to_owned());
+            }
+        }
         let switch = control.last_switch(record.id.clone()).await?;
         let announced = match &switch {
             Some(switch) => {
