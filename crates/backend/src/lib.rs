@@ -24,6 +24,7 @@ pub use llm::families::{
     SubscriptionArgs,
 };
 pub use runner::native::NativeCatalog;
+pub use runner::publication::{PublicationError, publish_native};
 pub use shard::ShardPlacement;
 pub use storage::objects::S3ConfigError;
 pub use vault::logins::LoginTiming;

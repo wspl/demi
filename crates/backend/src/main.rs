@@ -1,10 +1,12 @@
 //! `demi-backend`: reads its configuration, serves until SIGINT or SIGTERM,
 //! then shuts down in order (`backend.md` § Startup and shutdown).
 
+use std::path::Path;
 use std::process::ExitCode;
 
 use clap::Parser as _;
-use demi_backend::{Backend, Config};
+use demi_backend::{Backend, Config, NativeCatalog, PublicationError, publish_native};
+use tokio_util::sync::CancellationToken;
 
 fn main() -> ExitCode {
     // An unusable value stops here, naming its variable.
@@ -24,8 +26,15 @@ fn main() -> ExitCode {
 }
 
 async fn run(config: Config) -> ExitCode {
-    let settings = match config.backend() {
+    let mut settings = match config.backend() {
         Ok(settings) => settings,
+        Err(error) => {
+            eprintln!("demi-backend: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    settings.native = match publish(&config.native_config).await {
+        Ok(native) => native,
         Err(error) => {
             eprintln!("demi-backend: {error}");
             return ExitCode::FAILURE;
@@ -55,6 +64,22 @@ async fn run(config: Config) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Publishes the native releases before the backend accepts requests
+/// (`native-runtime.md` § Publish artifacts before enabling commands); a
+/// stop signal interrupts it.
+async fn publish(path: &Path) -> Result<NativeCatalog, PublicationError> {
+    let cancel = CancellationToken::new();
+    let publication = publish_native(path, &cancel);
+    tokio::pin!(publication);
+    tokio::select! {
+        published = &mut publication => return published,
+        // Signals that cannot be watched leave the publication to finish.
+        Ok(()) = stopped() => {}
+    }
+    cancel.cancel();
+    publication.await
 }
 
 /// Waits for SIGINT or SIGTERM.
