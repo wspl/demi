@@ -57,29 +57,6 @@ fn steers(items: &[InferenceItem]) -> Vec<String> {
         .collect()
 }
 
-/// A `yield` of `duration_ms`.
-fn yield_tool() -> (String, Invoke) {
-    tool("yield", |call| {
-        let duration_ms = call.input["durationMs"]
-            .as_u64()
-            .and_then(|duration| u32::try_from(duration).ok())
-            .expect("the test's yield names its duration");
-        Box::pin(async move {
-            Ok(ToolOutcome {
-                effect: Some(ToolEffect::ScheduleYield { duration_ms }),
-                ..output("")
-            })
-        })
-    })
-}
-
-fn yield_call(duration_ms: u64) -> Turn {
-    Turn::Events(vec![
-        event::tool_call("yield-1", "yield", json!({ "durationMs": duration_ms })),
-        event::response(1, 1),
-    ])
-}
-
 #[tokio::test(flavor = "local")]
 async fn a_steer_during_a_tool_reaches_the_next_request_and_a_withdrawn_one_causes_none() {
     let provider = ScriptedRuntime::new([
