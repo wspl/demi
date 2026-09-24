@@ -44,3 +44,12 @@ pub(crate) fn conversation_of(key: &HostKey) -> Option<&str> {
         _ => None,
     }
 }
+
+/// The device a conversation's Host key names, its third word.
+pub(crate) fn device_of(key: &HostKey) -> Option<&str> {
+    let mut words = key.as_str().splitn(4, ' ');
+    match (words.next(), words.next(), words.next()) {
+        (Some("conversation"), Some(_), Some(device)) => Some(device),
+        _ => None,
+    }
+}
