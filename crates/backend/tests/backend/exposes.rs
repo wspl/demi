@@ -4,10 +4,14 @@
 //! streamed or upgraded, comes back as the service sent it. An expose
 //! answers anyone for an hour, longer when renewed; only its owner lists,
 //! renews or removes it, the page through the Web API and the agent through
-//! `demi host expose`. The services are fixtures on this machine, which is
-//! the device's network here. The visitor and the HTTP fixture write and
-//! read raw bytes, so the header case each side wrote is what the other
-//! reads.
+//! `demi host expose`. Its open connections end with it: at its expiry, its
+//! removal, its device's revocation and its Cloud's stop, whether idle,
+//! dead, reset or found stopped, but not at a checkpoint; an offline device
+//! keeps its exposes. An expose sheds a 65th connection, and closes one on
+//! which nothing moved for the idle limit. The services are fixtures on this
+//! machine, which is the device's network here. The visitor and the HTTP
+//! fixture write and read raw bytes, so the header case each side wrote is
+//! what the other reads.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -16,6 +20,7 @@ use bytes::Bytes;
 use demi_core::Clock as _;
 use demi_provider::testing::MockVendor;
 use demi_web_api::auth::Role;
+use demi_web_api::cloud::ResetPhase;
 use demi_web_api::error::ErrorCode;
 use demi_web_api::exposes::{ExposeAnswer, ExposeDto, Exposes};
 use demi_web_api::state::ProductState;
@@ -34,8 +39,9 @@ use tokio_tungstenite::tungstenite::protocol::CloseFrame;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_util::task::AbortOnDropHandle;
 
+use crate::cloud::{cloud_online, idle_after, reset, the_cloud, until_status};
 use crate::conversations::{anthropic_at, create, on_device};
-use crate::support::{Harness, Session, TestBackend};
+use crate::support::{Harness, Session, TestBackend, eventually};
 use crate::work::{Driven, say, shell};
 
 const DOMAIN: &str = "expose.localhost";
@@ -45,6 +51,8 @@ const BODY_BYTES: usize = 8 << 20;
 const STEP: Duration = Duration::from_secs(20);
 /// The conversation the agent works in.
 const CONVERSATION: &str = "5e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a01";
+/// A reset's id, as the page names it.
+const RESET: &str = "5e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a09";
 /// Another user's account.
 const OTHER_EMAIL: &str = "other@example.test";
 const OTHER_PASSWORD: &str = "other-pass-1";
@@ -320,6 +328,100 @@ async fn an_expose_answers_anyone_for_an_hour_and_only_its_owner_lists_renews_or
 }
 
 #[tokio::test]
+async fn open_connections_end_with_their_expose_and_an_offline_device_keeps_its_exposes() {
+    let harness = Harness::new().with_expose_domain(DOMAIN);
+    let (backend, master) = harness.start_set_up().await;
+    let mut laptop = backend.pair(&master, "laptop").await;
+    let mut fixture = HttpFixture::start(Arc::new(Notify::new())).await;
+
+    // Removed while a visitor holds an answer open: the visitor's
+    // connection closes, and the runner closes its socket to the service.
+    let removed = expose(&backend, &master, laptop.id(), fixture.port).await;
+    let held = hold(&backend, &host_of(&removed)).await;
+    let removal = backend.delete(&format!("/api/exposes/{}", removed.id), &master).await;
+    assert_eq!(removal.status, StatusCode::NO_CONTENT);
+    held.ended().await;
+    assert_eq!(fixture.next().await, Seen::Released);
+
+    // Held open across its expiry, likewise at the expiry.
+    let expiring = expose(&backend, &master, laptop.id(), fixture.port).await;
+    harness.clock.advance(SignedDuration::from_mins(60) - SignedDuration::from_secs(1));
+    let held = hold(&backend, &host_of(&expiring)).await;
+    harness.clock.advance(SignedDuration::from_secs(2));
+    held.ended().await;
+    assert_eq!(fixture.next().await, Seen::Released);
+    assert_eq!(stored_exposes(&harness), 0);
+
+    // A device whose runner is gone keeps its exposes, which answer 502
+    // until the runner is back; nothing new is exposed on it meanwhile.
+    let kept = expose(&backend, &master, laptop.id(), fixture.port).await;
+    laptop.runner.kill().await;
+    backend.until_online(&master, laptop.id(), false).await;
+    let (status, page) = fetch(&backend, &host_of(&kept), "/hello").await;
+    assert_eq!(status, 502);
+    assert!(page.contains("device_offline"), "{page}");
+    assert_eq!(list(&backend, &master).await, [kept.clone()]);
+    let offline = json!({ "deviceId": laptop.id(), "address": fixture.port.to_string() });
+    let refused = backend.post("/api/exposes", Some(&master), offline).await;
+    assert_eq!(refused.refusal(), (StatusCode::CONFLICT, ErrorCode::DeviceOffline));
+    laptop.runner.start_again();
+    backend.until_online(&master, laptop.id(), true).await;
+    assert_eq!(fetch(&backend, &host_of(&kept), "/hello").await, (200, "hello".to_owned()));
+
+    // Revoked, the device's exposes end with their connections.
+    let held = hold(&backend, &host_of(&kept)).await;
+    let revoked = backend.delete(&format!("/api/devices/{}", laptop.id()), &master).await;
+    assert_eq!(revoked.status, StatusCode::NO_CONTENT);
+    held.ended().await;
+    assert_eq!(fixture.next().await, Seen::Released);
+    assert!(list(&backend, &master).await.is_empty());
+    assert_eq!(fetch(&backend, &host_of(&kept), "/hello").await.0, 404);
+    backend.close().await;
+}
+
+#[tokio::test]
+async fn an_expose_sheds_its_65th_connection_and_a_closed_one_makes_room() {
+    let harness = Harness::new().with_expose_domain(DOMAIN);
+    let (backend, master) = harness.start_set_up().await;
+    let laptop = backend.pair(&master, "laptop").await;
+    let fixture = HttpFixture::start(Arc::new(Notify::new())).await;
+    let host = host_of(&expose(&backend, &master, laptop.id(), fixture.port).await);
+    let mut held = Vec::new();
+    for _ in 0..64 {
+        held.push(hold(&backend, &host).await);
+    }
+    let (status, page) = fetch(&backend, &host, "/hello").await;
+    assert_eq!(status, 503);
+    assert!(page.contains("connection limit"), "{page}");
+    // The visitor goes away, and once the relay saw it go its place is free.
+    drop(held.pop());
+    eventually("a closed connection makes room", || async {
+        fetch(&backend, &host, "/hello").await.0 == 200
+    })
+    .await;
+    drop(held);
+    backend.close().await;
+}
+
+#[tokio::test]
+async fn a_relayed_connection_nothing_moves_on_closes_after_the_idle_limit() {
+    let mut harness = Harness::new().with_expose_domain(DOMAIN);
+    harness.exposes.idle = Duration::from_secs(1);
+    let (backend, master) = harness.start_set_up().await;
+    let laptop = backend.pair(&master, "laptop").await;
+    let mut fixture = HttpFixture::start(Arc::new(Notify::new())).await;
+    let host = host_of(&expose(&backend, &master, laptop.id(), fixture.port).await);
+    // The visitor read the first bytes of an answer that goes on, then
+    // neither side sends another.
+    let held = hold(&backend, &host).await;
+    let quiet = tokio::time::Instant::now();
+    held.ended().await;
+    assert!(quiet.elapsed() >= Duration::from_millis(900), "closed after {:?}", quiet.elapsed());
+    assert_eq!(fixture.next().await, Seen::Released);
+    backend.close().await;
+}
+
+#[tokio::test]
 async fn the_agent_exposes_a_service_and_lists_renews_and_removes_exposes_with_demi_host_expose() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new().with_builtin_package().with_expose_domain(DOMAIN);
@@ -391,6 +493,106 @@ async fn without_an_expose_domain_exposes_are_unavailable() {
     backend.close().await;
 }
 
+#[tokio::test]
+async fn a_clouds_exposes_outlive_its_checkpoints_and_end_when_it_stops_idle() {
+    let vendor = MockVendor::start().await;
+    let mut harness = Harness::new().with_builtin_package().with_expose_domain(DOMAIN);
+    harness.lifecycle = idle_after(Duration::from_secs(4));
+    harness.cloud.sweep = Duration::from_millis(50);
+    harness.cloud.checkpoint_interval = Duration::from_millis(300);
+    let (backend, master) = harness.start_set_up().await;
+    let mut fixture = HttpFixture::start(Arc::new(Notify::new())).await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/work").await;
+    create(&backend, &master, CONVERSATION).await;
+    let mut work = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/work").await;
+    work.turn(vec![shell("t1", "true", 20_000), say("awake")]).await;
+    let device = the_cloud(&harness);
+    let exposed = expose(&backend, &master, &device, fixture.port).await;
+    let host = host_of(&exposed);
+    let mut held = hold(&backend, &host).await;
+
+    // A checkpoint keeps the Cloud running, and its expose and the
+    // expose's connection with it.
+    let checkpoint = format!("checkpoint:{device}");
+    let before = harness.manager.count(&checkpoint);
+    eventually("the Cloud checkpoints", || async { harness.manager.count(&checkpoint) > before }).await;
+    assert_eq!(fetch(&backend, &host, "/hello").await, (200, "hello".to_owned()));
+    assert!(held.is_open().await);
+    assert_eq!(list(&backend, &master).await, [exposed.clone()]);
+
+    // Idle, the Cloud stops, and its expose ends with it, before the Cloud
+    // is saved.
+    held.ended().await;
+    assert_eq!(fixture.next().await, Seen::Released);
+    assert!(list(&backend, &master).await.is_empty());
+    let hibernate = format!("hibernate:{device}");
+    eventually("the idle Cloud is saved", || async { harness.manager.count(&hibernate) == 1 }).await;
+    assert_eq!(fetch(&backend, &host, "/hello").await.0, 404);
+    backend.close().await;
+}
+
+#[tokio::test]
+async fn a_clouds_exposes_end_when_it_dies_resets_or_is_found_stopped_and_before_a_backend_serves() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new().with_builtin_package().with_expose_domain(DOMAIN);
+    let (backend, master) = harness.start_set_up().await;
+    let mut fixture = HttpFixture::start(Arc::new(Notify::new())).await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/work").await;
+    create(&backend, &master, CONVERSATION).await;
+    let mut work = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/work").await;
+    work.turn(vec![shell("t1", "true", 20_000), say("awake")]).await;
+    let device = the_cloud(&harness);
+
+    // The Cloud's sandbox dies.
+    let dying = expose(&backend, &master, &device, fixture.port).await;
+    let held = hold(&backend, &host_of(&dying)).await;
+    harness.manager.kill(&device).await;
+    held.ended().await;
+    assert_eq!(fixture.next().await, Seen::Released);
+    eventually("the dead Cloud's expose ends", || async { list(&backend, &master).await.is_empty() }).await;
+
+    // The next operation boots it again, and a reset stops it.
+    work.turn(vec![shell("t2", "true", 20_000), say("awake again")]).await;
+    let resetting = expose(&backend, &master, &device, fixture.port).await;
+    let held = hold(&backend, &host_of(&resetting)).await;
+    reset(&backend, &master, RESET).await;
+    held.ended().await;
+    assert_eq!(fixture.next().await, Seen::Released);
+    until_status(&backend, &master, "the reset is ready", |status| {
+        status.operation.as_ref().is_some_and(|operation| operation.phase == ResetPhase::Ready)
+    })
+    .await;
+    assert!(list(&backend, &master).await.is_empty());
+
+    // A Cloud stopped without a word keeps its expose, offline, until the
+    // next operation finds it stopped and boots it again.
+    let found = expose(&backend, &master, &device, fixture.port).await;
+    harness.manager.stop_quietly(&device).await;
+    eventually("the backend sees the runner go", || async { !cloud_online(&backend, &master).await }).await;
+    assert_eq!(list(&backend, &master).await, [found.clone()]);
+    assert_eq!(fetch(&backend, &host_of(&found), "/hello").await.0, 502);
+    work.turn(vec![shell("t3", "true", 20_000), say("booted")]).await;
+    assert!(list(&backend, &master).await.is_empty());
+    assert_eq!(fetch(&backend, &host_of(&found), "/hello").await.0, 404);
+    backend.close().await;
+
+    // A backend that stopped without saving its Cloud, as a crash does,
+    // leaves its exposes behind; the next one ends them before it serves,
+    // since the machine manager has stopped every Cloud by then.
+    let now = harness.clock.now().as_millisecond();
+    harness
+        .control_database()
+        .execute(
+            "INSERT INTO exposes (id, user_id, device_id, address, created_at, expires_at)
+             VALUES ('k7x2maqw4p3s6tavaw2y4z6aab', ?1, ?2, '127.0.0.1:1', ?3, ?4)",
+            rusqlite::params![master.user.id.as_str(), device, now, now + 3_600_000],
+        )
+        .unwrap();
+    let backend = harness.start().await;
+    assert_eq!(stored_exposes(&harness), 0);
+    backend.close().await;
+}
+
 /// A new expose of the fixture on `port` of `device`, as the page makes it.
 async fn expose(backend: &TestBackend, session: &Session, device: &str, port: u16) -> ExposeDto {
     let body = json!({ "deviceId": device, "address": port.to_string() });
@@ -431,6 +633,43 @@ async fn fetch(backend: &TestBackend, host: &str, path: &str) -> (u16, String) {
     let mut body = String::new();
     read.read_to_string(&mut body).await.unwrap();
     (status, body)
+}
+
+/// A visitor holding the fixture's `/hold` answer open, its first chunk
+/// read.
+async fn hold(backend: &TestBackend, host: &str) -> Held {
+    let (mut read, mut write) = visit(backend).await;
+    let request = format!("GET /hold HTTP/1.1\r\nHost: {host}\r\n\r\n");
+    write.write_all(request.as_bytes()).await.unwrap();
+    let head = read_head(&mut read).await;
+    assert_eq!(head.line, "HTTP/1.1 200 OK");
+    assert_eq!(read_until(&mut read, "held\n").await, "held\n");
+    Held { read, _write: write }
+}
+
+/// A visitor's connection with an answer in progress.
+struct Held {
+    read: BufReader<OwnedReadHalf>,
+    _write: OwnedWriteHalf,
+}
+
+impl Held {
+    /// Whether the connection is still open: nothing arrives on it for a
+    /// moment, not even its end.
+    async fn is_open(&mut self) -> bool {
+        let mut byte = [0; 1];
+        tokio::time::timeout(Duration::from_millis(100), self.read.read(&mut byte))
+            .await
+            .is_err()
+    }
+
+    /// Waits until the backend closed the connection, with its answer cut
+    /// short.
+    async fn ended(mut self) {
+        let mut rest = Vec::new();
+        let ended = tokio::time::timeout(STEP, self.read.read_to_end(&mut rest)).await;
+        assert!(ended.is_ok(), "the visitor's connection stays open");
+    }
 }
 
 /// A visitor's connection to the backend, in raw bytes.
@@ -561,13 +800,16 @@ enum Seen {
         open_while_streaming: bool,
         ended_after_answer: bool,
     },
+    /// A connection holding its answer open ended.
+    Released,
 }
 
 /// A service on this machine that reads and writes raw bytes, by path:
 /// `/headers` answers with headers of mixed case and two cookies,
 /// `/upload` reads a chunked body whole and answers `BODY_BYTES` chunked,
 /// `/events` streams two events, the second once `proceed` is notified,
-/// `/refuse` refuses an upgrade, and `/hello` says hello.
+/// `/refuse` refuses an upgrade, `/hello` says hello, and `/hold` starts an
+/// answer it never finishes and tells when its connection ends.
 struct HttpFixture {
     port: u16,
     seen: mpsc::UnboundedReceiver<Seen>,
@@ -644,6 +886,15 @@ async fn serve_http(socket: TcpStream, seen: mpsc::UnboundedSender<Seen>, procee
         "/hello" => {
             let answer = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 5\r\n\r\nhello";
             write.write_all(answer.as_bytes()).await.unwrap();
+        }
+        "/hold" => {
+            let head = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nTransfer-Encoding: chunked\r\n\r\n";
+            write.write_all(head.as_bytes()).await.unwrap();
+            write.write_all(chunk("held\n").as_bytes()).await.unwrap();
+            let mut byte = [0; 1];
+            // Its end, a failure or a stray byte all end the hold.
+            let _ = read.read(&mut byte).await;
+            seen.send(Seen::Released).unwrap();
         }
         "/refuse" => {
             seen.send(Seen::Request { head, body: Vec::new() }).unwrap();

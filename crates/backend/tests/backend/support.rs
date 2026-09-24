@@ -12,8 +12,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use demi_backend::{
-    AccountMail, Backend, BackendConfig, CloudTuning, ConversationTuning, ExposeDomain, FamilyRegistry, LifecycleTuning,
-    LoginTiming, MailError, NativeCatalog, RunnerTuning, VerificationMail,
+    AccountMail, Backend, BackendConfig, CloudTuning, ConversationTuning, ExposeDomain, ExposeTuning, FamilyRegistry,
+    LifecycleTuning, LoginTiming, MailError, NativeCatalog, RunnerTuning, VerificationMail,
 };
 use demi_builtin_protocol::Operation;
 use demi_coding_agent::BUILTIN_PACKAGE;
@@ -113,6 +113,7 @@ pub struct Harness {
     /// Runs the Clouds of every backend this harness starts.
     pub manager: ScriptedManager,
     expose_domain: Option<ExposeDomain>,
+    pub exposes: ExposeTuning,
 }
 
 impl Harness {
@@ -149,6 +150,7 @@ impl Harness {
             cloud: CloudTuning::default(),
             manager: ScriptedManager::start(),
             expose_domain: None,
+            exposes: ExposeTuning::default(),
         }
     }
 
@@ -314,6 +316,7 @@ impl Harness {
         config.clock = self.clock.clone();
         config.web_directory = self.web_directory.clone();
         config.expose_domain = self.expose_domain.clone();
+        config.exposes = self.exposes;
         config.families = self.families.clone();
         config.logins = self.logins;
         config.runners = self.runners;

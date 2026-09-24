@@ -83,12 +83,17 @@ The record is destroyed by exactly these events:
 | --- | --- |
 | `expiresAt` passes | Destroyed. A request that arrives after it is refused as unknown. |
 | `demi host expose remove <id>`, or the product's remove | Destroyed at once. |
-| The Cloud device leaves the running state: idle stop, lifetime cap, reset, backend shutdown | Every expose on that device is destroyed with the machine. |
+| The Cloud device leaves the running state: idle stop, lifetime cap, reset, runtime loss, backend shutdown | Every expose on that device is destroyed with the machine. A checkpoint keeps the machine running, and its exposes with it. |
 | The paired device is revoked | Every expose on it is destroyed with its attachments. |
 
 A paired device that is offline keeps its exposes until they expire: the
 runner may reconnect within the hour. Requests answer `device_offline`
-meanwhile.
+meanwhile. A Cloud whose runner went away while no one reported its sandbox
+stopped is treated alike: the next operation that needs the Cloud finds out,
+and a sandbox found stopped boots again without its exposes. A backend that
+stops without stopping its Cloud, as a crash does, leaves the Cloud to the
+machine manager, which stops it; the next backend destroys that Cloud's
+exposes before it serves.
 
 Expose traffic is retention, not activity, in the sense of
 [Conversation idle and Host resource release](resource-lifecycle.md): a

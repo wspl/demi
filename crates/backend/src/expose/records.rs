@@ -167,6 +167,17 @@ impl Shard {
         Ok(())
     }
 
+    /// Destroys every expose on the user's `device`, as the device's
+    /// revocation and a Cloud's stop do. A failure is logged: the device's
+    /// runner, which goes next, ends the connections all the same, and the
+    /// records expire within the hour.
+    pub(crate) async fn destroy_exposes_on(&self, device: &DeviceId) {
+        match self.services().control.delete_device_exposes(device.clone()).await {
+            Ok(ids) => self.exposes().end(&ids),
+            Err(error) => tracing::error!(device = %device, "the exposes of a device could not be destroyed: {error}"),
+        }
+    }
+
     /// The expose as every surface shows it.
     fn expose_dto(&self, record: ExposeRecord, domain: &ExposeDomain) -> ExposeDto {
         let backend = self

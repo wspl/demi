@@ -297,7 +297,9 @@ At startup the backend:
 3. Opens the data directory and loads the instance secret.
 4. Opens the control database; a new database receives its schema.
 5. Starts the shared services and the shard threads.
-6. Recovers before it serves: the machine manager reconciles its machines, an
+6. Recovers before it serves: the machine manager reconciles its machines,
+   which stops every Cloud, so the exposes an earlier backend left on a Cloud
+   are destroyed ([Host expose](../execution/expose.md#lifetime)), an
    interrupted Cloud reset finishes committing its disks and is marked failed
    so that a retry starts the Cloud
    ([Managed hosts](../cloud/managed-hosts.md#system-reset)), and Fork

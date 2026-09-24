@@ -148,6 +148,33 @@ impl ControlService {
         })
         .await
     }
+
+    /// Deletes every expose on `device`; answers their ids.
+    pub(crate) async fn delete_device_exposes(&self, device: DeviceId) -> Result<Vec<ExposeId>, StorageError> {
+        self.call(move |connection, _| {
+            let mut statement = connection.prepare_cached("DELETE FROM exposes WHERE device_id = ?1 RETURNING id")?;
+            let mut rows = statement.query([device.as_str()])?;
+            let mut ids = Vec::new();
+            while let Some(row) = rows.next()? {
+                ids.push(decode("exposes", "id", ExposeId::try_from(row.get::<_, String>("id")?))?);
+            }
+            Ok(ids)
+        })
+        .await
+    }
+
+    /// Deletes the exposes of every user's Cloud, as a backend that starts
+    /// does: the machine manager has stopped every Cloud by then.
+    pub(crate) async fn delete_cloud_exposes(&self) -> Result<(), StorageError> {
+        self.call(|connection, _| {
+            connection.execute(
+                "DELETE FROM exposes WHERE device_id IN (SELECT id FROM devices WHERE kind = 'managed')",
+                [],
+            )?;
+            Ok(())
+        })
+        .await
+    }
 }
 
 fn expose_row(row: &Row<'_>) -> Result<ExposeRecord, StorageError> {

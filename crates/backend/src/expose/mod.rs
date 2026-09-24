@@ -4,20 +4,25 @@
 //! the agent's `demi host expose` (`commands`). The owner's shard admits
 //! each relayed connection, which is where the record, the device and the
 //! connection limit are checked, and hands the edge the network stream's
-//! ends with a lease; the edge relays the bytes (`edge::expose`).
+//! ends with a lease; the edge relays the bytes (`edge::expose`). Whatever
+//! destroys an expose ends its connections: its expiry, its removal, its
+//! Cloud's stop and its device's revocation.
 
 mod commands;
 mod records;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::str::FromStr;
+use std::time::Duration;
 
+use demi_core::Timestamp;
 use demi_host_remote::{PipeReader, PipeWriter};
 use demi_shell::HostErrorKind;
 use demi_web_api::ids::ExposeId;
 use tokio_util::sync::CancellationToken;
+use tokio_util::task::AbortOnDropHandle;
 
 pub(crate) use self::commands::expose_group;
 pub(crate) use self::records::ExposeError;
@@ -67,7 +72,8 @@ impl ExposeDomain {
 }
 
 /// The user's live exposes: those with relayed connections open, each with
-/// how many and the token that ends them.
+/// how many, the token that ends them, and the watch that destroys the
+/// expose once it expires.
 #[derive(Default)]
 pub(crate) struct Exposes(Rc<RefCell<HashMap<ExposeId, LiveExpose>>>);
 
@@ -75,6 +81,10 @@ struct LiveExpose {
     connections: usize,
     /// Cancelled, every connection of the expose ends.
     ended: CancellationToken,
+    /// Destroys the expose once it expired, so its open connections end
+    /// then too; the first connection admitted starts it, and it stops with
+    /// the last one.
+    expiry: Option<AbortOnDropHandle<()>>,
 }
 
 impl Exposes {
@@ -85,6 +95,7 @@ impl Exposes {
         let expose = live.entry(id.clone()).or_insert_with(|| LiveExpose {
             connections: 0,
             ended: CancellationToken::new(),
+            expiry: None,
         });
         if expose.connections == CONNECTION_LIMIT {
             return None;
@@ -121,6 +132,18 @@ struct Registration {
     exposes: Rc<RefCell<HashMap<ExposeId, LiveExpose>>>,
     id: ExposeId,
     ended: CancellationToken,
+}
+
+impl Registration {
+    /// Starts the expose's expiry watch with `start`, unless one runs.
+    fn watch_expiry(&self, start: impl FnOnce() -> AbortOnDropHandle<()>) {
+        let mut live = self.exposes.borrow_mut();
+        if let Some(expose) = live.get_mut(&self.id)
+            && expose.expiry.is_none()
+        {
+            expose.expiry = Some(start());
+        }
+    }
 }
 
 impl Drop for Registration {
@@ -225,6 +248,10 @@ impl Shard {
             output.fail("the relayed connection never opened");
             return Err(refusal);
         }
+        registration.watch_expiry(|| {
+            let watch = expire_when_due(Rc::downgrade(&self.this()), id.clone(), record.expires_at);
+            AbortOnDropHandle::new(self.tasks().spawn_local(watch))
+        });
         let ended = registration.ended.clone();
         let (lease, released) = Lease::new(ended.clone());
         self.tasks().spawn_local(async move {
@@ -242,4 +269,44 @@ impl Shard {
             lease,
         })
     }
+}
+
+/// Destroys the expose `id` of the shard's user once it expired, first at
+/// `expires_at`, and again at each later expiry a renewal set meanwhile;
+/// ends once the expose is gone.
+async fn expire_when_due(shard: Weak<Shard>, id: ExposeId, mut expires_at: Timestamp) {
+    loop {
+        let Some(now) = shard.upgrade().map(|shard| shard.services().clock.now()) else {
+            return;
+        };
+        tokio::time::sleep(until(now, expires_at)).await;
+        let Some(shard) = shard.upgrade() else {
+            return;
+        };
+        let expired = async {
+            let Some(record) = shard.owned_expose(&id).await? else {
+                return Ok(None);
+            };
+            if shard.destroy_if_expired(&record).await? {
+                return Ok(None);
+            }
+            Ok::<_, StorageError>(Some(record.expires_at))
+        };
+        match expired.await {
+            Ok(Some(renewed)) => expires_at = renewed,
+            Ok(None) => return,
+            Err(error) => {
+                // The expose's connections then end on their own or by the
+                // idle rule, and the next read of the record destroys it.
+                tracing::error!(expose = %id, "an expired expose could not be destroyed: {error}");
+                return;
+            }
+        }
+    }
+}
+
+/// How long from `now` until `at`, none once it passed.
+fn until(now: Timestamp, at: Timestamp) -> Duration {
+    let milliseconds = at.as_millisecond().saturating_sub(now.as_millisecond());
+    Duration::from_millis(u64::try_from(milliseconds).unwrap_or(0))
 }

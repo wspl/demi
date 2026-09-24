@@ -21,7 +21,7 @@ use crate::auth::email_change::{AccountMail, EmailChanges};
 use crate::auth::login_limiter::LoginLimiter;
 use crate::auth::passwords::{HashError, PasswordHasher};
 use crate::auth::sessions::WebSessions;
-use crate::config::{BackendConfig, ConversationTuning, LifecycleTuning, RunnerTuning};
+use crate::config::{BackendConfig, ConversationTuning, ExposeTuning, LifecycleTuning, RunnerTuning};
 use crate::conversation::stream::UserStreams;
 use crate::edge::{AppState, Edge, Site};
 use crate::expose::ExposeDomain;
@@ -88,6 +88,8 @@ pub(crate) struct Services {
     pub(crate) lifecycle: LifecycleTuning,
     /// The domain of expose hostnames; without it, exposes are unavailable.
     pub(crate) expose_domain: Option<ExposeDomain>,
+    /// How the public relay treats its connections.
+    pub(crate) expose_tuning: ExposeTuning,
 }
 
 /// What the provider services start with.
@@ -176,6 +178,7 @@ impl Services {
         cloud: CloudServices,
         lifecycle: LifecycleTuning,
         expose_domain: Option<ExposeDomain>,
+        expose_tuning: ExposeTuning,
     ) -> Result<Self, StartError> {
         let Storage {
             control,
@@ -227,6 +230,7 @@ impl Services {
             cloud,
             lifecycle,
             expose_domain,
+            expose_tuning,
         })
     }
 
@@ -275,6 +279,7 @@ impl Services {
             CloudServices::new(machines, crate::config::CloudTuning::default()),
             lifecycle,
             None,
+            ExposeTuning::default(),
         )
         .await;
         Arc::new(services.unwrap())
@@ -399,6 +404,7 @@ impl Backend {
             CloudServices::new(machines, config.cloud),
             config.lifecycle,
             config.expose_domain,
+            config.exposes,
         );
         let services = Arc::new(services.await?);
         let shards = match ShardPool::start(config.shards, services.clone()).await {
@@ -414,8 +420,8 @@ impl Backend {
             shards.shards(),
         )));
         // Before the backend serves, the machine manager settles what an
-        // earlier backend left, and resets it left unfinished commit their
-        // disks.
+        // earlier backend left, which stops every Cloud and so ends their
+        // exposes, and resets it left unfinished commit their disks.
         if let Err(error) = recover_resets(&services).await {
             shards.close().await;
             services.close_providers().await;

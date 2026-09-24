@@ -190,6 +190,8 @@ pub struct BackendConfig {
     pub lifecycle: LifecycleTuning,
     /// How the Cloud is run.
     pub cloud: CloudTuning,
+    /// How the public relay treats its connections.
+    pub exposes: ExposeTuning,
 }
 
 /// When Demi reclaims what a conversation uses on a Host
@@ -259,6 +261,22 @@ impl Default for CloudTuning {
             system_quota: 16 * GIB,
             home_quota: 32 * GIB,
             capacity: 16,
+        }
+    }
+}
+
+/// How the public relay treats a relayed connection (`expose.md` § The
+/// public relay). Tests shorten the time.
+#[derive(Debug, Clone, Copy)]
+pub struct ExposeTuning {
+    /// A relayed connection on which no byte moved for this long is closed.
+    pub idle: Duration,
+}
+
+impl Default for ExposeTuning {
+    fn default() -> Self {
+        Self {
+            idle: Duration::from_secs(10 * 60),
         }
     }
 }
@@ -354,6 +372,7 @@ impl BackendConfig {
             )]),
             lifecycle: LifecycleTuning::default(),
             cloud: CloudTuning::default(),
+            exposes: ExposeTuning::default(),
         }
     }
 }
