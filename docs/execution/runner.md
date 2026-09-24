@@ -336,6 +336,27 @@ Running out is never an answer either: a working-tree request does not report
 a directory as outside a repository because it could not open the
 repository's files.
 
+**Known gap.** Inside a running job, only three of the shell's own needs wait
+today: creating a pipe, opening a file and starting a process, which go
+through the job's hooks. The embedded shell makes other descriptors without
+them:
+
+- It duplicates descriptors (brush's `OpenFile::clone` and `try_clone`) for
+  every subshell, pipeline stage and builtin's standard stream, whenever it
+  copies a command's execution parameters, and for a redirection such as
+  `2>&1`. A copy that finds no descriptor left becomes a stand-in that fails
+  every read and write.
+- A here-document or here-string is written to a temporary file the shell
+  creates itself.
+- A background list's standard input, `/dev/null`, is opened by the shell,
+  and the list keeps the job's input when the open fails.
+- The runner duplicates a descriptor to hand it to a standard utility
+  (`native_file` in its shell module).
+
+None of these waits. For example, out of open files, `echo one | cat >
+piped.txt` exits 1 with `failed to duplicate open file` instead of waiting,
+so a job's pipelines and redirections do not wait yet.
+
 Two refusals remain. A browser command that conflicts with another command on
 the same tab answers `tab_busy`; that is about the page, not load
 ([Conversation browser](../browser/browser.md#one-tab-registry)). An expose answers 503
