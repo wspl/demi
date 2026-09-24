@@ -1,11 +1,11 @@
 //! Test support (feature `testing`): an in-memory tree store with the
-//! contract's semantics, predictable identities, a model selection, and a
-//! client that drives one connection the way a socket would. No test calls a
-//! real model.
+//! contract's semantics, predictable identities, a model selection, provider
+//! runtimes that play scripts, and a client that drives one connection the
+//! way a socket would. No test calls a real model.
 
 use std::{
     cell::{Cell, RefCell},
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     rc::Rc,
 };
 
@@ -14,6 +14,7 @@ use demi_core::{
     B64Bytes, BlobRef, Block, Clock, Model, ModelSelection, NodeId, QueuedMessage, Timestamp,
     UserContentBlock,
 };
+use demi_provider::{ProviderRuntime, testing::ScriptedRuntime};
 use futures_util::future::LocalBoxFuture;
 use sha2::{Digest, Sha256};
 
@@ -21,8 +22,8 @@ use demi_shell::{Host, HostError, HostFs, HostIdentity, HostKey, HostProcess, Sh
 
 use crate::{
     AgentHarness, AgentServer, AgentTreeStore, Connection, ContentError, ContentResolver,
-    EnvironmentScope, FileReference, FrameRx, IdSource, Outgoing, SessionStore,
-    ShellEnvironmentFactory,
+    EnvironmentScope, FileReference, FrameRx, IdSource, Outgoing, ProviderResolver, ResolveError,
+    SessionStore, ShellEnvironmentFactory,
     store::{
         Checkpoint, CheckpointState, CheckpointUpdate, CommandStateSnapshot, CommitGuard,
         NodeClose, NodeRecord, StoreError,
@@ -130,6 +131,41 @@ pub fn client_text(text: &str) -> Vec<ClientContent> {
     vec![ClientContent::Text {
         text: text.to_owned(),
     }]
+}
+
+/// Provider runtimes by provider id: every runtime of one provider plays
+/// that provider's one script, and a provider without one is unknown.
+#[derive(Default)]
+pub struct ScriptedProviders {
+    runtimes: RefCell<HashMap<String, ScriptedRuntime>>,
+    /// Every resolution asked for: the conversation and the provider.
+    pub calls: RefCell<Vec<(NodeId, String)>>,
+}
+
+impl ScriptedProviders {
+    pub fn provide(&self, provider: &str, script: &ScriptedRuntime) {
+        self.runtimes
+            .borrow_mut()
+            .insert(provider.to_owned(), script.clone());
+    }
+}
+
+impl ProviderResolver for ScriptedProviders {
+    fn runtime<'a>(
+        &'a self,
+        root: &'a NodeId,
+        model: &'a ModelSelection,
+    ) -> LocalBoxFuture<'a, Result<Box<dyn ProviderRuntime>, ResolveError>> {
+        self.calls
+            .borrow_mut()
+            .push((root.clone(), model.provider_id.clone()));
+        let runtime = self.runtimes.borrow().get(&model.provider_id).cloned();
+        let provider = model.provider_id.clone();
+        Box::pin(async move {
+            let runtime = runtime.ok_or(ResolveError::Unknown(provider))?;
+            Ok(Box::new(runtime) as Box<dyn ProviderRuntime>)
+        })
+    }
 }
 
 /// A wall clock that moves with Tokio's, so that a test on the paused clock

@@ -119,6 +119,14 @@ impl ApiError {
         }
     }
 
+    /// A failure a request could not cause, in words: logged, and answered
+    /// 500.
+    pub(crate) fn internal_message(message: impl Into<String>) -> Self {
+        let message = message.into();
+        tracing::error!(message, "a request failed");
+        Self::new(StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::InternalError, message)
+    }
+
     /// A failure a request could not cause: logged with its causes, and
     /// answered 500.
     fn internal(error: &(dyn std::error::Error + 'static)) -> Self {
