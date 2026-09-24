@@ -11,11 +11,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use demi_backend::{
-    AccountMail, Backend, BackendConfig, ConversationTuning, FamilyRegistry, LoginTiming, MailError, RunnerTuning,
-    VerificationMail,
+    AccountMail, Backend, BackendConfig, ConversationTuning, FamilyRegistry, LoginTiming, MailError, NativeCatalog,
+    RunnerTuning, VerificationMail,
 };
+use demi_builtin_protocol::Operation;
+use demi_coding_agent::BUILTIN_PACKAGE;
 use demi_core::Clock;
-use demi_host_remote::testing::{RunnerProcess, RunnerProcessOptions};
+use demi_host_remote::testing::{NativeFixture, RunnerProcess, RunnerProcessOptions, built_program};
 use demi_web_api::auth::{Identity, Role, UserDto};
 use demi_web_api::devices::{ClaimedDevice, DeviceDto, Devices};
 use demi_web_api::error::{ErrorBody, ErrorCode};
@@ -25,6 +27,11 @@ use reqwest::header::{COOKIE, HeaderMap, SET_COOKIE};
 use reqwest::{Method, StatusCode};
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
+
+/// Where a scenario that serves no models.dev document finds none: a port
+/// nothing listens on. No scenario reaches the public models.dev; one that
+/// reads the catalog serves its document with `Harness::with_models_dev`.
+const NO_MODELS_DEV: &str = "http://127.0.0.1:9/api.json";
 
 pub const MASTER_EMAIL: &str = "master@example.test";
 pub const MASTER_PASSWORD: &str = "master-pass-1";
@@ -89,6 +96,7 @@ pub struct Harness {
     pub runners: RunnerTuning,
     pub conversations: ConversationTuning,
     runner_releases: Option<PathBuf>,
+    native: Option<NativeCatalog>,
 }
 
 impl Harness {
@@ -113,7 +121,22 @@ impl Harness {
             },
             conversations: ConversationTuning::default(),
             runner_releases: None,
+            native: None,
         }
+    }
+
+    /// Conversations whose commands bind to the `demi.builtin` package the
+    /// workspace built, which a runner on this machine installs from where
+    /// it was built.
+    pub fn with_builtin_package(mut self) -> Self {
+        let builtin = Arc::new(NativeFixture::package(
+            BUILTIN_PACKAGE,
+            built_program("demi-commands"),
+            Operation::names(),
+        ));
+        let packages = vec![builtin.descriptor.clone()];
+        self.native = Some(NativeCatalog::new(packages, move || builtin.resolver()).unwrap());
+        self
     }
 
     /// The runner releases the installer routes serve.
@@ -220,9 +243,10 @@ impl Harness {
         config.runners = self.runners;
         config.runner_releases = self.runner_releases.clone();
         config.conversations = self.conversations;
-        if let Some(url) = &self.models_dev_url {
-            config.models_dev_url = url.parse().unwrap();
+        if let Some(native) = &self.native {
+            config.native = native.clone();
         }
+        config.models_dev_url = self.models_dev_url.as_deref().unwrap_or(NO_MODELS_DEV).parse().unwrap();
         if self.mail {
             config.account_mail = Some(self.mailbox.clone());
         }
