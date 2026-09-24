@@ -1,10 +1,10 @@
-use std::{collections::BTreeMap, process::Stdio, time::Duration};
+use std::{collections::BTreeMap, time::Duration};
 
 use demi_command_service::{
     Client,
     protocol::{CommandCaller, CommandContext, CommandLocale, Completion, Invocation, Record},
+    testing::ServiceProcess,
 };
-use tokio::process::Command;
 
 async fn call(
     client: &Client,
@@ -413,14 +413,11 @@ async fn resident_executable_runs_all_builtin_file_operations() {
     tokio::time::timeout(Duration::from_secs(15), async {
         let root = tempfile::tempdir().unwrap();
         let cwd = root.path().to_str().unwrap();
-        let mut child = Command::new(env!("CARGO_BIN_EXE_demi-commands"))
-            .arg("--command-service")
-            .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::inherit())
-            .kill_on_drop(true).spawn().unwrap();
-        let pid = child.id().unwrap();
-        let io = tokio::io::join(child.stdout.take().unwrap(), child.stdin.take().unwrap());
-        let (client, connection) = Client::connect(io).await.unwrap();
-        let driver = tokio::spawn(connection);
+        let service = ServiceProcess::start(env!("CARGO_BIN_EXE_demi-commands"), &["--command-service"])
+            .await
+            .unwrap();
+        let pid = service.id().unwrap();
+        let client = service.client();
         assert!(client.info().await.unwrap().operations.contains(&"file.read".into()));
         let (result, output, _) = call(&client, cwd, "file.create", serde_json::json!({"path":"nested/a.txt", "content":"alpha\nbeta\n"})).await;
         assert_eq!(result.exit_code, 0);
@@ -464,11 +461,8 @@ async fn resident_executable_runs_all_builtin_file_operations() {
         assert_eq!(report.files[0].edits.len(), 1);
         assert_eq!(std::fs::read(report.files[0].edits[0].modified.as_ref().unwrap()).unwrap(), b"alpha\ndelta\n");
         assert_eq!(std::fs::read(report.files[1].edits[0].modified.as_ref().unwrap()).unwrap(), b"created\n");
-        assert_eq!(child.id(), Some(pid));
-        client.shutdown().await.unwrap();
-        let status = child.wait().await.unwrap();
-        drop(client);
-        driver.await.unwrap().unwrap();
+        assert_eq!(service.id(), Some(pid));
+        let status = service.shutdown().await.unwrap();
         assert!(status.success());
     }).await.unwrap();
 }

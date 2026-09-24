@@ -58,8 +58,8 @@ impl Handler for DemiCommands {
                 Box::pin(async move { browsers.invoke(context, Err(error)).await })
             }
             Ok(Operation::Live) => Box::pin(async move { browsers.live(context).await }),
-            Err(error @ OperationError::Unknown(_)) => {
-                Box::pin(async move { Err(ServiceError::Handler(error.to_string())) })
+            Err(OperationError::Unknown(operation)) => {
+                Box::pin(async move { Err(ServiceError::UnknownOperation(operation)) })
             }
         }
     }

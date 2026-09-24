@@ -43,7 +43,7 @@ getrandom = "0.4"
 url = "2"
 zip = { version = "6", default-features = false, features = ["deflate"] }
 png = "0.18"
-tokio-tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
+tokio-tungstenite = { version = "0.29", default-features = false, features = ["handshake"] }
 # Validate page tool schemas and the pinned CDP protocol without fetching external refs (MIT).
 jsonschema = { version = "0.56", default-features = false }
 
@@ -53,6 +53,7 @@ sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 
 [dev-dependencies]
 axum = "0.8"
+demi-command-service = { path = "../command-service", features = ["testing"] }
 uuid = { version = "1", features = ["v4"] }
 
 [package.metadata.demi]

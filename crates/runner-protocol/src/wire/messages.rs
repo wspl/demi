@@ -526,7 +526,7 @@ pub enum Outbound {
     ServiceDone {
         stream_id: String,
         exit_code: u8,
-        #[garde(length(utf16, max = SERVICE_STDERR_CHARS))]
+        #[garde(length(chars, max = SERVICE_STDERR_CHARS))]
         stderr: String,
     },
     LogLines {
