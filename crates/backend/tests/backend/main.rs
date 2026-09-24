@@ -17,6 +17,7 @@ mod runners;
 mod settings;
 mod startup;
 mod state;
+mod streams;
 mod support;
 mod titles;
 mod uploads;

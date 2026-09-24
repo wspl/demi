@@ -2,6 +2,7 @@
 //! that captures verification codes, and an HTTP client that sends a
 //! session's cookie.
 
+use std::collections::BTreeMap;
 use std::future::Future;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
@@ -16,6 +17,7 @@ use demi_backend::{
 };
 use demi_builtin_protocol::Operation;
 use demi_coding_agent::BUILTIN_PACKAGE;
+use demi_command_tree::NativeOperation;
 use demi_core::Clock;
 use demi_host_remote::testing::{NativeFixture, RunnerProcess, RunnerProcessOptions, built_program};
 use demi_web_api::auth::{Identity, Role, UserDto};
@@ -97,6 +99,7 @@ pub struct Harness {
     pub conversations: ConversationTuning,
     runner_releases: Option<PathBuf>,
     native: Option<NativeCatalog>,
+    user_streams: Option<BTreeMap<String, NativeOperation>>,
 }
 
 impl Harness {
@@ -127,6 +130,7 @@ impl Harness {
             },
             runner_releases: None,
             native: None,
+            user_streams: None,
         }
     }
 
@@ -141,6 +145,25 @@ impl Harness {
         ));
         let packages = vec![builtin.descriptor.clone()];
         self.native = Some(NativeCatalog::new(packages, move || builtin.resolver()).unwrap());
+        self
+    }
+
+    /// Conversations whose user streams bind to the runner's native test
+    /// fixture: `echo` answers what the page sends, `where` reports its
+    /// context and directory.
+    pub fn with_native_fixture(mut self) -> Self {
+        let fixture = Arc::new(NativeFixture::load());
+        let package = fixture.descriptor.id.clone();
+        let stream = |operation: &str| NativeOperation {
+            package: package.clone(),
+            operation: operation.into(),
+        };
+        self.user_streams = Some(BTreeMap::from([
+            ("echo".to_owned(), stream("echo")),
+            ("where".to_owned(), stream("where")),
+        ]));
+        let packages = vec![fixture.descriptor.clone()];
+        self.native = Some(NativeCatalog::new(packages, move || fixture.resolver()).unwrap());
         self
     }
 
@@ -250,6 +273,9 @@ impl Harness {
         config.conversations = self.conversations;
         if let Some(native) = &self.native {
             config.native = native.clone();
+        }
+        if let Some(streams) = &self.user_streams {
+            config.user_streams = streams.clone();
         }
         config.models_dev_url = self.models_dev_url.as_deref().unwrap_or(NO_MODELS_DEV).parse().unwrap();
         if self.mail {

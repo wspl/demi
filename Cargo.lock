@@ -1328,6 +1328,7 @@ dependencies = [
  "demi-builtin-protocol",
  "demi-coding-agent",
  "demi-command-service",
+ "demi-command-tree",
  "demi-core",
  "demi-gates",
  "demi-host-remote",
