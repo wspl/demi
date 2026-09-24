@@ -28,7 +28,7 @@ case "$(limactl list --format '{{.Status}}' "$instance" 2>/dev/null)" in
   Stopped) limactl start "$instance" ;;
   *)
     limactl disk ls --format '{{.Name}}' | grep -qx demi-cloud-data || limactl disk create demi-cloud-data --size "$data_size"
-    limactl start --name "$instance" "$here/lima/demi-machines.yaml"
+    limactl start --name "$instance" "$root/crates/machines/lima/demi-machines.yaml"
     ;;
 esac
 backend_address=$(limactl shell "$instance" -- getent ahostsv4 host.lima.internal | awk 'NR==1 {print $1}')
