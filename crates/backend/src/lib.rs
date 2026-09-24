@@ -25,5 +25,6 @@ pub use llm::families::{
 };
 pub use runner::native::NativeCatalog;
 pub use shard::ShardPlacement;
+pub use storage::objects::S3ConfigError;
 pub use vault::logins::LoginTiming;
 pub use vault::secret::{InstanceSecret, SecretError};
