@@ -19,13 +19,17 @@ use demi_web_api::providers::{
 use super::body::JsonBody;
 use super::error::ApiError;
 use super::gate::AuthUser;
+use super::provider_cli::install_for_account;
 use super::providers::{configures, reserve, scoped};
 use crate::backend::Services;
+use crate::shard::Shards;
 use crate::vault::accounts;
 
-/// Creates the caller's Claude Code entry from a setup token.
+/// Creates the caller's Claude Code entry from a setup token, and starts
+/// the install of its CLI on the caller's Cloud.
 pub(super) async fn import_setup_token(
     State(services): State<Arc<Services>>,
+    State(shards): State<Shards>,
     AuthUser(user): AuthUser,
     JsonBody(import): JsonBody<SetupTokenImport>,
 ) -> Result<(StatusCode, Json<ProviderAnswer>), ApiError> {
@@ -38,6 +42,7 @@ pub(super) async fn import_setup_token(
         import.token.into_string(),
     )
     .await?;
+    install_for_account(&services, &shards, &user, &entry).await;
     Ok((StatusCode::CREATED, Json(ProviderAnswer { provider: entry.dto() })))
 }
 
@@ -52,17 +57,22 @@ pub(super) async fn list(
     Ok(Json(accounts::list(&services.assembly, &entry, disclose).await?))
 }
 
-/// Adds another account to the entry from a setup token.
+/// Adds another account to the entry from a setup token, and starts the
+/// install of the entry's CLI on the caller's Cloud when it runs one.
 pub(super) async fn add_token(
     State(services): State<Arc<Services>>,
+    State(shards): State<Shards>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
     JsonBody(add): JsonBody<AddToken>,
 ) -> Result<(StatusCode, Json<AddedAccount>), ApiError> {
     configures(&services, &user)?;
     let entry = scoped(&services, &user, &id).await?;
-    let _held = reserve(&services, &entry)?;
-    let account = accounts::add_token(&services.assembly, &entry, add.token.into_string()).await?;
+    let account = {
+        let _held = reserve(&services, &entry)?;
+        accounts::add_token(&services.assembly, &entry, add.token.into_string()).await?
+    };
+    install_for_account(&services, &shards, &user, &entry).await;
     Ok((StatusCode::CREATED, Json(AddedAccount { account })))
 }
 

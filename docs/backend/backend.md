@@ -342,6 +342,7 @@ and an error names the variable. `demi-backend --help` lists the flags.
 | `DEMI_EXPOSE_DOMAIN` | The domain of expose hostnames. Optional: without it, exposes are unavailable. | [Host expose](../execution/expose.md#deployment) |
 | `DEMI_WEB_DIRECTORY` | A built browser directory to serve beside the API. Optional. | [Web API](../product/web-api.md#serving-the-browser-build) |
 | `DEMI_RUNNER_RELEASE_DIR` | The runner releases the installer routes serve. Optional: without it, those routes answer 503. | [Builds and releases](../delivery/builds-and-releases.md) |
+| `DEMI_CLAUDE_RELEASES_URL` | The Claude Code distribution whose newest release the CLI on each Cloud follows. Default `https://downloads.claude.ai/claude-code-releases`, the vendor's. | [Claude Code](../providers/claude-code.md#which-version) |
 
 ## Deployment and user ownership
 

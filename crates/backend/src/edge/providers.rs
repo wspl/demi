@@ -271,6 +271,7 @@ pub(super) async fn delete(
     let _held = reserve(&services, &entry)?;
     services.vault.delete(entry.id.clone()).await?;
     services.assembly.forget(&entry.id).await?;
+    services.cli_installs.forget(&entry.id);
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -353,11 +354,12 @@ pub(super) async fn test(
     configures(&services, &user)?;
     let entry = scoped(&services, &user, &id).await?;
     let _held = reserve(&services, &entry)?;
-    let provider = account_provider(&services, &entry, request.credential_id.as_ref()).await?;
+    let account = request.credential_id;
+    let provider = account_provider(&services, &entry, account.as_ref()).await?;
     let model = request.model_id;
     let result = shards
         .of(&user.id)
-        .call(move |shard, cancel| async move { shard.test_provider(entry, provider, model, cancel).await })
+        .call(move |shard, cancel| async move { shard.test_provider(entry, provider, account, model, cancel).await })
         .await?;
     Ok(Json(result))
 }

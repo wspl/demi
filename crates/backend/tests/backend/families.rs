@@ -4,6 +4,7 @@
 //! quota every family shares. No test calls a real vendor.
 
 use std::collections::VecDeque;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -19,6 +20,7 @@ use demi_provider::credentials::{
 use demi_provider::quota::{Observation, ProbeCost, ProbeReading, ProviderQuota, QuotaError, QuotaSource};
 use demi_provider::testing::{ScriptedRuntime, Turn, event};
 use demi_provider::{Capabilities, CatalogError, Provider, ProviderRuntime, RuntimeEnv, RuntimeError};
+use demi_provider_claude_code::Placement;
 use demi_web_api::providers::CredentialKind;
 use futures_util::future::BoxFuture;
 use tokio::sync::watch;
@@ -110,6 +112,17 @@ impl ProviderFamily for ScriptedKey {
             account: None,
             process_host: self.process_host,
         }))
+    }
+
+    /// The runtime of a provider that runs a process, which is scripted
+    /// too: it answers as every runtime of the family does, wherever the
+    /// placement would start the process.
+    fn process_runtime(
+        &self,
+        _: FamilyArgs,
+        _: Rc<dyn Placement>,
+    ) -> Option<Result<Box<dyn ProviderRuntime>, FamilyError>> {
+        self.process_host.then(|| Ok(answers_ok()))
     }
 }
 
@@ -329,9 +342,14 @@ impl Provider for Scripted {
     }
 
     fn runtime(&self, _: RuntimeEnv) -> Result<Box<dyn ProviderRuntime>, RuntimeError> {
-        Ok(Box::new(ScriptedRuntime::new([Turn::Events(vec![
-            event::text("ok"),
-            event::response(1, 1),
-        ])])))
+        Ok(answers_ok())
     }
+}
+
+/// A runtime that answers its one run with `ok`.
+fn answers_ok() -> Box<dyn ProviderRuntime> {
+    Box::new(ScriptedRuntime::new([Turn::Events(vec![
+        event::text("ok"),
+        event::response(1, 1),
+    ])]))
 }
