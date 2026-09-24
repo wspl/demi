@@ -97,8 +97,13 @@ another user or reserved for a Fork returns 409 `id_unavailable`.
 It copies a history boundary into a new conversation and returns `{ conversation,
 model }`, with 201 on creation and 200 for a completed retry. It does not mutate
 the source. The operation reserves the destination and records its metadata so
-publication can recover after interruption. History boundary and command-state
-semantics belong to [Conversation Fork](../agent/conversation-fork.md).
+publication can recover after interruption. A source the caller does not own
+answers 404 `conversation_not_found`; the destination UUID of another creation
+attempt, with another source or block, 409 `fork_conflict`; a UUID another
+conversation holds, 409 `id_unavailable`; and a block that is not a completed
+assistant text of the source's history, 400 `invalid_fork_target`. History
+boundary and command-state semantics belong to
+[Conversation Fork](../agent/conversation-fork.md).
 
 ## Workspaces, devices, and attached hosts
 
@@ -485,16 +490,20 @@ vendor login of the machine it runs on.
 
 ## Sidebar mutations, read state and page synchronization
 
-The backend applies the fields of `PATCH /api/conversations/:id`
-independently: title, archived, pinned, target and provider/model selection.
-A single refused field returns its 404/409 status; mixed outcomes return 207
-with `results: [{ field, status, code?, message?, httpStatus? }]` and the
-current conversation. Unexpected operation failures are reported as 500 field
-results. Applied fields remain applied. Archive is evaluated before the other
-fields, so archiving and renaming together archives successfully but refuses
-the rename. `POST /api/conversations/batch` accepts up to 100 `{ id, patch }`
-items and returns 207 with an outcome per item; missing conversations are
-reported individually.
+The backend applies the fields of `PATCH /api/conversations/:id` independently:
+`title` (trimmed, 1 to 256 characters), `archived`, `pinned`, `target`, and
+`model`, the provider entry and model as `{ providerId, modelId }` or null to
+clear both. A patch whose only field is refused answers that field's 404/409
+status with `{ code, message }`; otherwise the answer is the current
+conversation with `results: [{ field, status, code?, message?, httpStatus? }]`,
+200 when every field applied and 207 when any was refused. Unexpected operation
+failures are reported as 500 field results. Applied fields remain applied.
+Archive is evaluated before the other fields, so archiving and renaming together
+archives successfully but refuses the rename. A rename follows [Conversation
+titles](product.md#conversation-titles). `POST /api/conversations/batch` accepts
+up to 100 `{ id, patch }` items and returns 207 with an outcome per item: `{ id,
+status: "updated", conversation, results }`, or `{ id, status: "refused", code,
+message }` for a conversation the caller does not have.
 
 Archive and a target change are transitions: each holds the conversation while
 it runs, and neither waits for other work. Running root or child work refuses
@@ -536,18 +545,21 @@ live agent tree, otherwise completed/error/stopped from its latest terminal
 block, or idle. An unfinished checkpoint without a live session is
 interrupted.
 
-A conversation is running while its tree will go on working without the user:
-an agent of the tree is acting, or a child is still open. An open child counts
+A conversation is running while its tree will go on working without the user: an
+agent of the tree is acting, or a child is still open. An agent acts until the
+save that ends its action commits, although the page already shows its phase
+idle ([Saving](../agent/runtime.md#saving)), so once a conversation no longer
+runs, its transcript route shows what the live tree showed. An open child counts
 whatever it is doing, a wait for its own `yield` wakeup included, because it
 resumes by itself and its close wakes its parent
 ([Subagents](../agent/subagents.md#result)). A shell command that outlives its
 turn does not count: its exit wakes no one, so nothing follows until the user
 writes. For example, the root answers "two children are looking into it" and
-ends its turn: the conversation stays running until both children close and
-the root has answered their results. The root answers "the build has started"
-while `npm run build` still runs: the conversation is completed, and the
-command shows as running only on its terminal tab. `web-ui` applies the same
-rule to a conversation the page is attached to.
+ends its turn: the conversation stays running until both children close and the
+root has answered their results. The root answers "the build has started" while
+`npm run build` still runs: the conversation is completed, and the command shows
+as running only on its terminal tab. `web-ui` applies the same rule to a
+conversation the page is attached to.
 
 Checkpoint output changes advance a persisted revision; user input alone does
 not. A browser sends `POST /api/conversations/:id/read { revision }` for the

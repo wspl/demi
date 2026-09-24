@@ -14,20 +14,29 @@ doctest = false
 # connection (`agent::testing`), for the tests of the agent and of what sits
 # above it.
 testing = []
+# The compaction fixture's harness (`fixtures/compaction/README.md`), which
+# calls a real model: no build of the one selection enables it.
+compaction-fixture = ["testing", "dep:demi-provider-openai-api", "dep:flate2", "dep:reqwest"]
 
 [dependencies]
+bytes.workspace = true
 demi-agent-protocol = { path = "../agent-protocol" }
 demi-core = { path = "../core" }
 demi-gates = { path = "../gates" }
 demi-provider = { path = "../provider" }
+demi-provider-openai-api = { path = "../provider-openai-api", optional = true }
 demi-shell = { path = "../shell" }
+flate2 = { version = "1", optional = true }
 futures-util.workspace = true
 garde.workspace = true
 rand = "0.9"
+reqwest = { version = "0.12", default-features = false, optional = true }
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_json_canonicalizer = "0.3"
+serde_path_to_error = "0.1"
+serde_with.workspace = true
 sha2 = "0.10"
 thiserror.workspace = true
 tokio.workspace = true
@@ -41,3 +50,8 @@ uuid = { version = "1", features = ["v4"] }
 demi-agent = { path = ".", features = ["testing"] }
 demi-provider = { path = "../provider", features = ["testing"] }
 tokio = { workspace = true, features = ["test-util"] }
+
+[[example]]
+name = "compaction-fixture"
+path = "fixtures/compaction/main.rs"
+required-features = ["compaction-fixture"]

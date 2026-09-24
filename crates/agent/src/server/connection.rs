@@ -24,6 +24,7 @@ use super::{
 use crate::{
     AgentHarness, AgentSession,
     session::{EditCheck, EditSubmission, accepted, edit_digest},
+    tools,
 };
 
 /// What a refusal says when the connection has no session.
@@ -379,8 +380,20 @@ impl<H: AgentHarness> Connection<H> {
                     outcome,
                 });
             }
-            ClientFrame::ShellWrite { .. } | ClientFrame::ShellAbort { .. } => {
-                self.reject(kind, format!("{kind} is not implemented yet"));
+            ClientFrame::ShellWrite { command_id, stdin } => {
+                match tree.root().shell_write(&command_id, stdin).await {
+                    Ok(status) => {
+                        self.send(tools::shell_output(&status));
+                        self.send(ServerFrame::ShellWriteResult { command_id });
+                    }
+                    Err(error) => self.error(error),
+                }
+            }
+            ClientFrame::ShellAbort { command_id } => {
+                match tree.root().shell_abort(&command_id).await {
+                    Ok(status) => self.send(tools::shell_output(&status)),
+                    Err(error) => self.error(error),
+                }
             }
             ClientFrame::Open { .. } | ClientFrame::Close {} => {
                 unreachable!("open and close are handled before dispatch")

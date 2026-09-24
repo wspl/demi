@@ -7,20 +7,21 @@
 
 use std::{rc::Rc, sync::Arc};
 
-use demi_core::{Clock, ModelSelection, NodeId, QueuedMessage};
+use demi_agent_protocol::ServerFrame;
+use demi_core::{Clock, CommandId, ModelSelection, NodeId, QueuedMessage};
 use demi_gates::{ActivityGate, GateLease, Purpose, Reservation};
 use demi_provider::{ProviderRuntime, ToolDefinition};
-use demi_shell::{CommandSet, JobCaller, PortError, StorageOp, StorageReply};
+use demi_shell::{CommandSet, CommandStatus, JobCaller};
 use futures_util::future::LocalBoxFuture;
-use tokio_util::sync::CancellationToken;
 
 use crate::{
-    AgentHarness, IdSource, PromptContext,
+    AgentHarness, IdSource, PromptContext, ShellEnvironmentFactory,
     session::{
         AgentSession, Continuation, RestoreError, SessionConfig, SessionDeps, SessionInit,
         SessionRuntime, ToolFailure, ToolInvocation, ToolOutcome,
     },
     store::{AgentTreeStore, NodeRecord, StoreError},
+    tools::{self, CallError, Environments, ShellAccess},
 };
 
 /// A node's place in its tree, which sets its lifecycle policy: a child
@@ -65,13 +66,6 @@ impl<H: AgentHarness> Node<H> {
         &self.runtime.commands
     }
 
-    /// The command-storage generation current now, which a job the node
-    /// starts now is bound to (`command-state-history.md` § Mutation API and
-    /// concurrency).
-    pub fn command_generation(&self) -> CancellationToken {
-        self.session.command_generation()
-    }
-
     /// Whose command storage a job the node starts now reaches: this node,
     /// at its current generation.
     pub fn job_caller(&self) -> JobCaller {
@@ -81,15 +75,36 @@ impl<H: AgentHarness> Node<H> {
         }
     }
 
-    /// Serves one command-storage message of a job of this node, bound to
-    /// `lifetimes`: the job's generation and its call's cancellation. A write
-    /// returns once its version is committed.
-    pub async fn storage(
+    /// Writes `stdin` to a running command through the node's environment
+    /// for the conversation's current Host, as `shell_write` asks.
+    pub(crate) async fn shell_write(
         &self,
-        op: StorageOp,
-        lifetimes: Vec<CancellationToken>,
-    ) -> Result<StorageReply, PortError> {
-        self.session.storage(op, lifetimes).await
+        command: &CommandId,
+        stdin: String,
+    ) -> Result<CommandStatus, CallError> {
+        let (_, status) = self.runtime.shell_access().write(command, stdin).await?;
+        Ok(status)
+    }
+
+    /// Stops a running command through the node's environment for the
+    /// conversation's current Host, as `shell_abort` asks.
+    pub(crate) async fn shell_abort(
+        &self,
+        command: &CommandId,
+    ) -> Result<CommandStatus, CallError> {
+        let (_, status) = self.runtime.shell_access().abort(command).await?;
+        Ok(status)
+    }
+
+    /// The `shell_output` of each command the transcript last saw running
+    /// that one of the node's environments still owns.
+    pub(crate) fn live_shells(&self) -> Vec<ServerFrame> {
+        let access = self.runtime.shell_access();
+        tools::stored_running_commands(&self.session.transcript().blocks)
+            .iter()
+            .filter_map(|command| access.status_of(command))
+            .map(|status| tools::shell_output(&status))
+            .collect()
     }
 
     /// The harness commands a child of this node inherits: this node's,
@@ -150,7 +165,7 @@ pub(crate) enum Prompt {
 /// What the session calls in its node: the tree's admission, the prompts
 /// with the node's context and rendered command help, the tools, and the
 /// hold on its children that an edit needs.
-pub(crate) struct NodeRuntime<H> {
+pub(crate) struct NodeRuntime<H: AgentHarness> {
     node: NodeId,
     root: NodeId,
     cwd: String,
@@ -165,6 +180,11 @@ pub(crate) struct NodeRuntime<H> {
     admission: ActivityGate,
     lifecycle: ActivityGate,
     store: Rc<dyn AgentTreeStore>,
+    shells: Rc<dyn ShellEnvironmentFactory<H::Host>>,
+    /// The node's shell environment on each Host its tools used.
+    environments: Environments,
+    /// Where a running shell tool's status goes: the root's client.
+    shell_output: Option<Rc<dyn Fn(&CommandStatus)>>,
 }
 
 impl<H: AgentHarness> NodeRuntime<H> {
@@ -173,6 +193,18 @@ impl<H: AgentHarness> NodeRuntime<H> {
             node: &self.node,
             root: &self.root,
             cwd: &self.cwd,
+        }
+    }
+
+    /// What the standard tools reach the node's shells through.
+    fn shell_access(&self) -> ShellAccess<'_, H> {
+        ShellAccess {
+            harness: &self.harness,
+            shells: self.shells.as_ref(),
+            environments: &self.environments,
+            context: self.prompt_context(),
+            commands: &self.commands,
+            progress: self.shell_output.as_deref(),
         }
     }
 }
@@ -239,24 +271,27 @@ impl<H: AgentHarness> SessionRuntime for NodeRuntime<H> {
         Box::pin(self.harness.context(self.prompt_context()))
     }
 
-    /// The standard tools arrive with the shell environments they run in;
-    /// until then the model has none, and a call it makes anyway completes as
-    /// `Tool not found`.
+    /// The standard tools, and only these.
     fn tools(&self) -> Arc<[ToolDefinition]> {
-        Arc::from([])
+        tools::definitions()
     }
 
     fn invoke_tool(
         &self,
         call: ToolInvocation,
     ) -> LocalBoxFuture<'_, Result<ToolOutcome, ToolFailure>> {
-        let outcome = ToolOutcome::error(format!("Tool not found: {}", call.tool_name));
-        Box::pin(async move { Ok(outcome) })
+        Box::pin(async move { self.shell_access().invoke(call).await })
+    }
+
+    /// Ends the node's shells on every Host, their running commands with
+    /// them.
+    fn dispose(&self) -> LocalBoxFuture<'_, ()> {
+        Box::pin(self.environments.dispose())
     }
 }
 
 /// What makes a node itself, and what it is built with.
-pub(crate) struct NodeSpec<H> {
+pub(crate) struct NodeSpec<H: AgentHarness> {
     /// The record a new node is created with; a stored node keeps its own.
     pub(crate) record: NodeRecord,
     pub(crate) role: NodeRole,
@@ -276,6 +311,10 @@ pub(crate) struct NodeSpec<H> {
     /// node the process loses before its first save still has it.
     pub(crate) first_message: Option<QueuedMessage>,
     pub(crate) store: Rc<dyn AgentTreeStore>,
+    pub(crate) shells: Rc<dyn ShellEnvironmentFactory<H::Host>>,
+    /// Where a running shell tool's status goes; the root's goes to its
+    /// client, a child's to no one.
+    pub(crate) shell_output: Option<Rc<dyn Fn(&CommandStatus)>>,
     pub(crate) admission: ActivityGate,
     pub(crate) ids: Rc<dyn IdSource>,
     pub(crate) clock: Arc<dyn Clock>,
@@ -320,6 +359,8 @@ pub(crate) async fn assemble<H: AgentHarness>(
         commands,
         first_message,
         store,
+        shells,
+        shell_output,
         admission,
         ids,
         clock,
@@ -354,6 +395,9 @@ pub(crate) async fn assemble<H: AgentHarness>(
         admission,
         lifecycle: ActivityGate::new(),
         store: store.clone(),
+        shells,
+        environments: Environments::default(),
+        shell_output,
     });
     let deps = SessionDeps {
         runtime: node_runtime.clone(),
