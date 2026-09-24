@@ -78,6 +78,8 @@ pub enum ConfigError {
     /// The value itself is secret, so the error leaves it out.
     #[error("DEMI_INSTANCE_SECRET must be 64 hexadecimal digits")]
     InstanceSecret,
+    #[error("DEMI_BACKEND_PUBLIC_URL must be an HTTP or HTTPS URL without a user, a password, a query or a fragment")]
+    PublicUrl,
 }
 
 impl Config {
@@ -103,6 +105,9 @@ impl Config {
         );
         config.instance_secret = instance_secret;
         config.web_directory = self.web_directory.clone();
+        let public_url = crate::runner::install::backend_url(&self.public_url).map_err(|_| ConfigError::PublicUrl)?;
+        config.public_url = Some(public_url);
+        config.runner_releases = self.runner_release_dir.clone();
         Ok(config)
     }
 }
@@ -118,6 +123,12 @@ pub struct BackendConfig {
     pub mode: InstanceMode,
     /// A built browser directory served beside the API.
     pub web_directory: Option<PathBuf>,
+    /// The URL runners connect to, which the installers name; without it,
+    /// the origin an installer was requested from.
+    pub public_url: Option<Url>,
+    /// The runner releases the installer routes serve; without them, the
+    /// installers answer 503.
+    pub runner_releases: Option<PathBuf>,
     /// The instance secret; without it, the one in the data directory, which
     /// the first start creates.
     pub instance_secret: Option<InstanceSecret>,
@@ -196,6 +207,8 @@ impl BackendConfig {
             address,
             mode,
             web_directory: None,
+            public_url: None,
+            runner_releases: None,
             instance_secret: None,
             account_mail: None,
             clock: Arc::new(SystemClock),
