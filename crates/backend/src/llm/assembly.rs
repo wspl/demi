@@ -5,11 +5,13 @@
 //! keep later requests on a stale configuration.
 
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use demi_core::Clock;
-use demi_provider::Provider;
 use demi_provider::credentials::CredentialPool;
+use demi_provider::{Provider, ProviderRuntime};
+use demi_provider_claude_code::Placement;
 use demi_web_api::ids::{CredentialId, ProviderId};
 
 use super::catalog_cache::ModelCatalogCache;
@@ -32,6 +34,10 @@ pub(crate) enum AssemblyError {
     UnknownFamily(String),
     #[error(transparent)]
     Family(#[from] FamilyError),
+    /// The entry's provider says it runs a process, but its family builds
+    /// no runtime over a placement.
+    #[error("the provider family {0} cannot run its process")]
+    NoProcessRuntime(String),
 }
 
 /// An entry's provider for its active account, with the entry read it was
@@ -150,6 +156,29 @@ impl ProviderAssembly {
         Ok(registered.provider(self.args(id.to_owned(), label.to_owned(), credential))?)
     }
 
+    /// Whether `entry`'s provider runs a process on a Host, which then is the
+    /// user's Cloud (`claude-code.md` § Where it runs).
+    pub(crate) async fn runs_a_process(&self, entry: &ProviderEntry) -> Result<bool, AssemblyError> {
+        Ok(self.provider_for(entry).await?.capabilities().process_host)
+    }
+
+    /// A session's runtime of `entry`'s provider for `account`, whose
+    /// process `placement` starts, for a provider that runs one
+    /// (`claude-code.md` § How a runtime gets its process).
+    pub(crate) async fn process_runtime(
+        &self,
+        entry: &ProviderEntry,
+        account: Option<&CredentialId>,
+        placement: Rc<dyn Placement>,
+    ) -> Result<Box<dyn ProviderRuntime>, AssemblyError> {
+        let family = self.family(&entry.family)?;
+        let args = self.entry_args(entry, account).await?;
+        let runtime = family
+            .process_runtime(args, placement)
+            .ok_or_else(|| AssemblyError::NoProcessRuntime(entry.family.clone()))?;
+        Ok(runtime?)
+    }
+
     /// Forgets the entry's provider and catalog after its configuration or
     /// active account changed.
     pub(crate) async fn invalidate(&self, id: &ProviderId) -> Result<(), StorageError> {
@@ -181,6 +210,13 @@ impl ProviderAssembly {
         account: Option<&CredentialId>,
     ) -> Result<Arc<dyn Provider>, AssemblyError> {
         let family = self.family(&entry.family)?;
+        let args = self.entry_args(entry, account).await?;
+        Ok(family.provider(args)?)
+    }
+
+    /// What `entry`'s family builds from for `account`: the entry's settings,
+    /// or its pool with the account and its quota store.
+    async fn entry_args(&self, entry: &ProviderEntry, account: Option<&CredentialId>) -> Result<FamilyArgs, AssemblyError> {
         let credential = match &entry.credential {
             EntryCredential::ApiKey(config) => FamilyCredential::ApiKey(ApiKeyArgs {
                 api_key: config.api_key.clone(),
@@ -206,8 +242,7 @@ impl ProviderAssembly {
                 })
             }
         };
-        let args = self.args(entry.id.as_str().to_owned(), entry.label.clone(), credential);
-        Ok(family.provider(args)?)
+        Ok(self.args(entry.id.as_str().to_owned(), entry.label.clone(), credential))
     }
 
     fn args(&self, entry_id: String, label: String, credential: FamilyCredential) -> FamilyArgs {

@@ -5,6 +5,7 @@ mod accounts;
 mod auth;
 mod blobs;
 mod browser;
+mod claude;
 mod cloud;
 mod coding;
 mod conversations;
