@@ -1,4 +1,4 @@
-import { previewMediaType } from '@demicodes/core'
+import { previewMediaType } from '@demicodes/protocol'
 
 /** What a view shows a file as (`file-previews.md` § What the user sees). */
 export type PreviewKind = 'image' | 'video' | 'audio' | 'pdf' | 'markdown' | 'text'

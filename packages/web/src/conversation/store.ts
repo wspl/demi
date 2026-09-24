@@ -1,13 +1,11 @@
 import { computed, ref, toRaw, watch } from 'vue'
 import { defineStore } from 'pinia'
-import { z } from 'zod'
 import { SerialQueue } from '@demicodes/utils'
-import { type ThinkingConfig, type UserContentBlock } from '@demicodes/core'
+import type { ClientContent, ModelSelection, ThinkingConfig } from '@demicodes/protocol'
 import { ConversationCache, type CachedConversation } from '@demicodes/web-ui/agent/conversation-cache'
 import { ConversationRuntime, isRecordedTurnFailure } from '@demicodes/web-ui/agent/conversation-runtime'
-import { restoreMessageEdit, submitMessageEdit } from '@demicodes/web-ui/agent/message-editing'
+import { restoreMessageEdit, sentEditRequest, submitMessageEdit } from '@demicodes/web-ui/agent/message-editing'
 import { reportError } from '@demicodes/web-ui/infra/errors'
-import { loadEditContent } from '../api/message-editing'
 import { forkConversation } from '../api/message-fork'
 import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
 import { composerModel, initialModelIntent } from '@demicodes/web-ui/agent/model-selection'
@@ -17,23 +15,26 @@ import {
   attachmentsReady,
   composerAttachmentFromFile,
   isComposerFile,
-  attachTextSnippet,
 } from '@demicodes/web-ui/agent/message-input/attachments'
 import { connectAgentClient } from '@demicodes/web-ui/transport/agent-socket'
-import { type ProviderSelection } from '@demicodes/web-ui/transport/protocol'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
 import {
-  conversationBatchSchema,
-  conversationRecordSchema,
+  attachedHostsSchema,
+  batchAnswerSchema,
+  conversationAnswerSchema,
   conversationUpdateSchema,
-  hostsSchema,
-  type BackendConversation,
-} from '../api/contracts'
-import {
-  contentReference,
-  encodeClientFrame,
   transcriptSchema,
-} from '../api/transcript'
+  type AttachHost,
+  type ConversationBatch,
+  type ConversationPatch,
+  type ConversationStatus,
+  type ConversationSummary,
+  type CreateConversation,
+  type ReadRequest,
+  type RenameHost,
+  type SidebarReorder,
+  type TitleRequest,
+} from '../api/generated/web-api'
 import { joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { createConversationUploads } from './uploads'
 import { useResources } from '../state/resources'
@@ -94,7 +95,7 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   function summaryStatus(
-    status: BackendConversation['status'],
+    status: ConversationStatus,
   ): Conversation['status'] {
     if (status === 'running' || status === 'compacting') {
       return 'active'
@@ -117,7 +118,7 @@ export const useConversations = defineStore('conversations', () => {
 
   function metadata(
     record: Pick<
-      BackendConversation,
+      ConversationSummary,
       | 'id'
       | 'title'
       | 'pinned'
@@ -155,7 +156,7 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /** A local draft has no backend record yet, so no resolved `cwd`; the first send brings it. */
-  function newConversation(record: Omit<BackendConversation, 'cwd'> & { cwd?: string }): Conversation {
+  function newConversation(record: Omit<ConversationSummary, 'cwd'> & { cwd?: string }): Conversation {
     return {
       ...metadata({ ...record, cwd: record.cwd ?? '' }),
       persistence: 'synced',
@@ -287,6 +288,7 @@ export const useConversations = defineStore('conversations', () => {
               name: file.name,
               file: toRaw(file.file),
               upload: file.upload ? { ...file.upload } : null,
+              ...(file.snippet ? { snippet: file.snippet } : {}),
             }
           : { ...file },
       ),
@@ -443,9 +445,6 @@ export const useConversations = defineStore('conversations', () => {
     }
     restored.add(conversation.id)
     for (const file of conversation.files) {
-      if (isComposerFile(file)) {
-        void attachTextSnippet(file, file.file)
-      }
       if (isComposerFile(file) && !file.upload) {
         void uploadFile(file).catch((error) => report('Could not upload the attachment', error))
       }
@@ -454,7 +453,7 @@ export const useConversations = defineStore('conversations', () => {
 
   async function prepareModel(
     conversation: Conversation,
-  ): Promise<ProviderSelection> {
+  ): Promise<ModelSelection> {
     const pick = composerModel(
       resources.providerInfos,
       resources.modelsFor(),
@@ -495,10 +494,7 @@ export const useConversations = defineStore('conversations', () => {
       selection.thinking = { type: 'disabled' }
     }
     selection.serviceTierId = conversation.model.serviceTierId
-    return {
-      providerId: pick.providerId,
-      model: selection,
-    }
+    return selection
   }
 
   async function activate(id: string | null): Promise<void> {
@@ -564,12 +560,17 @@ export const useConversations = defineStore('conversations', () => {
       const transcript = await readResponse(response, transcriptSchema)
       controller.signal.throwIfAborted()
       conversation.blocks = transcript.blocks
-      conversation.failures = transcript.failures
+      conversation.failures = transcript.failures ?? {}
       reconcileSubmission(conversation)
       conversation.terminals = transcriptTerminals(transcript.blocks)
-      conversation.subagents = transcript.subagents.map((agent) => ({
-        ...agent,
-        endedAt: agent.endedAt ?? undefined,
+      conversation.subagents = transcript.subagents.map(({ subagent, blocks, failures }) => ({
+        id: subagent.subagentId,
+        name: subagent.description,
+        phase: subagent.phase,
+        startedAt: subagent.startedAt,
+        endedAt: subagent.endedAt ?? undefined,
+        blocks,
+        failures: failures ?? {},
       }))
       updateLiveStatus(conversation)
       conversation.load = 'ready'
@@ -593,10 +594,7 @@ export const useConversations = defineStore('conversations', () => {
             window.location.href,
           )
           url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-          return connectAgentClient(url.toString(), {
-            signal,
-            encodeFrame: encodeClientFrame,
-          })
+          return connectAgentClient(url.toString(), signal)
         },
         onEvent: (next) => {
           applyConversationEvent(conversation, next)
@@ -649,12 +647,12 @@ export const useConversations = defineStore('conversations', () => {
       `/conversations/${encodeURIComponent(conversation.id)}/hosts`,
       { signal },
     )
-    const result = await readResponse(response, hostsSchema)
+    const result = await readResponse(response, attachedHostsSchema)
     signal.throwIfAborted()
     conversation.attachedHosts = result.hosts
   }
 
-  async function patch(id: string, changes: unknown): Promise<boolean> {
+  async function patch(id: string, changes: ConversationPatch): Promise<boolean> {
     const signal = lifetime.signal
     const response = await apiRequest(
       `/conversations/${encodeURIComponent(id)}`,
@@ -666,11 +664,11 @@ export const useConversations = defineStore('conversations', () => {
     )
     const result = await readResponse(response, conversationUpdateSchema)
     signal.throwIfAborted()
-    const failed = result.results.filter((field) => field.status === 'failed')
+    const failed = result.results.flatMap((field) => field.status === 'failed' ? [field] : [])
     if (failed.length) {
       reportError(
         'Some fields were not updated',
-        failed.map((field) => `${field.field}: ${field.message ?? field.code}`).join('\n'),
+        failed.map((field) => `${field.field}: ${field.message}`).join('\n'),
         { userVisible: true, expected: true },
       )
     }
@@ -708,9 +706,7 @@ export const useConversations = defineStore('conversations', () => {
 
   async function applyBatch(
     ids: string[],
-    changes: Partial<
-      Pick<BackendConversation, 'title' | 'pinned' | 'archived' | 'target'>
-    >,
+    changes: Pick<ConversationPatch, 'pinned' | 'archived' | 'target'>,
   ): Promise<boolean> {
     for (const conversation of items.value) {
       if (
@@ -746,23 +742,18 @@ export const useConversations = defineStore('conversations', () => {
                 id,
                 patch: changes,
               })),
-            }),
+            } satisfies ConversationBatch),
           })
-          const result = await readResponse(response, conversationBatchSchema)
+          const result = await readResponse(response, batchAnswerSchema)
           signal.throwIfAborted()
+          const titleOf = (id: string) =>
+            items.value.find((conversation) => conversation.id === id)?.title ?? id
           const failures = result.results.flatMap((item) =>
-            item.results
-              ? item.results
-                  .filter((field) => field.status === 'failed')
-                  .map(
-                    (field) =>
-                      `${
-                        items.value.find(
-                          (conversation) => conversation.id === item.id,
-                        )?.title ?? item.id
-                      }: ${field.message ?? field.code}`,
-                  )
-              : [item.message ?? 'Conversation update failed'],
+            item.status === 'refused'
+              ? [`${titleOf(item.id)}: ${item.message}`]
+              : item.results.flatMap((field) =>
+                  field.status === 'failed' ? [`${titleOf(item.id)}: ${field.message}`] : [],
+                ),
           )
           if (failures.length) {
             success = false
@@ -837,7 +828,7 @@ export const useConversations = defineStore('conversations', () => {
       modelId: model.model.id,
       thinkingEffort: model.thinking?.type === 'disabled'
         ? 'disabled' : model.thinking ? thinkingConfigToEffort(model.thinking) : null,
-      serviceTierId: model.serviceTierId ?? null,
+      serviceTierId: model.serviceTierId,
     }
     return record.id
   }
@@ -852,12 +843,9 @@ export const useConversations = defineStore('conversations', () => {
     const response = await apiRequest('/conversations', {
       method: 'POST',
       signal,
-      ...jsonBody({ id: conversation.id }),
+      ...jsonBody({ id: conversation.id } satisfies CreateConversation),
     })
-    const result = await readResponse(
-      response,
-      z.object({ conversation: conversationRecordSchema }),
-    )
+    const result = await readResponse(response, conversationAnswerSchema)
     signal.throwIfAborted()
     if (
       !(await patch(result.conversation.id, {
@@ -866,8 +854,10 @@ export const useConversations = defineStore('conversations', () => {
         pinned: conversation.pinned,
         ...(conversation.model.providerId && conversation.model.modelId
           ? {
-              providerId: conversation.model.providerId,
-              modelId: conversation.model.modelId,
+              model: {
+                providerId: conversation.model.providerId,
+                modelId: conversation.model.modelId,
+              },
             }
           : {}),
       }))
@@ -882,7 +872,7 @@ export const useConversations = defineStore('conversations', () => {
         {
           method: 'POST',
           signal,
-          ...jsonBody({ deviceId: host.deviceId }),
+          ...jsonBody({ deviceId: host.deviceId } satisfies AttachHost),
         },
       )
       await apiRequest(
@@ -892,7 +882,7 @@ export const useConversations = defineStore('conversations', () => {
         {
           method: 'PATCH',
           signal,
-          ...jsonBody({ name: host.name }),
+          ...jsonBody({ name: host.name } satisfies RenameHost),
         },
       )
     }
@@ -951,10 +941,10 @@ export const useConversations = defineStore('conversations', () => {
     conversation.titleGenerating = true
     pendingRetitles.add(conversation.id)
     try {
-      const provider = await prepareModel(conversation)
+      const model = await prepareModel(conversation)
       await apiRequest(
         `/conversations/${encodeURIComponent(conversation.id)}/title`,
-        { method: 'POST', signal: lifetime.signal, ...jsonBody({ provider }) },
+        { method: 'POST', signal: lifetime.signal, ...jsonBody({ model } satisfies TitleRequest) },
       )
       // From here the snapshot says whether the request is still running.
       pendingRetitles.delete(conversation.id)
@@ -989,7 +979,7 @@ export const useConversations = defineStore('conversations', () => {
           kind: 'conversation',
           id,
           beforeId,
-        }),
+        } satisfies SidebarReorder),
       })
       await product.revalidate()
     } catch (error) {
@@ -1012,7 +1002,7 @@ export const useConversations = defineStore('conversations', () => {
       await apiRequest(`/conversations/${encodeURIComponent(id)}/read`, {
         method: 'POST',
         signal: lifetime.signal,
-        ...jsonBody({ revision }),
+        ...jsonBody({ revision } satisfies ReadRequest),
       })
       conversation.readRevision = Math.max(conversation.readRevision, revision)
       conversation.unread = conversation.revision > conversation.readRevision
@@ -1047,7 +1037,7 @@ export const useConversations = defineStore('conversations', () => {
         {
           method: 'POST',
           signal: lifetime.signal,
-          ...jsonBody({ deviceId }),
+          ...jsonBody({ deviceId } satisfies AttachHost),
         },
       )
       await loadHosts(conversation)
@@ -1106,7 +1096,7 @@ export const useConversations = defineStore('conversations', () => {
         {
           method: 'PATCH',
           signal: lifetime.signal,
-          ...jsonBody({ name }),
+          ...jsonBody({ name } satisfies RenameHost),
         },
       )
       await loadHosts(conversation)
@@ -1137,8 +1127,7 @@ export const useConversations = defineStore('conversations', () => {
         signal.throwIfAborted()
         if (
           !(await patch(conversation.id, {
-            providerId,
-            modelId,
+            model: { providerId, modelId },
           }))
         ) {
           return
@@ -1233,22 +1222,14 @@ export const useConversations = defineStore('conversations', () => {
     saveDrafts()
     try {
       await persistConversation(conversation)
-      const references = files.map((file): UserContentBlock => {
+      const references = files.map((file): ClientContent => {
         if (!isComposerFile(file)) {
-          return contentReference({
-            type: 'remote_file',
-            deviceId: file.deviceId,
-            path: file.path,
-          })
+          return { type: 'remote_file', deviceId: file.deviceId, path: file.path }
         }
         if (!file.upload) {
           throw new Error(`${file.name} has not finished uploading.`)
         }
-        return contentReference({
-          type: 'upload',
-          ref: file.upload.id,
-          fileName: file.name,
-        })
+        return { type: 'upload', ref: file.upload.id, fileName: file.name }
       })
       // Each file where its capsule stands in the text.
       const content = joinMessageContent(pending.text, references.map((reference) => [reference]))
@@ -1342,7 +1323,7 @@ export const useConversations = defineStore('conversations', () => {
             }
           : { kind: 'cloud' },
       }),
-    switchTarget: (id: string, target: BackendConversation['target']) =>
+    switchTarget: (id: string, target: ConversationSummary['target']) =>
       batch([id], { target }),
     pendingChanges,
     attachHost: (conversation: Conversation, deviceId: string) =>
@@ -1373,11 +1354,9 @@ export const useConversations = defineStore('conversations', () => {
       get: () => conversation.messageEdit,
       set: (state) => { conversation.messageEdit = state },
       send: async (request) => {
-        const signal = lifetime.signal
+        const edit = sentEditRequest(request)
         const runtime = await runtimeFor(conversation)
-        const content = await loadEditContent(request.content, signal)
-        signal.throwIfAborted()
-        await runtime.editAndSend({ ...request, content })
+        await runtime.editAndSend(edit)
       },
     }),
     addFiles,

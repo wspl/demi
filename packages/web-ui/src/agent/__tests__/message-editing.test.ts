@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { deferred } from '@demicodes/utils'
 import { reactive, toRaw } from 'vue'
-import type { Block } from '@demicodes/core'
+import type { Block } from '@demicodes/protocol'
 import {
   beginMessageEdit,
   changeMessageEditContent,
@@ -9,27 +9,62 @@ import {
   messageEditSuffixIds,
   lastEditableUserMessageId,
   restoreMessageEdit,
+  sentEditRequest,
   submitMessageEdit,
   type MessageEditState,
   type MessageEditRequest,
 } from '../message-editing'
+import { createdAt, model, userBlock } from './agent-harness'
 
-test('the UI selects only the last explicit user, ignoring assistant output and internal inputs', () => {
-  const user = (id: string): Block => ({
-    type: 'user', id, turnId: id, content: [{ type: 'text', text: id }],
-  } as Block)
-  const blocks: Block[] = [user('A'), user('B'), user('C')]
+const SHA = (digit: string) => digit.repeat(64)
+
+test('the UI selects only the last user block, whatever follows it', () => {
+  const blocks: Block[] = [userBlock('A', 'A', 'A'), userBlock('B', 'B', 'B'), userBlock('C', 'C', 'C')]
   expect(lastEditableUserMessageId(blocks)).toBe('C')
   blocks.push(
-    { ...user('hidden'), hidden: true } as Block,
-    { type: 'agent_message', id: 'completion', turnId: 'turn' } as Block,
-    { type: 'steer', id: 'steer', content: [] } as unknown as Block,
-    { type: 'text', id: 'reply', text: 'answer C' } as Block,
+    { type: 'wakeup', id: 'wakeup', turnId: 'wakeup', createdAt, model, placement: 'new_turn' },
+    { type: 'steer', id: 'steer', turnId: 'wakeup', createdAt, model, content: [] },
+    { type: 'text', id: 'reply', createdAt, model, text: 'answer C' },
   )
   expect(lastEditableUserMessageId(blocks)).toBe('C')
   expect(lastEditableUserMessageId(blocks.slice(3))).toBeNull()
   expect(lastEditableUserMessageId([])).toBeNull()
-  expect(lastEditableUserMessageId([user('A'), user('replacement')])).toBe('replacement')
+  expect(lastEditableUserMessageId([userBlock('A', 'A', 'A'), userBlock('replacement', 'r', 'r')])).toBe('replacement')
+})
+
+test('an edit keeps the message\'s files by reference and names added files by their upload', () => {
+  const edit = beginMessageEdit({
+    ...userBlock('user-B', 'turn-B', 'unused'),
+    content: [
+      { type: 'text', text: 'compare' },
+      { type: 'image', source: { type: 'ref', ref: SHA('a'), mediaType: 'image/png' } },
+      {
+        type: 'attachment', name: 'chart.png', path: '/home/demi/.demi/attachments/c/chart.png',
+        mediaType: 'image/png', sizeBytes: 4, sha256: SHA('a'),
+      },
+      { type: 'document', source: { type: 'ref', ref: SHA('b'), mediaType: 'application/pdf', fileName: 'a.pdf' } },
+      { type: 'reference', reference: 'file:///notes.md?host=laptop' },
+    ],
+  }, { epoch: 'epoch', revision: 4 })
+  edit.request.content.push({
+    type: 'upload', ref: 'upload-1', fileName: 'new.txt', mediaType: 'text/plain', sha256: SHA('c'), snippet: 'new',
+  })
+  expect(sentEditRequest(edit.request).content).toEqual([
+    { type: 'text', text: 'compare' },
+    { type: 'media', media: { type: 'image', ref: SHA('a'), mediaType: 'image/png' } },
+    { type: 'attachment', path: '/home/demi/.demi/attachments/c/chart.png' },
+    { type: 'media', media: { type: 'document', ref: SHA('b'), mediaType: 'application/pdf', fileName: 'a.pdf' } },
+    { type: 'reference', reference: 'file:///notes.md?host=laptop' },
+    { type: 'upload', ref: 'upload-1', fileName: 'new.txt' },
+  ])
+})
+
+test('media that is not a blob of the conversation refuses the edit before it is sent', () => {
+  const edit = beginMessageEdit({
+    ...userBlock('user-B', 'turn-B', 'unused'),
+    content: [{ type: 'image', source: { type: 'binary', data: 'AAAA', mediaType: 'image/png' } }],
+  }, { epoch: 'epoch', revision: 4 })
+  expect(() => sentEditRequest(edit.request)).toThrow(EditRejectedError)
 })
 
 test('only the target and its suffix are muted; an accepted rewrite removes the old cut', () => {
@@ -42,13 +77,13 @@ test('only the target and its suffix are muted; an accepted rewrite removes the 
 
 function draft(): MessageEditState {
   return beginMessageEdit({
-    type: 'user', id: 'user-B', turnId: 'turn-B', hidden: false,
+    ...userBlock('user-B', 'turn-B', 'unused'),
     content: [
       { type: 'text', text: 'first\nsecond' },
-      { type: 'document', source: { data: new Uint8Array([1, 2]), fileName: 'a.pdf', mediaType: 'application/pdf' } },
+      { type: 'document', source: { type: 'ref', ref: SHA('d'), fileName: 'a.pdf', mediaType: 'application/pdf' } },
       { type: 'text', text: 'third' },
     ],
-  } as Block, { epoch: 'epoch', revision: 4 })
+  }, { epoch: 'epoch', revision: 4 })
 }
 
 test('editing a reactive multipart draft remains serializable and preserves the other attachments', () => {

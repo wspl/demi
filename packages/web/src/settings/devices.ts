@@ -3,8 +3,9 @@ import { useSession } from '../auth/session'
 import { computed, onScopeDispose, ref, watch } from 'vue'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { useProduct } from '../state/product'
-import { apiRequest, jsonBody } from '../api/client'
+import { apiRequest, jsonBody, readResponse } from '../api/client'
 import { renewExpose, removeExpose } from '../api/exposes'
+import { cloudResetAnswerSchema, type CloudReset } from '../api/generated/web-api'
 
 export const useDeviceSettings = defineStore('device-settings', () => {
   const product = useProduct()
@@ -18,19 +19,22 @@ export const useDeviceSettings = defineStore('device-settings', () => {
         message: string
       }
   >({ status: 'idle' })
-  const cloud = computed(() =>
-    product.snapshot?.cloud
-      ? {
-          state: product.snapshot.cloud.state,
-          phase: product.snapshot.cloud.operation?.phase ?? null,
-          error:
-            product.snapshot.cloud.error ??
-            product.snapshot.cloud.operation?.error ??
-            null,
-          ...product.snapshot.cloud.limits,
-        }
-      : null,
-  )
+  // Every snapshot carries the Cloud's status; there is none only before the
+  // first snapshot arrives.
+  const cloud = computed(() => {
+    const status = product.snapshot?.cloud
+    if (!status) {
+      return null
+    }
+    return {
+      state: status.state,
+      operationId: status.operation?.id ?? null,
+      phase: status.operation?.phase ?? null,
+      error: status.error ?? status.operation?.error ?? null,
+      volumes: status.volumes,
+      limits: status.limits,
+    }
+  })
   const exposes = computed(() => product.snapshot?.exposes ?? [])
 
   /** Shared body of renew and remove: one request per expose, then a fresh snapshot. */
@@ -104,11 +108,12 @@ export const useDeviceSettings = defineStore('device-settings', () => {
     const current = lifetime
     reset.value = { status: 'pending' }
     try {
-      await apiRequest('/cloud/reset', {
+      const response = await apiRequest('/cloud/reset', {
         method: 'POST',
         signal: current.signal,
-        ...jsonBody({ operationId }),
+        ...jsonBody({ operationId } satisfies CloudReset),
       })
+      await readResponse(response, cloudResetAnswerSchema)
       current.signal.throwIfAborted()
       await product.revalidate()
       current.signal.throwIfAborted()

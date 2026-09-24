@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
-import { productStateSchema, type Preferences } from '../api/contracts'
+import type { Preferences } from '../api/generated/web-api'
+import { productState } from '../__tests__/product-state'
 import { usePreferences } from './preferences'
 import { useProduct } from './product'
 
@@ -9,27 +10,6 @@ const realLanguages = Object.getOwnPropertyDescriptor(navigator, 'languages')
 let pinia: ReturnType<typeof createPinia>
 let saved: Preferences
 let patches: unknown[]
-
-function state() {
-  return productStateSchema.parse({
-    user: {
-      id: 'test-user',
-      email: 'test@example.test',
-      nickname: 'Test',
-      role: 'master',
-      createdAt: '2026-09-10T00:00:00.000Z',
-    },
-    mode: 'shared',
-    preferences: saved,
-    devices: [],
-    workspaces: [],
-    providers: [],
-    conversations: [],
-    cloud: { device: null, state: 'unallocated', operation: null, error: null, limits: { systemBytes: 0, homeBytes: 0 } },
-    exposes: [],
-    exposeDomain: null,
-  })
-}
 
 beforeEach(() => {
   pinia = createPinia()
@@ -43,7 +23,7 @@ beforeEach(() => {
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
     if (path === '/api/state') {
-      return Response.json(state())
+      return Response.json(productState({ preferences: saved }))
     }
     if (path.startsWith('/api/models')) {
       return Response.json({ providers: [] })

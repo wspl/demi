@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
-import type { ThinkingConfig } from '@demicodes/core'
+import type { ThinkingConfig } from '@demicodes/protocol'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import {
   buildReasoningState,

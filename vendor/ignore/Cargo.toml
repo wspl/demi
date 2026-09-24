@@ -101,3 +101,9 @@ version = "0.1.2"
 
 [dependencies.uucore]
 version = "0.11"
+
+[package.metadata.demi]
+maintainer = "demi-runner"
+patches = [
+    "The working directory and the variables that locate git's configuration are the shell job's, through uucore::context",
+]

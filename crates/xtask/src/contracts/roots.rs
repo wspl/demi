@@ -105,6 +105,8 @@ pub fn web() -> Vec<Root> {
         receives::<providers::LoginStarted>(),
         receives::<providers::LoginAnswer>(),
         receives::<providers::ModelCatalog>(),
+        receives::<providers::ProviderCli>(),
+        receives::<providers::CliInstallAnswer>(),
         receives::<devices::Devices>(),
         sends::<devices::Claim>(),
         receives::<devices::ClaimedDevice>(),

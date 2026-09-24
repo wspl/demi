@@ -369,12 +369,16 @@ Each crate implements the provider contract for one vendor family.
   `tools/call` answered in the next run, the model catalog mapping, the OAuth
   usage quota probe, and the account token passed in the CLI's environment at
   spawn.
-- **Public boundary:** its `Provider` implementation and configuration type.
-  Behavior: [Claude Code](../providers/claude-code.md).
+- **Public boundary:** its `Provider` implementation and configuration type,
+  the session runtime it builds over a placement, and the placement contract
+  (`Placement`): `start` starts a new CLI process from the spawn request the
+  provider builds and answers the `shell` process. `Provider::runtime` refuses
+  with `ProcessHostRequired`. Behavior:
+  [Claude Code](../providers/claude-code.md#how-a-runtime-gets-its-process).
 - **Secret boundary:** OAuth tokens never reach a frame or response the browser
   sees; the only process that receives one is the CLI on the user's Cloud.
 - **Must not:** depend on `agent`, `coding-agent` or a Host implementation. It
-  runs the CLI through the `shell` process interface it is given; which machine
+  runs the CLI through the `shell` process the placement answers; which machine
   that is, is the backend's placement.
 
 #### `shell`
@@ -388,8 +392,9 @@ Each crate implements the provider contract for one vendor family.
     rpc handler interface (`RpcHandler`, `RpcInvocation`, `RpcPort`,
     `PortTransport`, `StorageOp`); the reserved command names;
   - the shell-environment contract behind the `shell_*` tools:
-    `ShellEnvironment`, `ExecRequest`, `CommandStatus` and `CommandRecord`, the
-    model's status view of a command.
+    `ShellEnvironment`, `ExecRequest`, `CommandStatus` and `CommandRecord`,
+    with one place in each command's output for the model and one for the
+    page (`Reader`).
 - **Public boundary:** the items above; `shell::testing` supplies the Host
   conformance cases and an in-memory port for rpc handler tests
   (`MemoryPort`). The Host rules are in
@@ -514,11 +519,16 @@ Each crate implements the provider contract for one vendor family.
 - **Public boundary:** the `demi-backend` executable; `Backend::start` and
   `BackendConfig` for tests, with the parts a test replaces: the provider
   families entries are assembled with (`FamilyRegistry`, `ProviderFamily` and
-  the arguments a family builds a provider from), the login timing
+  the arguments a family builds a provider from, or, for a provider that needs
+  a process, its session runtime over a placement), the login timing
   (`LoginTiming`), the conversations' bounds (`ConversationTuning`), the
-  native command packages their commands bind to (`NativeCatalog`, which the
-  executable makes with `publish_native` from `DEMI_NATIVE_CONFIG`) and the
-  user stream declarations.
+  Cloud's and the idle clock's times and limits (`CloudTuning`,
+  `LifecycleTuning`), the native command packages their commands bind to
+  (`NativeCatalog`, which the executable makes with `publish_native` from
+  `DEMI_NATIVE_CONFIG`) and the user stream declarations. For suites that
+  start the executable, the example program `scripted_machines` runs the
+  scripted machine manager of its scenarios
+  ([Browser-contract suite](../delivery/scenarios.md#browser-contract-suite)).
 - **Must not:** be linked by another crate; put business logic in the HTTP
   layer beyond routing and validation; return secrets or proxy model traffic;
   spawn `runsc` or image tools itself (every sandbox and disk operation goes to
@@ -681,7 +691,9 @@ packages under `packages/`.
   the backend binary ([Scenarios](../delivery/scenarios.md)).
 - **Public boundary:** `bun run web:dev` and the production build; no library
   API.
-- **Must not:** import `web-gallery` or Node.
+- **Must not:** import `web-gallery`, or import Node outside the
+  browser-contract suite, which starts the backend, runner and scripted
+  machine manager processes.
 
 #### `@demicodes/web-gallery`
 
@@ -739,7 +751,7 @@ provider-openai-api -> core, provider
 provider-google -> core, provider
 provider-codex -> core, provider
 provider-grok-build -> core, provider
-provider-claude-code -> provider, shell
+provider-claude-code -> core, provider, shell
 shell -> command-service, command-tree, core
 agent -> agent-protocol, command-service, core, gates, provider, shell
 coding-agent -> agent, builtin-protocol, command-tree, core, shell
@@ -806,7 +818,10 @@ review.
 - **Vendored crates.** A vendored crate keeps its upstream metadata and
   licenses. The root `Cargo.toml` declares its `[patch.crates-io]` path and
   excludes it from the workspace, so it stays outside the workspace lints.
-  Demi's adapters of a vendored crate stay in the responsible Demi crate.
+  Demi's adapters of a vendored crate stay in the responsible Demi crate. Its
+  `[package.metadata.demi]` names the Demi crate that maintains it
+  (`maintainer`) and each change from the upstream release with its reason
+  (`patches`); a patch compiles without warnings on every target.
 - **Versions and inventories.** Dependency versions and source identifiers
   stay in manifests, lockfiles and vendor metadata. `docs/` describes
   architecture and usage, not dependency inventories, artifact hashes, CI run

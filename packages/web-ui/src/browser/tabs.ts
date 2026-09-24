@@ -6,7 +6,7 @@
  */
 import { nextTick, shallowRef, type ShallowRef } from 'vue'
 import { z } from 'zod'
-import { browserCreatedBySchema } from '@demicodes/browser-protocol'
+import type { BrowserCreatedBy } from '@demicodes/protocol'
 import { viewerClipboard } from './clipboard'
 import { viewerPlatform } from './input'
 import { LiveSession, type OpenLiveStream } from './session'
@@ -22,23 +22,23 @@ export const browserTabDataSchema = z.object({
 })
 export type BrowserTabData = z.infer<typeof browserTabDataSchema>
 
-export const browserTabInfoSchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  url: z.string(),
-  createdBy: browserCreatedBySchema,
-})
-export type BrowserTabInfo = z.infer<typeof browserTabInfoSchema>
+/** A tab of the conversation's browser, as its tab routes list it. */
+export interface BrowserTabInfo {
+  id: string
+  title: string
+  url: string
+  createdBy: BrowserCreatedBy
+}
 
-export const browserTabListSchema = z.object({
-  tabs: z.array(browserTabInfoSchema),
-})
-export type BrowserTabList = z.infer<typeof browserTabListSchema>
+export interface BrowserTabList {
+  tabs: BrowserTabInfo[]
+}
 
 /** A request the backend or the browser refused, with the answer's own code and message. */
 export class BrowserTabsError extends Error {
   constructor(
-    readonly code: string,
+    /** The backend's code; null when something in front of it answered. */
+    readonly code: string | null,
     message: string,
   ) {
     super(message)
@@ -114,7 +114,8 @@ export class BrowserTabsController {
         return
       }
       this.listError.value = asTabsError(error)
-      if (FINAL_CODES.has(this.listError.value.code)) {
+      const code = this.listError.value.code
+      if (code !== null && FINAL_CODES.has(code)) {
         this.closeView()
       }
       return
@@ -268,5 +269,5 @@ export function asTabsError(error: unknown): BrowserTabsError {
   if (error instanceof BrowserTabsError) {
     return error
   }
-  return new BrowserTabsError('request_failed', error instanceof Error ? error.message : String(error))
+  return new BrowserTabsError(null, error instanceof Error ? error.message : String(error))
 }

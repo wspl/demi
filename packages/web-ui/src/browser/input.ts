@@ -3,7 +3,7 @@
  * (`live-view.md` § Input): the events of the user's own browser,
  * in the watched tab's CSS coordinates.
  */
-import type { LiveViewerMessage } from '@demicodes/browser-protocol/live'
+import type { LiveViewerMessage } from '@demicodes/protocol'
 
 /** Modifier keys as CDP numbers them. */
 export const ALT = 1

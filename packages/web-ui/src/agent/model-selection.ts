@@ -1,6 +1,6 @@
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import { z } from 'zod'
-import type { ThinkingConfig } from '@demicodes/core'
+import type { ThinkingConfig } from '@demicodes/protocol'
 
 export const modelIntentSchema = z.object({
   providerId: z.string(),

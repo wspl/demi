@@ -6,7 +6,7 @@
  * file of its size; without one it takes no uploads. Directories are made
  * and entries deleted at once.
  */
-import { previewMediaType } from '@demicodes/core'
+import { previewMediaType } from '@demicodes/protocol'
 import { delay } from '@demicodes/utils'
 import {
   FileBrowserError,

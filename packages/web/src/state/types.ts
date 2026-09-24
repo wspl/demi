@@ -1,4 +1,4 @@
-import type { Block, ProviderFailureFacts, QueuedMessage, SessionPhase } from '@demicodes/core'
+import type { Block, ProviderFailureFacts, QueuedMessage, SessionPhase } from '@demicodes/protocol'
 import type { FileBrowserPlatform } from '@demicodes/web-ui/files/types'
 import type {
   SidebarConversation,
@@ -13,7 +13,7 @@ import type { PendingAction } from '@demicodes/web-ui/agent/activity-slot'
 import type { SessionLoad } from '@demicodes/web-ui/agent/session-status'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
-import type { BackendConversation, ProductState } from '../api/contracts'
+import type { ConversationTarget, DeviceKind } from '../api/generated/web-api'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import type { SavedDraft, SavedFile } from '../conversation/drafts'
 import type { MessageEditState } from '@demicodes/web-ui/agent/message-editing'
@@ -24,7 +24,7 @@ export type ProductAttachment =
 
 export interface Conversation extends SidebarConversation {
   persistence: 'draft' | 'pending' | 'synced'
-  target: BackendConversation['target']
+  target: ConversationTarget
   contextVersion: number
   revision: number
   readRevision: number
@@ -65,7 +65,7 @@ export interface Conversation extends SidebarConversation {
 
 export interface Device {
   id: string
-  kind: NonNullable<ProductState['devices']>[number]['kind']
+  kind: DeviceKind
   name: string
   online: boolean
   platform: FileBrowserPlatform

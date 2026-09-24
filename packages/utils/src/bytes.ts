@@ -18,43 +18,6 @@ export function utf8Bytes(text: string): number {
   return encoder.encode(text).byteLength
 }
 
-/** Packs a latin1 byte-string (each char = one byte, 0–255) into bytes. */
-export function encodeLatin1(text: string): Uint8Array {
-  const out = new Uint8Array(text.length)
-  for (let i = 0; i < text.length; i += 1) out[i] = text.charCodeAt(i) & 0xff
-  return out
-}
-
-/**
- * The UTF-8 encoding of `text` as a latin1 byte-string (each char = one
- * byte), for code that processes text byte by byte, as the C locale does.
- */
-export function utf8AsLatin1(text: string): string {
-  return decodeLatin1(encodeUtf8(text))
-}
-
-/** Orders strings by UTF-16 code unit, which for byte-strings is byte order. */
-export function compareCodeUnits(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0
-}
-
-/**
- * Orders strings by their UTF-8 bytes, as the C locale orders names and lines.
- */
-export function compareUtf8Bytes(a: string, b: string): number {
-  return compareCodeUnits(utf8AsLatin1(a), utf8AsLatin1(b))
-}
-
-/** Unpacks bytes into a latin1 byte-string (each char = one byte). */
-export function decodeLatin1(bytes: Uint8Array): string {
-  let out = ''
-  const chunk = 0x8000
-  for (let i = 0; i < bytes.length; i += chunk) {
-    out += String.fromCharCode(...bytes.subarray(i, i + chunk))
-  }
-  return out
-}
-
 /** Strictly decodes UTF-8; returns null when the bytes are not valid UTF-8. */
 export function decodeUtf8Strict(bytes: Uint8Array): string | null {
   try {
@@ -198,72 +161,6 @@ export async function collectBytes(
   const chunks: Uint8Array[] = []
   for await (const chunk of stream) chunks.push(chunk)
   return concatBytes(chunks)
-}
-
-/**
- * One iterator shared by several consumers in turn: a consumer that stops
- * early leaves the stream open for the next, the way processes share a shell's
- * stdin. The stream ends only when the source ends.
- */
-export function shareByteStream(
-  source: AsyncIterable<Uint8Array>
-): AsyncIterable<Uint8Array> {
-  const iterator = source[Symbol.asyncIterator]()
-  return {
-    [Symbol.asyncIterator]: () => ({
-      next: () => iterator.next(),
-      return: async () => ({ done: true, value: undefined }),
-    }),
-  }
-}
-
-/**
- * Async chunk queue: each pushed chunk is delivered once, in order; close ends
- * the stream.
- */
-export class ByteQueue {
-  private readonly chunks: Uint8Array[] = []
-  private waiter: (() => void) | null = null
-  private isClosed = false
-
-  push(data: Uint8Array): void {
-    if (this.isClosed)
-      return
-    this.chunks.push(data)
-    this.wake()
-  }
-
-  close(): void {
-    if (this.isClosed)
-      return
-    this.isClosed = true
-    this.wake()
-  }
-
-  get closed(): boolean {
-    return this.isClosed
-  }
-
-  async *stream(): AsyncIterable<Uint8Array> {
-    while (true) {
-      const chunk = this.chunks.shift()
-      if (chunk) {
-        yield chunk
-        continue
-      }
-      if (this.isClosed)
-        return
-      await new Promise<void>((resolve) => {
-        this.waiter = resolve
-      })
-    }
-  }
-
-  private wake(): void {
-    const waiter = this.waiter
-    this.waiter = null
-    waiter?.()
-  }
 }
 
 /**

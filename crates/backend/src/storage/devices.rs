@@ -246,7 +246,10 @@ mod tests {
             .into_iter()
             .map(|device| device.id)
             .collect();
-        assert_eq!(paired, [laptop.id.clone(), desktop.id.clone()]);
+        // Oldest first; two paired within one millisecond go by id.
+        let mut expected = [laptop.clone(), desktop.clone()];
+        expected.sort_by_key(|device| (device.claimed_at, device.id.clone()));
+        assert_eq!(paired, expected.map(|device| device.id));
 
         control.delete_device(desktop.id.clone()).await.unwrap();
         assert_eq!(control.device(desktop.id).await.unwrap(), None);

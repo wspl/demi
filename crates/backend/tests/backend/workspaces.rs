@@ -71,7 +71,6 @@ async fn a_workspace_points_at_a_directory_of_the_users_device_and_stays_while_c
         (json!({ "kind": "device", "deviceId": laptop.id(), "path": "relative", "name": "x" }), StatusCode::BAD_REQUEST, ErrorCode::InvalidBody),
         (json!({ "kind": "device", "deviceId": laptop.id(), "path": home, "name": "   " }), StatusCode::BAD_REQUEST, ErrorCode::InvalidBody),
         (json!({ "deviceId": laptop.id(), "path": home, "name": "untagged" }), StatusCode::BAD_REQUEST, ErrorCode::InvalidBody),
-        (json!({ "kind": "cloud", "name": "project" }), StatusCode::SERVICE_UNAVAILABLE, ErrorCode::CloudUnavailable),
     ];
     for (body, status, code) in refusals {
         let refused = backend.post("/api/workspaces", Some(&master), body.clone()).await;

@@ -1,8 +1,6 @@
-import type { ShellToolView } from '@demicodes/agent'
-import { shellToolViewSchema } from '@demicodes/agent/client'
 import { Allow, parse } from 'partial-json'
 import { z } from 'zod'
-import type { ToolCallBlock } from './block-types'
+import type { ShellToolView, ToolCallBlock } from './block-types'
 import { shouldParsePartialToolInput } from './tool-rendering'
 
 export type ShellTerminalOutputChunk = ShellToolView['chunks'][number]
@@ -21,13 +19,9 @@ export function getToolErrorText(block: ToolCallBlock): string | undefined {
   return texts.length > 0 ? texts.join('\n') : undefined
 }
 
-/**
- * The shell view a tool call stored, or null: a shape the contract does not
- * describe is not a shell view, and shows nothing.
- */
+/** The shell view a tool call stored, or null for a call of another kind. */
 export function storedShellView(block: ToolCallBlock): ShellToolView | null {
-  const view = shellToolViewSchema.safeParse(block.view)
-  return view.success ? view.data : null
+  return block.view?.kind === 'shell' ? block.view : null
 }
 
 /** The output a shell call left on its view. */

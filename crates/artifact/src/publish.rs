@@ -152,6 +152,8 @@ fn stage_blocking(
     let parent = path
         .parent()
         .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "a file needs a parent directory"))?;
+    // Windows has no Unix mode for the file to be made with.
+    #[cfg_attr(not(unix), expect(unused_mut))]
     let mut builder = tempfile::Builder::new();
     #[cfg(unix)]
     {

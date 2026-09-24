@@ -106,31 +106,34 @@ impl ChromeProcess {
     }
 
     /// Capture helper identities before shutdown, retaining metadata while they exit.
-    pub fn observe(&mut self) {
+    pub async fn observe(&mut self) -> io::Result<()> {
         #[cfg(unix)]
         {
-            self.processes.refresh_processes_specifics(
-                ProcessesToUpdate::All,
-                true,
-                ProcessRefreshKind::nothing().with_exe(UpdateKind::Always),
-            );
-            let candidates: Vec<_> = self
-                .processes
-                .processes()
-                .iter()
-                .filter(|(_, process)| {
-                    process
-                        .exe()
-                        .is_some_and(|exe| self.installed(exe))
-                })
-                .map(|(pid, _)| *pid)
-                .collect();
-            self.processes.refresh_processes_specifics(
-                ProcessesToUpdate::Some(&candidates),
-                false,
-                ProcessRefreshKind::nothing().with_environ(UpdateKind::Always),
-            );
+            let installations = self.installations.clone();
+            self.scan(move |processes| observe(processes, &installations))
+                .await?;
         }
+        Ok(())
+    }
+
+    /// Runs `work` over the process table on the blocking pool: refreshing
+    /// every process's executable and environment takes milliseconds of CPU
+    /// and waits on the kernel (`concurrency.md` § Blocking work). A scan
+    /// whose waiter left finishes there; the next one reads the table anew.
+    #[cfg(unix)]
+    async fn scan<T: Send + 'static>(
+        &mut self,
+        work: impl FnOnce(&mut System) -> T + Send + 'static,
+    ) -> io::Result<T> {
+        let mut processes = std::mem::replace(&mut self.processes, System::new());
+        let (processes, result) = tokio::task::spawn_blocking(move || {
+            let result = work(&mut processes);
+            (processes, result)
+        })
+        .await
+        .map_err(io::Error::other)?;
+        self.processes = processes;
+        Ok(result)
     }
 
     /// Terminate and drain the group after chromiumoxide has reaped the
@@ -157,7 +160,7 @@ impl ChromeProcess {
                             }
                         }
                     }
-                    if !self.signal_owned()? {
+                    if !self.signal_owned().await? {
                         return Ok(());
                     }
                     tokio::time::sleep(std::time::Duration::from_millis(20)).await;
@@ -172,56 +175,98 @@ impl ChromeProcess {
         Ok(())
     }
 
-    /// Whether `executable` lies in one of the Chrome installations, the only
-    /// processes whose environment is read for the marker.
-    #[cfg(unix)]
-    fn installed(&self, executable: &Path) -> bool {
-        self.installations
-            .iter()
-            .any(|installation| executable.starts_with(installation))
-    }
-
     /// Signal Chrome's group and detached helpers; only disappearance completes retirement.
     #[cfg(unix)]
-    fn signal_owned(&mut self) -> io::Result<bool> {
+    async fn signal_owned(&mut self) -> io::Result<bool> {
         // ECHILD alone is insufficient: grandchildren can still be exiting or
         // awaiting reaping by their parent or the system's init process.
         let group_alive = match self.group {
             Some(group) => signal_group(group, libc::SIGKILL)?,
             None => false,
         };
-        // sysinfo's Process::wait is synchronous and unbounded for non-children;
-        // refreshing keeps the drain under the existing control deadline.
-        self.observe();
-        let mut helpers_alive = false;
-        for process in self.processes.processes().values() {
-            if process.exe().is_some_and(|exe| self.installed(exe))
-                && process.environ().contains(&self.marker)
-            {
-                helpers_alive = true;
-                if !process.kill() {
-                    let error = io::Error::last_os_error();
-                    // An already exited helper cannot write; refresh still
-                    // verifies disappearance before completion.
-                    if error.raw_os_error() != Some(libc::ESRCH) {
-                        return Err(error);
-                    }
+        let installations = self.installations.clone();
+        let marker = self.marker.clone();
+        let helpers_alive = self
+            .scan(move |processes| kill_helpers(processes, &installations, &marker))
+            .await??;
+        Ok(group_alive || helpers_alive)
+    }
+}
+
+/// Reads which processes run a Chrome executable of `installations`, and the
+/// environment of those, the only processes whose marker matters.
+#[cfg(unix)]
+fn observe(processes: &mut System, installations: &[std::path::PathBuf]) {
+    processes.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing().with_exe(UpdateKind::Always),
+    );
+    let candidates: Vec<_> = processes
+        .processes()
+        .iter()
+        .filter(|(_, process)| process.exe().is_some_and(|exe| installed(installations, exe)))
+        .map(|(pid, _)| *pid)
+        .collect();
+    processes.refresh_processes_specifics(
+        ProcessesToUpdate::Some(&candidates),
+        false,
+        ProcessRefreshKind::nothing().with_environ(UpdateKind::Always),
+    );
+}
+
+/// Kills the helpers that carry `marker`; whether any still ran.
+#[cfg(unix)]
+fn kill_helpers(
+    processes: &mut System,
+    installations: &[std::path::PathBuf],
+    marker: &std::ffi::OsStr,
+) -> io::Result<bool> {
+    // sysinfo's Process::wait is synchronous and unbounded for non-children;
+    // refreshing keeps the drain under the existing control deadline.
+    observe(processes, installations);
+    let mut alive = false;
+    for process in processes.processes().values() {
+        if process.exe().is_some_and(|exe| installed(installations, exe))
+            && process.environ().iter().any(|variable| variable == marker)
+        {
+            alive = true;
+            if !process.kill() {
+                let error = io::Error::last_os_error();
+                // An already exited helper cannot write; refresh still
+                // verifies disappearance before completion.
+                if error.raw_os_error() != Some(libc::ESRCH) {
+                    return Err(error);
                 }
             }
         }
-        Ok(group_alive || helpers_alive)
     }
+    Ok(alive)
+}
+
+/// Whether `executable` lies in one of the Chrome installations, the only
+/// processes whose environment is read for the marker.
+#[cfg(unix)]
+fn installed(installations: &[std::path::PathBuf], executable: &Path) -> bool {
+    installations
+        .iter()
+        .any(|installation| executable.starts_with(installation))
 }
 
 #[cfg(unix)]
 impl Drop for ChromeProcess {
     fn drop(&mut self) {
         // Explicit retirement awaits termination. Abrupt owner disposal can only
-        // signal synchronously; its profile remains retained for safety.
-        if let Some(group) = self.group
-            && let Err(error) = self.signal_owned()
-        {
-            tracing::warn!("could not terminate Chrome process tree {group}: {error}");
+        // signal synchronously; its profile remains retained for safety. Drop
+        // cannot hand the scan to the blocking pool and wait for it, so this
+        // one scan, when retirement did not run, stays on the dropping thread.
+        if let Some(group) = self.group {
+            let alive = signal_group(group, libc::SIGKILL).and_then(|_| {
+                kill_helpers(&mut self.processes, &self.installations, &self.marker)
+            });
+            if let Err(error) = alive {
+                tracing::warn!("could not terminate Chrome process tree {group}: {error}");
+            }
         }
     }
 }
@@ -290,7 +335,7 @@ mod tests {
             .kill_on_drop(true)
             .spawn()
             .unwrap();
-        owner.observe();
+        owner.observe().await.unwrap();
         assert!(
             owner
                 .processes

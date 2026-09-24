@@ -1034,7 +1034,12 @@ impl Conversations {
             let bytes = super::operation::Operation::for_tab(tab, cancellation, deadline)
                 .run(tab.screenshot_bytes(false, None))
                 .await?;
-            let bytes = super::probe::annotate(bytes, &result)?;
+            // Decoding and encoding a screenshot takes milliseconds of CPU
+            // (`concurrency.md` § Blocking work).
+            let outlined = result.clone();
+            let bytes =
+                tokio::task::spawn_blocking(move || super::probe::annotate(bytes, &outlined))
+                    .await??;
             result.path = Some(
                 output::save_with_overwrite(
                     &context.request.cwd,

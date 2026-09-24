@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
-import type { Block, ModelSelection } from '@demicodes/core'
-import type { ShellToolView } from '@demicodes/agent'
+import type { Block, ModelSelection } from '@demicodes/protocol'
 import { shellTerminalOutputChunks, storedShellView } from '../block-helpers'
+import type { ShellToolView } from '../block-types'
 
 test('shell terminal output renders the view chunks', () => {
   const block = tool({
@@ -21,22 +21,6 @@ test('shell terminal output renders the view chunks', () => {
   ])
 })
 
-test('a view that does not match the shell contract shows nothing', () => {
-  const malformedChunk = tool({
-    view: { ...shellView(), chunks: [{ stream: 'other', text: 'not a stream' }] },
-  })
-  const missingField = tool({
-    view: { kind: 'shell', chunks: [{ stream: 'stdout', text: 'orphan\n' }] },
-  })
-
-  expect(shellTerminalOutputChunks(malformedChunk)).toEqual([])
-  expect(shellTerminalOutputChunks(missingField)).toEqual([])
-  expect(shellTerminalOutputChunks(tool({}))).toEqual([])
-  expect(shellTerminalOutputChunks(tool({ view: { kind: 'yield_wakeup' } }))).toEqual(
-    []
-  )
-})
-
 test('the retained files come from the view, with their edits', () => {
   const files = [
     { path: 'a.ts', kind: 'modified' as const, added: 1, removed: 2, edits: [{ kept: true }] },
@@ -47,19 +31,7 @@ test('the retained files come from the view, with their edits', () => {
   expect(storedShellView(block)?.files).toEqual(files)
   expect(storedShellView(tool({ view: shellView() }))?.files).toBeUndefined()
   expect(storedShellView(tool({}))).toBeNull()
-})
-
-test('a malformed file entry discards the view it is in, never a repaired entry', () => {
-  const kept = { path: 'a.ts', kind: 'modified', added: 1, removed: 2, edits: [{ kept: true }] }
-  const wrongKind = tool({
-    view: { ...shellView(), files: [kept, { ...kept, path: 'd.ts', kind: 'renamed', from: 'c.ts' }] },
-  })
-  const noEdits = tool({
-    view: { ...shellView(), files: [kept, { ...kept, path: 'e.ts', edits: [] }] },
-  })
-
-  expect(storedShellView(wrongKind)).toBeNull()
-  expect(storedShellView(noEdits)).toBeNull()
+  expect(storedShellView(tool({ view: { kind: 'yield_wakeup', wakeupId: 'w', durationMs: 1 } }))).toBeNull()
 })
 
 function shellView(overrides: Partial<ShellToolView> = {}): ShellToolView {
@@ -77,7 +49,7 @@ function shellView(overrides: Partial<ShellToolView> = {}): ShellToolView {
   }
 }
 
-function tool(options: { view?: unknown }): Extract<Block, { type: 'tool_call' }> {
+function tool(options: { view?: Extract<Block, { type: 'tool_call' }>['view'] }): Extract<Block, { type: 'tool_call' }> {
   return {
     type: 'tool_call',
     id: 'tool-1',
@@ -87,7 +59,6 @@ function tool(options: { view?: unknown }): Extract<Block, { type: 'tool_call' }
     toolName: 'shell_exec',
     input: '{}',
     status: 'completed',
-    streamingOutput: [],
     output: [{ type: 'text', text: 'status: exited' }],
     view: options.view ?? null,
   }

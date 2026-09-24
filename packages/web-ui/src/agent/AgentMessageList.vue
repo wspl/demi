@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { ProviderFailureFacts } from '@demicodes/core'
+import type { ProviderFailureFacts } from '@demicodes/protocol'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useElementSize, useScroll } from '@vueuse/core'
-import type { Block, QueuedMessage, SessionPhase } from '@demicodes/core'
+import type { Block, QueuedMessage, SessionPhase } from '@demicodes/protocol'
 import { BLOCK_GAP, useBlockVirtualizer, type PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import { getVisibleBlocks } from './visible-blocks'
 import { assistantFooterIds } from './assistant-footer'

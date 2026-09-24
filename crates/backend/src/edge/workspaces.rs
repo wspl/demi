@@ -17,7 +17,7 @@ use super::body::JsonBody;
 use super::error::ApiError;
 use super::gate::AuthUser;
 use crate::backend::Services;
-use crate::storage::workspaces::WorkspaceDeletion;
+use crate::storage::workspaces::{WorkspaceDeletion, new_workspace_id};
 
 pub(super) async fn list(
     State(services): State<Arc<Services>>,
@@ -40,7 +40,7 @@ pub(super) async fn create(
         CreateWorkspace::Device { device_id, path, name } => state
             .services
             .control
-            .create_workspace(user.id, device_id, path.as_str().to_owned(), name.into_string())
+            .create_workspace(new_workspace_id(), user.id, device_id, path.as_str().to_owned(), name.into_string())
             .await?
             .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, ErrorCode::DeviceNotFound, "No such device"))?,
         CreateWorkspace::Cloud { name } => {

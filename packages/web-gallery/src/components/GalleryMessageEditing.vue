@@ -10,8 +10,9 @@ import {
   submitMessageEdit,
   type MessageEditState,
 } from '@demicodes/web-ui/agent/message-editing'
-import type { Block, UserContentBlock } from '@demicodes/core'
+import type { Block, UserContentBlock } from '@demicodes/protocol'
 import { demoImageUrl, demoModel } from '../fixtures/blocks'
+import { galleryUploads } from '../fixtures/upload-sweep'
 import { WORKSPACE_ROOT } from '../fixtures/workspace'
 
 const session = reactive<ChatSessionState>({
@@ -24,6 +25,8 @@ const messageEdit = ref<MessageEditState | null>(null)
 const outcome = ref<'accept' | 'hold' | 'reject' | 'disconnect'>('accept')
 const accepted = new Set<string>()
 const completion = shallowRef<Deferred<void> | null>(null)
+/** The stand-in for the backend's uploads, which an edit sends its added files through. */
+const uploads = galleryUploads()
 
 function reset(): void {
   if (messageEdit.value?.phase === 'sending') {
@@ -39,7 +42,7 @@ function reset(): void {
       { type: 'image', source: { type: 'url', url: demoImageUrl } },
       {
         type: 'attachment', name: 'before.png', path: '/home/demi/.demi/attachments/editing/before.png',
-        mediaType: 'image/png', sizeBytes: 48211, sha256: 'editing-png',
+        mediaType: 'image/png', sizeBytes: 48211, sha256: 'e'.repeat(64),
       },
       { type: 'text', text: ', and keep the **padding** as it is.' },
     ],
@@ -88,7 +91,8 @@ async function submit(): Promise<void> {
         {
           type: 'user', id: request.operationId, turnId: request.operationId,
           createdAt: new Date().toISOString(), model: demoModel,
-          content: request.content as Extract<Block, { type: 'user' }>['content'], preamble: null,
+          // As the backend would record it: each added file's upload becomes its attachment record.
+          content: uploads.received(request.content), preamble: null,
         },
         {
           type: 'text', id: `reply-${request.operationId}`,
@@ -105,7 +109,10 @@ async function submit(): Promise<void> {
   })
 }
 
-onBeforeUnmount(() => completion.value?.reject(new Error('Example closed')))
+onBeforeUnmount(() => {
+  completion.value?.reject(new Error('Example closed'))
+  uploads.release()
+})
 </script>
 
 <template>
@@ -132,6 +139,7 @@ onBeforeUnmount(() => completion.value?.reject(new Error('Example closed')))
             placeholder="Ask Demi…"
             draft="An unrelated composer draft"
             v-model:message-edit="messageEdit"
+            :upload="uploads.upload"
             @submit-edit="submit"
           />
         </template>

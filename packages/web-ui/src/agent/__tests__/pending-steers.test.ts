@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import type { UserContentBlock } from '@demicodes/core'
+import type { UserContentBlock } from '@demicodes/protocol'
 import { pendingSteersToRenderBlocks } from '../pending-steers'
 
 test('a pending steer renders as a tail block of its own', () => {

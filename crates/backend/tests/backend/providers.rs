@@ -64,6 +64,7 @@ fn scripted(directory: &Arc<Directory>) -> FamilyRegistry {
         ScriptedKey {
             directory: directory.clone(),
             wires: &[],
+            process_host: false,
         },
     )
 }
@@ -76,6 +77,7 @@ async fn an_api_key_entry_is_sealed_at_rest_and_answered_without_its_key() {
         ScriptedKey {
             directory: directory.clone(),
             wires: &[],
+            process_host: false,
         },
     );
     let harness = Harness::new().with_mode(InstanceMode::Isolated).with_families(families);
@@ -338,6 +340,7 @@ async fn a_vendor_entry_takes_its_family_wire_and_endpoint_from_models_dev_and_r
         ScriptedKey {
             directory: directory.clone(),
             wires: &[WireApi::Responses, WireApi::ChatCompletions],
+            process_host: false,
         },
     );
     let harness = Harness::new()

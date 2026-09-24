@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import type { ProviderFailureFacts } from '@demicodes/core'
+import type { ProviderFailureFacts } from '@demicodes/protocol'
 import { computed, useAttrs } from 'vue'
-import { isEditableUserMessage } from '@demicodes/agent/client'
 import { chromeEntrance } from '@demicodes/web-ui/ui/chrome-enter'
 import type { MessageListBlock } from '../pending-steers'
 import UserBlock from './UserBlock.vue'
@@ -60,7 +59,7 @@ const entersAsChrome = computed(() =>
     v-else-if="block.type === 'user'"
     v-bind="attrs"
     :content="block.content"
-    :editable="editable && isEditableUserMessage(block)"
+    :editable="editable"
     @edit="emit('editUser', block.id)"
   />
   <UserBlock

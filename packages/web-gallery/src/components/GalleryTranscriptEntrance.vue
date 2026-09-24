@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { nextTick, ref } from 'vue'
-import type { Block } from '@demicodes/core'
+import type { Block } from '@demicodes/protocol'
 import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
 import type { SessionLoad } from '@demicodes/web-ui/agent/session-status'
 import Button from '@demicodes/web-ui/ui/Button.vue'

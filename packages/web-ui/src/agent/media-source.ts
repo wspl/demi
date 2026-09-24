@@ -1,15 +1,11 @@
 import { ref, watch, type Ref } from 'vue'
-import type { Base64ImageSource, DocumentSource, ImageSource, VideoSource } from '@demicodes/core'
+import type { DocumentSource, MediaSource as ContentMediaSource, ToolMediaSource } from '@demicodes/protocol'
 
-/** Backend transcripts display media through authenticated blob references. */
-export interface BlobReferenceSource {
-  type: 'ref'
-  ref: string
-  mediaType: string
-  fileName?: string
-}
-
-export type MediaSource = ImageSource | VideoSource | DocumentSource | BlobReferenceSource | Base64ImageSource
+/**
+ * Where the bytes of an image, a video or a document are: an address, a blob
+ * of the user's own, which the backend serves, or the bytes themselves.
+ */
+export type MediaSource = ContentMediaSource | DocumentSource | ToolMediaSource
 
 /**
  * Where a media source loads from: its URL, the blob it references, or its
@@ -25,19 +21,15 @@ export function useMediaUrl(source: () => MediaSource | undefined): Readonly<Ref
         url.value = ''
         return
       }
-      if ('type' in value && value.type === 'url') {
+      if (value.type === 'url') {
         url.value = value.url
         return
       }
-      if ('type' in value && value.type === 'ref') {
+      if (value.type === 'ref') {
         url.value = `/api/blobs/${encodeURIComponent(value.ref)}?type=${encodeURIComponent(value.mediaType)}`
         return
       }
-      // A copy owns a plain ArrayBuffer, which a Blob takes; the source's may be shared.
-      const bytes =
-        typeof value.data === 'string'
-          ? Uint8Array.from(atob(value.data), (char) => char.charCodeAt(0))
-          : value.data.slice()
+      const bytes = Uint8Array.from(atob(value.data), (char) => char.charCodeAt(0))
       const objectUrl = URL.createObjectURL(new Blob([bytes], { type: value.mediaType }))
       url.value = objectUrl
       cleanup(() => URL.revokeObjectURL(objectUrl))

@@ -234,17 +234,25 @@ reset time.
 
 | Part | Behavior |
 |---|---|
-| Probe | `GET https://api.anthropic.com/api/oauth/usage`, with the account's OAuth token and the OAuth beta header. |
+| Probe | `GET https://api.anthropic.com/api/oauth/usage`, with the account's setup token as its bearer token and the OAuth beta header. An answer that is not an object is refused. |
 | Observation | The `rate_limits` object on a line of the CLI's stream-json output, at the top level or inside `message`. The backend reads each line as it arrives over the runner connection ([Claude Code](claude-code.md)). |
 | Windows | `five_hour` (`5h session`), `seven_day` (`7d all models`), `seven_day_sonnet` (`7d Sonnet`) and `seven_day_opus` (`7d Opus`), from `utilization` or `used_percentage`. Every other entry of `limits` becomes a window named by its `kind` and, for a limit on one model, by that model, with the vendor's `severity` when it states one. The `session` and `weekly_all` kinds are the named windows above, so they are skipped. |
-| Plan | The subscription type stored with the account, when it is known. |
+| Plan | None: the account is a setup token, which does not say its plan. |
 | Account label | Not reported. |
-| Units | `resets_at` from the usage endpoint is an RFC 3339 time. |
+| Units | `resets_at` is an RFC 3339 time, from the usage endpoint and on the CLI's lines. |
 
-**Open decision: the unit of `resets_at` in the CLI's `rate_limits`.** The
-recorded examples carry RFC 3339 times, but the unit is not confirmed against
-the real CLI. A transcript captured from the real CLI settles it before this
-mapping is implemented.
+**Open: which of the real CLI's lines carry the windows.** Observation reads
+`rate_limits` objects, as the TypeScript provider did, whose recorded examples
+carry RFC 3339 times. The CLI's current SDK types
+(`@anthropic-ai/claude-agent-sdk`, `sdk.d.ts`) declare no such object on a
+stream-json message. They declare a `rate_limit_event` line instead, whose
+`rate_limit_info` names one window (`rateLimitType`), its `utilization` and a
+numeric `resetsAt`, and they state no unit for either. The `rate_limits` object,
+with ISO 8601 `resets_at` times, is the answer to the SDK's `get_usage` control
+request. A `rate_limit_event` line therefore changes nothing, and the account's
+windows come from probes, until a transcript of the real CLI settles what its
+lines carry and in which units
+([Acceptance](claude-code.md#acceptance)).
 
 #### Grok Build
 

@@ -1,4 +1,4 @@
-import type { Block, SessionPhase } from '@demicodes/core'
+import type { Block, SessionPhase } from '@demicodes/protocol'
 
 function isTailBlockOfType(
   blocks: readonly Block[],

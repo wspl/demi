@@ -8,6 +8,9 @@ use std::{collections::BTreeMap, path::PathBuf};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::DeserializeOwned};
 use serde_json::Value;
 
+/// The package's id in the native catalog.
+pub const PACKAGE: &str = "demi.claude";
+
 /// The package's operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Operation {

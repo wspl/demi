@@ -173,9 +173,10 @@ for Claude Code, drives a process reached through the user's Host connection,
 so a runtime lives on the user's shard and never leaves it
 ([The user shard](../architecture/concurrency.md#the-user-shard)). The backend
 builds a runtime on the shard that will own it and gives it that shard's HTTP
-client and, when the provider needs a process, the Host process interface to
-start it with. The agent sees only runtimes; the shared provider stays with the
-backend.
+client or, when the provider needs a process, a placement that starts the
+process on the machine the backend chooses
+([How a runtime gets its process](claude-code.md#how-a-runtime-gets-its-process)).
+The agent sees only runtimes; the shared provider stays with the backend.
 
 ### A run
 

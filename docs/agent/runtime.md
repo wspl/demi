@@ -363,7 +363,7 @@ The model has five tools, and only these:
 | Tool | What it does |
 | --- | --- |
 | `shell_exec` | Starts a script in a shell on the conversation's Host and watches it for up to `timeoutMs`. The window is for watching, not a deadline: a command still running when it ends keeps running, and the result carries its handle (`commandId`). Completed short output returns directly. |
-| `shell_status` | Reads a running command's status and the output since the last look. It neither waits nor writes. |
+| `shell_status` | Reads a running command's status and the output since the model last looked. It neither waits nor writes. |
 | `shell_write` | Writes non-empty stdin to a running command and returns its status with the new output. |
 | `shell_abort` | Stops a running command. Its result is never an error. |
 | `yield` | Ends the turn and schedules one wakeup after `durationMs` ([Yield wakeups](#yield-wakeups)). |
@@ -409,6 +409,12 @@ the five completes as an error `Tool not found: <name>`.
 
 ### Results and previews
 
+- The model and the user's page each keep their own place in a command's
+  output. A result shows the output since the model's last look at the
+  command, and a `shell_output` frame the output since the page's last look
+  ([Server frames](#server-frames)), so neither's read changes what the other
+  sees next. For example, the page reads a running command's new output; the
+  model's next `shell_status` still shows all of it.
 - A result gives the command's status and exit code, its handle and timings
   when the handle matters, a preview of the output, and a hint for the next
   step.
@@ -678,11 +684,15 @@ attached when the frame is sent and never stored
 ([Failure facts](../backend/backend.md#failure-facts)). Media in outgoing blocks
 travels by blob reference ([Media by reference](../backend/backend.md#media-by-reference)).
 A running shell tool's status reaches the client as `shell_output`; a
-`shell_status` call sends none. Child sessions send only their transcript
-frames. A live command is one the transcript last shows running that the
-root's shell environment still has; its `shell_output` after a transcript
-reset carries its current status, so a command that ended while no client
-watched shows as ended.
+`shell_status` call sends none. Every `shell_output` is the page's own view,
+with the output since the page last looked at the command, whether it answers
+a client's `shell_write` or `shell_abort`, follows an attach or a
+`sync_transcript`, or reports a running tool; it moves only the page's place,
+not the model's ([Results and previews](#results-and-previews)). Child
+sessions send only their transcript frames. A live command is one the
+transcript last shows running that the root's shell environment still has;
+its `shell_output` after a transcript reset carries its current status, so a
+command that ended while no client watched shows as ended.
 
 ### Order and delivery
 

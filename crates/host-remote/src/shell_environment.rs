@@ -22,7 +22,7 @@ use demi_runner_protocol::{
 use demi_shell::{
     CommandRecord, CommandSet, CommandStatus, DEFAULT_BINARY_LIMIT_BYTES,
     DEFAULT_OUTPUT_LIMIT_BYTES, EditedFiles, Ending, ExecRequest, Host, HostError, HostKey,
-    JobCaller, ProcessEnd, ShellEnvironment, ShellError, ShellTarget, SpawnErrorKind,
+    JobCaller, ProcessEnd, Reader, ShellEnvironment, ShellError, ShellTarget, SpawnErrorKind,
     final_stdout_boundary,
 };
 use futures_util::future::LocalBoxFuture;
@@ -530,7 +530,7 @@ impl RemoteShellEnvironment {
             .ok_or_else(|| ShellError::UnknownCommand(command.clone()))
     }
 
-    fn view(&self, command: &CommandId) -> Result<CommandStatus, ShellError> {
+    fn view(&self, command: &CommandId, reader: Reader) -> Result<CommandStatus, ShellError> {
         let record = self.record(command)?;
         let hint = self
             .0
@@ -547,14 +547,15 @@ impl RemoteShellEnvironment {
             });
         let mut record = record.borrow_mut();
         let hint = if record.is_running() { hint } else { None };
-        Ok(record.status(self.0.options.output_limit, hint))
+        Ok(record.status(reader, self.0.options.output_limit, hint))
     }
 
-    async fn abort_command(&self, command: &CommandId) -> Result<CommandStatus, ShellError> {
+    /// Stops a running command: asks it to end, and ends it when it does not.
+    async fn stop_command(&self, command: &CommandId) -> Result<(), ShellError> {
         let record = self.record(command)?;
         let running = self.0.state.borrow().running.get(command).cloned();
         let Some(running) = running.filter(|_| record.borrow().is_running()) else {
-            return self.view(command);
+            return Ok(());
         };
         running.aborted.set(true);
         // The job's task asks the job to end.
@@ -570,7 +571,7 @@ impl RemoteShellEnvironment {
                 record.borrow_mut().mark_aborted();
             }
         }
-        self.view(command)
+        Ok(())
     }
 
     async fn dispose(&self, shell: &ShellId) -> bool {
@@ -579,7 +580,7 @@ impl RemoteShellEnvironment {
             Some(shell) => shell.foreground.clone(),
         };
         if let Some(command) = foreground
-            && let Err(error) = self.abort_command(&command).await
+            && let Err(error) = self.stop_command(&command).await
         {
             tracing::debug!(%command, "could not abort the shell's command: {error}");
         }
@@ -602,18 +603,19 @@ impl ShellEnvironment for RemoteShellEnvironment {
             let window = request.window.duration();
             let (command, running) = self.start(request, cancel)?;
             running.settled_within(window).await;
-            self.view(&command)
+            self.view(&command, Reader::Model)
         })
     }
 
-    fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError> {
-        self.view(command)
+    fn status(&self, command: &CommandId, reader: Reader) -> Result<CommandStatus, ShellError> {
+        self.view(command, reader)
     }
 
     fn write<'a>(
         &'a self,
         command: &'a CommandId,
         stdin: Bytes,
+        reader: Reader,
     ) -> LocalBoxFuture<'a, Result<CommandStatus, ShellError>> {
         Box::pin(async move {
             let record = self.record(command)?;
@@ -630,15 +632,19 @@ impl ShellEnvironment for RemoteShellEnvironment {
                 .clone()
                 .ok_or_else(|| ShellError::Starting(command.clone()))?;
             job.write_stdin(stdin).await?;
-            self.view(command)
+            self.view(command, reader)
         })
     }
 
     fn abort<'a>(
         &'a self,
         command: &'a CommandId,
+        reader: Reader,
     ) -> LocalBoxFuture<'a, Result<CommandStatus, ShellError>> {
-        Box::pin(self.abort_command(command))
+        Box::pin(async move {
+            self.stop_command(command).await?;
+            self.view(command, reader)
+        })
     }
 
     fn release_command<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, bool> {
@@ -647,7 +653,7 @@ impl ShellEnvironment for RemoteShellEnvironment {
                 return false;
             };
             let running = record.borrow().is_running();
-            if running && let Err(error) = self.abort_command(command).await {
+            if running && let Err(error) = self.stop_command(command).await {
                 tracing::debug!(%command, "could not abort the released command: {error}");
             }
             // The output files are the runner's; they stay on the target

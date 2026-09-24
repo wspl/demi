@@ -5,9 +5,9 @@ test('empty queue adds no render blocks', () => {
   expect(queuedMessagesToRenderBlocks([])).toEqual([])
 })
 
-test('queue renders a divider then one bubble per item', () => {
+test('queue renders a divider then one bubble per item, drawn from its content', () => {
   expect(queuedMessagesToRenderBlocks([
-    { id: 'q1', text: 'first' },
+    { id: 'q1', content: [{ type: 'text', text: 'first' }] },
     { id: 'q2', content: [{ type: 'text', text: 'second' }] },
   ])).toEqual([
     { type: 'queue_divider', id: 'queue-divider', count: 2 },

@@ -10,6 +10,7 @@ mod auth;
 mod blobs;
 mod browser;
 mod body;
+mod cloud;
 mod content;
 mod conversations;
 mod cookies;
@@ -22,6 +23,7 @@ mod install;
 mod listener;
 mod models;
 mod panel;
+mod provider_cli;
 mod providers;
 mod query;
 mod runners;
@@ -77,6 +79,8 @@ impl Edge {
     ) -> io::Result<Self> {
         let tcp = TcpListener::bind(address).await?;
         let local_addr = tcp.local_addr()?;
+        // Before the first request: a Cloud's boot names this URL.
+        state.services.cloud.listening(state.site.public_url.as_ref(), local_addr);
         let closing = CancellationToken::new();
         let connections = CancellationToken::new();
         let stop = CancellationToken::new();
@@ -185,6 +189,8 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/providers/{id}/status", get(providers::status))
         .route("/providers/{id}/quota", post(providers::quota))
         .route("/providers/{id}/test", post(providers::test))
+        .route("/providers/{id}/cli", get(provider_cli::read))
+        .route("/providers/{id}/cli/install", post(provider_cli::install))
         .route("/providers/{id}/accounts", get(accounts::list).post(accounts::add_token))
         .route("/providers/{id}/accounts/active", put(accounts::activate))
         .route("/providers/{id}/accounts/login", post(accounts::login_into))
@@ -211,6 +217,8 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/sidebar/reorder", post(sidebar::reorder))
         .route("/workspaces", get(workspaces::list).post(workspaces::create))
         .route("/workspaces/{id}", patch(workspaces::rename).delete(workspaces::delete))
+        .route("/cloud", get(cloud::status))
+        .route("/cloud/reset", post(cloud::reset))
         .route("/devices", get(devices::list))
         .route("/devices/claim", post(devices::claim))
         .route("/devices/{id}", delete(devices::revoke))

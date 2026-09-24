@@ -4,7 +4,6 @@
 // file that was distributed with this source code.
 // spell-checker:disable
 
-use crate::context::FileKindExt as _;
 use crate::context::PathExt as _;
 use crate::error::UError;
 

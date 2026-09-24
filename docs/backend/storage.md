@@ -76,9 +76,11 @@ input, which the multi-worker control service also relies on
   platform, the hash of the device's current token, and claim and last-seen
   times. The token hash is unique, so a runner's token finds its device
   through one index lookup; it is absent until the backend issues a token. A
-  partial unique index permits one managed device per user. `workspaces` names
-  directories on devices; deleting a workspace never deletes its files. Online
-  status comes from live connections, not the last-seen time. `exposes` stores
+  partial unique index permits one managed device per user. A user's paired
+  devices are listed by claim time, oldest first, and two claimed within one
+  millisecond by id. `workspaces` names directories on devices; deleting a
+  workspace never deletes its files. Online status comes from live
+  connections, not the last-seen time. `exposes` stores
   each [Host expose](../execution/expose.md#the-expose-record): id, owner,
   device, target address, creation and expiry time. Expiry, removal, a Cloud
   stop and device revocation delete rows; nothing updates a row except

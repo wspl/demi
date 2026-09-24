@@ -1,7 +1,7 @@
 import { computed, onScopeDispose, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { useSession } from '../auth/session'
-import { z } from 'zod'
+import { fileExtensionSchema } from '@demicodes/protocol'
 import { SerialQueue } from '@demicodes/utils'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { createQuotaRefreshCache } from '@demicodes/web-ui/settings/quota-refresh'
@@ -23,7 +23,22 @@ import {
   type SettingsWireApi,
 } from '@demicodes/web-ui/settings/types'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
-import { providerSchema } from '../api/contracts'
+import {
+  loginAnswerSchema,
+  loginStartedSchema,
+  providerAnswerSchema,
+  providerCliSchema,
+  testResultSchema,
+  type ActivateAccount,
+  type AddToken,
+  type ConfiguredModel,
+  type CreateProvider,
+  type ProviderPatch,
+  type QuotaRequest,
+  type SetupTokenImport,
+  type SubscriptionLogin,
+  type TestRequest,
+} from '../api/generated/web-api'
 import { useResources } from '../state/resources'
 import { useProduct } from '../state/product'
 import { subscriptionName, type ProductProvider } from '../state/catalog'
@@ -220,7 +235,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     select(provider.id)
   }
 
-  function modelConfig(model: SettingsModelDraft) {
+  function modelConfig(model: SettingsModelDraft): ConfiguredModel {
     if (model.contextWindow === null) {
       throw new Error(`Enter a context window for ${model.name || model.id}.`)
     }
@@ -230,9 +245,9 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       contextWindow: model.contextWindow,
       outputLimit: model.outputLimit,
       thinkingEfforts: model.efforts,
-      acceptedExtensions:
-        model.extensions?.map((extension) => extension.replace(/^\./, '')) ??
-        null,
+      acceptedExtensions: model.extensions
+        ? fileExtensionSchema.array().parse(model.extensions.map((extension) => extension.replace(/^\./, '')))
+        : null,
       fastTier: model.fastTier,
     }
   }
@@ -252,35 +267,30 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         : provider.wireApi === 'google-generative'
           ? 'google'
           : 'openai'
+    const shared = {
+      label: provider.name,
+      apiKey: provider.apiKey,
+      ...(provider.baseUrl ? { baseUrl: provider.baseUrl } : {}),
+      ...(provider.modelSource === 'manual'
+        ? { models: provider.models.map(modelConfig) }
+        : {}),
+    }
+    const body: CreateProvider = provider.vendorId
+      ? { source: 'vendor', vendorId: provider.vendorId, ...shared }
+      : {
+          source: 'custom',
+          providerType: family,
+          ...(family === 'openai'
+            ? { wireApi: provider.wireApi === 'openai-chat' ? 'chat-completions' : 'responses' }
+            : {}),
+          ...shared,
+        }
     const response = await apiRequest('/providers', {
       method: 'POST',
       signal,
-      ...jsonBody({
-        ...(provider.vendorId
-          ? { vendorId: provider.vendorId }
-          : {
-              providerType: family,
-              ...(family === 'openai'
-                ? {
-                    wireApi:
-                      provider.wireApi === 'openai-chat'
-                        ? 'chat-completions'
-                        : 'responses',
-                  }
-                : {}),
-            }),
-        label: provider.name,
-        apiKey: provider.apiKey,
-        ...(provider.baseUrl ? { baseUrl: provider.baseUrl } : {}),
-        ...(provider.modelSource === 'manual'
-          ? { models: provider.models.map(modelConfig) }
-          : {}),
-      }),
+      ...jsonBody(body),
     })
-    const saved = await readResponse(
-      response,
-      z.object({ provider: providerSchema }),
-    )
+    const saved = await readResponse(response, providerAnswerSchema)
     signal.throwIfAborted()
     provider.apiKey = ''
     resources.hideProvider(saved.provider.id, provider.enabled)
@@ -292,7 +302,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
 
   async function patch(
     provider: SettingsProviderEntry,
-    body: unknown,
+    body: ProviderPatch,
   ): Promise<void> {
     const signal = lifetime.signal
     await apiRequest(`/providers/${encodeURIComponent(provider.id)}`, {
@@ -463,24 +473,14 @@ export const useProviderSettings = defineStore('provider-settings', () => {
           {
             method: 'POST',
             signal,
-            ...jsonBody({ modelId: model.id, ...(accountId ? { credentialId: accountId } : {}) }),
+            ...jsonBody({ modelId: model.id, ...(accountId ? { credentialId: accountId } : {}) } satisfies TestRequest),
           },
         )
-        const result = await readResponse(
-          response,
-          z.object({
-            ok: z.boolean(),
-            message: z.string().optional(),
-            model: z.string().optional(),
-          }),
-        )
+        const result = await readResponse(response, testResultSchema)
         signal.throwIfAborted()
-        testResults.value[provider.id] = {
-          state: result.ok ? 'ready' : 'error',
-          testPassed: result.ok,
-          detail: result.ok ? undefined : result.message ?? 'The provider gave no reason.',
-          testedWith: result.model,
-        }
+        testResults.value[provider.id] = result.type === 'passed'
+          ? { state: 'ready', testPassed: true, testedWith: result.model }
+          : { state: 'error', testPassed: false, detail: result.message, testedWith: result.model }
       } catch (error) {
         signal.throwIfAborted()
         testResults.value[provider.id] = {
@@ -492,31 +492,19 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     })
   }
 
-  const cliSchema = z.object({
-    newest: z.union([z.object({ version: z.string() }), z.object({ error: z.string() })]),
-    install: z.union([
-      z.object({ state: z.literal('installing') }),
-      z.object({ state: z.literal('installed') }),
-      z.object({ state: z.literal('failed'), message: z.string() }),
-    ]).nullable(),
-    machines: z.array(z.object({
-      deviceId: z.string(),
-      name: z.string(),
-      versions: z.array(z.string()).nullable(),
-    })),
-  })
-
   /**
    * Reads a process provider's CLI. An install under way is read again until
    * it ends: it is the one thing here that changes without the user.
    */
   async function readCli(providerId: string, refresh: boolean, signal: AbortSignal): Promise<void> {
     const path = `/providers/${encodeURIComponent(providerId)}/cli${refresh ? '?refresh=true' : ''}`
-    const cli = await readResponse(await apiRequest(path, { signal }), cliSchema)
+    const cli = await readResponse(await apiRequest(path, { signal }), providerCliSchema)
     signal.throwIfAborted()
     clis.value[providerId] = {
-      newest: cli.newest,
-      install: cli.install,
+      newest: cli.newest.type === 'read' ? { version: cli.newest.version } : { error: cli.newest.message },
+      install: cli.install && (cli.install.state === 'failed'
+        ? { state: 'failed', message: cli.install.message }
+        : { state: cli.install.state }),
       machines: cli.machines.map((machine) => ({
         id: machine.deviceId,
         name: machine.name,
@@ -586,7 +574,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       await apiRequest(`/providers/${encodeURIComponent(provider.id)}/quota`, {
         method: 'POST',
         signal: current.signal,
-        ...jsonBody({ credentialId: accountId }),
+        ...jsonBody({ credentialId: accountId } satisfies QuotaRequest),
       })
       current.signal.throwIfAborted()
       await product.refresh()
@@ -634,7 +622,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
           {
             method: action === 'activate' ? 'PUT' : 'DELETE',
             signal,
-            ...(action === 'activate' ? jsonBody({ credentialId: id }) : {}),
+            ...(action === 'activate' ? jsonBody({ credentialId: id } satisfies ActivateAccount) : {}),
           },
         )
         signal.throwIfAborted()
@@ -643,24 +631,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     )
   }
 
-  const loginSchema = z.object({
-    login: z.discriminatedUnion('status', [
-      z.object({
-        status: z.literal('pending'),
-        verificationUrl: z.string().nullable(),
-        userCode: z.string().nullable(),
-      }),
-      z.object({
-        status: z.literal('completed'),
-        providerId: z.string(),
-        credentialId: z.string(),
-      }),
-      z.object({
-        status: z.literal('failed'),
-        message: z.string(),
-      }),
-    ]),
-  })
   const login = ref<{
     provider: ProductProvider
     phase: ProviderLoginPhase
@@ -699,7 +669,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         `/providers/subscription-login/${encodeURIComponent(loginId!)}`,
         { signal: controller.signal },
       )
-      const result = (await readResponse(response, loginSchema)).login
+      const result = (await readResponse(response, loginAnswerSchema)).login
       controller.signal.throwIfAborted()
       if (!login.value) {
         return
@@ -778,21 +748,12 @@ export const useProviderSettings = defineStore('provider-settings', () => {
           : '/providers/subscription-login',
         {
           method: 'POST',
-          ...jsonBody({
-            providerType: provider.providerType,
-            label: provider.name,
-          }),
+          ...(provider.configured
+            ? {}
+            : jsonBody({ providerType: provider.providerType, label: provider.name } satisfies SubscriptionLogin)),
         },
       )
-      const result = await readResponse(
-        response,
-        z.object({
-          login: z.object({
-            id: z.string(),
-            status: z.literal('pending'),
-          }),
-        }),
-      )
+      const result = await readResponse(response, loginStartedSchema)
       if (controller.signal.aborted) {
         await apiRequest(
           `/providers/subscription-login/${encodeURIComponent(result.login.id)}`,
@@ -829,11 +790,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
           signal: controller.signal,
           ...jsonBody(
             current.provider.configured
-              ? { token }
-              : {
-                  token,
-                  label: current.provider.name,
-                },
+              ? { token } satisfies AddToken
+              : { token, label: current.provider.name } satisfies SetupTokenImport,
           ),
         },
       )

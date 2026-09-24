@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { ThinkingConfig } from '@demicodes/core'
+import type { ThinkingConfig } from '@demicodes/protocol'
 import ModelSelector from '@demicodes/web-ui/agent/ModelSelector.vue'
 import {
   initialModelIntent,
