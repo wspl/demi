@@ -5,7 +5,7 @@
 
 use demi_core::{
     AccountInfo, AuthState, FileExtension, ModelSelection, Nullable, ProviderModel, QuotaSnapshot, RuntimeState,
-    Timestamp,
+    Timestamp, WireApi,
 };
 use garde::Validate;
 use schemars::JsonSchema;
@@ -34,17 +34,6 @@ pub enum CredentialKind {
 
 serde_plain::derive_display_from_serialize!(CredentialKind);
 serde_plain::derive_fromstr_from_deserialize!(CredentialKind);
-
-/// The wire an `openai` entry speaks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-pub enum WireApi {
-    #[serde(rename = "responses")]
-    Responses,
-    #[serde(rename = "chat-completions")]
-    ChatCompletions,
-}
-
-serde_plain::derive_display_from_serialize!(WireApi);
 
 /// One model of an entry's configured list, which states its facts directly
 /// (`models.md` § Catalog sources): its first thinking effort is its

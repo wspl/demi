@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use demi_backend::{FamilyArgs, FamilyCredential, FamilyError, ProviderFamily};
 use demi_core::{
     AuthState, LoginPending, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModel, ProviderModelList,
-    QuotaWindow, RuntimeState, Timestamp,
+    QuotaWindow, RuntimeState, Timestamp, WireApi,
 };
 use demi_provider::credentials::{
     AccountKit, AccountLabel, Accounts, AccountsCapability, AccountsError, AddAccount, LoginError, NewAccount,
@@ -19,7 +19,7 @@ use demi_provider::credentials::{
 use demi_provider::quota::{Observation, ProbeCost, ProbeReading, ProviderQuota, QuotaError, QuotaSource};
 use demi_provider::testing::{ScriptedRuntime, Turn, event};
 use demi_provider::{Capabilities, CatalogError, Provider, ProviderRuntime, RuntimeEnv, RuntimeError};
-use demi_web_api::providers::{CredentialKind, WireApi};
+use demi_web_api::providers::CredentialKind;
 use futures_util::future::BoxFuture;
 use tokio::sync::watch;
 

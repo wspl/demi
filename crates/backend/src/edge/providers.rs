@@ -10,6 +10,7 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use demi_core::WireApi;
 use demi_provider::quota::QuotaError;
 use demi_provider::{Provider, Secret};
 use demi_web_api::auth::UserDto;
@@ -17,7 +18,7 @@ use demi_web_api::error::ErrorCode;
 use demi_web_api::ids::{CredentialId, ProviderId};
 use demi_web_api::providers::{
     CreateProvider, CredentialKind, ProviderAnswer, ProviderDetails, ProviderPatch, Providers, QuotaAnswer,
-    QuotaRequest, SubscriptionFamily, TestRequest, TestResult, VendorCatalog, WireApi,
+    QuotaRequest, SubscriptionFamily, TestRequest, TestResult, VendorCatalog,
 };
 use demi_web_api::text::EndpointUrl;
 

@@ -18,7 +18,9 @@ demi-gates = { path = "../gates" }
 demi-host-remote = { path = "../host-remote" }
 demi-provider = { path = "../provider" }
 demi-provider-anthropic-api = { path = "../provider-anthropic-api" }
+demi-provider-codex = { path = "../provider-codex" }
 demi-provider-google = { path = "../provider-google" }
+demi-provider-grok-build = { path = "../provider-grok-build" }
 demi-provider-openai-api = { path = "../provider-openai-api" }
 demi-runner-protocol = { path = "../runner-protocol" }
 demi-shell = { path = "../shell" }
