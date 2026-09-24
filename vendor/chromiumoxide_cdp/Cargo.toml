@@ -71,5 +71,9 @@ features = [
 
 [package.metadata.demi]
 maintainer = "demi-commands"
-patches = ["ClientSecurityState uses the Chrome 153 local network access policy field and type"]
+patches = [
+    "ClientSecurityState uses the Chrome 153 local network access policy field and type",
+    "The pinned protocol (pdl/protocol.json) and its generator (tools/generate) are kept beside the generated src/cdp.rs",
+    "License files have Unix line endings",
+]
 protocol-source = "https://chromium.googlesource.com/chromium/src/+/153.0.8010.36/third_party/blink/public/devtools_protocol/domains/Network.pdl"

@@ -80,3 +80,11 @@ inherits = "release"
 
 [dependencies.uucore]
 version = "0.11.0"
+
+[package.metadata.demi]
+maintainer = "demi-runner"
+patches = [
+    "The utilities' main functions return their exit code instead of a process ExitCode, and exit through uucore::context, so the runner can embed them",
+    "Files, streams, the environment, printing and exit go through uucore::context, so a run embedded in a shell job uses the job's working directory, environment, standard streams and cancellation, and exit ends only the utility",
+    "The release's tests, benchmarks, examples and CI files are left out",
+]
