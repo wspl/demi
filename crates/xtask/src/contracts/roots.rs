@@ -67,8 +67,8 @@ pub fn protocol() -> Vec<Root> {
 /// `packages/web/src/api/generated`: every REST request and response body.
 pub fn web() -> Vec<Root> {
     use api::{
-        attachments, auth, browser, cloud, conversations, devices, error, files, hosts, panel, providers, settings, sidebar,
-        state, usage, users, workspaces,
+        attachments, auth, browser, cloud, conversations, devices, error, exposes, files, hosts, panel, providers, settings,
+        sidebar, state, usage, users, workspaces,
     };
     vec![
         receives::<error::ErrorBody>(),
@@ -112,6 +112,9 @@ pub fn web() -> Vec<Root> {
         receives::<cloud::CloudStatus>(),
         sends::<cloud::CloudReset>(),
         receives::<cloud::CloudResetAnswer>(),
+        receives::<exposes::Exposes>(),
+        sends::<exposes::CreateExpose>(),
+        receives::<exposes::ExposeAnswer>(),
         sends::<conversations::CreateConversation>(),
         receives::<conversations::ConversationAnswer>(),
         receives::<conversations::Conversations>(),
