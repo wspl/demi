@@ -25,17 +25,18 @@ const PAIRING: Duration = Duration::from_secs(15);
 pub fn runner_binary() -> PathBuf {
     std::env::var_os("DEMI_RUNNER_TEST_BINARY")
         .map(PathBuf::from)
-        .unwrap_or_else(|| built("demi-runner"))
+        .unwrap_or_else(|| built_program("demi-runner"))
 }
 
 /// The runner's native fixture service, which the one test selection builds
 /// (`--features demi-runner/test-fixtures`).
 pub fn native_fixture_binary() -> PathBuf {
-    built("demi-native-fixture")
+    built_program("demi-native-fixture")
 }
 
-/// A program Cargo built into the target directory this test runs from.
-fn built(name: &str) -> PathBuf {
+/// A program Cargo built into the target directory this test runs from,
+/// such as a workspace crate's executable.
+pub fn built_program(name: &str) -> PathBuf {
     let executable = std::env::current_exe().expect("the test knows its executable");
     let directory = executable
         .parent()
