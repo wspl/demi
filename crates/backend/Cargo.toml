@@ -15,6 +15,7 @@ demi-agent = { path = "../agent" }
 demi-agent-protocol = { path = "../agent-protocol" }
 demi-artifact = { path = "../artifact" }
 demi-builtin-protocol = { path = "../builtin-protocol" }
+demi-claude-protocol = { path = "../claude-protocol" }
 demi-coding-agent = { path = "../coding-agent" }
 demi-command-service = { path = "../command-service" }
 demi-command-tree = { path = "../command-tree" }
@@ -24,6 +25,7 @@ demi-host-remote = { path = "../host-remote" }
 demi-machines-protocol = { path = "../machines-protocol" }
 demi-provider = { path = "../provider" }
 demi-provider-anthropic-api = { path = "../provider-anthropic-api" }
+demi-provider-claude-code = { path = "../provider-claude-code" }
 demi-provider-codex = { path = "../provider-codex" }
 demi-provider-google = { path = "../provider-google" }
 demi-provider-grok-build = { path = "../provider-grok-build" }

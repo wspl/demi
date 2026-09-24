@@ -18,6 +18,7 @@ use demi_provider::models_dev::ModelsDevClient;
 
 use crate::auth::email_change::AccountMail;
 use crate::conversation::stream::BROWSER_STREAM;
+use crate::llm::claude_releases::DEFAULT_RELEASES_URL;
 use crate::llm::families::FamilyRegistry;
 use crate::runner::native::NativeCatalog;
 use crate::shard::ShardPlacement;
@@ -74,6 +75,14 @@ pub struct Config {
     /// The runner releases the installer routes serve
     #[arg(long, env = "DEMI_RUNNER_RELEASE_DIR", value_name = "DEMI_RUNNER_RELEASE_DIR")]
     pub runner_release_dir: Option<PathBuf>,
+    /// The Claude Code distribution whose newest release the CLI on each Cloud follows
+    #[arg(
+        long,
+        env = "DEMI_CLAUDE_RELEASES_URL",
+        value_name = "DEMI_CLAUDE_RELEASES_URL",
+        default_value = DEFAULT_RELEASES_URL
+    )]
+    pub claude_releases_url: Url,
 }
 
 /// A configuration value clap cannot check by itself.
@@ -116,6 +125,7 @@ impl Config {
         config.public_url = Some(public_url);
         config.runner_releases = self.runner_release_dir.clone();
         config.change_store = self.change_store_config.clone();
+        config.claude_releases = self.claude_releases_url.clone();
         Ok(config)
     }
 }
@@ -155,6 +165,9 @@ pub struct BackendConfig {
     pub families: FamilyRegistry,
     /// Where the models.dev document is read.
     pub models_dev_url: Url,
+    /// The Claude Code distribution whose newest release the CLI on each
+    /// Cloud follows (`claude-code.md` § Which version).
+    pub claude_releases: Url,
     /// How long a device login waits for its user, and how long its result
     /// is kept.
     pub logins: LoginTiming,
@@ -319,6 +332,7 @@ impl BackendConfig {
             shards: ShardPlacement::Threads(NonZeroUsize::MIN),
             families: FamilyRegistry::builtin(),
             models_dev_url: ModelsDevClient::DEFAULT_URL.parse().expect("the models.dev address parses"),
+            claude_releases: DEFAULT_RELEASES_URL.parse().expect("the Claude Code distribution's address parses"),
             logins: LoginTiming::default(),
             runners: RunnerTuning::default(),
             conversations: ConversationTuning::default(),

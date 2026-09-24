@@ -23,6 +23,7 @@ mod install;
 mod listener;
 mod models;
 mod panel;
+mod provider_cli;
 mod providers;
 mod query;
 mod runners;
@@ -188,6 +189,8 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/providers/{id}/status", get(providers::status))
         .route("/providers/{id}/quota", post(providers::quota))
         .route("/providers/{id}/test", post(providers::test))
+        .route("/providers/{id}/cli", get(provider_cli::read))
+        .route("/providers/{id}/cli/install", post(provider_cli::install))
         .route("/providers/{id}/accounts", get(accounts::list).post(accounts::add_token))
         .route("/providers/{id}/accounts/active", put(accounts::activate))
         .route("/providers/{id}/accounts/login", post(accounts::login_into))

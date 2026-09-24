@@ -63,7 +63,9 @@ kill the process without waiting.
 ## Which version
 
 The version Demi wants is the vendor's newest: the `latest` pointer of the
-official distribution (`https://downloads.claude.ai/claude-code-releases`).
+official distribution (`https://downloads.claude.ai/claude-code-releases`,
+which `DEMI_CLAUDE_RELEASES_URL` can replace for a test or a mirror;
+[Configuration](../backend/backend.md#configuration)).
 Nothing stores a wanted version. The backend reads the pointer and that
 version's `manifest.json`, which gives each platform's byte size and SHA-256,
 and keeps the answer for six hours; **Check for updates** reads it again at

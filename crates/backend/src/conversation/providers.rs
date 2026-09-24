@@ -11,7 +11,7 @@
 
 use std::cell::RefCell;
 use std::num::NonZeroU32;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
 use demi_agent::{ProviderResolver, ResolveError};
@@ -26,12 +26,16 @@ use futures_util::{StreamExt as _, stream};
 use super::conversation_of;
 use crate::backend::Services;
 use crate::llm::catalog::configured_selection;
+use crate::llm::claude_cli::{CloudPlacement, ProcessWork};
+use crate::shard::Shard;
 use crate::usage::meter::{Ledger, MeteredRuntime};
 use crate::usage::rate_limit::RequestRateLimit;
 use crate::vault::entries::{EntryCredential, ProviderEntry};
 
 /// Where the user's sessions get their runtimes.
 pub(super) struct ConversationProviders {
+    /// The user's shard, whose Cloud runs a provider's process.
+    shard: Weak<Shard>,
     user: UserId,
     services: Arc<Services>,
     /// The shard's HTTP client, which its runtimes send with.
@@ -41,12 +45,14 @@ pub(super) struct ConversationProviders {
 
 impl ConversationProviders {
     pub(super) fn new(
+        shard: Weak<Shard>,
         user: UserId,
         services: Arc<Services>,
         http: reqwest::Client,
         rate_limit: Rc<RefCell<RequestRateLimit>>,
     ) -> Self {
         Self {
+            shard,
             user,
             services,
             http,
@@ -68,6 +74,7 @@ impl ProviderResolver for ConversationProviders {
             let unknown = || ResolveError::Unknown(model.provider_id.clone());
             let provider = ProviderId::try_from(model.provider_id.as_str()).map_err(|_| unknown())?;
             let scope = Rc::new(Scope {
+                shard: self.shard.clone(),
                 services: self.services.clone(),
                 user: self.user.clone(),
                 conversation: conversation_of(root),
@@ -99,6 +106,7 @@ impl ProviderResolver for ConversationProviders {
 /// Whose requests a session's runtime makes, and what it builds its
 /// runtimes with.
 struct Scope {
+    shard: Weak<Shard>,
     services: Arc<Services>,
     user: UserId,
     conversation: ConversationId,
@@ -190,11 +198,25 @@ impl ConversationRuntime {
             .as_ref()
             .is_some_and(|current| Arc::ptr_eq(&current.provider, &provider) && current.model == selection.model.id);
         if !kept {
-            let runtime = provider
-                .runtime(RuntimeEnv {
-                    http: scope.http.clone(),
-                })
-                .map_err(|error| refused(error.to_string(), None))?;
+            // A provider that runs a process gets it on the user's Cloud,
+            // whatever the conversation's target (`claude-code.md` § Where it
+            // runs).
+            let runtime = if provider.capabilities().process_host {
+                let work = ProcessWork::Conversation(scope.conversation.clone());
+                let placement = CloudPlacement::new(scope.shard.clone(), work);
+                scope
+                    .services
+                    .assembly
+                    .process_runtime(entry, entry.active(), placement)
+                    .await
+                    .map_err(|error| refused(error.to_string(), None))?
+            } else {
+                provider
+                    .runtime(RuntimeEnv {
+                        http: scope.http.clone(),
+                    })
+                    .map_err(|error| refused(error.to_string(), None))?
+            };
             let ledger = Ledger {
                 control: scope.services.control.clone(),
                 user: scope.user.clone(),
