@@ -66,9 +66,12 @@ impl QuotaSource for ClaudeQuota {
                     status.as_u16()
                 )));
             }
-            let usage: Usage = serde_json::from_str(&body).map_err(|error| {
-                QuotaError::Invalid(format!("Claude usage answer cannot be read: {error}"))
-            })?;
+            let invalid = |reason: String| {
+                QuotaError::Invalid(format!("Claude usage answer cannot be read: {reason}"))
+            };
+            let answer: serde_json::Value =
+                serde_json::from_str(&body).map_err(|error| invalid(error.to_string()))?;
+            let usage = usage(&answer).ok_or_else(|| invalid("it is not an object".into()))?;
             Ok(ProbeReading {
                 plan: None,
                 account_label: None,
@@ -86,8 +89,7 @@ impl QuotaSource for ClaudeQuota {
         let limits = line
             .get("rate_limits")
             .or_else(|| line.get("message")?.get("rate_limits"))?;
-        let usage = Usage::deserialize(limits).ok()?;
-        let windows = usage.windows();
+        let windows = usage(limits)?.windows();
         (!windows.is_empty()).then_some(windows)
     }
 }
@@ -102,6 +104,15 @@ struct Usage {
     seven_day_sonnet: Reported<Window>,
     seven_day_opus: Reported<Window>,
     limits: Reported<Vec<Reported<Limit>>>,
+}
+
+/// The usage `value` reports, when it is an object: serde's derive would
+/// read an array's items as the fields in order.
+fn usage(value: &serde_json::Value) -> Option<Usage> {
+    if !value.is_object() {
+        return None;
+    }
+    Usage::deserialize(value).ok()
 }
 
 /// One of the named windows.
