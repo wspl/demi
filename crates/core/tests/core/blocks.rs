@@ -104,53 +104,28 @@ fn without(mut value: Value, pointer: &str) -> Value {
     value
 }
 
+/// The block a case of `fixtures/blocks-mutations.json` describes: its
+/// fixture, by id, with the fields it names removed and set.
+fn mutated(case: &Value) -> Value {
+    let mut value = fixture(case["fixture"].as_str().unwrap());
+    for pointer in case["remove"].as_array().into_iter().flatten() {
+        value = without(value, pointer.as_str().unwrap());
+    }
+    for (pointer, field) in case["set"].as_object().into_iter().flatten() {
+        value = with(value, pointer, field.clone());
+    }
+    value
+}
+
+/// The cases the browser's generated schemas are checked with too; each
+/// says whether the browser refuses it as well (`contracts.md` § Strict and
+/// tolerant objects, § Rules only Rust checks).
 #[test]
 fn stored_blocks_refuse_what_the_contract_does_not_hold() {
-    let completion = "subagent:child-1:1790000000000";
-    let refused = [
-        ("an unknown field", with(fixture("u1"), "/unknown", json!(1))),
-        ("a hidden flag", with(fixture("u1"), "/hidden", json!(true))),
-        ("a resolved content field", with(fixture("u1"), "/resolvedContent", json!([]))),
-        ("a nullable field that is absent", without(fixture("u1"), "/preamble")),
-        ("an optional field that is null", with(fixture("u1"), "/content/8/snippet", Value::Null)),
-        ("a block kind the transcript does not have", with(fixture("r1"), "/type", json!("extension_state_snapshot"))),
-        ("an empty id", with(fixture("u1"), "/id", json!(""))),
-        ("a time that is not RFC 3339", with(fixture("u1"), "/createdAt", json!("yesterday"))),
-        ("a time finer than a millisecond", with(fixture("u1"), "/createdAt", json!("2026-09-21T14:13:20.000123Z"))),
-        ("client content in a stored block", with(fixture("u1"), "/content/0", json!({"type": "upload", "ref": "a1", "fileName": "a.txt"}))),
-        ("an untagged media source", with(fixture("u1"), "/content/1/source", json!({"mediaType": "image/png", "data": "iVBORw0KGgo="}))),
-        ("bytes that are not base64", with(fixture("u1"), "/content/1/source/data", json!("not base64!"))),
-        ("a blob reference that is not a SHA-256", with(fixture("u1"), "/content/2/source/ref", json!("sha-1-2-3"))),
-        ("a blob reference that is not a string", with(fixture("u1"), "/content/2/source/ref", json!(42))),
-        ("a document source without its tag", with(fixture("u1"), "/content/5/source", json!({"data": "JVBERi0xLjc=", "mediaType": "application/pdf", "fileName": "spec.pdf"}))),
-        ("an attachment without a name", with(fixture("u1"), "/content/8/name", json!(""))),
-        ("an attachment hash that is not a SHA-256", with(fixture("u1"), "/content/8/sha256", json!("abc"))),
-        ("a size beyond JavaScript's safe integers", with(fixture("u1"), "/content/8/sizeBytes", json!(9_007_199_254_740_992_u64))),
-        ("an output limit of zero", with(fixture("u1"), "/model/model/outputLimit", json!(0))),
-        ("an output limit that is not whole", with(fixture("u1"), "/model/model/outputLimit", json!(1.5))),
-        ("an extension outside the native set", with(fixture("u1"), "/model/model/acceptedExtensions/0", json!("txt"))),
-        ("a selection without its service tier", without(fixture("u1"), "/model/serviceTierId")),
-        ("a field on a capability that has none", with(fixture("u1"), "/model/model/thinking/3/extra", json!(1))),
-        ("an effort setting without its summary", with(fixture("u1"), "/model/thinking", json!({"type": "effort", "effort": "high"}))),
-        ("a receipt whose block is not its message's", with(fixture("m1"), "/id", json!("m2"))),
-        ("an explicit agent message that is blank", with(fixture("m1"), "/message/content", json!(" \u{feff}\n"))),
-        ("a round that is negative", with(fixture("m1"), "/message/sender/round", json!(-1))),
-        ("a completion whose id names another round", with(with(fixture(completion), "/id", json!("subagent:child-1:1")), "/message/id", json!("subagent:child-1:1"))),
-        ("a forkable flag that is null", with(fixture("t1"), "/forkable", Value::Null)),
-        ("a streaming output field", with(fixture("tc1"), "/streamingOutput", json!([]))),
-        ("a tool call status the transcript does not have", with(fixture("tc1"), "/status", json!("running"))),
-        ("a view kind no tool has", with(fixture("tc2"), "/view/kind", json!("tool_error"))),
-        ("an exit code that is null", with(fixture("tc2"), "/view/exitCode", Value::Null)),
-        ("an edited file without segments", with(fixture("tc2"), "/view/files/0/edits", json!([]))),
-        ("an unknown view field", with(fixture("tc2"), "/view/unknown", json!(1))),
-        ("a negative repeat count", with(fixture("tc3"), "/view/count", json!(-1))),
-        ("diagnostics that are null", with(fixture("e1"), "/diagnostics", Value::Null)),
-        ("a failure source outside the set", with(fixture("e1"), "/diagnostics/source", json!("vendor"))),
-        ("an error without its code", without(fixture("e2"), "/code")),
-        ("a marker without its boundary", with(fixture("cm1"), "/boundaryId", json!(""))),
-    ];
-    for (why, value) in refused {
-        assert!(decode_value(&value).is_err(), "{why} was accepted: {value}");
+    let table: Value = serde_json::from_str(include_str!("fixtures/blocks-mutations.json")).unwrap();
+    for case in table["refused"].as_array().unwrap() {
+        let value = mutated(case);
+        assert!(decode_value(&value).is_err(), "{} was accepted: {value}", case["why"]);
     }
 }
 
