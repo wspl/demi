@@ -83,8 +83,8 @@ impl Shard {
         }
         let services = self.services();
         let runs = match services.vault.visible(self.user(), provider).await {
-            Ok(Some(entry)) => match services.assembly.provider_for(&entry).await {
-                Ok(built) => built.capabilities().process_host,
+            Ok(Some(entry)) => match services.assembly.runs_a_process(&entry).await {
+                Ok(runs) => runs,
                 Err(error) => {
                     tracing::warn!(provider = %provider, "a conversation's provider could not be built: {error}");
                     false
