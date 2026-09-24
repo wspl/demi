@@ -4,12 +4,11 @@ import { SerialQueue } from '@demicodes/utils'
 import { apiRequest, readResponse } from '../api/client'
 import {
   modelCatalogSchema,
-  productStateSchema,
   vendorCatalogSchema,
   type CatalogProvider,
-  type ProductState,
   type VendorCatalog,
-} from '../api/contracts'
+} from '../api/generated/web-api'
+import { productStateSchema, type ProductState } from '../api/unported'
 
 /** One account snapshot; REST polling never replaces agent transcript state. */
 export const useProduct = defineStore('product', () => {
@@ -26,8 +25,8 @@ export const useProduct = defineStore('product', () => {
     ? 'ready' : modelError.value?.key === catalogKey.value ? 'failed' : 'loading')
   const activeConversationId = ref<string | null>(null)
   const catalogKey = computed(() => JSON.stringify((snapshot.value?.providers ?? []).map(provider => {
-    const { details, error: _error, ...config } = provider
-    return { ...config, account: details?.active?.credentialId ?? null }
+    const { details, ...config } = provider
+    return { ...config, account: details.type === 'read' ? details.active : null }
   })))
   const catalog = computed(() => modelSnapshot.value?.key === catalogKey.value
     ? modelSnapshot.value.providers : [])

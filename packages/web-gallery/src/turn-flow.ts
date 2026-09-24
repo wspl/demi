@@ -1,5 +1,5 @@
 import { onBeforeUnmount, reactive } from 'vue'
-import type { Block, UserContentBlock } from '@demicodes/core'
+import type { Block, UserContentBlock } from '@demicodes/protocol'
 import { ACTIVITY_HANDOFF_MS } from '@demicodes/web-ui/agent/activity-slot'
 import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
@@ -160,8 +160,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
         script: 'rg -n "sid" packages/web/src/auth.test.ts',
         description: 'Find the old cookie name in the login test',
       }),
-      streamingOutput: [],
-      output,
+        output,
       view: shellView({
         commandId: `cmd-${id}`,
         status: status === 'executing' ? 'running' : 'exited',

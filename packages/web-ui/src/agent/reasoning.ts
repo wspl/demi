@@ -1,4 +1,4 @@
-import type { ThinkingConfig } from '@demicodes/core'
+import type { ThinkingConfig } from '@demicodes/protocol'
 import { clamp } from '@demicodes/utils'
 import type { ModelInfo } from '../transport/protocol'
 

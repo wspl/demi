@@ -1,4 +1,4 @@
-import type { Block, PendingSteer, ProviderFailureFacts, QueuedMessage, SessionPhase } from '@demicodes/core'
+import type { Block, PendingSteer, ProviderFailureFacts, QueuedMessage, SessionPhase } from '@demicodes/protocol'
 import type { PendingAction } from './activity-slot'
 import type { SessionLoad } from './session-status'
 import type { SubagentRecord } from './subagents'

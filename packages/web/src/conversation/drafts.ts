@@ -1,16 +1,9 @@
 import { z } from 'zod'
-import { conversationRecordSchema, hostsSchema } from '../api/contracts'
-import { editRequestSchema } from '@demicodes/web-ui/transport/protocol'
-import type { MessageEditState } from '@demicodes/web-ui/agent/message-editing'
-import { displayedUserContentSchema } from '../api/transcript'
+import { attachedHostSchema, conversationSummarySchema } from '../api/generated/web-api'
+import { messageEditStateSchema } from '@demicodes/web-ui/agent/message-editing'
 import { modelIntentSchema } from '@demicodes/web-ui/agent/model-selection'
 
-const messageEditSchema: z.ZodType<MessageEditState> = z.object({
-  phase: z.enum(['editing', 'sending', 'uncertain']),
-  request: editRequestSchema.extend({ content: z.array(displayedUserContentSchema) }),
-})
-
-/** The attachment id the backend returned for the upload. */
+/** The upload the backend took: the attachment id a message names the file by. */
 const uploadSchema = z.object({ id: z.string() })
 const fileSchema = z.object({
   kind: z.literal('file'),
@@ -18,6 +11,8 @@ const fileSchema = z.object({
   name: z.string(),
   file: z.instanceof(File),
   upload: uploadSchema.nullable(),
+  /** A text file's opening, as the backend answered its upload. */
+  snippet: z.string().optional(),
 })
 const remoteSchema = z.object({
   kind: z.literal('reference'),
@@ -28,7 +23,7 @@ const remoteSchema = z.object({
   deviceId: z.string(),
 })
 export const draftSchema = z.object({
-  messageEdit: messageEditSchema.nullable().optional(),
+  messageEdit: messageEditStateSchema.nullable().optional(),
   pendingSend: z
     .object({
       id: z.uuid(),
@@ -40,7 +35,7 @@ export const draftSchema = z.object({
   local: z
     .object({
       phase: z.enum(['draft', 'pending']),
-      conversation: conversationRecordSchema.pick({
+      conversation: conversationSummarySchema.pick({
         id: true,
         title: true,
         pinned: true,
@@ -49,7 +44,7 @@ export const draftSchema = z.object({
         createdAt: true,
         updatedAt: true,
       }),
-      hosts: z.array(hostsSchema.shape.hosts.element.omit({ online: true })),
+      hosts: z.array(attachedHostSchema.pick({ deviceId: true, name: true, cwd: true })),
     })
     .nullable(),
   text: z.string(),

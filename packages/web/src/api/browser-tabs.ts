@@ -1,12 +1,14 @@
-import {
-  BrowserTabsError,
-  browserTabInfoSchema,
-  browserTabListSchema,
-  type BrowserTabsApi,
-} from '@demicodes/web-ui/browser/tabs'
+import { BrowserTabsError, type BrowserTabsApi } from '@demicodes/web-ui/browser/tabs'
 import { liveStreamAt } from '@demicodes/web-ui/transport/live-stream'
 import { reportActivity } from './activity'
 import { ApiError, apiRequest, apiUrl, jsonBody, readResponse } from './client'
+import {
+  browserTabSchema,
+  browserTabsSchema,
+  type NavigateTab,
+  type OpenTab,
+  type TabHistory,
+} from './generated/web-api'
 
 /**
  * Opening a tab may start the browser, on a Cloud that was stopped: the
@@ -35,19 +37,19 @@ export function browserTabsApi(conversationId: string): BrowserTabsApi {
   const stream = new URL(apiUrl(`${base}/streams/browser`), window.location.href)
   stream.protocol = stream.protocol === 'https:' ? 'wss:' : 'ws:'
   return {
-    list: async () => readResponse(await request(tabs), browserTabListSchema),
+    list: async () => readResponse(await request(tabs), browserTabsSchema),
     open: async (url) => readResponse(
-      await request(tabs, { method: 'POST', timeoutMs: OPEN_TIMEOUT_MS, ...jsonBody({ url }) }),
-      browserTabInfoSchema,
+      await request(tabs, { method: 'POST', timeoutMs: OPEN_TIMEOUT_MS, ...jsonBody({ url } satisfies OpenTab) }),
+      browserTabSchema,
     ),
     close: async (tab) => {
       await request(`${tabs}/${encodeURIComponent(tab)}`, { method: 'DELETE' })
     },
     navigate: async (tab, url) => {
-      await request(`${tabs}/${encodeURIComponent(tab)}/navigate`, { method: 'POST', ...jsonBody({ url }) })
+      await request(`${tabs}/${encodeURIComponent(tab)}/navigate`, { method: 'POST', ...jsonBody({ url } satisfies NavigateTab) })
     },
     history: async (tab, action) => {
-      await request(`${tabs}/${encodeURIComponent(tab)}/history`, { method: 'POST', ...jsonBody({ action }) })
+      await request(`${tabs}/${encodeURIComponent(tab)}/history`, { method: 'POST', ...jsonBody({ action } satisfies TabHistory) })
     },
     stream: liveStreamAt(stream.toString()),
     onOperation: () => void reportActivity(conversationId),

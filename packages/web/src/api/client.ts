@@ -1,15 +1,15 @@
 import { z } from 'zod'
+import { errorBodySchema, type ErrorCode } from './generated/web-api'
 
-const errorSchema = z.object({
-  code: z.string(),
-  message: z.string(),
-})
-
+/**
+ * A request the backend refused, with its `{ code, message }`; `code` is null
+ * when something in front of the backend answered instead.
+ */
 export class ApiError extends Error {
   readonly status: number
-  readonly code: string
+  readonly code: ErrorCode | null
 
-  constructor(status: number, code: string, message: string) {
+  constructor(status: number, code: ErrorCode | null, message: string) {
     super(message)
     this.name = 'ApiError'
     this.status = status
@@ -28,7 +28,7 @@ export function onSessionExpired(handler: () => void): () => void {
   }
 }
 
-export function notifySessionExpired(code: string): void {
+export function notifySessionExpired(code: ErrorCode): void {
   if (code === 'unauthenticated') {
     expired?.()
   }
@@ -100,13 +100,13 @@ export function apiError(status: number, text: string): ApiError {
     // A reverse proxy can return HTML instead of the backend error contract.
     body = null
   }
-  const parsed = errorSchema.safeParse(body)
+  const parsed = errorBodySchema.safeParse(body)
   if (parsed.success) {
     notifySessionExpired(parsed.data.code)
   }
   return new ApiError(
     status,
-    parsed.success ? parsed.data.code : 'http_error',
+    parsed.success ? parsed.data.code : null,
     parsed.success ? parsed.data.message : `Request failed (${status})`,
   )
 }

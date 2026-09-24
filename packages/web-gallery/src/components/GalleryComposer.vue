@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref } from 'vue'
-import type { ThinkingConfig, TokenUsage, UserContentBlock } from '@demicodes/core'
+import { previewMediaType, type ThinkingConfig, type TokenUsage, type UserContentBlock } from '@demicodes/protocol'
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
 import { joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
@@ -12,7 +12,6 @@ import {
   arrangeCapsuleFiles,
   AttachmentUploadQueue,
   attachmentFileError,
-  attachTextSnippet,
   composerAttachment,
   composerAttachmentFromFile,
   composerFileNames,
@@ -23,12 +22,14 @@ import {
   type AttachmentUploadUpdate,
   type ComposerAttachment,
   type ComposerAttachmentInput,
+  type UploadedFile,
+  type UploadFile,
 } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { ModelInfo, ProviderInfo } from '@demicodes/web-ui/transport/protocol'
 import { demoUsage } from '../fixtures/blocks'
 import { demoModels, demoProviders } from '../fixtures/catalog'
 import { createGalleryRemoteFileHosts } from '../fixtures/files'
-import { sweepUpload } from '../fixtures/upload-sweep'
+import { galleryUploads } from '../fixtures/upload-sweep'
 
 const props = withDefaults(
   defineProps<{
@@ -54,6 +55,8 @@ const props = withDefaults(
     archived?: boolean
     hold?: string | null
     messageEdit?: MessageEditState | null
+    /** The uploads this composer and its edits send files through; its own stand-in without one. */
+    upload?: UploadFile
   }>(),
   {
     draft: '',
@@ -80,6 +83,20 @@ const attached = ref(props.attachments.map((item) => composerAttachment(item)))
 const carried = ref<string[]>(attached.value.map((item) => item.id))
 const composer = ref<InstanceType<typeof SessionComposer>>()
 const uploads = new AttachmentUploadQueue()
+const host = galleryUploads()
+/** The gallery's stand-in for the backend, unless the page that holds this composer brings its own. */
+const upload: UploadFile = (file, options) => (props.upload ?? host.upload)(file, options)
+/**
+ * The bytes of each file the composer carries, and what its upload answered
+ * once it has. A file the specimen starts with stands in without bytes, under
+ * its name, so that its upload can go again as a picked one's does.
+ */
+const picked = new Map<string, File>(
+  attached.value.flatMap((item) =>
+    isComposerFile(item) ? [[item.id, new File([], item.name, { type: previewMediaType(item.name) ?? '' })]] : [],
+  ),
+)
+const answers = new Map<string, UploadedFile>()
 const providerId = ref(props.selectedProviderId)
 const modelId = ref(props.selectedModelId)
 const tier = ref(props.serviceTierId ?? null)
@@ -101,6 +118,8 @@ const sentPictures: string[] = []
 
 function forget(id: string, release: boolean) {
   uploads.cancel(id)
+  picked.delete(id)
+  answers.delete(id)
   const item = attached.value.find((file) => file.id === id)
   if (item && isComposerFile(item) && item.src?.startsWith('blob:')) {
     if (release) {
@@ -123,9 +142,10 @@ function arrange(ids: string[]) {
   for (const item of next.stopped) {
     uploads.cancel(item.id)
   }
+  // A file whose upload a deleted capsule stopped starts over; one still uploading goes on.
   for (const item of next.resumed) {
-    if (isComposerFile(item) && item.phase !== 'ready') {
-      upload(item.id)
+    if (isComposerFile(item) && item.phase !== 'ready' && !uploads.has(item.id)) {
+      startUpload(item.id)
     }
   }
 }
@@ -135,14 +155,15 @@ function sentBlocks(item: ComposerAttachment): UserContentBlock[] {
   if (item.kind === 'reference') {
     return [{ type: 'reference', reference: encodeRemoteReference(item.host, item.path) }]
   }
+  const answer = answers.get(item.id)
   const record: UserContentBlock = {
     type: 'attachment',
     name: item.name,
     path: `/home/demi/.demi/attachments/gallery/${item.name}`,
-    mediaType: item.src ? 'image/png' : 'application/octet-stream',
-    sizeBytes: 0,
-    sha256: 'gallery',
-    snippet: item.snippet,
+    mediaType: answer?.mediaType ?? 'application/octet-stream',
+    sizeBytes: picked.get(item.id)?.size ?? 0,
+    sha256: answer?.sha256 ?? '0'.repeat(64),
+    ...(item.snippet ? { snippet: item.snippet } : {}),
   }
   return item.src ? [{ type: 'image', source: { type: 'url', url: item.src } }, record] : [record]
 }
@@ -165,25 +186,35 @@ function submit() {
   }
 }
 
-function upload(id: string) {
-  // The sweep never fails; were it to, the file would keep its capsule with Retry, as the product's does.
-  uploads.start(id, sweepUpload, (update) => applyUpdate(id, update)).catch(() => applyUpdate(id, { phase: 'failed' }))
+function startUpload(id: string) {
+  const file = picked.get(id)
+  if (!file) {
+    return
+  }
+  // The stand-in never fails; were it to, the file would keep its capsule with Retry, as the product's does.
+  uploads.start(id, async (signal, report) => {
+    const answer = await upload(file, { signal, progress: report })
+    answers.set(id, answer)
+    const item = attached.value.find((each) => each.id === id)
+    if (item && isComposerFile(item)) {
+      item.snippet = answer.snippet
+    }
+  }, (update) => applyUpdate(id, update)).catch(() => applyUpdate(id, { phase: 'failed' }))
 }
 
 /** Takes files and puts their capsules in the message, where the composer said they would land. */
-async function addFiles(files: File[]) {
+function addFiles(files: File[]) {
   const taken: ComposerAttachment[] = []
   for (const file of files) {
     if (attachmentFileError(file, composerFileNames(attached.value))) {
       continue
     }
     const item = composerAttachmentFromFile(file)
-    // A text file's opening belongs to its capsule, so it is read before the capsule goes in.
-    await attachTextSnippet(item, file)
+    picked.set(item.id, file)
     attached.value.push(item)
     const held = attached.value.find((each) => each.id === item.id)!
     taken.push(held)
-    upload(item.id)
+    startUpload(item.id)
   }
   composer.value?.insertCapsules(taken.map(composerCapsule))
 }
@@ -191,7 +222,7 @@ async function addFiles(files: File[]) {
 function retry(id: string) {
   const item = attached.value.find((file) => file.id === id)
   if (item && isComposerFile(item) && item.phase === 'failed') {
-    upload(id)
+    startUpload(id)
   }
 }
 
@@ -211,6 +242,7 @@ function selectModel(provider: string, model: string) {
 }
 onBeforeUnmount(() => {
   uploads.cancelAll()
+  host.release()
   while (attached.value.length) {
     forget(attached.value[0]!.id, true)
   }
@@ -228,6 +260,7 @@ onBeforeUnmount(() => {
     @update:message-edit="emit('update:messageEdit', $event)"
     @submit-edit="emit('submitEdit')"
     :attachments="attached"
+    :upload="upload"
     :providers="props.providers ?? demoProviders"
     :models="props.models ?? demoModels"
     :can-configure="canConfigure !== false"

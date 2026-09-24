@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { LiveControl, LiveViewport } from '@demicodes/browser-protocol/live'
+import type { LiveControl, BrowserViewport } from '@demicodes/protocol'
 import type { LiveSession } from './session'
 import { panelRect, type Placement } from './view'
 
@@ -14,7 +14,7 @@ const props = defineProps<{
   session: LiveSession
   controls: readonly LiveControl[]
   placement: Placement
-  viewport: LiveViewport
+  viewport: BrowserViewport
 }>()
 
 /** A list without a popup shows its own pixels; the page's input stays. */

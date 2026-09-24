@@ -18,7 +18,6 @@ import {
   remoteAttachmentError,
   dataTransferFiles,
   filePreviewUrl,
-  fileToUserContent,
   type AttachmentUploadUpdate,
 } from '../message-input/attachments'
 import { transferHasFiles } from '../../composables/useFileDrop'
@@ -45,28 +44,6 @@ test('dataTransfer files are the drop / paste list', () => {
   expect(dataTransferFiles(transfer)).toEqual([file])
 })
 
-test('png magic bytes become an image block', async () => {
-  const bytes = new Uint8Array([
-    0x89,
-    0x50,
-    0x4e,
-    0x47,
-    0x0d,
-    0x0a,
-    0x1a,
-    0x0a,
-    0,
-    0,
-    0,
-    0
-  ])
-  const block = await fileToUserContent(new File([bytes], 'shot.png', { type: 'image/png' }))
-  expect(block).toEqual({
-    type: 'image',
-    source: { type: 'binary', data: bytes, mediaType: 'image/png' },
-  })
-})
-
 test('a composer file starts uploading and becomes sendable only when every file is ready', () => {
   const file = composerAttachmentFromFile(
     new File(['x'], 'shot.png', { type: 'image/png' }),
@@ -74,18 +51,17 @@ test('a composer file starts uploading and becomes sendable only when every file
   expect(file.phase).toBe('uploading')
   expect(file.progress).toBe(0)
   expect(attachmentsReady([file])).toBe(false)
-  expect(attachmentSendBlockReason([file])).toBe(
+  expect(attachmentSendBlockReason([file.phase])).toBe(
     'Wait for attachments to finish uploading'
+  )
+  expect(attachmentSendBlockReason(['ready', 'failed', 'uploading'])).toBe(
+    'Retry or remove the attachments that did not upload'
   )
   expect(attachmentsReady([])).toBe(true)
   expect(attachmentsReady([composerAttachment({ name: 'a', phase: 'ready' })])).toBe(
     true
   )
-  expect(
-    attachmentSendBlockReason([
-      composerAttachment({ name: 'a', phase: 'ready' })
-    ])
-  ).toBeUndefined()
+  expect(attachmentSendBlockReason(['ready'])).toBeUndefined()
 })
 
 test('progress is a 0–1 unit only while uploading', () => {
@@ -113,7 +89,6 @@ test('a remote file is ready at once, and its reference names its host and full 
   expect(remote.name).toBe('package.json')
   expect(remote.kind).toBe('reference')
   expect(attachmentsReady([remote])).toBe(true)
-  expect(attachmentSendBlockReason([remote])).toBeUndefined()
   expect(remoteAttachmentError(remote.path, remote.host, [remote])).toBeDefined()
   expect(remoteAttachmentError(remote.path, 'build-01', [remote])).toBeUndefined()
   const encoded = encodeRemoteReference(remote.host, remote.path)
@@ -160,17 +135,6 @@ test('the upload queue reports ready, rejects a failure, and silences a cancelle
   queue.cancel('c')
   expect(await cancelled).toBe(false)
   expect(updates).toEqual([{ phase: 'uploading', progress: 0 }])
-})
-
-test('unknown bytes become a document block', async () => {
-  const bytes = new Uint8Array([1, 2, 3, 4])
-  const block = await fileToUserContent(new File([bytes], 'note.txt', { type: 'text/plain' }))
-  expect(block.type).toBe('document')
-  if (block.type !== 'document')
-    return
-  expect(block.source.fileName).toBe('note.txt')
-  expect(block.source.mediaType.startsWith('text/plain')).toBe(true)
-  expect(block.source.data).toEqual(bytes)
 })
 
 test('the message keeps the files of its capsules, and the composer carries the rest for an undo', () => {

@@ -1,6 +1,5 @@
-import { z } from 'zod'
 import { apiRequest, readResponse } from './client'
-import { exposeSchema } from './contracts'
+import { exposeAnswerSchema } from './unported'
 
 /** The list comes from the `GET /api/state` snapshot; only writes go through these. */
 
@@ -13,7 +12,7 @@ export async function renewExpose(
     method: 'POST',
     signal,
   })
-  await readResponse(response, z.object({ expose: exposeSchema }))
+  await readResponse(response, exposeAnswerSchema)
 }
 
 /** Destroys the expose and ends its connections (`DELETE /exposes/:id`). */

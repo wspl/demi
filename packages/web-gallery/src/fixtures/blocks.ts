@@ -1,10 +1,8 @@
-import type { z } from 'zod'
-import type { AgentMessage, Block, ModelSelection, TokenUsage, UserContentBlock } from '@demicodes/core'
+import type { AgentMessage, Block, ModelSelection, TokenUsage, UserContentBlock } from '@demicodes/protocol'
 import { encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/attachments'
-import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
-import type { shellToolViewSchema } from '@demicodes/web-ui/transport/protocol'
+import type { ShellToolView as ShellView, ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 
-export type ShellView = z.infer<typeof shellToolViewSchema>
+export type { ShellView }
 
 /**
  * A complete shell view, the shape `shell_exec` writes and every reader
@@ -42,6 +40,7 @@ export const demoModel: ModelSelection = {
     acceptedExtensions: [],
   },
   thinking: null,
+  serviceTierId: null,
 }
 
 export const agentReceiptMessages: AgentMessage[] = [
@@ -97,7 +96,6 @@ function toolCall(
     createdAt: iso(120_000),
     model: demoModel,
     toolUseId: `${partial.id}-use`,
-    streamingOutput: [],
     output: [],
     view: null,
     ...partial,
@@ -517,7 +515,8 @@ export function transcriptDemoBlocks(): Block[] {
         {
           type: 'document',
           source: {
-            data: new Uint8Array(),
+            type: 'binary',
+            data: '',
             mediaType: 'application/pdf',
             fileName: 'login-failure.pdf'
           }

@@ -1,7 +1,7 @@
-import { z } from 'zod'
 import type { PairingResult } from '@demicodes/web-ui/devices/pairing'
 import type { DeviceInstallation } from '@demicodes/web-ui/devices/installation'
 import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
+import { claimedDeviceSchema, type Claim } from '../api/generated/web-api'
 import { useProduct } from '../state/product'
 
 // Installer packaging is separate from pairing; these URLs are supplied by the host.
@@ -18,21 +18,13 @@ export async function claimDevice(
     const response = await apiRequest('/devices/claim', {
       method: 'POST',
       signal,
-      ...jsonBody({ code }),
+      ...jsonBody({ code } satisfies Claim),
     })
-    const result = await readResponse(
-      response,
-      z.object({
-        device: z.object({
-          id: z.string(),
-          name: z.string(),
-        }),
-      }),
-    )
+    const { device } = await readResponse(response, claimedDeviceSchema)
     await useProduct().revalidate()
     return {
       ok: true,
-      device: result.device,
+      device: { id: device.id, name: device.name },
     }
   } catch (error) {
     if (

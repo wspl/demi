@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import type { Block, ModelSelection } from '@demicodes/core'
+import type { Block, ModelSelection } from '@demicodes/protocol'
 import { isTextBlockStreaming, isThinkingBlockStreaming } from '../block-streaming'
 
 const model: ModelSelection = {
@@ -14,6 +14,7 @@ const model: ModelSelection = {
     acceptedExtensions: [],
   },
   thinking: null,
+  serviceTierId: null,
 }
 
 function thinking(): Block {

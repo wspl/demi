@@ -1,7 +1,6 @@
 import { z } from 'zod'
-import type { Block } from '@demicodes/core'
+import type { Block } from '@demicodes/protocol'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
-import { shellToolViewSchema } from '@demicodes/web-ui/transport/protocol'
 
 /**
  * The commands a transcript remembers: name, start, output, and the end when
@@ -16,11 +15,10 @@ export function transcriptTerminals(blocks: readonly Block[]): TerminalRecord[] 
     if (block.type !== 'tool_call') {
       continue
     }
-    const parsed = shellToolViewSchema.safeParse(block.view)
-    if (!parsed.success) {
+    const view = block.view
+    if (view?.kind !== 'shell') {
       continue
     }
-    const view = parsed.data
     const previous = commands.get(view.commandId)
     let name = previous?.name ?? view.shellId
     if (block.toolName === 'shell_exec') {

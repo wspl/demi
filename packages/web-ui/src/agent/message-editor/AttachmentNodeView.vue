@@ -8,8 +8,11 @@ import { useTransfers, type MessageCapsule } from './capsules'
 const props = defineProps(nodeViewProps)
 const transfers = useTransfers()
 const files = useMessageFiles()
-/** The file this capsule stands for, as its node carries it. */
-const capsule = computed<MessageCapsule | null>(() => props.node.attrs['capsule'] ?? null)
+/** The file this capsule stands for: as the composer knows it now, or as its node carries it. */
+const capsule = computed<MessageCapsule | null>(() => {
+  const saved: MessageCapsule | null = props.node.attrs['capsule'] ?? null
+  return saved && (transfers?.current(saved.id) ?? saved)
+})
 /** How far the file is on its way, while the composer still carries it. */
 const transfer = computed(() => {
   const id = capsule.value?.id
