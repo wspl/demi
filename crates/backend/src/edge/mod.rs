@@ -15,6 +15,7 @@ mod devices;
 mod error;
 mod files;
 mod gate;
+mod install;
 mod listener;
 mod models;
 mod providers;
@@ -42,6 +43,7 @@ use tokio_util::sync::CancellationToken;
 use tower_http::trace::TraceLayer;
 
 use self::error::ApiError;
+pub(crate) use self::install::Installation;
 use self::listener::{EdgeListener, Peer};
 use crate::backend::Services;
 use crate::shard::Shards;
@@ -106,12 +108,13 @@ impl Edge {
     }
 }
 
-/// What the routes reach: the services every request may use, and the
-/// users' shards.
+/// What the routes reach: the services every request may use, the users'
+/// shards, and where the runner installers come from.
 #[derive(Clone)]
 pub(crate) struct AppState {
     pub(crate) services: Arc<Services>,
     pub(crate) shards: Shards,
+    pub(crate) installation: Arc<Installation>,
 }
 
 impl FromRef<AppState> for Arc<Services> {
@@ -134,6 +137,9 @@ impl FromRef<AppState> for Shards {
 /// have none.
 fn router(state: AppState, closing: CancellationToken, web_directory: Option<PathBuf>) -> Router {
     let entrances = Router::new()
+        .route("/install.sh", get(install::shell))
+        .route("/install.ps1", get(install::powershell))
+        .route("/runner-artifacts/{release}/{target}/{file}", get(install::artifact))
         .route("/api/setup", get(auth::setup_status).post(auth::setup))
         .route("/api/auth/login", post(auth::login))
         .route("/api/runner", get(runners::socket))
@@ -249,6 +255,7 @@ mod tests {
         let state = AppState {
             services,
             shards: pool.shards(),
+            installation: Arc::default(),
         };
         let closing = CancellationToken::new();
         let app = router(state, closing.clone(), None);
