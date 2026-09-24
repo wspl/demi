@@ -43,9 +43,8 @@ impl NativeCatalog {
 
     /// No published package: a command set that declares a native command
     /// selects no manifest, so a node whose commands include one gets no
-    /// shell. Interim: the product runs on this until the artifact module
-    /// publishes the releases `DEMI_NATIVE_CONFIG` names and makes the
-    /// catalog from them.
+    /// shell. A test's backend runs on it; the product's start publishes the
+    /// releases `DEMI_NATIVE_CONFIG` names instead (`publish_native`).
     pub(crate) fn unpublished() -> Self {
         Self {
             packages: Vec::new(),
@@ -55,17 +54,28 @@ impl NativeCatalog {
 
     /// The calling thread's catalog.
     pub(crate) fn catalog(&self) -> CommandCatalog {
-        CommandCatalog::new(self.packages.clone(), (self.resolvers)())
+        CommandCatalog::new(self.packages.clone(), self.resolver())
             .expect("the packages were checked when the catalog was made")
+    }
+
+    /// The calling thread's resolver of the packages' executables, for the
+    /// work that binds a package without a manifest: a user stream or a
+    /// one-shot user call.
+    pub(crate) fn resolver(&self) -> Rc<dyn ArtifactResolver> {
+        (self.resolvers)()
+    }
+
+    /// The published package `id`.
+    pub(crate) fn package(&self, id: &str) -> Option<&PackageDescriptor> {
+        self.packages.iter().find(|descriptor| descriptor.id == id)
     }
 
     /// Whether `package` serves every one of `operations`.
     pub(crate) fn serves(&self, package: &str, operations: &[&str]) -> bool {
-        self.packages.iter().any(|descriptor| {
-            descriptor.id == package
-                && operations
-                    .iter()
-                    .all(|operation| descriptor.operations.iter().any(|served| served == operation))
+        self.package(package).is_some_and(|descriptor| {
+            operations
+                .iter()
+                .all(|operation| descriptor.operations.iter().any(|served| served == operation))
         })
     }
 }
