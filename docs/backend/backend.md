@@ -297,7 +297,8 @@ keep working, because the steps below need them:
 1. Login flows are cancelled.
 2. Each shard ends its user's work in this order. Idle watches stop, and a
    retirement already running finishes. Title requests are aborted and expose
-   connections end. Open file transfers and user streams end. Agent turns are
+   connections end. Open file transfers and user streams end. Conversation sockets
+   close, so no frame reaches a tree after its shutdown. Agent turns are
    aborted: a running turn records that its session was shut down, and its
    jobs are killed while their runners are still connected. Claude Code CLI
    installs are cancelled; the next need starts them again. The Cloud

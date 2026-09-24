@@ -30,7 +30,7 @@ pub(super) async fn import_setup_token(
     JsonBody(import): JsonBody<SetupTokenImport>,
 ) -> Result<(StatusCode, Json<ProviderAnswer>), ApiError> {
     configures(&services, &user)?;
-    let owner = services.vault.owner_for(&user).await?;
+    let owner = services.vault.owner_for(&user.id).await?;
     let entry = accounts::import_setup_token(
         &services.assembly,
         owner,
@@ -114,7 +114,7 @@ pub(super) async fn start_login(
         Some(label) => label.into_string(),
         None => format!("{family} subscription"),
     };
-    let owner = services.vault.owner_for(&user).await?;
+    let owner = services.vault.owner_for(&user.id).await?;
     let id = services.logins.start(owner, user.id, family, label, None).await?;
     Ok(started(id))
 }
