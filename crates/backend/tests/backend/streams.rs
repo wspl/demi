@@ -97,6 +97,15 @@ async fn a_page_opens_a_user_stream_on_the_conversations_host_with_the_users_con
     assert_eq!(reported["context"]["locale"], json!({ "timeZone": "UTC", "languages": ["en-US"] }));
     assert_eq!(reported["cwd"], json!(laptop.runner.home_dir().to_str().unwrap()));
     assert_eq!(reported["value"], Value::Null);
+    // Once the user's browser reports a locale, the context carries it.
+    let locale = json!({ "timeZone": "Asia/Shanghai", "languages": ["zh-CN", "en"] });
+    let reported = backend
+        .patch("/api/settings/preferences", &master, json!({ "locale": locale }))
+        .await;
+    assert_eq!(reported.status, StatusCode::OK, "{}", String::from_utf8_lossy(&reported.body));
+    let (bytes, _, _) = received(&mut socket(&backend, &master, "where").await).await;
+    let reported: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(reported["context"]["locale"], locale);
 
     // Bytes go both ways as they are, in order, whatever the message
     // boundaries; the page closing its socket ends the stream.
