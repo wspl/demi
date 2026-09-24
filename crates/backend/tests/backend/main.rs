@@ -9,6 +9,7 @@ mod edge;
 mod families;
 mod files;
 mod forks;
+mod install;
 mod providers;
 mod runners;
 mod settings;

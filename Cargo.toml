@@ -8,6 +8,7 @@ members = [
   "crates/backend",
   "crates/builtin-protocol",
   "crates/claude-protocol",
+  "crates/coding-agent",
   "crates/command-service",
   "crates/command-tree",
   "crates/core",

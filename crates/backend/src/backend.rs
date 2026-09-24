@@ -18,7 +18,7 @@ use crate::auth::login_limiter::LoginLimiter;
 use crate::auth::passwords::{HashError, PasswordHasher};
 use crate::auth::sessions::WebSessions;
 use crate::config::{BackendConfig, ConversationTuning, RunnerTuning};
-use crate::edge::{AppState, Edge};
+use crate::edge::{AppState, Edge, Installation};
 use crate::llm::assembly::ProviderAssembly;
 use crate::llm::catalog_cache::ModelCatalogCache;
 use crate::llm::families::FamilyRegistry;
@@ -324,6 +324,10 @@ impl Backend {
         let state = AppState {
             services: services.clone(),
             shards: shards.shards(),
+            installation: Arc::new(Installation {
+                releases: config.runner_releases,
+                public_url: config.public_url,
+            }),
         };
         let edge = match Edge::start(config.address, state, config.web_directory).await {
             Ok(edge) => edge,
