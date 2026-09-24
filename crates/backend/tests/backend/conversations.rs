@@ -41,7 +41,7 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest as _;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_tungstenite::tungstenite::{self, Message};
 
-use crate::support::{Harness, MASTER_EMAIL, Session, TestBackend};
+use crate::support::{Harness, MASTER_EMAIL, Paired, Session, TestBackend};
 
 /// The conversation ids the tests create.
 pub(crate) const FIRST: &str = "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b";
@@ -264,6 +264,23 @@ pub(crate) async fn create(backend: &TestBackend, session: &Session, id: &str) -
     let created = backend.post("/api/conversations", Some(session), json!({ "id": id })).await;
     assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
     created.json::<ConversationAnswer>().conversation
+}
+
+/// Makes the master's conversation `id` work in a new `work` directory of a
+/// paired device's real runner, as a target switch would leave it; answers
+/// the device and that directory.
+pub(crate) async fn on_device(harness: &Harness, backend: &TestBackend, master: &Session, id: &str) -> (Paired, String) {
+    let paired = backend.pair(master, "laptop").await;
+    let root = format!("{}/work", paired.runner.home());
+    std::fs::create_dir_all(&root).unwrap();
+    harness
+        .control_database()
+        .execute(
+            "UPDATE conversations SET target_kind = 'device', target_device_id = ?1, target_path = ?2 WHERE id = ?3",
+            rusqlite::params![paired.id(), root, id],
+        )
+        .unwrap();
+    (paired, root)
 }
 
 pub(crate) async fn summaries(backend: &TestBackend, session: &Session) -> Vec<ConversationSummary> {
