@@ -64,8 +64,8 @@ rustup installs with it. The contract crates are ordinary Rust, and no build
 script generates contract code or needs the frontend's tooling, so a Cargo build
 needs only this toolchain and, for host builds, a C compiler for the
 dependencies that compile C code. The browser's TypeScript contracts come from
-a separate command, `cargo xtask contracts`, which the frontend's scripts run
-before they need them
+a separate command, `xtask contracts`, which the frontend's scripts run through
+`bun run contracts` before they need them
 ([Generated TypeScript](../architecture/contracts.md#generated-typescript)).
 
 Cross builds use cargo-zigbuild with Zig for the Apple and Linux targets, and

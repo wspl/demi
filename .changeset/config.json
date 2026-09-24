@@ -5,12 +5,14 @@
   "fixed": [
     [
       "@demicodes/agent",
+      "@demicodes/agent-client",
       "@demicodes/backend",
       "@demicodes/coding-agent",
       "@demicodes/command-loader",
       "@demicodes/core",
       "@demicodes/host-remote",
       "@demicodes/host-virtual",
+      "@demicodes/protocol",
       "@demicodes/provider",
       "@demicodes/provider-anthropic-api",
       "@demicodes/provider-claude-code",
