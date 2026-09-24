@@ -329,7 +329,6 @@ pub(crate) struct AttachedHostRecord {
 
 impl ControlService {
     /// The conversation's attached hosts, first attached first.
-    #[cfg_attr(not(test), expect(dead_code, reason = "the conversation's host access and Fork read them"))]
     pub(crate) async fn attached_hosts(&self, id: ConversationId) -> Result<Vec<AttachedHostRecord>, StorageError> {
         self.call(move |connection, _| {
             let mut statement = connection.prepare_cached(
@@ -355,18 +354,35 @@ impl ControlService {
     }
 }
 
+impl ControlService {
+    /// Attaches `host` to the conversation unless it is attached already;
+    /// true when it attached, which the conversation's nodes hear of at their
+    /// next context block.
+    pub(crate) async fn attach_host(&self, id: ConversationId, host: AttachedHostRecord) -> Result<bool, StorageError> {
+        self.call(move |connection, now| {
+            let transaction = connection.transaction()?;
+            let attached = insert_attached_host(&transaction, &id, &host, now)?;
+            if attached {
+                advance_context(&transaction, &id)?;
+            }
+            transaction.commit()?;
+            Ok(attached)
+        })
+        .await
+    }
+}
+
 /// Attaches `device` to the conversation under the first free name within
 /// it: `name`, then `name-2`, `name-3` and so on; an empty name is the
-/// device's id. A device attached already keeps its row. For a transaction
-/// that attaches hosts with its other writes, such as a target switch's or a
-/// Fork's.
-#[cfg_attr(not(test), expect(dead_code, reason = "a target switch and a Fork attach hosts"))]
+/// device's id. A device attached already keeps its row, and the answer is
+/// false. For a transaction that attaches hosts with its other writes, such
+/// as a target switch's or a Fork's.
 pub(crate) fn insert_attached_host(
     connection: &Connection,
     conversation: &ConversationId,
     host: &AttachedHostRecord,
     now: Timestamp,
-) -> Result<(), StorageError> {
+) -> Result<bool, StorageError> {
     let base = match host.name.trim() {
         "" => host.device.as_str(),
         trimmed => trimmed,
@@ -381,7 +397,7 @@ pub(crate) fn insert_attached_host(
         candidate = format!("{base}-{suffix}");
         suffix += 1;
     }
-    connection.execute(
+    let inserted = connection.execute(
         "INSERT INTO conversation_hosts (conversation_id, device_id, name, cwd, attached_at)
          VALUES (?1, ?2, ?3, ?4, ?5)
          ON CONFLICT (conversation_id, device_id) DO NOTHING",
@@ -392,6 +408,16 @@ pub(crate) fn insert_attached_host(
             host.cwd,
             now.as_millisecond()
         ],
+    )?;
+    Ok(inserted == 1)
+}
+
+/// Advances the conversation's execution-context revision, which every node
+/// observes before its next inference.
+fn advance_context(connection: &Connection, conversation: &ConversationId) -> Result<(), StorageError> {
+    connection.execute(
+        "UPDATE conversations SET context_version = context_version + 1 WHERE id = ?1",
+        [conversation.as_str()],
     )?;
     Ok(())
 }
@@ -510,9 +536,11 @@ mod tests {
             .call({
                 let id = id.clone();
                 move |connection, now| {
+                    let mut attached = Vec::new();
                     for host in &attaching {
-                        insert_attached_host(connection, &id, host, now)?;
+                        attached.push(insert_attached_host(connection, &id, host, now)?);
                     }
+                    assert_eq!(attached, [true, true, true, false]);
                     Ok(())
                 }
             })

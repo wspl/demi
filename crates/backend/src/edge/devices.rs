@@ -115,7 +115,7 @@ pub(super) async fn browse(
         .shards
         .of(&user.id)
         .call(move |shard, _| async move {
-            let host = shard.devices().device_access(&device.id).ok_or_else(device_offline)?;
+            let host = shard.devices().device_access(&device.id).ok_or_else(ApiError::device_offline)?;
             let home = shard.devices().home(&device.id);
             let path = requested
                 .or_else(|| home.clone())
@@ -140,7 +140,7 @@ pub(super) async fn make_directory(
         .shards
         .of(&user.id)
         .call(move |shard, _| async move {
-            let host = shard.devices().device_access(&device.id).ok_or_else(device_offline)?;
+            let host = shard.devices().device_access(&device.id).ok_or_else(ApiError::device_offline)?;
             let recursive = MkdirOptions { recursive: true };
             demi_shell::HostFs::mkdir(&host, &path, recursive)
                 .await
@@ -163,11 +163,11 @@ pub(super) async fn log(
         .shards
         .of(&user.id)
         .call(move |shard, _| async move {
-            let host = shard.devices().device_access(&device.id).ok_or_else(device_offline)?;
+            let host = shard.devices().device_access(&device.id).ok_or_else(ApiError::device_offline)?;
             let source = query.source.as_ref().map(|source| source.as_str());
             host.read_log(query.since, query.limit.get(), source).await.map_err(|error| {
                 if error.kind == HostErrorKind::Offline {
-                    device_offline()
+                    ApiError::device_offline()
                 } else {
                     ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::LogUnreadable, error.message)
                 }
@@ -206,15 +206,11 @@ async fn owned_device(
     Ok(device)
 }
 
-pub(super) fn device_offline() -> ApiError {
-    ApiError::new(StatusCode::CONFLICT, ErrorCode::DeviceOffline, "Device is offline")
-}
-
 /// A device route's filesystem failure: nothing at the path answers 404,
 /// anything else the device refused 400.
 fn device_fs_error(error: HostError) -> ApiError {
     match error.kind {
-        HostErrorKind::Offline => device_offline(),
+        HostErrorKind::Offline => ApiError::device_offline(),
         _ if error.code() == Some("ENOENT") => ApiError::new(StatusCode::NOT_FOUND, ErrorCode::FsError, error.message),
         _ => ApiError::new(StatusCode::BAD_REQUEST, ErrorCode::FsError, error.message),
     }

@@ -5,6 +5,8 @@
 //! `shards.of(user).call(..)`: the closure is `Send`, the future it starts
 //! runs on the shard and need not be, and the answer is `Send`.
 
+pub(crate) mod lease;
+
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::future::Future;
@@ -23,10 +25,11 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 use crate::backend::Services;
+use crate::conversation::host_access::Conversations;
 use crate::conversation::{self, ConversationHarness};
-use crate::usage::rate_limit::RequestRateLimit;
 use crate::runner::devices::Devices;
 use crate::runner::router::CommandRouter;
+use crate::usage::rate_limit::RequestRateLimit;
 
 /// Where the shards run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,6 +53,8 @@ pub(crate) struct Shard {
     /// The HTTP client of the shard's thread, which the runtimes built here
     /// send with: hyper ties a pooled connection to the runtime that made it.
     http: reqwest::Client,
+    /// The user's conversations, each with its file gate and transfers.
+    conversations: Conversations,
     /// The user's devices, each with its runner connection.
     devices: Devices,
     /// The pipes of the user's devices.
@@ -78,6 +83,7 @@ impl Shard {
             user,
             services,
             http,
+            conversations: Conversations::default(),
             devices: Devices::default(),
             pipes: Pipes::new(ARRIVAL),
             commands: CommandRouter::default(),
@@ -100,6 +106,9 @@ impl Shard {
         &self.http
     }
 
+    pub(crate) fn conversations(&self) -> &Conversations {
+        &self.conversations
+    }
 
     pub(crate) fn devices(&self) -> &Devices {
         &self.devices
@@ -136,13 +145,15 @@ impl Shard {
     }
 
     /// Ends the user's work in order (`backend.md` § Startup and shutdown):
-    /// the conversation sockets end, the agent turns are aborted while their
-    /// runners are still connected, the runner connections close, their work
-    /// ends with them, and then the pipes fail.
+    /// the conversation sockets end; open file transfers and user streams
+    /// end, and stay closed; the agent turns are aborted while their runners
+    /// are still connected; the runner connections close, their work ends
+    /// with them, and then the pipes fail.
     async fn close(&self) {
         self.closing.cancel();
         self.conversation_sockets.close();
         self.conversation_sockets.wait().await;
+        let _transfers_closed = self.conversations.end_transfers().await;
         self.agent.shutdown().await;
         self.devices.disconnect_all("backend shutting down");
         self.tasks.close();

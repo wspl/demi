@@ -9,7 +9,7 @@ use demi_core::SessionPhase;
 use demi_web_api::conversations::{ConversationStatus, ConversationSummary};
 use futures_util::future::try_join_all;
 
-use super::{interim_cwd, root_of};
+use super::root_of;
 use crate::shard::Shard;
 use crate::storage::StorageError;
 use crate::storage::conversation_index::ConversationRecord;
@@ -36,11 +36,7 @@ impl Shard {
             .tree(&root_of(&record.id))
             .map(|tree| (tree.is_quiescent(), tree.root().session().phase()));
         let status = status(live, &facts);
-        let cwd = interim_cwd(&record).ok_or_else(|| StorageError::Corrupt {
-            table: "conversations",
-            column: "target_kind",
-            reason: "a workspace target has no directory until the host access resolves it".into(),
-        })?;
+        let cwd = self.resolve_target(&record).await?.path().to_owned();
         let (provider_id, model_id) = match record.model {
             Some(model) => (Some(model.provider), Some(model.model)),
             None => (None, None),
