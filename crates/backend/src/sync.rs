@@ -47,6 +47,8 @@ impl Shard {
             providers,
             workspaces: workspaces.into_iter().map(|workspace| workspace.dto()).collect(),
             devices,
+            exposes: Vec::new(),
+            expose_domain: None,
             conversations,
         })
     }
