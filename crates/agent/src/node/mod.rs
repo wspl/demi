@@ -11,9 +11,8 @@ use demi_agent_protocol::ServerFrame;
 use demi_core::{Clock, CommandId, ModelSelection, NodeId, QueuedMessage};
 use demi_gates::{ActivityGate, GateLease, Purpose, Reservation};
 use demi_provider::{ProviderRuntime, ToolDefinition};
-use demi_shell::{CommandSet, CommandStatus, JobCaller, PortError, StorageOp, StorageReply};
+use demi_shell::{CommandSet, CommandStatus, JobCaller};
 use futures_util::future::LocalBoxFuture;
-use tokio_util::sync::CancellationToken;
 
 use crate::{
     AgentHarness, IdSource, PromptContext, ShellEnvironmentFactory,
@@ -67,13 +66,6 @@ impl<H: AgentHarness> Node<H> {
         &self.runtime.commands
     }
 
-    /// The command-storage generation current now, which a job the node
-    /// starts now is bound to (`command-state-history.md` § Mutation API and
-    /// concurrency).
-    pub fn command_generation(&self) -> CancellationToken {
-        self.session.command_generation()
-    }
-
     /// Whose command storage a job the node starts now reaches: this node,
     /// at its current generation.
     pub fn job_caller(&self) -> JobCaller {
@@ -81,17 +73,6 @@ impl<H: AgentHarness> Node<H> {
             node: self.record.id.clone(),
             generation: self.session.generation_number(),
         }
-    }
-
-    /// Serves one command-storage message of a job of this node, bound to
-    /// `lifetimes`: the job's generation and its call's cancellation. A write
-    /// returns once its version is committed.
-    pub async fn storage(
-        &self,
-        op: StorageOp,
-        lifetimes: Vec<CancellationToken>,
-    ) -> Result<StorageReply, PortError> {
-        self.session.storage(op, lifetimes).await
     }
 
     /// Writes `stdin` to a running command through the node's environment
