@@ -654,6 +654,22 @@ impl SessionCore {
         AbortStep::Nothing
     }
 
+    /// Stops the running action, as the user's Stop would, and nothing
+    /// that waits: a waiting action and a scheduled wakeup stay. The answer
+    /// is the stopped action's token, which says when it recorded the stop.
+    pub(super) fn stop_running(&mut self) -> Option<Rc<TurnCancel>> {
+        if self.disposing {
+            return None;
+        }
+        match &self.activity {
+            Activity::Running(run) if !run.cancel.is_cancelled() => {
+                run.cancel.cancel(CancelReason::Stop);
+                Some(run.cancel.clone())
+            }
+            _ => None,
+        }
+    }
+
     /// Whether another `abort` would stop something.
     pub(super) fn can_abort_again(&self) -> bool {
         let running =
