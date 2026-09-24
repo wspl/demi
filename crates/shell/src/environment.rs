@@ -9,7 +9,7 @@ use demi_core::{BinaryStdout, CommandId, EditedFile, NodeId, OutputView, ShellId
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
 
-use crate::HostError;
+use crate::{HostError, Reader};
 
 /// The longest an exec waits for its command before it returns the running
 /// command's handle.
@@ -32,27 +32,31 @@ pub trait ShellEnvironment {
     /// Runs `request.script`, and returns once the command ended or its
     /// observation window passed, whichever is first; a command still
     /// running then goes on, and `cancel` stops it whenever it is cancelled.
+    /// The status is the model's, which runs commands.
     fn exec(
         &self,
         request: ExecRequest,
         cancel: CancellationToken,
     ) -> LocalBoxFuture<'_, Result<CommandStatus, ShellError>>;
 
-    /// The command's status, with its output since the last look.
-    fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError>;
+    /// The command's status, with its output since `reader` last looked.
+    fn status(&self, command: &CommandId, reader: Reader) -> Result<CommandStatus, ShellError>;
 
-    /// Writes to a running command's standard input.
+    /// Writes to a running command's standard input; the status is
+    /// `reader`'s.
     fn write<'a>(
         &'a self,
         command: &'a CommandId,
         stdin: Bytes,
+        reader: Reader,
     ) -> LocalBoxFuture<'a, Result<CommandStatus, ShellError>>;
 
     /// Stops a running command: asks it to end, and ends it when it does not.
-    /// A command that is not running answers its status.
+    /// A command that is not running answers its status, `reader`'s.
     fn abort<'a>(
         &'a self,
         command: &'a CommandId,
+        reader: Reader,
     ) -> LocalBoxFuture<'a, Result<CommandStatus, ShellError>>;
 
     /// Forgets a command, stopping it first when it runs; false when unknown.

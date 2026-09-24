@@ -1,4 +1,6 @@
-import { apiError, apiUrl } from './client'
+import type { UploadFile } from '@demicodes/web-ui/agent/message-input/attachments'
+import { apiError, apiUrl, invalidResponse } from './client'
+import { attachmentAnswerSchema } from './generated/web-api'
 
 /**
  * How long an upload may go without a byte moving before it fails, the
@@ -80,4 +82,28 @@ export function uploadBytes(
       fail(error instanceof Error ? error : new Error(String(error)))
     }
   })
+}
+
+/**
+ * Uploads a file a message will carry (`web-api.md` § Uploads and media):
+ * its bytes become a blob of the user's, and the answer names the upload a
+ * frame refers to, with the media type and the opening the backend read.
+ * The main composer and the edit composer both upload through this.
+ */
+export const uploadAttachment: UploadFile = async (file, options) => {
+  const answer = await uploadBytes(`/attachments?${new URLSearchParams({ name: file.name })}`, file, {
+    signal: options.signal,
+    progress: (sent) => options.progress(file.size ? sent / file.size : 1),
+  })
+  const parsed = attachmentAnswerSchema.safeParse(answer)
+  if (!parsed.success) {
+    throw invalidResponse(parsed.error)
+  }
+  const { attachment } = parsed.data
+  return {
+    id: attachment.id,
+    mediaType: attachment.mediaType,
+    sha256: attachment.sha256,
+    ...(attachment.snippet ? { snippet: attachment.snippet } : {}),
+  }
 }

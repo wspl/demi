@@ -1,28 +1,11 @@
 import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
-import { productStateSchema } from '../api/contracts'
+import { productState } from '../__tests__/product-state'
 import { useProduct } from './product'
 
 const realFetch = globalThis.fetch
 let pinia: ReturnType<typeof createPinia>
-const state = productStateSchema.parse({
-  user: {
-    id: 'test-user',
-    email: 'test@example.test',
-    nickname: 'Test',
-    role: 'master',
-    createdAt: '2026-09-10T00:00:00.000Z',
-  },
-  mode: 'shared',
-  preferences: { appearance: {}, shortcuts: {} },
-  devices: [],
-  workspaces: [],
-  providers: [],
-  conversations: [],
-  cloud: { device: null, state: 'unallocated', operation: null, error: null, limits: { systemBytes: 0, homeBytes: 0 } },
-    exposes: [],
-    exposeDomain: null,
-})
+const state = productState()
 let modelResponse: () => Promise<Response>
 let vendorResponse: () => Promise<Response>
 let vendorReads: number

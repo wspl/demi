@@ -19,6 +19,7 @@ import { useProduct } from '../state/product'
 import { useResources } from '../state/resources'
 import { placesFor } from '../devices/files'
 import { fileSource } from '../api/files'
+import { uploadAttachment } from '../api/uploads'
 import type { Conversation } from '../state/types'
 
 const props = defineProps<{ conversation: Conversation }>()
@@ -40,8 +41,8 @@ const canSend = computed(() => modelState.value.kind === 'ready')
 const composer = ref<InstanceType<typeof SessionComposer>>()
 
 /** The store takes the files; their capsules go into the message where the composer said they would land. */
-async function addFiles(files: File[]) {
-  composer.value?.insertCapsules((await store.addFiles(props.conversation, files)).map(composerCapsule))
+function addFiles(files: File[]) {
+  composer.value?.insertCapsules(store.addFiles(props.conversation, files).map(composerCapsule))
 }
 
 const thinking = computed(() => intentThinkingConfig(props.conversation.model))
@@ -143,6 +144,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       @retry-models="product.revalidate"
       v-model:draft="conversation.draft"
       v-model:message-edit="conversation.messageEdit"
+      :upload="uploadAttachment"
       @submit-edit="store.submitEdit(conversation)"
       placeholder="Ask Demi…"
       :running="conversation.phase === 'running'"

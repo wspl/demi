@@ -1,4 +1,4 @@
-import type { ShellEditedFile } from '@demicodes/agent/client'
+import type { EditedFile } from '@demicodes/protocol'
 import { compareFileNames } from './file-browser-state'
 import { baseName } from './paths'
 import type { TreeRow } from './tree'
@@ -7,7 +7,7 @@ import type { FileContents } from './types'
 /**
  * One changed file as the change view lists it: its path, how it changed,
  * and its line counts. A working-tree listing has every kind; a call's
- * retained edit (`ShellEditedFile`) is one of these with `added` or
+ * retained edit (`EditedFile`) is one of these with `added` or
  * `modified` only.
  */
 export interface ChangeFile {
@@ -61,7 +61,7 @@ export type ReadCallChange = (commandId: string, path: string, edit: number, sig
 /** One file picked under a shell call, independent of the call's other files. */
 export interface CallEditSelection {
   commandId: string
-  file: ShellEditedFile
+  file: EditedFile
 }
 
 export interface CallChangeSource extends CallEditSelection {

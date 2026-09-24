@@ -1,6 +1,6 @@
 //! The test backend: a data directory, a clock the test moves, a mailbox
-//! that captures verification codes, and an HTTP client that sends a
-//! session's cookie.
+//! that captures verification codes, a machine manager the test scripts,
+//! and an HTTP client that sends a session's cookie.
 
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -12,8 +12,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use demi_backend::{
-    AccountMail, Backend, BackendConfig, ConversationTuning, FamilyRegistry, LoginTiming, MailError, NativeCatalog,
-    RunnerTuning, VerificationMail,
+    AccountMail, Backend, BackendConfig, CloudTuning, ConversationTuning, FamilyRegistry, LifecycleTuning, LoginTiming,
+    MailError, NativeCatalog, RunnerTuning, VerificationMail,
 };
 use demi_builtin_protocol::Operation;
 use demi_coding_agent::BUILTIN_PACKAGE;
@@ -30,10 +30,17 @@ use reqwest::{Method, StatusCode};
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
+use crate::machines::ScriptedManager;
+
 /// Where a scenario that serves no models.dev document finds none: a port
 /// nothing listens on. No scenario reaches the public models.dev; one that
 /// reads the catalog serves its document with `Harness::with_models_dev`.
 const NO_MODELS_DEV: &str = "http://127.0.0.1:9/api.json";
+
+/// Where a scenario that serves no Claude Code distribution finds none,
+/// likewise; one that installs the CLI serves it with
+/// `Harness::with_claude_releases`.
+const NO_CLAUDE_RELEASES: &str = "http://127.0.0.1:9/claude-code-releases";
 
 pub const MASTER_EMAIL: &str = "master@example.test";
 pub const MASTER_PASSWORD: &str = "master-pass-1";
@@ -94,12 +101,17 @@ pub struct Harness {
     mode: InstanceMode,
     families: FamilyRegistry,
     models_dev_url: Option<String>,
+    claude_releases: Option<String>,
     logins: LoginTiming,
     pub runners: RunnerTuning,
     pub conversations: ConversationTuning,
     runner_releases: Option<PathBuf>,
     native: Option<NativeCatalog>,
     user_streams: Option<BTreeMap<String, NativeOperation>>,
+    pub lifecycle: LifecycleTuning,
+    pub cloud: CloudTuning,
+    /// Runs the Clouds of every backend this harness starts.
+    pub manager: ScriptedManager,
 }
 
 impl Harness {
@@ -115,6 +127,7 @@ impl Harness {
             mode: InstanceMode::Shared,
             families: FamilyRegistry::builtin(),
             models_dev_url: None,
+            claude_releases: None,
             logins: LoginTiming::default(),
             // Liveness would ping every 30 s; the tests end runners
             // themselves.
@@ -131,6 +144,9 @@ impl Harness {
             runner_releases: None,
             native: None,
             user_streams: None,
+            lifecycle: LifecycleTuning::default(),
+            cloud: CloudTuning::default(),
+            manager: ScriptedManager::start(),
         }
     }
 
@@ -182,6 +198,26 @@ impl Harness {
     /// Where the backend reads the models.dev document.
     pub fn with_models_dev(mut self, url: String) -> Self {
         self.models_dev_url = Some(url);
+        self
+    }
+
+    /// Where the backend reads the Claude Code distribution.
+    pub fn with_claude_releases(mut self, url: String) -> Self {
+        self.claude_releases = Some(url);
+        self
+    }
+
+    /// A Claude Code provider's CLI is listed and installed by the
+    /// `demi.claude` package the workspace built, which a Cloud's runner on
+    /// this machine runs from where it was built.
+    pub fn with_claude_package(mut self) -> Self {
+        let claude = Arc::new(NativeFixture::package(
+            demi_claude_protocol::PACKAGE,
+            built_program("demi-claude"),
+            demi_claude_protocol::Operation::ALL.map(demi_claude_protocol::Operation::name),
+        ));
+        let packages = vec![claude.descriptor.clone()];
+        self.native = Some(NativeCatalog::new(packages, move || claude.resolver()).unwrap());
         self
     }
 
@@ -263,7 +299,9 @@ impl Harness {
     }
 
     async fn launch(&self, address: SocketAddr, mode: InstanceMode) -> TestBackend {
-        let mut config = BackendConfig::new(self.data_dir(), address, mode);
+        let mut config = BackendConfig::new(self.data_dir(), address, mode, self.manager.socket().to_owned());
+        config.lifecycle = self.lifecycle;
+        config.cloud = self.cloud;
         config.clock = self.clock.clone();
         config.web_directory = self.web_directory.clone();
         config.families = self.families.clone();
@@ -278,6 +316,7 @@ impl Harness {
             config.user_streams = streams.clone();
         }
         config.models_dev_url = self.models_dev_url.as_deref().unwrap_or(NO_MODELS_DEV).parse().unwrap();
+        config.claude_releases = self.claude_releases.as_deref().unwrap_or(NO_CLAUDE_RELEASES).parse().unwrap();
         if self.mail {
             config.account_mail = Some(self.mailbox.clone());
         }
@@ -356,6 +395,11 @@ pub struct Session {
 impl TestBackend {
     pub async fn close(self) {
         self.backend.close().await.unwrap();
+    }
+
+    /// Shuts the backend down and answers the steps that failed.
+    pub async fn close_reporting(self) -> Result<(), demi_backend::ShutdownErrors> {
+        self.backend.close().await
     }
 
     pub fn address(&self) -> SocketAddr {

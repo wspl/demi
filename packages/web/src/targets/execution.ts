@@ -12,7 +12,9 @@ export function executionFor(conversation: Conversation) {
   const deviceId =
     target.kind === 'device'
       ? target.deviceId
-      : (workspace?.deviceId ?? snapshot?.cloud?.device?.id ?? null)
+      : (workspace?.deviceId
+        ?? snapshot?.devices.find((device) => device.kind === 'managed')?.id
+        ?? null)
   const device = snapshot?.devices.find((device) => device.id === deviceId)
   const kind =
     target.kind === 'cloud' || device?.kind === 'managed'
@@ -27,9 +29,7 @@ export function executionFor(conversation: Conversation) {
     /** The directory the reader chose; null while the Cloud runs in its own session directory. */
     directory: target.kind === 'device' ? target.path : (workspace?.path ?? null),
     workspaceName: workspace?.name ?? null,
-    online:
-      kind === 'cloud'
-        ? snapshot?.cloud?.state === 'running'
-        : device?.online === true,
+    /** Whether the Host's runner is connected: a paired device's, or a running Cloud's. */
+    online: device?.online === true,
   }
 }

@@ -4,6 +4,7 @@
 //! quota every family shares. No test calls a real vendor.
 
 use std::collections::VecDeque;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -19,6 +20,7 @@ use demi_provider::credentials::{
 use demi_provider::quota::{Observation, ProbeCost, ProbeReading, ProviderQuota, QuotaError, QuotaSource};
 use demi_provider::testing::{ScriptedRuntime, Turn, event};
 use demi_provider::{Capabilities, CatalogError, Provider, ProviderRuntime, RuntimeEnv, RuntimeError};
+use demi_provider_claude_code::Placement;
 use demi_web_api::providers::CredentialKind;
 use futures_util::future::BoxFuture;
 use tokio::sync::watch;
@@ -83,6 +85,9 @@ pub struct ScriptedKey {
     pub directory: Arc<Directory>,
     /// The wires an entry may name, as the `openai` family's two.
     pub wires: &'static [WireApi],
+    /// Whether its provider says it runs a process on a Host, which the
+    /// user's Cloud then is.
+    pub process_host: bool,
 }
 
 impl ProviderFamily for ScriptedKey {
@@ -105,7 +110,19 @@ impl ProviderFamily for ScriptedKey {
             accounts: None,
             quota: None,
             account: None,
+            process_host: self.process_host,
         }))
+    }
+
+    /// The runtime of a provider that runs a process, which is scripted
+    /// too: it answers as every runtime of the family does, wherever the
+    /// placement would start the process.
+    fn process_runtime(
+        &self,
+        _: FamilyArgs,
+        _: Rc<dyn Placement>,
+    ) -> Option<Result<Box<dyn ProviderRuntime>, FamilyError>> {
+        self.process_host.then(|| Ok(answers_ok()))
     }
 }
 
@@ -186,6 +203,7 @@ impl ProviderFamily for ScriptedSubscription {
             accounts: Some(Box::new(accounts)),
             quota,
             account: subscription.account.map(|binding| binding.credential_id),
+            process_host: false,
         }))
     }
 }
@@ -279,6 +297,7 @@ struct Scripted {
     accounts: Option<Box<dyn SubscriptionAccounts>>,
     quota: Option<ProviderQuota>,
     account: Option<String>,
+    process_host: bool,
 }
 
 impl Provider for Scripted {
@@ -291,7 +310,9 @@ impl Provider for Scripted {
     }
 
     fn capabilities(&self) -> Capabilities {
-        Capabilities::default()
+        Capabilities {
+            process_host: self.process_host,
+        }
     }
 
     fn auth_status(&self) -> BoxFuture<'_, AuthState> {
@@ -321,9 +342,14 @@ impl Provider for Scripted {
     }
 
     fn runtime(&self, _: RuntimeEnv) -> Result<Box<dyn ProviderRuntime>, RuntimeError> {
-        Ok(Box::new(ScriptedRuntime::new([Turn::Events(vec![
-            event::text("ok"),
-            event::response(1, 1),
-        ])])))
+        Ok(answers_ok())
     }
+}
+
+/// A runtime that answers its one run with `ok`.
+fn answers_ok() -> Box<dyn ProviderRuntime> {
+    Box::new(ScriptedRuntime::new([Turn::Events(vec![
+        event::text("ok"),
+        event::response(1, 1),
+    ])]))
 }

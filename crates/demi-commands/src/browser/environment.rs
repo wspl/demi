@@ -569,7 +569,10 @@ async fn retire_browser(
     mut pump: AbortOnDropHandle<chromiumoxide::Result<()>>,
     process: &mut ChromeProcess,
 ) -> Result<()> {
-    process.observe();
+    if let Err(error) = process.observe().await {
+        // The drain reads the process table again as it signals.
+        tracing::warn!("Chrome's helpers were not observed before retirement: {error}");
+    }
     let leader = match browser {
         Some(mut browser) => {
             let graceful = tokio::time::timeout(CONTROL_TIMEOUT, async {

@@ -5,20 +5,24 @@
 //! a test registers scripted ones beside them.
 
 use std::collections::BTreeMap;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use demi_core::{Clock, WireApi};
 use demi_provider::credentials::CredentialPool;
 use demi_provider::models_dev::ModelsDevClient;
 use demi_provider::quota::{MemorySnapshots, QuotaSnapshotStore};
-use demi_provider::{Provider, Secret};
+use demi_provider::{Provider, ProviderRuntime, Secret};
 use demi_provider_anthropic_api::{AnthropicConfig, AnthropicProvider};
+use demi_provider_claude_code::{ClaudeCodeConfig, ClaudeCodeProvider, Placement};
 use demi_provider_codex::{CodexConfig, CodexProvider};
 use demi_provider_google::{GoogleConfig, GoogleProvider};
 use demi_provider_grok_build::{GrokConfig, GrokProvider};
 use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider, VendorPolicy};
 use demi_web_api::providers::CredentialKind;
 use url::Url;
+
+use crate::vault::accounts::SETUP_TOKEN_FAMILY;
 
 /// A provider family: `anthropic`, `codex`, or a test's scripted one.
 pub trait ProviderFamily: Send + Sync + 'static {
@@ -33,6 +37,17 @@ pub trait ProviderFamily: Send + Sync + 'static {
 
     /// The provider of one entry and account.
     fn provider(&self, args: FamilyArgs) -> Result<Arc<dyn Provider>, FamilyError>;
+
+    /// A session's runtime of the provider `args` build, whose process
+    /// `placement` starts; none for a family whose provider runs no process
+    /// (`claude-code.md` § How a runtime gets its process).
+    fn process_runtime(
+        &self,
+        _args: FamilyArgs,
+        _placement: Rc<dyn Placement>,
+    ) -> Option<Result<Box<dyn ProviderRuntime>, FamilyError>> {
+        None
+    }
 }
 
 /// What a family builds a provider from.
@@ -103,6 +118,7 @@ impl FamilyRegistry {
     pub fn builtin() -> Self {
         Self::default()
             .with("anthropic", AnthropicFamily)
+            .with(SETUP_TOKEN_FAMILY, ClaudeCodeFamily)
             .with("codex", CodexFamily)
             .with("google", GoogleFamily)
             .with("grok-build", GrokBuildFamily)
@@ -243,6 +259,46 @@ impl ProviderFamily for GrokBuildFamily {
     }
 }
 
+/// The `claude-code` family: Claude accounts by setup token, whose requests
+/// run the Claude Code CLI on the user's Cloud.
+struct ClaudeCodeFamily;
+
+impl ClaudeCodeFamily {
+    fn build(args: FamilyArgs) -> Result<ClaudeCodeProvider, FamilyError> {
+        let FamilyCredential::Subscription(subscription) = args.credential else {
+            return Err(FamilyError::WrongCredential);
+        };
+        let (account, quota) = bound(subscription.account);
+        let config = ClaudeCodeConfig::new(args.entry_id, args.label, account);
+        Ok(ClaudeCodeProvider::new(
+            config,
+            subscription.pool,
+            quota,
+            args.models_dev,
+            args.http,
+            args.clock,
+        ))
+    }
+}
+
+impl ProviderFamily for ClaudeCodeFamily {
+    fn credential(&self) -> CredentialKind {
+        CredentialKind::Subscription
+    }
+
+    fn provider(&self, args: FamilyArgs) -> Result<Arc<dyn Provider>, FamilyError> {
+        Ok(Arc::new(Self::build(args)?))
+    }
+
+    fn process_runtime(
+        &self,
+        args: FamilyArgs,
+        placement: Rc<dyn Placement>,
+    ) -> Option<Result<Box<dyn ProviderRuntime>, FamilyError>> {
+        Some(Self::build(args).map(|provider| provider.process_runtime(placement)))
+    }
+}
+
 /// The account a subscription provider stands for and the store of its
 /// quota. A provider without an account, such as one built to log in, can
 /// neither infer nor probe, so its quota store is one held in memory that
@@ -313,7 +369,7 @@ mod tests {
     async fn the_subscription_families_log_in_by_device_and_stand_for_their_bound_account() {
         let registry = FamilyRegistry::builtin();
         let subscriptions: Vec<&str> = registry.subscriptions().collect();
-        assert_eq!(subscriptions, ["codex", "grok-build"]);
+        assert_eq!(subscriptions, ["claude-code", "codex", "grok-build"]);
 
         let codex = json!({
             "accessToken": jwt(&json!({ "exp": 1_900_000_000 })),

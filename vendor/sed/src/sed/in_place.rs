@@ -8,6 +8,7 @@
 // For the full copyright and license information, please view the LICENSE
 // file that was distributed with this source code.
 
+#[cfg(any(windows, test))]
 use uucore::context::PathExt as _;
 use uucore::context::FileKindExt as _;
 use uucore::context::fs;

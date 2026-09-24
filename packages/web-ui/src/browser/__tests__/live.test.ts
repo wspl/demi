@@ -1,8 +1,8 @@
 import { expect, test } from 'bun:test'
-import type { LiveControl, LiveModuleMessage, LiveTab, LiveViewerMessage } from '@demicodes/browser-protocol/live'
+import type { LiveControl, LiveModuleMessage, LiveTab, LiveViewerMessage } from '@demicodes/protocol'
 import { LiveFrameReader, encodeFile, encodeMessage, type LiveFrame } from '../frames'
 import { keyMessage, localKey, modifiers, pointerMessage, viewerPlatform, wheelMessage } from '../input'
-import { LiveSession, type LiveSessionOptions, type LiveStreamHandlers, type PictureSink } from '../session'
+import { LiveSession, REFUSED_FRAME, type LiveSessionOptions, type LiveStreamHandlers, type PictureSink } from '../session'
 import { deviceSnap, panelSize, placePicture, panelRect, tabPoint, viewportChoices } from '../view'
 
 const WEB = { width: 800, height: 600, devicePixelRatio: 2, mode: 'web' } as const
@@ -27,13 +27,17 @@ function video(tab: string, generation: number, sequence: number, key: boolean, 
   return frame
 }
 
-function moduleFrame(message: LiveModuleMessage): Uint8Array {
-  const json = new TextEncoder().encode(JSON.stringify(message))
-  const frame = new Uint8Array(5 + json.length)
-  new DataView(frame.buffer).setUint32(0, 1 + json.length)
-  frame[4] = 1
-  frame.set(json, 5)
+/** A frame of any kind and payload, as a module that breaks the protocol might write it. */
+function rawFrame(kind: number, payload: Uint8Array): Uint8Array {
+  const frame = new Uint8Array(5 + payload.length)
+  new DataView(frame.buffer).setUint32(0, 1 + payload.length)
+  frame[4] = kind
+  frame.set(payload, 5)
   return frame
+}
+
+function moduleFrame(message: LiveModuleMessage): Uint8Array {
+  return rawFrame(1, new TextEncoder().encode(JSON.stringify(message)))
 }
 
 test('frames split across chunks and join within one', () => {
@@ -54,6 +58,21 @@ test('frames split across chunks and join within one', () => {
     const frame = frames[1]!.kind === 'video' ? frames[1]!.frame : null
     expect(frame).toMatchObject({ tab: 't_aaaaaaaaaaaaaaaaaaaaaa', generation: 3, sequence: 7, key: true, width: 1600, height: 1200 })
     expect([...frame!.data]).toEqual([0, 0, 0, 1, 9])
+  }
+})
+
+test('a frame the protocol refuses is an error, never a frame', () => {
+  const text = (value: string) => new TextEncoder().encode(value)
+  const refused: Array<[Uint8Array, string]> = [
+    [rawFrame(1, text('{"type":')), 'not JSON'],
+    [rawFrame(1, new Uint8Array([0x7b, 0xff, 0x7d])), 'not JSON'],
+    [rawFrame(1, text('{"type":"state","running":"yes","tabs":[],"watched":null}')), 'the protocol refuses'],
+    [rawFrame(3, new Uint8Array(8)), 'kind 3'],
+    [rawFrame(2, new Uint8Array([0, 0, 0, 1])), 'shorter than its header'],
+    [new Uint8Array([0, 0, 0, 0]), 'impossible size'],
+  ]
+  for (const [bytes, reason] of refused) {
+    expect(() => new LiveFrameReader().read(bytes)).toThrow(reason)
   }
 })
 
@@ -322,6 +341,30 @@ test('a view that ends opens again, watching what the viewer watched', async () 
   await Bun.sleep(5)
   expect(view.sent.at(-1)).toEqual({ type: 'watch', tab: TAB.id })
   expect(view.live.state.connection).toBe('ended')
+})
+
+test('a frame the protocol refuses ends the view, and the next view opens', async () => {
+  const ended: string[] = []
+  const view = session({ reconnect: () => 0, onEnded: (reason) => ended.push(reason) })
+  view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
+  view.receive(rawFrame(1, new TextEncoder().encode('{"type":"state","running":"yes"}')))
+  expect(ended).toEqual([REFUSED_FRAME])
+  expect(view.live.state).toMatchObject({ connection: 'opening', running: false, ended: REFUSED_FRAME })
+  await Bun.sleep(5)
+  expect(view.sent.filter((message) => message.type === 'hello')).toHaveLength(2)
+  view.live.close()
+})
+
+test('a view that opens again reads its stream from the first byte', async () => {
+  const view = session({ reconnect: () => 0 })
+  const state = moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id })
+  // The stream ends inside a frame; the next stream's first frame is whole.
+  view.receive(state.subarray(0, 7))
+  view.close('host_unreachable')
+  await Bun.sleep(5)
+  view.receive(state)
+  expect(view.live.state).toMatchObject({ connection: 'live', running: true, watched: TAB.id })
+  view.live.close()
 })
 
 test('a view the module ended and the socket then closed opens again once', async () => {
