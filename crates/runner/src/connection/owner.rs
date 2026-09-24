@@ -481,7 +481,7 @@ impl Owner<'_> {
     fn start_or_route(&mut self, message: &Inbound) -> io::Result<()> {
         let registered = self.registered;
         let draining = registered.management.draining.is_cancelled();
-        let home = || {
+        let demi_home = || {
             (
                 "DEMI_HOME".to_owned(),
                 registered.state.root.to_string_lossy().into_owned(),
@@ -515,7 +515,7 @@ impl Owner<'_> {
                         }
                     }
                 }
-                values.extend([home()]);
+                values.extend([demi_home()]);
                 self.jobs.start(TaskSpec {
                     id: spawn_id.clone(),
                     cwd: cwd
@@ -542,7 +542,13 @@ impl Owner<'_> {
             } => {
                 let mut values = registered.env.clone();
                 values.extend(env.clone());
-                values.extend([home()]);
+                // The login profile the job reads and its `$HOME` name one
+                // home (`runner.md` § Shell jobs), also when neither the
+                // request nor the device's environment names one.
+                values
+                    .entry("HOME".to_owned())
+                    .or_insert_with(|| registered.runner.identity.home_dir.clone());
+                values.extend([demi_home()]);
                 self.jobs.start(TaskSpec {
                     id: job_id.clone(),
                     cwd: PathBuf::from(cwd),
