@@ -31,6 +31,8 @@ use std::os::fd::RawFd;
 
 #[cfg(unix)]
 use rustix::fd::BorrowedFd;
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+use rustix::fs::copy_file_range as rustix_copy_file_range;
 
 #[cfg(unix)]
 use std::os::unix::io::AsRawFd;
