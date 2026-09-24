@@ -10,7 +10,13 @@ pub(crate) fn directory() -> ProviderModelList {
         model("gpt-5.5", "GPT-5.5", 272_000, true, true),
         model("gpt-5.4", "GPT-5.4", 272_000, true, true),
         model("gpt-5.4-mini", "GPT-5.4-Mini", 272_000, true, false),
-        model("gpt-5.3-codex-spark", "GPT-5.3-Codex-Spark", 128_000, false, false),
+        model(
+            "gpt-5.3-codex-spark",
+            "GPT-5.3-Codex-Spark",
+            128_000,
+            false,
+            false,
+        ),
     ];
     ProviderModelList {
         models,
@@ -25,7 +31,13 @@ pub(crate) fn directory() -> ProviderModelList {
 /// A GPT model: it calls tools, reads images and PDFs when `attachments`,
 /// levels its thinking from `low` to `xhigh`, has no model-specific output
 /// limit, and offers the `priority` tier as Fast when `fast`.
-fn model(id: &str, name: &str, context_window: u32, attachments: bool, fast: bool) -> ProviderModel {
+fn model(
+    id: &str,
+    name: &str,
+    context_window: u32,
+    attachments: bool,
+    fast: bool,
+) -> ProviderModel {
     let efforts = ["low", "medium", "high", "xhigh"];
     let service_tiers = if fast {
         vec![ServiceTier {

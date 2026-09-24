@@ -17,7 +17,8 @@ use crate::{FailureReader, ProviderFailure};
 
 pub use sse::{SseError, sse_data};
 pub use tagged::{
-    Reported, ReportedString, Tagged, TaggedWire, WireError, decode_tagged, decode_untagged,
+    NonEmpty, Reported, ReportedString, Tagged, TaggedWire, WireError, decode_tagged,
+    decode_untagged,
 };
 
 /// What [`tagged_wire!`](crate::tagged_wire) expands to refers to, so that a

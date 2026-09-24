@@ -107,10 +107,12 @@ next to the wire's types, so that a command program depends on one crate.
     carries portable facts only and never a source label such as
     `codex-backend`, `models.dev` or `cache`, with the one conversion of a
     catalog model into a selection (`ProviderModel::selection`, with the
-    attachment types it derives, `ATTACHMENT_FILE_EXTENSIONS`); its authentication and runtime
-    states (`AuthState`, `RuntimeState`); its subscription accounts as the
-    browser sees them (`AccountInfo`, `LoginPending`); and an account's quota
-    snapshot (`QuotaSnapshot`, `QuotaWindow`, `QuotaPlan` and their sets);
+    attachment types it derives, `ATTACHMENT_FILE_EXTENSIONS`); the wire
+    format an `openai` entry speaks (`WireApi`), which its configuration names
+    and its provider sends; its authentication and runtime states
+    (`AuthState`, `RuntimeState`); its subscription accounts as the browser
+    sees them (`AccountInfo`, `LoginPending`); and an account's quota snapshot
+    (`QuotaSnapshot`, `QuotaWindow`, `QuotaPlan` and their sets);
   - the identities blocks and frames name (`BlockId`, `TurnId`, `NodeId`,
     `WakeupId`, `ShellId`, `CommandId`, `OperationId`), and the macro every
     crate declares a checked identity with (`id!`): a string newtype that
@@ -318,13 +320,13 @@ next to the wire's types, so that a command program depends on one crate.
     (`CredentialPool`, `AccountDocument`) with one refresh at a time per
     account (`RefreshGates`), the one refresh protocol of every family
     (`renew`), a pool held in memory for logins and tests
-    (`MemoryCredentialPool`), and the account operations every subscription
-    family shares (`Accounts`, over a family's `AccountKit`); quota
-    (`ProviderQuota`), token accounting, and the models.dev client
-    (`provider::models_dev`: the one copy of the document a backend keeps,
-    `ModelsDevClient`, and its vendors and models as catalog models); the
-    catalog, state, account and quota shapes they return are `core`'s,
-    because the browser receives them.
+    (`MemoryCredentialPool`), the account operations every subscription
+    family shares (`Accounts`, over a family's `AccountKit`), and why an
+    account could not be used (`AuthFailure`); quota (`ProviderQuota`), token
+    accounting, and the models.dev client (`provider::models_dev`: the one
+    copy of the document a backend keeps, `ModelsDevClient`, and its vendors
+    and models as catalog models); the catalog, state, account and quota
+    shapes they return are `core`'s, because the browser receives them.
 - **Public boundary:** the items above; `provider::testing` supplies scripted
   runtimes (`ScriptedRuntime`), a scripted vendor server (`MockVendor`) and a
   fixed clock (`FixedClock`). Behavior: [Providers](../providers/providers.md),
@@ -343,8 +345,8 @@ Each crate implements the provider contract for one vendor family.
 | `provider-anthropic-api` | The Anthropic Messages API: request and stream mapping, model metadata and failure reading |
 | `provider-openai-api` | The OpenAI Responses API, and the Chat Completions wire for OpenAI-compatible endpoints with their reasoning deltas and the opt-in replay of thinking as `reasoning_content`; model metadata |
 | `provider-google` | The Gemini `generateContent` API, the native wire rather than the OpenAI-compatible one: request and stream mapping, including thought summaries, thought signatures and tool-returned media as inline parts; model metadata |
-| `provider-codex` | The Codex Responses transport over server-sent events and WebSocket, device login, reading its failure records (usage-limit reset fields), the quota read from `x-codex-*` headers, and the model catalog |
-| `provider-grok-build` | RFC 8628 device login against `auth.x.ai`, OIDC token refresh, the Chat Completions transport to the Grok Build proxy, the model catalog from `/v1/models`, and the billing and subscription quota probe |
+| `provider-codex` | The Codex Responses transport over server-sent events and WebSocket, device login, token refresh, reading its failure records (usage-limit reset fields), the quota from its usage probe and the `x-codex-*` headers, and the model catalog |
+| `provider-grok-build` | RFC 8628 device login against `auth.x.ai`, OIDC token refresh, the Chat Completions transport to the Grok Build proxy, the model catalog from `/v1/models`, and the quota from the billing and subscription probe and the rate-limit headers |
 
 - **Public boundary:** each crate's `Provider` implementation and its
   configuration type; transports, body builders, stream parsers and
@@ -700,8 +702,8 @@ provider -> core, gates
 provider-anthropic-api -> core, provider
 provider-openai-api -> core, provider
 provider-google -> core, provider
-provider-codex -> provider
-provider-grok-build -> provider
+provider-codex -> core, provider
+provider-grok-build -> core, provider
 provider-claude-code -> provider, shell
 shell -> command-service, command-tree, core
 agent -> agent-protocol, core, gates, provider, shell

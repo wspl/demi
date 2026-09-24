@@ -1,0 +1,32 @@
+[package]
+name = "demi-provider-codex"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+
+[lib]
+# No doc examples: rustdoc has nothing to test. The tests are in
+# tests/codex, so the library needs no test harness of its own.
+doctest = false
+test = false
+
+[dependencies]
+demi-core = { path = "../core" }
+demi-provider = { path = "../provider" }
+async-stream = "0.3"
+bytes.workspace = true
+futures-util.workspace = true
+http.workspace = true
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
+tokio-util.workspace = true
+
+[dev-dependencies]
+demi-provider = { path = "../provider", features = ["testing"] }
+# The device login's lifetime is tested on a paused clock.
+tokio = { workspace = true, features = ["test-util"] }

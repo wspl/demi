@@ -1308,7 +1308,9 @@ dependencies = [
  "demi-host-remote",
  "demi-provider",
  "demi-provider-anthropic-api",
+ "demi-provider-codex",
  "demi-provider-google",
+ "demi-provider-grok-build",
  "demi-provider-openai-api",
  "demi-runner-protocol",
  "demi-shell",
@@ -1608,6 +1610,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "demi-provider-codex"
+version = "0.1.3"
+dependencies = [
+ "async-stream",
+ "bytes",
+ "demi-core",
+ "demi-provider",
+ "futures-util",
+ "http",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite 0.30.0",
+ "tokio-util",
+]
+
+[[package]]
 name = "demi-provider-google"
 version = "0.1.3"
 dependencies = [
@@ -1621,6 +1641,23 @@ dependencies = [
  "serde_json",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "demi-provider-grok-build"
+version = "0.1.3"
+dependencies = [
+ "async-stream",
+ "bytes",
+ "demi-core",
+ "demi-provider",
+ "futures-util",
+ "http",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "tokio",
 ]
 
 [[package]]
