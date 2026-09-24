@@ -7,9 +7,9 @@
 use std::rc::Rc;
 
 use demi_agent_protocol::{ClientContent, EditRequest, TranscriptVersion};
+use demi_command_service::protocol::canonical_digest;
 use demi_core::{Block, BlockId, OperationId, UserContentBlock};
 use demi_provider::ProviderRuntime;
-use sha2::{Digest, Sha256};
 use tokio::sync::watch;
 
 use super::{
@@ -124,8 +124,7 @@ pub(crate) async fn accepted(mut acceptance: Acceptance) -> Result<EditReceipt, 
 /// sent it, before its uploads are resolved (`message-editing.md` § Commit
 /// and idempotency).
 pub(crate) fn edit_digest(request: &EditRequest<ClientContent>) -> String {
-    let canonical = serde_json_canonicalizer::to_vec(request).expect("an edit request serializes");
-    format!("{:x}", Sha256::digest(canonical))
+    canonical_digest(request).expect("an edit request serializes")
 }
 
 /// The edit action (`message-editing.md` § Behavior and ownership):
