@@ -11,18 +11,20 @@
 //! to prepare (`frame_delivery_failed`); a message that is not JSON closes
 //! the socket.
 
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 
 use axum::extract::ws::{CloseFrame, Message, Utf8Bytes, WebSocket, close_code};
 use demi_agent::{ContentError, ContentResolver, FileReference, Outgoing};
 use demi_agent_protocol::{ClientFrame, EditOutcome, FrameError, ServerFrame, TranscriptPatch, decode_client_frame};
 use demi_core::{Block, UserContentBlock};
+use demi_gates::Purpose;
 use demi_web_api::error::ErrorCode;
 use demi_web_api::ids::{ConversationId, ProviderId};
 use futures_util::future::LocalBoxFuture;
 use futures_util::{SinkExt as _, StreamExt as _};
 
-use super::{failure_facts, interim_cwd, root_of};
+use super::remote_files::RemoteFile;
+use super::{failure_facts, root_of};
 use crate::shard::Shard;
 use crate::storage::StorageError;
 use crate::storage::conversation_index::{ConversationModel, ConversationRecord};
@@ -90,12 +92,22 @@ impl Shard {
         if self.is_closing() {
             return;
         }
-        let Some(cwd) = interim_cwd(&conversation) else {
-            tracing::error!(conversation = %conversation.id, "the conversation's directory is unknown");
-            return;
+        let cwd = match self.resolve_target(&conversation).await {
+            Ok(target) => target.path().to_owned(),
+            Err(error) => {
+                tracing::error!(
+                    conversation = %conversation.id,
+                    error = &error as &dyn std::error::Error,
+                    "the conversation's target does not resolve"
+                );
+                return;
+            }
         };
         let id = conversation.id;
-        let resolver = Rc::new(UnavailableFiles);
+        let resolver = Rc::new(ConversationFiles {
+            shard: Rc::downgrade(&self),
+            conversation: id.clone(),
+        });
         let (connection, mut frames) = self.agent().connect(root_of(&id), cwd, resolver);
         let (mut sink, mut stream) = socket.split();
         let mut handling: Option<LocalBoxFuture<'_, Handled>> = None;
@@ -179,6 +191,11 @@ impl Shard {
                 return Handled::Replies(vec![refusal(ErrorCode::InvalidFrame, format!("Invalid client frame: {error}"))]);
             }
         };
+        // The frame is handled under the conversation's file gate, which a
+        // transition holding the conversation makes it wait for, never
+        // refuse (`sessions-and-targets.md` § How a conversation uses a
+        // device).
+        let _admitted = self.conversations().slot(conversation).files.enter(Purpose::Demand).await;
         match self.prepare_frame(conversation, &frame).await {
             Ok(Prepared::Deliver) => {
                 connection.handle(frame).await;
@@ -197,8 +214,7 @@ impl Shard {
     /// conversation must not be archived, except to close it; an `open` or
     /// a `set_provider` names a provider of the user's scope, and the
     /// conversation records the selection; a `send` is activity in the
-    /// conversation. Interim: the frame waits for no admission; the
-    /// conversation's file gate admits it once the host access holds one.
+    /// conversation.
     async fn prepare_frame(&self, conversation: &ConversationId, frame: &ClientFrame) -> Result<Prepared, StorageError> {
         let services = self.services();
         let record = services.control.conversation(conversation.clone()).await?;
@@ -351,23 +367,42 @@ fn to_text(frame: &ServerFrame) -> String {
     serde_json::to_string(frame).expect("a server frame serializes to JSON")
 }
 
-/// The files of a frame's content, which this backend cannot resolve yet.
-/// Interim: uploads resolve against the user's attachment records and are
-/// written to the conversation's Host, and remote files are granted through
-/// the conversation's attached hosts, once those land; until then a frame
-/// that refers to a file is refused.
-struct UnavailableFiles;
+/// The files of a frame's content: a remote file becomes its reference once
+/// its device may be read. Interim: uploads resolve against the user's
+/// attachment records and are written to the conversation's Host once those
+/// land; until then a frame with an upload is refused.
+struct ConversationFiles {
+    /// Weak: the shard owns the agent server that holds this resolver.
+    shard: Weak<Shard>,
+    conversation: ConversationId,
+}
 
-impl ContentResolver for UnavailableFiles {
+impl ContentResolver for ConversationFiles {
     fn resolve<'a>(
         &'a self,
-        _files: Vec<FileReference>,
+        files: Vec<FileReference>,
     ) -> LocalBoxFuture<'a, Result<Vec<Vec<UserContentBlock>>, ContentError>> {
-        Box::pin(async {
-            Err(ContentError {
-                message: "Attachments and remote files are not available on this backend yet".into(),
+        Box::pin(async move {
+            let refused = |message: String| ContentError {
+                message,
                 code: Some(ErrorCode::FrameDeliveryFailed.to_string()),
-            })
+            };
+            let shard = self
+                .shard
+                .upgrade()
+                .ok_or_else(|| refused("The backend is shutting down".into()))?;
+            let remote = files
+                .into_iter()
+                .map(|file| match file {
+                    FileReference::RemoteFile { device_id, path } => Ok(RemoteFile { device: device_id, path }),
+                    FileReference::Upload { .. } => Err(refused("Attachments are not available on this backend yet".into())),
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let blocks = shard
+                .reference_remote_files(&self.conversation, &remote)
+                .await
+                .map_err(|refusal| refused(refusal.to_string()))?;
+            Ok(blocks.into_iter().map(|block| vec![block]).collect())
         })
     }
 }
