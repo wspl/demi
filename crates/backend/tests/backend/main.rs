@@ -4,6 +4,7 @@
 mod accounts;
 mod auth;
 mod blobs;
+mod coding;
 mod conversations;
 mod edge;
 mod families;
