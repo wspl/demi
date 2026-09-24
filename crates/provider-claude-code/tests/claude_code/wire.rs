@@ -147,6 +147,22 @@ async fn a_line_demi_cannot_read_fails_the_run_with_the_line_as_its_record_and_c
         "Invalid tool_use block from Claude Code"
     );
     assert_eq!(signals, [Signal::Terminate]);
+
+    // A tool call in a request that offered no tools: the CLI has none of
+    // its own, so no tool can answer it.
+    let (events, signals) = answer(vec![
+        json!({ "type": "stream_event", "event": { "type": "message_start", "message": { "content": [] } } }),
+        json!({ "type": "assistant", "message": { "content": [
+            { "type": "tool_use", "id": "toolu_1", "name": "mcp__main__shell_exec", "input": { "script": "pwd" } },
+        ] } }),
+        json!({ "type": "stream_event", "event": { "type": "message_stop" } }),
+    ])
+    .await;
+    assert_eq!(
+        failure(&events).message,
+        "Claude Code called a tool, but the request offered none"
+    );
+    assert_eq!(signals, [Signal::Terminate]);
 }
 
 #[tokio::test(flavor = "local")]
