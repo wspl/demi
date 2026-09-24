@@ -47,8 +47,8 @@ case "$filesystem" in
   ext4|btrfs) ;;
   *) echo "unsupported Cloud storage filesystem: $filesystem" >&2; exit 2 ;;
 esac
-BUN="$bun" bash "$here/install-runsc.sh"
-runsc=$("$bun" -e 'const r = await Bun.file(process.argv[1]).json(); console.log("/opt/gvisor/" + (process.arch === "arm64" ? r.arm64Version.replace(/^release-/, "") : r.upstream) + "/runsc")' "$here/../runtime/release.json")
+# The pinned runtime and its installer live with the Rust manager.
+runsc=$(bash "$here/../../../crates/machines/scripts/install-runsc.sh")
 getent group demi-cloud >/dev/null || groupadd --system demi-cloud
 usermod -aG demi-cloud "$user"
 install -d -o root -g root -m 0700 "$data"
