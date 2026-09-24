@@ -29,7 +29,7 @@ pub use content::{ContentError, ContentResolver, FileReference};
 pub use tree::Tree;
 
 use crate::{
-    AgentHarness, IdSource, Node, SessionConfig,
+    AgentHarness, IdSource, Node, SessionConfig, ShellEnvironmentFactory,
     session::{ForkError, fork_seed},
     store::{AgentTreeStore, Checkpoint, CheckpointUpdate, CommandStateHistory, NodeRecord},
 };
@@ -87,9 +87,11 @@ impl Default for ServerConfig {
 }
 
 /// What a product gives the agent server.
-pub struct ServerDeps<H> {
+pub struct ServerDeps<H: AgentHarness> {
     pub harness: Rc<H>,
     pub providers: Rc<dyn ProviderResolver>,
+    /// Makes each node's shell environment on each Host it uses.
+    pub shells: Rc<dyn ShellEnvironmentFactory<H::Host>>,
     pub stores: TreeStores,
     pub clock: Arc<dyn Clock>,
     pub ids: Rc<dyn IdSource>,

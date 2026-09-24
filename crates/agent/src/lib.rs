@@ -21,6 +21,7 @@ mod session;
 pub mod store;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
+mod tools;
 pub mod transcript;
 
 pub use harness::{AgentHarness, Profile, PromptContext};
@@ -34,3 +35,4 @@ pub use session::{
     AgentSession, CompactionConfig, ForkError, RetryPolicy, SessionConfig, TranscriptSnapshot,
 };
 pub use store::{AgentTreeStore, SessionStore};
+pub use tools::{EnvironmentScope, ShellEnvironmentFactory};

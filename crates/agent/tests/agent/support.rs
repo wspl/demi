@@ -11,7 +11,7 @@ use std::{
 use demi_agent::{
     AgentHarness, AgentServer, AgentTreeStore, PromptContext, ProviderResolver, ResolveError,
     ServerConfig, ServerDeps,
-    testing::{MemoryTreeStore, SequentialIds, TestClient, test_model},
+    testing::{MemoryTreeStore, NoHost, NoShells, SequentialIds, TestClient, test_model},
 };
 use demi_agent_protocol::{ClientFrame, ServerFrame};
 use demi_core::{Block, ModelSelection, NodeId, TurnId};
@@ -36,6 +36,8 @@ pub struct TestHarness {
 }
 
 impl AgentHarness for TestHarness {
+    type Host = NoHost;
+
     fn name(&self) -> &str {
         "test"
     }
@@ -141,6 +143,7 @@ impl Fixture {
         let server = AgentServer::new(ServerDeps {
             harness: harness.clone(),
             providers: resolver.clone(),
+            shells: Rc::new(NoShells),
             stores,
             clock: Arc::new(FixedClock(
                 "2026-09-24T12:00:00.000Z"
