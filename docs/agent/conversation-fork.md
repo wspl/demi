@@ -151,8 +151,9 @@ the source's resolved directory in its optional `path` field; an ordinary Cloud
 target without that field uses its own conversation directory. Host resolution
 respects the explicit path after a wakeup and a restart.
 
-Attached-host names and directories are copied as configuration. Processes,
-shell handles, and jobs are not copied. The destination's first ordinary
+Attached-host names and directories are copied as configuration; a device
+revoked before the destination is published is left out, as its revocation
+detached it from the source. Processes, shell handles, and jobs are not copied. The destination's first ordinary
 execution uses its own node identity and command storage on the shared
 filesystem.
 

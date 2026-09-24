@@ -1,7 +1,8 @@
 //! `/api/conversations` (`web-api.md` § Conversation creation and Fork,
 //! § Sidebar mutations, read state and page synchronization): creating a
 //! conversation under the id the browser chose, listing the caller's
-//! conversations, reading one's history as its database holds it,
+//! conversations, changing their fields one patch at a time or in a batch,
+//! forking one, reading one's history as its database holds it,
 //! acknowledging its output, and its socket, `WS /conversations/:id/stream`,
 //! which moves into the caller's shard once upgraded. A conversation the
 //! caller does not own answers like a missing one.
@@ -13,7 +14,9 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::Response;
 use demi_web_api::conversations::{
-    ConversationAnswer, Conversations, ConversationsQuery, CreateConversation, ReadRequest, SubagentHistory, Transcript,
+    BatchAnswer, BatchResult, ConversationAnswer, ConversationBatch, ConversationPatch, ConversationUpdate, Conversations,
+    ConversationsQuery, CreateConversation, FieldResult, ForkAnswer, ForkRequest, ReadRequest, SubagentHistory,
+    Transcript,
 };
 use demi_web_api::error::ErrorCode;
 use demi_web_api::ids::{ConversationId, UserId};
@@ -24,7 +27,7 @@ use super::error::ApiError;
 use super::gate::AuthUser;
 use super::query::QueryParams;
 use crate::backend::Services;
-use crate::conversation::failure_facts;
+use crate::conversation::{ForkRefusal, failure_facts};
 use crate::storage::conversation_index::{ConversationRecord, Creation};
 use crate::storage::tree;
 
@@ -121,6 +124,116 @@ pub(super) async fn transcript(
         failures,
         subagents,
     }))
+}
+
+/// `PATCH /conversations/:id`: each field applied on its own, the archive
+/// first. All applied answers 200 with the conversation and each field's
+/// result; a patch of one field that is refused answers that field's status
+/// and code; any other refusal among several fields answers 207.
+pub(super) async fn patch(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+    JsonBody(patch): JsonBody<ConversationPatch>,
+) -> Result<(StatusCode, Json<ConversationUpdate>), ApiError> {
+    let id = ConversationId::try_from(id).map_err(|_| not_found())?;
+    let update = state
+        .shards
+        .of(&user.id)
+        .call(move |shard, _| async move { shard.apply_patch(&id, patch).await })
+        .await??
+        .ok_or_else(not_found)?;
+    let failures: Vec<&FieldResult> = update
+        .results
+        .iter()
+        .filter(|result| matches!(result, FieldResult::Failed { .. }))
+        .collect();
+    if let ([FieldResult::Failed { code, message, http_status, .. }], 1) = (failures.as_slice(), update.results.len()) {
+        let status = StatusCode::from_u16(*http_status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        return Err(ApiError::new(status, *code, message.clone()));
+    }
+    let status = if failures.is_empty() {
+        StatusCode::OK
+    } else {
+        StatusCode::MULTI_STATUS
+    };
+    Ok((status, Json(update)))
+}
+
+/// `POST /conversations/batch { items }`: up to 100 patches, each answered
+/// on its own, 207 always; a conversation the caller does not have is its
+/// item's refusal.
+pub(super) async fn batch(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    JsonBody(ConversationBatch { items }): JsonBody<ConversationBatch>,
+) -> Result<(StatusCode, Json<BatchAnswer>), ApiError> {
+    let results = state
+        .shards
+        .of(&user.id)
+        .call(move |shard, _| async move {
+            let mut results = Vec::with_capacity(items.len());
+            for item in items {
+                let result = match shard.apply_patch(&item.id, item.patch).await? {
+                    Some(ConversationUpdate { conversation, results }) => BatchResult::Updated {
+                        id: item.id,
+                        conversation,
+                        results,
+                    },
+                    None => BatchResult::Refused {
+                        id: item.id,
+                        code: ErrorCode::ConversationNotFound,
+                        message: "No such conversation".into(),
+                    },
+                };
+                results.push(result);
+            }
+            Ok::<_, crate::storage::StorageError>(results)
+        })
+        .await??;
+    Ok((StatusCode::MULTI_STATUS, Json(BatchAnswer { results })))
+}
+
+/// `POST /conversations/:id/fork { id, blockId }`: the conversation `id`
+/// with this conversation's history through the assistant text `blockId`,
+/// 201; the same attempt again, 200.
+pub(super) async fn fork(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(source): Path<String>,
+    JsonBody(ForkRequest { id, block_id }): JsonBody<ForkRequest>,
+) -> Result<(StatusCode, Json<ForkAnswer>), ApiError> {
+    let source = ConversationId::try_from(source).map_err(|_| not_found())?;
+    let (forked, conversation) = state
+        .shards
+        .of(&user.id)
+        .call(move |shard, _| async move {
+            let forked = shard.fork(source, id, block_id).await?;
+            let conversation = shard.conversation_summary(forked.record.clone()).await?;
+            Ok::<_, ForkRefusal>((forked, conversation))
+        })
+        .await?
+        .map_err(fork_refused)?;
+    let status = if forked.created { StatusCode::CREATED } else { StatusCode::OK };
+    Ok((
+        status,
+        Json(ForkAnswer {
+            conversation,
+            model: forked.model,
+        }),
+    ))
+}
+
+fn fork_refused(refusal: ForkRefusal) -> ApiError {
+    let message = refusal.to_string();
+    match refusal {
+        ForkRefusal::SourceNotFound => not_found(),
+        ForkRefusal::Conflict => ApiError::new(StatusCode::CONFLICT, ErrorCode::ForkConflict, message),
+        ForkRefusal::Unavailable => ApiError::new(StatusCode::CONFLICT, ErrorCode::IdUnavailable, message),
+        ForkRefusal::Target(_) => ApiError::new(StatusCode::BAD_REQUEST, ErrorCode::InvalidForkTarget, message),
+        ForkRefusal::Storage(error) => error.into(),
+        ForkRefusal::Failed(_) => ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::InternalError, message),
+    }
 }
 
 /// `POST /conversations/:id/read { revision }`: acknowledges the output the

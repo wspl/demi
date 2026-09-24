@@ -5,6 +5,7 @@
 //! failure facts of their history.
 
 mod failure_facts;
+mod fork;
 mod harness;
 pub(crate) mod host_access;
 mod providers;
@@ -13,6 +14,7 @@ mod socket;
 mod summary;
 pub(crate) mod target;
 pub(crate) mod transfer;
+mod transition;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -23,6 +25,7 @@ use demi_core::NodeId;
 use demi_web_api::ids::{ConversationId, UserId};
 
 pub(crate) use self::failure_facts::failure_facts;
+pub(crate) use self::fork::{ForkRefusal, recover_forks};
 pub(crate) use self::harness::ConversationHarness;
 use self::harness::NoShellEnvironments;
 use self::providers::ConversationProviders;
