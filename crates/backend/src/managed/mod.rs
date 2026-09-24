@@ -108,7 +108,7 @@ pub(crate) async fn route_deaths(
         // A shard that is closing has no Cloud left to stop.
         let _ = shards
             .of(&owner)
-            .call(move |shard, _| async move { shard.cloud_died(&id) })
+            .call(move |shard, _| async move { shard.cloud_died(&id).await })
             .await;
     }
 }

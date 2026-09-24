@@ -257,9 +257,11 @@ impl Shard {
         })
     }
 
-    /// Revokes a device: its row goes, with its attachments and exposes, and
-    /// its runner hears that it was revoked and stops for good.
+    /// Revokes a device: its exposes end with their connections, its row
+    /// goes with its attachments, and its runner hears that it was revoked
+    /// and stops for good.
     pub(crate) async fn revoke_device(&self, device: DeviceId) -> Result<(), crate::storage::StorageError> {
+        self.destroy_exposes_on(&device).await;
         self.services().control.delete_device(device.clone()).await?;
         self.devices().disconnect(&device, REVOKED);
         Ok(())
