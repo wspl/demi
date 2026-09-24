@@ -21,8 +21,9 @@ use std::{
 use demi_core::{BlockId, Clock, ModelSelection, NodeId, SessionPhase};
 use demi_gates::KeyedSerialGate;
 use demi_provider::ProviderRuntime;
+use demi_shell::{JobCaller, PortError, StorageOp, StorageReply};
 use futures_util::future::{LocalBoxFuture, join_all};
-use tokio_util::task::TaskTracker;
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 pub use connection::{Connection, FrameRx, Outgoing};
 pub use content::{ContentError, ContentResolver, FileReference};
@@ -31,7 +32,9 @@ pub use tree::Tree;
 use crate::{
     AgentHarness, IdSource, Node, SessionConfig, ShellEnvironmentFactory,
     session::{ForkError, fork_seed},
-    store::{AgentTreeStore, Checkpoint, CheckpointUpdate, CommandStateHistory, NodeRecord},
+    store::{
+        AgentTreeStore, Checkpoint, CheckpointUpdate, CommandStateHistory, NodeRecord, StoreError,
+    },
 };
 
 /// Where the agent gets a provider runtime for a session. The backend
@@ -147,6 +150,26 @@ impl<H: AgentHarness> AgentServer<H> {
     /// not live has none.
     pub fn node(&self, root: &NodeId, node: &NodeId) -> Option<Rc<Node<H>>> {
         self.tree(root)?.node(node)
+    }
+
+    /// Serves one command-storage message of a job `caller` started, while
+    /// its call `call` lives: the job's node and the generation it recorded
+    /// (`command-state-history.md` § Mutation API and concurrency). A job of
+    /// a node that is not live, or of a generation a rewrite or dispose
+    /// ended, cannot read or write.
+    pub async fn command_storage(
+        &self,
+        root: &NodeId,
+        caller: &JobCaller,
+        op: StorageOp,
+        call: CancellationToken,
+    ) -> Result<StorageReply, PortError> {
+        let node = self
+            .node(root, &caller.node)
+            .ok_or_else(|| PortError::Storage(StoreError::Invalidated.to_string()))?;
+        node.session()
+            .job_storage(caller.generation, op, call)
+            .await
     }
 
     fn new_id(&self) -> String {
