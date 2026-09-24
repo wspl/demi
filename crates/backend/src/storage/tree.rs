@@ -81,8 +81,7 @@ impl AgentTreeStore for SqliteTreeStore {
     fn create_node(&self, record: NodeRecord, initial: CheckpointUpdate) -> LocalBoxFuture<'_, Result<(), StoreError>> {
         Box::pin(async move {
             let completions = initial.carried_completions()?;
-            let created = self
-                .db
+            self.db
                 .call(move |connection| {
                     let transaction = connection.transaction()?;
                     if node_by_id(&transaction, &record.id)?.is_some() {
@@ -120,8 +119,7 @@ impl AgentTreeStore for SqliteTreeStore {
                     Ok(written)
                 })
                 .await
-                .map_err(store_error)?;
-            created
+                .map_err(store_error)?
         })
     }
 
@@ -240,8 +238,7 @@ impl SessionStore for SqliteSessionStore {
         let node = self.node.clone();
         Box::pin(async move {
             let completions = update.carried_completions()?;
-            let saved = self
-                .db
+            self.db
                 .call(move |connection| {
                     let transaction = connection.transaction()?;
                     // The guard is checked at the start of the transaction, so
@@ -256,8 +253,7 @@ impl SessionStore for SqliteSessionStore {
                     Ok(written)
                 })
                 .await
-                .map_err(store_error)?;
-            saved
+                .map_err(store_error)?
         })
     }
 
@@ -311,10 +307,10 @@ fn write_checkpoint(
     if changed == 0 {
         return Ok(Err(missing(node)));
     }
-    if let Some(command_state) = &update.command_state {
-        if let Err(refusal) = write_command_state(transaction, node, command_state)? {
-            return Ok(Err(refusal));
-        }
+    if let Some(command_state) = &update.command_state
+        && let Err(refusal) = write_command_state(transaction, node, command_state)?
+    {
+        return Ok(Err(refusal));
     }
     for round in completions {
         transaction.execute(
@@ -673,6 +669,15 @@ pub(crate) fn summary(connection: &Connection) -> Result<SummaryFacts, StorageEr
         revision: decode("nodes", "output_revision", u64::try_from(revision))?,
         last,
     })
+}
+
+/// Whether the tree `connection` holds has its root; a Fork's destination
+/// is committed once it does.
+pub(crate) fn has_root(connection: &Connection) -> Result<bool, StorageError> {
+    let exists = connection.query_row("SELECT EXISTS (SELECT 1 FROM nodes WHERE parent_id IS NULL)", [], |row| {
+        row.get(0)
+    })?;
+    Ok(exists)
 }
 
 /// A tree's history as its database holds it: the root's blocks, and each
