@@ -13,6 +13,7 @@
 //! and shared state sits in `Rc` and `RefCell` behind synchronous methods, so
 //! no borrow crosses an await (`concurrency.md` § The user shard).
 
+pub mod attachments;
 mod harness;
 mod ids;
 mod node;
@@ -21,6 +22,7 @@ mod session;
 pub mod store;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
+pub mod title;
 mod tools;
 pub mod transcript;
 

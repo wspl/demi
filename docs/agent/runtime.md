@@ -150,8 +150,11 @@ The `abort_result` frame says what was stopped and whether another `abort`
 would have stopped something more at the moment the stop was recorded.
 
 A stopped action records the stop itself. It writes the human steers still
-pending, completes each running tool call as an error
-`Tool call aborted: <tool>`, and appends an `abort` block, the stopped marker.
+pending and the yield wakeups that fired, completes each running tool call as
+an error `Tool call aborted: <tool>`, and appends an `abort` block, the
+stopped marker. Agent messages keep waiting: the stop is the user's, and the
+user's next action reads them
+([Delivery and scheduling](subagents.md#delivery-and-scheduling)).
 If the action was saving a history rewrite, it records the stop after the
 rewrite is published, so a rewrite never loses a stop. `abort_result` is sent
 only once the record is in the transcript. A provider run that is cancelled
@@ -165,14 +168,15 @@ Dispose does the following:
 
 1. Refuses new actions and invalidates the node's outstanding command-storage
    handles.
-2. Stops the running action as a shutdown. Running tool calls complete as
+2. Stops the running action as a shutdown. The human steers still pending
+   are written, running tool calls complete as
    `Tool call aborted: <tool>`, and an `error` block with the code
    `interrupted` and the message "The agent session was shut down while this
    turn was running." says why the turn is unfinished. A message whose turn
    has not written its `user` block yet is not interrupted: it goes back to
    the front of the queue.
-3. Keeps the queued messages and the scheduled yield wakeups in the
-   checkpoint.
+3. Keeps the queued messages, the agent messages waiting for a boundary and
+   the yield wakeups, scheduled or fired, in the checkpoint.
 4. Waits for a save in progress, then writes the final checkpoint. Its phase
    is `running` when a turn was interrupted.
 5. Closes the provider runtimes, including the one a pending model switch had
@@ -337,10 +341,12 @@ with `shell_status`.
   the user started meanwhile receives it like its own.
 - When no action runs or waits, Stop cancels the oldest scheduled wakeup
   ([Stop](#stop)).
-- A scheduled wakeup is saved in the checkpoint with its id and the wall-clock
-  time it is due, so it survives dispose and a backend restart. Restoring the
-  session arms it again, and a wakeup whose time passed while the session was
-  not live is due at once. A backend restart opens no conversation: a saved
+- A wakeup is saved in the checkpoint with its id, its duration and, once the
+  action that scheduled it has ended, the wall-clock time it is due, so it
+  survives dispose and a backend restart; a fired wakeup stays saved until
+  the transcript holds it. Restoring the session arms it again: a wakeup
+  whose time passed while the session was not live is due at once, and one
+  whose action the process died in starts its wait at the restore. A backend restart opens no conversation: a saved
   wakeup waits until its tree is next restored. A restored root whose last
   turn was interrupted holds its due wakeups as it holds its pending agent
   input ([Persistence](subagents.md#persistence)).
@@ -745,7 +751,7 @@ A node's checkpoint has three parts:
 | Part | Holds |
 | --- | --- |
 | Transcript rows | One row per block, by index |
-| State row | The phase; the queued messages, each `{ id, content }`; the agent messages waiting for a boundary; the scheduled yield wakeups, each with its id and due time; the working directory; the model selection; the harness name; the accepted edit receipts |
+| State row | The phase; the queued messages, each `{ id, content }`; the agent messages waiting for a boundary; the yield wakeups not yet in the transcript, each with its id, its duration and its due time once its action ended; the working directory; the model selection; the harness name; the accepted edit receipts |
 | Command state | Its versions and boundary references ([Command state history](command-state-history.md)) |
 
 Human pending steers are not part of it. Creating,

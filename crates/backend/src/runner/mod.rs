@@ -10,6 +10,7 @@ pub(crate) mod codes;
 pub(crate) mod command_context;
 pub(crate) mod devices;
 pub(crate) mod files;
+pub(crate) mod host_commands;
 mod policy;
 pub(crate) mod router;
 
@@ -41,6 +42,15 @@ pub(crate) fn conversation_of(key: &HostKey) -> Option<&str> {
     let mut words = key.as_str().splitn(3, ' ');
     match (words.next(), words.next()) {
         (Some("conversation"), Some(conversation)) => Some(conversation),
+        _ => None,
+    }
+}
+
+/// The device a conversation's Host key names, its third word.
+pub(crate) fn device_of(key: &HostKey) -> Option<&str> {
+    let mut words = key.as_str().splitn(4, ' ');
+    match (words.next(), words.next(), words.next()) {
+        (Some("conversation"), Some(_), Some(device)) => Some(device),
         _ => None,
     }
 }

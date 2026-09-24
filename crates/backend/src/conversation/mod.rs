@@ -10,6 +10,7 @@ mod harness;
 pub(crate) mod host_access;
 mod providers;
 pub(crate) mod remote_files;
+mod shells;
 mod socket;
 mod summary;
 pub(crate) mod target;
@@ -17,7 +18,7 @@ pub(crate) mod transfer;
 mod transition;
 
 use std::cell::RefCell;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
 use demi_agent::{AgentServer, AgentTreeStore, RandomIds, ServerConfig, ServerDeps, TreeStores};
@@ -27,16 +28,19 @@ use demi_web_api::ids::{ConversationId, UserId};
 pub(crate) use self::failure_facts::failure_facts;
 pub(crate) use self::fork::{ForkRefusal, recover_forks};
 pub(crate) use self::harness::ConversationHarness;
-use self::harness::NoShellEnvironments;
 use self::providers::ConversationProviders;
+use self::shells::ShardShellEnvironments;
 use crate::backend::Services;
+use crate::shard::Shard;
 use crate::storage::tree::SqliteTreeStore;
 use crate::usage::rate_limit::RequestRateLimit;
 
-/// The agent server of a user's shard: its trees keep their state in the
-/// conversations' databases, and their sessions infer with the user's
-/// providers under the user's rate limit.
+/// The agent server of `shard`, the user's: its trees keep their state in
+/// the conversations' databases, their sessions infer with the user's
+/// providers under the user's rate limit, and their nodes' shells run on the
+/// conversations' Hosts through the shard's host access.
 pub(crate) fn agent_server(
+    shard: Weak<Shard>,
     user: UserId,
     services: Arc<Services>,
     http: reqwest::Client,
@@ -54,9 +58,9 @@ pub(crate) fn agent_server(
         ..ServerConfig::default()
     };
     AgentServer::new(ServerDeps {
-        harness: Rc::new(ConversationHarness::new()),
+        harness: Rc::new(ConversationHarness::new(shard.clone())),
         providers: Rc::new(ConversationProviders::new(user, services.clone(), http, rate_limit)),
-        shells: Rc::new(NoShellEnvironments),
+        shells: Rc::new(ShardShellEnvironments::new(shard)),
         stores,
         clock: services.clock.clone(),
         ids: Rc::new(RandomIds),

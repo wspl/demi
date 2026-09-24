@@ -145,7 +145,9 @@ pub(crate) fn bound_text(text: &str) -> Cow<'_, str> {
 }
 
 /// The byte offset of the scalar value at position `chars`.
-fn char_offset(text: &str, chars: usize) -> usize {
+/// The byte offset of the scalar value `chars` of `text`, or its length
+/// when it holds fewer: where a cut after `chars` scalar values falls.
+pub(crate) fn char_offset(text: &str, chars: usize) -> usize {
     text.char_indices()
         .nth(chars)
         .map_or(text.len(), |(offset, _)| offset)

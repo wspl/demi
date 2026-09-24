@@ -182,6 +182,9 @@ pub(super) async fn run(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<()
     }
     // Nothing awaits between the commit and the adoption.
     let discarded = s.update(|core| core.adopt_edit(blocks, commands, runtime, model, receipt));
+    // The callers waiting for the acceptance answer before the replacement's
+    // turn writes anything, so an `edit_result` precedes its turn's frames.
+    tokio::task::yield_now().await;
     for mut runtime in discarded {
         runtime.close().await;
     }

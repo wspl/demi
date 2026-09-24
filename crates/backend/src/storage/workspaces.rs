@@ -16,6 +16,7 @@ pub(crate) struct WorkspaceRecord {
     pub(crate) user: UserId,
     pub(crate) device: DeviceId,
     pub(crate) path: String,
+    pub(crate) name: String,
 }
 
 impl ControlService {
@@ -23,7 +24,7 @@ impl ControlService {
         self.call(move |connection, _| {
             connection
                 .query_row(
-                    "SELECT id, user_id, device_id, path FROM workspaces WHERE id = ?1",
+                    "SELECT id, user_id, device_id, path, name FROM workspaces WHERE id = ?1",
                     [id.as_str()],
                     |row| Ok(workspace_row(row)),
                 )
@@ -41,5 +42,6 @@ fn workspace_row(row: &Row<'_>) -> Result<WorkspaceRecord, StorageError> {
         user: decode(TABLE, "user_id", UserId::try_from(row.get::<_, String>("user_id")?))?,
         device: decode(TABLE, "device_id", DeviceId::try_from(row.get::<_, String>("device_id")?))?,
         path: row.get("path")?,
+        name: row.get("name")?,
     })
 }

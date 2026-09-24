@@ -145,9 +145,9 @@ impl<H: AgentHarness> AgentServer<H> {
     }
 
     /// The live node `node` of the conversation `root`: where the backend's
-    /// command router dispatches a job's `rpc` calls (`Node::commands`) and
-    /// relays its command storage (`Node::storage`). A job of a node that is
-    /// not live has none.
+    /// command router dispatches a job's `rpc` calls (`Node::commands`); its
+    /// command storage goes through [`command_storage`](Self::command_storage).
+    /// A job of a node that is not live has none.
     pub fn node(&self, root: &NodeId, node: &NodeId) -> Option<Rc<Node<H>>> {
         self.tree(root)?.node(node)
     }

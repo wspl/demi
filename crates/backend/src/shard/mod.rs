@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::io;
 use std::num::NonZeroUsize;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
 use demi_agent::AgentServer;
@@ -76,12 +76,13 @@ pub(crate) struct Shard {
 }
 
 impl Shard {
-    fn new(user: UserId, services: Arc<Services>, http: reqwest::Client) -> Self {
+    /// The shard of `user`, whose agent server reaches it through `shard`.
+    fn new(shard: Weak<Shard>, user: UserId, services: Arc<Services>, http: reqwest::Client) -> Self {
         // The user's request rate limit, which every runtime of the user's
         // conversations counts against.
         let limit = services.conversation_tuning.requests_per_minute;
         let rate_limit = Rc::new(RefCell::new(RequestRateLimit::new(limit)));
-        let agent = conversation::agent_server(user.clone(), services.clone(), http.clone(), rate_limit);
+        let agent = conversation::agent_server(shard, user.clone(), services.clone(), http.clone(), rate_limit);
         Self {
             user,
             services,
@@ -490,7 +491,9 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
             Message::Call(job) => {
                 let shard = shards
                     .entry(job.user().clone())
-                    .or_insert_with_key(|user| Rc::new(Shard::new(user.clone(), services.clone(), http.clone())))
+                    .or_insert_with_key(|user| {
+                        Rc::new_cyclic(|shard| Shard::new(shard.clone(), user.clone(), services.clone(), http.clone()))
+                    })
                     .clone();
                 calls.spawn_local(job.run(shard));
             }
