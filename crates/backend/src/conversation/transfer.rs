@@ -234,6 +234,11 @@ impl TransferSet {
         })
     }
 
+    /// Whether a file transfer or a user stream is open.
+    pub(crate) fn any_open(&self) -> bool {
+        *self.open.borrow() > 0
+    }
+
     /// Registers a transfer, unless a transition is closing the
     /// conversation's transfers. The check and the registration are one
     /// step, with no await between them, so a transition that closes the

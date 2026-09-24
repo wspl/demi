@@ -21,6 +21,7 @@ demi-command-tree = { path = "../command-tree" }
 demi-core = { path = "../core" }
 demi-gates = { path = "../gates" }
 demi-host-remote = { path = "../host-remote" }
+demi-machines-protocol = { path = "../machines-protocol" }
 demi-provider = { path = "../provider" }
 demi-provider-anthropic-api = { path = "../provider-anthropic-api" }
 demi-provider-codex = { path = "../provider-codex" }
@@ -72,7 +73,7 @@ subtle = "2"
 thiserror.workspace = true
 tokio.workspace = true
 tokio-rusqlite = "0.8"
-tokio-util.workspace = true
+tokio-util = { workspace = true, features = ["codec"] }
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["fs", "trace"] }
 tracing.workspace = true

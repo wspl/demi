@@ -143,9 +143,11 @@ impl Shard {
             ConversationChange::Record(RecordChange::Archived(true)) => {
                 self.release_everywhere(&record).await?;
                 let committed = self.commit(&record.id, RecordChange::Archived(true)).await;
-                // An archived conversation's title request ends.
+                // An archived conversation's title request and idle watch
+                // end.
                 if committed.is_ok() {
                     self.titles().abort(&record.id);
+                    self.stop_idle(&record.id);
                 }
                 committed
             }
@@ -245,13 +247,18 @@ impl Shard {
         let won = control
             .switch_conversation_target(expected.id.clone(), expected.target.clone(), to, switch, ends)
             .await?;
-        if won { Ok(()) } else { Err(ChangeRefusal::Conflict) }
+        if !won {
+            return Err(ChangeRefusal::Conflict);
+        }
+        // A deadline of the old binding never releases the new one.
+        self.restart_idle(&expected.id);
+        Ok(())
     }
 
     /// The conversation release on every Host the conversation reaches, for
     /// an archive. Every device is asked; the first that failed fails the
     /// archive.
-    async fn release_everywhere(&self, record: &ConversationRecord) -> Result<(), ChangeRefusal> {
+    pub(crate) async fn release_everywhere(&self, record: &ConversationRecord) -> Result<(), ChangeRefusal> {
         let target = self.resolve_target(record).await?;
         let hosts = self.reachable_hosts(record, &target).await?;
         let mut failure = None;
@@ -355,7 +362,6 @@ mod tests {
     use std::rc::Rc;
     use std::time::Duration;
 
-    use demi_runner_protocol::wire::{self, Inbound, Outbound};
     use demi_web_api::ids::{DeviceId, UserId};
 
     use super::*;
@@ -444,38 +450,21 @@ mod tests {
     /// Connects `device` through a runner the test plays, which answers
     /// every conversation release and writes it to `log`.
     fn runner(shard: &Rc<Shard>, device: &DeviceId, log: &Rc<RefCell<Vec<Released>>>) {
-        let driver = shard.connect_for_tests(device, "/home/ana");
-        let (answers, answered) = tokio::sync::mpsc::channel::<Result<Vec<u8>, String>>(8);
-        let (frames, mut sent) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
-        let incoming = futures_util::stream::unfold(answered, |mut answered| async move {
-            answered.recv().await.map(|frame| (frame, answered))
-        });
-        let outgoing = futures_util::sink::unfold(frames, |frames, frame: Vec<u8>| async move {
-            frames.send(frame).map_err(|error| error.to_string())?;
-            Ok::<_, String>(frames)
-        });
-        tokio::task::spawn_local(driver.serve(incoming, outgoing));
         let control = shard.services().control.clone();
-        let device = device.clone();
+        let device_id = device.clone();
         let log = log.clone();
-        tokio::task::spawn_local(async move {
-            while let Some(frame) = sent.recv().await {
-                let Ok(Inbound::ConversationRelease { id, conversation_id }) = wire::decode::<Inbound>(&frame) else {
-                    continue;
-                };
-                let conversation = ConversationId::try_from(conversation_id).unwrap();
+        shard.play_runner_for_tests(device, "/home/ana", move |conversation| {
+            let (control, device, log) = (control.clone(), device_id.clone(), log.clone());
+            Box::pin(async move {
                 let record = control.conversation(conversation.clone()).await.unwrap().unwrap();
                 let attached = control.attached_hosts(conversation).await.unwrap();
                 log.borrow_mut().push(Released {
-                    device: device.clone(),
+                    device,
                     target: record.target,
                     attached: attached.into_iter().map(|host| host.device).collect(),
                     archived: record.archived,
                 });
-                let answer = wire::encode(&Outbound::ConversationReleased { id, error: None }).unwrap();
-                // The link ends with the test.
-                let _ = answers.send(Ok(answer.into_bytes())).await;
-            }
+            })
         });
     }
 
