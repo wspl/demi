@@ -169,23 +169,38 @@ owns its allocation, wake, shared-device admission and reset;
 conversation selects it. A workspace on the Cloud is a directory on that
 device, not a machine of its own.
 
-`GET /api/cloud` returns the logical device identity, lifecycle state, disk
-usage and limits, and the pending operation. `POST /api/cloud/reset` takes
-`{ operationId }`. The backend selects and records the shipped base version at
-admission. The response identifies the operation; the status response reports
-stopping, saving, rebuilding, booting, ready or failure. Retrying the same
-operation id returns the same operation, and a reset with another operation id
-while one runs answers 409 `cloud_resetting`. A reset affects every job on the
-user's Cloud and preserves home. Requests cannot name another user's device or
+`GET /api/cloud` returns `{ device, state, operation, error, volumes, limits }`,
+and the product state carries the same object as `cloud`:
+
+| Field | Meaning |
+| --- | --- |
+| `device` | `{ id, name }`, the logical device identity; null until the first use makes it |
+| `state` | `unallocated`, `off`, `booting`, `running`, `saving` or `resetting` |
+| `operation` | The latest reset, `{ id, phase, error }`, with `phase` one of `stopping`, `saving`, `rebuilding`, `booting`, `ready` and `failed`; null before the first |
+| `error` | Why the Cloud's last boot, save or reset failed; null once a boot succeeds |
+| `volumes` | The capacities of its system and home filesystems, `{ systemBytes, homeBytes }`; null until its first boot made them, or while the machine manager does not answer |
+| `limits` | The most each may grow to, in the same shape |
+
+Reading the status never wakes the Cloud. `POST /api/cloud/reset` takes
+`{ operationId }`, a UUID the page chooses, and answers 202 `{ operation }`.
+The backend selects and records the shipped base version at admission.
+Retrying the same operation id returns the same operation, and retrying one
+that failed resumes it; a reset with another operation id while one runs
+answers 409 `cloud_resetting`, and a stopped Cloud that finds no capacity
+permit answers 409 `cloud_capacity`. A reset affects every job on the user's
+Cloud and preserves home. Requests cannot name another user's device or
 arbitrary image paths. Settings use this API even when the guest is offline or
 broken.
 
-An operation that needs the Cloud running and cannot have it answers 503 with
-the lifecycle's code: `cloud_resetting` while a reset holds the Cloud,
+An operation that needs the Cloud running waits while a reset holds it
+([How a conversation uses a device](../execution/sessions-and-targets.md#how-a-conversation-uses-a-device)),
+and answers 503 with the lifecycle's code when it cannot have it:
 `cloud_capacity` when every capacity permit of the backend is taken,
 `cloud_crash_loop` once repeated runtime losses have stopped its automatic
-boots, which a reset recovers, and `cloud_unavailable` when it cannot start or
-is changing state ([Lifecycle and capacity](../cloud/managed-hosts.md#lifecycle-and-capacity)).
+boots, which a reset recovers, and `cloud_unavailable` when it cannot start,
+when the reset it waited for failed, or when it reached the Cloud through a
+Host handle while the Cloud was changing state
+([Lifecycle and capacity](../cloud/managed-hosts.md#lifecycle-and-capacity)).
 
 ## User streams
 
