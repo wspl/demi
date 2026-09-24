@@ -22,4 +22,6 @@ pub mod recovery;
 pub mod sandbox;
 pub mod server;
 pub mod storage;
+#[cfg(all(target_os = "linux", any(test, feature = "testing")))]
+pub mod testing;
 pub mod tools;

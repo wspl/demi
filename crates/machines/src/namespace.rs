@@ -95,6 +95,9 @@ impl SavedNamespace {
         if !status.success() {
             return Err(NamespaceError::Recovery(status));
         }
+        // Opened through the handle, the descriptor keeps the handle's mount
+        // busy; closed, it lets the release unmount the handle.
+        drop(saved);
         self.release().await
     }
 
