@@ -1372,6 +1372,7 @@ name = "demi-builtin-protocol"
 version = "0.1.3"
 dependencies = [
  "base64 0.22.1",
+ "demi-core",
  "garde",
  "schemars",
  "serde",
@@ -1796,6 +1797,7 @@ version = "0.1.3"
 dependencies = [
  "demi-command-service",
  "demi-command-tree",
+ "demi-core",
  "garde",
  "rmp-serde",
  "schemars",

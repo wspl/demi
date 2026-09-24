@@ -13,6 +13,7 @@ doctest = false
 [dependencies]
 demi-command-service = { path = "../command-service" }
 demi-command-tree = { path = "../command-tree" }
+demi-core = { path = "../core" }
 garde.workspace = true
 rmp-serde = "1.3"
 schemars.workspace = true
