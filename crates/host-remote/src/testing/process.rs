@@ -182,11 +182,12 @@ impl RunnerProcess {
         self.spawn();
     }
 
-    /// Starts the runner again after a stop with `token` as its device
-    /// token, as a Cloud boots with the credential of that boot; its home
-    /// and the rest of its state stay.
-    pub fn start_again_with_token(&mut self, token: &str) {
+    /// Starts the runner again after a stop for the backend at `backend`
+    /// with `token` as its device token, as a Cloud boots with the boot
+    /// record of that boot; its home and the rest of its state stay.
+    pub fn start_again_with_token(&mut self, backend: &str, token: &str) {
         assert!(self.child.is_none(), "the runner still runs");
+        backend.clone_into(&mut self.backend);
         write_token(self.state.path(), token);
         self.spawn();
     }
