@@ -53,9 +53,7 @@ pub(crate) use editing::{
     EditCheck, EditContent, EditError, EditSubmission, accepted, edit_digest, fork_seed,
 };
 pub use retry::RetryPolicy;
-#[cfg(test)]
-pub(crate) use runtime::ToolEffect;
-pub(crate) use runtime::{SessionRuntime, ToolFailure, ToolInvocation, ToolOutcome};
+pub(crate) use runtime::{SessionRuntime, ToolEffect, ToolFailure, ToolInvocation, ToolOutcome};
 
 use self::{
     bus::EventBus,
@@ -877,6 +875,7 @@ impl AgentSession {
         for mut runtime in runtimes {
             runtime.close().await;
         }
+        self.shared.runtime.dispose().await;
         saved
     }
 

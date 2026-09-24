@@ -16,6 +16,7 @@ doctest = false
 testing = []
 
 [dependencies]
+bytes.workspace = true
 demi-agent-protocol = { path = "../agent-protocol" }
 demi-core = { path = "../core" }
 demi-gates = { path = "../gates" }
@@ -28,6 +29,8 @@ schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_json_canonicalizer = "0.3"
+serde_path_to_error = "0.1"
+serde_with.workspace = true
 sha2 = "0.10"
 thiserror.workspace = true
 tokio.workspace = true
