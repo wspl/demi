@@ -243,7 +243,7 @@ async fn connect_inner(endpoint: &str) -> io::Result<Stream> {
                         error.kind(),
                         io::ErrorKind::ConnectionRefused | io::ErrorKind::WouldBlock
                     ) || demi_command_service::descriptors::exhausted(&error))
-                        && runner_alive(endpoint) =>
+                        && liveness(endpoint) != Liveness::Gone =>
                 {
                     backoff.wait().await;
                 }
@@ -277,18 +277,32 @@ async fn connect_inner(endpoint: &str) -> io::Result<Stream> {
 #[cfg(unix)]
 const ALIVE: &str = "ipc.alive";
 
+/// What the runner's lock says about it.
+#[cfg(unix)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Liveness {
+    /// It holds its lock: it runs, and may be too busy to accept.
+    Running,
+    /// Nothing holds the lock, or there is none: it stopped or crashed.
+    Gone,
+    /// The lock cannot be read without an open file; the client waits and
+    /// looks again (`runner.md` § Load).
+    Unknown,
+}
+
 /// A refused connection looks the same whether the runner is busy or gone;
 /// only its lock tells them apart.
 #[cfg(unix)]
-fn runner_alive(endpoint: &str) -> bool {
+fn liveness(endpoint: &str) -> Liveness {
     let path = std::path::Path::new(endpoint).with_file_name(ALIVE);
     match std::fs::File::open(path) {
-        Ok(file) => matches!(
-            file.try_lock_shared(),
-            Err(std::fs::TryLockError::WouldBlock)
-        ),
-        // Without an open file to read the lock with, assume the runner is
-        // there; the client waits and looks again.
-        Err(error) => demi_command_service::descriptors::exhausted(&error),
+        Ok(file) => match file.try_lock_shared() {
+            Err(std::fs::TryLockError::WouldBlock) => Liveness::Running,
+            // An unlocked file, or one the system cannot lock, is a crashed
+            // runner's leftover.
+            Ok(()) | Err(std::fs::TryLockError::Error(_)) => Liveness::Gone,
+        },
+        Err(error) if demi_command_service::descriptors::exhausted(&error) => Liveness::Unknown,
+        Err(_) => Liveness::Gone,
     }
 }

@@ -30,6 +30,7 @@ async fn the_state_is_the_users_snapshot_and_revalidates_by_its_etag() {
             mode: InstanceMode::Shared,
             preferences: Preferences::default(),
             providers: Vec::new(),
+            workspaces: Vec::new(),
             devices: Vec::new(),
             conversations: Vec::new(),
             // A Cloud no work used yet is not made.

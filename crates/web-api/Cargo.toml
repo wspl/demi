@@ -12,6 +12,7 @@ doctest = false
 
 [dependencies]
 demi-agent-protocol = { path = "../agent-protocol" }
+demi-builtin-protocol = { path = "../builtin-protocol" }
 demi-command-service = { path = "../command-service" }
 demi-core = { path = "../core" }
 demi-runner-protocol = { path = "../runner-protocol" }
@@ -19,11 +20,9 @@ garde.workspace = true
 regex = "1"
 schemars.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 serde_plain.workspace = true
 serde_with.workspace = true
 thiserror.workspace = true
 typed-path = "0.12"
 url = "2"
-
-[dev-dependencies]
-serde_json.workspace = true

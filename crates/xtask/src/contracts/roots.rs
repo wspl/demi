@@ -66,7 +66,10 @@ pub fn protocol() -> Vec<Root> {
 
 /// `packages/web/src/api/generated`: every REST request and response body.
 pub fn web() -> Vec<Root> {
-    use api::{attachments, auth, cloud, conversations, devices, error, files, hosts, providers, settings, state, usage};
+    use api::{
+        attachments, auth, browser, cloud, conversations, devices, error, files, hosts, panel, providers, settings, sidebar,
+        state, usage, users, workspaces,
+    };
     vec![
         receives::<error::ErrorBody>(),
         receives::<auth::Identity>(),
@@ -118,6 +121,7 @@ pub fn web() -> Vec<Root> {
         receives::<conversations::ConversationUpdate>(),
         sends::<conversations::ConversationBatch>(),
         receives::<conversations::BatchAnswer>(),
+        sends::<conversations::TitleRequest>(),
         sends::<conversations::ForkRequest>(),
         receives::<conversations::ForkAnswer>(),
         receives::<attachments::AttachmentAnswer>(),
@@ -133,5 +137,19 @@ pub fn web() -> Vec<Root> {
         receives::<files::ChangeSides>(),
         receives::<usage::UsageTotals>(),
         receives::<usage::InstanceUsage>(),
+        receives::<users::Users>(),
+        sends::<users::CreateUser>(),
+        receives::<users::CreatedUser>(),
+        sends::<users::PasswordReset>(),
+        receives::<workspaces::Workspaces>(),
+        sends::<workspaces::CreateWorkspace>(),
+        sends::<workspaces::RenameWorkspace>(),
+        receives::<workspaces::WorkspaceAnswer>(),
+        sends::<sidebar::SidebarReorder>(),
+        receives::<panel::WorkPanel>(),
+        receives::<browser::BrowserTabs>(),
+        sends::<browser::OpenTab>(),
+        sends::<browser::NavigateTab>(),
+        sends::<browser::TabHistory>(),
     ]
 }

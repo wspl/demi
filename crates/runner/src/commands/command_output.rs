@@ -26,9 +26,7 @@ impl CommandOutput {
     pub async fn stdout(&mut self, bytes: Bytes) -> Result<(), ServiceError> {
         if let Some(buffer) = &mut self.json {
             if buffer.len() + bytes.len() > JSON_BYTES {
-                return Err(ServiceError::Handler(
-                    "JSON command output exceeds 1 MiB".into(),
-                ));
+                return Err(ServiceError::failed(OutputError::TooLarge));
             }
             buffer.extend_from_slice(&bytes);
             Ok(())
@@ -52,11 +50,10 @@ impl CommandOutput {
         }
         if let Some(bytes) = self.json {
             let value: serde_json::Value = serde_json::from_slice(&bytes)?;
-            let schema =
-                schema.ok_or_else(|| ServiceError::Handler("missing JSON output schema".into()))?;
-            schema.check(&value).map_err(|error| {
-                ServiceError::Handler(format!("JSON output failed validation: {error}"))
-            })?;
+            let schema = schema.ok_or_else(|| ServiceError::failed(OutputError::MissingSchema))?;
+            schema
+                .check(&value)
+                .map_err(|error| ServiceError::failed(OutputError::Invalid(error)))?;
             self.output.stdout(bytes.into()).await?;
         }
         Ok(())
@@ -73,4 +70,15 @@ impl OutputSink for CommandOutput {
     async fn stderr(&mut self, bytes: Bytes) -> Result<(), ServiceError> {
         CommandOutput::stderr(self, bytes).await
     }
+}
+
+/// Why a command's JSON output does not reach its caller.
+#[derive(Debug, thiserror::Error)]
+enum OutputError {
+    #[error("JSON command output exceeds 1 MiB")]
+    TooLarge,
+    #[error("missing JSON output schema")]
+    MissingSchema,
+    #[error("JSON output failed validation: {0}")]
+    Invalid(String),
 }

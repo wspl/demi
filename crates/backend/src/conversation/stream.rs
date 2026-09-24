@@ -27,6 +27,10 @@ use crate::runner::native::NativeCatalog;
 use crate::shard::Shard;
 use crate::shard::lease::Lease;
 
+/// The name of the live browser view's user stream, whose package serves the
+/// conversation browser's tab routes too.
+pub(crate) const BROWSER_STREAM: &str = "browser";
+
 /// The native operation a user stream or a one-shot user call runs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ServiceBinding {
@@ -96,7 +100,6 @@ impl StreamError {
 /// such as opening a browser tab, does; a look at what runs there, such as
 /// listing the tabs, does not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[expect(dead_code, reason = "the conversation browser's tab routes call one-shot user calls")]
 pub(crate) enum Wake {
     Yes,
     No,
@@ -105,7 +108,6 @@ pub(crate) enum Wake {
 /// A one-shot user call: the operation, its arguments, and the most its
 /// JSON answer may be.
 #[derive(Debug, Clone)]
-#[expect(dead_code, reason = "the conversation browser's tab routes call one-shot user calls")]
 pub(crate) struct ServiceCall {
     pub(crate) binding: ServiceBinding,
     pub(crate) args: Map<String, Value>,
@@ -115,7 +117,6 @@ pub(crate) struct ServiceCall {
 /// Why a one-shot user call failed: its admission, or the call, whose
 /// failure carries the operation's own words.
 #[derive(Debug, thiserror::Error)]
-#[expect(dead_code, reason = "the conversation browser's tab routes call one-shot user calls")]
 pub(crate) enum UserCallError {
     #[error(transparent)]
     Access(#[from] HostAccessError),
@@ -172,7 +173,6 @@ impl Shard {
     /// its JSON answer. With `Wake::Yes` it is an ordinary operation of the
     /// conversation's host access; with `Wake::No` it is admitted as a user
     /// stream is, and a transition ends it instead of waiting for it.
-    #[expect(dead_code, reason = "the conversation browser's tab routes call one-shot user calls")]
     pub(crate) async fn user_call(
         &self,
         id: &ConversationId,

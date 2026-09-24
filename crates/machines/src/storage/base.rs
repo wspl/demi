@@ -260,116 +260,23 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::testing::{CloudImage, Entry, RUNNER, TINI, digest, entries};
 
-    /// A release directory whose archive holds `entries` (path, contents or
-    /// a symbolic link target), with a manifest that lists `executables`.
-    struct Image {
-        directory: tempfile::TempDir,
+    fn host() -> Architecture {
+        Architecture::host().unwrap()
     }
 
-    enum Entry {
-        File(&'static [u8]),
-        Link(&'static str),
-    }
-
-    fn digest(bytes: &[u8]) -> String {
-        format!("{:x}", sha2::Sha256::digest(bytes))
-    }
-
-    impl Image {
-        fn new(entries: &[(&str, Entry)], executables: &[(&str, &[u8])], architecture: &str) -> Self {
-            let directory = tempfile::tempdir().unwrap();
-            let archive = directory.path().join("rootfs.tar.zst");
-            let encoder = zstd::stream::write::Encoder::new(std::fs::File::create(&archive).unwrap(), 0)
-                .unwrap()
-                .auto_finish();
-            let mut builder = tar::Builder::new(encoder);
-            for (path, entry) in entries {
-                let mut header = tar::Header::new_gnu();
-                match entry {
-                    Entry::File(bytes) => {
-                        header.set_entry_type(tar::EntryType::Regular);
-                        header.set_mode(0o755);
-                        header.set_size(bytes.len() as u64);
-                        header.set_cksum();
-                        builder.append_data(&mut header, path, *bytes).unwrap();
-                    }
-                    Entry::Link(target) => {
-                        header.set_entry_type(tar::EntryType::Symlink);
-                        header.set_size(0);
-                        builder.append_link(&mut header, path, target).unwrap();
-                    }
-                }
-            }
-            builder.into_inner().unwrap().flush().unwrap();
-            let bytes = std::fs::read(&archive).unwrap();
-            let runner = json!({ "sha256": digest(b"runner"), "size": 6 });
-            let executables: serde_json::Map<_, _> = executables
-                .iter()
-                .map(|(path, bytes)| ((*path).to_owned(), json!({ "sha256": digest(bytes), "size": bytes.len() })))
-                .collect();
-            let manifest = json!({
-                "formatVersion": 1,
-                "os": "linux",
-                "architecture": architecture,
-                "rootfs": { "sha256": digest(&bytes), "size": bytes.len(), "file": "rootfs.tar.zst" },
-                "ubuntu": "26.04",
-                "packages": [],
-                "executables": executables,
-                "releases": [],
-                "runner": {
-                    "release": "f".repeat(64),
-                    "wire": 18,
-                    "commandProtocol": 1,
-                    "targets": { target(architecture): runner },
-                },
-                "tools": [],
-            });
-            std::fs::write(directory.path().join("manifest.json"), serde_json::to_vec_pretty(&manifest).unwrap()).unwrap();
-            Self { directory }
-        }
-
-        fn path(&self) -> &Path {
-            self.directory.path()
-        }
-
-        fn edit(&self, change: impl FnOnce(&mut serde_json::Value)) {
-            let path = self.path().join("manifest.json");
-            let mut manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-            change(&mut manifest);
-            std::fs::write(path, serde_json::to_vec_pretty(&manifest).unwrap()).unwrap();
-        }
-    }
-
-    /// The native target of an image of `architecture`.
-    fn target(architecture: &str) -> &'static str {
-        let architecture: Architecture = serde_json::from_value(json!(architecture)).unwrap();
-        architecture.target()
-    }
-
-    const RUNNER: (&str, &[u8]) = ("/usr/bin/demi-runner", b"runner");
-    const TINI: (&str, &[u8]) = ("/usr/bin/tini", b"tini");
-
-    fn entries() -> Vec<(&'static str, Entry)> {
-        vec![
-            ("usr/bin/demi-runner", Entry::File(b"runner")),
-            ("usr/bin/tini", Entry::File(b"tini")),
-            ("usr/sbin/init", Entry::Link("../bin/tini")),
-            ("etc/skel/.profile", Entry::File(b"export EDITOR=vi\n")),
-        ]
-    }
-
-    fn host() -> &'static str {
-        match Architecture::host().unwrap() {
-            Architecture::Arm64 => "arm64",
-            Architecture::Amd64 => "amd64",
+    fn other() -> Architecture {
+        match host() {
+            Architecture::Arm64 => Architecture::Amd64,
+            Architecture::Amd64 => Architecture::Arm64,
         }
     }
 
     #[tokio::test]
     async fn a_verified_base_is_imported_once_under_its_manifest_digest() {
         let tools = Tools::on_path();
-        let image = Image::new(&entries(), &[RUNNER, TINI, ("/usr/sbin/init", b"tini")], host());
+        let image = CloudImage::new(&entries(), &[RUNNER, TINI, ("/usr/sbin/init", b"tini")], host());
         let bases = tempfile::tempdir().unwrap();
         let version = import(&tools, image.path(), bases.path()).await.unwrap();
         let bytes = std::fs::read(image.path().join("manifest.json")).unwrap();
@@ -396,27 +303,24 @@ mod tests {
     async fn a_release_that_fails_a_check_is_refused_and_leaves_no_stage() {
         let tools = Tools::on_path();
         let bases = tempfile::tempdir().unwrap();
-        let cases: Vec<(Image, &str)> = vec![
+        let cases: Vec<(CloudImage, &str)> = vec![
             (
                 {
-                    let image = Image::new(&entries(), &[RUNNER, TINI], host());
+                    let image = CloudImage::new(&entries(), &[RUNNER, TINI], host());
                     image.edit(|manifest| manifest["rootfs"]["sha256"] = json!("0".repeat(64)));
                     image
                 },
                 "Cloud root archive integrity mismatch",
             ),
-            (
-                Image::new(&entries(), &[RUNNER, TINI], if host() == "arm64" { "amd64" } else { "arm64" }),
-                "architecture differs",
-            ),
-            (Image::new(&entries(), &[RUNNER], host()), "lacks /usr/bin/tini"),
-            (Image::new(&entries(), &[RUNNER, TINI, ("/usr/bin/demi-helper", b"helper")], host()), "No such file"),
-            (Image::new(&entries(), &[RUNNER, ("/usr/bin/tini", b"other")], host()), "integrity mismatch: /usr/bin/tini"),
+            (CloudImage::new(&entries(), &[RUNNER, TINI], other()), "architecture differs"),
+            (CloudImage::new(&entries(), &[RUNNER], host()), "lacks /usr/bin/tini"),
+            (CloudImage::new(&entries(), &[RUNNER, TINI, ("/usr/bin/demi-helper", b"helper")], host()), "No such file"),
+            (CloudImage::new(&entries(), &[RUNNER, ("/usr/bin/tini", b"other")], host()), "integrity mismatch: /usr/bin/tini"),
             (
                 {
                     let mut escaping = entries();
                     escaping.push(("usr/bin/escape", Entry::Link("/etc/hostname")));
-                    Image::new(&escaping, &[RUNNER, TINI, ("/usr/bin/escape", b"host")], host())
+                    CloudImage::new(&escaping, &[RUNNER, TINI, ("/usr/bin/escape", b"host")], host())
                 },
                 "Invalid image executable path: /usr/bin/escape",
             ),
