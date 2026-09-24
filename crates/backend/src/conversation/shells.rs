@@ -18,7 +18,8 @@ use demi_host_remote::{
 use demi_runner_protocol::wire::JobFileChange;
 use demi_core::{CommandId, EditedFile, ShellId};
 use demi_shell::{
-    CommandStatus, ExecRequest, Host, HostError, HostErrorKind, HostFs, HostKey, ShellEnvironment, ShellError,
+    CommandStatus, ExecRequest, Host, HostError, HostErrorKind, HostFs, HostKey, Reader, ShellEnvironment,
+    ShellError,
 };
 use demi_web_api::ids::{ConversationId, DeviceId};
 use futures_util::future::LocalBoxFuture;
@@ -219,16 +220,16 @@ impl ShellEnvironment for Registered {
         self.environment.exec(request, cancel)
     }
 
-    fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError> {
-        self.environment.status(command)
+    fn status(&self, command: &CommandId, reader: Reader) -> Result<CommandStatus, ShellError> {
+        self.environment.status(command, reader)
     }
 
-    fn write<'a>(&'a self, command: &'a CommandId, stdin: Bytes) -> LocalBoxFuture<'a, Result<CommandStatus, ShellError>> {
-        self.environment.write(command, stdin)
+    fn write<'a>(&'a self, command: &'a CommandId, stdin: Bytes, reader: Reader) -> LocalBoxFuture<'a, Result<CommandStatus, ShellError>> {
+        self.environment.write(command, stdin, reader)
     }
 
-    fn abort<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Result<CommandStatus, ShellError>> {
-        self.environment.abort(command)
+    fn abort<'a>(&'a self, command: &'a CommandId, reader: Reader) -> LocalBoxFuture<'a, Result<CommandStatus, ShellError>> {
+        self.environment.abort(command, reader)
     }
 
     fn release_command<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, bool> {

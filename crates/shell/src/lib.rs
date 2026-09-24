@@ -10,7 +10,9 @@
 //!   ([`RpcInvocation`]) and acts through an [`RpcPort`] of messages;
 //! - the shell-environment contract behind the `shell_*` tools
 //!   ([`ShellEnvironment`], [`ExecRequest`], [`CommandStatus`]) and the
-//!   record every environment keeps its commands in ([`CommandRecord`]).
+//!   record every environment keeps its commands in ([`CommandRecord`]),
+//!   which keeps one place in each command's output for the model and one for
+//!   the page ([`Reader`]).
 //!
 //! Everything here runs inside a user's shard, so nothing requires `Send`.
 
@@ -37,7 +39,7 @@ pub use host::{
     ProcessControl, ProcessEnd, ProcessOutput, RmOptions, Signal, SpawnEnv, SpawnError,
     SpawnErrorKind, SpawnRequest, WriteOptions,
 };
-pub use record::{CommandRecord, Ending, TAIL_CHARS, final_stdout_boundary};
+pub use record::{CommandRecord, Ending, Reader, TAIL_CHARS, final_stdout_boundary};
 pub use reserved::{RESERVED_NAMES, is_reserved};
 pub use rpc::{
     PortError, PortRequest, PortResponse, PortTransport, RelayedPipes, Revision, RpcError,
