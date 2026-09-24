@@ -435,7 +435,7 @@ uses join one allocation and wake. Metadata alone never creates a sandbox.
 | Off → booting → running | Recover the pinned storage, rotate the token, start a sandbox, and await the runner. |
 | Running → checkpoint → running | Save a paired generation and resume the same processes. |
 | Running → saving → off | End processes, save storage, and release the runtime. |
-| Running → off, on runtime loss | The manager saves the working pair and reports the death; the backend ends the device's exposes and disconnects its runner. A death while the backend is saving or resetting the device is ignored. |
+| Running → off, on runtime loss | The manager saves the working pair and reports the death; the backend ends the device's exposes and disconnects its runner. A death while the backend is saving or resetting the device is ignored; one while it boots counts toward the crash loop, and the boot fails when its runner does not connect. |
 | Resetting → running | Publish a fresh system with retained home, then boot. |
 | Failed boot, save, or reset | Keep the device and operation error; retry only after recovery establishes the authoritative state. |
 
@@ -447,8 +447,11 @@ clock. Stopping Cloud ends all in-sandbox browser/native state and its
 per-conversation release to a stopped device.
 
 The hard lifetime cap can stop unattended jobs only after reserving admission
-and rechecking active turns and other demand. An admitted interactive operation
-postpones it. Cancel eligible jobs and await released leases before stopping.
+and rechecking active turns and other demand. A turn in flight on a
+conversation that uses the Cloud, or a file transfer or user stream one of
+them has open, postpones it. Otherwise new operations wait behind the
+reservation, the jobs nothing attends end with the runner's connection, and
+the Cloud stops once their leases are released.
 Crash-loop protection stops repeated automatic boots while retaining reset; a
 reset clears the recorded losses. The user's shard runs these schedules: while
 the Cloud runs, its idle watch applies the idle rule, and its maintenance task
@@ -506,9 +509,14 @@ operation id, selected base, phase, and error. A retry resumes that operation,
 rather than selecting a newer base.
 
 1. Reserve device admission and hold/interrupt affected work according to
-   [shared Cloud coordination](../execution/sessions-and-targets.md#coordinate-shared-cloud-activity).
-2. Stop the sandbox and preserve its latest home, including recoverable working
-   changes newer than the last checkpoint.
+   [shared Cloud coordination](../execution/sessions-and-targets.md#coordinate-shared-cloud-activity):
+   new operations on the Cloud wait for the reset, and the turns of the
+   conversations that cannot work without it stop.
+2. Let the runner go after a best-effort flush, which ends every command still
+   running on the Cloud, those of conversations that only have it attached
+   among them, and wait for the operations that held the Cloud to let go. Then
+   stop the sandbox and preserve its latest home, including recoverable
+   working changes newer than the last checkpoint.
 3. Create an empty system layer for the selected base.
 4. Durably publish the new system and preserved home as one generation carrying
    the reset operation id. The home enters the generation as a hard link to the
@@ -636,10 +644,10 @@ registration and persistent token path remain separate, as defined by the
 
 ## Verification
 
-Backend scenarios with scripted providers and a fake machine manager
+Backend scenarios with scripted providers and a scripted machine manager
 ([Scenarios](../delivery/scenarios.md#system-under-test)) cover allocation
 races, admission, identity, token rotation, crash loops, capacity across users,
-idle policy, and reset failures.
+idle policy, the lifetime cap, recovery at startup, and reset failures.
 
 The manager runs only on Linux. Its automated tests are built with the
 developer machine's own cross tools and run on Linux: inside the Lima VM on a

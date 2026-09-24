@@ -10,6 +10,8 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use tokio_util::task::AbortOnDropHandle;
+
 use demi_command_tree::NativeOperation;
 use demi_web_api::settings::InstanceMode;
 
@@ -19,13 +21,14 @@ use crate::auth::email_change::{AccountMail, EmailChanges};
 use crate::auth::login_limiter::LoginLimiter;
 use crate::auth::passwords::{HashError, PasswordHasher};
 use crate::auth::sessions::WebSessions;
-use crate::config::{BackendConfig, ConversationTuning, RunnerTuning};
+use crate::config::{BackendConfig, ConversationTuning, LifecycleTuning, RunnerTuning};
 use crate::conversation::stream::UserStreams;
 use crate::edge::{AppState, Edge, Site};
 use crate::llm::assembly::ProviderAssembly;
 use crate::llm::catalog_cache::ModelCatalogCache;
 use crate::llm::families::FamilyRegistry;
 use crate::llm::vendors::VendorCatalog;
+use crate::managed::{CloudServices, MachinesClient, recover_resets};
 use crate::runner::claims::PendingClaims;
 use crate::runner::native::NativeCatalog;
 use crate::shard::ShardPool;
@@ -71,6 +74,11 @@ pub(crate) struct Services {
     pub(crate) native: NativeCatalog,
     /// The user streams a page may open.
     pub(crate) user_streams: UserStreams,
+    /// The machine manager's client, the Cloud capacity across users and
+    /// the Cloud's settings.
+    pub(crate) cloud: CloudServices,
+    /// When a conversation's Host resources are reclaimed.
+    pub(crate) lifecycle: LifecycleTuning,
 }
 
 /// What the provider services start with.
@@ -154,6 +162,8 @@ impl Services {
         conversation_tuning: ConversationTuning,
         native: NativeCatalog,
         user_streams: &BTreeMap<String, NativeOperation>,
+        cloud: CloudServices,
+        lifecycle: LifecycleTuning,
     ) -> Result<Self, StartError> {
         let Storage {
             control,
@@ -199,6 +209,8 @@ impl Services {
             conversation_tuning,
             user_streams: UserStreams::new(user_streams, &native),
             native,
+            cloud,
+            lifecycle,
         })
     }
 
@@ -221,6 +233,8 @@ impl Services {
             logins: LoginTiming::default(),
             clock,
         };
+        // No manager listens there: a Cloud a unit test uses fails to start.
+        let (machines, _deaths) = MachinesClient::new(data.join("machines.sock"));
         let services = Self::start(
             InstanceMode::Shared,
             storage,
@@ -231,6 +245,8 @@ impl Services {
             ConversationTuning::default(),
             NativeCatalog::unpublished(),
             &BTreeMap::new(),
+            CloudServices::new(machines, crate::config::CloudTuning::default()),
+            LifecycleTuning::default(),
         )
         .await;
         Arc::new(services.unwrap())
@@ -244,6 +260,8 @@ pub struct Backend {
     services: Arc<Services>,
     shards: ShardPool,
     edge: Edge,
+    /// Routes the machine manager's death events to their owners' shards.
+    deaths: AbortOnDropHandle<()>,
 }
 
 /// Why the backend did not start.
@@ -265,6 +283,10 @@ pub enum StartError {
     Shards(io::Error),
     #[error("the backend cannot listen on {address}: {source}")]
     Listen { address: SocketAddr, source: io::Error },
+    /// The machine manager did not reconcile, or an interrupted reset could
+    /// not be finished.
+    #[error("the Clouds cannot be recovered: {0}")]
+    Cloud(String),
 }
 
 /// A shutdown step that failed; the steps after it ran all the same.
@@ -276,6 +298,12 @@ pub enum ShutdownError {
     Conversation(StorageError),
     #[error("the control database did not close: {0}")]
     Control(StorageError),
+    /// A user's Cloud could not be saved; the manager's reconcile saves it.
+    #[error("a Cloud was not saved: {0}")]
+    Cloud(String),
+    /// The machine manager did not reconcile at close.
+    #[error("the machine manager did not reconcile: {0}")]
+    Machines(String),
 }
 
 /// Every shutdown step that failed.
@@ -328,6 +356,7 @@ impl Backend {
             logins: config.logins,
             clock: config.clock,
         };
+        let (machines, deaths) = MachinesClient::new(config.machines_socket);
         let services = Services::start(
             config.mode,
             storage.clone(),
@@ -338,6 +367,8 @@ impl Backend {
             config.conversations,
             config.native,
             &config.user_streams,
+            CloudServices::new(machines, config.cloud),
+            config.lifecycle,
         );
         let services = Arc::new(services.await?);
         let shards = match ShardPool::start(config.shards, services.clone()).await {
@@ -347,6 +378,19 @@ impl Backend {
                 return Err(StartError::Shards(error));
             }
         };
+        let deaths = AbortOnDropHandle::new(tokio::spawn(crate::managed::route_deaths(
+            deaths,
+            services.clone(),
+            shards.shards(),
+        )));
+        // Before the backend serves, the machine manager settles what an
+        // earlier backend left, and resets it left unfinished commit their
+        // disks.
+        if let Err(error) = recover_resets(&services).await {
+            shards.close().await;
+            services.close_providers().await;
+            return Err(StartError::Cloud(error.to_string()));
+        }
         // Fork destinations whose root committed before their publication are
         // published before the backend serves.
         if let Err(error) = crate::conversation::recover_forks(&services.control, &services.conversations).await {
@@ -379,6 +423,7 @@ impl Backend {
             services,
             shards,
             edge,
+            deaths,
         })
     }
 
@@ -395,8 +440,13 @@ impl Backend {
         let mut failures = Vec::new();
         self.edge.stop_accepting();
         self.services.logins.close().await;
-        self.shards.close().await;
+        failures.extend(self.shards.close().await.into_iter().map(ShutdownError::Cloud));
         self.services.claims.close();
+        // No shard is left to route a death to.
+        drop(self.deaths);
+        if let Err(error) = self.services.cloud.machines.close().await {
+            failures.push(ShutdownError::Machines(error.to_string()));
+        }
         if let Err(error) = self.edge.close().await {
             failures.push(ShutdownError::Edge(error));
         }

@@ -142,6 +142,18 @@ impl Tabs {
         self.ask(|reply| Request::Settled { reply }).await
     }
 
+    /// The pages the page of `opener` opened that the registry knows of,
+    /// whether or not they are registered yet.
+    pub async fn opened_by(&self, opener: TargetId) -> Result<Vec<TabId>> {
+        self.ask(|reply| Request::OpenedBy { opener, reply }).await
+    }
+
+    /// The tabs the page of `opener` opened that the registry knows of, once
+    /// each is registered and can be operated, in the order they opened.
+    pub async fn popups(&self, opener: TargetId) -> Result<Vec<TabId>> {
+        self.ask(|reply| Request::Popups { opener, reply }).await
+    }
+
     /// The latest snapshot, once the owner has registered every tab it
     /// knows of.
     pub async fn listing(&self) -> Result<Arc<Snapshot>> {
@@ -220,6 +232,17 @@ enum Request {
     },
     Settled {
         reply: oneshot::Sender<Result<bool>>,
+    },
+    /// The pages `opener` opened that the registry knows of, registered or
+    /// not; answered at once.
+    OpenedBy {
+        opener: TargetId,
+        reply: oneshot::Sender<Result<Vec<TabId>>>,
+    },
+    /// The tabs `opener` opened, once each is registered.
+    Popups {
+        opener: TargetId,
+        reply: oneshot::Sender<Result<Vec<TabId>>>,
     },
     /// A creation's page, or why Chrome made none.
     Opened {
@@ -363,6 +386,37 @@ impl<T: Clone> Book<T> {
     /// A creation ended without a page.
     fn failed(&mut self) {
         self.creating -= 1;
+    }
+
+    /// The public IDs of every page `opener` opened, closed or being
+    /// registered ones included.
+    fn opened(&self, opener: &TargetId) -> Vec<TabId> {
+        self.openers
+            .iter()
+            .filter(|(_, known)| *known == opener)
+            .filter_map(|(target, _)| self.public_ids.get(target))
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+
+    /// The live tabs `opener` opened, in the order they opened; none while
+    /// one of the pages it opened is still being registered.
+    fn popups(&self, opener: &TargetId) -> Option<Vec<TabId>> {
+        let mut popups = Vec::new();
+        for (target, entry) in &self.entries {
+            if self.openers.get(target) != Some(opener) {
+                continue;
+            }
+            match entry.stage {
+                Stage::Pending | Stage::Setup => return None,
+                Stage::Live { .. } => {
+                    popups.push(self.public_ids.get(target).expect("a live page has a public ID"))
+                }
+                Stage::Unusable => {}
+            }
+        }
+        popups.sort_by_key(|(_, order)| *order);
+        Some(popups.into_iter().map(|(id, _)| id.clone()).collect())
     }
 
     /// The page's tab is being set up; its public ID.
@@ -656,6 +710,7 @@ pub(super) async fn start(
         },
         book: Book::new(),
         closing: HashMap::new(),
+        popups: Vec::new(),
         holds: watch::channel(0).0,
         publish,
     };
@@ -668,6 +723,8 @@ struct Owner {
     book: Book<BrowserTab>,
     /// The close requests waiting for their tab to go.
     closing: HashMap<TargetId, oneshot::Sender<Result<Closed>>>,
+    /// The popup queries waiting for a popup to be registered.
+    popups: Vec<(TargetId, oneshot::Sender<Result<Vec<TabId>>>)>,
     /// Batches of temporary tabs in progress; their holds count down.
     holds: watch::Sender<usize>,
     publish: watch::Sender<Arc<Snapshot>>,
@@ -715,6 +772,23 @@ impl Owner {
                     Some(request) => self.request(request).await,
                     None => break,
                 },
+            }
+            self.answer_popups();
+        }
+    }
+
+    /// Answers each popup query whose popups are all registered now.
+    fn answer_popups(&mut self) {
+        for (opener, reply) in std::mem::take(&mut self.popups) {
+            // A command that left needs no answer.
+            if reply.is_closed() {
+                continue;
+            }
+            match self.book.popups(&opener) {
+                Some(popups) => {
+                    let _left = reply.send(Ok(popups));
+                }
+                None => self.popups.push((opener, reply)),
             }
         }
     }
@@ -782,6 +856,11 @@ impl Owner {
                 self.settle();
                 let _gone = reply.send(Ok(self.book.sealed));
             }
+            Request::OpenedBy { opener, reply } => {
+                let _left = reply.send(Ok(self.book.opened(&opener)));
+            }
+            // Answered once no page the opener opened is being registered.
+            Request::Popups { opener, reply } => self.popups.push((opener, reply)),
         }
     }
 
@@ -1088,6 +1167,30 @@ mod tests {
 
     fn listed(book: &Book<&'static str>) -> Vec<&'static str> {
         book.listing().0.into_iter().map(|(tab, _, _)| tab).collect()
+    }
+
+    #[test]
+    fn an_openers_popups_are_answered_once_registered() {
+        let mut book = live(&["a"]);
+        let opener = target("a");
+        assert_eq!(book.popups(&opener), Some(Vec::new()));
+        let popup = target("popup");
+        assert!(!book.found(&page(&popup, Some(&opener))));
+        // Known, but not yet operable: the answer waits, and the page counts
+        // as opened already.
+        assert_eq!(book.popups(&opener), None);
+        assert_eq!(book.opened(&opener), vec![book.public_id(&popup)]);
+        book.set_up(&popup);
+        assert_eq!(book.popups(&opener), None);
+        assert!(book.ready(&popup, false, Some("popup")).is_none());
+        let id = book.public_id(&popup);
+        assert_eq!(book.popups(&opener), Some(vec![id.clone()]));
+        // A popup that could not be set up is not one the opener can name.
+        let broken = target("broken");
+        book.found(&page(&broken, Some(&opener)));
+        book.set_up(&broken);
+        assert!(book.ready(&broken, false, None).is_none());
+        assert_eq!(book.popups(&opener), Some(vec![id]));
     }
 
     #[test]

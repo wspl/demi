@@ -388,8 +388,9 @@ Each crate implements the provider contract for one vendor family.
     rpc handler interface (`RpcHandler`, `RpcInvocation`, `RpcPort`,
     `PortTransport`, `StorageOp`); the reserved command names;
   - the shell-environment contract behind the `shell_*` tools:
-    `ShellEnvironment`, `ExecRequest`, `CommandStatus` and `CommandRecord`, the
-    model's status view of a command.
+    `ShellEnvironment`, `ExecRequest`, `CommandStatus` and `CommandRecord`,
+    with one place in each command's output for the model and one for the
+    page (`Reader`).
 - **Public boundary:** the items above; `shell::testing` supplies the Host
   conformance cases and an in-memory port for rpc handler tests
   (`MemoryPort`). The Host rules are in
@@ -516,9 +517,10 @@ Each crate implements the provider contract for one vendor family.
   families entries are assembled with (`FamilyRegistry`, `ProviderFamily` and
   the arguments a family builds a provider from), the login timing
   (`LoginTiming`), the conversations' bounds (`ConversationTuning`), the
-  native command packages their commands bind to (`NativeCatalog`, which the
-  executable makes with `publish_native` from `DEMI_NATIVE_CONFIG`) and the
-  user stream declarations.
+  Cloud's and the idle clock's times and limits (`CloudTuning`,
+  `LifecycleTuning`), the native command packages their commands bind to
+  (`NativeCatalog`, which the executable makes with `publish_native` from
+  `DEMI_NATIVE_CONFIG`) and the user stream declarations.
 - **Must not:** be linked by another crate; put business logic in the HTTP
   layer beyond routing and validation; return secrets or proxy model traffic;
   spawn `runsc` or image tools itself (every sandbox and disk operation goes to
@@ -807,7 +809,10 @@ review.
 - **Vendored crates.** A vendored crate keeps its upstream metadata and
   licenses. The root `Cargo.toml` declares its `[patch.crates-io]` path and
   excludes it from the workspace, so it stays outside the workspace lints.
-  Demi's adapters of a vendored crate stay in the responsible Demi crate.
+  Demi's adapters of a vendored crate stay in the responsible Demi crate. Its
+  `[package.metadata.demi]` names the Demi crate that maintains it
+  (`maintainer`) and each change from the upstream release with its reason
+  (`patches`); a patch compiles without warnings on every target.
 - **Versions and inventories.** Dependency versions and source identifiers
   stay in manifests, lockfiles and vendor metadata. `docs/` describes
   architecture and usage, not dependency inventories, artifact hashes, CI run

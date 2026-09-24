@@ -206,6 +206,16 @@ impl BrowserTab {
         }
     }
 
+    /// The pages this tab's page opened, registered or not.
+    pub(super) async fn opened(&self) -> Result<Vec<TabId>> {
+        self.registry.opened_by(self.page.target_id().clone()).await
+    }
+
+    /// The tabs this tab's page opened, once each is registered.
+    pub(super) async fn popups(&self) -> Result<Vec<TabId>> {
+        self.registry.popups(self.page.target_id().clone()).await
+    }
+
     /// Release command-owned browser objects without blocking on an open dialog.
     pub(super) async fn release_objects(&self) -> Result<()> {
         // Chrome cannot answer Runtime commands while a dialog is open. The next

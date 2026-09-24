@@ -45,12 +45,22 @@ async function(conditions, scroll, probe, cancel, point) {
     // Chromiumoxide cannot cancel an awaited page function. The caller owns
     // this temporary cancellation callback and invokes it on every failed wait.
     let previousFrame = null;
+    // A tab that is not the front tab of its window has a hidden document,
+    // which paints nothing and runs no animation frames. Its geometry is
+    // sampled on timers instead, which the browser does not throttle there.
+    const hidden = view.document.visibilityState === 'hidden';
     try {
       for (let count = 0; count < 10; count++) {
         const observed = await new Promise(resolve => {
-          const frame = view.requestAnimationFrame(() => resolve(true));
+          const frame = hidden
+            ? view.setTimeout(() => resolve(true), 16)
+            : view.requestAnimationFrame(() => resolve(true));
           Object.defineProperty(element, probe, {configurable: true, value: () => {
-            view.cancelAnimationFrame(frame);
+            if (hidden) {
+              view.clearTimeout(frame);
+            } else {
+              view.cancelAnimationFrame(frame);
+            }
             resolve(false);
           }});
         });

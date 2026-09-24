@@ -2,7 +2,7 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-use {std::borrow::Cow, uucore::context::env, std::ffi::CStr, std::ffi::CString, uucore::context::fs, uucore::context::fs::File, uucore::context::io, uucore::context::io::stderr, uucore::context::io::BufRead, uucore::context::io::BufReader, uucore::context::io::Read, uucore::context::io::Write, std::path::Path, std::path::PathBuf, std::str::FromStr};
+use {std::borrow::Cow, std::ffi::CStr, std::ffi::CString, uucore::context::fs, uucore::context::fs::File, uucore::context::io, uucore::context::io::stderr, uucore::context::io::BufRead, uucore::context::io::BufReader, uucore::context::io::Read, uucore::context::io::Write, std::path::Path, std::path::PathBuf, std::str::FromStr};
 
 use chrono::{DateTime, Local, TimeDelta};
 use clap::{self, crate_version, value_parser, Arg, ArgAction, ArgMatches, Command, Id};
