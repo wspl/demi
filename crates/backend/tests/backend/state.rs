@@ -4,6 +4,7 @@
 use demi_core::AuthState;
 use demi_provider::quota::ProbeCost;
 use demi_web_api::auth::Role;
+use demi_web_api::cloud::{CloudState, CloudStatus, CloudVolumes};
 use demi_web_api::error::ErrorCode;
 use demi_web_api::providers::{ProviderDetails, ProviderReading};
 use demi_web_api::settings::{InstanceMode, Preferences, Theme};
@@ -32,6 +33,18 @@ async fn the_state_is_the_users_snapshot_and_revalidates_by_its_etag() {
             workspaces: Vec::new(),
             devices: Vec::new(),
             conversations: Vec::new(),
+            // A Cloud no work used yet is not made.
+            cloud: CloudStatus {
+                device: None,
+                state: CloudState::Unallocated,
+                operation: None,
+                error: None,
+                volumes: None,
+                limits: CloudVolumes {
+                    system_bytes: 16 << 30,
+                    home_bytes: 32 << 30,
+                },
+            },
         }
     );
     let etag = first.headers["etag"].to_str().unwrap().to_owned();

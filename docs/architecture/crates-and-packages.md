@@ -516,9 +516,10 @@ Each crate implements the provider contract for one vendor family.
   families entries are assembled with (`FamilyRegistry`, `ProviderFamily` and
   the arguments a family builds a provider from), the login timing
   (`LoginTiming`), the conversations' bounds (`ConversationTuning`), the
-  native command packages their commands bind to (`NativeCatalog`, which the
-  executable makes with `publish_native` from `DEMI_NATIVE_CONFIG`) and the
-  user stream declarations.
+  Cloud's and the idle clock's times and limits (`CloudTuning`,
+  `LifecycleTuning`), the native command packages their commands bind to
+  (`NativeCatalog`, which the executable makes with `publish_native` from
+  `DEMI_NATIVE_CONFIG`) and the user stream declarations.
 - **Must not:** be linked by another crate; put business logic in the HTTP
   layer beyond routing and validation; return secrets or proxy model traffic;
   spawn `runsc` or image tools itself (every sandbox and disk operation goes to

@@ -1309,6 +1309,7 @@ dependencies = [
  "demi-core",
  "demi-gates",
  "demi-host-remote",
+ "demi-machines-protocol",
  "demi-provider",
  "demi-provider-anthropic-api",
  "demi-provider-codex",
