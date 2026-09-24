@@ -4,7 +4,8 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use demi_core::{ThinkingConfig, TokenUsage};
+use bytes::Bytes;
+use demi_core::{B64Bytes, MediaSource, ThinkingConfig, TokenUsage, UserContentBlock};
 use demi_provider::credentials::MemoryCredentialPool;
 use demi_provider::quota::MemorySnapshots;
 use demi_provider::{ErrorCode, InferenceItem, InferenceRequest, ProviderEvent, ProviderFailure};
@@ -274,8 +275,21 @@ async fn a_new_process_replays_tool_calls_as_assistant_text_and_user_messages_as
     let provider = provider().await;
     let (placement, mut starts) = ScriptedPlacement::new();
     let mut runtime = runtime_of(&provider, &placement);
+    let screenshot = UserContentBlock::Image {
+        source: MediaSource::Binary {
+            data: B64Bytes::from(Bytes::from_static(b"png")),
+            media_type: "image/png".into(),
+        },
+    };
     let items = vec![
-        user("previous work"),
+        InferenceItem::UserMessage {
+            content: vec![
+                UserContentBlock::Text {
+                    text: "previous work".into(),
+                },
+                screenshot,
+            ],
+        },
         InferenceItem::AssistantThinking {
             model_id: "claude-test".into(),
             text: "thinking".into(),
@@ -288,7 +302,11 @@ async fn a_new_process_replays_tool_calls_as_assistant_text_and_user_messages_as
     let (events, ()) = tokio::join!(all_events(runtime.run(request(items))), async {
         let mut cli = starts.next().await;
         cli.initialized().await;
-        assert_eq!(cli.read().await, user_line("previous work"));
+        let with_image = json!({ "type": "user", "message": { "role": "user", "content": [
+            { "type": "text", "text": "previous work" },
+            { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "cG5n" } },
+        ] } });
+        assert_eq!(cli.read().await, with_image);
         let narrative = json!({
             "type": "assistant",
             "message": { "role": "assistant", "content": [
@@ -470,6 +488,21 @@ async fn dropping_a_run_or_a_runtime_kills_the_process_without_waiting() {
             cli
         }
     );
+    // A fresh runtime, as another session gets, starts a process of its own
+    // and leaves this one's alone.
+    let mut fresh = runtime.fresh();
+    let (_, other) = tokio::join!(
+        all_events(fresh.run(request_without_tools(vec![user("elsewhere")]))),
+        async {
+            let mut other = starts.next().await;
+            assert_eq!(other.read().await, user_line("elsewhere"));
+            other.result(1, 1);
+            other
+        }
+    );
+    assert!(!cli.dropped() && cli.signals().is_empty());
+    drop(fresh);
+    assert!(other.dropped() && !cli.dropped());
     drop(runtime);
     assert!(cli.dropped());
 }
