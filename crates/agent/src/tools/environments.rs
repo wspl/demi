@@ -142,6 +142,22 @@ impl Environments {
             .cloned()
     }
 
+    /// Ends every shell of every environment made so far and forgets them,
+    /// so the next call on a Host makes a fresh environment there.
+    pub(crate) async fn end_all(&self) {
+        let slots: Vec<Rc<Slot>> = self.slots.borrow_mut().drain(..).collect();
+        let environments: Vec<Rc<dyn ShellEnvironment>> = slots
+            .iter()
+            .filter_map(|slot| slot.environment.get().cloned())
+            .collect();
+        join_all(
+            environments
+                .iter()
+                .map(|environment| environment.dispose_all()),
+        )
+        .await;
+    }
+
     /// Ends every shell of every environment, and every environment made
     /// from now on.
     pub(crate) async fn dispose(&self) {
