@@ -80,14 +80,17 @@ impl LinkPolicy for ShardPolicy {
         })
     }
 
+    /// Only the user's Cloud grows its volumes (`managed-hosts.md`
+    /// § Lifecycle and capacity).
     fn grow_volume(&self, volume: VolumeName, bytes: u64) -> LocalBoxFuture<'static, Result<(), String>> {
-        // Only the user's Cloud grows its volumes (`managed-hosts.md` §
-        // Lifecycle and capacity), and its machine is not in this backend's
-        // shard yet.
+        let shard = self.shard();
         let device = self.device.clone();
         Box::pin(async move {
-            tracing::warn!(device = %device, %volume, bytes, "volume growth refused");
-            Err("Volume growth is unavailable".into())
+            let grown = shard?.grow_cloud_volume(&device, volume, bytes).await;
+            if let Err(error) = &grown {
+                tracing::warn!(device = %device, %volume, bytes, "volume growth refused: {error}");
+            }
+            grown
         })
     }
 }
