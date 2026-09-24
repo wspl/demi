@@ -858,7 +858,7 @@ impl<'a> PathData<'a> {
         let must_dereference = match &config.dereference {
             Dereference::All => true,
             Dereference::Args => command_line,
-            Dereference::DirArgs => command_line && uucore::context::fs::metadata(&p_buf).is_ok_and(|m| m.context_is_dir()),
+            Dereference::DirArgs => command_line && fs::metadata(&p_buf).is_ok_and(|m| m.context_is_dir()),
             Dereference::None => false,
         };
 
@@ -873,7 +873,7 @@ impl<'a> PathData<'a> {
         let security_context: OnceCell<Box<str>> = OnceCell::new();
 
         let de: RefCell<Option<DirEntry>> = if let Some(de) = dir_entry {
-            if must_dereference && let Ok(md_pb) = uucore::context::fs::metadata(&p_buf) {
+            if must_dereference && let Ok(md_pb) = fs::metadata(&p_buf) {
                 ft.get_or_init(|| Some(md_pb.file_type()));
                 md.get_or_init(|| Some(md_pb));
             }
@@ -1551,7 +1551,7 @@ fn sort_entries(entries: &mut [PathData], config: &Config) {
 
 fn get_metadata_with_deref_opt(p_buf: &Path, dereference: bool) -> uucore::context::io::Result<Metadata> {
     if dereference {
-        uucore::context::fs::metadata(&p_buf)
+        fs::metadata(&p_buf)
     } else {
         p_buf.context_symlink_metadata()
     }

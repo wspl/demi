@@ -555,3 +555,10 @@ check-cfg = [
 
 [target."cfg(unix)".dependencies.command-fds]
 version = "0.3"
+
+[package.metadata.demi]
+maintainer = "demi-runner"
+patches = [
+    "uucore::context (src/lib/context.rs and src/lib/context/, added): the explicit execution context of one embedded utility run on its thread: working directory, environment and standard streams, the embedding owner's hooks for opening, reading, writing, sleeping and cancellation and for recording edits, exit as an unwinding request, and threads that inherit the context",
+    "uucore's own features read and write files, the environment and the terminal through that context",
+]
