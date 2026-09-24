@@ -1061,6 +1061,20 @@ struct SpawnControl {
     shared: Rc<Shared<ProcessEnd>>,
 }
 
+impl Drop for SpawnControl {
+    /// Nobody controls a process whose handle is gone, so one that has not
+    /// ended is killed; the runner is asked without waiting (`runner.md`
+    /// § Host operations).
+    fn drop(&mut self) {
+        if let Some(link) = live(&self.link, &self.shared) {
+            link.post(&Inbound::SpawnKill {
+                spawn_id: self.id.clone(),
+                signal: Some(wire::Signal::Kill),
+            });
+        }
+    }
+}
+
 impl ProcessControl for SpawnControl {
     fn write_stdin(&self, bytes: Bytes) -> LocalBoxFuture<'_, Result<(), HostError>> {
         Box::pin(async move {

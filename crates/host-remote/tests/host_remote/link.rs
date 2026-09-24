@@ -22,11 +22,11 @@ use demi_host_remote::{
 };
 use demi_runner_protocol::wire::{
     ArtifactOwner, FsOk, FsResult, Inbound, JobArtifactOwner, JobFileChange, Outbound,
-    STDIN_CHUNK_BYTES, VolumeName, WireBytes,
+    STDIN_CHUNK_BYTES, Signal, VolumeName, WireBytes,
 };
 use demi_shell::{
     Call, CommandSet, CommandState, ExecRequest, GroupBuilder, HostError, HostErrorKind,
-    HostProcess, JobCaller, LeafBuilder, ObservationWindow, PortError, ProcessEnd, RpcError,
+    HostProcess, JobCaller, LeafBuilder, ObservationWindow, PortError, Process, ProcessEnd, RpcError,
     Reader, RpcInvocation, RpcPort, ShellEnvironment, ShellTarget, SpawnEnv, SpawnRequest, StorageOp,
     StorageReply, TypedRpc, testing::test_command_context,
 };
@@ -189,6 +189,44 @@ async fn admission_holds_calls_and_process_lifetimes_and_a_refusal_sends_nothing
     assert!(matches!(process.exit.await, ProcessEnd::Lost(_)));
     assert!(matches!(job.end().await.status, ProcessEnd::Lost(_)));
     assert_eq!(gate.state().demand, 0);
+}
+
+#[tokio::test(flavor = "local")]
+async fn dropping_a_running_process_kills_it_and_an_ended_one_is_left_alone() {
+    let device = device();
+    let mut link = device.connect(None);
+    let host = device.host("/work", Admission::Free);
+    let running = host.spawn(spawn("sleep", false)).await.unwrap();
+    let ended = host.spawn(spawn("true", false)).await.unwrap();
+    let spawned: Vec<String> = drain(&mut link)
+        .await
+        .into_iter()
+        .filter_map(|message| match message {
+            Inbound::Spawn { spawn_id, .. } => Some(spawn_id),
+            _ => None,
+        })
+        .collect();
+    let [running_id, ended_id] = &spawned[..] else {
+        panic!("expected two spawns, got {spawned:?}")
+    };
+    link.send(Outbound::SpawnExit {
+        spawn_id: ended_id.clone(),
+        exit_code: Some(0),
+        signal: None,
+        spawn_error: None,
+    })
+    .await;
+    let Process { exit, control, .. } = ended;
+    assert_eq!(exit.await, ProcessEnd::Exited(0));
+    drop(control);
+    drop(running);
+    assert_eq!(
+        drain(&mut link).await,
+        [Inbound::SpawnKill {
+            spawn_id: running_id.clone(),
+            signal: Some(Signal::Kill),
+        }]
+    );
 }
 
 #[tokio::test(flavor = "local")]
