@@ -138,9 +138,6 @@ impl NativeConfig {
         if !prefix_ok {
             return Err(invalid(format!("{} is no object key prefix", config.prefix)));
         }
-        if config.releases.is_empty() {
-            return Err(invalid("native releases are required".into()));
-        }
         let base = path.parent().unwrap_or(FilePath::new(""));
         for release in &mut config.releases {
             let basename = !release.executable.is_empty()
@@ -410,6 +407,8 @@ mod tests {
     use object_store::aws::AmazonS3Builder;
     use sha2::{Digest as _, Sha256};
 
+    use demi_coding_agent::BUILTIN_PACKAGE;
+
     use super::*;
     use crate::storage::objects::fake_s3::FakeS3;
 
@@ -548,7 +547,7 @@ mod tests {
         assert_eq!(config.prefix, "native");
         assert_eq!(config.releases[0].directory, directory.path().join("./demi-commands"));
         for refused in [
-            r#"{"releases":[],"store":{"provider":"s3","bucket":"b","region":"r"}}"#,
+            r#"{"store":{"provider":"s3","bucket":"b","region":"r"}}"#,
             r#"{"releases":[{"directory":"d","executable":"a.exe"}],"store":{"provider":"s3","bucket":"b","region":"r"}}"#,
             r#"{"releases":[{"directory":"d","executable":"a"}],"store":{"provider":"gcs","bucket":"b","region":"r"}}"#,
             r#"{"prefix":"native/","releases":[{"directory":"d","executable":"a"}],"store":{"provider":"s3","bucket":"b","region":"r"}}"#,
@@ -558,5 +557,15 @@ mod tests {
             write(refused);
             assert!(NativeConfig::read(&path).await.is_err(), "{refused}");
         }
+    }
+
+    #[tokio::test]
+    async fn an_explicit_empty_release_list_publishes_nothing_and_serves_no_package() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("native.json");
+        std::fs::write(&path, r#"{"releases":[],"store":{"provider":"s3","bucket":"demi-native","region":"us-east-1"}}"#).unwrap();
+        let catalog = publish_native(&path, &CancellationToken::new()).await.unwrap();
+        assert!(catalog.package(BUILTIN_PACKAGE).is_none());
+        assert!(!catalog.serves(BUILTIN_PACKAGE, &[]));
     }
 }
