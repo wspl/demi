@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use demi_core::{AuthState, QuotaScope, QuotaSeverity, SnapshotSource};
+use demi_core::{AuthState, QuotaScope, QuotaSeverity, RuntimeState, SnapshotSource};
 use demi_provider::credentials::{
     AccountsCapability, AddAccount, CredentialPool, LoginError, MemoryCredentialPool,
 };
@@ -75,6 +75,12 @@ async fn a_setup_token_is_an_account_named_by_its_digest_and_the_provider_needs_
     };
     assert_eq!(provider.auth_status().await, signed_in);
     assert!(provider.capabilities().process_host);
+    // Whether it can run is the Cloud's to show, which the provider does not
+    // ask.
+    assert!(matches!(
+        provider.runtime_state(),
+        RuntimeState::Unknown { .. }
+    ));
     let env = RuntimeEnv {
         http: reqwest::Client::new(),
     };
@@ -161,6 +167,14 @@ async fn the_quota_is_probed_with_the_accounts_token_and_observed_on_the_clis_li
     );
     // A severity Demi does not know falls back to the share's.
     assert_eq!(snapshot.windows[2].severity, Some(QuotaSeverity::Warning));
+
+    // An answer that is not a usage object is refused, never read as empty.
+    vendor.respond(json_answer(json!(["five_hour"])));
+    let unreadable = quota.probe().await.unwrap_err();
+    assert!(
+        matches!(unreadable, QuotaError::Invalid(_)),
+        "{unreadable:?}"
+    );
 
     // A refusal says why.
     vendor.respond(MockResponse::status(401).chunk("token expired"));
