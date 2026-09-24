@@ -1,11 +1,15 @@
 //! The backend's configuration (`backend.md` § Configuration).
 
+use std::collections::BTreeMap;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use demi_builtin_protocol::live;
+use demi_coding_agent::BUILTIN_PACKAGE;
+use demi_command_tree::NativeOperation;
 use demi_core::{Clock, SystemClock};
 use demi_web_api::settings::InstanceMode;
 use url::Url;
@@ -155,6 +159,10 @@ pub struct BackendConfig {
     pub conversations: ConversationTuning,
     /// The native command packages the conversations' commands bind to.
     pub native: NativeCatalog,
+    /// The user streams a page may open, by name, each bound to an operation
+    /// of a package in `native` (`native-runtime.md` § User streams); a
+    /// binding no package provides declares nothing.
+    pub user_streams: BTreeMap<String, NativeOperation>,
 }
 
 /// How the backend serves conversations (`runtime.md` § Order and delivery,
@@ -235,6 +243,13 @@ impl BackendConfig {
             // The product's start publishes the releases `DEMI_NATIVE_CONFIG`
             // names and sets the catalog of them.
             native: NativeCatalog::unpublished(),
+            user_streams: BTreeMap::from([(
+                "browser".to_owned(),
+                NativeOperation {
+                    package: BUILTIN_PACKAGE.to_owned(),
+                    operation: live::OPERATION.to_owned(),
+                },
+            )]),
         }
     }
 }
