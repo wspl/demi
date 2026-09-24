@@ -107,6 +107,7 @@ impl Config {
             data_dir,
             SocketAddr::from((Ipv4Addr::UNSPECIFIED, self.port)),
             self.mode,
+            self.machines_socket.clone(),
         );
         config.instance_secret = instance_secret;
         config.web_directory = self.web_directory.clone();
@@ -123,6 +124,9 @@ impl Config {
 pub struct BackendConfig {
     /// The data directory (`storage.md` § Ownership and layout).
     pub data_dir: PathBuf,
+    /// The machine manager's Unix socket (`managed-hosts.md` § Control and
+    /// ownership): every deployment has Cloud.
+    pub machines_socket: PathBuf,
     /// Where the listener binds; port 0 picks a free port.
     pub address: SocketAddr,
     /// Who configures providers (`product.md` § Instance mode).
@@ -163,6 +167,81 @@ pub struct BackendConfig {
     /// of a package in `native` (`native-runtime.md` § User streams); a
     /// binding no package provides declares nothing.
     pub user_streams: BTreeMap<String, NativeOperation>,
+    /// When a conversation's Host resources are reclaimed.
+    pub lifecycle: LifecycleTuning,
+    /// How the Cloud is run.
+    pub cloud: CloudTuning,
+}
+
+/// When Demi reclaims what a conversation uses on a Host
+/// (`resource-lifecycle.md` § Idle window). Tests shorten the times.
+#[derive(Debug, Clone, Copy)]
+pub struct LifecycleTuning {
+    /// How long a conversation, or every conversation using the Cloud, stays
+    /// inactive before its Host's resources are reclaimed.
+    pub idle_window: Duration,
+    /// How often a conversation's idle watch reads its activity.
+    pub idle_poll: Duration,
+}
+
+impl Default for LifecycleTuning {
+    fn default() -> Self {
+        Self {
+            idle_window: Duration::from_secs(60 * 60),
+            idle_poll: Duration::from_secs(30),
+        }
+    }
+}
+
+/// How the backend runs each user's Cloud (`managed-hosts.md` § Lifecycle
+/// and capacity). Tests shorten the times and lower the capacity.
+#[derive(Debug, Clone, Copy)]
+pub struct CloudTuning {
+    /// How often a running Cloud's maintenance and idle watch look at it.
+    pub sweep: Duration,
+    /// How long a running Cloud goes between checkpoints.
+    pub checkpoint_interval: Duration,
+    /// How long a Cloud runs before it is stopped, unless a turn is in
+    /// flight.
+    pub lifetime_cap: Duration,
+    /// How long a Cloud's runner has to connect after a boot, or to
+    /// reconnect during a recovery.
+    pub runner_connection: Duration,
+    /// How many runtime losses within `crash_loop_window` stop the
+    /// Cloud's automatic boots.
+    pub crash_loop_deaths: u32,
+    pub crash_loop_window: Duration,
+    /// How long a Cloud's runner has to flush its filesystems before a save.
+    pub sync_timeout: Duration,
+    /// How long a reset, or the lifetime cap, waits for the work it stops to
+    /// let go.
+    pub reset_hold: Duration,
+    /// The largest system and home filesystems a Cloud may grow to, in
+    /// bytes.
+    pub system_quota: u64,
+    pub home_quota: u64,
+    /// How many Clouds, across every user, may be booting, running, saving
+    /// or resetting at once.
+    pub capacity: usize,
+}
+
+impl Default for CloudTuning {
+    fn default() -> Self {
+        const GIB: u64 = 1 << 30;
+        Self {
+            sweep: Duration::from_secs(30),
+            checkpoint_interval: Duration::from_secs(15 * 60),
+            lifetime_cap: Duration::from_secs(24 * 60 * 60),
+            runner_connection: Duration::from_secs(60),
+            crash_loop_deaths: 3,
+            crash_loop_window: Duration::from_secs(10 * 60),
+            sync_timeout: Duration::from_secs(5),
+            reset_hold: Duration::from_secs(30),
+            system_quota: 16 * GIB,
+            home_quota: 32 * GIB,
+            capacity: 16,
+        }
+    }
 }
 
 /// How the backend serves conversations (`runtime.md` § Order and delivery,
@@ -221,10 +300,12 @@ impl Default for RunnerTuning {
 impl BackendConfig {
     /// A configuration on the system clock with one shard thread, the
     /// built-in families, the published models.dev document, no web
-    /// directory and no mail sender.
-    pub fn new(data_dir: PathBuf, address: SocketAddr, mode: InstanceMode) -> Self {
+    /// directory and no mail sender, whose Clouds the machine manager at
+    /// `machines_socket` runs.
+    pub fn new(data_dir: PathBuf, address: SocketAddr, mode: InstanceMode, machines_socket: PathBuf) -> Self {
         Self {
             data_dir,
+            machines_socket,
             address,
             mode,
             web_directory: None,
@@ -250,6 +331,8 @@ impl BackendConfig {
                     operation: live::OPERATION.to_owned(),
                 },
             )]),
+            lifecycle: LifecycleTuning::default(),
+            cloud: CloudTuning::default(),
         }
     }
 }

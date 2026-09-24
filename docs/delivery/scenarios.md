@@ -11,7 +11,7 @@ Three suites drive the whole backend:
 
 | Suite | Where it lives | How it reaches the backend | Model | Hosts |
 | --- | --- | --- | --- | --- |
-| Backend scenarios | Rust integration tests of the backend crate (`crates/backend/tests`) | HTTP and the conversation WebSocket, with the agent protocol's typed frames | A scripted provider family | Real runner processes; a fake in place of the machine manager for the Cloud |
+| Backend scenarios | Rust integration tests of the backend crate (`crates/backend/tests`) | HTTP and the conversation WebSocket, with the agent protocol's typed frames | A scripted provider family | Real runner processes; a scripted machine manager for the Cloud |
 | Browser-contract suite | Tests of `packages/web` | The web application's API client and `AgentClient`, against the backend executable | A scripted Anthropic-compatible endpoint | A real runner |
 | Real-machine suites | Rust tests that run only when environment variables supply their resources | As the backend scenarios | Scripted | A real machine manager, gVisor sandbox, and shipped image; real Chrome; the real Claude Code CLI |
 
@@ -31,15 +31,17 @@ the usage ledger, and the runner wire frames
 
 The scenario harness, the *world*, starts the backend inside the test process,
 with its production shard threads and a temporary data directory. In place of
-external services it registers a scripted model as a provider family, puts a
-fake in place of the machine manager, and serves local fixtures in place of
-models.dev and the Claude Code release distribution. It pairs real runner
-processes, records every runner wire frame in both directions, and owns
+external services it registers a scripted model as a provider family, serves
+a scripted machine manager on a Unix socket, and serves local fixtures in
+place of models.dev and the Claude Code release distribution. It pairs real
+runner processes, records every runner wire frame in both directions, and owns
 cleanup. The runners are the real runner executable, which `cargo xtask test`
 builds before the tests start
 ([Validation](builds-and-releases.md#validation)). The fakes come from the
 test-support features of the crates that own what they fake
-([Crates and packages](../architecture/crates-and-packages.md)).
+([Crates and packages](../architecture/crates-and-packages.md)); the scripted
+machine manager is the backend's own test code, since the manager's crate runs
+only on Linux.
 
 The scripted model keeps a queue of turn scripts per session, answers title
 requests from a queue of their own, and records every request it receives. A
@@ -54,12 +56,17 @@ rebuild the live transcript from patches: the browser's patch applier is the
 only one, so the [browser-contract suite](#browser-contract-suite) compares
 live with cold.
 
-The fake machine manager starts the same runner as a local process, with a
-retained home directory and a pre-issued token. It records wake, hibernate,
-checkpoint, reset, and growth calls. It does not start a sandbox, mount disk
-images, or implement filesystem isolation. Its reset clears runner state while
-retaining home; a successful fake reset does not demonstrate replacement of
-system packages.
+The scripted machine manager speaks `machines-protocol` as the real one does:
+operations of one device run in arrival order, requests on a connection are
+answered as they finish, and a death reaches every connection. It starts the
+same runner as a local process with the boot record's backend URL and token,
+over a home that survives stop, wake and reset, and it records wake,
+hibernate, checkpoint, reset, and growth calls. A test can hold or fail a
+reset, keep a wake's runner from connecting, fail a save, or kill a runner as
+a crash would. It does not start a sandbox, mount disk images, or implement
+filesystem isolation. Its reset clears runner state while retaining home; a
+successful scripted reset does not demonstrate replacement of system
+packages.
 
 Restart tests reuse the data directory and a fixed backend port. Runner
 restarts reuse device identity and persistent directories. Multi-user scenarios
