@@ -953,6 +953,7 @@ input! {
 #[serde(deny_unknown_fields)]
 pub struct DialogInspectResult {
     #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "demi_core::Nullable<Dialog>")]
     pub dialog: Option<Dialog>,
 }
 

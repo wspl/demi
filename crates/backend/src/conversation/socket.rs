@@ -12,19 +12,24 @@
 //! to prepare (`frame_delivery_failed`); a message that is not JSON closes
 //! the socket.
 
+use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 
 use axum::extract::ws::{CloseFrame, Message, Utf8Bytes, WebSocket, close_code};
 use demi_agent::store::media;
 use demi_agent::{ContentError, ContentResolver, FileReference, Outgoing};
-use demi_agent_protocol::{ClientFrame, EditOutcome, FrameError, ServerFrame, TranscriptPatch, decode_client_frame};
+use demi_agent_protocol::{
+    ClientContent, ClientFrame, EditOutcome, FrameError, ServerFrame, TranscriptPatch, decode_client_frame,
+};
 use demi_core::{Block, UserContentBlock};
-use demi_gates::Purpose;
+use demi_gates::{GateLease, Purpose};
 use demi_web_api::error::ErrorCode;
 use demi_web_api::ids::{ConversationId, ProviderId};
 use futures_util::future::LocalBoxFuture;
 use futures_util::{SinkExt as _, StreamExt as _};
+use tokio_util::sync::CancellationToken;
 
+use super::host_access::{Admitted, ConversationHost, Waits};
 use super::remote_files::RemoteFile;
 use super::{failure_facts, root_of};
 use crate::shard::Shard;
@@ -109,8 +114,9 @@ impl Shard {
         let resolver = Rc::new(ConversationFiles {
             shard: Rc::downgrade(&self),
             conversation: id.clone(),
+            host: RefCell::new(None),
         });
-        let (connection, mut frames) = self.agent().connect(root_of(&id), cwd, resolver);
+        let (connection, mut frames) = self.agent().connect(root_of(&id), cwd, resolver.clone());
         let (mut sink, mut stream) = socket.split();
         let mut handling: Option<LocalBoxFuture<'_, Handled>> = None;
         let mut closing = false;
@@ -142,8 +148,11 @@ impl Shard {
                     Some(Ok(Message::Text(text))) => {
                         let shard = self.clone();
                         let connection = &connection;
+                        let resolver = &resolver;
                         let id = id.clone();
-                        handling = Some(Box::pin(async move { shard.handle_message(&id, connection, text.as_str()).await }));
+                        handling = Some(Box::pin(async move {
+                            shard.handle_message(&id, connection, resolver, text.as_str()).await
+                        }));
                     }
                     Some(Ok(Message::Binary(_))) => break Ending::NotJson,
                     // Pings are answered by the socket itself.
@@ -184,6 +193,7 @@ impl Shard {
         &self,
         conversation: &ConversationId,
         connection: &demi_agent::Connection<super::ConversationHarness>,
+        files: &ConversationFiles,
         text: &str,
     ) -> Handled {
         let frame = match decode_client_frame(text) {
@@ -196,9 +206,24 @@ impl Shard {
         // The frame is handled under the conversation's file gate, which a
         // transition holding the conversation makes it wait for, never
         // refuse (`sessions-and-targets.md` § How a conversation uses a
-        // device).
-        let _admitted = self.conversations().slot(conversation).files.enter(Purpose::Demand).await;
-        match self.prepare_frame(conversation, &frame).await {
+        // device). A frame whose uploads go to the Host is admitted there,
+        // once, and its resolver writes through that admission: nothing
+        // enters the file gate while holding it (§ Host operations).
+        let _admitted = if carries_uploads(&frame) {
+            match self.admit_host(conversation, None, Waits::request(&CancellationToken::new())).await {
+                Ok(admitted) => {
+                    files.host.replace(Some(admitted.host.clone()));
+                    Admission::Host(admitted)
+                }
+                Err(error) => {
+                    let (code, _) = error.code();
+                    return Handled::Replies(vec![refused_frame(frame, code, error.to_string())]);
+                }
+            }
+        } else {
+            Admission::Files(self.conversations().slot(conversation).files.enter(Purpose::Demand).await)
+        };
+        let handled = match self.prepare_frame(conversation, &frame).await {
             Ok(Prepared::Deliver) => {
                 connection.handle(frame).await;
                 Handled::Replies(Vec::new())
@@ -208,7 +233,9 @@ impl Shard {
                 tracing::error!(%conversation, error = &error as &dyn std::error::Error, "a frame was not prepared");
                 Handled::Replies(vec![refused_frame(frame, ErrorCode::FrameDeliveryFailed, error.to_string())])
             }
-        }
+        };
+        files.host.replace(None);
+        handled
     }
 
     /// What the backend does before the agent sees `frame` (`web-api.md`
@@ -341,6 +368,25 @@ enum Prepared {
 
 /// The answer to a frame the backend refused: an edit's `edit_result`, and
 /// an `error` frame for any other.
+/// How a frame is admitted while it is handled.
+enum Admission {
+    /// Under a lease of the conversation's file gate.
+    Files(#[expect(dead_code, reason = "held for its drop")] GateLease),
+    /// On the conversation's main Host, for its uploads.
+    Host(#[expect(dead_code, reason = "held for its drop")] Admitted),
+}
+
+/// Whether the frame's content names an upload, which is written to the
+/// conversation's Host before the session sees it.
+fn carries_uploads(frame: &ClientFrame) -> bool {
+    let content = match frame {
+        ClientFrame::Send { content, .. } | ClientFrame::Steer { content, .. } => content,
+        ClientFrame::EditAndSend { request } => &request.content,
+        _ => return false,
+    };
+    content.iter().any(|part| matches!(part, ClientContent::Upload { .. }))
+}
+
 fn refused_frame(frame: ClientFrame, code: ErrorCode, message: String) -> ServerFrame {
     match frame {
         ClientFrame::EditAndSend { request } => ServerFrame::EditResult {
@@ -395,6 +441,9 @@ struct ConversationFiles {
     /// Weak: the shard owns the agent server that holds this resolver.
     shard: Weak<Shard>,
     conversation: ConversationId,
+    /// The Host the frame being handled was admitted on, while its uploads
+    /// are written there.
+    host: RefCell<Option<ConversationHost>>,
 }
 
 impl ContentResolver for ConversationFiles {
@@ -418,8 +467,11 @@ impl ContentResolver for ConversationFiles {
             for file in files {
                 match file {
                     FileReference::Upload { r#ref, file_name } => {
+                        // A frame with uploads is admitted on its Host first.
+                        let host = self.host.borrow().clone();
+                        let host = host.ok_or_else(|| refused("The frame's Host was not admitted".into()))?;
                         let blocks = shard
-                            .resolve_upload(&self.conversation, &r#ref, &file_name)
+                            .resolve_upload(&self.conversation, &host, &r#ref, &file_name)
                             .await
                             .map_err(|error| refused(error.to_string()))?;
                         resolved.push(Some(blocks));

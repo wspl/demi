@@ -14,6 +14,7 @@ pub mod conversations;
 pub mod devices;
 pub mod error;
 pub mod files;
+pub mod hosts;
 pub mod ids;
 pub mod providers;
 pub mod query;

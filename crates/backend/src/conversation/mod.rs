@@ -16,7 +16,7 @@ mod summary;
 pub(crate) mod target;
 pub(crate) mod transfer;
 pub(crate) mod titles;
-mod transition;
+pub(crate) mod transition;
 mod uploads;
 
 use std::cell::RefCell;

@@ -13,9 +13,8 @@ use demi_core::UserContentBlock;
 use demi_host_remote::RemoteHost;
 use demi_shell::{FileContents, Host as _, HostError, WriteOptions};
 use demi_web_api::ids::{AttachmentId, ConversationId};
-use tokio_util::sync::CancellationToken;
 
-use super::host_access::HostAccessError;
+use super::host_access::{ConversationHost, HostAccessError};
 use crate::shard::Shard;
 
 /// Where a Host keeps the conversations' attachments, under its account's
@@ -24,10 +23,12 @@ const ATTACHMENTS_DIR: &str = ".demi/attachments";
 
 impl Shard {
     /// The blocks the upload `reference` becomes in a message of the user's
-    /// conversation `id`, written under `file_name`.
+    /// conversation `id`, written under `file_name` on `host`, the Host the
+    /// frame was admitted on.
     pub(crate) async fn resolve_upload(
         &self,
         id: &ConversationId,
+        host: &ConversationHost,
         reference: &str,
         file_name: &str,
     ) -> Result<Vec<UserContentBlock>, HostAccessError> {
@@ -43,15 +44,7 @@ impl Shard {
         let Some(bytes) = services.blobs.for_user(self.user()).get(&record.sha256).await? else {
             return not_available();
         };
-        // Interim: the frame's Host admission, which holds the frame's file
-        // gate, hands the write its Host once the socket admits a frame with
-        // uploads through the host access; until then the write enters the
-        // host access itself.
-        let written = self
-            .with_host(id, None, &CancellationToken::new(), async |host| {
-                write_attachment(&host.host, id, file_name, bytes.clone()).await
-            })
-            .await??;
+        let written = write_attachment(&host.host, id, file_name, bytes.clone()).await?;
         Ok(upload_blocks(Upload {
             name: &written.name,
             path: &written.path,
