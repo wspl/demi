@@ -178,6 +178,42 @@ Cloud, with `~/.demi/claude/config` as its configuration home, not in the
 conversation's directory, which on a paired device is a path the Cloud does not
 have; the CLI reads and writes nothing there that a conversation owns.
 
+### How a runtime gets its process
+
+A process provider cannot build its runtime from the provider alone: the
+process needs a machine, and only the backend chooses one. `Provider::runtime`
+of the Claude Code provider therefore refuses (`ProcessHostRequired`), and the
+runtime is built over a placement instead:
+
+```text
+backend, on the user's shard                 provider-claude-code
+  claude-code family -- same arguments --->  provider + placement = runtime
+                                                  |
+  placement.start(spawn) <------------------------+  a run needs a new process
+    machine access: wake or admit the Cloud
+    demi.claude: claude.status, claude.ensure when needed
+    make ~/.demi/claude/run and ~/.demi/claude/config
+    spawn(executable, run dir, config dir) -> the provider's spawn request
+    Host process interface: start it, then release the Cloud's admission
+  --- shell's Process ---------------------------->  the run drives it
+```
+
+`provider-claude-code` defines the placement contract: `start` starts a new CLI
+process on the machine the placement chooses and answers shell's `Process`. The
+provider builds the spawn request itself, from the executable's path and the
+run and configuration directories the placement names on that machine, so the
+CLI's arguments, environment and token stay the provider's. The backend
+implements the placement by the rules above: it holds the Cloud's admission
+only while the process starts, since the process is retained, and a failure to
+wake the Cloud, to install the CLI or to start it fails the request with its
+reason ([What the user sees](#what-the-user-sees)).
+
+The backend's provider family builds the runtime from the same arguments it
+builds the provider from, plus the placement, so no code downcasts a provider
+to its concrete type. The conversation's runtime and **Test connection** build
+a provider's runtime this way whenever the provider's capabilities say that it
+needs a process.
+
 On a shared instance each user's requests run on their own Cloud with the
 master's account, so the master's token reaches every user's Cloud
 ([Scope](providers.md#scope)).
