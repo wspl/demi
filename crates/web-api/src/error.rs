@@ -184,6 +184,8 @@ pub enum ErrorCode {
     /// The Fork's text is not a completed assistant text of the source's
     /// history.
     InvalidForkTarget,
+    /// The conversation has no message with text to title.
+    NoMessages,
 }
 
 serde_plain::derive_display_from_serialize!(ErrorCode);
