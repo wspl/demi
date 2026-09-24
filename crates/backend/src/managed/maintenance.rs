@@ -199,11 +199,10 @@ impl IdlePolicy for CloudIdle {
             return Ok(None);
         };
         let machine = self.machine.clone();
-        let run = async move { shard.hibernate_reserved(&machine).await.map_err(|error| error.to_string()) };
-        Ok(Some(Retirement {
-            held: Box::new((gate, held)),
-            run: Box::pin(run),
-        }))
+        Ok(Some(Box::pin(async move {
+            let _held = (gate, held);
+            shard.hibernate_reserved(&machine).await.map_err(|error| error.to_string())
+        })))
     }
 
     async fn changed(&self) {

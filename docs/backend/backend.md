@@ -100,8 +100,9 @@ on serving.
 
 A stable hash of the user id pins each user to one shard thread, and the
 backend starts with one shard thread. A user's shard is created by the first
-request for that user and loads only the user's Cloud device record and its
-reset intent. Conversations, agent trees and devices load when first used, and
+request for that user and loads nothing ahead of need: the Cloud's device
+record and its latest reset load when the Cloud is first needed, and
+conversations, agent trees and devices when they are first used, and
 an agent tree that no socket watches closes again once it is idle
 ([Connections and the live tree](../agent/runtime.md#connections-and-the-live-tree)).
 The machine manager's death events reach one edge task, which calls the shard
