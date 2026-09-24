@@ -425,7 +425,9 @@ Each crate implements the provider contract for one vendor family.
   tree store (`MemoryTreeStore`), which keeps media by reference over an
   in-memory blob namespace (`MemoryBlobs`), the tree store contract's cases
   that every realization passes (`store_contract`), predictable identities
-  (`SequentialIds`) and a test client that drives a connection
+  (`SequentialIds`), provider runtimes that play scripts
+  (`ScriptedProviders`), a Host type for agents without shell tools
+  (`NoHost`, `NoShells`) and a test client that drives a connection
   (`TestClient`). A product supplies
   the harness, the providers, a shell environment per Host and a tree store;
   the agent never knows which shell engine runs. Behavior:
@@ -472,9 +474,10 @@ Each crate implements the provider contract for one vendor family.
   runner process for a backend at any address, with a home and state of its
   own (`RunnerProcess`), such a runner connected to a backend end of the
   fixture's own for one device (`RunnerFixture`), an in-process fake runner
-  (`TestDevice`, whose connections are `TestLink`s), the runner's native
-  fixture package (`NativeFixture`) and a policy that runs every call in one
-  command set (`CommandPolicy`). Behavior: [Runner](../execution/runner.md) and
+  (`TestDevice`, whose connections are `TestLink`s), a native package the
+  workspace built (`NativeFixture`, such as the runner's native fixture
+  package; `built_program` finds a workspace executable) and a policy that
+  runs every call in one command set (`CommandPolicy`). Behavior: [Runner](../execution/runner.md) and
   [Native command execution](../execution/native-runtime.md), which owns
   [artifact-location admission](../execution/native-runtime.md#install-the-selected-executable).
 - **Must not:** own sockets or HTTP routes (the backend's connection tasks and

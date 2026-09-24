@@ -10,10 +10,10 @@ rust-version.workspace = true
 doctest = false
 
 [features]
-# An in-memory tree store, predictable ids and a test client that drives a
-# connection (`agent::testing`), for the tests of the agent and of what sits
-# above it.
-testing = []
+# An in-memory tree store, predictable ids, scripted provider runtimes and a
+# test client that drives a connection (`agent::testing`), for the tests of
+# the agent and of what sits above it.
+testing = ["demi-provider/testing"]
 # The compaction fixture's harness (`fixtures/compaction/README.md`), which
 # calls a real model: no build of the one selection enables it.
 compaction-fixture = ["testing", "dep:demi-provider-openai-api", "dep:flate2", "dep:reqwest"]
