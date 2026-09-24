@@ -15,7 +15,7 @@ mod socket;
 mod summary;
 pub(crate) mod target;
 pub(crate) mod transfer;
-mod transition;
+pub(crate) mod transition;
 
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
