@@ -25,8 +25,9 @@ use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
 use crate::support::{
-    CommandRun, Fixture, Gate, Model, TestHarness, agent, agent_call, conversation, frames_until,
-    held, is_idle, is_pending_steers, open, request_text, send, texts, until,
+    CommandRun, Fixture, Gate, Model, TestHarness, agent, agent_call, command_storage,
+    conversation, frames_until, held, is_idle, is_pending_steers, open, request_text, send, texts,
+    until,
 };
 
 fn said(text: &str) -> Turn {
@@ -892,21 +893,13 @@ async fn a_start_request_is_safe_to_retry_and_outlives_a_cancelled_call() {
             .await
         }
     });
-    let reservation = || {
-        let root = fixture.server.node(&root(), &root()).unwrap();
-        async move {
-            match root
-                .storage(
-                    StorageOp::Read {
-                        key: "agent.start.r1".into(),
-                    },
-                    Vec::new(),
-                )
-                .await
-            {
-                Ok(StorageReply::Value { value, .. }) => value,
-                other => panic!("{other:?}"),
-            }
+    let reservation = || async {
+        let read = StorageOp::Read {
+            key: "agent.start.r1".into(),
+        };
+        match command_storage(&fixture.server, &root(), read).await {
+            Ok(StorageReply::Value { value, .. }) => value,
+            other => panic!("{other:?}"),
         }
     };
     while reservation().await.is_none() {
