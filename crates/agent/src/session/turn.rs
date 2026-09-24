@@ -8,7 +8,7 @@
 
 use std::rc::Rc;
 
-use demi_core::{BlockId, ToolResultContentBlock, ToolView, WakeupId};
+use demi_core::{Block, BlockId, ToolResultContentBlock, ToolView, WakeupId};
 use demi_provider::{InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun};
 use futures_util::StreamExt;
 
@@ -181,7 +181,18 @@ fn missing_boundary(block: &BlockId) -> TurnError {
 /// The next request: the context text first when the execution context
 /// changed, saved at once, then the system prompt, the tools and the replay.
 async fn request(s: &SessionShared, cancel: &TurnCancel) -> Result<InferenceRequest, TurnError> {
-    if let Some(text) = cancel.guard(s.runtime.context()).await? {
+    let seen: Vec<String> = s.read(|core| {
+        core.transcript
+            .blocks()
+            .iter()
+            .filter_map(|block| match block {
+                Block::Context(context) => Some(context.text.clone()),
+                _ => None,
+            })
+            .collect()
+    });
+    let seen: Vec<&str> = seen.iter().map(String::as_str).collect();
+    if let Some(text) = cancel.guard(s.runtime.context(&seen)).await? {
         s.update(|core| core.push_context(text));
         persist::flush(s).await?;
         cancel.check()?;

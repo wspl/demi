@@ -28,8 +28,9 @@ pub trait HostResolver: 'static {
 
     /// The text that tells a node the conversation's execution context
     /// changed since it last looked, such as a target switch; none by
-    /// default.
-    async fn context(&self, _context: PromptContext<'_>) -> Option<String> {
+    /// default. `seen` is the text of each context block the node's
+    /// transcript holds, oldest first.
+    async fn context(&self, _context: PromptContext<'_>, _seen: &[&str]) -> Option<String> {
         None
     }
 }
@@ -74,8 +75,8 @@ impl<R: HostResolver> AgentHarness for CodingHarness<R> {
         system_prompt(commands)
     }
 
-    async fn context(&self, context: PromptContext<'_>) -> Option<String> {
-        self.hosts.context(context).await
+    async fn context(&self, context: PromptContext<'_>, seen: &[&str]) -> Option<String> {
+        self.hosts.context(context, seen).await
     }
 }
 
