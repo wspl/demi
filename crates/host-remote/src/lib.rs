@@ -39,5 +39,5 @@ pub use remote_host::{
 };
 pub use shell_environment::{
     ContextSource, EnvironmentOptions, HostAccess, RemoteShellEnvironment,
-    RemoteShellEnvironmentFactory, RetainEdits,
+    RemoteShellEnvironmentFactory, RetainEdits, edited_file,
 };

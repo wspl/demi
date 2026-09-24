@@ -14,8 +14,9 @@ use std::rc::Rc;
 
 use demi_gates::{ActivityGate, GateLease, Purpose};
 use demi_host_remote::{Admission, RemoteHost};
-use demi_shell::{HostError, HostFs, MkdirOptions};
+use demi_shell::{HostError, HostErrorKind, HostFs, MkdirOptions};
 use demi_web_api::devices::DeviceKind;
+use demi_web_api::error::ErrorCode;
 use demi_web_api::ids::{ConversationId, DeviceId};
 use futures_util::future::join_all;
 use tokio_util::sync::CancellationToken;
@@ -88,6 +89,40 @@ pub(crate) enum HostAccessError {
     Storage(#[from] StorageError),
 }
 
+impl HostAccessError {
+    /// The code and HTTP status the error answers with.
+    pub(crate) fn code(&self) -> (ErrorCode, u16) {
+        match self {
+            Self::Missing => (ErrorCode::ConversationNotFound, 404),
+            Self::Refused(Refusal::Archived) => (ErrorCode::ConversationArchived, 409),
+            Self::Refused(Refusal::NotAttached) => (ErrorCode::HostNotAttached, 404),
+            Self::Refused(Refusal::Busy) => (ErrorCode::ConversationBusy, 409),
+            Self::Refused(Refusal::Stopped) => (ErrorCode::HostStopped, 409),
+            Self::Refused(Refusal::DeviceGone) => (ErrorCode::DeviceNotFound, 404),
+            Self::Cloud(_) => (ErrorCode::CloudUnavailable, 503),
+            Self::Host(error) => host_error_code(error),
+            Self::Cancelled | Self::Storage(_) => (ErrorCode::InternalError, 500),
+        }
+    }
+}
+
+/// The code and HTTP status of a Host's failure of a file operation:
+/// nothing at the path answers 404, no permission 403, a listing over the
+/// runner's message limit 413.
+pub(crate) fn host_error_code(error: &HostError) -> (ErrorCode, u16) {
+    match &error.kind {
+        HostErrorKind::Offline => (ErrorCode::DeviceOffline, 409),
+        HostErrorKind::Unavailable => (ErrorCode::CloudUnavailable, 503),
+        HostErrorKind::TooLarge => (ErrorCode::DirectoryTooLarge, 413),
+        HostErrorKind::Failed { code } => match code.as_deref() {
+            Some("ENOENT") => (ErrorCode::FsError, 404),
+            Some("EACCES" | "EPERM") => (ErrorCode::FsError, 403),
+            _ => (ErrorCode::HostOperationFailed, 500),
+        },
+        HostErrorKind::Protocol | HostErrorKind::Interrupted => (ErrorCode::HostOperationFailed, 500),
+    }
+}
+
 /// What the conversation's state refuses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum Refusal {
@@ -125,6 +160,7 @@ pub(crate) struct CloudAdmission {
 }
 
 /// A conversation's Host as an admitted operation reaches it.
+#[derive(Clone)]
 pub(crate) struct ConversationHost {
     pub(crate) host: RemoteHost,
     /// Where the conversation's work starts on this Host.
@@ -386,5 +422,23 @@ impl Shard {
             });
         }
         Ok(hosts)
+    }
+
+    /// Lifecycle access (§ Lifecycle access): the conversation release, sent
+    /// to `device` when it is a connected paired device. It takes no file
+    /// gate and wakes nothing: a Cloud reclaims everything when it stops, and
+    /// a device whose runner is not connected lost the conversation's state
+    /// with its connection.
+    pub(crate) async fn release_on(&self, id: &ConversationId, device: &DeviceId) -> Result<(), HostAccessError> {
+        let Some(record) = self.services().control.device(device.clone()).await? else {
+            return Ok(());
+        };
+        if record.kind == DeviceKind::Managed {
+            return Ok(());
+        }
+        let Some(link) = self.devices().link(device) else {
+            return Ok(());
+        };
+        Ok(link.release_conversation(id.as_str()).await?)
     }
 }

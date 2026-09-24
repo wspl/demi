@@ -19,9 +19,10 @@ fn main() -> std::process::ExitCode {
             return std::process::ExitCode::FAILURE;
         }
     };
-    // The journal records the service's standard error.
+    // The journal records the service's standard error and the time; the
+    // messages name their part of the manager themselves.
     tracing_subscriber::registry()
-        .with(fmt::layer().with_writer(std::io::stderr).without_time())
+        .with(fmt::layer().with_writer(std::io::stderr).without_time().with_target(false))
         .init();
     // One thread owns the manager's state (`concurrency.md` § Machine manager).
     let runtime = tokio::runtime::Builder::new_current_thread()

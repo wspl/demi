@@ -15,6 +15,7 @@ mod devices;
 mod error;
 mod files;
 mod gate;
+mod hosts;
 mod install;
 mod listener;
 mod models;
@@ -197,6 +198,11 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         )
         .route("/conversations/{id}/fs/file", get(files::text))
         .route("/conversations/{id}/fs/raw", get(files::raw).put(files::upload))
+        .route("/conversations/{id}/hosts", get(hosts::list).post(hosts::attach))
+        .route(
+            "/conversations/{id}/hosts/{device}",
+            patch(hosts::rename).delete(hosts::detach),
+        )
         .route(
             "/conversations/{id}/hosts/{device}/fs",
             get(files::list_on_host).post(files::make_directory_on_host),
@@ -204,6 +210,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/conversations/{id}/changes", get(files::changes))
         .route("/conversations/{id}/changes/file", get(files::changed_file))
         .route("/conversations/{id}/changes/raw", get(files::committed))
+        .route("/conversations/{id}/commands/{command}/changes/file", get(files::retained_edit))
         .fallback(no_route)
         .method_not_allowed_fallback(no_route)
         // After the fallbacks, so the gate covers them too.
