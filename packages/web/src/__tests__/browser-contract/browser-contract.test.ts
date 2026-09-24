@@ -21,6 +21,7 @@ import {
   type CreateProvider,
   type SetupRequest,
 } from '../../api/generated/web-api'
+import { productStateSchema } from '../../api/unported'
 import { useSession } from '../../auth/session'
 import { openBrowser, startBackend, startRunner, temporaryRoot, type Backend, type Runner } from './harness'
 import { startScriptedAnthropic, type ScriptedAnthropic } from './scripted-anthropic'
@@ -185,7 +186,7 @@ function kinds(blocks: readonly Block[]): string[] {
   return blocks.map((block) => block.type)
 }
 
-test('a user signs in through the API client, and the session admits the conversation socket', async () => {
+test('a user signs in through the API client, and the session admits the account snapshot and the conversation socket', async () => {
   const session = useSession()
   const id = await createConversation()
   await session.signOut()
@@ -198,6 +199,11 @@ test('a user signs in through the API client, and the session admits the convers
 
   await session.signIn(EMAIL, PASSWORD, new AbortController().signal)
   expect(session.user?.email).toBe(EMAIL)
+  // The account snapshot the page renders; creating a conversation does not
+  // make the user's Cloud, so it is not made yet.
+  const state = await readResponse(await apiRequest('/state'), productStateSchema)
+  expect(state.user.email).toBe(EMAIL)
+  expect(state.cloud).toMatchObject({ device: null, state: 'unallocated' })
   const client = await connect(id)
   try {
     const events: ClientSessionEvent['type'][] = []

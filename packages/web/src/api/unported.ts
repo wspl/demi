@@ -1,11 +1,11 @@
 import { z } from 'zod'
-import { cloudStatusSchema, productStateSchema as portedProductStateSchema } from './generated/web-api'
+import { productStateSchema as portedProductStateSchema } from './generated/web-api'
 
 // The REST bodies of routes the Rust backend does not serve yet: exposes and
-// a process provider's command-line tool, and the parts of the product state
-// the exposes and the Cloud fill. Their web-api types do not exist yet, so
-// these follow `web-api.md`; each goes when its generated type does, and
-// nothing else in the page declares a REST shape.
+// a process provider's command-line tool, and the part of the product state
+// the exposes fill. Their web-api types do not exist yet, so these follow
+// `web-api.md`; each goes when its generated type does, and nothing else in
+// the page declares a REST shape.
 
 const time = z.iso.datetime({ precision: 3 })
 
@@ -23,11 +23,10 @@ export type Expose = z.infer<typeof exposeSchema>
 export const exposeAnswerSchema = z.object({ expose: exposeSchema })
 
 /**
- * `GET /state` with the parts the Rust backend does not send yet: without
- * them there are no exposes and no Cloud state to show.
+ * `GET /state` with the exposes, which the Rust backend does not send yet:
+ * without them there are no exposes to show.
  */
 export const productStateSchema = portedProductStateSchema.extend({
-  cloud: cloudStatusSchema.optional(),
   exposes: z.array(exposeSchema).optional(),
   exposeDomain: z.string().nullable().optional(),
 })

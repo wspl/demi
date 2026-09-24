@@ -73,7 +73,7 @@ const usesCloud = computed(() =>
     ?.requiresProcessCapableHost === true,
 )
 const hold = computed(() =>
-  usesCloud.value && product.snapshot?.cloud?.state === 'resetting'
+  usesCloud.value && product.snapshot?.cloud.state === 'resetting'
     ? 'Cloud is resetting.'
     : null,
 )
