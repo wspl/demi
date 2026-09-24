@@ -3,7 +3,8 @@
 //! the user's shard once upgraded. The socket decodes each message into a
 //! client frame and hands it to the conversation's agent connection, one at a
 //! time in arrival order; the connection's outbox carries every server frame
-//! back, with the failure facts of the error blocks it brings. A frame the
+//! back, its media as references into the owner's blobs and with the
+//! failure facts of the error blocks it brings. A frame the
 //! backend refuses before the agent sees it is answered with an `error`
 //! frame: one that is not a valid frame (`invalid_frame`), one sent while the
 //! conversation is archived (`conversation_archived`), one naming a provider
@@ -14,6 +15,7 @@
 use std::rc::{Rc, Weak};
 
 use axum::extract::ws::{CloseFrame, Message, Utf8Bytes, WebSocket, close_code};
+use demi_agent::store::media;
 use demi_agent::{ContentError, ContentResolver, FileReference, Outgoing};
 use demi_agent_protocol::{ClientFrame, EditOutcome, FrameError, ServerFrame, TranscriptPatch, decode_client_frame};
 use demi_core::{Block, UserContentBlock};
@@ -249,21 +251,37 @@ impl Shard {
     }
 
     /// Sends one server frame, presented as the page receives it; false when
-    /// the socket is gone.
+    /// the socket is gone. A frame that cannot be presented is not sent.
     async fn send_frame(&self, sink: &mut futures_util::stream::SplitSink<WebSocket, Message>, frame: ServerFrame) -> bool {
-        let frame = self.present(frame).await;
+        let Some(frame) = self.present(frame).await else {
+            return true;
+        };
         let Some(text) = serialize(frame).await else {
             return false;
         };
         sink.send(Message::Text(text.into())).await.is_ok()
     }
 
-    /// A server frame as the page receives it (`backend.md` § Failure
-    /// facts): a transcript frame carries the failure facts of the error
-    /// blocks it brings.
-    async fn present(&self, frame: ServerFrame) -> ServerFrame {
-        let assembly = &self.services().assembly;
-        match frame {
+    /// A server frame as the page receives it: the media of the blocks a
+    /// transcript frame carries are references into the owner's blobs
+    /// (`backend.md` § Media by reference), and it carries the failure facts
+    /// of the error blocks it brings (§ Failure facts). None when the media
+    /// could not be stored: no frame carries media bytes, and the page asks
+    /// for the transcript again at the gap in the revisions the missing
+    /// frame leaves.
+    async fn present(&self, mut frame: ServerFrame) -> Option<ServerFrame> {
+        let services = self.services();
+        let blobs = services.blobs.for_user(self.user());
+        if let Err(error) = media::externalize_frame(&mut frame, &blobs).await {
+            tracing::error!(
+                user = %self.user(),
+                error = &error as &dyn std::error::Error,
+                "a transcript frame's media were not stored"
+            );
+            return None;
+        }
+        let assembly = &services.assembly;
+        let presented = match frame {
             ServerFrame::TranscriptReset { blocks, version, .. } => {
                 let failures = failure_facts(assembly, &blocks).await;
                 ServerFrame::TranscriptReset {
@@ -309,7 +327,8 @@ impl Shard {
                 }
             }
             other => other,
-        }
+        };
+        Some(presented)
     }
 }
 

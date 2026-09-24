@@ -188,7 +188,9 @@ mod tests {
 
     use super::*;
     use crate::auth::sessions::TokenHash;
+    use crate::storage::blobs::{BlobStores, UserBlobs};
     use crate::storage::control::testing;
+    use crate::storage::objects;
     use crate::storage::conversation_index::{AttachedHostRecord, ConversationModel};
     use crate::storage::tree::SqliteTreeStore;
 
@@ -197,8 +199,8 @@ mod tests {
     }
 
     /// A destination root as a Fork's initialization commits it, with no
-    /// history.
-    async fn commit_root(stores: &ConversationStores, id: &ConversationId, at: Timestamp) {
+    /// history, so no media.
+    async fn commit_root(stores: &ConversationStores, blobs: &UserBlobs, id: &ConversationId, at: Timestamp) {
         let state = CheckpointState {
             phase: SessionPhase::Idle,
             queue: Vec::new(),
@@ -215,7 +217,7 @@ mod tests {
             changed_blocks: Vec::new(),
             block_count: 0,
         };
-        SqliteTreeStore::new(stores.db(id))
+        SqliteTreeStore::new(stores.db(id), blobs.clone())
             .create_node(NodeRecord::root(root_of(id), at), initial)
             .await
             .unwrap();
@@ -271,7 +273,8 @@ mod tests {
         }
         // One root commits, and the backend stops before it publishes the
         // destination; a device is revoked meanwhile.
-        commit_root(&stores, &committed, created_at).await;
+        let blobs = BlobStores::new(objects::open(data.path()).await.unwrap()).for_user(&master);
+        commit_root(&stores, &blobs, &committed, created_at).await;
         control.delete_device(devices[1].clone()).await.unwrap();
 
         // A second start finds nothing more to publish.

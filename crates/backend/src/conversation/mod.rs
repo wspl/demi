@@ -48,9 +48,11 @@ pub(crate) fn agent_server(
 ) -> Rc<AgentServer<ConversationHarness>> {
     let stores: TreeStores = {
         let services = services.clone();
+        // The shard's user owns every conversation it hosts.
+        let blobs = services.blobs.for_user(&user);
         Rc::new(move |root: &NodeId| {
             let db = services.conversations.db(&conversation_of(root));
-            Rc::new(SqliteTreeStore::new(db)) as Rc<dyn AgentTreeStore>
+            Rc::new(SqliteTreeStore::new(db, blobs.clone())) as Rc<dyn AgentTreeStore>
         })
     };
     let config = ServerConfig {
