@@ -1,5 +1,6 @@
 //! The databases and the object store (`storage.md`).
 
+pub(crate) mod attachments;
 pub(crate) mod blobs;
 pub(crate) mod changes;
 pub(crate) mod columns;

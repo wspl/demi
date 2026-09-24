@@ -1,9 +1,10 @@
 //! Conversation Fork on the backend (`conversation-fork.md` § Backend
 //! creation and retries): a new conversation holding the source's history
 //! through one of its completed assistant texts. The creation reserves its
-//! destination's id in the control store, the agent prepares the seed and
-//! commits the destination's root in the destination's own database, and a
-//! control transaction then publishes the destination. Requests for one
+//! destination's id in the control store, the agent prepares the seed, the
+//! kept edits of its retained shell calls are copied into the destination's
+//! namespace, the agent commits the destination's root in the destination's
+//! own database, and a control transaction then publishes the destination. Requests for one
 //! destination run one at a time, a retry of the same attempt finds its
 //! destination, and startup publishes a destination whose root committed
 //! before its publication.
@@ -132,10 +133,14 @@ impl Shard {
                     .ok_or(ForkRefusal::Unavailable)?
             }
         };
+        // The edits the retained shell calls kept are the destination's too,
+        // before its root commits; a retry copies them again.
+        services
+            .changes
+            .fork(&source.id, &destination, &seed.transcript)
+            .await?;
         // A retry creates the destination with the selection its attempt
-        // recorded. Interim: the change store's objects of the retained
-        // blocks are copied into the destination's namespace here, before
-        // its root commits, once the change store lands.
+        // recorded.
         seed.state.model = operation.metadata.model.clone();
         self.agent()
             .initialize_fork(&root_of(&destination), seed)
@@ -188,8 +193,10 @@ mod tests {
 
     use super::*;
     use crate::auth::sessions::TokenHash;
+    use crate::storage::blobs::{BlobStores, UserBlobs};
     use crate::storage::control::testing;
     use crate::storage::conversation_index::{AttachedHostRecord, ConversationModel, RecordChange};
+    use crate::storage::objects;
     use crate::storage::tree::SqliteTreeStore;
 
     fn conversation(id: &str) -> ConversationId {
@@ -197,8 +204,8 @@ mod tests {
     }
 
     /// A destination root as a Fork's initialization commits it, with no
-    /// history.
-    async fn commit_root(stores: &ConversationStores, id: &ConversationId, at: Timestamp) {
+    /// history, so no media.
+    async fn commit_root(stores: &ConversationStores, blobs: &UserBlobs, id: &ConversationId, at: Timestamp) {
         let state = CheckpointState {
             phase: SessionPhase::Idle,
             queue: Vec::new(),
@@ -215,7 +222,7 @@ mod tests {
             changed_blocks: Vec::new(),
             block_count: 0,
         };
-        SqliteTreeStore::new(stores.db(id))
+        SqliteTreeStore::new(stores.db(id), blobs.clone())
             .create_node(NodeRecord::root(root_of(id), at), initial)
             .await
             .unwrap();
@@ -274,7 +281,8 @@ mod tests {
         }
         // One root commits, and the backend stops before it publishes the
         // destination; a device is revoked meanwhile.
-        commit_root(&stores, &committed, created_at).await;
+        let blobs = BlobStores::new(objects::open(data.path(), None).await.unwrap()).for_user(&master);
+        commit_root(&stores, &blobs, &committed, created_at).await;
         control.delete_device(devices[1].clone()).await.unwrap();
 
         // A second start finds nothing more to publish.

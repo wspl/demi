@@ -27,7 +27,8 @@ use tokio_util::task::TaskTracker;
 
 use crate::backend::Services;
 use crate::conversation::host_access::Conversations;
-use crate::conversation::{self, ConversationHarness};
+use crate::conversation::titles::Titles;
+use crate::conversation::{self, ConversationHarness, ConversationParts};
 use crate::runner::devices::Devices;
 use crate::runner::router::CommandRouter;
 use crate::usage::rate_limit::RequestRateLimit;
@@ -68,6 +69,8 @@ pub(crate) struct Shard {
     closing: CancellationToken,
     /// The user's conversation trees.
     agent: Rc<AgentServer<ConversationHarness>>,
+    /// The title requests of the user's conversations.
+    titles: Titles,
     /// The conversation sockets being served, which the close ends before
     /// the agent shuts down, so no frame reaches it after.
     conversation_sockets: TaskTracker,
@@ -82,7 +85,8 @@ impl Shard {
         // conversations counts against.
         let limit = services.conversation_tuning.requests_per_minute;
         let rate_limit = Rc::new(RefCell::new(RequestRateLimit::new(limit)));
-        let agent = conversation::agent_server(shard, user.clone(), services.clone(), http.clone(), rate_limit);
+        let ConversationParts { agent, titles } =
+            conversation::conversation_parts(shard, user.clone(), services.clone(), http.clone(), rate_limit);
         Self {
             user,
             services,
@@ -94,6 +98,7 @@ impl Shard {
             tasks: TaskTracker::new(),
             closing: CancellationToken::new(),
             agent,
+            titles,
             conversation_sockets: TaskTracker::new(),
             forks: KeyedSerialGate::new(),
         }
@@ -145,6 +150,10 @@ impl Shard {
         &self.agent
     }
 
+    pub(crate) fn titles(&self) -> &Titles {
+        &self.titles
+    }
+
     pub(crate) fn conversation_sockets(&self) -> &TaskTracker {
         &self.conversation_sockets
     }
@@ -154,12 +163,14 @@ impl Shard {
     }
 
     /// Ends the user's work in order (`backend.md` § Startup and shutdown):
-    /// the conversation sockets end; open file transfers and user streams
-    /// end, and stay closed; the agent turns are aborted while their runners
-    /// are still connected; the runner connections close, their work ends
-    /// with them, and then the pipes fail.
+    /// title requests are aborted; the conversation sockets end; open file
+    /// transfers and user streams end, and stay closed; the agent turns are
+    /// aborted while their runners are still connected; the runner
+    /// connections close, their work ends with them, and then the pipes
+    /// fail.
     async fn close(&self) {
         self.closing.cancel();
+        self.titles.abort_all();
         self.conversation_sockets.close();
         self.conversation_sockets.wait().await;
         let _transfers_closed = self.conversations.end_transfers().await;

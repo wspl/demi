@@ -5,6 +5,7 @@
 
 mod accounts;
 mod assets;
+mod attachments;
 mod auth;
 mod blobs;
 mod body;
@@ -160,6 +161,10 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             "/settings/preferences",
             get(settings::preferences).patch(settings::patch_preferences),
         )
+        .route(
+            "/attachments",
+            post(attachments::upload).layer(DefaultBodyLimit::max(attachments::BODY_LIMIT)),
+        )
         .route("/blobs/{sha256}", get(blobs::blob))
         .route("/models", get(models::models))
         .route("/providers", get(providers::list).post(providers::create))
@@ -184,6 +189,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/conversations/batch", post(conversations::batch))
         .route("/conversations/{id}", patch(conversations::patch))
         .route("/conversations/{id}/fork", post(conversations::fork))
+        .route("/conversations/{id}/title", post(conversations::title))
         .route("/conversations/{id}/transcript", get(conversations::transcript))
         .route("/conversations/{id}/read", post(conversations::read))
         .route("/conversations/{id}/stream", get(conversations::stream))

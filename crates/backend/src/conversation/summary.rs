@@ -47,6 +47,8 @@ impl Shard {
         };
         Ok(ConversationSummary {
             unread: facts.revision > record.read_revision,
+            title_current: record.user_messages <= record.titled_messages,
+            title_generating: self.titles().generating(&record.id),
             id: record.id,
             title: record.title,
             archived: record.archived,

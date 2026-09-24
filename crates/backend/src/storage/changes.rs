@@ -116,7 +116,6 @@ impl ChangeStore {
     /// Copies the kept segments of `blocks`' shell calls from `source`'s
     /// namespace into `destination`'s, for a Fork of `source`. A source
     /// object that is gone stays unavailable in both conversations.
-    #[cfg_attr(not(test), expect(dead_code, reason = "a Fork copies its blocks' edits before it publishes"))]
     pub(crate) async fn fork(
         &self,
         source: &ConversationId,
