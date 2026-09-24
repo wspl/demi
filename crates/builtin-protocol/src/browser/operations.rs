@@ -4,6 +4,7 @@
 
 use std::time::Duration;
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_with::rust::unwrap_or_skip;
@@ -49,12 +50,13 @@ pub trait BrowserInput {
 macro_rules! input {
     (@struct $(#[$meta:meta])* $name:ident { $($body:tt)* }) => {
         $(#[$meta])*
-        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, garde::Validate)]
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
         #[serde(rename_all = "kebab-case", deny_unknown_fields)]
         pub struct $name {
             $($body)*
             /// Whole operation deadline in milliseconds
             #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+            #[schemars(with = "u64")]
             #[garde(range(min = 1, max = MAX_TIMEOUT_MS))]
             pub timeout: Option<u64>,
         }
@@ -97,6 +99,7 @@ macro_rules! input {
                 $($body)*
                 /// Whole operation deadline in milliseconds
                 #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+                #[schemars(with = "u64")]
                 #[garde(range(min = 1, max = MAX_TIMEOUT_MS))]
                 pub timeout: Option<u64>,
             }
@@ -151,6 +154,7 @@ input!(@struct
         #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
         pub url: String,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "Load")]
         #[garde(skip)]
         pub load: Option<Load>,
     }
@@ -167,14 +171,16 @@ impl BrowserInput for OpenInput {
 
 /// What `open` answers: the new tab, with its title and viewport when the
 /// page reported them in time.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct OpenResult {
     pub tab: TabId,
     pub url: String,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
     pub title: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "BrowserViewport")]
     pub viewport: Option<BrowserViewport>,
 }
 
@@ -182,15 +188,17 @@ input! {
     /// `tabs`: lists the browser's tabs.
     pub struct TabsInput {
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "usize")]
         #[garde(skip)]
         pub offset: Option<usize>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "usize")]
         #[garde(range(min = 1, max = MAX_NODES))]
         pub limit: Option<usize>,
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TabsResult {
     pub tabs: Vec<BrowserTab>,
@@ -203,7 +211,7 @@ input! {
     pub struct InfoInput {}
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct InfoResult {
     pub tab: TabId,
@@ -211,6 +219,7 @@ pub struct InfoResult {
     pub title: String,
     pub viewport: BrowserViewport,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "Dialog")]
     pub dialog: Option<Dialog>,
 }
 
@@ -221,6 +230,7 @@ input! {
         #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
         pub url: String,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "Load")]
         #[garde(skip)]
         pub load: Option<Load>,
     }
@@ -231,6 +241,7 @@ input! {
     /// `back`: goes one entry back in a tab's history.
     pub struct BackInput {
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "Load")]
         #[garde(skip)]
         pub load: Option<Load>,
     }
@@ -241,6 +252,7 @@ input! {
     /// `forward`: goes one entry forward in a tab's history.
     pub struct ForwardInput {
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "Load")]
         #[garde(skip)]
         pub load: Option<Load>,
     }
@@ -251,6 +263,7 @@ input! {
     /// `reload`: reloads a tab's document.
     pub struct ReloadInput {
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "Load")]
         #[garde(skip)]
         pub load: Option<Load>,
     }
@@ -258,12 +271,13 @@ input! {
 
 /// What a navigation answers: the URL it observed, with the title when the
 /// same document reported it in time.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct NavigationResult {
     pub tab: TabId,
     pub url: String,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
     pub title: Option<String>,
 }
 
@@ -272,15 +286,17 @@ input! {
     /// `history`: lists a tab's navigation entries.
     pub struct HistoryInput {
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "usize")]
         #[garde(skip)]
         pub offset: Option<usize>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "usize")]
         #[garde(range(min = 1, max = MAX_NODES))]
         pub limit: Option<usize>,
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct HistoryEntry {
     pub index: usize,
@@ -289,7 +305,7 @@ pub struct HistoryEntry {
     pub current: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct HistoryResult {
     pub entries: Vec<HistoryEntry>,
@@ -302,7 +318,7 @@ input! {
     pub struct CloseInput {}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CloseResult {
     pub closed: TabId,
@@ -313,23 +329,27 @@ input! {
     /// `inspect`: reads a tab's accessibility or DOM tree.
     pub struct InspectInput {
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "InspectView")]
         #[garde(skip)]
         pub view: Option<InspectView>,
         /// Container node reference
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "NodeRef")]
         #[garde(skip)]
         pub within: Option<NodeRef>,
         /// Frame references, outermost to innermost
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "Vec<NodeRef>")]
         #[garde(skip)]
         pub frame: Option<Vec<NodeRef>>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "usize")]
         #[garde(range(min = 1, max = MAX_NODES))]
         pub limit: Option<usize>,
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct InspectResult {
     pub tab: TabId,
@@ -345,17 +365,21 @@ input! {
     /// `find`: lists the elements a target or a query tree matches.
     pub struct FindInput {
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "usize")]
         #[garde(skip)]
         pub offset: Option<usize>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "usize")]
         #[garde(range(min = 1, max = MAX_NODES))]
         pub limit: Option<usize>,
         /// Read a declarative query tree from stdin
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "bool")]
         #[garde(skip)]
         pub query: Option<bool>,
         /// JSON query tree when --query is supplied
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
         #[garde(length(utf16, max = STDIN_BYTES))]
         pub body: Option<String>,
     }
@@ -363,7 +387,7 @@ input! {
 
 /// What `find` answers. `count` is every current match, even when `offset`
 /// and `limit` return fewer.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct FindResult {
     pub matches: Vec<BrowserNode>,
@@ -377,19 +401,22 @@ input! {
     /// of every match with `--all`.
     pub struct ReadInput {
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "ReadProperty")]
         #[garde(skip)]
         pub property: Option<ReadProperty>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
         #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
         pub attribute: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "bool")]
         #[garde(skip)]
         pub all: Option<bool>,
     }
 }
 
 /// What `read` answers: one value, or every match's with `--all`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged, deny_unknown_fields)]
 pub enum ReadResult {
     One { value: Value },
@@ -402,16 +429,20 @@ input! {
     pub struct ScreenshotInput {
         /// New output file on this Host
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
         #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
         pub output: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "bool")]
         #[garde(skip)]
         pub overwrite: Option<bool>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "bool")]
         #[garde(skip)]
         pub full_page: Option<bool>,
         /// CSS rectangle: x,y,width,height
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
         #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
         pub clip: Option<String>,
     }
@@ -426,7 +457,7 @@ closed_set! {
 
 /// What `screenshot` answers when it writes a file; `width` and `height` are
 /// in CSS pixels.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ScreenshotResult {
     pub path: String,
@@ -444,24 +475,28 @@ input! {
         #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
         pub xy: String,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "bool")]
         #[garde(skip)]
         pub include_non_interactable: Option<bool>,
         /// New output file on this Host
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
         #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
         pub output: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "bool")]
         #[garde(skip)]
         pub overwrite: Option<bool>,
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ProbeResult {
     pub matches: Vec<BrowserNode>,
     pub viewport: BrowserViewport,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
     pub path: Option<String>,
     pub truncated: bool,
 }
@@ -472,19 +507,24 @@ input! {
     pub struct ClickInput {
         /// Viewport CSS coordinates: x,y
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
         #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
         pub xy: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "Vec<Modifier>")]
         #[garde(skip)]
         pub modifier: Option<Vec<Modifier>>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "u8")]
         #[garde(range(min = 1, max = 2))]
         pub count: Option<u8>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "MouseButton")]
         #[garde(skip)]
         pub button: Option<MouseButton>,
         /// Expected URL glob after the action
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
         #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
         pub wait_url: Option<String>,
     }
@@ -496,9 +536,11 @@ input! {
     pub struct MoveInput {
         /// Viewport CSS coordinates: x,y
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
         #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
         pub xy: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "Vec<Modifier>")]
         #[garde(skip)]
         pub modifier: Option<Vec<Modifier>>,
     }
@@ -512,6 +554,7 @@ input! {
         #[garde(length(min = 2), inner(length(utf16, min = 1, max = LOCATOR_LENGTH)))]
         pub point: Vec<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "Vec<Modifier>")]
         #[garde(skip)]
         pub modifier: Option<Vec<Modifier>>,
     }
@@ -523,15 +566,19 @@ input! {
     pub struct ScrollInput {
         /// Viewport CSS coordinates: x,y
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
         #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
         pub xy: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "Vec<Modifier>")]
         #[garde(skip)]
         pub modifier: Option<Vec<Modifier>>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "f64")]
         #[garde(skip)]
         pub dx: Option<f64>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "f64")]
         #[garde(skip)]
         pub dy: Option<f64>,
     }
@@ -545,6 +592,7 @@ input! {
         pub text: String,
         /// Expected URL glob after the action
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
         #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
         pub wait_url: Option<String>,
     }
@@ -567,6 +615,7 @@ input! {
         pub key: String,
         /// Expected URL glob after the action
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
         #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
         pub wait_url: Option<String>,
     }
@@ -587,12 +636,15 @@ input! {
     /// label or index.
     pub struct SelectInput {
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "Vec<String>")]
         #[garde(inner(inner(length(utf16, max = STDIN_BYTES))))]
         pub value: Option<Vec<String>>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "Vec<String>")]
         #[garde(inner(inner(length(utf16, max = STDIN_BYTES))))]
         pub option_label: Option<Vec<String>>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "Vec<usize>")]
         #[garde(skip)]
         pub option_index: Option<Vec<usize>>,
     }
@@ -606,12 +658,15 @@ input! {
         #[garde(length(utf16, max = STDIN_BYTES))]
         pub text: String,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "TextCursor")]
         #[garde(skip)]
         pub cursor: Option<TextCursor>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
         #[garde(length(utf16, max = STDIN_BYTES))]
         pub prefix: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
         #[garde(length(utf16, max = STDIN_BYTES))]
         pub suffix: Option<String>,
     }
@@ -620,18 +675,22 @@ input! {
 /// What a pointer or form action answers: the operation and the target it
 /// acted on, its own result, and what it observed after: the URL, tabs the
 /// page opened, and a dialog.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ActionResult {
     pub operation: String,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
     pub target: Option<String>,
     pub result: Value,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
     pub url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "Vec<TabId>")]
     pub opened_tabs: Option<Vec<TabId>>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "Dialog")]
     pub dialog: Option<Dialog>,
 }
 
@@ -655,26 +714,31 @@ input! {
     /// condition.
     pub struct WaitInput {
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
         #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
         pub url: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "Load")]
         #[garde(skip)]
         pub load: Option<Load>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "ElementState")]
         #[garde(skip)]
         pub state: Option<ElementState>,
     }
 }
 
 /// What `wait` answers; a load wait carries neither `url` nor `ref`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WaitResult {
     pub condition: String,
     pub matched: bool,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
     pub url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "NodeRef")]
     pub r#ref: Option<NodeRef>,
 }
 
@@ -687,7 +751,7 @@ input! {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct UploadResult {
     pub files: Vec<String>,
@@ -700,22 +764,26 @@ input! {
     pub struct DownloadInput {
         /// Viewport CSS coordinates: x,y
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
         #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
         pub xy: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "Vec<Modifier>")]
         #[garde(skip)]
         pub modifier: Option<Vec<Modifier>>,
         /// New output file on this Host
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
         #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
         pub output: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "bool")]
         #[garde(skip)]
         pub overwrite: Option<bool>,
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DownloadResult {
     pub path: String,
@@ -729,12 +797,13 @@ input! {
     /// `clipboard.write`: writes stdin to the tab's clipboard.
     pub struct ClipboardWriteInput {
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "ClipboardMime")]
         #[garde(skip)]
         pub mime: Option<ClipboardMime>,
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ClipboardWriteResult {
     pub mime_type: ClipboardMime,
@@ -747,20 +816,23 @@ input! {
     /// item to a directory.
     pub struct ClipboardReadInput {
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "ClipboardFormat")]
         #[garde(skip)]
         pub format: Option<ClipboardFormat>,
         /// Output directory on the invoking Host
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
         #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
         pub output_dir: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "bool")]
         #[garde(skip)]
         pub overwrite: Option<bool>,
     }
 }
 
 /// A clipboard item `clipboard.read` wrote to a file.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ClipboardItem {
     pub mime_type: ClipboardMime,
@@ -768,7 +840,7 @@ pub struct ClipboardItem {
     pub bytes: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged, deny_unknown_fields)]
 pub enum ClipboardReadResult {
     Text { text: String },
@@ -783,12 +855,13 @@ input! {
         #[garde(length(utf16, max = STDIN_BYTES))]
         pub expression: String,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "bool")]
         #[garde(skip)]
         pub all: Option<bool>,
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct EvalResult {
     pub value: Value,
@@ -799,35 +872,40 @@ input! {
     /// `logs`: reads a tab's console entries after a cursor.
     pub struct LogsInput {
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "Vec<LogLevel>")]
         #[garde(skip)]
         pub level: Option<Vec<LogLevel>>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
         #[garde(length(utf16, max = STDIN_BYTES))]
         pub filter: Option<String>,
         /// Cursor returned by a previous read
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
         #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
         pub after: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "usize")]
         #[garde(range(min = 1, max = MAX_NODES))]
         pub limit: Option<usize>,
     }
 }
 
 /// One console entry, numbered in the tab's order.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct LogEntry {
     pub sequence: u64,
     pub level: LogLevel,
     pub text: String,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
     pub url: Option<String>,
     /// Milliseconds since the Unix epoch.
     pub timestamp: f64,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LogsResult {
     pub entries: Vec<LogEntry>,
@@ -846,6 +924,7 @@ input! {
         pub height: u32,
         /// Device pixel ratio, 1 by default
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "f64")]
         #[garde(range(min = 0.5, max = 4.0))]
         pub scale: Option<f64>,
     }
@@ -857,7 +936,7 @@ input! {
     pub struct ViewportResetInput {}
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ViewportResult {
     pub viewport: BrowserViewport,
@@ -870,7 +949,7 @@ input! {
 }
 
 /// What `dialog.inspect` answers: the dialog, or `null` when none is open.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DialogInspectResult {
     #[serde(deserialize_with = "Option::deserialize")]
@@ -882,6 +961,7 @@ input! {
     /// `dialog.accept`: accepts the tab's dialog, answering a prompt with text.
     pub struct DialogAcceptInput {
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
         #[garde(length(utf16, max = STDIN_BYTES))]
         pub text: Option<String>,
     }
@@ -893,7 +973,7 @@ input! {
     pub struct DialogDismissInput {}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DialogResult {
     pub r#type: DialogType,
@@ -905,15 +985,17 @@ input! {
     /// `cdp.targets`: lists the CDP targets of a tab: its page, frames and workers.
     pub struct CdpTargetsInput {
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "usize")]
         #[garde(skip)]
         pub offset: Option<usize>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "usize")]
         #[garde(range(min = 1, max = MAX_NODES))]
         pub limit: Option<usize>,
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CdpTarget {
     pub id: String,
@@ -921,7 +1003,7 @@ pub struct CdpTarget {
     pub url: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CdpTargetsResult {
     pub targets: Vec<CdpTarget>,
@@ -934,7 +1016,7 @@ input! {
     pub struct CdpDetachInput {}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CdpDetachResult {
     pub detached: TabId,
@@ -949,12 +1031,13 @@ input! {
         #[garde(length(utf16, max = STDIN_BYTES))]
         pub params: String,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
         #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
         pub target: Option<String>,
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CdpSendResult {
     pub method: String,
@@ -967,22 +1050,26 @@ input! {
     /// after a cursor.
     pub struct CdpEventsInput {
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "Vec<String>")]
         #[garde(inner(inner(length(utf16, min = 1, max = LOCATOR_LENGTH))))]
         pub method: Option<Vec<String>>,
         /// Cursor returned by a previous read
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
         #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
         pub after: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "usize")]
         #[garde(range(min = 1, max = MAX_NODES))]
         pub limit: Option<usize>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
         #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
         pub target: Option<String>,
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CdpEvent {
     pub sequence: u64,
@@ -991,7 +1078,7 @@ pub struct CdpEvent {
     pub target: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CdpEventsResult {
     pub events: Vec<CdpEvent>,
@@ -1006,19 +1093,22 @@ input! {
     /// into a file.
     pub struct ContentReadInput {
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "ContentFormat")]
         #[garde(skip)]
         pub format: Option<ContentFormat>,
         /// New output file on this Host
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
         #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
         pub output: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "bool")]
         #[garde(skip)]
         pub overwrite: Option<bool>,
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged, deny_unknown_fields)]
 pub enum ContentReadResult {
     Inline {
@@ -1042,13 +1132,14 @@ input! {
         #[garde(length(min = 1, max = FETCH_URLS), inner(length(utf16, min = 1, max = LOCATOR_LENGTH)))]
         pub url: Vec<String>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "ContentFormat")]
         #[garde(skip)]
         pub format: Option<ContentFormat>,
     }
 }
 
 /// One URL `content.fetch` read, or its failure.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FetchedPage {
     pub requested_url: String,
@@ -1056,10 +1147,11 @@ pub struct FetchedPage {
     pub title: String,
     pub content: String,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "BrowserFailure")]
     pub error: Option<BrowserFailure>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ContentFetchResult {
     pub pages: Vec<FetchedPage>,
@@ -1073,24 +1165,25 @@ input! {
     pub struct AssetsListInput {}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Asset {
     pub id: String,
     pub kind: AssetKind,
     pub url: String,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
     pub mime_type: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct InlineSvg {
     pub id: String,
     pub html: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AssetsListResult {
     pub inventory: String,
@@ -1106,22 +1199,25 @@ input! {
         #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
         pub inventory: String,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "Vec<String>")]
         #[garde(inner(inner(length(utf16, min = 1, max = LOCATOR_LENGTH))))]
         pub id: Option<Vec<String>>,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "Vec<AssetKind>")]
         #[garde(skip)]
         pub kind: Option<Vec<AssetKind>>,
         /// Output directory on the invoking Host
         #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
         pub output_dir: String,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "bool")]
         #[garde(skip)]
         pub overwrite: Option<bool>,
     }
 }
 
 /// An asset `assets.export` saved.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ExportedAsset {
     pub id: String,
@@ -1130,7 +1226,7 @@ pub struct ExportedAsset {
     pub mime_type: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AssetsExportResult {
     pub directory: String,
@@ -1144,18 +1240,20 @@ input! {
     pub struct CapabilitiesInput {}
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Capability {
     pub id: String,
     pub available: bool,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
     pub reason: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "Value")]
     pub schema: Option<Value>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CapabilitiesResult {
     pub capabilities: Vec<Capability>,
@@ -1167,19 +1265,20 @@ input! {
     pub struct WebmcpListInput {}
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WebmcpTool {
     pub name: String,
     pub description: String,
     pub input_schema: Value,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "Value")]
     pub output_schema: Option<Value>,
 }
 
 /// What `webmcp.list` answers: the declarations' generation, which
 /// `webmcp.call` names, and the tools.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WebmcpListResult {
     pub tools: String,
@@ -1201,7 +1300,7 @@ input! {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WebmcpCallResult {
     pub name: String,

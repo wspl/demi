@@ -13,6 +13,7 @@ doctest = false
 [dependencies]
 base64 = "0.22"
 garde.workspace = true
+schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_plain.workspace = true
