@@ -88,6 +88,7 @@ pub struct Harness {
     logins: LoginTiming,
     pub runners: RunnerTuning,
     pub conversations: ConversationTuning,
+    runner_releases: Option<PathBuf>,
 }
 
 impl Harness {
@@ -111,7 +112,14 @@ impl Harness {
                 ..RunnerTuning::default()
             },
             conversations: ConversationTuning::default(),
+            runner_releases: None,
         }
+    }
+
+    /// The runner releases the installer routes serve.
+    pub fn with_runner_releases(mut self, directory: PathBuf) -> Self {
+        self.runner_releases = Some(directory);
+        self
     }
 
     /// The provider families the backend assembles entries with.
@@ -210,6 +218,7 @@ impl Harness {
         config.families = self.families.clone();
         config.logins = self.logins;
         config.runners = self.runners;
+        config.runner_releases = self.runner_releases.clone();
         config.conversations = self.conversations;
         if let Some(url) = &self.models_dev_url {
             config.models_dev_url = url.parse().unwrap();

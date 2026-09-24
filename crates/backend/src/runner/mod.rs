@@ -11,6 +11,7 @@ pub(crate) mod command_context;
 pub(crate) mod devices;
 pub(crate) mod files;
 pub(crate) mod host_commands;
+pub(crate) mod install;
 mod policy;
 pub(crate) mod router;
 
