@@ -244,7 +244,16 @@ impl Shard {
                 };
                 services.control.set_conversation_model(record.id, Some(selected)).await?;
             }
-            ClientFrame::Send { .. } => services.control.touch_conversation(record.id).await?,
+            ClientFrame::Send { content, .. } => {
+                // Every message the user sends makes a generated title older
+                // than the conversation.
+                let seen = services.control.count_user_message(record.id.clone()).await?;
+                self.title_first_message(&record, content, seen).await?;
+                services.control.touch_conversation(record.id).await?;
+            }
+            ClientFrame::Steer { .. } | ClientFrame::EditAndSend { .. } => {
+                services.control.count_user_message(record.id).await?;
+            }
             _ => {}
         }
         Ok(Prepared::Deliver)

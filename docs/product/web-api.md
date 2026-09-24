@@ -35,7 +35,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Users | `GET/POST /users`, `PATCH /users/:id`; role hierarchy restricts administration |
 | Application state | `GET /state`; conditional snapshot with private ETag |
 | Settings | `GET /settings` returns fixed instance mode; `GET/PATCH /settings/preferences` |
-| Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id }`, `PATCH /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }`, `POST /conversations/:id/title` requests a [generated title](product.md#conversation-titles) |
+| Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id }`, `PATCH /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }`, `POST /conversations/:id/title { model }` requests a [generated title](product.md#conversation-titles) |
 | Conversation history | `GET /conversations/:id/transcript` returns root blocks and subagent histories, each with the [failure facts](../backend/backend.md#failure-facts) of its error blocks; `WS /conversations/:id/stream` carries the [agent frames](../agent/runtime.md#frame-protocol) of that one conversation |
 | Conversation files | `GET/POST /conversations/:id/fs`, `DELETE /conversations/:id/fs?path=...`, `GET /conversations/:id/fs/file?path=...`, `GET /conversations/:id/fs/raw?path=...&version=...&download=true\|false`, `PUT /conversations/:id/fs/raw?path=...&replace=true\|false` with raw bytes, `GET/POST /conversations/:id/hosts/:deviceId/fs` |
 | Working tree | `GET /conversations/:id/changes`, `GET /conversations/:id/changes/file?path=...`, `GET /conversations/:id/changes/raw?path=...&download=true\|false`, `GET /conversations/:id/commands/:commandId/changes/file?path=...&edit=...` |
@@ -542,12 +542,20 @@ project and pin partition. [Storage](../backend/storage.md#control-records)
 owns persistent ordering. Activity timestamps never reorder rows.
 
 `GET /api/conversations?archived=true|false` includes `status`, `revision`,
-`readRevision`, `unread`, and `cwd`, the directory the conversation's work
-runs in, resolved the same way for a device directory, a workspace, and the
-Cloud, so the browser never derives it. Status is running/compacting from the
-live agent tree, otherwise completed/error/stopped from its latest terminal
-block, or idle. An unfinished checkpoint without a live session is
-interrupted.
+`readRevision`, `unread`, and `cwd`, the directory the conversation's work runs
+in, resolved the same way for a device directory, a workspace, and the Cloud, so
+the browser never derives it. Status is running/compacting from the live agent
+tree, otherwise completed/error/stopped from its latest terminal block, or idle.
+An unfinished checkpoint without a live session is interrupted. `titleCurrent`
+says whether the title has read every message the user sent, when asking for a
+new one could say nothing new, and `titleGenerating` whether a title request is
+in flight.
+
+`POST /api/conversations/:id/title { model }` asks that model selection for a
+new title from every message the user sent and answers 202; the title arrives
+with the conversation's summary once written. A conversation without message
+text answers 409 `no_messages`, an archived one 409 `conversation_archived`, and
+a provider outside the caller's scope 404 `provider_not_found`.
 
 A conversation is running while its tree will go on working without the user: an
 agent of the tree is acting, or a child is still open. An agent acts until the

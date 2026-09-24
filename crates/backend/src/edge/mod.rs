@@ -188,6 +188,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/conversations/batch", post(conversations::batch))
         .route("/conversations/{id}", patch(conversations::patch))
         .route("/conversations/{id}/fork", post(conversations::fork))
+        .route("/conversations/{id}/title", post(conversations::title))
         .route("/conversations/{id}/transcript", get(conversations::transcript))
         .route("/conversations/{id}/read", post(conversations::read))
         .route("/conversations/{id}/stream", get(conversations::stream))

@@ -34,6 +34,10 @@ pub(crate) struct ConversationRecord {
     pub(crate) context_version: u64,
     /// The provider entry and model the conversation last selected.
     pub(crate) model: Option<ConversationModel>,
+    /// How many messages the user has sent, and how many of them the title
+    /// has read (`product.md` § Conversation titles).
+    pub(crate) user_messages: u64,
+    pub(crate) titled_messages: u64,
     pub(crate) created_at: Timestamp,
     pub(crate) updated_at: Timestamp,
 }
@@ -85,7 +89,8 @@ pub(crate) enum Creation {
 const PLACEHOLDER_TITLE: &str = "New conversation";
 
 const CONVERSATION_COLUMNS: &str = "id, user_id, title, archived, pinned, read_revision, target_kind, target_device_id,
-     target_path, target_workspace_id, context_version, provider_id, model_id, created_at, updated_at";
+     target_path, target_workspace_id, context_version, provider_id, model_id, user_messages, titled_messages,
+     created_at, updated_at";
 
 /// A target as its typed columns: the kind and what the kind names.
 pub(crate) struct TargetColumns {
@@ -280,6 +285,62 @@ impl ControlService {
         .await
     }
 
+    /// Counts one more message the user sent, which makes a generated title
+    /// older than the conversation; answers how many there are now.
+    pub(crate) async fn count_user_message(&self, id: ConversationId) -> Result<u64, StorageError> {
+        self.call(move |connection, _| {
+            let count: i64 = connection.query_row(
+                "UPDATE conversations SET user_messages = user_messages + 1 WHERE id = ?1 RETURNING user_messages",
+                [id.as_str()],
+                |row| row.get(0),
+            )?;
+            decode("conversations", "user_messages", u64::try_from(count))
+        })
+        .await
+    }
+
+    /// Makes `title`, from the first message, the conversation's while its
+    /// title is still the placeholder; answers whether it did, which makes
+    /// this send the one a generated title may follow.
+    pub(crate) async fn title_from_first_message(&self, id: ConversationId, title: String) -> Result<bool, StorageError> {
+        self.call(move |connection, _| {
+            let changed = connection.execute(
+                "UPDATE conversations SET title = ?2, title_origin = 'message'
+                 WHERE id = ?1 AND title_origin = 'placeholder'",
+                params![id.as_str(), title],
+            )?;
+            Ok(changed == 1)
+        })
+        .await
+    }
+
+    /// Writes the generated `title` while the title is still `from`, the one
+    /// its request began from, in the statement that checks it, so a rename
+    /// that landed meanwhile stays. Either way the title is current for the
+    /// `seen` messages the request read. Answers whether it was written.
+    pub(crate) async fn generated_title(
+        &self,
+        id: ConversationId,
+        title: String,
+        from: String,
+        seen: u64,
+    ) -> Result<bool, StorageError> {
+        self.call(move |connection, _| {
+            let transaction = connection.transaction()?;
+            let written = transaction.execute(
+                "UPDATE conversations SET title = ?2, title_origin = 'generated' WHERE id = ?1 AND title = ?3",
+                params![id.as_str(), title, from],
+            )?;
+            transaction.execute(
+                "UPDATE conversations SET titled_messages = MAX(titled_messages, ?2) WHERE id = ?1",
+                params![id.as_str(), i64::try_from(seen).expect("a count the column held fits it")],
+            )?;
+            transaction.commit()?;
+            Ok(written == 1)
+        })
+        .await
+    }
+
     /// Records activity in the conversation now. Activity never reorders the
     /// sidebar.
     pub(crate) async fn touch_conversation(&self, id: ConversationId) -> Result<(), StorageError> {
@@ -399,6 +460,8 @@ fn conversation_row(row: &Row<'_>) -> Result<ConversationRecord, StorageError> {
         target: target_row(row)?,
         context_version: decode(TABLE, "context_version", u64::try_from(row.get::<_, i64>("context_version")?))?,
         model,
+        user_messages: decode(TABLE, "user_messages", u64::try_from(row.get::<_, i64>("user_messages")?))?,
+        titled_messages: decode(TABLE, "titled_messages", u64::try_from(row.get::<_, i64>("titled_messages")?))?,
         created_at: instant(row, TABLE, "created_at")?,
         updated_at: instant(row, TABLE, "updated_at")?,
     })

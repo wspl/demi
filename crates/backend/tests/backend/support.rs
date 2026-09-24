@@ -119,7 +119,12 @@ impl Harness {
                 ping: None,
                 ..RunnerTuning::default()
             },
-            conversations: ConversationTuning::default(),
+            // A scripted vendor answers the turns a scenario scripts; a title
+            // request beside the first turn would take one of its answers.
+            conversations: ConversationTuning {
+                titles: false,
+                ..ConversationTuning::default()
+            },
             runner_releases: None,
             native: None,
         }
