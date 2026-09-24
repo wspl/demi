@@ -302,6 +302,7 @@ The invocation carries:
 | `json` | Whether the caller passed `--json`. |
 | cwd and environment | The invoking shell's directory and environment. |
 | Command context | The [command context](native-runtime.md#command-context) from the backend's record of the job: conversation, caller, and locale. |
+| Storage binding | Whose command storage the job reaches: its agent node and that node's generation, from the same record. A job the handler starts on another Host carries it on. |
 | Stdin | Whether the calling process has a pipe on its stdin. |
 | Relayed pipes | The ids of the pipes relayed for the call's stdin and stdout. |
 
