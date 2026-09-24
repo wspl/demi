@@ -158,3 +158,10 @@ check-cfg = [
     'cfg(target_os, values("cygwin"))',
     "cfg(wasi_runner)",
 ]
+
+[package.metadata.demi]
+maintainer = "demi-runner"
+patches = [
+    "File system metadata through uucore::context, for paths relative to the shell job's directory",
+    "Files, streams, the environment, printing and exit go through uucore::context, so a run embedded in a shell job uses the job's working directory, environment, standard streams and cancellation, and exit ends only the utility",
+]

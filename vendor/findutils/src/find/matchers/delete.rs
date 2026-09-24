@@ -1,5 +1,3 @@
-use uucore::context::PathExt as _;
-use uucore::context::FileKindExt as _;
 /*
  * This file is part of the uutils findutils package.
  *
@@ -59,6 +57,7 @@ impl Matcher for DeleteMatcher {
 
 #[cfg(test)]
 mod tests {
+    use uucore::context::PathExt as _;
     use uucore::context::fs::{create_dir, File};
     use tempfile::Builder;
 
