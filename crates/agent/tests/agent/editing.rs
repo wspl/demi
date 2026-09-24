@@ -4,8 +4,8 @@
 //! requests the replacement makes, and the checkpoints the store keeps.
 
 use demi_agent::{
-    ForkError,
-    testing::{TestClient, TestFiles, client_text, test_model},
+    ForkError, ServerConfig,
+    testing::{MemoryTreeStore, TestClient, TestFiles, client_text, test_model},
     transcript::CutError,
 };
 use demi_agent_protocol::{
@@ -25,8 +25,8 @@ use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
 use crate::support::{
-    Fixture, Gate, TestHarness, agent, command_storage, conversation, frames_until, held, is_idle,
-    kinds, open, send,
+    CommandRun, Fixture, Gate, Model, TestHarness, agent, command_storage, conversation,
+    frames_until, held, is_idle, kinds, open, send,
 };
 
 fn said(text: &str) -> Turn {
@@ -633,4 +633,115 @@ async fn command_storage_writes_compare_the_revision_and_a_rewrite_ends_older_jo
             revision: Revision(2)
         }
     );
+}
+
+/// The child a `spawn` named on stdout.
+fn spawned(run: &CommandRun) -> NodeId {
+    let id = run
+        .stdout
+        .strip_prefix("subagentId: ")
+        .and_then(|rest| rest.strip_suffix('\n'))
+        .unwrap_or_else(|| panic!("{run:?} names no child"));
+    NodeId::try_from(id).unwrap()
+}
+
+#[tokio::test(flavor = "local")]
+async fn an_edit_waits_for_no_child_and_an_edit_and_a_child_start_refuse_each_other() {
+    let model = Model::default();
+    model.root([
+        said("answer A"),
+        said("noted"),
+        said("answer A2"),
+        said("noted again"),
+    ]);
+    let reading = Gate::new();
+    model.child(
+        "Read notes.md",
+        [held(
+            &reading,
+            vec![event::text("notes say 42"), event::response(1, 1)],
+        )],
+    );
+    model.child("Count the files", [said("7 files")]);
+    let fixture = Fixture::with_model(
+        &model,
+        TestHarness::default(),
+        MemoryTreeStore::new(),
+        ServerConfig::default(),
+    );
+    let mut client = fixture.opened().await;
+    client.send(send("m1", "A")).await;
+    frames_until(&mut client, is_idle).await;
+    let target = user_block(&fixture, "m1");
+    let root = conversation();
+    let spawn = |prompt: &str| agent(&fixture.server, &root, "spawn", json!({ "prompt": prompt }));
+
+    // A live child refuses the edit and keeps its record.
+    let child = spawned(&spawn("Read notes.md").await);
+    let live = fixture.store.record(&child).unwrap();
+    let version = session_of(&fixture).transcript().version;
+    client
+        .send(edit("op1", &target, &version, client_text("A2")))
+        .await;
+    assert_eq!(
+        edit_outcome(&client.received()),
+        rejected("Cannot edit while children or completion notifications are pending")
+    );
+    assert_eq!(fixture.store.record(&child).unwrap(), live);
+    reading.open();
+    frames_until(&mut client, is_idle).await;
+    let delivered = fixture.store.record(&child).unwrap();
+    assert!(delivered.closed.is_some() && delivered.delivered);
+
+    // While an edit saves, a child start is refused; the edit is accepted,
+    // and the delivered child's record stays as it was.
+    let version = session_of(&fixture).transcript().version;
+    let gate = fixture.store.hold_saves();
+    {
+        let editing = client.send(edit("op2", &target, &version, client_text("A2")));
+        tokio::pin!(editing);
+        while gate.waiting() == 0 {
+            assert!(futures_util::poll!(editing.as_mut()).is_pending());
+            tokio::task::yield_now().await;
+        }
+        let refused = spawn("Count the files").await;
+        assert_eq!(
+            (refused.code, refused.stderr.as_str()),
+            (
+                1,
+                "demi agent spawn: Cannot change children while a transcript edit is being prepared\n"
+            )
+        );
+        gate.release();
+        editing.await;
+    }
+    let frames = frames_until(&mut client, is_idle).await;
+    let EditOutcome::Accepted { turn_id } = edit_outcome(&frames) else {
+        panic!("{frames:#?}")
+    };
+    assert_eq!(fixture.store.record(&child).unwrap(), delivered);
+
+    // While a child start saves its request, an edit is refused.
+    let target = user_block(&fixture, turn_id.as_str());
+    let version = session_of(&fixture).transcript().version;
+    let gate = fixture.store.hold_saves();
+    {
+        let starting = spawn("Count the files");
+        tokio::pin!(starting);
+        while gate.waiting() == 0 {
+            assert!(futures_util::poll!(starting.as_mut()).is_pending());
+            tokio::task::yield_now().await;
+        }
+        client
+            .send(edit("op3", &target, &version, client_text("A3")))
+            .await;
+        assert_eq!(
+            edit_outcome(&client.received()),
+            rejected("Cannot edit while a child lifecycle operation is in progress")
+        );
+        gate.release();
+        assert_eq!(starting.await.code, 0);
+    }
+    frames_until(&mut client, is_idle).await;
+    assert!(model.is_done());
 }
