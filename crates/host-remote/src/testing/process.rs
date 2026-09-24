@@ -55,6 +55,9 @@ pub struct RunnerProcessOptions {
     /// A device token in its state, so it connects as that device instead
     /// of waiting to be paired.
     pub token: Option<String>,
+    /// Whether the runner says it is a managed host, as a Cloud's runner
+    /// does.
+    pub managed: bool,
 }
 
 impl Default for RunnerProcessOptions {
@@ -63,6 +66,7 @@ impl Default for RunnerProcessOptions {
             name: "fixture".into(),
             env: BTreeMap::new(),
             token: None,
+            managed: false,
         }
     }
 }
@@ -125,13 +129,7 @@ impl RunnerProcess {
 
     /// Another runner set up as this one: the same home, state and backend.
     pub fn command(&self) -> tokio::process::Command {
-        runner_command(
-            &self.home_path,
-            self.state.path(),
-            &self.backend,
-            &self.options.name,
-            &self.options.env,
-        )
+        runner_command(&self.home_path, self.state.path(), &self.backend, &self.options)
     }
 
     /// What the runner printed.
@@ -184,6 +182,30 @@ impl RunnerProcess {
         self.spawn();
     }
 
+    /// Starts the runner again after a stop with `token` as its device
+    /// token, as a Cloud boots with the credential of that boot; its home
+    /// and the rest of its state stay.
+    pub fn start_again_with_token(&mut self, token: &str) {
+        assert!(self.child.is_none(), "the runner still runs");
+        write_token(self.state.path(), token);
+        self.spawn();
+    }
+
+    /// Empties the runner's state while it is stopped, as a Cloud reset
+    /// replaces the system the runner's state lives on; its home stays.
+    pub fn clear_state(&mut self) {
+        assert!(self.child.is_none(), "the runner still runs");
+        for entry in std::fs::read_dir(self.state.path()).expect("the runner state can be listed") {
+            let path = entry.expect("a runner state entry can be read").path();
+            if path.is_dir() {
+                std::fs::remove_dir_all(&path).expect("a runner state directory can be removed");
+            } else {
+                std::fs::remove_file(&path).expect("a runner state file can be removed");
+            }
+        }
+        std::fs::create_dir(self.state.path().join("tmp")).expect("a temporary directory for the runner");
+    }
+
     fn spawn(&mut self) {
         let mut command = self.command();
         command.stdout(Stdio::piped()).stderr(Stdio::piped());
@@ -228,7 +250,7 @@ impl Drop for RunnerProcess {
 fn write_token(state: &Path, token: &str) {
     use std::io::Write;
     let mut options = std::fs::OpenOptions::new();
-    options.write(true).create_new(true);
+    options.write(true).create(true).truncate(true);
     #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
     let mut file = options
@@ -239,28 +261,26 @@ fn write_token(state: &Path, token: &str) {
 
 /// The runner's command line for a device: its home, its state and its
 /// backend.
-fn runner_command(
-    home: &str,
-    state: &Path,
-    backend: &str,
-    name: &str,
-    env: &BTreeMap<String, String>,
-) -> tokio::process::Command {
+fn runner_command(home: &str, state: &Path, backend: &str, options: &RunnerProcessOptions) -> tokio::process::Command {
     let mut command = tokio::process::Command::new(runner_binary());
     command
         .args(["run", "--backend", backend])
         .current_dir(home)
-        .envs(env)
+        .envs(&options.env)
         .env("HOME", home)
         .env("USERPROFILE", home)
         .env("DEMI_HOME", state)
         // What the runner leaves in its temporary directory goes with the
         // process's state, even when it is killed.
         .env("TMPDIR", state.join("tmp"))
-        .env("DEMI_RUNNER_NAME", name)
-        .env_remove("DEMI_RUNNER_MANAGED")
+        .env("DEMI_RUNNER_NAME", &options.name)
         .stdin(Stdio::null())
         .kill_on_drop(true);
+    if options.managed {
+        command.env("DEMI_RUNNER_MANAGED", "1");
+    } else {
+        command.env_remove("DEMI_RUNNER_MANAGED");
+    }
     command
 }
 
