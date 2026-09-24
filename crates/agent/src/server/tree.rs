@@ -16,7 +16,7 @@ use std::{
 
 use demi_agent_protocol::{ModelSwitchApply, ServerFrame};
 use demi_core::{Clock, ModelSelection, NodeId};
-use demi_gates::{ActivityGate, KeyedSerialGate};
+use demi_gates::{ActivityGate, KeyedSerialGate, Reservation};
 use demi_shell::{CommandStatus, RegisterError};
 use futures_util::future::join_all;
 use tokio::sync::watch;
@@ -270,6 +270,27 @@ impl<H: AgentHarness> Tree<H> {
     /// (`runtime.md` § Actions).
     pub fn admission(&self) -> &ActivityGate {
         &self.admission
+    }
+
+    /// Interrupts the tree for a transition of a Host it cannot work
+    /// without, such as a Cloud reset (`sessions-and-targets.md` § How a
+    /// conversation uses a device): its admission is reserved, so no action
+    /// starts; the root's running action is stopped as the user's Stop
+    /// would stop it, every live child is aborted, and the root's shells
+    /// end. The reservation is answered once every action has let go of
+    /// the admission; what waits to run stays queued and runs once it is
+    /// dropped.
+    pub async fn interrupt(self: &Rc<Self>) -> Reservation {
+        let stop = async {
+            self.root.session().stop_running().await;
+            self.abort_children_of(self.root.id()).await;
+            self.root.end_shells().await;
+        };
+        // The reservation is polled first: it takes the free permits before
+        // the stopped action gives its lease back, so no waiting action
+        // slips in between.
+        let (reservation, ()) = tokio::join!(biased; self.admission.reserve(), stop);
+        reservation
     }
 
     /// Whether a connection is attached.
