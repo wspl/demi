@@ -245,9 +245,10 @@ no earlier reasoning.
 **Continuing.** A kept process receives only what the transcript gained since
 its last request: the new user messages, steers included. The provider closes
 it and starts a new one when the request's model or thinking setting differs,
-or when the transcript does not continue what the process saw: it holds fewer
-user messages than the process received, or its first user message changed, as
-after an edit, a fork or compaction.
+when the request offers tools to a process started without them (it has no SDK
+MCP server to offer them in), or when the transcript does not continue what the
+process saw: it holds fewer user messages than the process received, or its
+first user message changed, as after an edit, a fork or compaction.
 
 **Reading.** Each output line is decoded by its `type` tag
 ([Reading vendor input](providers.md#reading-vendor-input)). Partial messages
