@@ -1647,7 +1647,7 @@ fn file_mode_for_interactive_overwrite(path: &Path) -> Option<(String, String)> 
     use libc::{S_IWUSR, mode_t};
     use std::os::unix::prelude::MetadataExt;
 
-    match uucore::context::fs::metadata(&path) {
+    match fs::metadata(&path) {
         Ok(me) => {
             // Cast is necessary on some platforms
             #[allow(clippy::unnecessary_cast)]
@@ -2003,7 +2003,7 @@ fn symlink_file(
 ) -> CopyResult<()> {
     #[cfg(not(any(windows, target_os = "wasi")))]
     {
-        uucore::context::fs::symlink(source, dest).map_err(|e| {
+        fs::symlink(source, dest).map_err(|e| {
             CpError::IoErrContext(
                 e,
                 translate!("cp-error-cannot-create-symlink",
@@ -2014,7 +2014,7 @@ fn symlink_file(
     }
     #[cfg(windows)]
     {
-        uucore::context::fs::symlink_file(source, dest).map_err(|e| {
+        fs::symlink_file(source, dest).map_err(|e| {
             CpError::IoErrContext(
                 e,
                 translate!("cp-error-cannot-create-symlink",

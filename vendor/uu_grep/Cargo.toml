@@ -97,3 +97,11 @@ version = "0.10.0"
 [profile.dist]
 lto = "fat"
 inherits = "release"
+
+[package.metadata.demi]
+maintainer = "demi-runner"
+patches = [
+    "Standard input is the shell job's, the walk starts from the root resolved against the job's directory and shows paths as named, and temporary file names use the context's process id",
+    "Files, streams, the environment, printing and exit go through uucore::context, so a run embedded in a shell job uses the job's working directory, environment, standard streams and cancellation, and exit ends only the utility",
+    "The release's tests, benchmarks, examples and CI files are left out",
+]

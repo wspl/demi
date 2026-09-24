@@ -806,7 +806,10 @@ review.
 - **Vendored crates.** A vendored crate keeps its upstream metadata and
   licenses. The root `Cargo.toml` declares its `[patch.crates-io]` path and
   excludes it from the workspace, so it stays outside the workspace lints.
-  Demi's adapters of a vendored crate stay in the responsible Demi crate.
+  Demi's adapters of a vendored crate stay in the responsible Demi crate. Its
+  `[package.metadata.demi]` names the Demi crate that maintains it
+  (`maintainer`) and each change from the upstream release with its reason
+  (`patches`); a patch compiles without warnings on every target.
 - **Versions and inventories.** Dependency versions and source identifiers
   stay in manifests, lockfiles and vendor metadata. `docs/` describes
   architecture and usage, not dependency inventories, artifact hashes, CI run

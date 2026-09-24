@@ -45,3 +45,10 @@ version = "0.2.127"
 [dependencies.uucore]
 path = "../uucore"
 default-features = false
+
+[package.metadata.demi]
+maintainer = "demi-runner"
+patches = [
+    "Child processes start through uucore::context, in the shell job's working directory and environment",
+    "The release's tests, benchmarks, examples and CI files are left out",
+]

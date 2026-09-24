@@ -44,3 +44,9 @@ version = "1.0.81"
 
 [dependencies.quote]
 version = "1.0.36"
+
+[package.metadata.demi]
+maintainer = "demi-runner"
+patches = [
+    "The main macro leaves SIGPIPE alone when a utility runs embedded, since the signal disposition belongs to the runner process",
+]
