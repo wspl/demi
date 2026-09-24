@@ -14,7 +14,6 @@ use demi_agent::{EnvironmentScope, ShellEnvironmentFactory};
 use demi_command_service::protocol::{ArtifactLocation, CommandCaller, PackageArtifact};
 use demi_host_remote::{
     ArtifactResolver, CommandCatalog, ContextSource, EnvironmentOptions, HostAccess, RemoteHost, RemoteShellEnvironment,
-    RemoteShellEnvironmentFactory,
 };
 use demi_core::{CommandId, ShellId};
 use demi_shell::{CommandStatus, ExecRequest, Host, HostError, HostErrorKind, HostKey, ShellEnvironment, ShellError};
@@ -87,17 +86,15 @@ impl From<HostAccessError> for HostError {
 pub(crate) struct ShardShellEnvironments {
     /// Weak: the shard owns the agent server that holds this factory.
     shard: Weak<Shard>,
-    factory: RemoteShellEnvironmentFactory,
+    /// The native packages a node's commands bind to.
+    catalog: CommandCatalog,
 }
 
 impl ShardShellEnvironments {
     pub(crate) fn new(shard: Weak<Shard>) -> Self {
         let catalog = CommandCatalog::new(Vec::new(), Rc::new(Unpublished))
             .expect("a catalog of no packages is valid");
-        Self {
-            shard,
-            factory: RemoteShellEnvironmentFactory::new(catalog),
-        }
+        Self { shard, catalog }
     }
 }
 
@@ -136,13 +133,16 @@ impl ShellEnvironmentFactory<RemoteHost> for ShardShellEnvironments {
                 shard: self.shard.clone(),
                 conversation: conversation.clone(),
             }));
-            let environment = self
-                .factory
-                .create(scope.commands, options)
+            let selection = self
+                .catalog
+                .select(scope.commands)
                 .map_err(|error| HostError::new(HostErrorKind::Protocol, error.to_string()))?;
-            let registration = shard
-                .commands()
-                .register(scope.node.as_str(), &conversation, scope.commands.clone());
+            options.commands = Some(selection.clone());
+            let environment = RemoteShellEnvironment::new(options);
+            let registration =
+                shard
+                    .commands()
+                    .register(scope.node.as_str(), &conversation, scope.commands.clone(), selection);
             Ok(Rc::new(Registered {
                 environment,
                 _registration: registration,
