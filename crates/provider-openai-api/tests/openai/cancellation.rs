@@ -1,11 +1,12 @@
 //! Cancelling a run: it stops at once, drops its connection and ends without
 //! a further event (`providers.md` § A run).
 
+use demi_core::WireApi;
 use demi_provider::{
     ProviderEvent,
     testing::{MockResponse, MockVendor, inference_request},
 };
-use demi_provider_openai_api::{VendorPolicy, WireApi};
+use demi_provider_openai_api::VendorPolicy;
 use futures_util::StreamExt;
 
 use crate::{run, runtime};

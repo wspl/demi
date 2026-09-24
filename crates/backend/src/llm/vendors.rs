@@ -3,11 +3,11 @@
 //! speaks, each vendor's live model list, and the request requirements the
 //! backend applies to a vendor's models.
 
-use demi_core::{ProviderModelList, Timestamp};
+use demi_core::{ProviderModelList, Timestamp, WireApi};
 use demi_provider::models_dev::{ModelsDevClient, ModelsDevError, ModelsDevVendor};
 use demi_provider_anthropic_api::AnthropicConfig;
 use demi_provider_openai_api::{OpenAiConfig, VendorPolicy};
-use demi_web_api::providers::{Vendor, WireApi};
+use demi_web_api::providers::Vendor;
 use icu_collator::options::CollatorOptions;
 use icu_collator::{Collator, CollatorBorrowed};
 
