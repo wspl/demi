@@ -82,8 +82,15 @@ impl Shard {
         } else {
             None
         };
+        let archives = change == ConversationChange::Archived(true);
         match services.control.change_conversation(id.clone(), change).await? {
-            ChangeOutcome::Applied => Ok(()),
+            ChangeOutcome::Applied => {
+                // An archived conversation's title request ends.
+                if archives {
+                    self.titles().abort(&record.id);
+                }
+                Ok(())
+            }
             ChangeOutcome::Missing => Err(ChangeRefusal::NotFound),
             ChangeOutcome::Archived => Err(ChangeRefusal::Archived),
         }

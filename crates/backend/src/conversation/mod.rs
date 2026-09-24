@@ -15,6 +15,7 @@ mod socket;
 mod summary;
 pub(crate) mod target;
 pub(crate) mod transfer;
+pub(crate) mod titles;
 mod transition;
 mod uploads;
 
@@ -32,22 +33,31 @@ pub(crate) use self::harness::ConversationHarness;
 use self::harness::conversation_harness;
 use self::providers::ConversationProviders;
 use self::shells::ShardShellEnvironments;
+use self::titles::Titles;
 use crate::backend::Services;
 use crate::shard::Shard;
 use crate::storage::tree::SqliteTreeStore;
 use crate::usage::rate_limit::RequestRateLimit;
 
-/// The agent server of `shard`, the user's: its trees keep their state in
-/// the conversations' databases, their sessions infer with the user's
-/// providers under the user's rate limit, and their nodes' shells run on the
-/// conversations' Hosts through the shard's host access.
-pub(crate) fn agent_server(
+/// What a shard's conversations run on: the agent server and the title
+/// requests, which infer with the same providers.
+pub(crate) struct ConversationParts {
+    pub(crate) agent: Rc<AgentServer<ConversationHarness>>,
+    pub(crate) titles: Titles,
+}
+
+/// The conversation parts of `shard`, the user's. The agent server's trees
+/// keep their state in the conversations' databases, their sessions infer
+/// with the user's providers under the user's rate limit, as the title
+/// requests do, and their nodes' shells run on the conversations' Hosts
+/// through the shard's host access.
+pub(crate) fn conversation_parts(
     shard: Weak<Shard>,
     user: UserId,
     services: Arc<Services>,
     http: reqwest::Client,
     rate_limit: Rc<RefCell<RequestRateLimit>>,
-) -> Rc<AgentServer<ConversationHarness>> {
+) -> ConversationParts {
     let stores: TreeStores = {
         let services = services.clone();
         // The shard's user owns every conversation it hosts.
@@ -61,15 +71,18 @@ pub(crate) fn agent_server(
         outbox_frames: services.conversation_tuning.outbox_frames,
         ..ServerConfig::default()
     };
-    AgentServer::new(ServerDeps {
+    let providers = Rc::new(ConversationProviders::new(user, services.clone(), http, rate_limit));
+    let titles = Titles::new(providers.clone(), services.control.clone(), services.conversation_tuning.titles);
+    let agent = AgentServer::new(ServerDeps {
         harness: Rc::new(conversation_harness(shard.clone(), &services.native)),
-        providers: Rc::new(ConversationProviders::new(user, services.clone(), http, rate_limit)),
+        providers,
         shells: Rc::new(ShardShellEnvironments::new(shard, services.native.catalog())),
         stores,
         clock: services.clock.clone(),
         ids: Rc::new(RandomIds),
         config,
-    })
+    });
+    ConversationParts { agent, titles }
 }
 
 /// The root node of a conversation's tree, whose id is the conversation's in

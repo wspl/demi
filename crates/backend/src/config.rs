@@ -162,6 +162,11 @@ pub struct ConversationTuning {
     pub outbox_frames: usize,
     /// The provider requests a user's conversations may start in any minute.
     pub requests_per_minute: usize,
+    /// Whether the backend asks the conversation's model for a title
+    /// (`product.md` § Conversation titles); off, a title stays the one the
+    /// first message gives. A test whose scripted vendor answers only the
+    /// turns turns it off.
+    pub titles: bool,
 }
 
 impl Default for ConversationTuning {
@@ -169,6 +174,7 @@ impl Default for ConversationTuning {
         Self {
             outbox_frames: demi_agent::ServerConfig::default().outbox_frames,
             requests_per_minute: crate::usage::rate_limit::REQUESTS_PER_WINDOW,
+            titles: true,
         }
     }
 }

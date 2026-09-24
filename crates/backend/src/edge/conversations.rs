@@ -16,7 +16,7 @@ use axum::response::Response;
 use demi_web_api::conversations::{
     BatchAnswer, BatchResult, ConversationAnswer, ConversationBatch, ConversationPatch, ConversationUpdate, Conversations,
     ConversationsQuery, CreateConversation, FieldResult, ForkAnswer, ForkRequest, ReadRequest, SubagentHistory,
-    Transcript,
+    TitleRequest, Transcript,
 };
 use demi_web_api::error::ErrorCode;
 use demi_web_api::ids::{ConversationId, UserId};
@@ -27,6 +27,7 @@ use super::error::ApiError;
 use super::gate::AuthUser;
 use super::query::QueryParams;
 use crate::backend::Services;
+use crate::conversation::titles::TitleRefusal;
 use crate::conversation::{ForkRefusal, failure_facts};
 use crate::storage::conversation_index::{ConversationRecord, Creation};
 use crate::storage::tree;
@@ -233,6 +234,36 @@ fn fork_refused(refusal: ForkRefusal) -> ApiError {
         ForkRefusal::Target(_) => ApiError::new(StatusCode::BAD_REQUEST, ErrorCode::InvalidForkTarget, message),
         ForkRefusal::Storage(error) => error.into(),
         ForkRefusal::Failed(_) => ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::InternalError, message),
+    }
+}
+
+/// `POST /conversations/:id/title { model }`: asks `model` for a new title
+/// from every message the user sent, 202; the title reaches the page with
+/// the conversation's summary once it is written.
+pub(super) async fn title(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+    JsonBody(TitleRequest { model }): JsonBody<TitleRequest>,
+) -> Result<StatusCode, ApiError> {
+    let id = ConversationId::try_from(id).map_err(|_| not_found())?;
+    state
+        .shards
+        .of(&user.id)
+        .call(move |shard, _| async move { shard.ask_title(&id, model).await })
+        .await?
+        .map_err(title_refused)?;
+    Ok(StatusCode::ACCEPTED)
+}
+
+fn title_refused(refusal: TitleRefusal) -> ApiError {
+    let message = refusal.to_string();
+    match refusal {
+        TitleRefusal::NotFound => not_found(),
+        TitleRefusal::Archived => ApiError::new(StatusCode::CONFLICT, ErrorCode::ConversationArchived, message),
+        TitleRefusal::ProviderNotFound => ApiError::new(StatusCode::NOT_FOUND, ErrorCode::ProviderNotFound, message),
+        TitleRefusal::NoMessages => ApiError::new(StatusCode::CONFLICT, ErrorCode::NoMessages, message),
+        TitleRefusal::Storage(error) => error.into(),
     }
 }
 

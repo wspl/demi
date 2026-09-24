@@ -124,6 +124,9 @@ async fn a_fork_keeps_the_history_through_the_chosen_text_while_the_source_runs_
     assert!(messages.contains("U1") && messages.contains("A1") && messages.contains("U4"), "{messages}");
     assert!(!messages.contains("U2"), "{messages}");
     assert_eq!(last_text(&destination.live().await), "A3");
+    // A Fork's title is the user's: the destination's first message leaves it.
+    let titles: Vec<String> = summaries(&backend, &master).await.into_iter().map(|summary| summary.title).collect();
+    assert!(titles.contains(&"Build (Fork)".to_owned()), "{titles:?}");
     assert_eq!(kinds(&source.live().await), ["user", "text", "response", "user", "text", "response", "user", "abort"]);
     backend.close().await;
 }
@@ -153,10 +156,8 @@ async fn a_fork_of_a_conversation_the_backend_no_longer_holds_reads_its_stored_h
     let created = backend.post(&path, Some(&master), fork(SECOND, &second_text)).await;
     assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
     let forked = created.json::<ForkAnswer>();
-    assert_eq!(
-        (forked.conversation.title.as_str(), &forked.model),
-        ("New conversation (Fork)", &model)
-    );
+    // The first message titled the source.
+    assert_eq!((forked.conversation.title.as_str(), &forked.model), ("U1 (Fork)", &model));
     // The history through the latest text, without the response after it.
     assert_eq!(transcript(&backend, &master, SECOND).await.blocks, stored[..5]);
     let again = backend.post(&path, Some(&master), fork(SECOND, &second_text)).await;
