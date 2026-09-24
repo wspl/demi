@@ -32,9 +32,6 @@ use super::listener::{ConnectionWatch, Peer};
 use crate::expose::{ExposeConnection, RelayRefusal};
 use crate::shard::lease::Lease;
 
-/// A relayed connection on which no byte moved for this long is closed.
-const IDLE: Duration = Duration::from_secs(10 * 60);
-
 /// Headers that concern one connection only, which the relay never passes
 /// on; the names a `Connection` header lists join them.
 const HOP_BY_HOP: [HeaderName; 9] = [
@@ -89,7 +86,10 @@ pub(super) async fn relay(state: AppState, peer: Peer, label: String, request: R
         .call(move |shard, cancel| async move { shard.open_expose_connection(&id, &cancel).await })
         .await;
     match admitted {
-        Ok(Ok(connection)) => forward(connection, &record.address, &peer, request).await,
+        Ok(Ok(connection)) => {
+            let idle = state.services.expose_tuning.idle;
+            forward(connection, &record.address, &peer, idle, request).await
+        }
         Ok(Err(refusal)) => refused(refusal),
         // The backend is shutting down.
         Err(_) => unavailable(),
@@ -97,15 +97,21 @@ pub(super) async fn relay(state: AppState, peer: Peer, label: String, request: R
 }
 
 /// Forwards `request` over the admitted connection and relays the answer.
-/// The visitor's connection closes once no byte moved on it for the idle
-/// limit, and at once when the expose ends.
-async fn forward(connection: ExposeConnection, address: &ExposeAddress, peer: &Peer, mut request: Request<Incoming>) -> Response {
+/// The visitor's connection closes once no byte moved on it for `idle`, and
+/// at once when the expose ends.
+async fn forward(
+    connection: ExposeConnection,
+    address: &ExposeAddress,
+    peer: &Peer,
+    idle: Duration,
+    mut request: Request<Incoming>,
+) -> Response {
     let ExposeConnection {
         to_service,
         from_service,
         lease,
     } = connection;
-    let watch = peer.control.watch(IDLE, lease.ending());
+    let watch = peer.control.watch(idle, lease.ending());
     // The network stream as one byte stream: what the socket sends, read
     // from the output pipe, and the visitor's bytes, written into the input
     // pipe, whose close is the socket's half-close.

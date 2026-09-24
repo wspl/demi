@@ -38,7 +38,7 @@ const SECOND: &str = "4e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a02";
 /// A reset's id, as the page names it.
 const RESET: &str = "6e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a09";
 
-async fn status(backend: &TestBackend, session: &Session) -> CloudStatus {
+pub(crate) async fn status(backend: &TestBackend, session: &Session) -> CloudStatus {
     let read = backend.get("/api/cloud", Some(session)).await;
     assert_eq!(read.status, StatusCode::OK, "{}", String::from_utf8_lossy(&read.body));
     read.json()
@@ -46,7 +46,7 @@ async fn status(backend: &TestBackend, session: &Session) -> CloudStatus {
 
 /// The Cloud's status once `check` holds, asking every 20 ms for at most
 /// 20 s.
-async fn until_status(
+pub(crate) async fn until_status(
     backend: &TestBackend,
     session: &Session,
     what: &str,
@@ -64,7 +64,7 @@ async fn until_status(
 }
 
 /// Whether the user's Cloud has a live runner, as the product state says.
-async fn cloud_online(backend: &TestBackend, session: &Session) -> bool {
+pub(crate) async fn cloud_online(backend: &TestBackend, session: &Session) -> bool {
     let state: ProductState = backend.get("/api/state", Some(session)).await.json();
     state
         .devices
@@ -73,7 +73,7 @@ async fn cloud_online(backend: &TestBackend, session: &Session) -> bool {
 }
 
 /// The one device the manager made, the user's Cloud.
-fn the_cloud(harness: &Harness) -> String {
+pub(crate) fn the_cloud(harness: &Harness) -> String {
     let devices = harness.manager.devices();
     assert_eq!(devices.len(), 1, "{devices:?}");
     devices[0].clone()
@@ -84,14 +84,14 @@ fn query(path: &str) -> String {
     url::form_urlencoded::byte_serialize(path.as_bytes()).collect()
 }
 
-async fn reset(backend: &TestBackend, session: &Session, id: &str) -> CloudResetAnswer {
+pub(crate) async fn reset(backend: &TestBackend, session: &Session, id: &str) -> CloudResetAnswer {
     let answer = backend.post("/api/cloud/reset", Some(session), json!({ "operationId": id })).await;
     assert_eq!(answer.status, StatusCode::ACCEPTED, "{}", String::from_utf8_lossy(&answer.body));
     answer.json()
 }
 
 /// Short idle windows, read often.
-fn idle_after(window: Duration) -> LifecycleTuning {
+pub(crate) fn idle_after(window: Duration) -> LifecycleTuning {
     LifecycleTuning {
         idle_window: window,
         idle_poll: Duration::from_millis(50),
