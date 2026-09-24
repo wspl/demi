@@ -10,6 +10,7 @@ pub(crate) mod codes;
 pub(crate) mod command_context;
 pub(crate) mod devices;
 pub(crate) mod files;
+pub(crate) mod host_commands;
 mod policy;
 pub(crate) mod router;
 
