@@ -5,10 +5,11 @@ use std::{rc::Rc, sync::Arc};
 
 use demi_agent_protocol::TranscriptVersion;
 use demi_core::{
-    AbortBlock, Block, BlockId, Clock, ContextBlock, ErrorBlock, ModelSelection,
-    ProviderErrorDiagnostics, RedactedThinkingBlock, ResponseBlock, TextBlock, ThinkingBlock,
+    AbortBlock, AgentMessage, AgentMessageBlock, Block, BlockId, Clock, CompactionBoundaryBlock,
+    CompactionMarkerBlock, ContextBlock, ErrorBlock, ModelSelection, ProviderErrorDiagnostics,
+    RedactedThinkingBlock, ResponseBlock, ResumeBlock, SteerBlock, TextBlock, ThinkingBlock,
     Timestamp, TokenUsage, ToolCallBlock, ToolCallStatus, ToolResultContentBlock, ToolView, TurnId,
-    UserBlock, UserContentBlock,
+    UserBlock, UserContentBlock, WakeupBlock, WakeupPlacement,
 };
 use demi_provider::ToolCall;
 use serde_json::Value;
@@ -105,6 +106,132 @@ impl TranscriptLog {
             created_at,
             model: model.clone(),
             text,
+        }));
+    }
+
+    /// A human steer, under the steer's id.
+    pub(crate) fn push_steer(
+        &mut self,
+        id: BlockId,
+        turn_id: TurnId,
+        model: &ModelSelection,
+        content: Vec<UserContentBlock>,
+    ) {
+        let created_at = self.clock.now();
+        self.append(Block::Steer(SteerBlock {
+            id,
+            turn_id,
+            created_at,
+            model: model.clone(),
+            content,
+        }));
+    }
+
+    /// A fired yield wakeup, under the wakeup's id.
+    pub(crate) fn push_wakeup(
+        &mut self,
+        id: BlockId,
+        turn_id: TurnId,
+        model: &ModelSelection,
+        placement: WakeupPlacement,
+    ) {
+        let created_at = self.clock.now();
+        self.append(Block::Wakeup(WakeupBlock {
+            id,
+            turn_id,
+            created_at,
+            model: model.clone(),
+            placement,
+        }));
+    }
+
+    /// An agent message, under the message's id.
+    pub(crate) fn push_agent_message(
+        &mut self,
+        turn_id: TurnId,
+        model: &ModelSelection,
+        message: AgentMessage,
+    ) {
+        let created_at = self.clock.now();
+        self.append(Block::AgentMessage(AgentMessageBlock {
+            id: message.id.clone(),
+            turn_id,
+            created_at,
+            model: model.clone(),
+            message,
+        }));
+    }
+
+    /// The turn continues after a cut.
+    pub(crate) fn push_resume(&mut self, turn_id: TurnId, model: &ModelSelection) {
+        let (id, created_at) = self.stamp();
+        self.append(Block::Resume(ResumeBlock {
+            id,
+            turn_id,
+            created_at,
+            model: model.clone(),
+        }));
+    }
+
+    /// Marks the latest stopped marker as continued.
+    pub(crate) fn mark_latest_abort_resumed(&mut self) {
+        let Some(index) = self
+            .blocks
+            .iter()
+            .rposition(|block| matches!(block, Block::Abort(_)))
+        else {
+            return;
+        };
+        if let Block::Abort(abort) = &mut self.blocks[index] {
+            abort.is_resumed = true;
+        }
+        self.record_replace(index);
+    }
+
+    /// Replaces every block with `blocks`, as a history rewrite publishes
+    /// its retained history: one `replace` patch.
+    pub(crate) fn replace_all(&mut self, blocks: Vec<Block>) {
+        self.blocks = blocks;
+        self.journal.replace_all(&self.blocks);
+    }
+
+    /// Inserts compaction's summary at `index`, where the kept history
+    /// begins, and returns its id.
+    pub(crate) fn insert_compaction_boundary(
+        &mut self,
+        index: usize,
+        model: &ModelSelection,
+        summary: String,
+        summary_tokens: u64,
+    ) -> BlockId {
+        let (id, created_at) = self.stamp();
+        let block = Block::CompactionBoundary(CompactionBoundaryBlock {
+            id: id.clone(),
+            created_at,
+            model: model.clone(),
+            summary,
+            summary_tokens,
+        });
+        self.journal.add(index, &block);
+        self.blocks.insert(index, block);
+        id
+    }
+
+    /// Appends the marker of the boundary `boundary_id` with the estimate of
+    /// what it summarized.
+    pub(crate) fn push_compaction_marker(
+        &mut self,
+        model: &ModelSelection,
+        boundary_id: BlockId,
+        compacted_tokens: u64,
+    ) {
+        let (id, created_at) = self.stamp();
+        self.append(Block::CompactionMarker(CompactionMarkerBlock {
+            id,
+            created_at,
+            model: model.clone(),
+            boundary_id,
+            compacted_tokens,
         }));
     }
 
