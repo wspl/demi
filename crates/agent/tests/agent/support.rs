@@ -14,7 +14,7 @@ use demi_agent::{
     testing::{MemoryTreeStore, SequentialIds, TestClient, test_model},
 };
 use demi_agent_protocol::{ClientFrame, ServerFrame};
-use demi_core::{Block, ModelSelection, NodeId, TurnId, UserContentBlock};
+use demi_core::{Block, ModelSelection, NodeId, TurnId};
 use demi_provider::{
     ProviderRuntime,
     testing::{FixedClock, ScriptedRuntime},
@@ -196,14 +196,14 @@ pub fn turn(id: &str) -> TurnId {
     TurnId::try_from(id).unwrap()
 }
 
-pub fn open(model: ModelSelection) -> ClientFrame<UserContentBlock> {
+pub fn open(model: ModelSelection) -> ClientFrame {
     ClientFrame::Open { model }
 }
 
-pub fn send(id: &str, message: &str) -> ClientFrame<UserContentBlock> {
+pub fn send(id: &str, message: &str) -> ClientFrame {
     ClientFrame::Send {
         message_id: turn(id),
-        content: demi_agent::testing::text(message),
+        content: demi_agent::testing::client_text(message),
     }
 }
 

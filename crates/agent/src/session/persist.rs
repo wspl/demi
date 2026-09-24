@@ -10,10 +10,11 @@ use std::{
 };
 
 use demi_agent_protocol::TranscriptPatch;
+use demi_core::Block;
 use tokio::sync::Notify;
 
 use super::{SessionEvent, SessionShared};
-use crate::store::{CommitGuard, StoreError};
+use crate::store::{CommandStateHistory, CommandVersion, CommitGuard, StoreError};
 
 /// Which transcript rows the next save writes: every row from `floor` on,
 /// because an insertion or removal there moved them, and the rows below it
@@ -92,13 +93,15 @@ pub(crate) struct TakenMarks {
     pub(crate) command_state: bool,
 }
 
-/// Writes the checkpoint when a save is due. The caller holds the session's
-/// save order.
+/// Writes the checkpoint when a save is due, or when it carries `pending`,
+/// a command-storage version that becomes current once the save commits.
+/// The caller holds the session's save order.
 pub(crate) async fn write_if_dirty(
     s: &SessionShared,
+    pending: Option<&CommandVersion>,
     guard: &CommitGuard,
 ) -> Result<(), StoreError> {
-    let Some((update, taken)) = s.update(|core| core.prepare_checkpoint()) else {
+    let Some((update, taken)) = s.update(|core| core.prepare_checkpoint(pending)) else {
         return Ok(());
     };
     let saved = s.store.save(update, guard).await;
@@ -111,7 +114,28 @@ pub(crate) async fn write_if_dirty(
 /// Saves at once, after the saves ahead in the session's order.
 pub(crate) async fn flush(s: &SessionShared) -> Result<(), StoreError> {
     let _turn = s.persist_gate.acquire().await;
-    write_if_dirty(s, &CommitGuard::default()).await
+    write_if_dirty(s, None, &CommitGuard::default()).await
+}
+
+/// Commits a history rewrite (`runtime.md` § Saving): in the session's save
+/// order, the store commits every retained row with the command state of the
+/// cut, `revision` current, and only then does the session adopt them and
+/// publish one `replace` patch. A failed save changes nothing.
+pub(crate) async fn commit_rewrite(
+    s: &SessionShared,
+    blocks: Vec<Block>,
+    revision: u64,
+) -> Result<(), StoreError> {
+    let _turn = s.persist_gate.acquire().await;
+    let (update, commands) = s.read(|core| {
+        let commands = core.commands.select(&blocks, revision, false);
+        (core.rewrite_update(&blocks, commands.clone()), commands)
+    });
+    s.store.save(update, &CommitGuard::default()).await?;
+    let commands =
+        CommandStateHistory::restore(commands).expect("a cut of a valid command state is valid");
+    s.update(|core| core.adopt_rewrite(blocks, commands));
+    Ok(())
 }
 
 /// The persister: one second after the first unsaved change, it saves. A

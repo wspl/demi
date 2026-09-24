@@ -25,6 +25,10 @@ use crate::{
     testing::{MemoryTreeStore, SequentialIds, model_of, test_model, text},
 };
 
+mod compaction;
+mod input;
+mod recovery;
+
 type Invoke =
     Rc<dyn Fn(ToolInvocation) -> LocalBoxFuture<'static, Result<ToolOutcome, ToolFailure>>>;
 
@@ -43,6 +47,10 @@ impl SessionRuntime for TestRuntime {
 
     fn enter_action(&self) -> LocalBoxFuture<'_, GateLease> {
         Box::pin(self.admission.enter(Purpose::Demand))
+    }
+
+    fn reserve_edit(&self) -> LocalBoxFuture<'_, Result<Option<demi_gates::Reservation>, String>> {
+        Box::pin(async { Ok(None) })
     }
 
     fn system_prompt(&self) -> LocalBoxFuture<'_, String> {
@@ -98,7 +106,7 @@ fn output(text: &str) -> ToolOutcome {
         }],
         is_error: false,
         view: None,
-        stop_after_result: false,
+        effect: None,
     }
 }
 
@@ -170,11 +178,29 @@ async fn start_on(
     store: &Rc<MemoryTreeStore>,
     config: SessionConfig,
 ) -> AgentSession {
+    start_at(
+        provider,
+        runtime,
+        store,
+        config,
+        Arc::new(FixedClock(Timestamp::UNIX_EPOCH)),
+    )
+    .await
+}
+
+/// A session whose wall clock is `clock`.
+async fn start_at(
+    provider: &ScriptedRuntime,
+    runtime: TestRuntime,
+    store: &Rc<MemoryTreeStore>,
+    config: SessionConfig,
+    clock: Arc<dyn demi_core::Clock>,
+) -> AgentSession {
     let deps = SessionDeps {
         runtime: Rc::new(runtime),
         store: store.session_store(&root()),
         ids: Rc::new(SequentialIds::new("id")),
-        clock: Arc::new(FixedClock(Timestamp::UNIX_EPOCH)),
+        clock,
         config,
     };
     let init = SessionInit {
@@ -192,6 +218,36 @@ async fn start_on(
         .await
         .unwrap();
     session
+}
+
+/// Restores the node `root` from `checkpoint`, saving into `store`.
+fn restore_session(
+    checkpoint: crate::store::Checkpoint,
+    store: &Rc<MemoryTreeStore>,
+    provider: &ScriptedRuntime,
+    runtime: TestRuntime,
+    clock: Arc<dyn demi_core::Clock>,
+) -> (AgentSession, Continuation) {
+    let deps = SessionDeps {
+        runtime: Rc::new(runtime),
+        store: store.session_store(&root()),
+        ids: Rc::new(SequentialIds::new("restored")),
+        clock,
+        config: SessionConfig::default(),
+    };
+    AgentSession::restore(checkpoint, root(), Box::new(provider.clone()), deps).unwrap()
+}
+
+/// A run that waits until the test lets it go on, then plays `events`.
+fn gated_turn(events: Vec<ProviderEvent>) -> (Turn, oneshot::Sender<()>) {
+    use futures_util::StreamExt;
+    let (release, released) = oneshot::channel::<()>();
+    let turn = Turn::Stream(Box::new(move |_| {
+        futures_util::stream::once(released)
+            .flat_map(move |_| futures_util::stream::iter(events.clone()))
+            .boxed_local()
+    }));
+    (turn, release)
 }
 
 /// Each block's type, and a tool call's status beside it.
@@ -315,6 +371,7 @@ async fn a_turn_saves_at_each_dispatch_and_at_its_end_with_only_the_changed_rows
     let noop = tool("noop", |_| Box::pin(async { Ok(output("ok")) }));
     let config = SessionConfig {
         persist_interval: Duration::from_secs(60),
+        ..SessionConfig::default()
     };
     let session = start(&provider, vec![noop], &store, config).await;
 
@@ -394,30 +451,6 @@ async fn a_failing_tool_and_an_unknown_tool_complete_their_calls_as_errors_and_t
         (ToolCallStatus::Error, texts(&["Tool not found: missing"]))
     );
     assert_eq!(kinds(&blocks[3..]), ["text", "response"]);
-}
-
-#[tokio::test(flavor = "local")]
-async fn a_tool_that_ends_the_turn_stops_it_after_its_round() {
-    let provider = ScriptedRuntime::new([Turn::Events(vec![
-        event::tool_call("call-1", "stop", json!({})),
-        event::response(1, 1),
-    ])]);
-    let store = MemoryTreeStore::new();
-    let stop = tool("stop", |_| {
-        Box::pin(async {
-            Ok(ToolOutcome {
-                stop_after_result: true,
-                ..output("stopping here")
-            })
-        })
-    });
-    let session = start(&provider, vec![stop], &store, SessionConfig::default()).await;
-
-    session.send(text("go"), turn("t1")).unwrap().await.unwrap();
-
-    // One request: a second would run past the script and panic.
-    assert_eq!(provider.requests().len(), 1);
-    assert_eq!(session.phase(), SessionPhase::Idle);
 }
 
 #[tokio::test(flavor = "local")]
@@ -670,6 +703,7 @@ async fn saves_run_one_at_a_time_even_when_a_scheduled_save_meets_a_flush() {
         clock: Arc::new(FixedClock(Timestamp::UNIX_EPOCH)),
         config: SessionConfig {
             persist_interval: Duration::from_millis(1),
+            ..SessionConfig::default()
         },
     };
     let init = SessionInit {
