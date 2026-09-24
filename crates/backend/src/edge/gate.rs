@@ -9,7 +9,7 @@ use axum::http::request::Parts;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum_extra::extract::CookieJar;
-use demi_web_api::auth::UserDto;
+use demi_web_api::auth::{Role, UserDto};
 
 use super::cookies::{self, SESSION_COOKIE};
 use super::error::ApiError;
@@ -28,6 +28,23 @@ impl<S: Send + Sync> FromRequestParts<S> for AuthUser {
             .get::<AuthUser>()
             .cloned()
             .ok_or_else(ApiError::unauthenticated)
+    }
+}
+
+/// A signed-in administrator: the master or an admin. Any other caller
+/// answers 403 `forbidden`.
+#[derive(Debug, Clone)]
+pub(super) struct AdminUser(pub(super) UserDto);
+
+impl<S: Send + Sync> FromRequestParts<S> for AdminUser {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, ApiError> {
+        let AuthUser(user) = AuthUser::from_request_parts(parts, state).await?;
+        if !user.role.outranks(Role::User) {
+            return Err(ApiError::forbidden("Account administration is for administrators"));
+        }
+        Ok(Self(user))
     }
 }
 

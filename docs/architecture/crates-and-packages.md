@@ -154,9 +154,10 @@ next to the wire's types, so that a command program depends on one crate.
     (`CommandContext`, `CommandCaller`, `CommandLocale`), completion
     (`Completion`), service information (`ServiceInfo`) and the conversation
     release and status requests;
-  - package descriptors and their identities (`PackageDescriptor`: canonical
-    JSON and SHA-256 digests), artifact locations and target triples
-    (`TargetTriple`);
+  - package descriptors and their identities (`PackageDescriptor`), artifact
+    locations and target triples (`TargetTriple`), and the one canonical
+    digest of a JSON value (`canonical_digest`: the SHA-256 of its RFC 8785
+    form), which also identifies the agent's edit requests;
   - the edit journal and its context (`EditContext`, `EditJournal`);
   - record framing (`Record`, `RecordDecoder`), the HTTP/2 client and server,
     the one invocation exchange (`Exchange`), bounded invocation IO and handler
@@ -167,7 +168,8 @@ next to the wire's types, so that a command program depends on one crate.
     a lack of open file descriptors.
 - **Public boundary:** the protocol types, the client, the service entry point,
   the handler and IO traits, and the edit recorder; `command_service::testing`
-  starts a service binary and drives it with a client. The runner and every
+  finds the programs a test starts beside it (`built_program`) and starts a
+  service binary and drives it with a client (`ServiceProcess`). The runner and every
   command program use this one SDK; a command program depends on it without
   depending on the runner or on Demi's command implementations.
 - **Must not:** implement commands, download artifacts, start command
@@ -197,8 +199,10 @@ next to the wire's types, so that a command program depends on one crate.
 
 #### `builtin-protocol`
 
-- **Owns:** the `demi.builtin` package's operations: the arguments and results
-  of `file.*` and `browser.*`, the package's operation list, browser targets,
+- **Owns:** the `demi.builtin` package's id (`PACKAGE`, which `demi-commands`
+  declares in its Cargo metadata for the release) and operations: the
+  arguments and results of `file.*` and `browser.*`, the package's operation
+  list, browser targets,
   queries, tab state, observations and resource event payloads, the live
   view's messages and frame header, the capture extension's events and
   commands, and the pinned Chrome release and receipt records. Limits are
@@ -444,10 +448,11 @@ Each crate implements the provider contract for one vendor family.
   go, and `AgentServer` never sees a blob store.
 - **Must not:** depend on concrete providers, Host implementations or user
   interfaces; own a shell interpreter; own a socket. The backend owns the
-  conversation socket and hands the agent decoded frames. The one exception is
-  the compaction fixture's harness, a program run by hand against a real model,
-  which the `compaction-fixture` feature builds with the OpenAI-compatible
-  provider and no build of the one selection enables.
+  conversation socket and hands the agent decoded frames. The compaction
+  fixture's harness, a program run by hand against a real model, is an example
+  whose dev-dependencies include the OpenAI-compatible provider; the
+  `compaction-fixture` feature builds it, and no build of the one selection
+  enables that.
 
 #### `coding-agent`
 
@@ -459,7 +464,7 @@ Each crate implements the provider contract for one vendor family.
   answer to where a node runs (`HostResolver`: a node's Host and the text that
   announces a change of it), the `demi` root (`demi_root`, with the product's
   groups in `DemiOptions`), and the package id its native groups bind to
-  (`BUILTIN_PACKAGE`).
+  (`BUILTIN_PACKAGE`, `builtin-protocol`'s `PACKAGE`).
 - **Native binding:** the native groups declare package and operation ids. The
   backend supplies exact release descriptors at runtime; declarations import no
   compiled-in release catalog. The implementations live in `demi-commands`.
@@ -737,7 +742,7 @@ provider-codex -> core, provider
 provider-grok-build -> core, provider
 provider-claude-code -> provider, shell
 shell -> command-service, command-tree, core
-agent -> agent-protocol, core, gates, provider, shell
+agent -> agent-protocol, command-service, core, gates, provider, shell
 coding-agent -> agent, builtin-protocol, command-tree, core, shell
 host-remote -> command-service, command-tree, core, gates, runner-protocol, shell
 backend -> agent, agent-protocol, artifact, builtin-protocol, claude-protocol, coding-agent, command-service, command-tree, core, gates, host-remote, machines-protocol, provider, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shell, web-api

@@ -44,4 +44,4 @@ tokio = { workspace = true, features = ["test-util"] }
 [features]
 # A real runner for one device (`RunnerFixture`) and an in-process fake
 # runner (`TestLink`).
-testing = ["dep:axum", "dep:sha2", "dep:tempfile", "dep:rustix", "demi-shell/testing"]
+testing = ["dep:axum", "dep:sha2", "dep:tempfile", "dep:rustix", "demi-command-service/testing", "demi-shell/testing"]

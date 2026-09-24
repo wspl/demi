@@ -17,6 +17,7 @@ use url::Url;
 use demi_provider::models_dev::ModelsDevClient;
 
 use crate::auth::email_change::AccountMail;
+use crate::conversation::stream::BROWSER_STREAM;
 use crate::llm::families::FamilyRegistry;
 use crate::runner::native::NativeCatalog;
 use crate::shard::ShardPlacement;
@@ -325,7 +326,7 @@ impl BackendConfig {
             // names and sets the catalog of them.
             native: NativeCatalog::unpublished(),
             user_streams: BTreeMap::from([(
-                "browser".to_owned(),
+                BROWSER_STREAM.to_owned(),
                 NativeOperation {
                     package: BUILTIN_PACKAGE.to_owned(),
                     operation: live::OPERATION.to_owned(),

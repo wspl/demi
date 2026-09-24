@@ -652,7 +652,10 @@ idle policy, the lifetime cap, recovery at startup, and reset failures.
 The manager runs only on Linux. Its automated tests are built with the
 developer machine's own cross tools and run on Linux: inside the Lima VM on a
 Mac. Tests that need root create throwaway mount and network namespaces and run
-only when explicitly enabled.
+only when explicitly enabled. Tests of the manager as a process, such as a
+start after a crash, run the built executable in a stand-in execution host: the
+init of a throwaway PID namespace with its own `/run`, so the namespace handle
+they recover through is never the machine's.
 
 Real-machine acceptance runs the exact shipped runtime, image, storage, and
 network profile on Linux amd64 and arm64 without KVM, and on arm64 Lima, against

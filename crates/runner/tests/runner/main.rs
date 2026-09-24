@@ -2,10 +2,8 @@
 //! costs a link and, on macOS, a first-launch check when it is new, so the
 //! tests live here. The few that change or saturate process-wide state keep
 //! binaries of their own: the open file limit, the global subscriber, the
-//! utilities' environment, the load tests, which fill the process's one
-//! shell runtime that every test here shares, and the local endpoint tests,
-//! whose check of a crashed runner misjudges it as alive when it shares this
-//! process (not understood yet; `plan.md` WP 8.2).
+//! utilities' environment, and the load tests, which fill the process's one
+//! shell runtime that every test here shares.
 
 mod artifact_cache;
 mod command_client;
@@ -15,6 +13,7 @@ mod edit_tracking;
 mod fs;
 mod git;
 mod host;
+mod local;
 mod pipes;
 mod process;
 mod services;

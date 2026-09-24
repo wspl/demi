@@ -27,7 +27,9 @@ pub const JOB_VIEW_BYTES: usize = 32 * 1024;
 pub const STDIN_CHUNK_BYTES: usize = 64 * 1024;
 /// The most lines one `log_read` returns.
 pub const LOG_READ_LINES: usize = 1000;
-/// The most of an invocation's standard error a `service_done` carries.
+/// The most of an invocation's standard error a `service_done` carries, in
+/// Unicode scalar values (`contracts.md` § Validation at entry). The runner keeps the
+/// last this many bytes, which are never more characters.
 pub const SERVICE_STDERR_CHARS: usize = 16 * 1024;
 
 #[derive(Debug, thiserror::Error)]

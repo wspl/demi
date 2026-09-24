@@ -36,6 +36,7 @@ impl Shard {
             }
         }))
         .await;
+        let workspaces = services.control.workspaces(self.user().clone()).await?;
         let devices = self.device_list().await?;
         let mut conversations = self.conversation_summaries(false).await?;
         conversations.extend(self.conversation_summaries(true).await?);
@@ -45,6 +46,7 @@ impl Shard {
             mode: services.mode,
             preferences,
             providers,
+            workspaces: workspaces.into_iter().map(|workspace| workspace.dto()).collect(),
             devices,
             conversations,
             cloud,
