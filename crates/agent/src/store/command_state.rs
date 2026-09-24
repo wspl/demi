@@ -169,6 +169,82 @@ impl CommandStateHistory {
         self.current
     }
 
+    /// The current version's keys and values.
+    pub(crate) fn values(&self) -> &Values {
+        self.versions
+            .get(&self.current)
+            .expect("the current revision has a version")
+    }
+
+    /// The version that holds `values`, one past the largest revision the
+    /// node has used; none when `values` equal the current version's under
+    /// RFC 8785 canonical JSON, where key order and a number's form do not
+    /// matter.
+    pub(crate) fn prepare(&self, values: Values) -> Option<CommandVersion> {
+        if canonical(&values) == canonical(self.values()) {
+            return None;
+        }
+        let revision = self
+            .versions
+            .keys()
+            .next_back()
+            .map_or(1, |largest| largest + 1);
+        Some(CommandVersion { revision, values })
+    }
+
+    /// Makes a committed version current.
+    pub(crate) fn accept(&mut self, version: CommandVersion) {
+        self.current = version.revision;
+        self.versions.insert(version.revision, version.values);
+    }
+
+    /// The revision recorded at `edge` of `block`.
+    pub(crate) fn boundary(&self, block: &BlockId, edge: BoundaryEdge) -> Option<u64> {
+        self.boundaries.get(&(block.clone(), edge)).copied()
+    }
+
+    /// The command state of a cut: the boundaries of the blocks `blocks`
+    /// retains, with `revision` current, and every version, or only the
+    /// versions those boundaries and `revision` refer to when
+    /// `referenced_only`, as a Fork copies them.
+    pub(crate) fn select(
+        &self,
+        blocks: &[Block],
+        revision: u64,
+        referenced_only: bool,
+    ) -> CommandStateSnapshot {
+        let retained: BTreeSet<&BlockId> = blocks.iter().map(Block::id).collect();
+        let boundaries: Vec<SessionBoundary> = self
+            .boundaries
+            .iter()
+            .filter(|((block, _), _)| retained.contains(block))
+            .map(|((block_id, edge), revision)| SessionBoundary {
+                block_id: block_id.clone(),
+                edge: *edge,
+                command_revision: *revision,
+            })
+            .collect();
+        let mut referenced: BTreeSet<u64> = boundaries
+            .iter()
+            .map(|boundary| boundary.command_revision)
+            .collect();
+        referenced.extend([0, revision]);
+        let versions = self
+            .versions
+            .iter()
+            .filter(|(version, _)| !referenced_only || referenced.contains(version))
+            .map(|(revision, values)| CommandVersion {
+                revision: *revision,
+                values: values.clone(),
+            })
+            .collect();
+        CommandStateSnapshot {
+            revision,
+            versions,
+            boundaries,
+        }
+    }
+
     /// Records that `revision` was current at `edge` of `block`. The
     /// `before_user` and `after_assistant` edges keep their first record; an
     /// `after_block` boundary moves forward with its block.
@@ -202,17 +278,20 @@ impl CommandStateHistory {
         }
     }
 
-    pub(crate) fn snapshot(&self) -> CommandStateSnapshot {
+    /// The whole state, with `pending` current when a commit carries it.
+    pub(crate) fn snapshot(&self, pending: Option<&CommandVersion>) -> CommandStateSnapshot {
+        let mut versions: Vec<CommandVersion> = self
+            .versions
+            .iter()
+            .map(|(revision, values)| CommandVersion {
+                revision: *revision,
+                values: values.clone(),
+            })
+            .collect();
+        versions.extend(pending.cloned());
         CommandStateSnapshot {
-            revision: self.current,
-            versions: self
-                .versions
-                .iter()
-                .map(|(revision, values)| CommandVersion {
-                    revision: *revision,
-                    values: values.clone(),
-                })
-                .collect(),
+            revision: pending.map_or(self.current, |pending| pending.revision),
+            versions,
             boundaries: self
                 .boundaries
                 .iter()
@@ -225,19 +304,28 @@ impl CommandStateHistory {
         }
     }
 
-    /// The state for the next save, when it changed since the last one.
-    pub(crate) fn take_update(&mut self) -> Option<CommandStateSnapshot> {
-        if !self.dirty {
+    /// The state for the next save, when it changed since the last one or a
+    /// commit carries `pending`.
+    pub(crate) fn take_update(
+        &mut self,
+        pending: Option<&CommandVersion>,
+    ) -> Option<CommandStateSnapshot> {
+        if !self.dirty && pending.is_none() {
             return None;
         }
         self.dirty = false;
-        Some(self.snapshot())
+        Some(self.snapshot(pending))
     }
 
     /// A save that carried the state failed: the next one carries it again.
     pub(crate) fn mark_dirty(&mut self) {
         self.dirty = true;
     }
+}
+
+/// A command value map as RFC 8785 canonical JSON.
+fn canonical(values: &Values) -> Vec<u8> {
+    serde_json_canonicalizer::to_vec(values).expect("a JSON map serializes")
 }
 
 #[cfg(test)]
@@ -285,10 +373,10 @@ mod tests {
         let block = BlockId::try_from("b1").unwrap();
         history.capture(block.clone(), BoundaryEdge::AfterBlock, 0);
         history.capture(block.clone(), BoundaryEdge::BeforeUser, 0);
-        let update = history.take_update().unwrap();
+        let update = history.take_update(None).unwrap();
         assert_eq!(update.boundaries.len(), 2);
         // Unchanged: no update is due.
         history.capture(block, BoundaryEdge::BeforeUser, 0);
-        assert_eq!(history.take_update(), None);
+        assert_eq!(history.take_update(None), None);
     }
 }

@@ -10,18 +10,28 @@ use std::{
 };
 
 use demi_agent_protocol::{
-    ClientFrame, ClientFrameKind, EditOutcome, ModelSwitchApply, ServerFrame, SteerOutcome,
+    ClientContent, ClientFrame, ClientFrameKind, EditOutcome, EditRequest, ModelSwitchApply,
+    ServerFrame, SteerOutcome,
 };
-use demi_core::{ModelSelection, NodeId, SessionPhase, UserContentBlock};
+use demi_core::{BlockId, ModelSelection, NodeId, SessionPhase, TurnId};
 use tokio::sync::mpsc::{self, error::TrySendError};
 
-use super::{AgentServer, tree::Tree};
-use crate::AgentHarness;
+use super::{
+    AgentServer,
+    content::{ContentError, ContentResolver, resolve_edit, resolve_message},
+    tree::Tree,
+};
+use crate::{
+    AgentHarness, AgentSession,
+    session::{EditCheck, EditSubmission, accepted, edit_digest},
+};
 
 /// What a refusal says when the connection has no session.
 const NO_SESSION: &str = "No session is open";
 /// What a steer's and a model change's refusal says then.
 const NO_SESSION_HERE: &str = "No session is open on this connection";
+/// What a queued message's steer says when the message is not queued.
+const NOT_QUEUED: &str = "Queued message not found";
 
 /// A connection's bounded outbox. When it is full, the client lags: the
 /// outbox closes, and the backend closes the socket with a code that says so;
@@ -105,6 +115,7 @@ pub struct Connection<H: AgentHarness> {
     root: NodeId,
     cwd: String,
     server: Rc<AgentServer<H>>,
+    resolver: Rc<dyn ContentResolver>,
     outbox: Rc<Outbox>,
 }
 
@@ -114,6 +125,7 @@ impl<H: AgentHarness> Connection<H> {
         id: u64,
         root: NodeId,
         cwd: String,
+        resolver: Rc<dyn ContentResolver>,
     ) -> (Self, FrameRx) {
         let (sender, frames) = mpsc::channel(server.deps.config.outbox_frames);
         let lagged = Rc::new(Cell::new(false));
@@ -126,15 +138,17 @@ impl<H: AgentHarness> Connection<H> {
             root,
             cwd,
             server,
+            resolver,
             outbox,
         };
         (connection, FrameRx { frames, lagged })
     }
 
-    /// Handles one frame to its end; a frame whose handling waits, such as
-    /// an `abort` waiting for the stop to be recorded, delays the frames
-    /// behind it. A failure is answered as a frame, never returned.
-    pub async fn handle(&self, frame: ClientFrame<UserContentBlock>) {
+    /// Handles one decoded frame to its end; a frame whose handling waits,
+    /// such as a send whose uploads are being written to the Host or an
+    /// `abort` waiting for the stop to be recorded, delays the frames behind
+    /// it. A failure is answered as a frame, never returned.
+    pub async fn handle(&self, frame: ClientFrame) {
         match frame {
             ClientFrame::Open { model } => self.open(model).await,
             ClientFrame::Close {} => self.close().await,
@@ -178,6 +192,22 @@ impl<H: AgentHarness> Connection<H> {
             code: None,
             diagnostics: None,
         });
+    }
+
+    fn content_error(&self, error: ContentError) {
+        self.send(ServerFrame::Error {
+            message: error.message,
+            code: error.code,
+            diagnostics: None,
+        });
+    }
+
+    fn steer_result(&self, steer_id: BlockId, outcome: Result<(), String>) {
+        let outcome = match outcome {
+            Ok(()) => SteerOutcome::Accepted,
+            Err(reason) => SteerOutcome::Rejected { reason },
+        };
+        self.send(ServerFrame::SteerResult { steer_id, outcome });
     }
 
     /// Attaches the connection to the conversation's tree, restoring the
@@ -234,7 +264,7 @@ impl<H: AgentHarness> Connection<H> {
     }
 
     /// The answer to a frame that needs a session when none is open.
-    fn refuse(&self, frame: ClientFrame<UserContentBlock>) {
+    fn refuse(&self, frame: ClientFrame) {
         match frame {
             ClientFrame::Steer { steer_id, .. }
             | ClientFrame::SteerQueuedMessage { steer_id, .. } => {
@@ -255,7 +285,7 @@ impl<H: AgentHarness> Connection<H> {
         }
     }
 
-    async fn dispatch(&self, tree: &Rc<Tree<H>>, frame: ClientFrame<UserContentBlock>) {
+    async fn dispatch(&self, tree: &Rc<Tree<H>>, frame: ClientFrame) {
         let session = tree.root().session();
         let kind = frame.kind();
         match frame {
@@ -263,11 +293,38 @@ impl<H: AgentHarness> Connection<H> {
                 message_id,
                 content,
             } => {
+                let content = match resolve_message(&*self.resolver, content).await {
+                    Ok(content) => content,
+                    Err(error) => return self.content_error(error),
+                };
                 // The session reports the action's course as events; the
                 // handle is not needed.
                 if let Err(error) = session.send(content, message_id) {
                     self.reject(kind, error.to_string());
                 }
+            }
+            ClientFrame::Steer { steer_id, content } => {
+                let outcome = match resolve_message(&*self.resolver, content).await {
+                    Ok(content) => session
+                        .steer(content, steer_id.clone())
+                        .map_err(|error| error.to_string()),
+                    Err(error) => Err(error.message),
+                };
+                self.steer_result(steer_id, outcome);
+            }
+            ClientFrame::SteerQueuedMessage {
+                message_id,
+                steer_id,
+            } => {
+                let outcome = match session.steer_queued_message(&message_id, steer_id.clone()) {
+                    Ok(true) => Ok(()),
+                    Ok(false) => Err(NOT_QUEUED.to_owned()),
+                    Err(error) => Err(error.to_string()),
+                };
+                self.steer_result(steer_id, outcome);
+            }
+            ClientFrame::CancelPendingSteer { steer_id } => {
+                session.cancel_pending_steer(&steer_id);
             }
             ClientFrame::DequeueMessage { message_id } => {
                 session.dequeue_message(&message_id);
@@ -288,40 +345,38 @@ impl<H: AgentHarness> Connection<H> {
                 let result = session.abort().await;
                 self.send(ServerFrame::AbortResult { result });
             }
-            ClientFrame::SyncTranscript {} => {
-                let snapshot = session.transcript();
-                self.send(ServerFrame::TranscriptReset {
-                    blocks: snapshot.blocks,
-                    version: snapshot.version,
-                    failures: None,
-                });
+            ClientFrame::SyncTranscript {} => tree.sync(self.id),
+            // The `closed` frames report what these stopped.
+            ClientFrame::AbortSubagents {} => tree.abort_children_of(tree.root().id()).await,
+            ClientFrame::AbortSubagent { subagent_id } => {
+                if tree.is_child_of(&subagent_id, tree.root().id()) {
+                    tree.abort_child(&subagent_id).await;
+                }
             }
-            // No steer is ever pending and no subagent lives, so these stop
-            // and withdraw nothing.
-            ClientFrame::CancelPendingSteer { .. }
-            | ClientFrame::AbortSubagents {}
-            | ClientFrame::AbortSubagent { .. } => {}
             ClientFrame::Retry {} | ClientFrame::Resume {} | ClientFrame::Compact {} => {
                 let phase = session.phase();
                 if phase != SessionPhase::Idle {
                     self.reject(kind, format!("Session is busy ({phase})"));
                     return;
                 }
-                self.reject(kind, format!("{kind} is not implemented yet"));
+                let admitted = match kind {
+                    ClientFrameKind::Retry => session.retry(),
+                    ClientFrameKind::Resume => session.resume(),
+                    _ => session.compact(),
+                };
+                if let Err(error) = admitted {
+                    self.reject(kind, error.to_string());
+                }
             }
-            ClientFrame::EditAndSend { request } => self.send(ServerFrame::EditResult {
-                operation_id: request.operation_id,
-                outcome: EditOutcome::Rejected {
-                    reason: format!("{kind} is not implemented yet"),
-                },
-            }),
-            ClientFrame::Steer { steer_id, .. }
-            | ClientFrame::SteerQueuedMessage { steer_id, .. } => {
-                self.send(ServerFrame::SteerResult {
-                    steer_id,
-                    outcome: SteerOutcome::Rejected {
-                        reason: format!("{kind} is not implemented yet"),
-                    },
+            ClientFrame::EditAndSend { request } => {
+                let operation_id = request.operation_id.clone();
+                let outcome = match self.edit(session, request).await {
+                    Ok(turn_id) => EditOutcome::Accepted { turn_id },
+                    Err(reason) => EditOutcome::Rejected { reason },
+                };
+                self.send(ServerFrame::EditResult {
+                    operation_id,
+                    outcome,
                 });
             }
             ClientFrame::ShellWrite { .. } | ClientFrame::ShellAbort { .. } => {
@@ -331,6 +386,46 @@ impl<H: AgentHarness> Connection<H> {
                 unreachable!("open and close are handled before dispatch")
             }
         }
+    }
+}
+
+impl<H: AgentHarness> Connection<H> {
+    /// An edit's acceptance (`message-editing.md` § Commit and idempotency):
+    /// a repeated request is answered from its receipt, or shares the
+    /// acceptance in flight, before any of its files is resolved; a new one
+    /// resolves its content and returns once the replacement is durable.
+    async fn edit(
+        &self,
+        session: &AgentSession,
+        request: EditRequest<ClientContent>,
+    ) -> Result<TurnId, String> {
+        let digest = edit_digest(&request);
+        let check = session
+            .check_edit(&request.operation_id, &digest, &request.version)
+            .map_err(|error| error.to_string())?;
+        let receipt = match check {
+            EditCheck::Accepted(receipt) => receipt,
+            EditCheck::InFlight(acceptance) => accepted(acceptance)
+                .await
+                .map_err(|error| error.to_string())?,
+            EditCheck::Proceed => {
+                let content = resolve_edit(&*self.resolver, request.content)
+                    .await
+                    .map_err(|error| error.message)?;
+                let submission = EditSubmission {
+                    operation_id: request.operation_id,
+                    target: request.target_block_id,
+                    version: request.version,
+                    content,
+                    digest,
+                };
+                session
+                    .edit_and_send(submission)
+                    .await
+                    .map_err(|error| error.to_string())?
+            }
+        };
+        Ok(receipt.turn_id)
     }
 }
 

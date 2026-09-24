@@ -9,7 +9,10 @@
 //! browser receives accepts them (`contracts.md` § Generated TypeScript).
 
 pub mod auth;
+pub mod conversations;
+pub mod devices;
 pub mod error;
+pub mod files;
 pub mod ids;
 pub mod providers;
 pub mod query;

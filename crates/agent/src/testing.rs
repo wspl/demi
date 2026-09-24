@@ -9,13 +9,15 @@ use std::{
     rc::Rc,
 };
 
-use demi_agent_protocol::ServerFrame;
-use demi_core::{Block, Model, ModelSelection, NodeId, QueuedMessage, UserContentBlock};
+use demi_agent_protocol::{ClientContent, ClientFrame, ServerFrame};
+use demi_core::{
+    Block, Clock, Model, ModelSelection, NodeId, QueuedMessage, Timestamp, UserContentBlock,
+};
 use futures_util::future::LocalBoxFuture;
 
 use crate::{
-    AgentHarness, AgentServer, AgentTreeStore, Connection, FrameRx, IdSource, Outgoing,
-    SessionStore,
+    AgentHarness, AgentServer, AgentTreeStore, Connection, ContentError, ContentResolver,
+    FileReference, FrameRx, IdSource, Outgoing, SessionStore,
     store::{
         Checkpoint, CheckpointState, CheckpointUpdate, CommandStateSnapshot, CommitGuard,
         NodeClose, NodeRecord, StoreError,
@@ -76,6 +78,87 @@ pub fn text(text: &str) -> Vec<UserContentBlock> {
     }]
 }
 
+/// A message's content of one text, as the browser sends it.
+pub fn client_text(text: &str) -> Vec<ClientContent> {
+    vec![ClientContent::Text {
+        text: text.to_owned(),
+    }]
+}
+
+/// A wall clock that moves with Tokio's, so that a test on the paused clock
+/// moves the times records carry too: `start` plus the Tokio time elapsed
+/// since the clock was made.
+#[derive(Debug)]
+pub struct TokioClock {
+    start: Timestamp,
+    origin: tokio::time::Instant,
+}
+
+impl TokioClock {
+    pub fn new(start: Timestamp) -> Self {
+        Self {
+            start,
+            origin: tokio::time::Instant::now(),
+        }
+    }
+}
+
+impl Clock for TokioClock {
+    fn now(&self) -> Timestamp {
+        let elapsed = i64::try_from(self.origin.elapsed().as_millis()).unwrap_or(i64::MAX);
+        Timestamp::from_millisecond(self.start.as_millisecond().saturating_add(elapsed))
+            .expect("a test's time stays in range")
+    }
+}
+
+/// Uploads a test gave the blocks they resolve to; every other file
+/// reference is refused, as a backend refuses one it does not hold.
+#[derive(Debug, Default)]
+pub struct TestFiles {
+    uploads: RefCell<BTreeMap<String, Vec<UserContentBlock>>>,
+}
+
+impl TestFiles {
+    pub fn new() -> Rc<Self> {
+        Rc::new(Self::default())
+    }
+
+    /// The upload `reference` resolves to `blocks`.
+    pub fn upload(&self, reference: &str, blocks: Vec<UserContentBlock>) {
+        self.uploads
+            .borrow_mut()
+            .insert(reference.to_owned(), blocks);
+    }
+}
+
+impl ContentResolver for TestFiles {
+    fn resolve<'a>(
+        &'a self,
+        files: Vec<FileReference>,
+    ) -> LocalBoxFuture<'a, Result<Vec<Vec<UserContentBlock>>, ContentError>> {
+        Box::pin(async move {
+            files
+                .into_iter()
+                .map(|file| match file {
+                    FileReference::Upload { r#ref, .. } => self
+                        .uploads
+                        .borrow()
+                        .get(&r#ref)
+                        .cloned()
+                        .ok_or(ContentError {
+                            message: format!("upload {ref} is not available"),
+                            code: Some("frame_delivery_failed".to_owned()),
+                        }),
+                    FileReference::RemoteFile { device_id, .. } => Err(ContentError {
+                        message: format!("device {device_id} is not paired"),
+                        code: Some("frame_delivery_failed".to_owned()),
+                    }),
+                })
+                .collect()
+        })
+    }
+}
+
 /// One node as the store holds it.
 #[derive(Debug, Clone)]
 struct StoredNode {
@@ -94,6 +177,33 @@ struct Stored {
     saves: Vec<(NodeId, CheckpointUpdate)>,
     created: u64,
     failing_saves: usize,
+    hold: Option<Rc<Hold>>,
+}
+
+/// Saves waiting until a test lets them commit.
+#[derive(Debug, Default)]
+struct Hold {
+    waiting: Cell<usize>,
+    open: Cell<bool>,
+    released: tokio::sync::Notify,
+}
+
+/// A hold on a [`MemoryTreeStore`]'s saves: each waits until
+/// [`release`](Self::release), as a save behind a slow database would.
+#[derive(Debug)]
+pub struct SaveGate(Rc<Hold>);
+
+impl SaveGate {
+    /// How many saves wait.
+    pub fn waiting(&self) -> usize {
+        self.0.waiting.get()
+    }
+
+    /// Lets the waiting saves and every later one commit.
+    pub fn release(&self) {
+        self.0.open.set(true);
+        self.0.released.notify_waiters();
+    }
 }
 
 /// The in-memory tree store: the contract's semantics with nothing durable.
@@ -137,6 +247,13 @@ impl MemoryTreeStore {
     /// Refuses the next `count` saves, as a failing database would.
     pub fn fail_saves(&self, count: usize) {
         self.stored.borrow_mut().failing_saves = count;
+    }
+
+    /// Holds every save from now on until the gate is released.
+    pub fn hold_saves(&self) -> SaveGate {
+        let hold = Rc::new(Hold::default());
+        self.stored.borrow_mut().hold = Some(hold.clone());
+        SaveGate(hold)
     }
 }
 
@@ -217,6 +334,20 @@ impl SessionStore for MemorySessionStore {
         guard: &'a CommitGuard,
     ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
         Box::pin(async move {
+            let hold = self.stored.borrow().hold.clone();
+            if let Some(hold) = hold {
+                hold.waiting.set(hold.waiting.get() + 1);
+                while !hold.open.get() {
+                    let released = hold.released.notified();
+                    tokio::pin!(released);
+                    released.as_mut().enable();
+                    if hold.open.get() {
+                        break;
+                    }
+                    released.await;
+                }
+                hold.waiting.set(hold.waiting.get() - 1);
+            }
             guard.check()?;
             let mut stored = self.stored.borrow_mut();
             if stored.failing_saves > 0 {
@@ -376,14 +507,25 @@ pub struct TestClient<H: AgentHarness> {
 }
 
 impl<H: AgentHarness> TestClient<H> {
-    /// A client of the conversation `root`, whose new tree works in `cwd`.
+    /// A client of the conversation `root`, whose new tree works in `cwd`,
+    /// whose frames refer to no file.
     pub fn connect(server: &Rc<AgentServer<H>>, root: &NodeId, cwd: &str) -> Self {
-        let (connection, frames) = server.connect(root.clone(), cwd.to_owned());
+        Self::connect_with(server, root, cwd, TestFiles::new())
+    }
+
+    /// A client whose frames' files `files` resolves.
+    pub fn connect_with(
+        server: &Rc<AgentServer<H>>,
+        root: &NodeId,
+        cwd: &str,
+        files: Rc<dyn ContentResolver>,
+    ) -> Self {
+        let (connection, frames) = server.connect(root.clone(), cwd.to_owned(), files);
         Self { connection, frames }
     }
 
     /// Hands `frame` to the connection and waits until it is handled.
-    pub async fn send(&self, frame: demi_agent_protocol::ClientFrame<UserContentBlock>) {
+    pub async fn send(&self, frame: ClientFrame) {
         self.connection.handle(frame).await;
     }
 
@@ -424,5 +566,345 @@ impl<H: AgentHarness> TestClient<H> {
 
     pub fn connection(&self) -> &Connection<H> {
         &self.connection
+    }
+}
+
+/// The tree store contract's cases (`subagents.md` § Persistence), for any
+/// realization of [`AgentTreeStore`]: create queues the first message with
+/// the node, a save delivers the completions it carries, reopen and delete,
+/// and a completion of an earlier round marks nothing delivered. Each case
+/// takes a store that holds nothing yet and reads back only through the
+/// contract, so the agent's in-memory store and the backend's database pass
+/// the same cases.
+pub mod store_contract {
+    use demi_core::{
+        AgentMessage, AgentMessageBlock, AgentMessageEvent, Block, CompletionId, CompletionOutcome,
+        NodeId, QueuedMessage, Sender, SessionPhase, Timestamp, TurnId, UserBlock,
+    };
+
+    use super::{test_model, text};
+    use crate::{
+        AgentTreeStore,
+        store::{
+            CheckpointState, CheckpointUpdate, ClosePhase, CommandStateSnapshot, NodeClose,
+            NodeRecord,
+        },
+    };
+
+    fn id(value: &str) -> NodeId {
+        NodeId::try_from(value).expect("a test node id is not empty")
+    }
+
+    fn record(node: &str, parent: Option<&str>, round: u64) -> NodeRecord {
+        NodeRecord {
+            id: id(node),
+            parent: parent.map(id),
+            description: String::new(),
+            profile: None,
+            round,
+            can_spawn_subagents: true,
+            closed: None,
+            delivered: false,
+        }
+    }
+
+    fn update(queue: Vec<QueuedMessage>, blocks: Vec<Block>) -> CheckpointUpdate {
+        CheckpointUpdate {
+            state: CheckpointState {
+                phase: SessionPhase::Idle,
+                queue,
+                agent_inputs: Vec::new(),
+                wakeups: Vec::new(),
+                cwd: "/w".into(),
+                model: test_model(),
+                harness: "test".into(),
+                edits: Vec::new(),
+            },
+            command_state: Some(CommandStateSnapshot::initial()),
+            block_count: blocks.len(),
+            changed_blocks: blocks.into_iter().enumerate().collect(),
+        }
+    }
+
+    fn message(turn: &str) -> QueuedMessage {
+        QueuedMessage {
+            id: TurnId::try_from(turn).expect("a test turn id is not empty"),
+            content: text("brief"),
+        }
+    }
+
+    /// The receipt a parent's transcript holds for a child's completed round.
+    fn receipt(child: &str, round: u64) -> Block {
+        let completion = CompletionId {
+            child: id(child),
+            round,
+        };
+        let message = AgentMessage {
+            id: completion.block_id(),
+            sender: Sender {
+                id: id(child),
+                description: child.into(),
+                round,
+            },
+            recipient_id: id("root"),
+            timestamp: Timestamp::UNIX_EPOCH,
+            content: format!("{child} done"),
+            event: AgentMessageEvent::Completion {
+                outcome: CompletionOutcome::Completed,
+            },
+        };
+        Block::AgentMessage(AgentMessageBlock {
+            id: completion.block_id(),
+            turn_id: TurnId::try_from("turn").expect("a test turn id is not empty"),
+            created_at: Timestamp::UNIX_EPOCH,
+            model: test_model(),
+            message,
+        })
+    }
+
+    fn completed(result: &str) -> NodeClose {
+        NodeClose {
+            phase: ClosePhase::Completed {
+                result: result.into(),
+            },
+            at: Timestamp::UNIX_EPOCH,
+        }
+    }
+
+    async fn stored(store: &dyn AgentTreeStore, node: &str) -> Option<NodeRecord> {
+        store
+            .node(&id(node))
+            .await
+            .expect("the store reads its nodes")
+    }
+
+    async fn delivered(store: &dyn AgentTreeStore, node: &str) -> bool {
+        stored(store, node)
+            .await
+            .expect("the node exists")
+            .delivered
+    }
+
+    async fn queue(store: &dyn AgentTreeStore, node: &str) -> Vec<QueuedMessage> {
+        store
+            .session_store(&id(node))
+            .load()
+            .await
+            .expect("the store reads its checkpoints")
+            .expect("the node has a checkpoint")
+            .state
+            .queue
+    }
+
+    async fn create(store: &dyn AgentTreeStore, node: NodeRecord, initial: CheckpointUpdate) {
+        store
+            .create_node(node, initial)
+            .await
+            .expect("a new node is created");
+    }
+
+    pub async fn create_queues_the_first_message_with_the_node_and_a_save_replaces_it(
+        store: &dyn AgentTreeStore,
+    ) {
+        create(
+            store,
+            record("root", None, 1),
+            update(Vec::new(), Vec::new()),
+        )
+        .await;
+        create(
+            store,
+            record("child", Some("root"), 2),
+            update(vec![message("m1")], Vec::new()),
+        )
+        .await;
+
+        let children: Vec<NodeId> = store
+            .children(&id("root"))
+            .await
+            .expect("the store lists children")
+            .into_iter()
+            .map(|node| node.id)
+            .collect();
+        assert_eq!(children, [id("child")]);
+        assert_eq!(queue(store, "child").await, [message("m1")]);
+        let user = Block::User(UserBlock {
+            id: "u1".try_into().expect("a test block id is not empty"),
+            turn_id: TurnId::try_from("m1").expect("a test turn id is not empty"),
+            created_at: Timestamp::UNIX_EPOCH,
+            model: test_model(),
+            content: text("brief"),
+            preamble: None,
+        });
+        let child = store.session_store(&id("child"));
+        child
+            .save(update(Vec::new(), vec![user]), &Default::default())
+            .await
+            .expect("the save commits");
+        let loaded = child
+            .load()
+            .await
+            .expect("the store reads its checkpoints")
+            .expect("the node has a checkpoint");
+        assert!(loaded.state.queue.is_empty());
+        assert_eq!(loaded.transcript.len(), 1);
+        let again = store
+            .create_node(
+                record("child", Some("root"), 3),
+                update(Vec::new(), Vec::new()),
+            )
+            .await;
+        assert!(again.is_err(), "a node that exists is refused");
+    }
+
+    pub async fn a_save_delivers_the_completions_its_transcript_carries_and_only_those(
+        store: &dyn AgentTreeStore,
+    ) {
+        create(
+            store,
+            record("root", None, 1),
+            update(Vec::new(), Vec::new()),
+        )
+        .await;
+        for child in ["a", "b"] {
+            create(
+                store,
+                record(child, Some("root"), 1),
+                update(Vec::new(), Vec::new()),
+            )
+            .await;
+            store
+                .close_node(&id(child), completed(&format!("{child} done")))
+                .await
+                .expect("the node closes");
+        }
+
+        let save = update(Vec::new(), vec![receipt("a", 1)]);
+        assert_eq!(
+            save.carried_completions()
+                .expect("the receipt names a round"),
+            [CompletionId {
+                child: id("a"),
+                round: 1
+            }]
+        );
+        store
+            .session_store(&id("root"))
+            .save(save, &Default::default())
+            .await
+            .expect("the save commits");
+
+        assert!(delivered(store, "a").await);
+        assert!(!delivered(store, "b").await);
+        store
+            .mark_delivered(&id("b"), 1)
+            .await
+            .expect("the delivery is marked");
+        assert!(delivered(store, "b").await);
+    }
+
+    pub async fn reopen_makes_a_closed_node_live_with_its_message_and_delete_takes_the_subtree(
+        store: &dyn AgentTreeStore,
+    ) {
+        create(
+            store,
+            record("root", None, 1),
+            update(Vec::new(), Vec::new()),
+        )
+        .await;
+        create(
+            store,
+            record("child", Some("root"), 1),
+            update(Vec::new(), Vec::new()),
+        )
+        .await;
+        create(
+            store,
+            record("grandchild", Some("child"), 1),
+            update(Vec::new(), Vec::new()),
+        )
+        .await;
+        let failed = NodeClose {
+            phase: ClosePhase::Error {
+                failure: "boom".into(),
+            },
+            at: Timestamp::UNIX_EPOCH,
+        };
+        store
+            .close_node(&id("child"), failed.clone())
+            .await
+            .expect("the node closes");
+        assert_eq!(
+            stored(store, "child")
+                .await
+                .expect("the node exists")
+                .closed,
+            Some(failed)
+        );
+
+        store
+            .reopen_node(&id("child"), 9, message("m2"))
+            .await
+            .expect("the node reopens");
+        let reopened = stored(store, "child").await.expect("the node exists");
+        assert_eq!(
+            (reopened.closed, reopened.round, reopened.delivered),
+            (None, 9, false)
+        );
+        assert_eq!(queue(store, "child").await, [message("m2")]);
+
+        store
+            .delete_node(&id("child"))
+            .await
+            .expect("the subtree is deleted");
+        assert!(stored(store, "child").await.is_none());
+        assert!(stored(store, "grandchild").await.is_none());
+        assert!(stored(store, "root").await.is_some());
+    }
+
+    pub async fn a_completion_of_an_earlier_round_marks_the_current_one_undelivered(
+        store: &dyn AgentTreeStore,
+    ) {
+        create(
+            store,
+            record("root", None, 1),
+            update(Vec::new(), Vec::new()),
+        )
+        .await;
+        create(
+            store,
+            record("child", Some("root"), 1),
+            update(Vec::new(), Vec::new()),
+        )
+        .await;
+        store
+            .close_node(&id("child"), completed("first"))
+            .await
+            .expect("the node closes");
+        store
+            .reopen_node(&id("child"), 3, message("again"))
+            .await
+            .expect("the node reopens");
+        store
+            .close_node(&id("child"), completed("second"))
+            .await
+            .expect("the node closes");
+
+        let root = store.session_store(&id("root"));
+        let old = update(Vec::new(), vec![receipt("child", 1)]);
+        root.save(old, &Default::default())
+            .await
+            .expect("the save commits");
+        store
+            .mark_delivered(&id("child"), 1)
+            .await
+            .expect("an earlier round marks nothing");
+        assert!(!delivered(store, "child").await);
+
+        let current = update(Vec::new(), vec![receipt("child", 1), receipt("child", 3)]);
+        root.save(current, &Default::default())
+            .await
+            .expect("the save commits");
+        assert!(delivered(store, "child").await);
     }
 }

@@ -26,6 +26,17 @@ demi_core::id!(
     LoginId
 );
 
+demi_core::id!(
+    /// A device's id, which the backend assigns when the device is paired or
+    /// its Cloud is first used.
+    DeviceId
+);
+
+demi_core::id!(
+    /// A workspace's id, which the backend assigns.
+    WorkspaceId
+);
+
 /// What a UUID looks like where the browser checks one: RFC 9562 versions 1
 /// to 8, the nil UUID and the max UUID, in either case.
 const UUID_PATTERN: &str = "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$";

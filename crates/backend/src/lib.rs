@@ -7,6 +7,7 @@ mod backend;
 mod config;
 mod edge;
 mod llm;
+mod runner;
 mod settings;
 mod shard;
 mod storage;
@@ -16,7 +17,7 @@ mod vault;
 
 pub use auth::email_change::{AccountMail, MailError, VerificationMail};
 pub use backend::{Backend, ShutdownError, ShutdownErrors, StartError};
-pub use config::{BackendConfig, Config, ConfigError};
+pub use config::{BackendConfig, Config, ConfigError, RunnerTuning};
 pub use llm::families::{
     AccountBinding, ApiKeyArgs, FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry, ProviderFamily,
     SubscriptionArgs,

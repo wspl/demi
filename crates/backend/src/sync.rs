@@ -36,11 +36,13 @@ impl Shard {
             }
         }))
         .await;
+        let devices = self.device_list().await?;
         Ok(ProductState {
             user,
             mode: services.mode,
             preferences,
             providers,
+            devices,
         })
     }
 }

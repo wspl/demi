@@ -26,8 +26,9 @@ pub(crate) const SESSION_POLICY: SessionPolicy = SessionPolicy {
     renew_below: SignedDuration::from_secs(15 * DAY_SECONDS),
 };
 
-/// The SHA-256 of a session token in lowercase hexadecimal: what storage
-/// keeps instead of the token.
+/// The SHA-256 of a session or device token in lowercase hexadecimal: what
+/// storage keeps instead of the token (`storage.md` § Passwords and
+/// credentials at rest).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TokenHash(String);
 

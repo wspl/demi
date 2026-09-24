@@ -23,12 +23,14 @@ pub mod store;
 pub mod testing;
 pub mod transcript;
 
-pub use harness::{AgentHarness, PromptContext};
+pub use harness::{AgentHarness, Profile, PromptContext};
 pub use ids::{IdSource, RandomIds};
 pub use node::Node;
 pub use server::{
-    AgentServer, Connection, FrameRx, Outgoing, ProviderResolver, ResolveError, ServerConfig,
-    ServerDeps, Tree, TreeStores,
+    AgentServer, Connection, ContentError, ContentResolver, FileReference, FrameRx, Outgoing,
+    ProviderResolver, ResolveError, ServerConfig, ServerDeps, Tree, TreeStores,
 };
-pub use session::{AgentSession, SessionConfig, TranscriptSnapshot};
+pub use session::{
+    AgentSession, CompactionConfig, ForkError, RetryPolicy, SessionConfig, TranscriptSnapshot,
+};
 pub use store::{AgentTreeStore, SessionStore};

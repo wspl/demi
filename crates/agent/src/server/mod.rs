@@ -5,7 +5,9 @@
 //! it to its connection; the connection's outbox carries every server frame
 //! back.
 
+mod commands;
 mod connection;
+mod content;
 mod tree;
 
 use std::{
@@ -16,16 +18,21 @@ use std::{
     time::Duration,
 };
 
-use demi_core::{Clock, ModelSelection, NodeId};
+use demi_core::{BlockId, Clock, ModelSelection, NodeId, SessionPhase};
 use demi_gates::KeyedSerialGate;
 use demi_provider::ProviderRuntime;
 use futures_util::future::{LocalBoxFuture, join_all};
 use tokio_util::task::TaskTracker;
 
 pub use connection::{Connection, FrameRx, Outgoing};
+pub use content::{ContentError, ContentResolver, FileReference};
 pub use tree::Tree;
 
-use crate::{AgentHarness, IdSource, SessionConfig, store::AgentTreeStore};
+use crate::{
+    AgentHarness, IdSource, Node, SessionConfig,
+    session::{ForkError, fork_seed},
+    store::{AgentTreeStore, Checkpoint, CheckpointUpdate, CommandStateHistory, NodeRecord},
+};
 
 /// Where the agent gets a provider runtime for a session. The backend
 /// resolves the provider entry the selection names and builds the runtime on
@@ -49,6 +56,10 @@ pub enum ResolveError {
     /// The entry exists but could not build a runtime.
     #[error("{0}")]
     Failed(String),
+}
+
+fn fork_store(error: crate::store::StoreError) -> ForkError {
+    ForkError::Store(error.to_string())
 }
 
 /// The tree store of each conversation, by its root.
@@ -110,16 +121,96 @@ impl<H: AgentHarness> AgentServer<H> {
     }
 
     /// A connection for a socket of the conversation `root`, whose tree works
-    /// in `cwd` when it is created, and the receiving end of its outbox.
-    pub fn connect(self: &Rc<Self>, root: NodeId, cwd: String) -> (Connection<H>, FrameRx) {
+    /// in `cwd` when it is created, whose frames' files `resolver` resolves,
+    /// and the receiving end of its outbox.
+    pub fn connect(
+        self: &Rc<Self>,
+        root: NodeId,
+        cwd: String,
+        resolver: Rc<dyn ContentResolver>,
+    ) -> (Connection<H>, FrameRx) {
         let id = self.next_connection.get();
         self.next_connection.set(id + 1);
-        Connection::new(self.clone(), id, root, cwd)
+        Connection::new(self.clone(), id, root, cwd, resolver)
     }
 
     /// The conversation's live tree, if it has one.
     pub fn tree(&self, root: &NodeId) -> Option<Rc<Tree<H>>> {
         self.trees.borrow().get(root).cloned()
+    }
+
+    /// The live node `node` of the conversation `root`: where the backend's
+    /// command router dispatches a job's `rpc` calls (`Node::commands`) and
+    /// relays its command storage (`Node::storage`). A job of a node that is
+    /// not live has none.
+    pub fn node(&self, root: &NodeId, node: &NodeId) -> Option<Rc<Node<H>>> {
+        self.tree(root)?.node(node)
+    }
+
+    fn new_id(&self) -> String {
+        self.deps.ids.next_id()
+    }
+
+    /// A Fork's seed from the root `source` through its completed text
+    /// `target` (`conversation-fork.md` § The fork seed): captured from the
+    /// live session in one step when the conversation is open, else read
+    /// from its committed checkpoint. The source keeps running either way.
+    pub async fn prepare_fork(
+        &self,
+        source: &NodeId,
+        target: &BlockId,
+    ) -> Result<Checkpoint, ForkError> {
+        if let Some(tree) = self.tree(source) {
+            return tree.root().session().prepare_fork(target);
+        }
+        let store = (self.deps.stores)(source);
+        let stored = store.node(source).await.map_err(fork_store)?;
+        if !stored.is_some_and(|record| record.parent.is_none()) {
+            return Err(ForkError::NotRoot);
+        }
+        let checkpoint = store
+            .session_store(source)
+            .load()
+            .await
+            .map_err(fork_store)?
+            .filter(|checkpoint| checkpoint.state.harness == self.deps.harness.name())
+            .ok_or(ForkError::NoCheckpoint)?;
+        let commands = CommandStateHistory::restore(checkpoint.command_state)
+            .map_err(|error| ForkError::Store(error.to_string()))?;
+        fork_seed(&checkpoint.transcript, &commands, checkpoint.state, target)
+    }
+
+    /// Stores a Fork's seed as the first checkpoint of the new root
+    /// `destination`, in one create commit; opening the conversation
+    /// assembles its runtime. A seed that is not idle, holds waiting work or
+    /// edit receipts, or belongs to another harness is refused.
+    pub async fn initialize_fork(
+        &self,
+        destination: &NodeId,
+        seed: Checkpoint,
+    ) -> Result<(), ForkError> {
+        let state = &seed.state;
+        let fresh = state.phase == SessionPhase::Idle
+            && state.queue.is_empty()
+            && state.agent_inputs.is_empty()
+            && state.wakeups.is_empty()
+            && state.edits.is_empty()
+            && state.harness == self.deps.harness.name();
+        if !fresh {
+            return Err(ForkError::InvalidSeed);
+        }
+        let block_count = seed.transcript.len();
+        let initial = CheckpointUpdate {
+            state: seed.state,
+            command_state: Some(seed.command_state),
+            changed_blocks: seed.transcript.into_iter().enumerate().collect(),
+            block_count,
+        };
+        let record = NodeRecord::root(destination.clone(), self.deps.clock.now());
+        (self.deps.stores)(destination)
+            .create_node(record, initial)
+            .await
+            .map_err(fork_store)
     }
 
     /// Disposes every live tree, then waits for evictions under way.
