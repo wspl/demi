@@ -36,7 +36,7 @@ pub enum ConversationTarget {
         /// directory without it.
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
-        #[garde(inner(length(min = 1), pattern(r"^/")))]
+        #[garde(length(min = 1), pattern(r"^/"))]
         path: Option<String>,
     },
     Device {
