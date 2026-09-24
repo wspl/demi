@@ -108,13 +108,13 @@ pub async fn running_hint(
         invocation_id: id.clone(),
         hint: Some(hint.into()),
     })
-    .map_err(handler)?;
+    .map_err(ServiceError::failed)?;
     let clear = wire::encode(&wire::Outbound::JobRunningHint {
         job_id: job_id.into(),
         invocation_id: id,
         hint: None,
     })
-    .map_err(handler)?;
+    .map_err(ServiceError::failed)?;
     let guard = RunningHint {
         clear: Some(clear),
         connection: connection.clone(),
@@ -164,7 +164,7 @@ pub async fn invoke(
         env: request.env.clone(),
         stdin: request.finite,
     })
-    .map_err(handler)?;
+    .map_err(ServiceError::failed)?;
     let result = async {
         connection
             .control
@@ -219,11 +219,9 @@ async fn exchange(
                 CallEvent::Pipes { stdin, stdout } => {
                     let (stdin_sender, stdout_sender) = pipe_senders
                         .take()
-                        .ok_or_else(|| ServiceError::Handler("duplicate RPC pipes".into()))?;
+                        .ok_or_else(|| ServiceError::failed(RpcError::DuplicatePipes))?;
                     if stdin.is_some() != request.finite {
-                        return Err(ServiceError::Handler(
-                            "RPC input pipe disagrees with invocation".into(),
-                        ));
+                        return Err(ServiceError::failed(RpcError::InputDisagrees));
                     }
                     stdin_sender
                         .send(stdin)
@@ -233,9 +231,9 @@ async fn exchange(
                         .map_err(|_| ServiceError::Cancelled)?;
                 }
                 CallEvent::Stderr(bytes) => errors.stderr(bytes).await?,
-                CallEvent::Pull if request.live => pull.try_send(()).map_err(|_| {
-                    ServiceError::Handler("overlapping RPC stdin demands".into())
-                })?,
+                CallEvent::Pull if request.live => pull
+                    .try_send(())
+                    .map_err(|_| ServiceError::failed(RpcError::OverlappingDemands))?,
                 CallEvent::Pull => connection
                     .send(stdin_end(id)?)
                     .await
@@ -243,9 +241,7 @@ async fn exchange(
                 CallEvent::Exit(code) => {
                     if let Some((stdin, stdout)) = pipe_senders.take() {
                         if code == 0 {
-                            return Err(ServiceError::Handler(
-                                "RPC success arrived before pipe descriptors".into(),
-                            ));
+                            return Err(ServiceError::failed(RpcError::SuccessBeforePipes));
                         }
                         stdin.send(None).map_err(|_| ServiceError::Cancelled)?;
                         stdout.send(None).map_err(|_| ServiceError::Cancelled)?;
@@ -271,7 +267,7 @@ async fn exchange(
         }
         .await;
         report(connection, &reference, &result, stop).await?;
-        result.map_err(handler)
+        result.map_err(ServiceError::failed)
     };
     let input = send_input(pipes, request.live, stdin_receiver, demanded, input, transport);
     let complete = async {
@@ -324,7 +320,7 @@ async fn send_input(
                     return Ok(());
                 }
             }
-            .map_err(handler)?;
+            .map_err(ServiceError::failed)?;
             connection
                 .send(message)
                 .await
@@ -347,7 +343,7 @@ async fn send_input(
             });
         let result = pipes.put(&reference.url, body, stop).await;
         report(connection, &reference, &result, stop).await?;
-        result.map_err(handler)?;
+        result.map_err(ServiceError::failed)?;
     }
     Ok(())
 }
@@ -363,14 +359,23 @@ async fn report(
         ok: result.is_ok(),
         error: result.as_ref().err().map(ToString::to_string),
     })
-    .map_err(handler)?;
+    .map_err(ServiceError::failed)?;
     tokio::select! {
         _ = stop.cancelled() => Err(ServiceError::Cancelled),
         result = output.send(message) => result.map_err(|_| ServiceError::Cancelled),
     }
 }
-fn handler(error: impl std::fmt::Display) -> ServiceError {
-    ServiceError::Handler(error.to_string())
+/// A call's relay broke the rpc protocol (`commands.md` § Handle an rpc call).
+#[derive(Debug, thiserror::Error)]
+enum RpcError {
+    #[error("duplicate RPC pipes")]
+    DuplicatePipes,
+    #[error("RPC input pipe disagrees with invocation")]
+    InputDisagrees,
+    #[error("overlapping RPC stdin demands")]
+    OverlappingDemands,
+    #[error("RPC success arrived before pipe descriptors")]
+    SuccessBeforePipes,
 }
 
 /// The frame that ends a call's standard input.
@@ -378,5 +383,5 @@ fn stdin_end(call_id: &str) -> Result<wire::Frame, ServiceError> {
     wire::encode(&wire::Outbound::RpcStdinEnd {
         call_id: call_id.into(),
     })
-    .map_err(handler)
+    .map_err(ServiceError::failed)
 }

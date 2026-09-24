@@ -5,6 +5,9 @@ pub mod edits;
 pub mod paths;
 pub mod protocol;
 
+#[cfg(feature = "testing")]
+pub mod testing;
+
 mod client;
 mod exchange;
 mod server;

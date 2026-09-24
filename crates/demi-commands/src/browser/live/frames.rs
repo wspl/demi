@@ -4,6 +4,7 @@
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use demi_builtin_protocol::{
+    DecodeError,
     browser::TabId,
     live::{
         CONTROL_FRAME, FILE_FRAME, FileHeader, LiveModuleMessage, LiveViewerMessage,
@@ -24,6 +25,22 @@ pub(crate) enum Inbound {
         file: u32,
         data: Bytes,
     },
+}
+
+/// A frame the protocol refuses (`live-view.md` § Framing and versions): a
+/// defect of the page, which ends the view.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum FrameError {
+    #[error("a live frame is empty or too large")]
+    Length,
+    #[error("the stream ended inside a live frame")]
+    Unfinished,
+    #[error("invalid live message: {0}")]
+    Message(DecodeError),
+    #[error("invalid file frame: {0}")]
+    File(DecodeError),
+    #[error("unknown live frame kind {0}")]
+    Kind(u8),
 }
 
 /// Splits the page's bytes into frames as they arrive.
@@ -47,7 +64,7 @@ impl Reader {
                 let length = u32::from_be_bytes(self.pending[..4].try_into().expect("four bytes"));
                 let length = usize::try_from(length).unwrap_or(usize::MAX);
                 if length == 0 || length > MAX_FRAME_BYTES {
-                    return Err(invalid("a live frame is empty or too large"));
+                    return Err(ServiceError::failed(FrameError::Length));
                 }
                 if self.pending.len() >= 4 + length {
                     self.pending.advance(4);
@@ -58,7 +75,7 @@ impl Reader {
             match self.input.next().await? {
                 Some(chunk) => self.pending.extend_from_slice(&chunk),
                 None if self.pending.is_empty() => return Ok(None),
-                None => return Err(invalid("the stream ended inside a live frame")),
+                None => return Err(ServiceError::failed(FrameError::Unfinished)),
             }
         }
     }
@@ -68,22 +85,18 @@ fn decode(frame: &mut Bytes) -> Result<Inbound, ServiceError> {
     match frame.get_u8() {
         CONTROL_FRAME => LiveViewerMessage::decode(frame)
             .map(Inbound::Control)
-            .map_err(|error| invalid(&format!("invalid live message: {error}"))),
+            .map_err(|error| ServiceError::failed(FrameError::Message(error))),
         FILE_FRAME => {
             let (header, data) = FileHeader::split(frame)
-                .map_err(|error| invalid(&format!("invalid file frame: {error}")))?;
+                .map_err(|error| ServiceError::failed(FrameError::File(error)))?;
             Ok(Inbound::File {
                 upload: header.upload,
                 file: header.file,
                 data: frame.slice_ref(data),
             })
         }
-        _ => Err(invalid("unknown live frame")),
+        kind => Err(ServiceError::failed(FrameError::Kind(kind))),
     }
-}
-
-fn invalid(message: &str) -> ServiceError {
-    ServiceError::Handler(message.into())
 }
 
 fn framed(kind: u8, payload_length: usize, write: impl FnOnce(&mut BytesMut)) -> Bytes {

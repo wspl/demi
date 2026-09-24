@@ -1114,7 +1114,7 @@ impl Conversations {
                     };
                     // A service that shut down forgets everything anyway.
                     let _closed = self.requests.send(forget).await;
-                    released.map_err(|error| ServiceError::Handler(error.to_string()))?;
+                    released.map_err(ServiceError::failed)?;
                 }
                 serde_json::json!({})
             }
@@ -1143,7 +1143,7 @@ impl Conversations {
         self.tasks.close();
         self.tasks.wait().await;
         match released.into_iter().find_map(std::result::Result::err) {
-            Some(error) => Err(ServiceError::Handler(error.to_string())),
+            Some(error) => Err(ServiceError::failed(error)),
             None => Ok(()),
         }
     }

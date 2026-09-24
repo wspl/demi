@@ -283,7 +283,6 @@ async fn run_tools(
         let before = s.read(|core| core.inputs.arrivals());
         let outcome = if tools.iter().any(|tool| tool.name == call.tool_name) {
             let invocation = ToolInvocation {
-                tool_use_id: call.tool_use_id.clone(),
                 tool_name: call.tool_name.clone(),
                 input: tool_input(&call.input),
                 model: s.read(|core| core.model.clone()),

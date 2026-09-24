@@ -133,20 +133,30 @@ pub fn client_text(text: &str) -> Vec<ClientContent> {
     }]
 }
 
+/// Makes one provider's runtimes.
+type Runtimes = Rc<dyn Fn() -> Box<dyn ProviderRuntime>>;
+
 /// Provider runtimes by provider id: every runtime of one provider plays
 /// that provider's one script, and a provider without one is unknown.
 #[derive(Default)]
 pub struct ScriptedProviders {
-    runtimes: RefCell<HashMap<String, ScriptedRuntime>>,
+    runtimes: RefCell<HashMap<String, Runtimes>>,
     /// Every resolution asked for: the conversation and the provider.
     pub calls: RefCell<Vec<(NodeId, String)>>,
 }
 
 impl ScriptedProviders {
     pub fn provide(&self, provider: &str, script: &ScriptedRuntime) {
-        self.runtimes
-            .borrow_mut()
-            .insert(provider.to_owned(), script.clone());
+        self.provide_runtime(provider, script.clone());
+    }
+
+    /// Every runtime of `provider` is a copy of `runtime`, such as one that
+    /// answers each node of a tree from a script of its own.
+    pub fn provide_runtime(&self, provider: &str, runtime: impl ProviderRuntime + Clone + 'static) {
+        self.runtimes.borrow_mut().insert(
+            provider.to_owned(),
+            Rc::new(move || Box::new(runtime.clone()) as Box<dyn ProviderRuntime>),
+        );
     }
 }
 
@@ -159,11 +169,11 @@ impl ProviderResolver for ScriptedProviders {
         self.calls
             .borrow_mut()
             .push((root.clone(), model.provider_id.clone()));
-        let runtime = self.runtimes.borrow().get(&model.provider_id).cloned();
+        let runtimes = self.runtimes.borrow().get(&model.provider_id).cloned();
         let provider = model.provider_id.clone();
         Box::pin(async move {
-            let runtime = runtime.ok_or(ResolveError::Unknown(provider))?;
-            Ok(Box::new(runtime) as Box<dyn ProviderRuntime>)
+            let runtimes = runtimes.ok_or(ResolveError::Unknown(provider))?;
+            Ok(runtimes())
         })
     }
 }

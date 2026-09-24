@@ -5,13 +5,13 @@ use std::{collections::HashMap, sync::Arc};
 
 use demi_core::{Clock, FailureSource, ProviderErrorDiagnostics, TokenUsage};
 use demi_provider::{
-    ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ToolCall, http_failure,
-    read_http_failure, tagged_wire,
-    wire::{ReportedString, Tagged, decode_tagged, sse_data},
+    ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ToolCall, encode_body,
+    http_failure, read_http_failure, tagged_wire,
+    wire::{NonEmpty, ReportedString, Tagged, decode_tagged, sse_data},
 };
 use futures_util::{Stream, StreamExt};
 use reqwest::header::{ACCEPT, CONTENT_TYPE};
-use serde::{Deserialize, Deserializer, de};
+use serde::Deserialize;
 
 use crate::{
     Shared,
@@ -37,7 +37,8 @@ pub(crate) fn run(
         if cancel.is_cancelled() {
             return;
         }
-        let body = match encode(request).await {
+        // A body with images is megabytes of base64, built off the shard.
+        let body = match encode_body(LABEL, move || request::encode(&request)).await {
             Ok(body) => body,
             Err(failure) => {
                 yield ProviderEvent::Error(failure);
@@ -113,27 +114,6 @@ pub(crate) fn run(
     }
 }
 
-/// The request body, encoded on the blocking pool: a body with images is
-/// megabytes of base64, which must not hold up the user's shard. Dropping the
-/// run while it encodes leaves the encoding to finish there; it has no effect
-/// beyond its result, which is then discarded.
-async fn encode(request: InferenceRequest) -> Result<Vec<u8>, ProviderFailure> {
-    let encoded = tokio::task::spawn_blocking(move || request::encode(&request)).await;
-    let unbuilt = |message: String| ProviderFailure {
-        message,
-        code: None,
-        diagnostics: None,
-        retry_after: None,
-    };
-    match encoded {
-        Ok(Ok(body)) => Ok(body),
-        Ok(Err(request::UnloadedMedia(blob))) => Err(unbuilt(format!(
-            "{LABEL} API request names media {blob} that was not loaded"
-        ))),
-        Err(error) => Err(unbuilt(format!("{LABEL} API request body was not built: {error}"))),
-    }
-}
-
 /// What one frame means for the run.
 enum Next {
     Nothing,
@@ -206,8 +186,8 @@ impl Mapper {
                 self.tools.insert(
                     start.index,
                     ToolBlock {
-                        id: tool.id,
-                        name: tool.name,
+                        id: tool.id.0,
+                        name: tool.name.0,
                         initial_input: tool.input,
                         input_json: String::new(),
                     },
@@ -418,10 +398,8 @@ struct RedactedThinkingBlock {
 
 #[derive(Deserialize)]
 struct ToolUseBlock {
-    #[serde(deserialize_with = "nonempty")]
-    id: String,
-    #[serde(deserialize_with = "nonempty")]
-    name: String,
+    id: NonEmpty,
+    name: NonEmpty,
     input: Option<serde_json::Value>,
 }
 
@@ -455,10 +433,3 @@ struct InputJsonDelta {
     partial_json: String,
 }
 
-fn nonempty<'de, D: Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
-    let text = String::deserialize(deserializer)?;
-    if text.is_empty() {
-        return Err(de::Error::invalid_length(0, &"a nonempty string"));
-    }
-    Ok(text)
-}

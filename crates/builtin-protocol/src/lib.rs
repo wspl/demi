@@ -4,6 +4,10 @@
 //! messages, and the pinned Chrome release records. It holds types and their
 //! checks only; the operations, transport and IO live in `demi-commands`.
 
+/// The package's id, which `demi-commands` declares in its Cargo metadata for
+/// the release and the coding agent's commands bind to.
+pub const PACKAGE: &str = "demi.builtin";
+
 /// Declares a closed set of wire names as an enum that displays and parses
 /// each value as the wire spells it.
 macro_rules! closed_set {

@@ -108,11 +108,17 @@ boundary and command-state semantics belong to
 ## Workspaces, devices, and attached hosts
 
 Workspace creation takes `{ kind: "device", deviceId, path, name }` or
-`{ kind: "cloud", name }`. The first names a directory on a caller-owned
-device. The second creates a project directory on the user's Cloud and can
-wake it. A workspace is a pointer; renaming or deleting it does not rename or
-delete files. Deletion returns 409 `workspace_in_use` while conversations
-still target it.
+`{ kind: "cloud", name }`. The first names an absolute directory on a
+caller-owned device; another device answers 404 `device_not_found`. The second
+creates a project directory on the user's Cloud and can wake it. A name is
+trimmed and has 1 to 256 characters. A creation answers `{ workspace }` with
+201 and a rename, `PATCH /workspaces/:id { name }`, with 200; a workspace is
+`{ id, deviceId, path, name, createdAt }`, and `GET /workspaces` returns
+`{ workspaces }` in the user's order, which the product state carries too. A
+workspace is a pointer; renaming or deleting it does not rename or delete
+files. Deletion answers 204, and 409 `workspace_in_use` while conversations
+still target it; an id the caller does not have answers 404
+`workspace_not_found`.
 
 Device revocation applies to user-paired devices, not the managed Cloud device.
 It returns 409 `device_in_use` while workspaces point at that device. Successful
@@ -284,7 +290,9 @@ waiting for the page to load, and the tab's content shows the loading.
 | `POST …/browser/tabs/:tab/navigate { url }` | Starts loading the URL in the tab and answers 204 | Is not woken: answers 409 `host_stopped` |
 | `POST …/browser/tabs/:tab/history { action }` | `back`, `forward` or `reload`; answers 204 | Is not woken: answers 409 `host_stopped` |
 
-A tab the browser does not have answers 404 `tab_not_found`. Other refusals
+A tab the browser does not have answers 404 `tab_not_found`, and a backend
+whose native catalog serves no browser answers these routes 404 `not_found`.
+Other refusals
 follow the user stream's: 409 `conversation_archived`, `device_offline` and
 `conversation_busy`, and 502 `browser_failed` with the operation's own code
 and message when the browser refuses or cannot start. A call on a route that
@@ -328,9 +336,16 @@ and never with product routes. Lifetime, relay behavior and the
 ## Account API
 
 `POST /api/setup` and `POST /api/auth/login` take `{ email, password }`.
-`POST /api/users` takes `{ email, password, role }` with role `admin` or `user`.
-`PATCH /api/users/:id` resets a lower-ranked account with `{ password }`; an
-id that names no account answers 404 `user_not_found`.
+The users routes are an administrator's: a user answers 403 `forbidden`.
+`GET /api/users` returns `{ users }`, every account in the order they were
+created. `POST /api/users` takes `{ email, password, role }` with role `admin`
+or `user`, creates an account of a role the caller outranks and returns
+`{ user }` with 201; a role the caller does not outrank answers 403
+`forbidden`, and an address an account has answers 409 `email_taken`.
+`PATCH /api/users/:id` resets a lower-ranked account with `{ password }` and
+answers 204; an id that names no account answers 404 `user_not_found` and an
+account the caller does not outrank 403 `forbidden`, both before the body is
+checked.
 Setup creates the only master account and answers 404 `already_set_up` after
 setup is complete. HTTP validation trims and lowercases addresses; storage
 uniqueness and lookups are case-insensitive. A password being set, at setup,
@@ -567,8 +582,10 @@ and metadata edits are refused until restore, with 409
 the stream that is not a WebSocket upgrade answers 426 `upgrade_required`.
 
 `POST /api/sidebar/reorder` takes `{ kind: "conversation" | "workspace", id,
-beforeId: string | null }`; null appends. Conversation moves stay within the same
-project and pin partition; a move out of them answers 409 `invalid_order`.
+beforeId: string | null }`; null appends, and a success answers 204.
+Conversation moves stay within the same project and pin partition, and a
+workspace moves among the user's workspaces; a move out of them, or of a row
+that is archived or the caller does not have, answers 409 `invalid_order`.
 [Storage](../backend/storage.md#control-records) owns persistent ordering.
 Activity timestamps never reorder rows.
 

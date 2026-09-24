@@ -8,6 +8,7 @@ mod assets;
 mod attachments;
 mod auth;
 mod blobs;
+mod browser;
 mod body;
 mod content;
 mod conversations;
@@ -20,14 +21,18 @@ mod hosts;
 mod install;
 mod listener;
 mod models;
+mod panel;
 mod providers;
 mod query;
 mod runners;
 mod settings;
+mod sidebar;
 mod state;
 mod streams;
 mod transfer;
 mod usage;
+mod users;
+mod workspaces;
 
 use std::io;
 use std::net::SocketAddr;
@@ -184,6 +189,8 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/providers/{id}/accounts/active", put(accounts::activate))
         .route("/providers/{id}/accounts/login", post(accounts::login_into))
         .route("/providers/{id}/accounts/{credential}", delete(accounts::remove))
+        .route("/users", get(users::list).post(users::create))
+        .route("/users/{id}", patch(users::reset_password))
         .route("/usage", get(usage::totals))
         .route("/usage/instance", get(usage::instance))
         .route("/conversations", get(conversations::list).post(conversations::create))
@@ -196,6 +203,14 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/conversations/{id}/stream", get(conversations::stream))
         .route("/conversations/{id}/streams/{name}", get(streams::open))
         .route("/conversations/{id}/activity", post(streams::activity))
+        .route("/conversations/{id}/panel", get(panel::read).put(panel::save))
+        .route("/conversations/{id}/browser/tabs", get(browser::list).post(browser::open))
+        .route("/conversations/{id}/browser/tabs/{tab}", delete(browser::close))
+        .route("/conversations/{id}/browser/tabs/{tab}/navigate", post(browser::navigate))
+        .route("/conversations/{id}/browser/tabs/{tab}/history", post(browser::history))
+        .route("/sidebar/reorder", post(sidebar::reorder))
+        .route("/workspaces", get(workspaces::list).post(workspaces::create))
+        .route("/workspaces/{id}", patch(workspaces::rename).delete(workspaces::delete))
         .route("/devices", get(devices::list))
         .route("/devices/claim", post(devices::claim))
         .route("/devices/{id}", delete(devices::revoke))

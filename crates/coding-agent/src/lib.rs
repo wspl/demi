@@ -14,7 +14,7 @@ pub use demi::{DemiOptions, demi_root};
 pub use harness::{CodingHarness, HostResolver};
 
 /// The native package the `file` and `browser` commands run in.
-pub const BUILTIN_PACKAGE: &str = "demi.builtin";
+pub use demi_builtin_protocol::PACKAGE as BUILTIN_PACKAGE;
 
 #[cfg(test)]
 mod command_line {
