@@ -1192,3 +1192,196 @@ async fn input_that_arrives_during_a_pass_waits_outside_the_summary_for_the_firs
         ]
     );
 }
+
+/// A question of 101 estimated tokens that starts with `name`.
+fn question(name: &str) -> String {
+    format!("{name} {}", "q".repeat(400))
+}
+
+#[tokio::test(flavor = "local")]
+async fn an_edit_before_or_after_compaction_boundaries_replays_only_the_summaries_of_what_it_keeps()
+ {
+    let provider = ScriptedRuntime::new([
+        answer("answer A"),
+        answer("answer B"),
+        answer("summary A"),
+        answer("answer C"),
+        answer("summary A B"),
+        // One answer for each replacement, in the order below.
+        answer("replaced A"),
+        answer("replaced B"),
+        answer("replaced C"),
+    ]);
+    let store = MemoryTreeStore::new();
+    let written = small_session_with(&provider, Vec::new(), &store, only_when_asked(100)).await;
+    for name in ["A", "B"] {
+        written
+            .send(text(&question(name)), turn(name))
+            .unwrap()
+            .await
+            .unwrap();
+    }
+    written.compact().unwrap().await.unwrap();
+    written
+        .send(text(&question("C")), turn("C"))
+        .unwrap()
+        .await
+        .unwrap();
+    written.compact().unwrap().await.unwrap();
+    let before = written.transcript().blocks;
+    assert_eq!(
+        kinds(&before),
+        [
+            "user",
+            "text",
+            "response",
+            "compaction_boundary",
+            "user",
+            "text",
+            "response",
+            "compaction_marker",
+            "compaction_boundary",
+            "user",
+            "text",
+            "response",
+            "compaction_marker"
+        ]
+    );
+
+    for (name, index, kept) in [
+        ("A", 0, Vec::new()),
+        ("B", 4, vec![summary_item("summary A")]),
+        ("C", 9, vec![summary_item("summary A B")]),
+    ] {
+        let session = restore_compacting(&store, &provider, 100);
+        let replacement = format!("{name}2");
+
+        session
+            .edit_and_send(edit_of(&session, name, "op1", &replacement))
+            .await
+            .unwrap();
+        session.settled().await;
+
+        // The summaries after the message went with it; the one before it
+        // stands for what it summarized.
+        let blocks = session.transcript().blocks;
+        assert_eq!(blocks[..index], before[..index], "editing {name}");
+        assert_eq!(kinds(&blocks[index..]), ["user", "text", "response"]);
+        let expected = [kept, vec![user_item(&replacement)]].concat();
+        assert_eq!(
+            provider.requests().last().unwrap().items.as_ref(),
+            expected.as_slice(),
+            "editing {name}"
+        );
+    }
+}
+
+#[tokio::test(flavor = "local")]
+async fn an_edit_that_cuts_a_marker_anchors_no_estimate_on_a_usage_measured_before_its_summary() {
+    let provider = ScriptedRuntime::new([
+        answer("answer A"),
+        // Measured over the whole history, before the summary replaced A.
+        Turn::Events(vec![event::text("answer B"), event::response(900, 0)]),
+        answer("answer C"),
+        answer("summary A"),
+        answer("replaced C"),
+    ]);
+    let store = MemoryTreeStore::new();
+    let written = small_session_with(&provider, Vec::new(), &store, only_when_asked(200)).await;
+    for name in ["A", "B", "C"] {
+        written
+            .send(text(&question(name)), turn(name))
+            .unwrap()
+            .await
+            .unwrap();
+    }
+    written.compact().unwrap().await.unwrap();
+    assert_eq!(
+        kinds(&written.transcript().blocks),
+        [
+            "user",
+            "text",
+            "response",
+            "compaction_boundary",
+            "user",
+            "text",
+            "response",
+            "user",
+            "text",
+            "response",
+            "compaction_marker"
+        ]
+    );
+    let session = restore_compacting(&store, &provider, 200);
+
+    session
+        .edit_and_send(edit_of(&session, "C", "op1", "C2"))
+        .await
+        .unwrap();
+    session.settled().await;
+
+    // The marker went with C, and B's usage, over the threshold of 800,
+    // stays invalid: no pass runs before the replacement's turn.
+    assert_eq!(summary_sizes(&provider), [3]);
+    assert_eq!(
+        provider.requests().last().unwrap().items.as_ref(),
+        [
+            summary_item("summary A"),
+            user_item(&question("B")),
+            answer_item("small-model", "answer B"),
+            user_item("C2"),
+        ]
+    );
+}
+
+#[tokio::test(flavor = "local")]
+async fn a_pass_after_an_edit_summarizes_only_the_history_the_edit_kept() {
+    let first = format!("A {}", "q".repeat(3_200));
+    let provider = ScriptedRuntime::new([
+        answer("answer A"),
+        answer("answer B"),
+        answer("answer C"),
+        answer("summary of A"),
+        answer("replaced B"),
+    ]);
+    let store = MemoryTreeStore::new();
+    let written = small_session_with(&provider, Vec::new(), &store, only_when_asked(1)).await;
+    written
+        .send(text(&first), turn("A"))
+        .unwrap()
+        .await
+        .unwrap();
+    for name in ["B", "C"] {
+        written
+            .send(text(name), turn(name))
+            .unwrap()
+            .await
+            .unwrap();
+    }
+    let session = restore_compacting(&store, &provider, 1);
+
+    session
+        .edit_and_send(edit_of(&session, "B", "op1", "B2"))
+        .await
+        .unwrap();
+    session.settled().await;
+
+    // What the edit kept is over the threshold: the pass summarizes it, and
+    // no request holds an answer the edit removed.
+    let requests = provider.requests();
+    let [summary, replacement] = &requests[3..] else {
+        panic!("{requests:?}");
+    };
+    assert_eq!(
+        summary.items.as_ref(),
+        [
+            user_item(&first),
+            answer_item("small-model", "answer A"),
+            user_item(COMPACTION_SUMMARY_INSTRUCTION),
+        ]
+    );
+    assert_eq!(
+        replacement.items.as_ref(),
+        [summary_item("summary of A"), user_item("B2")]
+    );
+}

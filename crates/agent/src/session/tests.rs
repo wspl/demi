@@ -3,12 +3,17 @@
 //! the queue's saves, model switches inside a turn, the stream's blocks and
 //! the order of events. The server's scenario tests cover the frames.
 
-use std::{cell::RefCell, rc::Rc, sync::Arc, time::Duration};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+    sync::Arc,
+    time::Duration,
+};
 
 use demi_agent_protocol::{AbortTarget, ModelSwitchApply, TranscriptPatch};
 use demi_core::{
-    Block, FailureSource, NodeId, SessionPhase, Timestamp, ToolCallStatus, ToolResultContentBlock,
-    TurnId,
+    Block, FailureSource, NodeId, OperationId, SessionPhase, Timestamp, ToolCallStatus,
+    ToolResultContentBlock, TurnId, UserContentBlock,
 };
 use demi_gates::{ActivityGate, GateLease, Purpose};
 use demi_provider::{
@@ -17,15 +22,16 @@ use demi_provider::{
 };
 use futures_util::future::LocalBoxFuture;
 use serde_json::json;
-use tokio::sync::oneshot;
+use tokio::{sync::oneshot, task::JoinHandle};
 
 use super::*;
 use crate::{
-    store::{AgentTreeStore, NodeRecord},
+    store::{AgentTreeStore, EditReceipt, NodeRecord},
     testing::{MemoryTreeStore, SequentialIds, model_of, test_model, text},
 };
 
 mod compaction;
+mod editing;
 mod input;
 mod recovery;
 
@@ -36,8 +42,8 @@ type Invoke =
 struct TestRuntime {
     tools: Vec<(String, Invoke)>,
     admission: ActivityGate,
-    /// The preamble hook never answers.
-    hanging_preamble: bool,
+    /// While set, the preamble hook never answers.
+    hanging_preamble: Rc<Cell<bool>>,
 }
 
 impl SessionRuntime for TestRuntime {
@@ -58,7 +64,7 @@ impl SessionRuntime for TestRuntime {
     }
 
     fn preamble(&self) -> LocalBoxFuture<'_, Option<String>> {
-        if self.hanging_preamble {
+        if self.hanging_preamble.get() {
             return Box::pin(std::future::pending());
         }
         Box::pin(async { None })
@@ -134,6 +140,62 @@ fn gated_tool(name: &str) -> ((String, Invoke), Releases, oneshot::Receiver<()>)
     (invoke, releases, started_rx)
 }
 
+/// A `yield` of `duration_ms`.
+fn yield_tool() -> (String, Invoke) {
+    tool("yield", |call| {
+        let duration_ms = call.input["durationMs"]
+            .as_u64()
+            .and_then(|duration| u32::try_from(duration).ok())
+            .expect("the test's yield names its duration");
+        Box::pin(async move {
+            Ok(ToolOutcome {
+                effect: Some(ToolEffect::ScheduleYield { duration_ms }),
+                ..output("")
+            })
+        })
+    })
+}
+
+fn yield_call(duration_ms: u64) -> Turn {
+    Turn::Events(vec![
+        event::tool_call("yield-1", "yield", json!({ "durationMs": duration_ms })),
+        event::response(1, 1),
+    ])
+}
+
+/// An edit of the `user` block of the turn `turn` in the session's
+/// transcript as it is now, to one text. Equal requests have equal
+/// digests.
+fn edit_of(session: &AgentSession, turn: &str, operation: &str, replacement: &str) -> EditSubmission {
+    let snapshot = session.transcript();
+    let target = snapshot
+        .blocks
+        .iter()
+        .find_map(|block| match block {
+            Block::User(user) if user.turn_id.as_str() == turn => Some(user.id.clone()),
+            _ => None,
+        })
+        .expect("the turn has a user block");
+    EditSubmission {
+        operation_id: OperationId::try_from(operation).unwrap(),
+        target,
+        version: snapshot.version,
+        content: vec![EditContent::Content(UserContentBlock::Text {
+            text: replacement.to_owned(),
+        })],
+        digest: format!("{operation}:{replacement}"),
+    }
+}
+
+/// Submits `submission` in a task of its own, as a connection does.
+fn spawn_edit(
+    session: &AgentSession,
+    submission: EditSubmission,
+) -> JoinHandle<Result<EditReceipt, EditError>> {
+    let session = session.clone();
+    tokio::task::spawn_local(async move { session.edit_and_send(submission).await })
+}
+
 /// Lets the other tasks run until `done` holds.
 async fn until(done: impl Fn() -> bool) {
     for _ in 0..1_000 {
@@ -168,7 +230,7 @@ fn test_runtime(tools: Vec<(String, Invoke)>) -> TestRuntime {
     TestRuntime {
         tools,
         admission: ActivityGate::new(),
-        hanging_preamble: false,
+        hanging_preamble: Rc::default(),
     }
 }
 
@@ -196,6 +258,17 @@ async fn start_at(
     config: SessionConfig,
     clock: Arc<dyn demi_core::Clock>,
 ) -> AgentSession {
+    start_with(Box::new(provider.clone()), runtime, store, config, clock).await
+}
+
+/// A session whose provider runtime is `provider`.
+async fn start_with(
+    provider: Box<dyn ProviderRuntime>,
+    runtime: TestRuntime,
+    store: &Rc<MemoryTreeStore>,
+    config: SessionConfig,
+    clock: Arc<dyn demi_core::Clock>,
+) -> AgentSession {
     let deps = SessionDeps {
         runtime: Rc::new(runtime),
         store: store.session_store(&root()),
@@ -207,7 +280,7 @@ async fn start_at(
         id: root(),
         cwd: "/workspace".to_owned(),
         model: test_model(),
-        runtime: Box::new(provider.clone()),
+        runtime: provider,
     };
     let session = AgentSession::create(init, deps);
     store
@@ -256,6 +329,58 @@ fn restore_configured(
         config,
     };
     AgentSession::restore(checkpoint, root(), Box::new(provider.clone()), deps).unwrap()
+}
+
+/// Which runtime of a [`NumberedRuntime`]'s family served each request, and
+/// which closed, in order.
+#[derive(Debug, Default)]
+struct RuntimeLog {
+    forks: usize,
+    served: Vec<usize>,
+    closed: Vec<usize>,
+}
+
+/// A runtime of one script with an identity: the first is number 0, and each
+/// fork takes the next number. The family shares the script and the log,
+/// and nothing else.
+struct NumberedRuntime {
+    script: ScriptedRuntime,
+    number: usize,
+    log: Rc<RefCell<RuntimeLog>>,
+}
+
+impl NumberedRuntime {
+    fn first(script: &ScriptedRuntime) -> (Self, Rc<RefCell<RuntimeLog>>) {
+        let log = Rc::new(RefCell::new(RuntimeLog::default()));
+        let runtime = Self {
+            script: script.clone(),
+            number: 0,
+            log: log.clone(),
+        };
+        (runtime, log)
+    }
+}
+
+impl ProviderRuntime for NumberedRuntime {
+    fn run(&mut self, request: demi_provider::InferenceRequest) -> demi_provider::ProviderRun<'_> {
+        self.log.borrow_mut().served.push(self.number);
+        self.script.run(request)
+    }
+
+    fn fresh(&self) -> Box<dyn ProviderRuntime> {
+        let mut log = self.log.borrow_mut();
+        log.forks += 1;
+        Box::new(Self {
+            script: self.script.clone(),
+            number: log.forks,
+            log: self.log.clone(),
+        })
+    }
+
+    fn close(&mut self) -> LocalBoxFuture<'_, ()> {
+        self.log.borrow_mut().closed.push(self.number);
+        self.script.close()
+    }
 }
 
 /// A run that waits until the test lets it go on, then plays `events`.
@@ -535,7 +660,7 @@ async fn stop_while_a_hook_hangs_records_the_stop_without_waiting_for_the_hook()
     let provider = ScriptedRuntime::new(Vec::new());
     let store = MemoryTreeStore::new();
     let runtime = TestRuntime {
-        hanging_preamble: true,
+        hanging_preamble: Rc::new(Cell::new(true)),
         ..test_runtime(Vec::new())
     };
     let session = start_on(&provider, runtime, &store, SessionConfig::default()).await;
