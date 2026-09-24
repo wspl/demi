@@ -22,3 +22,4 @@ pub mod settings;
 pub mod state;
 pub mod text;
 pub mod usage;
+pub mod users;
