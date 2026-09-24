@@ -83,6 +83,7 @@ impl LinkPolicy for CommandPolicy {
         &self,
         job: Rc<JobOrigin>,
         op: StorageOp,
+        call: CancellationToken,
     ) -> LocalBoxFuture<'static, Result<StorageReply, PortError>> {
         let storage = job
             .caller
@@ -91,6 +92,10 @@ impl LinkPolicy for CommandPolicy {
         Box::pin(async move {
             let storage = storage
                 .ok_or_else(|| PortError::Storage("the job has no command storage".into()))?;
+            // A stopped call commits nothing.
+            if call.is_cancelled() {
+                return Err(PortError::Ended("the call was stopped".into()));
+            }
             Ok(storage.apply(op))
         })
     }

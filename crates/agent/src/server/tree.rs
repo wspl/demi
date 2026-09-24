@@ -24,11 +24,7 @@ use tokio_util::task::{AbortOnDropHandle, TaskTracker};
 
 pub(crate) use self::supervisor::{AgentSnapshot, StartInput, TreeEntry};
 use self::supervisor::{Child, INHERIT_PROFILE};
-use super::{
-    AgentServer, ResolveError, commands,
-    connection::Outbox,
-    failures::{self, FailureReader},
-};
+use super::{AgentServer, ResolveError, commands, connection::Outbox};
 use crate::{
     AgentHarness, IdSource, Node, Profile,
     node::{self, AssembleError, NodeRole, NodeSpec, Prompt},
@@ -75,11 +71,9 @@ pub struct Tree<H: AgentHarness> {
 }
 
 /// Where a tree's frames go: the attached connection's outbox, or nowhere
-/// while the tree is detached; its turns keep running either way. Each
-/// transcript frame leaves with the facts of the error blocks it carries.
+/// while the tree is detached; its turns keep running either way.
 pub(crate) struct FrameSink {
     attachment: watch::Sender<Option<Attachment>>,
-    failures: Rc<dyn FailureReader>,
 }
 
 #[derive(Clone)]
@@ -89,10 +83,9 @@ pub(crate) struct Attachment {
 }
 
 impl FrameSink {
-    fn new(failures: Rc<dyn FailureReader>) -> Self {
+    fn new() -> Self {
         Self {
             attachment: watch::Sender::new(None),
-            failures,
         }
     }
 
@@ -100,9 +93,7 @@ impl FrameSink {
     /// full, or whose socket is gone, is detached.
     pub(crate) fn emit(&self, frame: ServerFrame) {
         let delivered = match &*self.attachment.borrow() {
-            Some(attachment) => attachment
-                .outbox
-                .push(failures::present(frame, &*self.failures)),
+            Some(attachment) => attachment.outbox.push(frame),
             None => return,
         };
         if !delivered {
@@ -193,6 +184,7 @@ impl<H: AgentHarness> Tree<H> {
             commands,
             first_message: None,
             store: store.clone(),
+            shells: deps.shells.clone(),
             admission: admission.clone(),
             ids: deps.ids.clone(),
             clock: deps.clock.clone(),
@@ -208,7 +200,7 @@ impl<H: AgentHarness> Tree<H> {
                 apply: ModelSwitchApply::NextTurn,
             })?;
         }
-        let sink = Rc::new(FrameSink::new(deps.failures.clone()));
+        let sink = Rc::new(FrameSink::new());
         let frames = session.subscribe({
             let sink = sink.clone();
             move |event| {
@@ -322,7 +314,7 @@ impl<H: AgentHarness> Tree<H> {
         for frame in root.into_iter().chain(self.replay()) {
             // A frame the fresh outbox refuses belongs to a socket that is
             // gone; the next emit detaches the connection.
-            outbox.push(failures::present(frame, &*self.sink.failures));
+            outbox.push(frame);
         }
     }
 

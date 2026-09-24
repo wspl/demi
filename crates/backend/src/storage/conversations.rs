@@ -81,7 +81,6 @@ impl ConversationStores {
         })))
     }
 
-    #[cfg_attr(not(test), expect(dead_code, reason = "the agent's tree store writes the conversation databases"))]
     pub(crate) fn db(&self, conversation: &ConversationId) -> ConversationDb {
         ConversationDb {
             stores: self.0.clone(),
@@ -92,7 +91,6 @@ impl ConversationStores {
     /// Runs `work` on a read-only connection of the conversation's database,
     /// in one read transaction, so its statements see one state of the
     /// database. A conversation with no database yet answers `None`.
-    #[cfg_attr(not(test), expect(dead_code, reason = "summaries and cold history read the conversation databases"))]
     pub(crate) async fn read<T: Send + 'static>(
         &self,
         conversation: &ConversationId,
@@ -142,7 +140,6 @@ impl ConversationDb {
     /// The first call opens the writer, and a new database receives its
     /// schema. `work` is synchronous, so a transaction it opens never spans
     /// a wait.
-    #[cfg_attr(not(test), expect(dead_code, reason = "the agent's tree store writes the conversation databases"))]
     pub(crate) async fn call<T: Send + 'static>(
         &self,
         work: impl FnOnce(&mut Connection) -> Result<T, StorageError> + Send + 'static,

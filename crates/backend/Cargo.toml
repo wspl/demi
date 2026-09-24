@@ -11,6 +11,8 @@ rust-version.workspace = true
 doctest = false
 
 [dependencies]
+demi-agent = { path = "../agent" }
+demi-agent-protocol = { path = "../agent-protocol" }
 demi-artifact = { path = "../artifact" }
 demi-command-service = { path = "../command-service" }
 demi-core = { path = "../core" }
@@ -72,6 +74,7 @@ url = "2"
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
+demi-agent = { path = "../agent", features = ["testing"] }
 demi-host-remote = { path = "../host-remote", features = ["testing"] }
 demi-provider = { path = "../provider", features = ["testing"] }
 tempfile = "3"

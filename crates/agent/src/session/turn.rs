@@ -275,6 +275,9 @@ async fn run_tools(
                 tool_use_id: call.tool_use_id.clone(),
                 tool_name: call.tool_name.clone(),
                 input: tool_input(&call.input),
+                model: s.read(|core| core.model.clone()),
+                generation: s.read(|core| core.generation.number),
+                cancel: cancel.child_token(),
             };
             match cancel.guard(s.runtime.invoke_tool(invocation)).await? {
                 Ok(outcome) => outcome,

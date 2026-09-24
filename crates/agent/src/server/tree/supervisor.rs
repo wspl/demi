@@ -465,6 +465,7 @@ impl<H: AgentHarness> Tree<H> {
             commands: Rc::new(commands),
             first_message,
             store: self.store.clone(),
+            shells: deps.shells.clone(),
             admission: self.admission.clone(),
             ids: deps.ids.clone(),
             clock: deps.clock.clone(),

@@ -7,7 +7,7 @@
 use std::rc::Rc;
 
 use demi_core::{ModelSelection, NodeId};
-use demi_shell::CommandSet;
+use demi_shell::{CommandSet, Host, HostError, HostErrorKind};
 
 /// The node a harness hook is asked about.
 #[derive(Debug, Clone, Copy)]
@@ -28,9 +28,26 @@ pub struct PromptContext<'a> {
     reason = "a harness runs on the user's shard: its futures are never sent to another thread"
 )]
 pub trait AgentHarness: 'static {
+    /// The Hosts the conversations' shell tools run on. The agent only asks
+    /// one for its key; the product's shell environment factory
+    /// (`ServerDeps::shells`) makes a node's environment on it.
+    type Host: Host;
+
     /// The harness's name, which every checkpoint records: a node another
     /// harness saved is not restored.
     fn name(&self) -> &str;
+
+    /// The Host a node's shell tools reach now: the conversation's current
+    /// execution target (`sessions-and-targets.md` § Host operations). Two
+    /// answers for the same target have equal keys, so a node keeps one
+    /// shell environment per target it used. By default the harness has
+    /// none, and a shell tool's call fails.
+    async fn host(&self, _context: PromptContext<'_>) -> Result<Rc<Self::Host>, HostError> {
+        Err(HostError::new(
+            HostErrorKind::Unavailable,
+            "this agent runs no shell tools",
+        ))
+    }
 
     /// The commands a node's shell offers. A node renders their help into
     /// its system prompt once, when it is assembled.
