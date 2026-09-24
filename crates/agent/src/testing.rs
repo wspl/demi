@@ -717,7 +717,7 @@ pub mod store_contract {
         AgentTreeStore,
         store::{
             CheckpointState, CheckpointUpdate, ClosePhase, CommandStateSnapshot, NodeClose,
-            NodeRecord, media::BlobStore,
+            NodeRecord, PendingAgentInput, media::BlobStore,
         },
     };
 
@@ -1092,5 +1092,90 @@ pub mod store_contract {
                 text: format!("[missing image blob {blob}]")
             }]
         );
+    }
+
+    /// A save delivers a completion it holds as waiting input as well as one
+    /// its transcript holds.
+    pub async fn a_save_delivers_a_completion_it_holds_as_waiting_input(
+        store: &dyn AgentTreeStore,
+    ) {
+        create(
+            store,
+            record("root", None, 1),
+            update(Vec::new(), Vec::new()),
+        )
+        .await;
+        create(
+            store,
+            record("child", Some("root"), 4),
+            update(Vec::new(), Vec::new()),
+        )
+        .await;
+        store
+            .close_node(&id("child"), completed("child done"))
+            .await
+            .expect("the node closes");
+        let Block::AgentMessage(receipt) = receipt("child", 4) else {
+            unreachable!("a receipt is an agent message")
+        };
+        let mut save = update(Vec::new(), Vec::new());
+        save.state.agent_inputs.push(PendingAgentInput {
+            turn_id: TurnId::try_from("waiting").expect("a test turn id is not empty"),
+            model: test_model(),
+            message: receipt.message,
+        });
+        store
+            .session_store(&id("root"))
+            .save(save, &Default::default())
+            .await
+            .expect("the save commits");
+        assert!(delivered(store, "child").await);
+    }
+
+    /// A node's children list in spawn order, and in creation order for one
+    /// spawn time; a close keeps its phase, time and result.
+    pub async fn children_list_in_spawn_order_and_a_close_keeps_its_result(
+        store: &dyn AgentTreeStore,
+    ) {
+        create(
+            store,
+            record("root", None, 1),
+            update(Vec::new(), Vec::new()),
+        )
+        .await;
+        for (child, round) in [
+            ("late", 3),
+            ("early", 1),
+            ("first-of-two", 2),
+            ("second-of-two", 2),
+        ] {
+            create(
+                store,
+                record(child, Some("root"), round),
+                update(Vec::new(), Vec::new()),
+            )
+            .await;
+        }
+        let close = NodeClose {
+            phase: ClosePhase::Completed {
+                result: "found it".into(),
+            },
+            at: Timestamp::from_millisecond(90_000).expect("the time is in range"),
+        };
+        store
+            .close_node(&id("early"), close.clone())
+            .await
+            .expect("the node closes");
+
+        let children: Vec<String> = store
+            .children(&id("root"))
+            .await
+            .expect("the store lists children")
+            .into_iter()
+            .map(|node| node.id.to_string())
+            .collect();
+        assert_eq!(children, ["early", "first-of-two", "second-of-two", "late"]);
+        let early = stored(store, "early").await.expect("the node exists");
+        assert_eq!((early.closed, early.delivered), (Some(close), false));
     }
 }
