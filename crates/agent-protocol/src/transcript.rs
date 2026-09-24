@@ -52,7 +52,7 @@ pub enum TranscriptPatch {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TranscriptVersion {
-    #[garde(length(utf16, min = 1))]
+    #[garde(length(chars, min = 1))]
     pub epoch: String,
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub revision: u64,

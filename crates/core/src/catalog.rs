@@ -42,7 +42,7 @@ pub struct ProviderModelList {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderModel {
-    #[garde(length(utf16, min = 1))]
+    #[garde(length(chars, min = 1))]
     pub id: String,
     #[garde(skip)]
     pub display_name: String,
@@ -196,7 +196,7 @@ impl ProviderModel {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ServiceTier {
-    #[garde(length(utf16, min = 1))]
+    #[garde(length(chars, min = 1))]
     pub id: String,
     #[garde(skip)]
     pub label: String,
