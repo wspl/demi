@@ -1413,6 +1413,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "demi-coding-agent"
+version = "0.1.3"
+dependencies = [
+ "demi-agent",
+ "demi-agent-protocol",
+ "demi-builtin-protocol",
+ "demi-command-tree",
+ "demi-core",
+ "demi-host-remote",
+ "demi-provider",
+ "demi-shell",
+ "futures-util",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "demi-command-service"
 version = "0.1.3"
 dependencies = [
