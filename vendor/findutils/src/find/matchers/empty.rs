@@ -4,7 +4,6 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-use uucore::context::FileKindExt as _;
 use {uucore::context::fs::read_dir, uucore::context::io::stderr, uucore::context::io::Write};
 
 use super::{Matcher, MatcherIO, WalkEntry};

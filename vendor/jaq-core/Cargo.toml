@@ -70,3 +70,10 @@ version = "1.0"
 [dependencies.uucore]
 path = "../uucore"
 default-features = false
+
+[package.metadata.demi]
+maintainer = "demi-runner"
+patches = [
+    "Filter evaluation checks the shell job's cancellation, and halt exits through uucore::context",
+    "The release's tests, benchmarks, examples and CI files are left out",
+]

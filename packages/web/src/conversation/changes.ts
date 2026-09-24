@@ -1,7 +1,7 @@
 import { reactive } from 'vue'
 import type { ChangeSetSource, ReadCallChange, WorkingTreeChange } from '@demicodes/web-ui/files/changes'
 import { ApiError, apiRequest, readResponse } from '../api/client'
-import { changeSidesSchema, workingTreeChangesSchema } from '../api/contracts'
+import { changeSidesSchema, workingTreeChangesSchema } from '../api/generated/web-api'
 import { fileBrowserError, rawFileContents } from '../api/files'
 
 /**

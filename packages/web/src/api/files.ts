@@ -5,10 +5,31 @@ import {
   type FileContents,
   type FileUploadOptions,
 } from '@demicodes/web-ui/files/types'
+import { z } from 'zod'
 import { ApiError, apiRequest, apiUrl, invalidResponse, jsonBody, readResponse } from './client'
-import { directorySchema, fileHeadersSchema, fileTextSchema } from './contracts'
+import { directorySchema, fileTextSchema, type CreateDirectory } from './generated/web-api'
 import { uploadBytes } from './uploads'
 import type { Device } from '../state/types'
+
+/**
+ * A raw file answer's headers as a file description (`web-api.md` § File
+ * text and working tree changes): its size, its modification time when the
+ * route knows it, and the version a preview pins.
+ */
+const fileHeadersSchema = z.object({
+  size: z.string().regex(/^\d+$/).transform(Number),
+  modifiedAt: z.string().nullable().transform((value, context) => {
+    if (value === null)
+      return null
+    const time = Date.parse(value)
+    if (Number.isNaN(time)) {
+      context.addIssue('Expected an HTTP date')
+      return z.NEVER
+    }
+    return new Date(time).toISOString()
+  }),
+  version: z.string().nullable(),
+})
 
 /** What an API failure means to the file views; a `HEAD` answer has only its status to say it. */
 function failureKind(error: ApiError): FileBrowserFailure['kind'] {
@@ -126,8 +147,8 @@ export function fileSource(
         return directory.entries.map((entry) => ({
           name: entry.name,
           isDirectory: entry.isDirectory,
-          size: entry.size ?? undefined,
-          modifiedAt: entry.modifiedAt ?? undefined,
+          size: entry.size,
+          modifiedAt: entry.modifiedAt,
         }))
       } catch (error) {
         browserError(error)
@@ -140,7 +161,7 @@ export function fileSource(
               await apiRequest(endpoint, {
                 method: 'POST',
                 signal,
-                ...jsonBody({ path }),
+                ...jsonBody({ path } satisfies CreateDirectory),
               })
             } catch (error) {
               browserError(error)

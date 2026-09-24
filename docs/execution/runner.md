@@ -74,7 +74,9 @@ permissions decide which paths they reach. A Host's default working directory
 is where work starts when a request names none; it is not a sandbox, a
 workspace boundary, or a permission check. A process the backend starts outside
 a shell job, such as a provider's CLI, is a raw process request. Signals travel
-by name from one closed set that raw processes and jobs share.
+by name from one closed set that raw processes and jobs share. When the backend
+drops the handle of a raw process that has not ended, it asks the runner to kill
+the process and does not wait: nothing controls such a process any more.
 
 Raw process environment selection follows these rules:
 

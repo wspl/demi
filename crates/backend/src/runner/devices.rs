@@ -105,6 +105,16 @@ impl Devices {
         self.link(device).is_some()
     }
 
+    /// Resolves once a live connection serves the device, as a Cloud's
+    /// boot waits for its runner.
+    pub(crate) async fn until_online(&self, device: &DeviceId) {
+        let mut link = self.slot(device).link.subscribe();
+        // The slot keeps the sender while the shard lives.
+        let _ = link
+            .wait_for(|link| matches!(link, DeviceLink::Online(link) if !link.is_closed()))
+            .await;
+    }
+
     /// The home directory the device's runner reported when it last
     /// connected; none before it ever did since the backend started.
     pub(crate) fn home(&self, device: &DeviceId) -> Option<String> {
@@ -281,6 +291,47 @@ impl Shard {
             home_dir: home.into(),
         };
         self.bind(&slot, device, identity).expect("an open shard binds").driver
+    }
+
+    /// Connects `device` through a runner the test plays, working in `home`:
+    /// it answers each ping, and each conversation release once
+    /// `on_release` ran for the released conversation, so what that reads
+    /// is the state before the release was answered.
+    pub(crate) fn play_runner_for_tests(
+        self: &Rc<Self>,
+        device: &DeviceId,
+        home: &str,
+        on_release: impl Fn(demi_web_api::ids::ConversationId) -> futures_util::future::LocalBoxFuture<'static, ()> + 'static,
+    ) {
+        use demi_runner_protocol::wire::{self, Outbound};
+        let driver = self.connect_for_tests(device, home);
+        let (answers, answered) = tokio::sync::mpsc::channel::<Result<Vec<u8>, String>>(8);
+        let (frames, mut sent) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
+        let incoming = futures_util::stream::unfold(answered, |mut answered| async move {
+            answered.recv().await.map(|frame| (frame, answered))
+        });
+        let outgoing = futures_util::sink::unfold(frames, |frames, frame: Vec<u8>| async move {
+            frames.send(frame).await.map_err(|error| error.to_string())?;
+            Ok::<_, String>(frames)
+        });
+        tokio::task::spawn_local(driver.serve(incoming, outgoing));
+        tokio::task::spawn_local(async move {
+            while let Some(frame) = sent.recv().await {
+                let answer = match wire::decode::<Inbound>(&frame) {
+                    Ok(Inbound::Ping {}) => Outbound::Pong { jobs: 0 },
+                    Ok(Inbound::ConversationRelease { id, conversation_id }) => {
+                        let conversation = demi_web_api::ids::ConversationId::try_from(conversation_id)
+                            .expect("a release names a conversation");
+                        on_release(conversation).await;
+                        Outbound::ConversationReleased { id, error: None }
+                    }
+                    _ => continue,
+                };
+                let answer = wire::encode(&answer).expect("the test runner's answers encode");
+                // The link ends with the test.
+                let _ = answers.send(Ok(answer.into_bytes())).await;
+            }
+        });
     }
 }
 

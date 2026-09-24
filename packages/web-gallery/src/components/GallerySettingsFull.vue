@@ -34,16 +34,17 @@ const props = defineProps<{
 const cloud = ref<CloudState>(
   {
     state: 'running',
+    operationId: null,
     phase: null,
     error: null,
-    systemBytes: 16 * 1024 ** 3,
-    homeBytes: 32 * 1024 ** 3
+    volumes: { systemBytes: 6 * 1024 ** 3, homeBytes: 20 * 1024 ** 3 },
+    limits: { systemBytes: 16 * 1024 ** 3, homeBytes: 64 * 1024 ** 3 }
   }
 )
 // The request is pending until the server accepts it; every second request is refused, so the failed state has a page.
 const reset = ref<{ status: 'idle' | 'pending' } | { status: 'failed'; message: string }>({ status: 'idle' })
 let resetRequests = 0
-async function resetCloud() {
+async function resetCloud(operationId: string) {
   if (reset.value.status === 'pending')
     return
   reset.value = { status: 'pending' }
@@ -54,6 +55,8 @@ async function resetCloud() {
     return
   }
   reset.value = { status: 'idle' }
+  // Accepted: the Cloud's status names this reset from now on, as the product's snapshot does.
+  cloud.value.operationId = operationId
   cloud.value.state = 'resetting'
   for (const phase of ['stopping', 'saving', 'rebuilding', 'booting', 'ready'] as const) {
     cloud.value.phase = phase

@@ -35,7 +35,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Cloud',
-    'Cloud shows its shared-environment description and storage limits, without a connection or lifecycle status. Reset progress and errors belong to the reset dialog.'
+    'Cloud shows its shared-environment description and its storage: each filesystem\'s current size and the most it may grow to, or only the most before its first start. There is no connection or lifecycle status. Reset progress and errors belong to the reset dialog.'
   ],
   [
     'Providers',

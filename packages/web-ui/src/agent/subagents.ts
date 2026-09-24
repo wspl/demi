@@ -1,4 +1,4 @@
-import type { Block, ProviderFailureFacts } from '@demicodes/core'
+import type { Block, ProviderFailureFacts } from '@demicodes/protocol'
 import type { ConversationStatus } from './conversation-status'
 
 export type SubagentPhase = 'running' | 'completed' | 'aborted' | 'error'

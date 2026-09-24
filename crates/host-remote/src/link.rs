@@ -493,22 +493,38 @@ impl Link {
         if self.is_closed() {
             return Err(self.offline());
         }
-        let frame = wire::encode(message)
-            .map_err(|error| HostError::new(HostErrorKind::Protocol, error.to_string()))?;
-        if frame.encoded_len() > wire::MAX_MESSAGE_BYTES {
-            return Err(HostError::new(
-                HostErrorKind::TooLarge,
-                format!(
-                    "the request is {} bytes, over the {}-byte message limit",
-                    frame.encoded_len(),
-                    wire::MAX_MESSAGE_BYTES
-                ),
-            ));
+        let frame = frame(message)?;
+        self.send_frame(frame).await
+    }
+
+    /// Queues `message` for the runner without waiting, for a caller that
+    /// cannot wait, such as a drop: at once when the queue has room, and
+    /// otherwise from a task of the connection, which its end waits for. A
+    /// closed connection sends nothing.
+    pub(crate) fn post(&self, message: &Inbound) {
+        if self.is_closed() {
+            return;
         }
+        // The messages posted are a few fields each, far below the limit
+        // that is the only reason a frame could not be made.
+        let Ok(frame) = frame(message) else {
+            return;
+        };
+        if let Err(mpsc::error::TrySendError::Full(frame)) = self.0.outbound.try_send(frame) {
+            let link = self.clone();
+            self.spawn(async move {
+                // A connection that ends first has nothing left to tell the
+                // runner.
+                let _ = link.send_frame(frame).await;
+            });
+        }
+    }
+
+    async fn send_frame(&self, frame: Vec<u8>) -> Result<(), HostError> {
         tokio::select! {
             biased;
             _ = self.0.closed.cancelled() => Err(self.offline()),
-            sent = self.0.outbound.send(frame.into_bytes()) => sent.map_err(|_| self.offline()),
+            sent = self.0.outbound.send(frame) => sent.map_err(|_| self.offline()),
         }
     }
 
@@ -1137,6 +1153,24 @@ impl LinkDriver {
         link.0.tasks.wait().await;
         end
     }
+}
+
+/// `message` as the frame the connection sends; a message over the wire's
+/// limit cannot be one.
+fn frame(message: &Inbound) -> Result<Vec<u8>, HostError> {
+    let frame = wire::encode(message)
+        .map_err(|error| HostError::new(HostErrorKind::Protocol, error.to_string()))?;
+    if frame.encoded_len() > wire::MAX_MESSAGE_BYTES {
+        return Err(HostError::new(
+            HostErrorKind::TooLarge,
+            format!(
+                "the request is {} bytes, over the {}-byte message limit",
+                frame.encoded_len(),
+                wire::MAX_MESSAGE_BYTES
+            ),
+        ));
+    }
+    Ok(frame.into_bytes())
 }
 
 /// A process's end as the runner reports it.

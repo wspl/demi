@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { TokenUsage } from '@demicodes/core'
+import type { TokenUsage } from '@demicodes/protocol'
 import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { formatTokens } from '../ui/token-count'

@@ -1,4 +1,4 @@
-import type { ProviderErrorDiagnostics } from '@demicodes/core'
+import type { ProviderErrorDiagnostics } from '@demicodes/protocol'
 import { z } from 'zod'
 
 /** A first line stays one line: past this the source's text goes in the body. */

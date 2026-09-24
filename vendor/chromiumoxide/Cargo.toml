@@ -226,4 +226,13 @@ version = "0.6"
 
 [package.metadata.demi]
 maintainer = "demi-commands"
-patches = ["bounded event subscriptions with explicit lag errors", "bounded CDP websocket messages", "preserve explicit CDP execution scopes"]
+patches = [
+    "Bounded event subscriptions whose loss is an explicit lag error, in place of unbounded channels",
+    "Bounded CDP websocket messages (16 MiB); an oversized message fails the connection",
+    "Evaluation keeps an explicit execution context or scope",
+    "Chrome starts through a caller's spawn hook (launch_with), so the service puts it in its own process group with its profile marker",
+    "Touch emulation only for a viewport that has touch, so a page keeps a fine pointer with hover",
+    "A same-document navigation completes its watcher at once instead of waiting for a load that never comes",
+    "Flattened child targets (out-of-process frames) are registered with their parent's session, their console messages reach their tab, and target creation and attachment may arrive in either order",
+    "License files have Unix line endings",
+]
