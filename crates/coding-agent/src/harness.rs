@@ -139,7 +139,7 @@ mod tests {
             NoHosts,
             DemiOptions {
                 browser: true,
-                extra: Vec::new(),
+                ..DemiOptions::default()
             },
         )
         .unwrap();
