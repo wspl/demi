@@ -699,6 +699,12 @@ fn stream_index(stream: StreamKind) -> usize {
 
 /// A changed file whose contents were not kept.
 fn unkept(file: &JobFileChange) -> EditedFile {
+    edited_file(file, |_| false)
+}
+
+/// The record a view lists for a file a job changed: its line counts and,
+/// for each edit segment, whether `kept` says its contents were kept.
+pub fn edited_file(file: &JobFileChange, mut kept: impl FnMut(usize) -> bool) -> EditedFile {
     EditedFile {
         path: file.path.clone(),
         kind: match file.kind {
@@ -707,10 +713,10 @@ fn unkept(file: &JobFileChange) -> EditedFile {
         },
         added: u32::try_from(file.added).unwrap_or(u32::MAX),
         removed: u32::try_from(file.removed).unwrap_or(u32::MAX),
-        edits: file
-            .edits
-            .iter()
-            .map(|_| KeptEdit { kept: false })
+        edits: (0..file.edits.len())
+            .map(|segment| KeptEdit {
+                kept: kept(segment),
+            })
             .collect(),
     }
 }

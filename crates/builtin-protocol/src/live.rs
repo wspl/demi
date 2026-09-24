@@ -5,6 +5,11 @@
 //! payload. The page and the module ship in the same release; there is no
 //! version.
 
+use std::sync::LazyLock;
+
+use demi_core::Nullable;
+use regex::Regex;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
@@ -101,9 +106,14 @@ impl FileHeader {
     }
 }
 
+/// What a control token looks like: a UUID in lowercase, as
+/// `crypto.randomUUID` makes it. It is both the check and the schema.
+pub const CONTROL_TOKEN_PATTERN: &str = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
+
 /// A control's identity in its page, as `crypto.randomUUID` makes it.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(try_from = "String")]
+#[schemars(extend("pattern" = CONTROL_TOKEN_PATTERN))]
 pub struct ControlToken(String);
 
 impl ControlToken {
@@ -116,12 +126,9 @@ impl TryFrom<String> for ControlToken {
     type Error = String;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        let groups: Vec<&str> = value.split('-').collect();
-        let valid = groups.iter().map(|group| group.len()).eq([8, 4, 4, 4, 12])
-            && groups
-                .iter()
-                .all(|group| group.bytes().all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f')));
-        if valid {
+        static PATTERN: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(CONTROL_TOKEN_PATTERN).expect("the control token pattern compiles"));
+        if PATTERN.is_match(&value) {
             Ok(Self(value))
         } else {
             Err(format!("{value:?} is not a control token"))
@@ -195,7 +202,7 @@ closed_set! {
 }
 
 /// A file the viewer chose for an upload; its bytes follow as file frames.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UploadFile {
     #[garde(length(utf16, min = 1, max = 255), pattern(r"^[^/\\\x00]+$"))]
@@ -207,7 +214,7 @@ pub struct UploadFile {
 }
 
 /// What the page sends.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, garde::Validate)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
 pub enum LiveViewerMessage {
     /// First: the viewer's platform.
@@ -232,6 +239,7 @@ pub enum LiveViewerMessage {
     /// The tab the view shows, or none.
     Watch {
         #[serde(deserialize_with = "Option::deserialize")]
+        #[schemars(with = "Nullable<TabId>")]
         #[garde(skip)]
         tab: Option<TabId>,
     },
@@ -296,6 +304,7 @@ pub enum LiveViewerMessage {
         #[garde(range(max = 3))]
         location: u8,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
         #[garde(length(utf16, min = 1, max = 16))]
         text: Option<String>,
         #[garde(skip)]
@@ -355,6 +364,7 @@ pub enum LiveViewerMessage {
         #[garde(skip)]
         accept: bool,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
         #[garde(length(utf16, max = 2000))]
         text: Option<String>,
     },
@@ -385,7 +395,7 @@ impl LiveViewerMessage {
 }
 
 /// An option of a native select or suggestion list.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct LiveControlOption {
     #[garde(length(utf16, max = 2000))]
@@ -403,7 +413,7 @@ pub struct LiveControlOption {
 }
 
 /// A control's box in viewport CSS pixels.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, garde::Validate)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct ControlRect {
     #[garde(skip)]
@@ -418,7 +428,7 @@ pub struct ControlRect {
 
 /// A native form control of the watched tab, which the page draws over the
 /// picture.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, garde::Validate)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct LiveControl {
     #[garde(skip)]
@@ -454,7 +464,7 @@ pub struct LiveControl {
 }
 
 /// A tab as the view lists it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, garde::Validate)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LiveTab {
     #[garde(skip)]
@@ -470,7 +480,7 @@ pub struct LiveTab {
 }
 
 /// The watched tab's JavaScript dialog.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LiveDialog {
     #[garde(skip)]
@@ -482,7 +492,7 @@ pub struct LiveDialog {
 }
 
 /// What the module sends.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, garde::Validate)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
 pub enum LiveModuleMessage {
     /// The browser's tabs and the one this viewer watches.
@@ -492,6 +502,7 @@ pub enum LiveModuleMessage {
         #[garde(dive)]
         tabs: Vec<LiveTab>,
         #[serde(deserialize_with = "Option::deserialize")]
+        #[schemars(with = "Nullable<TabId>")]
         #[garde(skip)]
         watched: Option<TabId>,
     },
@@ -530,6 +541,7 @@ pub enum LiveModuleMessage {
         #[garde(skip)]
         tab: TabId,
         #[serde(deserialize_with = "Option::deserialize")]
+        #[schemars(with = "Nullable<LiveDialog>")]
         #[garde(dive)]
         dialog: Option<LiveDialog>,
     },

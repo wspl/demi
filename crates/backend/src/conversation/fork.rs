@@ -190,8 +190,8 @@ mod tests {
     use crate::auth::sessions::TokenHash;
     use crate::storage::blobs::{BlobStores, UserBlobs};
     use crate::storage::control::testing;
+    use crate::storage::conversation_index::{AttachedHostRecord, ConversationModel, RecordChange};
     use crate::storage::objects;
-    use crate::storage::conversation_index::{AttachedHostRecord, ConversationModel};
     use crate::storage::tree::SqliteTreeStore;
 
     fn conversation(id: &str) -> ConversationId {
@@ -246,7 +246,10 @@ mod tests {
                 name: name.into(),
                 cwd: Some(format!("/{name}")),
             };
-            control.attach_host(source.clone(), host).await.unwrap();
+            control
+                .change_conversation(source.clone(), RecordChange::Attach(host))
+                .await
+                .unwrap();
             devices.push(device.id);
         }
         let attached = control.attached_hosts(source.clone()).await.unwrap();

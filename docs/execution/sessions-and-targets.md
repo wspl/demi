@@ -187,7 +187,14 @@ Cloud, joins a boot already under way, or waits for a running reset to finish.
 
 The file gate is released before waiting for a Cloud because a reset takes the
 file gates of the conversations it holds: a caller that kept its file gate
-while waiting for that reset would wait forever. Going back to the start
+while waiting for that reset would wait forever. For the same reason nothing
+enters a conversation's file gate while it holds a lease of it: the gate is
+first-in, first-out, so a reservation waiting between the two entries would
+wait for the first lease while the second waits behind the reservation. A
+conversation socket's frame is handled under one lease of the file gate; a
+frame whose content has uploads is instead admitted on the conversation's main
+Host once, through this entry, and its uploads are written through that
+admission. Going back to the start
 repeats every check, because while the attempt waited the conversation may
 have been archived or switched to another target, or its device detached. Only
 an attempt that has not dispatched its operation waits and starts over. An

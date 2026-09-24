@@ -9,6 +9,7 @@ mod conversations;
 mod edge;
 mod families;
 mod files;
+mod hosts;
 mod forks;
 mod install;
 mod providers;
