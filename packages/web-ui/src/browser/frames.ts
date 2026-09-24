@@ -4,13 +4,17 @@
  * length, a kind and a payload.
  */
 import {
+  LIVE_CONTROL_FRAME,
+  LIVE_FILE_FRAME,
   LIVE_FILE_HEADER_BYTES,
-  LIVE_FRAME_KIND,
   LIVE_MAX_FRAME_BYTES,
+  LIVE_VIDEO_FRAME,
   LIVE_VIDEO_HEADER_BYTES,
+  liveModuleMessageSchema,
   type LiveModuleMessage,
   type LiveViewerMessage,
-} from '@demicodes/browser-protocol/live'
+} from '@demicodes/protocol'
+import { z } from 'zod'
 
 /** A picture of one tab, in the generation the module announced. */
 export interface LiveVideoFrame {
@@ -34,6 +38,8 @@ export type LiveFrame =
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
+/** JSON is UTF-8, so a control message that is not is refused rather than repaired. */
+const strictDecoder = new TextDecoder('utf-8', { fatal: true })
 
 function framed(kind: number, payload: Uint8Array): LiveBytes {
   const bytes = new Uint8Array(5 + payload.length)
@@ -45,7 +51,7 @@ function framed(kind: number, payload: Uint8Array): LiveBytes {
 
 /** One of the viewer's messages, ready to send. */
 export function encodeMessage(message: LiveViewerMessage): LiveBytes {
-  return framed(LIVE_FRAME_KIND.control, encoder.encode(JSON.stringify(message)))
+  return framed(LIVE_CONTROL_FRAME, encoder.encode(JSON.stringify(message)))
 }
 
 /** Bytes of the `file`th file of `upload`. */
@@ -55,14 +61,21 @@ export function encodeFile(upload: number, file: number, data: Uint8Array): Live
   header.setUint32(0, upload)
   header.setUint32(4, file)
   payload.set(data, LIVE_FILE_HEADER_BYTES)
-  return framed(LIVE_FRAME_KIND.file, payload)
+  return framed(LIVE_FILE_FRAME, payload)
 }
 
-/** What the module sent, split from the bytes as they arrive. */
+/**
+ * What the module sent, split from the bytes as they arrive. One reader reads
+ * one stream: a frame an ended stream left unfinished is no part of the next.
+ */
 export class LiveFrameReader {
   private pending: Uint8Array = new Uint8Array(0)
 
-  /** The frames `chunk` completes. */
+  /**
+   * The frames `chunk` completes. A frame the protocol refuses throws
+   * (`live-view.md` § Framing and versions): it is the module's defect, and
+   * the view it came on ends.
+   */
   read(chunk: Uint8Array): LiveFrame[] {
     const joined = new Uint8Array(this.pending.length + chunk.length)
     joined.set(this.pending)
@@ -79,10 +92,7 @@ export class LiveFrameReader {
       if (this.pending.length - start < 4 + length) {
         break
       }
-      const frame = decodeFrame(this.pending.subarray(start + 4, start + 4 + length))
-      if (frame) {
-        frames.push(frame)
-      }
+      frames.push(decodeFrame(this.pending.subarray(start + 4, start + 4 + length)))
       start += 4 + length
     }
     this.pending = this.pending.subarray(start)
@@ -90,14 +100,17 @@ export class LiveFrameReader {
   }
 }
 
-function decodeFrame(frame: Uint8Array): LiveFrame | null {
+function decodeFrame(frame: Uint8Array): LiveFrame {
   const payload = frame.subarray(1)
-  if (frame[0] === LIVE_FRAME_KIND.control) {
-    return { kind: 'message', message: JSON.parse(decoder.decode(payload)) as LiveModuleMessage }
+  if (frame[0] === LIVE_CONTROL_FRAME) {
+    return { kind: 'message', message: decodeMessage(payload) }
   }
-  if (frame[0] !== LIVE_FRAME_KIND.video || payload.length < LIVE_VIDEO_HEADER_BYTES) {
-    // The module and the page ship together; anything else is a newer module.
-    return null
+  // The module and the page ship together, so no other kind can come from a newer module.
+  if (frame[0] !== LIVE_VIDEO_FRAME) {
+    throw new Error(`the live stream sent a frame of kind ${frame[0]}, which the module does not send`)
+  }
+  if (payload.length < LIVE_VIDEO_HEADER_BYTES) {
+    throw new Error('the live stream sent a video frame shorter than its header')
   }
   const header = new DataView(payload.buffer, payload.byteOffset, LIVE_VIDEO_HEADER_BYTES)
   const tab = decoder.decode(payload.subarray(0, 24)).replace(/\0+$/, '')
@@ -114,4 +127,19 @@ function decodeFrame(frame: Uint8Array): LiveFrame | null {
       data: payload.subarray(LIVE_VIDEO_HEADER_BYTES),
     },
   }
+}
+
+/** A control message, checked against the protocol before the page acts on it. */
+function decodeMessage(payload: Uint8Array): LiveModuleMessage {
+  let value: unknown
+  try {
+    value = JSON.parse(strictDecoder.decode(payload))
+  } catch (error) {
+    throw new Error('the live stream sent a control message that is not JSON', { cause: error })
+  }
+  const checked = liveModuleMessageSchema.safeParse(value)
+  if (!checked.success) {
+    throw new Error(`the live stream sent a control message the protocol refuses:\n${z.prettifyError(checked.error)}`)
+  }
+  return checked.data
 }

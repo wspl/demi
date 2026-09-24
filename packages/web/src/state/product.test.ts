@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
-import { productStateSchema } from '../api/contracts'
+import { productStateSchema } from '../api/unported'
 import { useProduct } from './product'
 
 const realFetch = globalThis.fetch
@@ -19,9 +19,6 @@ const state = productStateSchema.parse({
   workspaces: [],
   providers: [],
   conversations: [],
-  cloud: { device: null, state: 'unallocated', operation: null, error: null, limits: { systemBytes: 0, homeBytes: 0 } },
-    exposes: [],
-    exposeDomain: null,
 })
 let modelResponse: () => Promise<Response>
 let vendorResponse: () => Promise<Response>

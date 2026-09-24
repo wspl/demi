@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
-import { productStateSchema, type Preferences } from '../api/contracts'
+import type { Preferences } from '../api/generated/web-api'
+import { productStateSchema } from '../api/unported'
 import { usePreferences } from './preferences'
 import { useProduct } from './product'
 
@@ -25,9 +26,6 @@ function state() {
     workspaces: [],
     providers: [],
     conversations: [],
-    cloud: { device: null, state: 'unallocated', operation: null, error: null, limits: { systemBytes: 0, homeBytes: 0 } },
-    exposes: [],
-    exposeDomain: null,
   })
 }
 
