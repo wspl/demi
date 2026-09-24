@@ -6,9 +6,13 @@
 
 mod failure_facts;
 mod harness;
+pub(crate) mod host_access;
 mod providers;
+pub(crate) mod remote_files;
 mod socket;
 mod summary;
+pub(crate) mod target;
+pub(crate) mod transfer;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -16,7 +20,6 @@ use std::sync::Arc;
 
 use demi_agent::{AgentServer, AgentTreeStore, RandomIds, ServerConfig, ServerDeps, TreeStores};
 use demi_core::NodeId;
-use demi_web_api::conversations::ConversationTarget;
 use demi_web_api::ids::{ConversationId, UserId};
 
 pub(crate) use self::failure_facts::failure_facts;
@@ -24,7 +27,6 @@ pub(crate) use self::harness::ConversationHarness;
 use self::harness::NoShellEnvironments;
 use self::providers::ConversationProviders;
 use crate::backend::Services;
-use crate::storage::conversation_index::ConversationRecord;
 use crate::storage::tree::SqliteTreeStore;
 use crate::usage::rate_limit::RequestRateLimit;
 
@@ -69,23 +71,4 @@ pub(crate) fn root_of(conversation: &ConversationId) -> NodeId {
 /// under the roots `root_of` names, so every root is a conversation id.
 pub(crate) fn conversation_of(root: &NodeId) -> ConversationId {
     ConversationId::try_from(root.as_str()).expect("the shard opens trees only for conversations")
-}
-
-/// The Cloud home directory before the user's Cloud has reported one.
-const CLOUD_HOME: &str = "/home/demi";
-
-/// The directory a conversation's work runs in (`sessions-and-targets.md`
-/// § Resolve a target), as far as its record says: a Cloud target's
-/// directory, or its session directory under the Cloud's home, and a
-/// device's directory. Interim: the conversation's host access resolves
-/// every target, workspaces and the Cloud's reported home included, and
-/// replaces this; until then a workspace target, which nothing sets yet,
-/// has no directory.
-pub(crate) fn interim_cwd(record: &ConversationRecord) -> Option<String> {
-    match &record.target {
-        ConversationTarget::Cloud { path: Some(path) } => Some(path.clone()),
-        ConversationTarget::Cloud { path: None } => Some(format!("{CLOUD_HOME}/sessions/{}", record.id)),
-        ConversationTarget::Device { path, .. } => Some(path.clone()),
-        ConversationTarget::Workspace { .. } => None,
-    }
 }

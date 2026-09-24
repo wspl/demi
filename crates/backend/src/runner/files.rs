@@ -13,7 +13,6 @@ use demi_web_api::files::DirectoryEntry;
 
 /// Why a file is not shown as text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-#[cfg_attr(not(test), expect(dead_code, reason = "the conversation file routes read text with it"))]
 pub(crate) enum TextRefusal {
     #[error("The file is too large to show")]
     TooLarge,
@@ -23,7 +22,6 @@ pub(crate) enum TextRefusal {
 
 /// Why a file's text could not be read.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[expect(dead_code, reason = "the conversation file routes read text with it")]
 pub(crate) enum TextError {
     #[error(transparent)]
     Host(#[from] HostError),
@@ -32,7 +30,6 @@ pub(crate) enum TextError {
 }
 
 /// `bytes` as text, under the limits above.
-#[cfg_attr(not(test), expect(dead_code, reason = "the conversation file routes read text with it"))]
 pub(crate) fn text_of(bytes: Bytes) -> Result<String, TextRefusal> {
     if bytes.len() > EDIT_FILE_BYTES {
         return Err(TextRefusal::TooLarge);
@@ -46,7 +43,6 @@ pub(crate) fn text_of(bytes: Bytes) -> Result<String, TextRefusal> {
 
 /// One file of a Host as text; a file over the limit is refused before its
 /// bytes are read.
-#[expect(dead_code, reason = "the conversation file routes read text with it")]
 pub(crate) async fn read_text_file(fs: &dyn HostFs, path: &str) -> Result<String, TextError> {
     let stat = fs.stat(path).await?;
     if stat.size > EDIT_FILE_BYTES as u64 {

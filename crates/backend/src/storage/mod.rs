@@ -12,6 +12,7 @@ mod schema;
 mod sqlite;
 pub(crate) mod tree;
 pub(crate) mod usage;
+pub(crate) mod workspaces;
 
 /// Why a storage operation failed.
 #[derive(Debug, thiserror::Error)]
