@@ -4,6 +4,7 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use demi_core::{Clock, SystemClock};
 use demi_web_api::settings::InstanceMode;
@@ -132,6 +133,35 @@ pub struct BackendConfig {
     /// How long a device login waits for its user, and how long its result
     /// is kept.
     pub logins: LoginTiming,
+    /// How runner connections are timed and pairing is limited.
+    pub runners: RunnerTuning,
+}
+
+/// How the backend treats runner connections (`runner.md` § Connection and
+/// identity, `backend.md` § Authentication and ownership). Tests shorten
+/// the times.
+#[derive(Debug, Clone, Copy)]
+pub struct RunnerTuning {
+    /// A connection that sends no hello within this is closed.
+    pub hello_deadline: Duration,
+    /// How long a pairing code lives before its waiting runner gets a new one.
+    pub claim_lifetime: Duration,
+    /// How many pairing codes one user may try within a minute.
+    pub claims_per_minute: usize,
+    /// How often a connected runner is asked whether it is there; none turns
+    /// liveness off.
+    pub ping: Option<Duration>,
+}
+
+impl Default for RunnerTuning {
+    fn default() -> Self {
+        Self {
+            hello_deadline: Duration::from_secs(30),
+            claim_lifetime: Duration::from_secs(10 * 60),
+            claims_per_minute: 10,
+            ping: Some(demi_host_remote::PING_INTERVAL),
+        }
+    }
 }
 
 impl BackendConfig {
@@ -151,6 +181,7 @@ impl BackendConfig {
             families: FamilyRegistry::builtin(),
             models_dev_url: ModelsDevClient::DEFAULT_URL.parse().expect("the models.dev address parses"),
             logins: LoginTiming::default(),
+            runners: RunnerTuning::default(),
         }
     }
 }

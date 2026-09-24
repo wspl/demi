@@ -8,10 +8,15 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
-use demi_backend::{AccountMail, Backend, BackendConfig, FamilyRegistry, LoginTiming, MailError, VerificationMail};
+use demi_backend::{
+    AccountMail, Backend, BackendConfig, FamilyRegistry, LoginTiming, MailError, RunnerTuning, VerificationMail,
+};
 use demi_core::Clock;
+use demi_host_remote::testing::{RunnerProcess, RunnerProcessOptions};
 use demi_web_api::auth::{Identity, Role, UserDto};
+use demi_web_api::devices::{ClaimedDevice, DeviceDto, Devices};
 use demi_web_api::error::{ErrorBody, ErrorCode};
 use demi_web_api::settings::InstanceMode;
 use jiff::{SignedDuration, Timestamp};
@@ -80,6 +85,7 @@ pub struct Harness {
     families: FamilyRegistry,
     models_dev_url: Option<String>,
     logins: LoginTiming,
+    pub runners: RunnerTuning,
 }
 
 impl Harness {
@@ -96,6 +102,12 @@ impl Harness {
             families: FamilyRegistry::builtin(),
             models_dev_url: None,
             logins: LoginTiming::default(),
+            // Liveness would ping every 30 s; the tests end runners
+            // themselves.
+            runners: RunnerTuning {
+                ping: None,
+                ..RunnerTuning::default()
+            },
         }
     }
 
@@ -179,12 +191,22 @@ impl Harness {
 
     /// The backend over this harness's data, in `mode`.
     pub async fn start_in_mode(&self, mode: InstanceMode) -> TestBackend {
-        let address = SocketAddr::from((Ipv4Addr::LOCALHOST, 0));
+        self.launch(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)), mode).await
+    }
+
+    /// A backend listening on `address`, such as the one an earlier start
+    /// of the same data directory had, which its runners reconnect to.
+    pub async fn start_at(&self, address: SocketAddr) -> TestBackend {
+        self.launch(address, self.mode).await
+    }
+
+    async fn launch(&self, address: SocketAddr, mode: InstanceMode) -> TestBackend {
         let mut config = BackendConfig::new(self.data_dir(), address, mode);
         config.clock = self.clock.clone();
         config.web_directory = self.web_directory.clone();
         config.families = self.families.clone();
         config.logins = self.logins;
+        config.runners = self.runners;
         if let Some(url) = &self.models_dev_url {
             config.models_dev_url = url.parse().unwrap();
         }
@@ -268,6 +290,95 @@ impl TestBackend {
         self.backend.close().await.unwrap();
     }
 
+    pub fn address(&self) -> SocketAddr {
+        self.backend.local_addr()
+    }
+
+    /// The `ws://` URL of `path`.
+    pub fn ws_url(&self, path: &str) -> String {
+        format!("ws://{}{path}", self.backend.local_addr())
+    }
+
+    /// The session's paired devices, as `GET /api/devices` lists them.
+    pub async fn devices(&self, session: &Session) -> Vec<DeviceDto> {
+        let answer = self.get("/api/devices", Some(session)).await;
+        assert_eq!(answer.status, StatusCode::OK, "{}", String::from_utf8_lossy(&answer.body));
+        answer.json::<Devices>().devices
+    }
+
+    /// Whether the session's device `id` is online, as the device list says.
+    pub async fn online(&self, session: &Session, id: &str) -> bool {
+        self.devices(session)
+            .await
+            .iter()
+            .any(|device| device.id.as_str() == id && device.online)
+    }
+
+    /// Waits until the device's online state is `online`.
+    pub async fn until_online(&self, session: &Session, id: &str, online: bool) {
+        eventually(&format!("device {id} online: {online}"), || async {
+            self.online(session, id).await == online
+        })
+        .await;
+    }
+
+    /// A runner of a new device named `name`, started, claimed by `session`
+    /// and online.
+    pub async fn pair(&self, session: &Session, name: &str) -> Paired {
+        let runner = RunnerProcess::start(
+            &self.url,
+            RunnerProcessOptions {
+                name: name.into(),
+                ..RunnerProcessOptions::default()
+            },
+        );
+        let code = runner.pairing_code(0).await;
+        let claimed = self.post("/api/devices/claim", Some(session), json!({ "code": code })).await;
+        assert_eq!(claimed.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&claimed.body));
+        let device = claimed.json::<ClaimedDevice>().device;
+        self.until_online(session, device.id.as_str(), true).await;
+        Paired { runner, device }
+    }
+}
+
+/// A paired device and its runner.
+pub struct Paired {
+    pub runner: RunnerProcess,
+    pub device: DeviceDto,
+}
+
+impl Paired {
+    pub fn id(&self) -> &str {
+        self.device.id.as_str()
+    }
+
+    /// The device token the runner stored once it was claimed; it stores it
+    /// a moment after the backend bound it.
+    pub async fn token(&self) -> String {
+        let path = self.runner.state_dir().join("runner-token");
+        eventually("the runner stores its token", || {
+            let stored = path.exists();
+            async move { stored }
+        })
+        .await;
+        std::fs::read_to_string(path).unwrap().trim().to_owned()
+    }
+}
+
+/// Waits until `check` holds, asking every 20 ms for at most 20 s.
+pub async fn eventually<F, Fut>(what: &str, mut check: F)
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = bool>,
+{
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+    while !check().await {
+        assert!(tokio::time::Instant::now() < deadline, "never came true: {what}");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
+impl TestBackend {
     pub async fn send(&self, method: Method, path: &str, cookie: Option<&str>, body: Option<Value>) -> Answer {
         let mut request = self.http.request(method, format!("{}{path}", self.url));
         if let Some(cookie) = cookie {

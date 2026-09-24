@@ -267,9 +267,11 @@ next to the wire's types, so that a command program depends on one crate.
   `ConversationPatch` and `ProviderDto`; the error body (`ErrorBody`) and
   `ErrorCode`, the one list of every error code the browser can see; and the
   identifier and text types those bodies use. It reuses the runner's
-  working-tree change and log-line types, `builtin-protocol`'s browser tab
+  working-tree change types (`GitChanges`), `builtin-protocol`'s browser tab
   types and `command-service`'s command locale (`CommandLocale`, which the
-  browser reports as a preference) instead of declaring them again.
+  browser reports as a preference) instead of declaring them again. A Host
+  log line is its own type: the runner wire carries its time as integer
+  milliseconds, the browser as an RFC 3339 time.
 - **Public boundary:** the types above; their TypeScript form is generated into
   `web`. Behavior: [Web API](../product/web-api.md).
 - **Must not:** hold route handling or domain logic.

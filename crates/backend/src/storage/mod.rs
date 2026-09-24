@@ -4,6 +4,7 @@ pub(crate) mod blobs;
 pub(crate) mod columns;
 pub(crate) mod control;
 pub(crate) mod conversations;
+pub(crate) mod devices;
 pub(crate) mod objects;
 pub(crate) mod providers;
 mod schema;
