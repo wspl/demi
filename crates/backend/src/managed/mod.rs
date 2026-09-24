@@ -7,6 +7,7 @@
 //! checkpoint and reset. The capacity across users and the machine
 //! manager's client are services every shard shares.
 
+mod access;
 pub(crate) mod capacity;
 pub(crate) mod client;
 mod growth;
