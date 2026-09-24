@@ -130,17 +130,20 @@ Changes follow [Attached hosts](../execution/sessions-and-targets.md#attached-ho
 
 ## Uploads and media
 
-`POST /attachments` accepts a nonempty raw request body with its media type in
-`Content-Type`. The header must name one `type/subtype`, and `multipart/*` — a
-form envelope rather than a file's bytes — is rejected. The maximum body is
-25 MiB. It answers 201 with `{ attachment }`: the attachment's id and
-metadata, including the media type the backend reads from the file's bytes
-when it recognizes them and, for a text file, its snippet. The snippet is the
-opening of the file with leading blank space removed and line endings
-normalized, cut to 160 characters (Unicode scalar values). The composer, for a
-new message or for an edited one, shows the media type and the snippet on the
-file's capsule ([Attachments](product.md#attachments)), so the capsule shows
-what the backend determined.
+`POST /attachments?name=<file name>` accepts a nonempty raw request body with
+its media type in `Content-Type`. The header must name one `type/subtype`, and
+`multipart/*` — a form envelope rather than a file's bytes — is rejected. The
+maximum body is 25 MiB. The name, 1 to 255 characters, decides whether the
+answer carries a text file's opening, as it decides for a message that sends the
+file; a missing name answers 400 `invalid_query`. It answers 201 with
+`{ attachment }`: the attachment's id and metadata, including the media type the
+backend reads from the file's bytes when it recognizes them and, for a text
+file, its snippet. The snippet is the opening of the file with leading blank
+space removed and line endings normalized, cut to 160 characters (Unicode scalar
+values). The composer, for a new message or for an edited one, shows the media
+type and the snippet on the file's capsule
+([Attachments](product.md#attachments)), so the capsule shows what the backend
+determined.
 
 `GET /blobs/:sha256` serves a blob of the caller's own namespace, under the
 headers [Media by reference](../backend/backend.md#media-by-reference)

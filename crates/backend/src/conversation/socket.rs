@@ -386,10 +386,10 @@ fn to_text(frame: &ServerFrame) -> String {
     serde_json::to_string(frame).expect("a server frame serializes to JSON")
 }
 
-/// The files of a frame's content: a remote file becomes its reference once
-/// its device may be read. Interim: uploads resolve against the user's
-/// attachment records and are written to the conversation's Host once those
-/// land; until then a frame with an upload is refused.
+/// The files of a frame's content: an upload is written to the
+/// conversation's Host and becomes its blocks, and a remote file becomes its
+/// reference once its device may be read. The uploads are written first, so
+/// a frame whose upload cannot be written grants no remote file.
 struct ConversationFiles {
     /// Weak: the shard owns the agent server that holds this resolver.
     shard: Weak<Shard>,
@@ -410,18 +410,39 @@ impl ContentResolver for ConversationFiles {
                 .shard
                 .upgrade()
                 .ok_or_else(|| refused("The backend is shutting down".into()))?;
-            let remote = files
+            // Each file's blocks by its place, the remote files' once they
+            // are granted together.
+            let mut resolved: Vec<Option<Vec<UserContentBlock>>> = Vec::with_capacity(files.len());
+            let mut remote = Vec::new();
+            for file in files {
+                match file {
+                    FileReference::Upload { r#ref, file_name } => {
+                        let blocks = shard
+                            .resolve_upload(&self.conversation, &r#ref, &file_name)
+                            .await
+                            .map_err(|error| refused(error.to_string()))?;
+                        resolved.push(Some(blocks));
+                    }
+                    FileReference::RemoteFile { device_id, path } => {
+                        remote.push(RemoteFile { device: device_id, path });
+                        resolved.push(None);
+                    }
+                }
+            }
+            let mut references = if remote.is_empty() {
+                Vec::new().into_iter()
+            } else {
+                shard
+                    .reference_remote_files(&self.conversation, &remote)
+                    .await
+                    .map_err(|refusal| refused(refusal.to_string()))?
+                    .into_iter()
+            };
+            let blocks = resolved
                 .into_iter()
-                .map(|file| match file {
-                    FileReference::RemoteFile { device_id, path } => Ok(RemoteFile { device: device_id, path }),
-                    FileReference::Upload { .. } => Err(refused("Attachments are not available on this backend yet".into())),
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            let blocks = shard
-                .reference_remote_files(&self.conversation, &remote)
-                .await
-                .map_err(|refusal| refused(refusal.to_string()))?;
-            Ok(blocks.into_iter().map(|block| vec![block]).collect())
+                .map(|blocks| blocks.unwrap_or_else(|| references.next().into_iter().collect()))
+                .collect();
+            Ok(blocks)
         })
     }
 }

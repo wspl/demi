@@ -16,6 +16,7 @@ mod summary;
 pub(crate) mod target;
 pub(crate) mod transfer;
 mod transition;
+mod uploads;
 
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};

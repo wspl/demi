@@ -17,4 +17,5 @@ mod settings;
 mod startup;
 mod state;
 mod support;
+mod uploads;
 mod usage;
