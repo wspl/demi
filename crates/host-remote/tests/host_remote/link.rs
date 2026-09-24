@@ -870,7 +870,10 @@ fn live_commands(ended: Rc<Cell<bool>>, context: Rc<RefCell<Option<Value>>>) -> 
         let ended = ended.clone();
         let context = context.clone();
         async move {
-            *context.borrow_mut() = Some(serde_json::to_value(&call.invocation.context).unwrap());
+            *context.borrow_mut() = Some(serde_json::json!({
+                "conversation": call.invocation.context.conversation,
+                "caller": call.invocation.caller,
+            }));
             while let Ok(Some(_)) = port.read_live_stdin().await {}
             port.cancelled().await;
             ended.set(true);
@@ -1023,6 +1026,11 @@ async fn a_call_stops_on_its_first_cause_releases_its_live_input_and_exits_after
         assert_eq!(
             context.borrow().as_ref().unwrap()["conversation"],
             test_command_context().conversation.as_str()
+        );
+        // The handler knows whose command storage the invoking job reaches.
+        assert_eq!(
+            context.borrow().as_ref().unwrap()["caller"],
+            serde_json::to_value(caller()).unwrap()
         );
     }
 }
