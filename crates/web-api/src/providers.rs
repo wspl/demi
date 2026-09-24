@@ -15,10 +15,12 @@ use serde_with::rust::{double_option, unwrap_or_skip};
 use crate::ids::{CredentialId, LoginId, ProviderId};
 use crate::text::{EndpointUrl, Trimmed};
 
-/// The most UTF-16 code units an entry's label has, after trimming.
+/// The most characters (Unicode scalar values) an entry's label has, after
+/// trimming.
 pub const LABEL_MAX: usize = 80;
 
-/// The most UTF-16 code units a pasted setup token has, after trimming.
+/// The most characters (Unicode scalar values) a pasted setup token has,
+/// after trimming.
 pub const TOKEN_MAX: usize = 16384;
 
 /// How an entry authenticates (`providers.md` § Families, vendors and
@@ -42,9 +44,9 @@ serde_plain::derive_fromstr_from_deserialize!(CredentialKind);
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ConfiguredModel {
-    #[garde(length(utf16, min = 1, max = 256))]
+    #[garde(length(chars, min = 1, max = 256))]
     pub id: Trimmed,
-    #[garde(length(utf16, min = 1, max = 256))]
+    #[garde(length(chars, min = 1, max = 256))]
     pub display_name: Trimmed,
     /// Tokens.
     #[garde(range(min = 1))]
@@ -55,7 +57,7 @@ pub struct ConfiguredModel {
     #[garde(range(min = 1), custom(within(self.context_window)))]
     pub output_limit: Option<u32>,
     /// The vendor's effort levels; empty for a model without thinking.
-    #[garde(length(max = 32), inner(length(utf16, min = 1, max = 64)))]
+    #[garde(length(max = 32), inner(length(chars, min = 1, max = 64)))]
     pub thinking_efforts: Vec<String>,
     /// The types the model reads natively: `[]` for none, null when unknown.
     #[serde(deserialize_with = "Option::deserialize")]
@@ -65,7 +67,7 @@ pub struct ConfiguredModel {
     /// The service tier the model's Fast is; null for none.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
-    #[garde(length(utf16, min = 1, max = 64))]
+    #[garde(length(chars, min = 1, max = 64))]
     pub fast_tier: Option<String>,
 }
 
@@ -109,7 +111,7 @@ pub enum CreateProvider {
     Vendor {
         #[garde(length(min = 1))]
         vendor_id: String,
-        #[garde(length(utf16, min = 1, max = LABEL_MAX))]
+        #[garde(length(chars, min = 1, max = LABEL_MAX))]
         label: Trimmed,
         #[garde(length(min = 1))]
         api_key: String,
@@ -132,7 +134,7 @@ pub enum CreateProvider {
         #[schemars(with = "WireApi")]
         #[garde(skip)]
         wire_api: Option<WireApi>,
-        #[garde(length(utf16, min = 1, max = LABEL_MAX))]
+        #[garde(length(chars, min = 1, max = LABEL_MAX))]
         label: Trimmed,
         #[garde(length(min = 1))]
         api_key: String,
@@ -155,7 +157,7 @@ pub enum CreateProvider {
 pub struct ProviderPatch {
     #[serde(default, with = "unwrap_or_skip")]
     #[schemars(with = "Trimmed")]
-    #[garde(length(utf16, min = 1, max = LABEL_MAX))]
+    #[garde(length(chars, min = 1, max = LABEL_MAX))]
     pub label: Option<Trimmed>,
     #[serde(default, with = "unwrap_or_skip")]
     #[schemars(with = "String")]
@@ -385,9 +387,9 @@ pub struct Vendor {
 #[derive(Debug, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct SetupTokenImport {
-    #[garde(length(utf16, min = 1, max = TOKEN_MAX))]
+    #[garde(length(chars, min = 1, max = TOKEN_MAX))]
     pub token: Trimmed,
-    #[garde(length(utf16, min = 1, max = LABEL_MAX))]
+    #[garde(length(chars, min = 1, max = LABEL_MAX))]
     pub label: Trimmed,
 }
 
@@ -396,7 +398,7 @@ pub struct SetupTokenImport {
 #[derive(Debug, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct AddToken {
-    #[garde(length(utf16, min = 1, max = TOKEN_MAX))]
+    #[garde(length(chars, min = 1, max = TOKEN_MAX))]
     pub token: Trimmed,
 }
 
@@ -439,7 +441,7 @@ pub struct SubscriptionLogin {
     /// The new entry's label; the family's subscription name without it.
     #[serde(default, with = "unwrap_or_skip")]
     #[schemars(with = "Trimmed")]
-    #[garde(length(utf16, min = 1, max = LABEL_MAX))]
+    #[garde(length(chars, min = 1, max = LABEL_MAX))]
     pub label: Option<Trimmed>,
 }
 
