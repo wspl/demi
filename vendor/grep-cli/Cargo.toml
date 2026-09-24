@@ -61,3 +61,9 @@ version = "0.1.6"
 
 [dependencies.uucore]
 version = "0.11"
+
+[package.metadata.demi]
+maintainer = "demi-runner"
+patches = [
+    "Child processes and the environment through uucore::context, those of the shell job",
+]

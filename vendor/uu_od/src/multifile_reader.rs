@@ -4,6 +4,7 @@
 // file that was distributed with this source code.
 // spell-checker:ignore (ToDO) multifile curr fnames fname xfrd fillloop mockstream
 
+#[cfg(unix)]
 use uucore::context::FileKindExt as _;
 use uucore::context::fs::File;
 use uucore::context::io;

@@ -5,7 +5,6 @@
 // https://opensource.org/licenses/MIT.
 
 use uucore::context::PathExt as _;
-use uucore::context::FileKindExt as _;
 mod access;
 mod delete;
 mod empty;

@@ -8,6 +8,7 @@
 //! be tricky to both implement and use on a windows platform. So we don't
 //! even try.
 
+#[cfg(unix)]
 use uucore::context::FileKindExt as _;
 use std::error::Error;
 use uucore::context::io::{stderr, Write};

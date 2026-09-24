@@ -287,3 +287,12 @@ priority = 0
 [lints.rustdoc.all]
 level = "deny"
 priority = -1
+
+[package.metadata.demi]
+maintainer = "demi-runner"
+patches = [
+    "Embedding hooks (src/execution_host.rs, added): opening files, starting external commands and forwarding their redirected output go through the runner's job, which records edits and stops the work when the job is cancelled",
+    "Descriptors, pipes and blocking reads and writes go through the job's file control, and every execution step checks the job's cancellation first",
+    "Subshells, command substitutions, shell functions and compound pipeline stages run on blocking tasks under an execution guard, so they run beside their consumers and the job waits for them",
+    "Builtins use uucore::context for their files, streams and environment",
+]

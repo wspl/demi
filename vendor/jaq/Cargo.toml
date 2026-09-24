@@ -43,3 +43,11 @@ path = "src/main.rs"
 jaq-all = { version = "0.3.0", default-features = false, features = ["formats", "std-all"] }
 tempfile = "3.3.0"
 uucore = "0.11"
+
+[package.metadata.demi]
+maintainer = "demi-runner"
+patches = [
+    "A library entry point (uumain) in place of the binary, without its allocator, line editor, logger, home-directory crate and golden test target",
+    "Paths resolve against the shell job's working directory and ~/.jq against its home, through uucore::context",
+    "Files, streams, the environment, printing and exit go through uucore::context, so a run embedded in a shell job uses the job's working directory, environment, standard streams and cancellation, and exit ends only the utility",
+]

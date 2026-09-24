@@ -26,8 +26,6 @@ use std::ffi::OsString;
 use uucore::context::fs;
 use uucore::context::io::{self, IsTerminal};
 #[cfg(unix)]
-use std::os::unix;
-#[cfg(unix)]
 use std::os::unix::fs::{FileTypeExt, PermissionsExt};
 #[cfg(windows)]
 use std::os::windows;
@@ -1029,7 +1027,7 @@ fn rename_symlink_fallback(from: &Path, to: &Path) -> io::Result<()> {
 
     // On AlreadyExists, fall through to atomic temp-and-rename so the
     // destination is replaced rather than the call failing.
-    match uucore::context::fs::symlink(&path_symlink_points_to, to) {
+    match fs::symlink(&path_symlink_points_to, to) {
         Ok(()) => {}
         Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
             #[cfg(not(target_os = "redox"))]
@@ -1365,7 +1363,7 @@ fn copy_dir_contents_recursive(
         }
 
         if let Some(pb) = progress_bar
-            && let Ok(metadata) = uucore::context::fs::metadata(&from_path)
+            && let Ok(metadata) = fs::metadata(&from_path)
         {
             pb.inc(metadata.len());
         }
@@ -1555,7 +1553,7 @@ fn is_empty_dir(path: &Path) -> bool {
 /// Check if file is writable, returning the mode for potential reuse.
 #[cfg(unix)]
 fn is_writable(path: &Path) -> (bool, Option<u32>) {
-    if let Ok(metadata) = uucore::context::fs::metadata(&path) {
+    if let Ok(metadata) = fs::metadata(&path) {
         let mode = metadata.permissions().mode();
         // Check if user write bit is set
         ((mode & 0o200) != 0, Some(mode))
@@ -1567,7 +1565,7 @@ fn is_writable(path: &Path) -> (bool, Option<u32>) {
 /// Check if file is writable.
 #[cfg(not(unix))]
 fn is_writable(path: &Path) -> (bool, Option<u32>) {
-    if let Ok(metadata) = uucore::context::fs::metadata(&path) {
+    if let Ok(metadata) = fs::metadata(&path) {
         (!metadata.permissions().readonly(), None)
     } else {
         (false, None) // If we can't get metadata, prompt user to be safe
@@ -1577,7 +1575,7 @@ fn is_writable(path: &Path) -> (bool, Option<u32>) {
 #[cfg(unix)]
 fn get_interactive_prompt(to: &Path, cached_mode: Option<u32>) -> String {
     // Use cached mode if available, otherwise fetch it
-    let mode = cached_mode.or_else(|| uucore::context::fs::metadata(&to).ok().map(|m| m.permissions().mode()));
+    let mode = cached_mode.or_else(|| fs::metadata(&to).ok().map(|m| m.permissions().mode()));
     if let Some(mode) = mode {
         let file_mode = mode & 0o777;
         // Check if file is not writable by user

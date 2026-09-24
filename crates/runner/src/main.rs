@@ -320,8 +320,8 @@ fn identity(home_dir: String) -> io::Result<demi_runner::connection::wire::HostI
     #[cfg(windows)]
     let (uid, gid) = (0, 0);
     Ok(demi_runner::connection::wire::HostIdentity {
-        uid: uid.into(),
-        gid: gid.into(),
+        uid,
+        gid,
         hostname,
         home_dir,
     })

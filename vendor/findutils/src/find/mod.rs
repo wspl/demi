@@ -4,7 +4,6 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-use uucore::context::PathExt as _;
 pub mod matchers;
 
 use matchers::{Follow, WalkEntry};
@@ -432,6 +431,7 @@ pub fn find_main(args: &[&str], deps: &dyn Dependencies) -> i32 {
 
 #[cfg(test)]
 mod tests {
+    use uucore::context::PathExt as _;
 
     use uucore::context::fs;
     use uucore::context::io::{Cursor, ErrorKind, Read};

@@ -168,3 +168,10 @@ check-cfg = [
     'cfg(target_os, values("cygwin"))',
     "cfg(wasi_runner)",
 ]
+
+[package.metadata.demi]
+maintainer = "demi-runner"
+patches = [
+    "Standard output is the invocation's own unbuffered writer instead of a raw write to descriptor 1",
+    "Files, streams, the environment, printing and exit go through uucore::context, so a run embedded in a shell job uses the job's working directory, environment, standard streams and cancellation, and exit ends only the utility",
+]
