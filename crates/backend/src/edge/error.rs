@@ -6,9 +6,13 @@ use axum::http::{Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use demi_web_api::error::{ErrorBody, ErrorCode};
 
+use demi_shell::{HostError, HostErrorKind};
+
 use crate::auth::email_change::EmailChangeError;
 use crate::auth::passwords::HashError;
+use crate::conversation::host_access::{HostAccessError, Refusal};
 use crate::llm::assembly::AssemblyError;
+use crate::runner::files::{TextError, TextRefusal};
 use crate::shard::ShardUnavailable;
 use crate::storage::StorageError;
 use crate::vault::accounts::AccountRefusal;
@@ -75,7 +79,47 @@ impl ApiError {
         Self::new(StatusCode::NOT_FOUND, ErrorCode::AccountNotFound, "No such account")
     }
 
-    /// A failure the request could not cause: logged with its causes, and
+    #[cfg(test)]
+    pub(crate) fn code(&self) -> ErrorCode {
+        self.body.code
+    }
+
+    pub(crate) fn device_offline() -> Self {
+        Self::new(StatusCode::CONFLICT, ErrorCode::DeviceOffline, "The device's runner is not connected")
+    }
+
+    /// A Host's failure of a file operation: nothing at the path answers 404,
+    /// no permission 403, a listing over the runner's message limit 413.
+    pub(crate) fn host_operation(error: HostError) -> Self {
+        match &error.kind {
+            HostErrorKind::Offline => Self::device_offline(),
+            HostErrorKind::Unavailable => Self::new(StatusCode::SERVICE_UNAVAILABLE, ErrorCode::CloudUnavailable, error.message),
+            HostErrorKind::TooLarge => Self::new(StatusCode::PAYLOAD_TOO_LARGE, ErrorCode::DirectoryTooLarge, error.message),
+            HostErrorKind::Failed { code } => match code.as_deref() {
+                Some("ENOENT") => Self::new(StatusCode::NOT_FOUND, ErrorCode::FsError, error.message),
+                Some("EACCES" | "EPERM") => Self::new(StatusCode::FORBIDDEN, ErrorCode::FsError, error.message),
+                _ => Self::new(StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::HostOperationFailed, error.message),
+            },
+            HostErrorKind::Protocol | HostErrorKind::Interrupted => {
+                Self::new(StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::HostOperationFailed, error.message)
+            }
+        }
+    }
+
+    /// A Host's failure of a working-tree operation: the runner's git codes,
+    /// and otherwise as a file operation's.
+    pub(crate) fn working_tree(error: HostError) -> Self {
+        let message = error.message.clone();
+        match error.code() {
+            Some("timeout") => Self::new(StatusCode::GATEWAY_TIMEOUT, ErrorCode::ChangesTimeout, message),
+            Some("not_repository") => Self::new(StatusCode::CONFLICT, ErrorCode::NotRepository, message),
+            Some("too_large") => Self::new(StatusCode::PAYLOAD_TOO_LARGE, ErrorCode::FileTooLarge, message),
+            Some("ENOENT" | "EACCES" | "EPERM") | None => Self::host_operation(error),
+            Some(_) => Self::new(StatusCode::INTERNAL_SERVER_ERROR, ErrorCode::ChangesFailed, message),
+        }
+    }
+
+    /// A failure a request could not cause: logged with its causes, and
     /// answered 500.
     fn internal(error: &(dyn std::error::Error + 'static)) -> Self {
         tracing::error!(error, "a request failed");
@@ -148,5 +192,47 @@ impl From<LoginRefusal> for ApiError {
 impl From<EmailChangeError> for ApiError {
     fn from(error: EmailChangeError) -> Self {
         Self::internal(&error)
+    }
+}
+
+impl From<HostAccessError> for ApiError {
+    fn from(error: HostAccessError) -> Self {
+        match error {
+            HostAccessError::Missing => Self::new(StatusCode::NOT_FOUND, ErrorCode::ConversationNotFound, "No such conversation"),
+            HostAccessError::Refused(refusal) => {
+                let message = refusal.to_string();
+                match refusal {
+                    Refusal::Archived => Self::new(StatusCode::CONFLICT, ErrorCode::ConversationArchived, message),
+                    Refusal::NotAttached => Self::new(StatusCode::NOT_FOUND, ErrorCode::HostNotAttached, message),
+                    Refusal::Busy => Self::new(StatusCode::CONFLICT, ErrorCode::ConversationBusy, message),
+                    Refusal::Stopped => Self::new(StatusCode::CONFLICT, ErrorCode::HostStopped, message),
+                    Refusal::DeviceGone => Self::new(StatusCode::NOT_FOUND, ErrorCode::DeviceNotFound, message),
+                }
+            }
+            HostAccessError::Cloud(unavailable) => {
+                Self::new(StatusCode::SERVICE_UNAVAILABLE, ErrorCode::CloudUnavailable, unavailable.to_string())
+            }
+            HostAccessError::Host(error) => Self::host_operation(error),
+            HostAccessError::Cancelled | HostAccessError::Storage(_) => Self::internal(&error),
+        }
+    }
+}
+
+impl From<TextError> for ApiError {
+    fn from(error: TextError) -> Self {
+        match error {
+            TextError::Host(error) => Self::host_operation(error),
+            TextError::Refused(refusal) => refusal.into(),
+        }
+    }
+}
+
+impl From<TextRefusal> for ApiError {
+    fn from(refusal: TextRefusal) -> Self {
+        let message = refusal.to_string();
+        match refusal {
+            TextRefusal::TooLarge => Self::new(StatusCode::PAYLOAD_TOO_LARGE, ErrorCode::FileTooLarge, message),
+            TextRefusal::NotText => Self::new(StatusCode::UNSUPPORTED_MEDIA_TYPE, ErrorCode::NotText, message),
+        }
     }
 }

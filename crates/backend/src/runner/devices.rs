@@ -267,6 +267,23 @@ impl Shard {
     }
 }
 
+#[cfg(test)]
+impl Shard {
+    /// Connects `device` through a link nothing serves, whose runner works
+    /// in `home`, for a test that needs the device online; the device stays
+    /// online while the answer is held.
+    pub(crate) fn connect_for_tests(self: &Rc<Self>, device: &DeviceId, home: &str) -> demi_host_remote::LinkDriver {
+        let slot = self.devices().slot(device);
+        let identity = HostIdentity {
+            uid: 501,
+            gid: 20,
+            hostname: "test".into(),
+            home_dir: home.into(),
+        };
+        self.bind(&slot, device, identity).expect("an open shard binds").driver
+    }
+}
+
 /// A bound connection, served over its socket by the task that adopted it.
 struct Serving {
     slot: Rc<DeviceSlot>,

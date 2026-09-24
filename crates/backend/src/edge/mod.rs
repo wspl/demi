@@ -13,6 +13,7 @@ mod conversations;
 mod cookies;
 mod devices;
 mod error;
+mod files;
 mod gate;
 mod listener;
 mod models;
@@ -21,6 +22,7 @@ mod query;
 mod runners;
 mod settings;
 mod state;
+mod transfer;
 mod usage;
 
 use std::io;
@@ -40,7 +42,7 @@ use tokio_util::sync::CancellationToken;
 use tower_http::trace::TraceLayer;
 
 use self::error::ApiError;
-use self::listener::EdgeListener;
+use self::listener::{EdgeListener, Peer};
 use crate::backend::Services;
 use crate::shard::Shards;
 
@@ -71,7 +73,7 @@ impl Edge {
         let listener = EdgeListener::new(tcp, closing.clone(), connections.clone());
         let app = router(state, closing.clone(), web_directory);
         let serving = tokio::spawn(
-            axum::serve(listener, app)
+            axum::serve(listener, app.into_make_service_with_connect_info::<Peer>())
                 .with_graceful_shutdown(stop.clone().cancelled_owned())
                 .into_future(),
         );
@@ -180,6 +182,19 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/devices/{id}", delete(devices::revoke))
         .route("/devices/{id}/fs", get(devices::browse).post(devices::make_directory))
         .route("/devices/{id}/log", get(devices::log))
+        .route(
+            "/conversations/{id}/fs",
+            get(files::list).post(files::make_directory).delete(files::remove),
+        )
+        .route("/conversations/{id}/fs/file", get(files::text))
+        .route("/conversations/{id}/fs/raw", get(files::raw).put(files::upload))
+        .route(
+            "/conversations/{id}/hosts/{device}/fs",
+            get(files::list_on_host).post(files::make_directory_on_host),
+        )
+        .route("/conversations/{id}/changes", get(files::changes))
+        .route("/conversations/{id}/changes/file", get(files::changed_file))
+        .route("/conversations/{id}/changes/raw", get(files::committed))
         .fallback(no_route)
         .method_not_allowed_fallback(no_route)
         // After the fallbacks, so the gate covers them too.

@@ -149,7 +149,8 @@ a file for the browser. An operation can name a device bound as the main or an
 attached host; omitting the device selects the current main host. The binding
 and ownership are checked after taking the file gate and before reaching the
 Host. An unknown or detached device is refused; detaching prevents new access,
-while an already admitted operation may finish. For normal demand, that entry does the same work
+while an already admitted operation may finish. A target whose device no
+longer exists, such as a revoked device, is refused the same way. For normal demand, that entry does the same work
 for every kind of target: it resolves the target, refuses an archived
 conversation, wakes a stopped Cloud and holds it for the operation, and takes
 the conversation's file gate so the operation excludes an archive or a target

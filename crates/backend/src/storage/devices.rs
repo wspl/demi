@@ -28,9 +28,7 @@ pub(crate) struct DeviceRecord {
 const DEVICE_COLUMNS: &str = "id, user_id, kind, name, platform, claimed_at, last_seen_at";
 
 /// The name and platform of the one device a user's Cloud is.
-#[cfg_attr(not(test), expect(dead_code, reason = "the first use of a Cloud target makes its device"))]
 const CLOUD_NAME: &str = "Cloud";
-#[cfg_attr(not(test), expect(dead_code, reason = "the first use of a Cloud target makes its device"))]
 const CLOUD_PLATFORM: &str = "linux";
 
 impl ControlService {
@@ -91,7 +89,6 @@ impl ControlService {
     /// The user's Cloud device, made on its first use. The partial unique
     /// index admits one per user, so concurrent first uses find the same
     /// one. Its token is issued when it boots.
-    #[cfg_attr(not(test), expect(dead_code, reason = "the first use of a Cloud target makes its device"))]
     pub(crate) async fn managed_device_or_create(&self, user: UserId) -> Result<DeviceRecord, StorageError> {
         let id = DeviceId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty");
         self.call(move |connection, now| {

@@ -52,6 +52,7 @@ icu_time = { version = "2", default-features = false, features = ["compiled_data
 jiff.workspace = true
 object_store = { version = "0.13", default-features = false, features = ["fs"] }
 password-hash = { version = "0.5", features = ["getrandom"] }
+percent-encoding = "2"
 rand = "0.9"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
 rusqlite = { version = "0.40", default-features = false, features = ["bundled"] }
@@ -61,6 +62,7 @@ serde_json.workspace = true
 serde_json_canonicalizer = "0.3"
 serde_with.workspace = true
 sha2 = "0.10"
+shlex = "2"
 subtle = "2"
 thiserror.workspace = true
 tokio.workspace = true
@@ -70,6 +72,7 @@ tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["fs", "trace"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
+typed-path = "0.12"
 url = "2"
 uuid = { version = "1", features = ["v4"] }
 
