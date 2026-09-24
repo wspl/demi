@@ -314,6 +314,88 @@ fn target_row(row: &Row<'_>) -> Result<ConversationTarget, StorageError> {
     Ok(target)
 }
 
+/// A device attached to a conversation (`sessions-and-targets.md`
+/// § Attached hosts): a Host the conversation reaches besides its main one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct AttachedHostRecord {
+    pub(crate) device: DeviceId,
+    /// What the model and the user call the host; unique within the
+    /// conversation.
+    pub(crate) name: String,
+    /// Where the last `demi host shell --host` there ended; none until one
+    /// ran.
+    pub(crate) cwd: Option<String>,
+}
+
+impl ControlService {
+    /// The conversation's attached hosts, first attached first.
+    #[cfg_attr(not(test), expect(dead_code, reason = "the conversation's host access and Fork read them"))]
+    pub(crate) async fn attached_hosts(&self, id: ConversationId) -> Result<Vec<AttachedHostRecord>, StorageError> {
+        self.call(move |connection, _| {
+            let mut statement = connection.prepare_cached(
+                "SELECT device_id, name, cwd FROM conversation_hosts WHERE conversation_id = ?1
+                 ORDER BY attached_at, name",
+            )?;
+            let mut rows = statement.query([id.as_str()])?;
+            let mut hosts = Vec::new();
+            while let Some(row) = rows.next()? {
+                hosts.push(AttachedHostRecord {
+                    device: decode(
+                        "conversation_hosts",
+                        "device_id",
+                        DeviceId::try_from(row.get::<_, String>("device_id")?),
+                    )?,
+                    name: row.get("name")?,
+                    cwd: row.get("cwd")?,
+                });
+            }
+            Ok(hosts)
+        })
+        .await
+    }
+}
+
+/// Attaches `device` to the conversation under the first free name within
+/// it: `name`, then `name-2`, `name-3` and so on; an empty name is the
+/// device's id. A device attached already keeps its row. For a transaction
+/// that attaches hosts with its other writes, such as a target switch's or a
+/// Fork's.
+#[cfg_attr(not(test), expect(dead_code, reason = "a target switch and a Fork attach hosts"))]
+pub(crate) fn insert_attached_host(
+    connection: &Connection,
+    conversation: &ConversationId,
+    host: &AttachedHostRecord,
+    now: Timestamp,
+) -> Result<(), StorageError> {
+    let base = match host.name.trim() {
+        "" => host.device.as_str(),
+        trimmed => trimmed,
+    };
+    let mut statement = connection.prepare_cached("SELECT name FROM conversation_hosts WHERE conversation_id = ?1")?;
+    let taken = statement
+        .query_map([conversation.as_str()], |row| row.get::<_, String>(0))?
+        .collect::<Result<std::collections::HashSet<String>, _>>()?;
+    let mut candidate = base.to_owned();
+    let mut suffix = 2;
+    while taken.contains(&candidate) {
+        candidate = format!("{base}-{suffix}");
+        suffix += 1;
+    }
+    connection.execute(
+        "INSERT INTO conversation_hosts (conversation_id, device_id, name, cwd, attached_at)
+         VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT (conversation_id, device_id) DO NOTHING",
+        params![
+            conversation.as_str(),
+            host.device.as_str(),
+            candidate,
+            host.cwd,
+            now.as_millisecond()
+        ],
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -392,6 +474,59 @@ mod tests {
             matches!(refused, StorageError::Corrupt { table: "conversations", column: "model_id", .. }),
             "{refused}"
         );
+        control.close().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_host_attaches_once_under_a_name_free_in_its_conversation() {
+        let data = tempfile::tempdir().unwrap();
+        let control = ControlService::open(&data.path().join("control.sqlite"), Arc::new(demi_core::SystemClock))
+            .await
+            .unwrap();
+        let master = testing::master(&control).await.id;
+        let id = created(control.create_conversation(master.clone(), conversation(1)).await.unwrap()).id;
+        let mut devices = Vec::new();
+        for (name, token) in [("laptop", "one"), ("laptop", "two"), ("ci", "three")] {
+            let hash = crate::auth::sessions::TokenHash::of(token);
+            let device = control
+                .create_device(master.clone(), name.into(), "linux".into(), hash)
+                .await
+                .unwrap();
+            devices.push(device.id);
+        }
+        let host = |device: &DeviceId, name: &str, cwd: Option<&str>| AttachedHostRecord {
+            device: device.clone(),
+            name: name.into(),
+            cwd: cwd.map(str::to_owned),
+        };
+        let attaching = vec![
+            host(&devices[0], "laptop", None),
+            host(&devices[1], "laptop", Some("/work")),
+            host(&devices[2], " ", None),
+            // Attached already: its row stays as it is.
+            host(&devices[0], "renamed", Some("/elsewhere")),
+        ];
+        control
+            .call({
+                let id = id.clone();
+                move |connection, now| {
+                    for host in &attaching {
+                        insert_attached_host(connection, &id, host, now)?;
+                    }
+                    Ok(())
+                }
+            })
+            .await
+            .unwrap();
+        // Attached in one transaction, at one time: listed by name.
+        let attached = control.attached_hosts(id).await.unwrap();
+        let mut expected = vec![
+            host(&devices[0], "laptop", None),
+            host(&devices[1], "laptop-2", Some("/work")),
+            host(&devices[2], devices[2].as_str(), None),
+        ];
+        expected.sort_by(|first, second| first.name.cmp(&second.name));
+        assert_eq!(attached, expected);
         control.close().await.unwrap();
     }
 }
