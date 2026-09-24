@@ -251,11 +251,9 @@ impl Shard {
     }
 
     /// Sends one server frame, presented as the page receives it; false when
-    /// the socket is gone. A frame that cannot be presented is not sent.
+    /// the socket is gone.
     async fn send_frame(&self, sink: &mut futures_util::stream::SplitSink<WebSocket, Message>, frame: ServerFrame) -> bool {
-        let Some(frame) = self.present(frame).await else {
-            return true;
-        };
+        let frame = self.present(frame).await;
         let Some(text) = serialize(frame).await else {
             return false;
         };
@@ -265,23 +263,18 @@ impl Shard {
     /// A server frame as the page receives it: the media of the blocks a
     /// transcript frame carries are references into the owner's blobs
     /// (`backend.md` § Media by reference), and it carries the failure facts
-    /// of the error blocks it brings (§ Failure facts). None when the media
-    /// could not be stored: no frame carries media bytes, and the page asks
-    /// for the transcript again at the gap in the revisions the missing
-    /// frame leaves.
-    async fn present(&self, mut frame: ServerFrame) -> Option<ServerFrame> {
+    /// of the error blocks it brings (§ Failure facts). A frame whose media
+    /// could not be stored becomes an `error` frame, since no frame carries
+    /// media bytes; the page asks for the transcript again at the revision
+    /// gap it leaves.
+    async fn present(&self, mut frame: ServerFrame) -> ServerFrame {
         let services = self.services();
         let blobs = services.blobs.for_user(self.user());
         if let Err(error) = media::externalize_frame(&mut frame, &blobs).await {
-            tracing::error!(
-                user = %self.user(),
-                error = &error as &dyn std::error::Error,
-                "a transcript frame's media were not stored"
-            );
-            return None;
+            return refusal(ErrorCode::FrameSendFailed, format!("A transcript frame's media were not stored: {error}"));
         }
         let assembly = &services.assembly;
-        let presented = match frame {
+        match frame {
             ServerFrame::TranscriptReset { blocks, version, .. } => {
                 let failures = failure_facts(assembly, &blocks).await;
                 ServerFrame::TranscriptReset {
@@ -327,8 +320,7 @@ impl Shard {
                 }
             }
             other => other,
-        };
-        Some(presented)
+        }
     }
 }
 
