@@ -5,7 +5,8 @@
 //! longer holds the source. No test calls a real model.
 
 use demi_agent::testing::model_of;
-use demi_core::{Block, BlockId};
+use demi_core::{Block, BlockId, ToolView};
+use demi_web_api::files::ChangeSides;
 use demi_provider::testing::{MockResponse, MockVendor};
 use demi_web_api::conversations::{ConversationStatus, ForkAnswer};
 use demi_web_api::error::ErrorCode;
@@ -13,7 +14,8 @@ use reqwest::StatusCode;
 use serde_json::{Value, json};
 
 use crate::conversations::{
-    FIRST, SECOND, Socket, THIRD, anthropic, answer, create, kinds, last_text, send, settled, summaries, transcript,
+    FIRST, SECOND, Socket, THIRD, anthropic, answer, create, kinds, last_text, on_device, send, settled, summaries,
+    tool_use, transcript,
 };
 use crate::support::{Harness, MASTER_EMAIL, MASTER_PASSWORD};
 
@@ -124,6 +126,9 @@ async fn a_fork_keeps_the_history_through_the_chosen_text_while_the_source_runs_
     assert!(messages.contains("U1") && messages.contains("A1") && messages.contains("U4"), "{messages}");
     assert!(!messages.contains("U2"), "{messages}");
     assert_eq!(last_text(&destination.live().await), "A3");
+    // A Fork's title is the user's: the destination's first message leaves it.
+    let titles: Vec<String> = summaries(&backend, &master).await.into_iter().map(|summary| summary.title).collect();
+    assert!(titles.contains(&"Build (Fork)".to_owned()), "{titles:?}");
     assert_eq!(kinds(&source.live().await), ["user", "text", "response", "user", "text", "response", "user", "abort"]);
     backend.close().await;
 }
@@ -153,14 +158,65 @@ async fn a_fork_of_a_conversation_the_backend_no_longer_holds_reads_its_stored_h
     let created = backend.post(&path, Some(&master), fork(SECOND, &second_text)).await;
     assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
     let forked = created.json::<ForkAnswer>();
-    assert_eq!(
-        (forked.conversation.title.as_str(), &forked.model),
-        ("New conversation (Fork)", &model)
-    );
+    // The first message titled the source.
+    assert_eq!((forked.conversation.title.as_str(), &forked.model), ("U1 (Fork)", &model));
     // The history through the latest text, without the response after it.
     assert_eq!(transcript(&backend, &master, SECOND).await.blocks, stored[..5]);
     let again = backend.post(&path, Some(&master), fork(SECOND, &second_text)).await;
     assert_eq!(again.status, StatusCode::OK);
     assert_eq!(transcript(&backend, &master, FIRST).await.blocks, stored, "the source is unchanged");
+    backend.close().await;
+}
+
+#[tokio::test]
+async fn a_fork_keeps_the_edits_its_history_made_in_a_copy_of_its_own() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new().with_builtin_package();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    // The runner lives as long as its device binding.
+    let (_paired, _root) = on_device(&harness, &backend, &master, FIRST).await;
+    let mut source = Socket::connect(&backend, &master, FIRST).await;
+    source.open(&model_of(&provider, "claude-opus-4-8")).await;
+    let script = "printf 'hello\\n' | demi file create notes.txt";
+    vendor.respond(tool_use(
+        "toolu_1",
+        "shell_exec",
+        &json!({ "description": "Notes file", "script": script, "timeoutMs": 60_000 }),
+    ));
+    vendor.respond(answer(&["Written."], 1, 1));
+    source.chat("m1", "Write the notes").await;
+    settled(&backend, &master, FIRST).await;
+    let blocks = transcript(&backend, &master, FIRST).await.blocks;
+    let Some(Block::ToolCall(call)) = blocks.get(1) else {
+        panic!("{blocks:?}");
+    };
+    let Some(ToolView::Shell(view)) = &call.view else {
+        panic!("{call:?}");
+    };
+    let files = view.files.clone().unwrap_or_else(|| panic!("the command lists what it changed: {view:?}"));
+    assert!(files[0].edits[0].kept, "{files:?}");
+    let query = url::form_urlencoded::Serializer::new(String::new())
+        .extend_pairs([("path", files[0].path.as_str()), ("edit", "0")])
+        .finish();
+    let edit = |id: &str| format!("/api/conversations/{id}/commands/{}/changes/file?{query}", view.command_id);
+    let kept = backend.get(&edit(FIRST), Some(&master)).await;
+    assert_eq!(kept.status, StatusCode::OK, "{}", String::from_utf8_lossy(&kept.body));
+    let sides = kept.json::<ChangeSides>();
+    assert_eq!((sides.original.as_str(), sides.modified.as_str()), ("", "hello\n"));
+
+    let text = texts(&blocks).last().unwrap().clone();
+    let created = backend
+        .post(&format!("/api/conversations/{FIRST}/fork"), Some(&master), fork(SECOND, &text))
+        .await;
+    assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
+    // The destination reads the edit from its own copy, which outlives the
+    // source's objects.
+    std::fs::remove_dir_all(harness.data_dir().join("changes").join(FIRST)).unwrap();
+    assert_eq!(backend.get(&edit(FIRST), Some(&master)).await.status, StatusCode::NOT_FOUND);
+    let copied = backend.get(&edit(SECOND), Some(&master)).await;
+    assert_eq!(copied.status, StatusCode::OK, "{}", String::from_utf8_lossy(&copied.body));
+    assert_eq!(copied.json::<ChangeSides>(), sides);
     backend.close().await;
 }

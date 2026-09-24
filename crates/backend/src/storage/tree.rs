@@ -7,15 +7,20 @@
 //! where rows are also serialized and decoded. Every row read is decoded and
 //! checked, and corrupt data stops the read.
 //!
+//! A block's inline media goes to the conversation owner's blob namespace
+//! before the save that references it, and comes back when a session loads
+//! for inference (`storage.md` § Attachment and transcript media).
+//!
 //! The same readings serve what the browser reads without a live session: a
-//! conversation's summary facts and its history, on a read-only connection.
+//! conversation's summary facts and its history, on a read-only connection,
+//! which keep the media references.
 
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
 use demi_agent::store::{
     BoundaryEdge, Checkpoint, CheckpointState, CheckpointUpdate, ClosePhase, CommandStateSnapshot, CommandStorageKey,
-    CommandVersion, CommitGuard, NodeClose, NodeRecord, SessionBoundary, StoreError,
+    CommandVersion, CommitGuard, NodeClose, NodeRecord, SessionBoundary, StoreError, media,
 };
 use demi_agent::{AgentTreeStore, SessionStore};
 use demi_core::{Block, BlockId, CompletionId, NodeId, QueuedMessage, SessionPhase, Timestamp};
@@ -24,23 +29,26 @@ use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
 use serde_json::Value;
 
 use super::StorageError;
+use super::blobs::UserBlobs;
 use super::columns::{decode, json, to_json};
 use super::conversations::ConversationDb;
 
-/// One conversation's agent tree in its database.
+/// One conversation's agent tree in its database, with its owner's blobs.
 pub(crate) struct SqliteTreeStore {
     db: ConversationDb,
+    blobs: UserBlobs,
 }
 
 impl SqliteTreeStore {
-    pub(crate) fn new(db: ConversationDb) -> Self {
-        Self { db }
+    pub(crate) fn new(db: ConversationDb, blobs: UserBlobs) -> Self {
+        Self { db, blobs }
     }
 }
 
 /// One node's checkpoint in its conversation's database.
 struct SqliteSessionStore {
     db: ConversationDb,
+    blobs: UserBlobs,
     node: NodeId,
 }
 
@@ -81,6 +89,8 @@ impl AgentTreeStore for SqliteTreeStore {
     fn create_node(&self, record: NodeRecord, initial: CheckpointUpdate) -> LocalBoxFuture<'_, Result<(), StoreError>> {
         Box::pin(async move {
             let completions = initial.carried_completions()?;
+            let mut initial = initial;
+            media::externalize_update(&mut initial, &self.blobs).await?;
             self.db
                 .call(move |connection| {
                     let transaction = connection.transaction()?;
@@ -126,6 +136,7 @@ impl AgentTreeStore for SqliteTreeStore {
     fn session_store(&self, id: &NodeId) -> Rc<dyn SessionStore> {
         Rc::new(SqliteSessionStore {
             db: self.db.clone(),
+            blobs: self.blobs.clone(),
             node: id.clone(),
         })
     }
@@ -238,6 +249,8 @@ impl SessionStore for SqliteSessionStore {
         let node = self.node.clone();
         Box::pin(async move {
             let completions = update.carried_completions()?;
+            let mut update = update;
+            media::externalize_update(&mut update, &self.blobs).await?;
             self.db
                 .call(move |connection| {
                     let transaction = connection.transaction()?;
@@ -260,13 +273,19 @@ impl SessionStore for SqliteSessionStore {
     fn load(&self) -> LocalBoxFuture<'_, Result<Option<Checkpoint>, StoreError>> {
         let node = self.node.clone();
         Box::pin(async move {
-            self.db
+            let loaded = self
+                .db
                 .call(move |connection| {
                     let transaction = connection.transaction()?;
                     checkpoint(&transaction, &node)
                 })
                 .await
-                .map_err(store_error)
+                .map_err(store_error)?;
+            let Some(mut checkpoint) = loaded else {
+                return Ok(None);
+            };
+            media::rehydrate_checkpoint(&mut checkpoint, &self.blobs).await?;
+            Ok(Some(checkpoint))
         })
     }
 }
@@ -728,20 +747,27 @@ mod tests {
     use std::num::NonZeroUsize;
 
     use demi_agent::testing::{store_contract, test_model, text};
-    use demi_core::{ResponseBlock, TextBlock, TokenUsage, TurnId, UserBlock};
+    use demi_core::{BlobRef, ResponseBlock, TextBlock, TokenUsage, TurnId, UserBlock};
     use demi_web_api::ids::ConversationId;
 
     use super::*;
+    use crate::storage::blobs::BlobStores;
     use crate::storage::conversations::ConversationStores;
+    use crate::storage::objects;
 
-    /// A tree store over a new conversation database, with the stores that
-    /// hold it.
+    /// The owner of the conversation the tests store.
+    const OWNER: &str = "ana";
+
+    /// A tree store over a new conversation database and its owner's blob
+    /// namespace, with the stores that hold it.
     async fn store() -> (SqliteTreeStore, ConversationStores, tempfile::TempDir) {
         let data = tempfile::tempdir().unwrap();
         let stores = ConversationStores::open(data.path().join("conversations"), NonZeroUsize::new(4).unwrap())
             .await
             .unwrap();
-        (SqliteTreeStore::new(stores.db(&conversation())), stores, data)
+        let blobs = BlobStores::new(objects::open(data.path(), None).await.unwrap());
+        let owner = demi_web_api::ids::UserId::try_from(OWNER).unwrap();
+        (SqliteTreeStore::new(stores.db(&conversation()), blobs.for_user(&owner)), stores, data)
     }
 
     fn conversation() -> ConversationId {
@@ -906,5 +932,16 @@ mod tests {
         store_contract::reopen_makes_a_closed_node_live_with_its_message_and_delete_takes_the_subtree(&tree).await;
         let (tree, _stores, _data) = store().await;
         store_contract::a_completion_of_an_earlier_round_marks_the_current_one_undelivered(&tree).await;
+        let (tree, _stores, _data) = store().await;
+        store_contract::a_save_delivers_a_completion_it_holds_as_waiting_input(&tree).await;
+        let (tree, _stores, _data) = store().await;
+        store_contract::children_list_in_spawn_order_and_a_close_keeps_its_result(&tree).await;
+        let (tree, _stores, data) = store().await;
+        // A blob is the file `blobs/<user>/<sha256>` of the object store
+        // (`storage.md` § The object store).
+        let forget = |blob: &BlobRef| {
+            std::fs::remove_file(data.path().join("blobs").join(OWNER).join(blob.as_str())).unwrap();
+        };
+        store_contract::media_travels_by_reference(&tree, &tree.blobs, &forget).await;
     }
 }

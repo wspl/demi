@@ -94,6 +94,12 @@ pub struct ConversationSummary {
     pub revision: u64,
     /// Whether output is newer than the read revision.
     pub unread: bool,
+    /// Whether the title has read every message the user sent, so asking
+    /// for a new one could say nothing the last did not
+    /// (`product.md` § Conversation titles).
+    pub title_current: bool,
+    /// Whether a title request of the conversation is in flight.
+    pub title_generating: bool,
 }
 
 /// Where a conversation stands (`web-api.md` § Sidebar mutations, read state
@@ -284,6 +290,15 @@ pub enum BatchResult {
         code: ErrorCode,
         message: String,
     },
+}
+
+/// `POST /conversations/:id/title`: a generated title, asked of `model`, the
+/// selection the composer shows.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(deny_unknown_fields)]
+pub struct TitleRequest {
+    #[garde(dive)]
+    pub model: ModelSelection,
 }
 
 /// `POST /conversations/:id/fork`: the new conversation's id, chosen by the
