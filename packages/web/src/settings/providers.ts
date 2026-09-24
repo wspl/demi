@@ -27,6 +27,7 @@ import {
   loginAnswerSchema,
   loginStartedSchema,
   providerAnswerSchema,
+  providerCliSchema,
   testResultSchema,
   type ActivateAccount,
   type AddToken,
@@ -38,7 +39,6 @@ import {
   type SubscriptionLogin,
   type TestRequest,
 } from '../api/generated/web-api'
-import { providerCliSchema } from '../api/unported'
 import { useResources } from '../state/resources'
 import { useProduct } from '../state/product'
 import { subscriptionName, type ProductProvider } from '../state/catalog'
@@ -501,7 +501,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     const cli = await readResponse(await apiRequest(path, { signal }), providerCliSchema)
     signal.throwIfAborted()
     clis.value[providerId] = {
-      newest: cli.newest,
+      newest: cli.newest.type === 'read' ? { version: cli.newest.version } : { error: cli.newest.message },
       install: cli.install && (cli.install.state === 'failed'
         ? { state: 'failed', message: cli.install.message }
         : { state: cli.install.state }),
