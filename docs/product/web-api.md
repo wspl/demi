@@ -35,7 +35,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Users | `GET/POST /users`, `PATCH /users/:id`; role hierarchy restricts administration |
 | Application state | `GET /state`; conditional snapshot with private ETag |
 | Settings | `GET /settings` returns fixed instance mode; `GET/PATCH /settings/preferences` |
-| Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id }`, `PATCH /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }`, `POST /conversations/:id/title` requests a [generated title](product.md#conversation-titles) |
+| Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id }`, `PATCH /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }`, `POST /conversations/:id/title { model }` requests a [generated title](product.md#conversation-titles) |
 | Conversation history | `GET /conversations/:id/transcript` returns root blocks and subagent histories, each with the [failure facts](../backend/backend.md#failure-facts) of its error blocks; `WS /conversations/:id/stream` carries the [agent frames](../agent/runtime.md#frame-protocol) of that one conversation |
 | Conversation files | `GET/POST /conversations/:id/fs`, `DELETE /conversations/:id/fs?path=...`, `GET /conversations/:id/fs/file?path=...`, `GET /conversations/:id/fs/raw?path=...&version=...&download=true\|false`, `PUT /conversations/:id/fs/raw?path=...&replace=true\|false` with raw bytes, `GET/POST /conversations/:id/hosts/:deviceId/fs` |
 | Working tree | `GET /conversations/:id/changes`, `GET /conversations/:id/changes/file?path=...`, `GET /conversations/:id/changes/raw?path=...&download=true\|false`, `GET /conversations/:id/commands/:commandId/changes/file?path=...&edit=...` |
@@ -133,17 +133,20 @@ Changes follow [Attached hosts](../execution/sessions-and-targets.md#attached-ho
 
 ## Uploads and media
 
-`POST /attachments` accepts a nonempty raw request body with its media type in
-`Content-Type`. The header must name one `type/subtype`, and `multipart/*` — a
-form envelope rather than a file's bytes — is rejected. The maximum body is
-25 MiB. It answers 201 with `{ attachment }`: the attachment's id and
-metadata, including the media type the backend reads from the file's bytes
-when it recognizes them and, for a text file, its snippet. The snippet is the
-opening of the file with leading blank space removed and line endings
-normalized, cut to 160 characters (Unicode scalar values). The composer, for a
-new message or for an edited one, shows the media type and the snippet on the
-file's capsule ([Attachments](product.md#attachments)), so the capsule shows
-what the backend determined.
+`POST /attachments?name=<file name>` accepts a nonempty raw request body with
+its media type in `Content-Type`. The header must name one `type/subtype`, and
+`multipart/*` — a form envelope rather than a file's bytes — is rejected. The
+maximum body is 25 MiB. The name, 1 to 255 characters, decides whether the
+answer carries a text file's opening, as it decides for a message that sends the
+file; a missing name answers 400 `invalid_query`. It answers 201 with
+`{ attachment }`: the attachment's id and metadata, including the media type the
+backend reads from the file's bytes when it recognizes them and, for a text
+file, its snippet. The snippet is the opening of the file with leading blank
+space removed and line endings normalized, cut to 160 characters (Unicode scalar
+values). The composer, for a new message or for an edited one, shows the media
+type and the snippet on the file's capsule
+([Attachments](product.md#attachments)), so the capsule shows what the backend
+determined.
 
 `GET /blobs/:sha256` serves a blob of the caller's own namespace, under the
 headers [Media by reference](../backend/backend.md#media-by-reference)
@@ -496,17 +499,18 @@ vendor login of the machine it runs on.
 The backend applies the fields of `PATCH /api/conversations/:id` independently:
 `title` (trimmed, 1 to 256 characters), `archived`, `pinned`, `target`, and
 `model`, the provider entry and model as `{ providerId, modelId }` or null to
-clear both. A patch whose only field is refused answers that field's 404/409
-status with `{ code, message }`; otherwise the answer is the current
-conversation with `results: [{ field, status, code?, message?, httpStatus? }]`,
-200 when every field applied and 207 when any was refused. Unexpected operation
-failures are reported as 500 field results. Applied fields remain applied.
-Archive is evaluated before the other fields, so archiving and renaming together
-archives successfully but refuses the rename. A rename follows [Conversation
+clear both. A patch whose only field fails answers that field's status with
+`{ code, message }`; otherwise the answer is the current conversation with
+`results: [{ field, status, code?, message?, httpStatus? }]`, 200 when every
+field applied and 207 when any was refused. Unexpected operation failures are
+reported as 500 field results. Applied fields remain applied. Archive is
+evaluated before the other fields, so archiving and renaming together archives
+successfully but refuses the rename. A rename follows [Conversation
 titles](product.md#conversation-titles). `POST /api/conversations/batch` accepts
-up to 100 `{ id, patch }` items and returns 207 with an outcome per item: `{ id,
-status: "updated", conversation, results }`, or `{ id, status: "refused", code,
-message }` for a conversation the caller does not have.
+up to 100 `{ id, patch }` items and returns 207 with an outcome per item:
+`{ id, status: "updated", conversation, results }`, or
+`{ id, status: "refused", code, message }` for a conversation the caller does
+not have.
 
 Archive and a target change are transitions: each holds the conversation while
 it runs, and neither waits for other work. Running root or child work refuses
@@ -544,12 +548,20 @@ project and pin partition. [Storage](../backend/storage.md#control-records)
 owns persistent ordering. Activity timestamps never reorder rows.
 
 `GET /api/conversations?archived=true|false` includes `status`, `revision`,
-`readRevision`, `unread`, and `cwd`, the directory the conversation's work
-runs in, resolved the same way for a device directory, a workspace, and the
-Cloud, so the browser never derives it. Status is running/compacting from the
-live agent tree, otherwise completed/error/stopped from its latest terminal
-block, or idle. An unfinished checkpoint without a live session is
-interrupted.
+`readRevision`, `unread`, and `cwd`, the directory the conversation's work runs
+in, resolved the same way for a device directory, a workspace, and the Cloud, so
+the browser never derives it. Status is running/compacting from the live agent
+tree, otherwise completed/error/stopped from its latest terminal block, or idle.
+An unfinished checkpoint without a live session is interrupted. `titleCurrent`
+says whether the title has read every message the user sent, when asking for a
+new one could say nothing new, and `titleGenerating` whether a title request is
+in flight.
+
+`POST /api/conversations/:id/title { model }` asks that model selection for a
+new title from every message the user sent and answers 202; the title arrives
+with the conversation's summary once written. A conversation without message
+text answers 409 `no_messages`, an archived one 409 `conversation_archived`, and
+a provider outside the caller's scope 404 `provider_not_found`.
 
 A conversation is running while its tree will go on working without the user: an
 agent of the tree is acting, or a child is still open. An agent acts until the

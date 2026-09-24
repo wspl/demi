@@ -8,6 +8,7 @@
 //! A type the backend receives refuses unknown fields; a type only the
 //! browser receives accepts them (`contracts.md` § Generated TypeScript).
 
+pub mod attachments;
 pub mod auth;
 pub mod conversations;
 pub mod devices;
