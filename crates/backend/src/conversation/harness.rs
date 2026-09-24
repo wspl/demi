@@ -9,9 +9,10 @@ use std::rc::{Rc, Weak};
 
 use demi_agent::{AgentHarness, PromptContext};
 use demi_host_remote::RemoteHost;
-use demi_shell::{CommandSet, HostError};
+use demi_shell::{CommandSet, GroupBuilder, HostError};
 
 use super::conversation_of;
+use crate::runner::host_commands::host_group;
 use crate::shard::Shard;
 
 /// The coding agent's name, which every checkpoint records.
@@ -20,7 +21,7 @@ const NAME: &str = "coding";
 const SYSTEM_PROMPT: &str = "You are a coding agent. Answer the user's questions about their code.";
 
 /// The interim conversation harness: the coding agent's name, a system
-/// prompt, no commands, and the conversation's Host.
+/// prompt, the backend's `demi host` commands, and the conversation's Host.
 pub(crate) struct ConversationHarness {
     commands: Rc<CommandSet>,
     /// Weak: the shard owns the agent server that holds this harness.
@@ -28,9 +29,15 @@ pub(crate) struct ConversationHarness {
 }
 
 impl ConversationHarness {
+    /// The harness of `shard`'s conversations, whose `demi` commands are the
+    /// backend's `host` group.
     pub(crate) fn new(shard: Weak<Shard>) -> Self {
+        let mut commands = CommandSet::new();
+        commands
+            .register(GroupBuilder::new("demi", "Demi agent runtime commands.").group(host_group(shard.clone())))
+            .expect("the demi host commands are valid");
         Self {
-            commands: Rc::new(CommandSet::new()),
+            commands: Rc::new(commands),
             shard,
         }
     }
@@ -55,7 +62,7 @@ impl AgentHarness for ConversationHarness {
         self.commands.clone()
     }
 
-    /// The harness has no commands, so their help is empty.
+    /// The interim prompt leaves out the commands' help.
     async fn system_prompt(&self, _context: PromptContext<'_>, _commands: &str) -> String {
         SYSTEM_PROMPT.to_owned()
     }

@@ -10,7 +10,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
-use demi_host_remote::JobOrigin;
+use demi_host_remote::{CommandSelection, JobOrigin};
 use demi_shell::{CommandSet, RpcError, RpcInvocation, RpcPort};
 use demi_web_api::ids::ConversationId;
 use futures_util::future::LocalBoxFuture;
@@ -26,6 +26,9 @@ struct Node {
     id: String,
     conversation: ConversationId,
     commands: Rc<CommandSet>,
+    /// The manifest of `commands`, which a job the node starts elsewhere
+    /// runs with.
+    selection: CommandSelection,
     nodes: Weak<RefCell<HashMap<String, Weak<Node>>>>,
 }
 
@@ -48,13 +51,15 @@ impl Drop for Node {
 }
 
 impl CommandRouter {
-    /// Registers `node` of `conversation` with its commands. A node
-    /// registered already keeps its registration, which the answer shares.
+    /// Registers `node` of `conversation` with its commands and their
+    /// manifest. A node registered already keeps its registration, which
+    /// the answer shares.
     pub(crate) fn register(
         &self,
         node: &str,
         conversation: &ConversationId,
         commands: Rc<CommandSet>,
+        selection: CommandSelection,
     ) -> CommandRegistration {
         let mut nodes = self.nodes.borrow_mut();
         if let Some(registered) = nodes.get(node).and_then(Weak::upgrade) {
@@ -64,6 +69,7 @@ impl CommandRouter {
             id: node.to_owned(),
             conversation: conversation.clone(),
             commands,
+            selection,
             nodes: Rc::downgrade(&self.nodes),
         });
         nodes.insert(node.to_owned(), Rc::downgrade(&registered));
@@ -88,6 +94,13 @@ impl CommandRouter {
             return Err(format!("node {node} belongs to another conversation"));
         }
         Ok(registered)
+    }
+
+    /// The manifest of `node`'s commands, provided it is registered for
+    /// `conversation`: what a job the node starts on another Host runs with.
+    pub(crate) fn selection_of(&self, node: &str, conversation: &ConversationId) -> Option<CommandSelection> {
+        let registered = self.nodes.borrow().get(node).and_then(Weak::upgrade)?;
+        (registered.conversation == *conversation).then(|| registered.selection.clone())
     }
 
     /// Runs the call `job` made, in its node's commands.
