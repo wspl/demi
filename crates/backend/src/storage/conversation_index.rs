@@ -14,7 +14,7 @@ use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 
 use super::StorageError;
-use super::columns::{decode, instant, to_json};
+use super::columns::{decode, instant, json, to_json};
 use super::control::ControlService;
 use crate::conversation::target::TargetSwitch;
 
@@ -203,6 +203,20 @@ impl ControlService {
     /// The conversation of `id`, in whichever case it is spelled.
     pub(crate) async fn conversation(&self, id: ConversationId) -> Result<Option<ConversationRecord>, StorageError> {
         self.call(move |connection, _| conversation_by_id(connection, &id)).await
+    }
+
+    /// The conversation's latest target switch, which every node's next
+    /// context block describes; none before its first.
+    pub(crate) async fn last_switch(&self, id: ConversationId) -> Result<Option<TargetSwitch>, StorageError> {
+        self.call(move |connection, _| {
+            let text: Option<Option<String>> = connection
+                .query_row("SELECT last_switch FROM conversations WHERE id = ?1", [id.as_str()], |row| row.get(0))
+                .optional()?;
+            text.flatten()
+                .map(|text| json("conversations", "last_switch", &text))
+                .transpose()
+        })
+        .await
     }
 
     /// The owner's conversations that are archived, or that are not, in
