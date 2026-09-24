@@ -23,6 +23,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::target::ExecutionTarget;
 use super::transfer::{OpenTransfer, TransferSet, TransfersClosed};
+use crate::managed::{CloudAdmission, CloudError};
 use crate::runner::{HostOwner, host_key};
 use crate::shard::Shard;
 use crate::storage::StorageError;
@@ -78,7 +79,7 @@ pub(crate) enum HostAccessError {
     #[error(transparent)]
     Refused(#[from] Refusal),
     #[error(transparent)]
-    Cloud(#[from] CloudUnavailable),
+    Cloud(#[from] CloudError),
     /// The requester left while the admission waited.
     #[error("the request went away")]
     Cancelled,
@@ -99,7 +100,7 @@ impl HostAccessError {
             Self::Refused(Refusal::Busy) => (ErrorCode::ConversationBusy, 409),
             Self::Refused(Refusal::Stopped) => (ErrorCode::HostStopped, 409),
             Self::Refused(Refusal::DeviceGone) => (ErrorCode::DeviceNotFound, 404),
-            Self::Cloud(_) => (ErrorCode::CloudUnavailable, 503),
+            Self::Cloud(error) => error.code(),
             Self::Host(error) => host_error_code(error),
             Self::Cancelled | Self::Storage(_) => (ErrorCode::InternalError, 500),
         }
@@ -141,22 +142,6 @@ pub(crate) enum Refusal {
     /// such as a revoked one.
     #[error("The conversation's device no longer exists")]
     DeviceGone,
-}
-
-/// The Cloud cannot start (`managed-hosts.md`).
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("{0}")]
-pub(crate) struct CloudUnavailable(String);
-
-/// A hold of the Cloud's admission: the Cloud keeps running while an
-/// admitted operation holds it.
-#[expect(dead_code, reason = "the Cloud's lifecycle admits a Cloud")]
-pub(crate) struct CloudAdmission {
-    device: DeviceId,
-    /// What each operation of the admitted Host takes: a lease of the
-    /// Cloud's admission, refused while the Cloud changes state.
-    per_operation: Admission,
-    held: GateLease,
 }
 
 /// A conversation's Host as an admitted operation reaches it.
@@ -307,6 +292,7 @@ impl Shard {
                 continue;
             }
             let host = self.open_host(&record.id, &selected, cloud.as_ref()).await?;
+            self.track_idle(&record.id);
             return Ok(Admitted {
                 host,
                 _files: files,
@@ -346,6 +332,7 @@ impl Shard {
         // directory.
         selected.prepare = false;
         let host = self.open_host(&record.id, &selected, None).await?;
+        self.track_idle(&record.id);
         drop(files);
         Ok(StreamAccess {
             conversation: record.id,
@@ -356,11 +343,9 @@ impl Shard {
     }
 
     /// Takes the Cloud's admission: it wakes a stopped Cloud, joins a boot
-    /// under way, or waits for a running reset to finish. The Cloud's
-    /// lifecycle holds the admission; a backend that runs none starts no
-    /// Cloud.
-    async fn enter_cloud(&self, device: &DeviceRecord) -> Result<CloudAdmission, CloudUnavailable> {
-        Err(CloudUnavailable(format!("The Cloud {} cannot start", device.id)))
+    /// under way, or waits for a running reset to finish (`managed`).
+    async fn enter_cloud(&self, device: &DeviceRecord) -> Result<CloudAdmission, CloudError> {
+        self.admit_cloud(device).await
     }
 
     /// The Host an operation reaches and where its work starts, found

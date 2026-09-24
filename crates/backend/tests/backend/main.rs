@@ -4,6 +4,7 @@
 mod accounts;
 mod auth;
 mod blobs;
+mod cloud;
 mod coding;
 mod conversations;
 mod edge;
@@ -12,6 +13,7 @@ mod files;
 mod hosts;
 mod forks;
 mod install;
+mod machines;
 mod providers;
 mod runners;
 mod settings;

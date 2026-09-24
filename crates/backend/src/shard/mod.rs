@@ -29,6 +29,8 @@ use crate::backend::Services;
 use crate::conversation::host_access::Conversations;
 use crate::conversation::titles::Titles;
 use crate::conversation::{self, ConversationHarness, ConversationParts};
+use crate::lifecycle::conversations::ConversationWatches;
+use crate::managed::Cloud;
 use crate::runner::devices::Devices;
 use crate::runner::router::CommandRouter;
 use crate::usage::rate_limit::RequestRateLimit;
@@ -51,6 +53,8 @@ const QUEUE: usize = 256;
 /// them.
 pub(crate) struct Shard {
     user: UserId,
+    /// The shard itself, for the tasks its methods start.
+    this: Weak<Shard>,
     services: Arc<Services>,
     /// The HTTP client of the shard's thread, which the runtimes built here
     /// send with: hyper ties a pooled connection to the runtime that made it.
@@ -76,6 +80,10 @@ pub(crate) struct Shard {
     conversation_sockets: TaskTracker,
     /// Fork requests, one at a time per destination id in lowercase.
     forks: KeyedSerialGate<String>,
+    /// The user's Cloud machine.
+    cloud: Cloud,
+    /// Each conversation's idle watch.
+    idle_watches: ConversationWatches,
 }
 
 impl Shard {
@@ -86,9 +94,10 @@ impl Shard {
         let limit = services.conversation_tuning.requests_per_minute;
         let rate_limit = Rc::new(RefCell::new(RequestRateLimit::new(limit)));
         let ConversationParts { agent, titles } =
-            conversation::conversation_parts(shard, user.clone(), services.clone(), http.clone(), rate_limit);
+            conversation::conversation_parts(shard.clone(), user.clone(), services.clone(), http.clone(), rate_limit);
         Self {
             user,
+            this: shard,
             services,
             http,
             conversations: Conversations::default(),
@@ -101,7 +110,23 @@ impl Shard {
             titles,
             conversation_sockets: TaskTracker::new(),
             forks: KeyedSerialGate::new(),
+            cloud: Cloud::default(),
+            idle_watches: ConversationWatches::default(),
         }
+    }
+
+    /// The shard, for a task that outlives the call that starts it. A
+    /// method of the shard runs while its caller holds it.
+    pub(crate) fn this(&self) -> Rc<Shard> {
+        self.this.upgrade().expect("a shard's method runs while the shard lives")
+    }
+
+    pub(crate) fn cloud(&self) -> &Cloud {
+        &self.cloud
+    }
+
+    pub(crate) fn idle_watches(&self) -> &ConversationWatches {
+        &self.idle_watches
     }
 
     pub(crate) fn user(&self) -> &UserId {
@@ -163,22 +188,28 @@ impl Shard {
     }
 
     /// Ends the user's work in order (`backend.md` § Startup and shutdown):
+    /// the idle watches stop, and a retirement already running finishes;
     /// title requests are aborted; the conversation sockets end; open file
     /// transfers and user streams end, and stay closed; the agent turns are
-    /// aborted while their runners are still connected; the runner
-    /// connections close, their work ends with them, and then the pipes
-    /// fail.
-    async fn close(&self) {
+    /// aborted while their runners are still connected; the Cloud is saved
+    /// and stopped; the runner connections close, their work ends with
+    /// them, and then the pipes fail. The answer says why the Cloud was not
+    /// saved, when it was not.
+    async fn close(&self) -> Option<String> {
         self.closing.cancel();
+        self.stop_idle_watches();
+        self.cloud.stop();
         self.titles.abort_all();
         self.conversation_sockets.close();
         self.conversation_sockets.wait().await;
         let _transfers_closed = self.conversations.end_transfers().await;
         self.agent.shutdown().await;
+        let saved = self.close_cloud().await;
         self.devices.disconnect_all("backend shutting down");
         self.tasks.close();
         self.tasks.wait().await;
         self.pipes.close().await;
+        saved.err().map(|error| format!("the Cloud of {}: {error}", self.user))
     }
 }
 
@@ -289,7 +320,8 @@ impl ShardRef<'_> {
 
 enum Message {
     Call(Box<dyn Job>),
-    Close(oneshot::Sender<()>),
+    /// Answered with why each shard's Cloud was not saved.
+    Close(oneshot::Sender<Vec<String>>),
 }
 
 /// Work on its way to a shard, which either runs it or refuses it.
@@ -426,17 +458,19 @@ impl ShardPool {
     }
 
     /// Refuses new calls, waits for the running ones and stops the shard
-    /// threads.
-    pub(crate) async fn close(self) {
-        Self::stop(self.shards.queues.to_vec(), self.workers).await;
+    /// threads; answers why a shard's Cloud was not saved, for each that was
+    /// not.
+    pub(crate) async fn close(self) -> Vec<String> {
+        Self::stop(self.shards.queues.to_vec(), self.workers).await
     }
 
-    async fn stop(queues: Vec<mpsc::Sender<Message>>, workers: Vec<Worker>) {
+    async fn stop(queues: Vec<mpsc::Sender<Message>>, workers: Vec<Worker>) -> Vec<String> {
+        let mut failures = Vec::new();
         for queue in &queues {
             let (closed, done) = oneshot::channel();
             if queue.send(Message::Close(closed)).await.is_ok() {
                 // A shard loop that ended already has nothing left to stop.
-                let _ = done.await;
+                failures.extend(done.await.unwrap_or_default());
             }
         }
         for worker in workers {
@@ -454,6 +488,7 @@ impl ShardPool {
                 }
             }
         }
+        failures
     }
 }
 
@@ -516,9 +551,9 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
     }
     let closing = futures_util::future::join_all(shards.values().map(|shard| shard.close()));
     tokio::pin!(closing);
-    loop {
+    let failures: Vec<String> = loop {
         tokio::select! {
-            _ = &mut closing => break,
+            closed = &mut closing => break closed.into_iter().flatten().collect(),
             message = queue.recv() => match message {
                 // A shard that closes takes no new user.
                 Some(Message::Call(job)) => match shards.get(job.user()) {
@@ -531,13 +566,10 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
                 Some(Message::Close(done)) => drop(done),
                 // Every sender is gone: nothing more arrives while the
                 // shards close.
-                None => {
-                    (&mut closing).await;
-                    break;
-                }
+                None => break (&mut closing).await.into_iter().flatten().collect(),
             },
         }
-    }
+    };
     queue.close();
     while let Some(message) = queue.recv().await {
         match message {
@@ -550,7 +582,7 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
     if let Some(done) = closer {
         // The closer waits for this answer; if it went away, no one is left
         // to tell.
-        let _ = done.send(());
+        let _ = done.send(failures);
     }
 }
 
