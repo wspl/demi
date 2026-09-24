@@ -338,6 +338,27 @@ Running out is never an answer either: a working-tree request does not report
 a directory as outside a repository because it could not open the
 repository's files.
 
+**Known gap.** Inside a running job, only three of the shell's own needs wait
+today: creating a pipe, opening a file and starting a process, which go
+through the job's hooks. The embedded shell makes other descriptors without
+them:
+
+- It duplicates descriptors (brush's `OpenFile::clone` and `try_clone`) for
+  every subshell, pipeline stage and builtin's standard stream, whenever it
+  copies a command's execution parameters, and for a redirection such as
+  `2>&1`. A copy that finds no descriptor left becomes a stand-in that fails
+  every read and write.
+- A here-document or here-string is written to a temporary file the shell
+  creates itself.
+- A background list's standard input, `/dev/null`, is opened by the shell,
+  and the list keeps the job's input when the open fails.
+- The runner duplicates a descriptor to hand it to a standard utility
+  (`native_file` in its shell module).
+
+None of these waits. For example, out of open files, `echo one | cat >
+piped.txt` exits 1 with `failed to duplicate open file` instead of waiting,
+so a job's pipelines and redirections do not wait yet.
+
 Two refusals remain. A browser command that conflicts with another command on
 the same tab answers `tab_busy`; that is about the page, not load
 ([Conversation browser](../browser/browser.md#one-tab-registry)). An expose answers 503
@@ -385,6 +406,25 @@ readable user login profile. The runner then restores its execution context,
 places command aliases first in PATH, and restores the requested cwd. Shell
 variables and functions do not carry over to the next job; persisted profile
 changes do. The backend receives the final cwd and foreground exit status.
+
+The user login profile is the one in the job's home, the directory the job's
+`HOME` names, and the profiles see that directory as `$HOME`. A job's `HOME`
+is the one its request sets, else the device environment's, else the home
+the runner reports for the device
+([Resolve a target](sessions-and-targets.md#resolve-a-target)), so every job
+has one. For example, a runner that a service manager starts without `HOME`
+gives its jobs its account's home: they read `~/.profile` there, and a line in
+it such as `. "$HOME/.local/bin/env"` finds its file. Without that default,
+brush would read the same profile with `$HOME` unset, and the line would look
+for `/.local/bin/env`.
+
+Tests that start jobs give each job a home of its own, so no test reads the
+login profile of the machine's user. The system profile belongs to the
+machine, and jobs in tests read it too. A test therefore does not assume how
+long a job takes to start or how many open files its start holds. A system
+profile that loads version managers such as nvm can take a job a quarter of a
+second to source and hold about a hundred pipes at once, since every unit of
+a job shares the runner's open-file table ([Load](#load)).
 
 A job waits for background tasks and process substitutions before reporting
 completion. For example:

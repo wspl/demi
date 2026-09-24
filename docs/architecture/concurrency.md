@@ -361,19 +361,26 @@ document, for example the backend's in [Backend](../backend/backend.md).
 - **Paused clock in process.** Timer logic tested inside one process runs on
   Tokio's paused clock (`start_paused = true`, with the `local` or
   `current_thread` flavor), so a one-hour idle window elapses at once and
-  assertions use exact times, not tolerances.
-- **Real time with real processes.** Tokio advances a paused clock whenever
-  the runtime is idle, including while it waits on a real process, so every
-  timer would fire early. A test with a real runner or service uses real time
-  and short configured windows.
+  assertions use exact times, not tolerances. That holds only while nothing
+  the test waits on runs outside the runtime.
+- **Real time when work runs outside the runtime.** Tokio advances a paused
+  clock to the next timer whenever the runtime is idle, including while it
+  waits on another thread or process, so every timer would fire early. A test
+  whose timers run while it waits on a real runner, a service or the
+  backend's database, whose connections answer on threads of their own, uses
+  real time and short configured windows. For example, a backend unit test of
+  the idle release waits on the database at every Host admission; on a paused
+  clock each of those waits would move time on to the idle watch's next poll,
+  and the watch would release the conversation before its window had passed.
 - **Wall time is injected.** Wall-clock time comes from an injected `Clock`,
   and durations use `tokio::time::Instant`. The test clock follows Tokio time
   (a start time plus elapsed Tokio time), so paused tests move record
   timestamps too; a settable clock serves tests that move only wall time, such
   as expose expiry.
 - **The backend runs inline.** A backend test without a real runner runs the
-  shards on the test's own runtime instead of on shard threads, so the whole
-  backend runs on one current-thread runtime that the paused clock reaches.
+  shards on the test's own runtime instead of on shard threads, so the
+  backend's tasks run on one current-thread runtime that the paused clock
+  reaches. Its database still answers on threads of its own.
 - **Real programs are built binaries.** A test that needs a real runner or
   another program starts the binary that `cargo xtask test` built and named in
   an environment variable ([Module layout](crates-and-packages.md#module-layout)).
