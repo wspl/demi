@@ -369,12 +369,16 @@ Each crate implements the provider contract for one vendor family.
   `tools/call` answered in the next run, the model catalog mapping, the OAuth
   usage quota probe, and the account token passed in the CLI's environment at
   spawn.
-- **Public boundary:** its `Provider` implementation and configuration type.
-  Behavior: [Claude Code](../providers/claude-code.md).
+- **Public boundary:** its `Provider` implementation and configuration type,
+  the session runtime it builds over a placement, and the placement contract
+  (`Placement`): `start` starts a new CLI process from the spawn request the
+  provider builds and answers the `shell` process. `Provider::runtime` refuses
+  with `ProcessHostRequired`. Behavior:
+  [Claude Code](../providers/claude-code.md#how-a-runtime-gets-its-process).
 - **Secret boundary:** OAuth tokens never reach a frame or response the browser
   sees; the only process that receives one is the CLI on the user's Cloud.
 - **Must not:** depend on `agent`, `coding-agent` or a Host implementation. It
-  runs the CLI through the `shell` process interface it is given; which machine
+  runs the CLI through the `shell` process the placement answers; which machine
   that is, is the backend's placement.
 
 #### `shell`
@@ -515,7 +519,8 @@ Each crate implements the provider contract for one vendor family.
 - **Public boundary:** the `demi-backend` executable; `Backend::start` and
   `BackendConfig` for tests, with the parts a test replaces: the provider
   families entries are assembled with (`FamilyRegistry`, `ProviderFamily` and
-  the arguments a family builds a provider from), the login timing
+  the arguments a family builds a provider from, or, for a provider that needs
+  a process, its session runtime over a placement), the login timing
   (`LoginTiming`), the conversations' bounds (`ConversationTuning`), the
   Cloud's and the idle clock's times and limits (`CloudTuning`,
   `LifecycleTuning`), the native command packages their commands bind to
@@ -741,7 +746,7 @@ provider-openai-api -> core, provider
 provider-google -> core, provider
 provider-codex -> core, provider
 provider-grok-build -> core, provider
-provider-claude-code -> provider, shell
+provider-claude-code -> core, provider, shell
 shell -> command-service, command-tree, core
 agent -> agent-protocol, command-service, core, gates, provider, shell
 coding-agent -> agent, builtin-protocol, command-tree, core, shell
