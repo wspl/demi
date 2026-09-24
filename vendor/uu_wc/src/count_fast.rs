@@ -133,7 +133,10 @@ pub(crate) fn count_bytes_fast<T: WordCountable>(handle: &mut T) -> (usize, Opti
         #[cfg(any(target_os = "linux", target_os = "android"))]
         match count_bytes_using_splice(handle) {
             Ok(n) => return (byte_count + n, None),
-            Err(n) => byte_count = n,
+            // What splice counted comes after what the seek skipped; the
+            // read below counts the rest. Inside a shell job splice always
+            // fails (uucore::pipes::splice).
+            Err(n) => byte_count += n,
         }
     }
 
