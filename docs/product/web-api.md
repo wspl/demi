@@ -479,15 +479,18 @@ where its requests run too
 ([Where it runs](../providers/claude-code.md#where-it-runs)); the test wakes
 it.
 
-A subscription entry's CLI is read and managed under `/api/providers/:id/cli`:
+The CLI of an entry whose provider runs a process is read and managed under
+`/api/providers/:id/cli`; for any other entry these routes answer 404
+`provider_not_found`:
 
 | Route | Meaning |
 |---|---|
-| `GET …/cli?refresh=` | `{ newest, install, machines }`: the vendor's newest version (`{ version }`, or `{ error }` when the vendor cannot be read; `refresh=true` asks it at once), the last Cloud install (`installing`, `installed` with its path, `failed` with its message, or null), and the user's Cloud with its installed versions when it is running now (null when it did not answer). It wakes nothing: a stopped Cloud is simply absent. |
-| `POST …/cli/install` | Starts the Cloud install again; 202 with its state. |
+| `GET …/cli?refresh=` | `{ newest, install, machines }`: the vendor's newest version (`{ type: "read", version }`, or `{ type: "unreadable", message }` when the vendor cannot be read; `refresh=true` asks it at once), the caller's last Cloud install since the backend started (`{ state: "installing" }`, `{ state: "installed", path }`, `{ state: "failed", message }`, or null), and the caller's Cloud as `{ deviceId, name, versions }` with its installed versions, newest first, while its runner is connected (`versions` is null when it did not answer). It wakes nothing: a stopped Cloud is simply absent. |
+| `POST …/cli/install` | Starts the install on the caller's Cloud again, unless one is under way; 202 `{ install }` with its state. |
 
-Adding an account to such an entry starts the same install; its failure is this
-state and never the failure of adding the account.
+Adding an account to such an entry starts the same install on the acting
+user's Cloud; its failure is this state and never the failure of adding the
+account.
 
 On a shared instance every user reads provider state, but only the master sees
 accounts, plan and usage: for everyone else `accounts` is empty, `active` names

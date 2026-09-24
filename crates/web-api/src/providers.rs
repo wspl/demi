@@ -12,7 +12,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::{double_option, unwrap_or_skip};
 
-use crate::ids::{CredentialId, LoginId, ProviderId};
+use crate::ids::{CredentialId, DeviceId, LoginId, ProviderId};
 use crate::text::{EndpointUrl, Trimmed};
 
 /// The most characters (Unicode scalar values) an entry's label has, after
@@ -549,6 +549,56 @@ pub enum UnavailableReason {
     Authentication,
     /// The provider cannot run requests.
     Runtime,
+}
+
+/// `GET /providers/:id/cli`: the command-line tool of an entry whose
+/// provider runs one on the user's Cloud. Reading it wakes nothing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ProviderCli {
+    pub newest: NewestVersion,
+    /// The last install on the caller's Cloud that no conversation asked
+    /// for, since the backend started; null before one.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<CliInstall>")]
+    pub install: Option<CliInstall>,
+    /// The caller's Cloud while its runner is connected; empty otherwise.
+    pub machines: Vec<CliMachine>,
+}
+
+/// The vendor's newest version, or why it could not be read.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "type", rename_all = "snake_case", rename_all_fields = "camelCase")]
+pub enum NewestVersion {
+    Read { version: String },
+    Unreadable { message: String },
+}
+
+/// Where an install of the tool stands.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "state", rename_all = "snake_case", rename_all_fields = "camelCase")]
+pub enum CliInstall {
+    Installing {},
+    /// `path` is the executable on the Cloud.
+    Installed { path: String },
+    Failed { message: String },
+}
+
+/// A machine the tool runs on, with the versions it has, newest first;
+/// null when it did not answer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CliMachine {
+    pub device_id: DeviceId,
+    pub name: String,
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<Vec<String>>")]
+    pub versions: Option<Vec<String>>,
+}
+
+/// The 202 answer of `POST /providers/:id/cli/install`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct CliInstallAnswer {
+    pub install: CliInstall,
 }
 
 #[cfg(test)]
