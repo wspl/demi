@@ -119,7 +119,8 @@ impl Default for ObservationWindow {
 /// The command storage a job's `rpc` calls reach: the calling node and the
 /// history generation it was at when the job started
 /// (`command-state-history.md` § Mutation API and concurrency).
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct JobCaller {
     pub node: NodeId,
     pub generation: u64,
