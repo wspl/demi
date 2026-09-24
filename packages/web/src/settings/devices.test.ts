@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
-import { productStateSchema, type ProductState } from '../api/unported'
+import { productState } from '../__tests__/product-state'
+import type { ProductState } from '../api/unported'
 import { useProduct } from '../state/product'
 import { useDeviceSettings } from './devices'
 
@@ -13,16 +14,7 @@ let removals: string[]
 beforeEach(async () => {
   pinia = createPinia()
   setActivePinia(pinia)
-  state = productStateSchema.parse({
-    user: {
-      id: 'user',
-      email: 'test@example.test',
-      nickname: 'Test',
-      role: 'master',
-      createdAt: '2026-09-10T00:00:00.000Z',
-    },
-    mode: 'shared',
-    preferences: { appearance: {}, shortcuts: {} },
+  state = productState({
     devices: [
       {
         id: 'laptop',
@@ -35,8 +27,6 @@ beforeEach(async () => {
         home: null,
       },
     ],
-    workspaces: [],
-    conversations: [],
     cloud: {
       device: { id: 'cloud', name: 'Cloud' },
       state: 'running',
@@ -45,7 +35,6 @@ beforeEach(async () => {
       volumes: null,
       limits: { systemBytes: 0, homeBytes: 0 },
     },
-    providers: [],
     exposes: [
       {
         id: 'k7x2m9qw4p3s6t8v0w2y4z6a8b',
