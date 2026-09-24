@@ -314,6 +314,13 @@ impl Backend {
                 return Err(StartError::Shards(error));
             }
         };
+        // Fork destinations whose root committed before their publication are
+        // published before the backend serves.
+        if let Err(error) = crate::conversation::recover_forks(&services.control, &services.conversations).await {
+            shards.close().await;
+            services.close_providers().await;
+            return Err(StartError::Storage(error));
+        }
         let state = AppState {
             services: services.clone(),
             shards: shards.shards(),

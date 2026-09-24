@@ -167,6 +167,19 @@ pub enum ErrorCode {
     /// session, such as a storage failure; the frames behind it still
     /// arrive.
     FrameDeliveryFailed,
+    /// Work of the conversation's tree is running, or another transition
+    /// holds the conversation: an archive or a target change waits for
+    /// nothing and is refused.
+    TurnInFlight,
+    /// One field of a conversation patch failed in a way the request could
+    /// not cause; the fields applied stay applied.
+    OperationFailed,
+    /// The Fork's id belongs to another creation attempt: another source or
+    /// another text.
+    ForkConflict,
+    /// The Fork's text is not a completed assistant text of the source's
+    /// history.
+    InvalidForkTarget,
 }
 
 serde_plain::derive_display_from_serialize!(ErrorCode);
