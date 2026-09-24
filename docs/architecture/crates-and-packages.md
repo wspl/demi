@@ -388,8 +388,9 @@ Each crate implements the provider contract for one vendor family.
     rpc handler interface (`RpcHandler`, `RpcInvocation`, `RpcPort`,
     `PortTransport`, `StorageOp`); the reserved command names;
   - the shell-environment contract behind the `shell_*` tools:
-    `ShellEnvironment`, `ExecRequest`, `CommandStatus` and `CommandRecord`, the
-    model's status view of a command.
+    `ShellEnvironment`, `ExecRequest`, `CommandStatus` and `CommandRecord`,
+    with one place in each command's output for the model and one for the
+    page (`Reader`).
 - **Public boundary:** the items above; `shell::testing` supplies the Host
   conformance cases and an in-memory port for rpc handler tests
   (`MemoryPort`). The Host rules are in

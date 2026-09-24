@@ -219,7 +219,7 @@ mod tests {
     use std::cell::Cell;
 
     use bytes::Bytes;
-    use demi_shell::{CommandStatus, ExecRequest, ShellError};
+    use demi_shell::{CommandStatus, ExecRequest, Reader, ShellError};
     use futures_util::future::{LocalBoxFuture, join};
     use tokio_util::sync::CancellationToken;
 
@@ -242,7 +242,7 @@ mod tests {
             unreachable!("the environments never run a command")
         }
 
-        fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError> {
+        fn status(&self, command: &CommandId, _: Reader) -> Result<CommandStatus, ShellError> {
             Err(ShellError::UnknownCommand(command.clone()))
         }
 
@@ -250,6 +250,7 @@ mod tests {
             &'a self,
             command: &'a CommandId,
             _: Bytes,
+            _: Reader,
         ) -> LocalBoxFuture<'a, Result<CommandStatus, ShellError>> {
             Box::pin(async move { Err(ShellError::UnknownCommand(command.clone())) })
         }
@@ -257,6 +258,7 @@ mod tests {
         fn abort<'a>(
             &'a self,
             command: &'a CommandId,
+            _: Reader,
         ) -> LocalBoxFuture<'a, Result<CommandStatus, ShellError>> {
             Box::pin(async move { Err(ShellError::UnknownCommand(command.clone())) })
         }
