@@ -276,7 +276,7 @@ mod tests {
         }
         // One root commits, and the backend stops before it publishes the
         // destination; a device is revoked meanwhile.
-        let blobs = BlobStores::new(objects::open(data.path()).await.unwrap()).for_user(&master);
+        let blobs = BlobStores::new(objects::open(data.path(), None).await.unwrap()).for_user(&master);
         commit_root(&stores, &blobs, &committed, created_at).await;
         control.delete_device(devices[1].clone()).await.unwrap();
 

@@ -765,7 +765,7 @@ mod tests {
         let stores = ConversationStores::open(data.path().join("conversations"), NonZeroUsize::new(4).unwrap())
             .await
             .unwrap();
-        let blobs = BlobStores::new(objects::open(data.path()).await.unwrap());
+        let blobs = BlobStores::new(objects::open(data.path(), None).await.unwrap());
         let owner = demi_web_api::ids::UserId::try_from(OWNER).unwrap();
         (SqliteTreeStore::new(stores.db(&conversation()), blobs.for_user(&owner)), stores, data)
     }

@@ -1,7 +1,9 @@
 import { isAbsolute, join } from 'node:path'
 import ipaddr from 'ipaddr.js'
 import { z } from 'zod'
-import runtimeRelease from '../../runtime/release.json'
+// The pinned runtime lives with the Rust manager; this manager goes with the
+// TypeScript backend (task 7A).
+import runtimeRelease from '../../../../crates/machines/runtime/release.json'
 
 const positive = z.coerce.number().int().positive()
 const absolute = z.string().refine(isAbsolute, 'must be an absolute path')
