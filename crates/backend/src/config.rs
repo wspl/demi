@@ -18,6 +18,7 @@ use demi_provider::models_dev::ModelsDevClient;
 
 use crate::auth::email_change::AccountMail;
 use crate::conversation::stream::BROWSER_STREAM;
+use crate::expose::ExposeDomain;
 use crate::llm::claude_releases::DEFAULT_RELEASES_URL;
 use crate::llm::families::FamilyRegistry;
 use crate::runner::native::NativeCatalog;
@@ -68,7 +69,7 @@ pub struct Config {
     pub instance_secret: Option<String>,
     /// The domain of expose hostnames; without it, exposes are unavailable
     #[arg(long, env = "DEMI_EXPOSE_DOMAIN", value_name = "DEMI_EXPOSE_DOMAIN")]
-    pub expose_domain: Option<String>,
+    pub expose_domain: Option<ExposeDomain>,
     /// A built browser directory to serve beside the API
     #[arg(long, env = "DEMI_WEB_DIRECTORY", value_name = "DEMI_WEB_DIRECTORY")]
     pub web_directory: Option<PathBuf>,
@@ -121,6 +122,7 @@ impl Config {
         );
         config.instance_secret = instance_secret;
         config.web_directory = self.web_directory.clone();
+        config.expose_domain = self.expose_domain.clone();
         let public_url = crate::runner::install::backend_url(&self.public_url).map_err(|_| ConfigError::PublicUrl)?;
         config.public_url = Some(public_url);
         config.runner_releases = self.runner_release_dir.clone();
@@ -147,6 +149,9 @@ pub struct BackendConfig {
     /// The URL runners connect to, which the installers name; without it,
     /// the origin an installer was requested from.
     pub public_url: Option<Url>,
+    /// The domain expose hostnames live under; without it, exposes are
+    /// unavailable (`expose.md` § Deployment).
+    pub expose_domain: Option<ExposeDomain>,
     /// The runner releases the installer routes serve; without them, the
     /// installers answer 503.
     pub runner_releases: Option<PathBuf>,
@@ -324,6 +329,7 @@ impl BackendConfig {
             mode,
             web_directory: None,
             public_url: None,
+            expose_domain: None,
             runner_releases: None,
             change_store: None,
             instance_secret: None,

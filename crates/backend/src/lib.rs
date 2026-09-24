@@ -7,6 +7,7 @@ mod backend;
 mod config;
 mod conversation;
 mod edge;
+mod expose;
 mod lifecycle;
 mod llm;
 mod managed;
@@ -21,6 +22,7 @@ mod vault;
 pub use auth::email_change::{AccountMail, MailError, VerificationMail};
 pub use backend::{Backend, ShutdownError, ShutdownErrors, StartError};
 pub use config::{BackendConfig, CloudTuning, Config, ConfigError, ConversationTuning, LifecycleTuning, RunnerTuning};
+pub use expose::{ExposeDomain, NotExposeDomain};
 pub use llm::families::{
     AccountBinding, ApiKeyArgs, FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry, ProviderFamily,
     SubscriptionArgs,
