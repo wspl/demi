@@ -31,8 +31,9 @@ pub(crate) trait SessionRuntime {
     fn preamble(&self) -> LocalBoxFuture<'_, Option<String>>;
 
     /// The context text before a request, when the conversation's execution
-    /// context changed since the node last saw it.
-    fn context(&self) -> LocalBoxFuture<'_, Option<String>>;
+    /// context changed since the node last saw it; `seen` is the text of
+    /// each context block of the node's transcript, oldest first.
+    fn context<'a>(&'a self, seen: &'a [&'a str]) -> LocalBoxFuture<'a, Option<String>>;
 
     /// The tools the model may call.
     fn tools(&self) -> Arc<[ToolDefinition]>;
