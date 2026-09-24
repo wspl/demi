@@ -112,15 +112,15 @@ pub struct Shortcuts {
 pub struct ShortcutsPatch {
     #[serde(default, skip_serializing_if = "Option::is_none", with = "double_option")]
     #[schemars(with = "Option<String>")]
-    #[garde(inner(length(utf16, max = SHORTCUT_MAX)))]
+    #[garde(length(utf16, max = SHORTCUT_MAX))]
     pub new: Option<Option<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "double_option")]
     #[schemars(with = "Option<String>")]
-    #[garde(inner(length(utf16, max = SHORTCUT_MAX)))]
+    #[garde(length(utf16, max = SHORTCUT_MAX))]
     pub sidebar: Option<Option<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "double_option")]
     #[schemars(with = "Option<String>")]
-    #[garde(inner(length(utf16, max = SHORTCUT_MAX)))]
+    #[garde(length(utf16, max = SHORTCUT_MAX))]
     pub settings: Option<Option<String>>,
 }
 

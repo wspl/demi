@@ -124,8 +124,11 @@ the signed-in browser claims it through
 `POST /api/devices/claim`. Device tokens are delivered only to the runner.
 
 Attached-host responses contain device identity, name, cwd, online state, and
-attachment time. A conversation's main device cannot also be attached. Names are
-unique within the conversation; a conflicting rename returns 409 `name_taken`.
+attachment time. A conversation's main device cannot also be attached: attaching
+it answers 409 `host_is_main`. Names are unique within the conversation; a
+conflicting rename returns 409 `name_taken`, and renaming a device that is not
+attached answers 404 `host_not_attached`. A detach is a transition, like a target
+change; detaching a device that is not attached answers 204.
 Changes follow [Attached hosts](../execution/sessions-and-targets.md#attached-hosts).
 
 ## Uploads and media
@@ -519,6 +522,9 @@ Cloud do not refuse it: archive ends them instead
 ([Host operations](../execution/sessions-and-targets.md#host-operations)). A
 target change refuses and ends the same way
 ([Switch the main target](../execution/sessions-and-targets.md#switch-the-main-target)).
+A target that names a workspace or a device the user does not have answers
+404 `workspace_not_found` or `device_not_found`, and a target change that
+another one overtook answers 409 `target_conflict`.
 
 A held conversation is waiting, not failed
 ([held conversations](../execution/sessions-and-targets.md#how-a-conversation-uses-a-device)).
