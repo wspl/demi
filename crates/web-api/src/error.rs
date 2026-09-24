@@ -115,8 +115,18 @@ pub enum ErrorCode {
     /// The Cloud is stopped, and a user stream or a call like one never
     /// wakes it.
     HostStopped,
-    /// The Cloud cannot start.
+    /// The Cloud cannot start, or it is changing state and admits no
+    /// operation now.
     CloudUnavailable,
+    /// A reset holds the Cloud: it admits no operation, and no second reset,
+    /// until the reset ends.
+    CloudResetting,
+    /// Every Cloud capacity permit of the backend is taken, so the Cloud
+    /// cannot start now; nothing queues for a permit.
+    CloudCapacity,
+    /// The Cloud's runtime was lost too often in a short time, so it no
+    /// longer starts by itself; a reset recovers it.
+    CloudCrashLoop,
     /// The Host's filesystem refused the operation: nothing at the path, or
     /// no permission for it.
     FsError,
@@ -177,6 +187,21 @@ pub enum ErrorCode {
     TurnInFlight,
     /// The caller owns no workspace of that id.
     WorkspaceNotFound,
+    /// Conversations still target the workspace, which therefore stays.
+    WorkspaceInUse,
+    /// A sidebar move leaves its row's project or pin partition.
+    InvalidOrder,
+    /// No account has that id.
+    UserNotFound,
+    /// The conversation browser has no tab of that id.
+    TabNotFound,
+    /// The conversation browser refused the operation or could not start;
+    /// the message carries the browser's own code and reason.
+    BrowserFailed,
+    /// The caller has no expose of that id, or it expired.
+    ExposeNotFound,
+    /// The instance has no expose domain, so exposes are off.
+    ExposeUnavailable,
     /// The device is the conversation's main Host, which is never attached
     /// as well.
     HostIsMain,
