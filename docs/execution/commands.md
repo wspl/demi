@@ -177,8 +177,8 @@ accepted value has a declaration bug, not a usage error.
 A length bound counts Unicode scalar values, the rule JSON Schema gives
 `minLength` and `maxLength`, at both ends. For example, `𝄞` is one scalar value
 and two UTF-16 units, so it passes `maxLength: 1` as a command argument. Strings
-the browser validates count UTF-16 units instead; that rule belongs to their
-own types ([Validation at entry](../architecture/contracts.md#validation-at-entry)).
+the browser validates count the same unit
+([Validation at entry](../architecture/contracts.md#validation-at-entry)).
 
 ### Help
 

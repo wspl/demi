@@ -205,9 +205,9 @@ closed_set! {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UploadFile {
-    #[garde(length(utf16, min = 1, max = 255), pattern(r"^[^/\\\x00]+$"))]
+    #[garde(length(chars, min = 1, max = 255), pattern(r"^[^/\\\x00]+$"))]
     pub name: String,
-    #[garde(length(utf16, max = 200))]
+    #[garde(length(chars, max = 200))]
     pub mime_type: String,
     #[garde(skip)]
     pub size: u64,
@@ -291,9 +291,9 @@ pub enum LiveViewerMessage {
         tab: TabId,
         #[garde(skip)]
         action: KeyAction,
-        #[garde(length(utf16, max = 64))]
+        #[garde(length(chars, max = 64))]
         key: String,
-        #[garde(length(utf16, max = 64))]
+        #[garde(length(chars, max = 64))]
         code: String,
         #[garde(skip)]
         key_code: u8,
@@ -305,7 +305,7 @@ pub enum LiveViewerMessage {
         location: u8,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
-        #[garde(length(utf16, min = 1, max = 16))]
+        #[garde(length(chars, min = 1, max = 16))]
         text: Option<String>,
         #[garde(skip)]
         alt_graph: bool,
@@ -314,22 +314,22 @@ pub enum LiveViewerMessage {
     Text {
         #[garde(skip)]
         tab: TabId,
-        #[garde(length(utf16, max = 20_000))]
+        #[garde(length(chars, max = 20_000))]
         text: String,
     },
     /// An input method's text being composed.
     Composition {
         #[garde(skip)]
         tab: TabId,
-        #[garde(length(utf16, max = 20_000))]
+        #[garde(length(chars, max = 20_000))]
         text: String,
     },
     Paste {
         #[garde(skip)]
         tab: TabId,
-        #[garde(length(utf16, max = TEXT_BYTES))]
+        #[garde(length(chars, max = TEXT_BYTES))]
         text: String,
-        #[garde(length(utf16, max = HTML_BYTES))]
+        #[garde(length(chars, max = HTML_BYTES))]
         html: String,
     },
     /// A choice in a native control, for the revision the viewer saw.
@@ -340,7 +340,7 @@ pub enum LiveViewerMessage {
         token: ControlToken,
         #[garde(skip)]
         revision: u64,
-        #[garde(length(utf16, max = 10_000))]
+        #[garde(length(chars, max = 10_000))]
         value: String,
         #[garde(length(max = 1000))]
         indices: Vec<u32>,
@@ -365,7 +365,7 @@ pub enum LiveViewerMessage {
         accept: bool,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         #[schemars(with = "String")]
-        #[garde(length(utf16, max = 2000))]
+        #[garde(length(chars, max = 2000))]
         text: Option<String>,
     },
     /// The page showed this frame; the module paces itself by these.
@@ -398,11 +398,11 @@ impl LiveViewerMessage {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct LiveControlOption {
-    #[garde(length(utf16, max = 2000))]
+    #[garde(length(chars, max = 2000))]
     pub label: String,
-    #[garde(length(utf16, max = 2000))]
+    #[garde(length(chars, max = 2000))]
     pub value: String,
-    #[garde(length(utf16, max = 2000))]
+    #[garde(length(chars, max = 2000))]
     pub group: String,
     #[garde(skip)]
     pub disabled: bool,
@@ -437,17 +437,17 @@ pub struct LiveControl {
     pub revision: u64,
     #[garde(skip)]
     pub kind: ControlKind,
-    #[garde(length(utf16, max = 2000))]
+    #[garde(length(chars, max = 2000))]
     pub label: String,
-    #[garde(length(utf16, max = 10_000))]
+    #[garde(length(chars, max = 10_000))]
     pub value: String,
-    #[garde(length(utf16, max = 100))]
+    #[garde(length(chars, max = 100))]
     pub min: String,
-    #[garde(length(utf16, max = 100))]
+    #[garde(length(chars, max = 100))]
     pub max: String,
-    #[garde(length(utf16, max = 100))]
+    #[garde(length(chars, max = 100))]
     pub step: String,
-    #[garde(length(utf16, max = 1000))]
+    #[garde(length(chars, max = 1000))]
     pub accept: String,
     #[garde(skip)]
     pub multiple: bool,
@@ -521,7 +521,7 @@ pub enum LiveModuleMessage {
     Cursor {
         #[garde(skip)]
         tab: TabId,
-        #[garde(length(utf16, max = 200))]
+        #[garde(length(chars, max = 200))]
         cursor: String,
         #[garde(skip)]
         editable: bool,
@@ -534,7 +534,7 @@ pub enum LiveModuleMessage {
     },
     /// Text the watched tab copied shortly after this viewer's input.
     Clipboard {
-        #[garde(length(utf16, max = TEXT_BYTES))]
+        #[garde(length(chars, max = TEXT_BYTES))]
         text: String,
     },
     Dialog {
