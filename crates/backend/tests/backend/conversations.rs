@@ -41,15 +41,13 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest as _;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_tungstenite::tungstenite::{self, Message};
 
-use crate::support::{Harness, MASTER_EMAIL, Session, TestBackend};
+use crate::support::{Harness, MASTER_EMAIL, Paired, Session, TestBackend};
 
 /// The conversation ids the tests create.
 pub(crate) const FIRST: &str = "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b";
 pub(crate) const SECOND: &str = "7d1c2e3f-4a5b-4c1e-9d2b-0b6f7f3e8f3a";
 pub(crate) const THIRD: &str = "5a4b3c2d-1e0f-4a1b-8c2d-3e4f5a6b7c8d";
 
-/// The system prompt the backend's conversations run with.
-const SYSTEM_PROMPT: &str = "You are a coding agent. Answer the user's questions about their code.";
 
 /// What a conversation socket delivered next.
 #[derive(Debug)]
@@ -212,17 +210,32 @@ pub(crate) fn send(id: &str, text: &str) -> ClientFrame {
 /// A Messages API stream that answers `deltas`, in that many pieces, and
 /// reports `input` and `output` tokens.
 pub(crate) fn answer(deltas: &[&str], input: u64, output: u64) -> MockResponse {
-    let mut frames = vec![
-        json!({ "type": "message_start", "message": {
-            "id": "msg_1", "type": "message", "role": "assistant", "model": "claude-opus-4-8", "content": [],
-            "usage": { "input_tokens": input, "output_tokens": 0 } } }),
-        json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
-    ];
+    let mut block = vec![json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } })];
     for delta in deltas {
-        frames.push(json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": delta } }));
+        block.push(json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": delta } }));
     }
+    message(block, "end_turn", input, output)
+}
+
+/// A Messages API stream that calls the tool `name` with `input`.
+pub(crate) fn tool_use(id: &str, name: &str, input: &Value) -> MockResponse {
+    let block = vec![
+        json!({ "type": "content_block_start", "index": 0,
+            "content_block": { "type": "tool_use", "id": id, "name": name, "input": {} } }),
+        json!({ "type": "content_block_delta", "index": 0,
+            "delta": { "type": "input_json_delta", "partial_json": input.to_string() } }),
+    ];
+    message(block, "tool_use", 1, 1)
+}
+
+/// One message of one content block, whose frames `block` opens and fills.
+fn message(block: Vec<Value>, stop_reason: &str, input: u64, output: u64) -> MockResponse {
+    let mut frames = vec![json!({ "type": "message_start", "message": {
+        "id": "msg_1", "type": "message", "role": "assistant", "model": "claude-opus-4-8", "content": [],
+        "usage": { "input_tokens": input, "output_tokens": 0 } } })];
+    frames.extend(block);
     frames.push(json!({ "type": "content_block_stop", "index": 0 }));
-    frames.push(json!({ "type": "message_delta", "delta": { "stop_reason": "end_turn" }, "usage": { "output_tokens": output } }));
+    frames.push(json!({ "type": "message_delta", "delta": { "stop_reason": stop_reason }, "usage": { "output_tokens": output } }));
     frames.push(json!({ "type": "message_stop" }));
     let text: String = frames
         .iter()
@@ -251,6 +264,23 @@ pub(crate) async fn create(backend: &TestBackend, session: &Session, id: &str) -
     let created = backend.post("/api/conversations", Some(session), json!({ "id": id })).await;
     assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
     created.json::<ConversationAnswer>().conversation
+}
+
+/// Makes the master's conversation `id` work in a new `work` directory of a
+/// paired device's real runner, as a target switch would leave it; answers
+/// the device and that directory.
+pub(crate) async fn on_device(harness: &Harness, backend: &TestBackend, master: &Session, id: &str) -> (Paired, String) {
+    let paired = backend.pair(master, "laptop").await;
+    let root = format!("{}/work", paired.runner.home());
+    std::fs::create_dir_all(&root).unwrap();
+    harness
+        .control_database()
+        .execute(
+            "UPDATE conversations SET target_kind = 'device', target_device_id = ?1, target_path = ?2 WHERE id = ?3",
+            rusqlite::params![paired.id(), root, id],
+        )
+        .unwrap();
+    (paired, root)
 }
 
 pub(crate) async fn summaries(backend: &TestBackend, session: &Session) -> Vec<ConversationSummary> {
@@ -383,7 +413,9 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     let sent = &vendor.requests()[0];
     assert_eq!((sent.uri.path(), sent.header("x-api-key")), ("/v1/messages", Some("sk-ant-test")));
     let body = sent.json();
-    assert_eq!(body["system"], SYSTEM_PROMPT);
+    let system = body["system"].to_string();
+    assert!(system.contains("You are a coding agent. Use shell session tools"), "{system}");
+    assert!(system.contains("demi host"), "the backend's group is among the commands: {system}");
     assert_eq!(body["model"], "claude-opus-4-8");
     assert!(body["messages"][0].to_string().contains("Say hello"), "{body}");
 

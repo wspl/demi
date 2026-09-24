@@ -24,6 +24,7 @@ use crate::llm::catalog_cache::ModelCatalogCache;
 use crate::llm::families::FamilyRegistry;
 use crate::llm::vendors::VendorCatalog;
 use crate::runner::claims::PendingClaims;
+use crate::runner::native::NativeCatalog;
 use crate::shard::ShardPool;
 use crate::storage::blobs::BlobStores;
 use crate::storage::changes::ChangeStore;
@@ -63,6 +64,8 @@ pub(crate) struct Services {
     pub(crate) claims: PendingClaims,
     pub(crate) runners: RunnerTuning,
     pub(crate) conversation_tuning: ConversationTuning,
+    /// The native packages each shard's catalog is built from.
+    pub(crate) native: NativeCatalog,
 }
 
 /// What the provider services start with.
@@ -144,6 +147,7 @@ impl Services {
         providers: ProviderSetup,
         runners: RunnerTuning,
         conversation_tuning: ConversationTuning,
+        native: NativeCatalog,
     ) -> Result<Self, StartError> {
         let Storage {
             control,
@@ -187,6 +191,7 @@ impl Services {
             claims: PendingClaims::new(runners.claims_per_minute),
             runners,
             conversation_tuning,
+            native,
         })
     }
 
@@ -217,6 +222,7 @@ impl Services {
             providers,
             RunnerTuning::default(),
             ConversationTuning::default(),
+            NativeCatalog::unpublished(),
         );
         Arc::new(services.await.unwrap())
     }
@@ -321,6 +327,7 @@ impl Backend {
             providers,
             config.runners,
             config.conversations,
+            config.native,
         );
         let services = Arc::new(services.await?);
         let shards = match ShardPool::start(config.shards, services.clone()).await {

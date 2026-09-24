@@ -4,6 +4,7 @@
 mod accounts;
 mod auth;
 mod blobs;
+mod coding;
 mod conversations;
 mod edge;
 mod families;
@@ -17,4 +18,6 @@ mod settings;
 mod startup;
 mod state;
 mod support;
+mod titles;
+mod uploads;
 mod usage;

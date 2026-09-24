@@ -12,7 +12,7 @@ use demi_core::{
 };
 use futures_util::future::LocalBoxFuture;
 
-use super::StoreError;
+use super::{Checkpoint, CheckpointUpdate, StoreError};
 
 /// The conversation owner's blob namespace, as a store or the conversation
 /// socket reaches it.
@@ -26,6 +26,30 @@ pub trait BlobStore {
         &'a self,
         blob: &'a BlobRef,
     ) -> LocalBoxFuture<'a, Result<Option<B64Bytes>, StoreError>>;
+}
+
+/// Moves the inline media of the blocks `update` saves into `blobs`, which a
+/// store does before the save that references them.
+pub async fn externalize_update(
+    update: &mut CheckpointUpdate,
+    blobs: &dyn BlobStore,
+) -> Result<(), StoreError> {
+    for (_, block) in &mut update.changed_blocks {
+        externalize(block, blobs).await?;
+    }
+    Ok(())
+}
+
+/// Puts the bytes of the media references in `checkpoint`'s transcript back
+/// from `blobs`, as a store loads a session for inference ([`rehydrate`]).
+pub async fn rehydrate_checkpoint(
+    checkpoint: &mut Checkpoint,
+    blobs: &dyn BlobStore,
+) -> Result<(), StoreError> {
+    for block in &mut checkpoint.transcript {
+        rehydrate(block, blobs).await?;
+    }
+    Ok(())
 }
 
 /// Moves `block`'s inline media into `blobs`: the images, videos and

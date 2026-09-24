@@ -14,6 +14,8 @@ doctest = false
 demi-agent = { path = "../agent" }
 demi-agent-protocol = { path = "../agent-protocol" }
 demi-artifact = { path = "../artifact" }
+demi-builtin-protocol = { path = "../builtin-protocol" }
+demi-coding-agent = { path = "../coding-agent" }
 demi-command-service = { path = "../command-service" }
 demi-core = { path = "../core" }
 demi-gates = { path = "../gates" }
@@ -50,6 +52,7 @@ icu_collator = "2"
 icu_locale = "2"
 icu_time = { version = "2", default-features = false, features = ["compiled_data"] }
 jiff.workspace = true
+mime = "0.3"
 object_store = { version = "0.13", default-features = false, features = ["aws", "fs"] }
 password-hash = { version = "0.5", features = ["getrandom"] }
 percent-encoding = "2"

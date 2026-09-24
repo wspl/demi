@@ -167,6 +167,10 @@ pub enum ErrorCode {
     /// session, such as a storage failure; the frames behind it still
     /// arrive.
     FrameDeliveryFailed,
+    /// The backend could not send a conversation socket's frame to the page,
+    /// such as one whose media could not be stored; the frames behind it
+    /// still arrive.
+    FrameSendFailed,
     /// Work of the conversation's tree is running, or another transition
     /// holds the conversation: an archive or a target change waits for
     /// nothing and is refused.
@@ -189,6 +193,8 @@ pub enum ErrorCode {
     /// The Fork's text is not a completed assistant text of the source's
     /// history.
     InvalidForkTarget,
+    /// The conversation has no message with text to title.
+    NoMessages,
 }
 
 serde_plain::derive_display_from_serialize!(ErrorCode);

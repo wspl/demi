@@ -3,7 +3,8 @@
 //! the user's shard once upgraded. The socket decodes each message into a
 //! client frame and hands it to the conversation's agent connection, one at a
 //! time in arrival order; the connection's outbox carries every server frame
-//! back, with the failure facts of the error blocks it brings. A frame the
+//! back, its media as references into the owner's blobs and with the
+//! failure facts of the error blocks it brings. A frame the
 //! backend refuses before the agent sees it is answered with an `error`
 //! frame: one that is not a valid frame (`invalid_frame`), one sent while the
 //! conversation is archived (`conversation_archived`), one naming a provider
@@ -15,6 +16,7 @@ use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 
 use axum::extract::ws::{CloseFrame, Message, Utf8Bytes, WebSocket, close_code};
+use demi_agent::store::media;
 use demi_agent::{ContentError, ContentResolver, FileReference, Outgoing};
 use demi_agent_protocol::{
     ClientContent, ClientFrame, EditOutcome, FrameError, ServerFrame, TranscriptPatch, decode_client_frame,
@@ -269,7 +271,16 @@ impl Shard {
                 };
                 services.control.set_conversation_model(record.id, Some(selected)).await?;
             }
-            ClientFrame::Send { .. } => services.control.touch_conversation(record.id).await?,
+            ClientFrame::Send { content, .. } => {
+                // Every message the user sends makes a generated title older
+                // than the conversation.
+                let seen = services.control.count_user_message(record.id.clone()).await?;
+                self.title_first_message(&record, content, seen).await?;
+                services.control.touch_conversation(record.id).await?;
+            }
+            ClientFrame::Steer { .. } | ClientFrame::EditAndSend { .. } => {
+                services.control.count_user_message(record.id).await?;
+            }
             _ => {}
         }
         Ok(Prepared::Deliver)
@@ -285,11 +296,20 @@ impl Shard {
         sink.send(Message::Text(text.into())).await.is_ok()
     }
 
-    /// A server frame as the page receives it (`backend.md` § Failure
-    /// facts): a transcript frame carries the failure facts of the error
-    /// blocks it brings.
-    async fn present(&self, frame: ServerFrame) -> ServerFrame {
-        let assembly = &self.services().assembly;
+    /// A server frame as the page receives it: the media of the blocks a
+    /// transcript frame carries are references into the owner's blobs
+    /// (`backend.md` § Media by reference), and it carries the failure facts
+    /// of the error blocks it brings (§ Failure facts). A frame whose media
+    /// could not be stored becomes an `error` frame, since no frame carries
+    /// media bytes; the page asks for the transcript again at the revision
+    /// gap it leaves.
+    async fn present(&self, mut frame: ServerFrame) -> ServerFrame {
+        let services = self.services();
+        let blobs = services.blobs.for_user(self.user());
+        if let Err(error) = media::externalize_frame(&mut frame, &blobs).await {
+            return refusal(ErrorCode::FrameSendFailed, format!("A transcript frame's media were not stored: {error}"));
+        }
+        let assembly = &services.assembly;
         match frame {
             ServerFrame::TranscriptReset { blocks, version, .. } => {
                 let failures = failure_facts(assembly, &blocks).await;
@@ -413,10 +433,10 @@ fn to_text(frame: &ServerFrame) -> String {
     serde_json::to_string(frame).expect("a server frame serializes to JSON")
 }
 
-/// The files of a frame's content: a remote file becomes its reference once
-/// its device may be read. Interim: uploads resolve against the user's
-/// attachment records and are written to the conversation's Host once those
-/// land; until then a frame with an upload is refused.
+/// The files of a frame's content: an upload is written to the
+/// conversation's Host and becomes its blocks, and a remote file becomes its
+/// reference once its device may be read. The uploads are written first, so
+/// a frame whose upload cannot be written grants no remote file.
 struct ConversationFiles {
     /// Weak: the shard owns the agent server that holds this resolver.
     shard: Weak<Shard>,
@@ -440,18 +460,42 @@ impl ContentResolver for ConversationFiles {
                 .shard
                 .upgrade()
                 .ok_or_else(|| refused("The backend is shutting down".into()))?;
-            let remote = files
+            // Each file's blocks by its place, the remote files' once they
+            // are granted together.
+            let mut resolved: Vec<Option<Vec<UserContentBlock>>> = Vec::with_capacity(files.len());
+            let mut remote = Vec::new();
+            for file in files {
+                match file {
+                    FileReference::Upload { r#ref, file_name } => {
+                        // A frame with uploads is admitted on its Host first.
+                        let host = self.host.borrow().clone();
+                        let host = host.ok_or_else(|| refused("The frame's Host was not admitted".into()))?;
+                        let blocks = shard
+                            .resolve_upload(&self.conversation, &host, &r#ref, &file_name)
+                            .await
+                            .map_err(|error| refused(error.to_string()))?;
+                        resolved.push(Some(blocks));
+                    }
+                    FileReference::RemoteFile { device_id, path } => {
+                        remote.push(RemoteFile { device: device_id, path });
+                        resolved.push(None);
+                    }
+                }
+            }
+            let mut references = if remote.is_empty() {
+                Vec::new().into_iter()
+            } else {
+                shard
+                    .reference_remote_files(&self.conversation, &remote)
+                    .await
+                    .map_err(|refusal| refused(refusal.to_string()))?
+                    .into_iter()
+            };
+            let blocks = resolved
                 .into_iter()
-                .map(|file| match file {
-                    FileReference::RemoteFile { device_id, path } => Ok(RemoteFile { device: device_id, path }),
-                    FileReference::Upload { .. } => Err(refused("Attachments are not available on this backend yet".into())),
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            let blocks = shard
-                .reference_remote_files(&self.conversation, &remote)
-                .await
-                .map_err(|refusal| refused(refusal.to_string()))?;
-            Ok(blocks.into_iter().map(|block| vec![block]).collect())
+                .map(|blocks| blocks.unwrap_or_else(|| references.next().into_iter().collect()))
+                .collect();
+            Ok(blocks)
         })
     }
 }

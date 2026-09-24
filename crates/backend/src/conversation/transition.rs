@@ -142,7 +142,12 @@ impl Shard {
             ConversationChange::Target(to) => self.switch_target(&record, to).await,
             ConversationChange::Record(RecordChange::Archived(true)) => {
                 self.release_everywhere(&record).await?;
-                self.commit(&record.id, RecordChange::Archived(true)).await
+                let committed = self.commit(&record.id, RecordChange::Archived(true)).await;
+                // An archived conversation's title request ends.
+                if committed.is_ok() {
+                    self.titles().abort(&record.id);
+                }
+                committed
             }
             ConversationChange::Record(RecordChange::Detach(device)) => {
                 let attached = services.control.attached_hosts(record.id.clone()).await?;
