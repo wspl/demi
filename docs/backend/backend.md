@@ -254,22 +254,20 @@ underlying persistence and blob ownership are defined in [Storage](storage.md).
 An error block keeps the vendor's failure record as it arrived; what the
 browser shows from it is read when the block is sent
 ([Failures and recovery](../agent/failures-and-recovery.md#reading-a-failure)).
-For every error block with a vendor record in a transcript it sends, the
-provider named in the block's model selection reads the record, and the result
-travels as `failures`, keyed by block id, beside the blocks:
+For every error block in a transcript it sends, the backend asks the provider
+named in the block's model selection to read the record, and attaches the
+result as `failures`, keyed by block id, beside the blocks:
 
-- The conversation socket's root and subagent `transcript_reset` and
-  `transcript_patch` frames carry it for the blocks each frame carries. The
-  agent attaches it as its tree sends the frame, through the reader the backend
-  supplies (`FailureReader`), which answers with the provider of the
-  conversation's user and nothing for a provider whose configuration is gone.
+- The conversation socket attaches it to root and subagent
+  `transcript_reset` and `transcript_patch` frames, for the blocks each frame
+  carries.
 - `GET /api/conversations/:id/transcript` attaches it to the root blocks and to
   each subagent history.
 
-One function reads the failures of a list of blocks, the agent's
-`read_failures` over the backend's reader, and both paths call it. The facts
-are never stored, and the blocks themselves are sent unchanged. A frame or
-history without an error block that yields a fact carries no `failures`.
+One backend function reads the failures of a list of blocks, and both paths
+call it. The facts are never stored, and the blocks themselves are sent
+unchanged. A frame or history without an error block that yields a fact
+carries no `failures`.
 
 ## Startup and shutdown
 
@@ -299,7 +297,8 @@ keep working, because the steps below need them:
 1. Login flows are cancelled.
 2. Each shard ends its user's work in this order. Idle watches stop, and a
    retirement already running finishes. Title requests are aborted and expose
-   connections end. Open file transfers and user streams end. Agent turns are
+   connections end. Open file transfers and user streams end. Conversation sockets
+   close, so no frame reaches a tree after its shutdown. Agent turns are
    aborted: a running turn records that its session was shut down, and its
    jobs are killed while their runners are still connected. Claude Code CLI
    installs are cancelled; the next need starts them again. The Cloud

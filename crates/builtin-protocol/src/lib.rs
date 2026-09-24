@@ -14,7 +14,10 @@ macro_rules! closed_set {
         }
     ) => {
         $(#[$meta])*
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+        #[derive(
+            Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+            schemars::JsonSchema,
+        )]
         pub enum $name {
             $($(#[$variant_meta])* #[serde(rename = $wire)] $variant,)*
         }

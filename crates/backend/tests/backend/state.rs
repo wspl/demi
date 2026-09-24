@@ -30,6 +30,7 @@ async fn the_state_is_the_users_snapshot_and_revalidates_by_its_etag() {
             preferences: Preferences::default(),
             providers: Vec::new(),
             devices: Vec::new(),
+            conversations: Vec::new(),
         }
     );
     let etag = first.headers["etag"].to_str().unwrap().to_owned();

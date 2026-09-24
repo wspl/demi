@@ -414,10 +414,8 @@ Each crate implements the provider contract for one vendor family.
     (`ProviderResolver`), and the tree store contract (`AgentTreeStore`,
     `SessionStore`, with the node records and checkpoints they carry in
     `store`);
-  - what the backend answers for a frame: the files its content refers to
-    (`ContentResolver`) and the facts of its error blocks' failure records
-    (`FailureReader`, read through `read_failures`, which the transcript
-    route calls too);
+  - the resolution of the files a frame's content refers to, which the
+    backend answers (`ContentResolver`);
   - the mapping of media between inline bytes and blob references
     (`store::media`, over the `BlobStore` a store or the conversation socket
     reaches), the blocks an upload becomes with its recorded media type and
@@ -499,8 +497,8 @@ Each crate implements the provider contract for one vendor family.
 - **Public boundary:** the `demi-backend` executable; `Backend::start` and
   `BackendConfig` for tests, with the parts a test replaces: the provider
   families entries are assembled with (`FamilyRegistry`, `ProviderFamily` and
-  the arguments a family builds a provider from) and the login timing
-  (`LoginTiming`).
+  the arguments a family builds a provider from), the login timing
+  (`LoginTiming`) and the conversations' bounds (`ConversationTuning`).
 - **Must not:** be linked by another crate; put business logic in the HTTP
   layer beyond routing and validation; return secrets or proxy model traffic;
   spawn `runsc` or image tools itself (every sandbox and disk operation goes to
