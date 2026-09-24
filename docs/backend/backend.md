@@ -246,8 +246,11 @@ the wire shape.
 Resolving uploads and externalizing media keep the socket's frame order
 ([Order and delivery](../agent/runtime.md#order-and-delivery)). A frame whose
 resolution fails reports an error without affecting the frames behind it, and
-closing the socket stops resolution that has not reached the session yet. The
-underlying persistence and blob ownership are defined in [Storage](storage.md).
+closing the socket stops resolution that has not reached the session yet. An
+outgoing transcript frame whose media cannot be stored is sent as an `error`
+frame (`frame_send_failed`) instead, and the frames behind it still arrive; the
+page asks for the transcript again at the revision gap. The underlying
+persistence and blob ownership are defined in [Storage](storage.md).
 
 ## Failure facts
 
