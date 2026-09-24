@@ -3,18 +3,20 @@
 # Uses the execution host's native compiler and Bazel, never a build container.
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
-bun="${BUN:-bun}"
+release="$here/runtime/release.json"
 output="${1:?Usage: build-runsc-arm64.sh <new-output-directory>}"
 [ "$(uname -m)" = aarch64 ] && [ "$(uname -s)" = Linux ] || { echo 'requires native Linux arm64' >&2; exit 2; }
 [ "$(id -u)" = 0 ] || { echo 'run as root for the isolated runtime probe' >&2; exit 2; }
 [ ! -e "$output" ] || { echo 'output already exists' >&2; exit 2; }
-for tool in git curl python3 gcc aarch64-linux-gnu-gcc x86_64-linux-gnu-gcc clang pkg-config patch unshare; do
+for tool in git curl jq python3 gcc aarch64-linux-gnu-gcc x86_64-linux-gnu-gcc clang pkg-config patch unshare; do
   command -v "$tool" >/dev/null || { echo "missing build tool: $tool" >&2; exit 2; }
 done
-IFS=$'\t' read -r upstream commit version patch_hash bazel_version bazel_hash < <("$bun" -e '
-const r = await Bun.file(process.argv[1]).json();
-console.log([r.upstream,r.commit,r.arm64Version,r.arm64PatchSha256,r.bazel,r.bazelArm64Sha256].join("\t"));
-' "$here/runtime/release.json")
+upstream=$(jq -er .upstream "$release")
+commit=$(jq -er .commit "$release")
+version=$(jq -er .arm64Version "$release")
+patch_hash=$(jq -er .arm64PatchSha256 "$release")
+bazel_version=$(jq -er .bazel "$release")
+bazel_hash=$(jq -er .bazelArm64Sha256 "$release")
 printf '%s  %s\n' "$patch_hash" "$here/runtime/arm64-seccomp-trap.patch" | sha256sum -c -
 work=$(mktemp -d)
 probe_id="demi-abi-$$"
@@ -55,6 +57,6 @@ unshare --mount --propagation private timeout 60 "$work/runtime/runsc" --root="$
 "$work/runtime/runsc" --root="$work/state" delete --force "$probe_id"
 rm -rf "$work/state"
 sha512sum "$archive" > "$work/runtime/build-archive.sha512"
-cp "$here/runtime/release.json" "$work/runtime/demi-build.json"
+cp "$release" "$work/runtime/demi-build.json"
 mkdir -p "$(dirname "$output")"
 mv "$work/runtime" "$output"
