@@ -42,3 +42,17 @@ async fn media_travels_by_reference() {
     let store = MemoryTreeStore::with_blobs(blobs.clone());
     store_contract::media_travels_by_reference(&*store, &*blobs, &|blob| blobs.forget(blob)).await;
 }
+
+#[tokio::test(flavor = "local")]
+async fn a_save_delivers_a_completion_it_holds_as_waiting_input() {
+    store_contract::a_save_delivers_a_completion_it_holds_as_waiting_input(&*MemoryTreeStore::new())
+        .await;
+}
+
+#[tokio::test(flavor = "local")]
+async fn children_list_in_spawn_order_and_a_close_keeps_its_result() {
+    store_contract::children_list_in_spawn_order_and_a_close_keeps_its_result(
+        &*MemoryTreeStore::new(),
+    )
+    .await;
+}
