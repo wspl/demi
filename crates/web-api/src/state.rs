@@ -5,15 +5,20 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::auth::UserDto;
+use crate::devices::DeviceDto;
+use crate::providers::ProviderState;
 use crate::settings::{InstanceMode, Preferences};
 
-/// `GET /state`: the signed-in user, the instance mode and the user's
-/// preferences. The backend assembles it on each request, without waking a
-/// Cloud or running inference.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+/// `GET /state`: the signed-in user, the instance mode, the user's
+/// preferences, the provider entries the user infers with, and the user's
+/// devices, the paired ones and the Cloud. The backend assembles it on each
+/// request, without waking a Cloud or running inference.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ProductState {
     pub user: UserDto,
     pub mode: InstanceMode,
     pub preferences: Preferences,
+    pub providers: Vec<ProviderState>,
+    pub devices: Vec<DeviceDto>,
 }

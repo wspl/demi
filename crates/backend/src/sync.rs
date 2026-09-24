@@ -4,21 +4,45 @@
 //! catches what changed during one.
 
 use demi_web_api::auth::UserDto;
+use demi_web_api::providers::{ProviderReading, ProviderState};
 use demi_web_api::state::ProductState;
+use futures_util::future::join_all;
 
 use crate::shard::Shard;
 use crate::storage::StorageError;
 
 impl Shard {
     /// The snapshot for `user`, this shard's user as the session gate
-    /// resolved them.
+    /// resolved them: with the entries the user infers with, each with what
+    /// its provider says now, which a user who only infers sees without
+    /// accounts, plan or usage. One entry that cannot be read leaves the
+    /// others intact.
     pub(crate) async fn product_state(&self, user: UserDto) -> Result<ProductState, StorageError> {
         let services = self.services();
         let preferences = services.control.preferences(self.user().clone()).await?;
+        let owner = services.vault.owner_for(&user).await?;
+        let entries = services.vault.entries(owner).await?;
+        let disclose = services.vault.configures(&user);
+        let providers = join_all(entries.iter().map(|entry| async move {
+            let details = match services.assembly.details(entry, disclose).await {
+                Ok(details) => ProviderReading::Read(Box::new(details)),
+                Err(error) => ProviderReading::Failed {
+                    message: error.to_string(),
+                },
+            };
+            ProviderState {
+                provider: entry.dto(),
+                details,
+            }
+        }))
+        .await;
+        let devices = self.device_list().await?;
         Ok(ProductState {
             user,
             mode: services.mode,
             preferences,
+            providers,
+            devices,
         })
     }
 }

@@ -3,17 +3,24 @@
 //! browser build. Handlers are thin: they parse, authenticate, and call a
 //! shared service or a shard.
 
+mod accounts;
 mod assets;
 mod auth;
 mod blobs;
 mod body;
 mod content;
 mod cookies;
+mod devices;
 mod error;
 mod gate;
 mod listener;
+mod models;
+mod providers;
+mod query;
+mod runners;
 mod settings;
 mod state;
+mod usage;
 
 use std::io;
 use std::net::SocketAddr;
@@ -25,7 +32,7 @@ use axum::extract::{DefaultBodyLimit, FromRef, OriginalUri, Request, State};
 use axum::http::Method;
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post, put};
+use axum::routing::{delete, get, patch, post, put};
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -119,11 +126,17 @@ impl FromRef<AppState> for Shards {
 /// The routes. Every `/api` path, unknown paths included, passes the session
 /// gate first, except those outside `session_api`: the public entrances,
 /// setup and login, and the routes that authenticate with device
-/// credentials instead.
+/// credentials instead. The pipes stay outside the 503 of a closing backend,
+/// whose shutdown needs them, and outside the body limit, since their bodies
+/// have none.
 fn router(state: AppState, closing: CancellationToken, web_directory: Option<PathBuf>) -> Router {
     let entrances = Router::new()
         .route("/api/setup", get(auth::setup_status).post(auth::setup))
         .route("/api/auth/login", post(auth::login))
+        .route("/api/runner", get(runners::socket))
+        .method_not_allowed_fallback(no_route);
+    let pipes = Router::new()
+        .route("/api/pipes/{id}", put(runners::put).get(runners::get))
         .method_not_allowed_fallback(no_route);
     let session_api = Router::new()
         .route("/auth/logout", post(auth::logout))
@@ -138,6 +151,30 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             get(settings::preferences).patch(settings::patch_preferences),
         )
         .route("/blobs/{sha256}", get(blobs::blob))
+        .route("/models", get(models::models))
+        .route("/providers", get(providers::list).post(providers::create))
+        .route("/providers/catalog", get(providers::catalog))
+        .route("/providers/setup-token", post(accounts::import_setup_token))
+        .route("/providers/subscription-login", post(accounts::start_login))
+        .route(
+            "/providers/subscription-login/{id}",
+            get(accounts::login_state).delete(accounts::cancel_login),
+        )
+        .route("/providers/{id}", patch(providers::update).delete(providers::delete))
+        .route("/providers/{id}/status", get(providers::status))
+        .route("/providers/{id}/quota", post(providers::quota))
+        .route("/providers/{id}/test", post(providers::test))
+        .route("/providers/{id}/accounts", get(accounts::list).post(accounts::add_token))
+        .route("/providers/{id}/accounts/active", put(accounts::activate))
+        .route("/providers/{id}/accounts/login", post(accounts::login_into))
+        .route("/providers/{id}/accounts/{credential}", delete(accounts::remove))
+        .route("/usage", get(usage::totals))
+        .route("/usage/instance", get(usage::instance))
+        .route("/devices", get(devices::list))
+        .route("/devices/claim", post(devices::claim))
+        .route("/devices/{id}", delete(devices::revoke))
+        .route("/devices/{id}/fs", get(devices::browse).post(devices::make_directory))
+        .route("/devices/{id}/log", get(devices::log))
         .fallback(no_route)
         .method_not_allowed_fallback(no_route)
         // After the fallbacks, so the gate covers them too.
@@ -149,6 +186,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
     };
     app.layer(DefaultBodyLimit::max(body::JSON_BODY_LIMIT))
         .layer(middleware::from_fn_with_state(closing, refuse_while_closing))
+        .merge(pipes)
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }

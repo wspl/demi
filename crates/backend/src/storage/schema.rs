@@ -166,18 +166,23 @@ CREATE TABLE managed_operations (
   PRIMARY KEY (device_id, operation_id)
 ) STRICT;
 
--- Providers: a sealed configuration per entry, a sealed secret per
--- subscription account, one subscription entry per owner and family.
+-- Providers: an API-key entry's sealed configuration, a subscription entry's
+-- active account, a sealed secret per subscription account, and one
+-- subscription entry per owner and family. The active account is not a
+-- foreign key: removing an account clears it in the same transaction.
 CREATE TABLE providers (
   id                   TEXT PRIMARY KEY,
   owner_user_id        TEXT NOT NULL REFERENCES users (id),
   provider_type        TEXT NOT NULL,
   credential_kind      TEXT NOT NULL CHECK (credential_kind IN ('api_key', 'subscription')),
   label                TEXT NOT NULL,
-  config               BLOB NOT NULL,
+  config               BLOB,
   active_credential_id TEXT,
-  created_at           INTEGER NOT NULL
+  created_at           INTEGER NOT NULL,
+  CHECK ((credential_kind = 'api_key') = (config IS NOT NULL)),
+  CHECK (credential_kind = 'subscription' OR active_credential_id IS NULL)
 ) STRICT;
+CREATE INDEX providers_owner ON providers (owner_user_id, created_at);
 CREATE UNIQUE INDEX providers_one_subscription ON providers (owner_user_id, provider_type)
   WHERE credential_kind = 'subscription';
 
@@ -187,9 +192,9 @@ CREATE TABLE provider_credentials (
   identity_key TEXT,
   label        TEXT NOT NULL,
   detail       TEXT,
-  source       TEXT,
+  source       TEXT NOT NULL,
   secret       BLOB NOT NULL,
-  version      INTEGER NOT NULL,
+  version      INTEGER NOT NULL CHECK (version >= 1),
   quota        TEXT,
   updated_at   INTEGER NOT NULL,
   PRIMARY KEY (provider_id, id)

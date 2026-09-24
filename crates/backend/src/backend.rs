@@ -11,17 +11,28 @@ use std::sync::Arc;
 
 use demi_web_api::settings::InstanceMode;
 
+use demi_provider::models_dev::ModelsDevClient;
+
 use crate::auth::email_change::{AccountMail, EmailChanges};
 use crate::auth::login_limiter::LoginLimiter;
 use crate::auth::passwords::{HashError, PasswordHasher};
 use crate::auth::sessions::WebSessions;
-use crate::config::BackendConfig;
+use crate::config::{BackendConfig, RunnerTuning};
 use crate::edge::{AppState, Edge};
+use crate::llm::assembly::ProviderAssembly;
+use crate::llm::catalog_cache::ModelCatalogCache;
+use crate::llm::families::FamilyRegistry;
+use crate::llm::vendors::VendorCatalog;
+use crate::runner::claims::PendingClaims;
 use crate::shard::ShardPool;
 use crate::storage::blobs::BlobStores;
 use crate::storage::control::ControlService;
 use crate::storage::conversations::{self, ConversationStores};
 use crate::storage::{StorageError, objects};
+use crate::vault::entries::Vault;
+use crate::vault::logins::{LoginFlows, LoginTiming};
+use crate::vault::operations::ProviderOperations;
+use crate::vault::quotas::AccountQuotas;
 use crate::vault::secret::{InstanceSecret, SecretError};
 
 const CONTROL_DATABASE: &str = "control.sqlite";
@@ -39,6 +50,21 @@ pub(crate) struct Services {
     pub(crate) sessions: WebSessions,
     pub(crate) limiter: LoginLimiter,
     pub(crate) email: EmailChanges,
+    pub(crate) vault: Vault,
+    pub(crate) assembly: Arc<ProviderAssembly>,
+    pub(crate) operations: Arc<ProviderOperations>,
+    pub(crate) logins: Arc<LoginFlows>,
+    /// Runners waiting to be paired, which have no user yet.
+    pub(crate) claims: PendingClaims,
+    pub(crate) runners: RunnerTuning,
+}
+
+/// What the provider services start with.
+pub(crate) struct ProviderSetup {
+    pub(crate) families: FamilyRegistry,
+    pub(crate) models_dev_url: url::Url,
+    pub(crate) logins: LoginTiming,
+    pub(crate) clock: Arc<dyn demi_core::Clock>,
 }
 
 /// The databases and the object store, which open before the services and
@@ -98,18 +124,38 @@ impl Storage {
 }
 
 impl Services {
+    /// Starts the services on the edge's runtime, which the ones that spawn
+    /// work of their own run it on.
     async fn start(
         mode: InstanceMode,
         storage: Storage,
         secret: &InstanceSecret,
         mail: Option<Arc<dyn AccountMail>>,
-    ) -> Result<Self, HashError> {
+        providers: ProviderSetup,
+        runners: RunnerTuning,
+    ) -> Result<Self, StartError> {
         let Storage {
             control,
             conversations,
             blobs,
         } = storage;
         let hasher = PasswordHasher::new().await?;
+        let edge = tokio::runtime::Handle::current();
+        // The shared services' own client; each shard thread builds its own.
+        let http = reqwest::Client::builder().build().map_err(StartError::Http)?;
+        let vault = Vault::new(control.clone(), secret.vault_key(), mode);
+        let models_dev = ModelsDevClient::new(http.clone(), providers.models_dev_url, providers.clock.clone());
+        let assembly = Arc::new(ProviderAssembly::new(
+            vault.clone(),
+            providers.families,
+            AccountQuotas::new(control.clone(), edge.clone()),
+            ModelCatalogCache::new(control.clone(), providers.clock.clone(), edge),
+            VendorCatalog::new(models_dev),
+            http,
+            providers.clock,
+        ));
+        let operations = Arc::new(ProviderOperations::default());
+        let logins = LoginFlows::new(assembly.clone(), operations.clone(), providers.logins);
         Ok(Self {
             mode,
             sessions: WebSessions::new(control.clone()),
@@ -119,15 +165,36 @@ impl Services {
             control,
             conversations,
             blobs,
+            vault,
+            assembly,
+            operations,
+            logins,
+            claims: PendingClaims::new(runners.claims_per_minute),
+            runners,
         })
+    }
+
+    /// Cancels the logins, and drains the catalog refreshes and quota
+    /// writes, before storage closes.
+    async fn close_providers(&self) {
+        self.logins.close().await;
+        self.assembly.close().await;
     }
 
     /// The services over storage in `data`, for unit tests.
     #[cfg(test)]
     pub(crate) async fn start_for_tests(data: &std::path::Path) -> Arc<Self> {
-        let storage = Storage::open(data, Arc::new(demi_core::SystemClock)).await.unwrap();
+        let clock: Arc<dyn demi_core::Clock> = Arc::new(demi_core::SystemClock);
+        let storage = Storage::open(data, clock.clone()).await.unwrap();
         let secret = InstanceSecret::load_or_create(data).await.unwrap();
-        Arc::new(Self::start(InstanceMode::Shared, storage, &secret, None).await.unwrap())
+        let providers = ProviderSetup {
+            families: FamilyRegistry::builtin(),
+            models_dev_url: ModelsDevClient::DEFAULT_URL.parse().unwrap(),
+            logins: LoginTiming::default(),
+            clock,
+        };
+        let services = Self::start(InstanceMode::Shared, storage, &secret, None, providers, RunnerTuning::default());
+        Arc::new(services.await.unwrap())
     }
 }
 
@@ -135,6 +202,7 @@ impl Services {
 pub struct Backend {
     local_addr: SocketAddr,
     storage: Storage,
+    services: Arc<Services>,
     shards: ShardPool,
     edge: Edge,
 }
@@ -150,6 +218,8 @@ pub enum StartError {
     Storage(#[from] StorageError),
     #[error("password hashing cannot start: {0}")]
     Hashing(#[from] HashError),
+    #[error("the HTTP client cannot start: {0}")]
+    Http(reqwest::Error),
     #[error("the shard threads cannot start: {0}")]
     Shards(io::Error),
     #[error("the backend cannot listen on {address}: {source}")]
@@ -207,10 +277,28 @@ impl Backend {
     }
 
     async fn serve(config: BackendConfig, storage: Storage, secret: &InstanceSecret) -> Result<Self, StartError> {
-        let services = Arc::new(Services::start(config.mode, storage.clone(), secret, config.account_mail).await?);
-        let shards = ShardPool::start(config.shards, services.clone())
-            .await
-            .map_err(StartError::Shards)?;
+        let providers = ProviderSetup {
+            families: config.families,
+            models_dev_url: config.models_dev_url,
+            logins: config.logins,
+            clock: config.clock,
+        };
+        let services = Services::start(
+            config.mode,
+            storage.clone(),
+            secret,
+            config.account_mail,
+            providers,
+            config.runners,
+        );
+        let services = Arc::new(services.await?);
+        let shards = match ShardPool::start(config.shards, services.clone()).await {
+            Ok(shards) => shards,
+            Err(error) => {
+                services.close_providers().await;
+                return Err(StartError::Shards(error));
+            }
+        };
         let state = AppState {
             services: services.clone(),
             shards: shards.shards(),
@@ -219,6 +307,7 @@ impl Backend {
             Ok(edge) => edge,
             Err(source) => {
                 shards.close().await;
+                services.close_providers().await;
                 return Err(StartError::Listen {
                     address: config.address,
                     source,
@@ -228,6 +317,7 @@ impl Backend {
         Ok(Self {
             local_addr: edge.local_addr(),
             storage,
+            services,
             shards,
             edge,
         })
@@ -245,10 +335,13 @@ impl Backend {
     pub async fn close(self) -> Result<(), ShutdownErrors> {
         let mut failures = Vec::new();
         self.edge.stop_accepting();
+        self.services.logins.close().await;
         self.shards.close().await;
+        self.services.claims.close();
         if let Err(error) = self.edge.close().await {
             failures.push(ShutdownError::Edge(error));
         }
+        self.services.assembly.close().await;
         failures.extend(self.storage.close().await);
         if failures.is_empty() {
             Ok(())

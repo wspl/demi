@@ -7,7 +7,9 @@
 //! character. Tails are the last [`TAIL_CHARS`] characters.
 
 use bytes::Bytes;
-use demi_core::{BinaryStdout, CommandId, OutputChunk, OutputView, ShellId, StreamKind, StreamView};
+use demi_core::{
+    BinaryStdout, CommandId, OutputChunk, OutputView, ShellId, StreamKind, StreamView,
+};
 use tokio::time::Instant;
 
 use crate::{BinaryOutput, CommandState, CommandStatus, EditedFiles};
@@ -180,8 +182,18 @@ impl CommandRecord {
     /// at most `max_output_bytes` of it (all of it when zero), and its tail.
     /// The view advances the cursors.
     pub fn status(&mut self, max_output_bytes: usize, hint: Option<String>) -> CommandStatus {
-        let stdout = stream_view(&mut self.stdout, &self.output_dir, "stdout", max_output_bytes);
-        let stderr = stream_view(&mut self.stderr, &self.output_dir, "stderr", max_output_bytes);
+        let stdout = stream_view(
+            &mut self.stdout,
+            &self.output_dir,
+            "stdout",
+            max_output_bytes,
+        );
+        let stderr = stream_view(
+            &mut self.stderr,
+            &self.output_dir,
+            "stderr",
+            max_output_bytes,
+        );
         let output = self.merged_view(max_output_bytes);
         let now = Instant::now();
         let state = match &self.phase {
@@ -323,7 +335,9 @@ fn stream_view(
     let next = start + delta.len();
     stream.cursor = next;
     StreamView {
-        path: output_dir.as_ref().map(|directory| format!("{directory}/{name}.txt")),
+        path: output_dir
+            .as_ref()
+            .map(|directory| format!("{directory}/{name}.txt")),
         offset: next as u64,
         delta,
         tail: tail_chars(&stream.text).to_owned(),
@@ -395,7 +409,11 @@ pub fn final_stdout_boundary(
         None => "; not kept beyond this view".into(),
     };
     let text = format!("<binary stdout: {total} bytes{exceeds}{kept}>\n");
-    let bytes = if truncated { bytes.slice(..limit) } else { bytes };
+    let bytes = if truncated {
+        bytes.slice(..limit)
+    } else {
+        bytes
+    };
     let info = BinaryStdout {
         truncated,
         total_bytes: total as u64,

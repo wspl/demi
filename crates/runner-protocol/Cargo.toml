@@ -15,6 +15,7 @@ demi-command-service = { path = "../command-service" }
 demi-command-tree = { path = "../command-tree" }
 garde.workspace = true
 rmp-serde = "1.3"
+schemars.workspace = true
 serde.workspace = true
 serde_bytes = "0.11"
 serde_json.workspace = true

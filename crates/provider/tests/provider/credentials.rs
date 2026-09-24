@@ -146,15 +146,15 @@ async fn a_refresher_that_waited_uses_the_tokens_it_finds_unless_its_rule_still_
     assert_eq!((first.unwrap().access, second.unwrap().access), ("new".into(), "new".into()));
     assert_eq!(*spent.lock().unwrap(), ["r1"]);
 
-    // A forced refresh, Codex's after a refused request, asks again, and the
-    // later refresher spends the token the earlier one stored.
+    // A rule that still asks after the wait, as for new tokens that are due
+    // as well, refreshes again, spending the token the earlier one stored.
     let pool = pool_with("a", &tokens("old", "r1")).await;
     let spent = Arc::new(Mutex::new(Vec::new()));
-    let forced = |_: &Tokens| true;
+    let always = |_: &Tokens| true;
     let (one, two) = (pool.document("a"), pool.document("a"));
     let (first, second) = tokio::join!(
-        renew(&*one, forced, vendor(&spent)),
-        renew(&*two, forced, vendor(&spent)),
+        renew(&*one, always, vendor(&spent)),
+        renew(&*two, always, vendor(&spent)),
     );
     assert!(first.is_ok() && second.is_ok());
     assert_eq!(*spent.lock().unwrap(), ["r1", "after-r1"]);
