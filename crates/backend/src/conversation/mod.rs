@@ -4,6 +4,7 @@
 //! runtimes the sessions infer with, the conversations' summaries, and the
 //! failure facts of their history.
 
+mod announcement;
 mod failure_facts;
 mod fork;
 mod harness;
