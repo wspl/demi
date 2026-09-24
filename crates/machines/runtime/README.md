@@ -14,13 +14,17 @@ No seccomp rule or Chrome sandbox feature is disabled by this fix.
 `getpid` call with a recognizable first argument and checks the signal frame.
 The ARM build runs it on native Linux and under the compiled systrap runtime.
 
-Build on native Linux ARM with `scripts/build-runsc-arm64.sh <new-directory>`.
-The host needs Bun, Git, curl, Python, build-essential, the amd64 cross compiler,
-clang, pkg-config, libffi-dev, libssl-dev, libnuma-dev, and libbpf-dev. On Ubuntu,
-install `crossbuild-essential-amd64` for the x86 helpers included in the complete
-runtime distribution. Bazel's version and download checksum are pinned; its
-source dependencies come from the pinned gVisor tree. No Docker build is used.
-The build records its source inputs and archive checksum beside the executable.
+`../scripts/install-runsc.sh` installs the pinned distribution under
+`/opt/gvisor/<version>/`: on amd64 it downloads the upstream release and checks
+its SHA-512; on arm64 it builds it with `../scripts/build-runsc-arm64.sh
+<new-directory>`. The arm64 build needs jq, Git, curl, Python, build-essential,
+the amd64 cross compiler, clang, pkg-config, libffi-dev, libssl-dev,
+libnuma-dev, and libbpf-dev. On Ubuntu, install `crossbuild-essential-amd64`
+for the x86 helpers included in the complete runtime distribution. Bazel's
+version and download checksum are pinned; its source dependencies come from the
+pinned gVisor tree. No Docker build is used. The build records its source inputs
+and archive checksum beside the executable. Both scripts read this directory's
+`release.json` with jq, and the manager embeds the same file when it is built.
 
 The patch should be removed when a pinned upstream version passes this probe and
 the Cloud acceptance suite. Replacing the runtime still requires browser,
