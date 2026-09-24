@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { expect, test } from 'bun:test'
 import type { Model, ModelSelection } from '@demicodes/core'
 import type { BashEnvironment, ShellCommandStatus } from '@demicodes/shell'
@@ -144,7 +145,7 @@ test('shell command handles are required only for running or over-budget output'
   expect(shellCommandHandleRequired(shellSnapshot('x'.repeat(4_001)), 1_000)).toBe(true)
 })
 
-const PNG_STREAM = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe, 0x01])
+const PNG_STREAM = new Uint8Array(readFileSync(new URL('../../../utils/src/__tests__/fixtures/images/valid.png', import.meta.url)))
 const MP4_STREAM = new Uint8Array([0, 0, 0, 0x20, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d, 0xff, 0xfe])
 const OPAQUE_STREAM = new Uint8Array([0xde, 0xad, 0xbe, 0xef, 0xff, 0xfe, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05])
 
@@ -346,4 +347,16 @@ test('shell_exec requires a nonblank description before resolving the environmen
     await expect(shellExec.invoke(toolContext(), { script: 'true', timeoutMs: 1, description })).rejects.toThrow('description')
   }
   expect(hasResolved).toBe(false)
+})
+
+
+test('a partial PNG below the capture limit is not attached as an image', () => {
+  const broken = PNG_STREAM.subarray(0, PNG_STREAM.length - 15)
+  const snapshot = {
+    ...shellSnapshot(''),
+    binaryStdout: { data: broken, truncated: false, totalBytes: broken.length, limitBytes: 4 * 1024 * 1024 },
+  }
+  const result = toShellToolResult(snapshot, { includePreview: true, model: imageModel() })
+  expect(result.output.filter(block => block.type === 'image')).toEqual([])
+  expect(result.output.at(-1)).toEqual({ type: 'text', text: 'Image data is corrupted.' })
 })

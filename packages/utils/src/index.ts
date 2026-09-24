@@ -6,3 +6,5 @@ export * from './strings'
 export * from './json'
 export * from './paths'
 export * from './id'
+
+export * from './image-integrity'

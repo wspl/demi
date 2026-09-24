@@ -1,3 +1,4 @@
+import { filterCorruptImages } from './image-integrity'
 import { AbortError, abortable, asError, createId, isAbortError, noop, throwIfAborted, truncate } from '@demicodes/utils'
 import type { ModelSelection, QueuedMessage, SessionPhase, UserContentBlock } from '@demicodes/core'
 import type { AgentProvider, InferenceItem, InferenceRequest, ProviderEvent, ProviderRun } from '@demicodes/provider'
@@ -360,7 +361,7 @@ export class AgentSession<State> {
           id: blockId,
           sessionId: this.agentSessionId,
           turnId,
-          content: resolvedContent,
+          content: filterCorruptImages(resolvedContent),
         })
       } catch (error) {
         const normalized = asError(error)
@@ -697,7 +698,7 @@ export class AgentSession<State> {
         id,
         sessionId: this.agentSessionId,
         turnId,
-        content,
+        content: filterCorruptImages(content),
       })
       this.transcriptLog.pushSteer(turnId, this.model, content, id, hidden)
       await this.commitTranscript()
