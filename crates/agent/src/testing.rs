@@ -388,9 +388,7 @@ async fn externalized(
     blobs: Option<&dyn BlobStore>,
 ) -> Result<CheckpointUpdate, StoreError> {
     if let Some(blobs) = blobs {
-        for (_, block) in &mut update.changed_blocks {
-            media::externalize(block, blobs).await?;
-        }
+        media::externalize_update(&mut update, blobs).await?;
     }
     Ok(update)
 }
@@ -442,9 +440,7 @@ impl SessionStore for MemorySessionStore {
             let (Some(mut checkpoint), Some(blobs)) = (loaded.clone(), &self.blobs) else {
                 return Ok(loaded);
             };
-            for block in &mut checkpoint.transcript {
-                media::rehydrate(block, &**blobs).await?;
-            }
+            media::rehydrate_checkpoint(&mut checkpoint, &**blobs).await?;
             Ok(Some(checkpoint))
         })
     }
