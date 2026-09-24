@@ -10,12 +10,12 @@ prompt rules.
   header alone is insufficient, including when the shell capture itself was not
   truncated (for example `browser screenshot | head -20`).
 - Custom tool results are checked before their final content is committed.
-- Each AgentSession inference request checks replayed tool, user, and steer images.
-  Session resume and compaction clones use the same request construction path.
-- Direct provider steering checks its content as well.
+- New user inputs are checked after reference resolution, before storage.
+- New steering content is checked before delivery and storage.
 - Invalid images become a text block. Other blocks and tool result status remain
-  unchanged. Request projection never edits existing persisted history or reruns
-  tools. Original shell artifacts remain available through the existing store.
+  unchanged. Existing history is never scanned during inference, resume, or
+  compaction. Corrupt legacy attachments require explicit one-off operational
+  repair. Original shell artifacts remain available through the existing store.
 
 ## Validation and limits
 
@@ -30,10 +30,8 @@ Inline data URLs and base64 tool images are checked as bytes, including MIME
 mismatches. Ordinary remote image URLs retain their existing provider-side fetch
 semantics: the local layer does not fetch arbitrary URLs to validate them.
 
-Verdicts are cached by exact MIME/content keys, bounded to 64 entries and 8 Mi
-characters. Source object identity alone cannot yield a stale verdict after a
-payload changes. Unsupported provider errors do not trigger blanket image removal
-or hidden retries.
+Validation runs at new-content boundaries without a content cache or historical
+replay traversal. Provider errors do not trigger blanket image removal or hidden retries.
 
 ## Tests
 
@@ -42,7 +40,7 @@ or hidden retries.
   mismatch, PNG CRC corruption, and a truncated IDAT with a fabricated IEND.
 - `packages/agent/src/__tests__/tools.test.ts`: shell image attachment and a
   partial PNG under the capture limit.
-- `packages/agent/src/__tests__/image-integrity.test.ts`: request filtering,
-  neighboring content, source preservation, malformed base64/data URLs, cache
-  mutation, historical recovery without tool re-execution, new tool storage,
+- `packages/agent/src/__tests__/image-integrity.test.ts`: entry filtering,
+  neighboring content, source preservation, malformed base64/data URLs, source
+  mutation, historical replay without scanning, new user and tool storage,
   and direct in-flight steering. Providers are local stubs; no model calls.
