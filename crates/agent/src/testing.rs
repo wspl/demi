@@ -15,14 +15,58 @@ use demi_core::{
 };
 use futures_util::future::LocalBoxFuture;
 
+use demi_shell::{Host, HostError, HostFs, HostIdentity, HostKey, HostProcess, ShellEnvironment};
+
 use crate::{
     AgentHarness, AgentServer, AgentTreeStore, Connection, ContentError, ContentResolver,
-    FileReference, FrameRx, IdSource, Outgoing, SessionStore,
+    EnvironmentScope, FileReference, FrameRx, IdSource, Outgoing, SessionStore,
+    ShellEnvironmentFactory,
     store::{
         Checkpoint, CheckpointState, CheckpointUpdate, CommandStateSnapshot, CommitGuard,
         NodeClose, NodeRecord, StoreError,
     },
 };
+
+/// The Host type of a test harness whose agents run no shell tools: it has
+/// no values, so no environment is ever made on one.
+#[derive(Debug)]
+pub enum NoHost {}
+
+impl Host for NoHost {
+    fn key(&self) -> HostKey {
+        match *self {}
+    }
+
+    fn default_cwd(&self) -> &str {
+        match *self {}
+    }
+
+    fn identity(&self) -> HostIdentity {
+        match *self {}
+    }
+
+    fn fs(&self) -> &dyn HostFs {
+        match *self {}
+    }
+
+    fn process(&self) -> &dyn HostProcess {
+        match *self {}
+    }
+}
+
+/// The shell environment factory of a harness whose Host is [`NoHost`].
+#[derive(Debug, Default)]
+pub struct NoShells;
+
+impl ShellEnvironmentFactory<NoHost> for NoShells {
+    fn create<'a>(
+        &'a self,
+        _: EnvironmentScope<'a>,
+        host: Rc<NoHost>,
+    ) -> LocalBoxFuture<'a, Result<Rc<dyn ShellEnvironment>, HostError>> {
+        match *host {}
+    }
+}
 
 /// Identities `<prefix>-1`, `<prefix>-2`, and on.
 #[derive(Debug)]
