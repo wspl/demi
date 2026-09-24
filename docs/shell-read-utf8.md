@@ -34,3 +34,13 @@ No data repair or application deployment is part of this patch.
 - Broader shell suite on this macOS host: 54 failures also reproduced on the
   unmodified main implementation; the patched failure set is identical. The
   local directory-fd spawn path reports ENOTDIR on this host.
+
+## Array input
+
+`mapfile` and its `readarray` alias decode the same byte transport before splitting
+lines and storing array variables. File input, pipes, redirected groups and
+heredocs preserve UTF-8 through real child-process arguments and stdin. Unicode
+delimiters, retained delimiters, skip/count options, NUL separators and EOF without
+a newline are covered in `mapfile-utf8.test.ts`; the LocalHost regression covers
+both commands across all four input paths. No heuristic repair of already corrupt
+strings is performed: literal text such as `Ã©` remains unchanged.
