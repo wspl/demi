@@ -7,16 +7,65 @@ use demi_shell::{PortError, Revision, StorageOp, StorageReply};
 use tokio_util::sync::CancellationToken;
 
 use super::{AgentSession, core::SessionCore, persist};
-use crate::store::{CommandStorageKey, CommitGuard};
+use crate::store::{CommandStorageKey, CommitGuard, StoreError};
 
 /// What a storage message says while an edit is being prepared.
 const RESERVED: &str = "Command storage is reserved for a transcript edit";
+
+/// A command-storage generation: the number a job's record holds, and the
+/// lifetime a history rewrite or dispose ends. They are one value, replaced
+/// together, so they never disagree.
+#[derive(Debug, Clone)]
+pub(super) struct Generation {
+    pub(super) number: u64,
+    pub(super) token: CancellationToken,
+}
+
+impl Generation {
+    pub(super) fn first() -> Self {
+        Self {
+            number: 0,
+            token: CancellationToken::new(),
+        }
+    }
+
+    /// Ends this generation and starts the next.
+    pub(super) fn next(&self) -> Self {
+        self.token.cancel();
+        Self {
+            number: self.number + 1,
+            token: CancellationToken::new(),
+        }
+    }
+}
 
 impl AgentSession {
     /// The command-storage generation current now, which a job started now
     /// is bound to.
     pub(crate) fn command_generation(&self) -> CancellationToken {
-        self.shared.read(|core| core.generation.clone())
+        self.shared.read(|core| core.generation.token.clone())
+    }
+
+    /// The number of the generation current now, which a job started now
+    /// records.
+    pub(crate) fn generation_number(&self) -> u64 {
+        self.shared.read(|core| core.generation.number)
+    }
+
+    /// Serves one storage message of a job that recorded the generation
+    /// `number`, while its call `call` lives: refused as no longer current
+    /// once that generation ended.
+    pub(crate) async fn job_storage(
+        &self,
+        number: u64,
+        op: StorageOp,
+        call: CancellationToken,
+    ) -> Result<StorageReply, PortError> {
+        let current = self.shared.read(|core| core.generation.clone());
+        if current.number != number {
+            return Err(PortError::Storage(StoreError::Invalidated.to_string()));
+        }
+        self.storage(op, vec![current.token, call]).await
     }
 
     /// Serves one storage message of a job bound to `lifetimes`: its

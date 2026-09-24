@@ -26,6 +26,7 @@ use super::{
     input::{Input, InputQueue, Take, Wakeups},
     persist::{PersistMarks, TakenMarks},
     runtime::ToolOutcome,
+    storage::Generation,
 };
 use crate::{
     IdSource,
@@ -57,7 +58,7 @@ pub(crate) struct SessionCore {
     /// The command-storage generation of the jobs started now: a history
     /// rewrite or dispose cancels it, so that a storage message of an older
     /// job never commits into the history that replaced its own.
-    pub(super) generation: CancellationToken,
+    pub(super) generation: Generation,
     /// The actions waiting, in the order they run; the queue is its sends.
     pub(super) pending: VecDeque<PendingAction>,
     pub(super) inputs: InputQueue,
@@ -242,7 +243,7 @@ impl SessionCore {
             retired: Vec::new(),
             transcript: parts.transcript,
             commands: parts.commands,
-            generation: CancellationToken::new(),
+            generation: Generation::first(),
             pending: VecDeque::new(),
             inputs: parts.inputs,
             wakeups: parts.wakeups,
@@ -729,7 +730,7 @@ impl SessionCore {
             return false;
         }
         self.disposing = true;
-        self.generation.cancel();
+        self.generation.token.cancel();
         for action in &mut self.pending {
             action.end(ActionEnd::Detached);
         }
@@ -1251,8 +1252,7 @@ impl SessionCore {
     /// the save wrote are current.
     pub(super) fn adopt_rewrite(&mut self, blocks: Vec<Block>, commands: CommandStateHistory) {
         self.commands = commands;
-        self.generation.cancel();
-        self.generation = CancellationToken::new();
+        self.generation = self.generation.next();
         self.transcript.replace_all(blocks);
         let batch = self
             .transcript

@@ -432,7 +432,11 @@ impl PortTransport for RelayPort {
                         .map(B64Bytes::new),
                 }),
                 PortRequest::Storage { op } => Ok(PortResponse::Storage {
-                    reply: self.link.policy().storage(self.origin.clone(), op).await?,
+                    reply: self
+                        .link
+                        .policy()
+                        .storage(self.origin.clone(), op, self.entry.stopped.clone())
+                        .await?,
                 }),
             }
         })
