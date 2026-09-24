@@ -9,7 +9,7 @@ use demi_core::Block;
 use demi_provider::testing::MockVendor;
 use serde_json::json;
 
-use crate::conversations::{FIRST, Socket, anthropic, answer, create, kinds, settled, tool_use, transcript};
+use crate::conversations::{FIRST, Socket, anthropic, answer, create, kinds, on_device, settled, tool_use, transcript};
 use crate::support::Harness;
 
 #[tokio::test]
@@ -17,20 +17,9 @@ async fn a_conversation_on_a_paired_device_runs_the_coding_agents_commands_there
     let vendor = MockVendor::start().await;
     let harness = Harness::new().with_builtin_package();
     let (backend, master) = harness.start_set_up().await;
-    let paired = backend.pair(&master, "laptop").await;
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
-    // The conversation works in the device's `work` directory, as a target
-    // switch would leave it.
-    let root = format!("{}/work", paired.runner.home());
-    std::fs::create_dir_all(&root).unwrap();
-    harness
-        .control_database()
-        .execute(
-            "UPDATE conversations SET target_kind = 'device', target_device_id = ?1, target_path = ?2 WHERE id = ?3",
-            rusqlite::params![paired.id(), root, FIRST],
-        )
-        .unwrap();
+    let (_paired, root) = on_device(&harness, &backend, &master, FIRST).await;
 
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open(&model_of(&provider, "claude-opus-4-8")).await;

@@ -5,6 +5,7 @@
 
 mod accounts;
 mod assets;
+mod attachments;
 mod auth;
 mod blobs;
 mod body;
@@ -158,6 +159,10 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route(
             "/settings/preferences",
             get(settings::preferences).patch(settings::patch_preferences),
+        )
+        .route(
+            "/attachments",
+            post(attachments::upload).layer(DefaultBodyLimit::max(attachments::BODY_LIMIT)),
         )
         .route("/blobs/{sha256}", get(blobs::blob))
         .route("/models", get(models::models))
