@@ -22,7 +22,7 @@ use futures_util::future::join_all;
 use tokio_util::sync::CancellationToken;
 
 use super::target::ExecutionTarget;
-use super::transfer::{TransferSet, TransfersClosed};
+use super::transfer::{OpenTransfer, TransferSet, TransfersClosed};
 use crate::runner::{HostOwner, host_key};
 use crate::shard::Shard;
 use crate::storage::StorageError;
@@ -178,6 +178,17 @@ pub(super) struct Admitted {
     _cloud: Option<CloudAdmission>,
 }
 
+/// A user stream's hold on the conversation's main Host: registered with
+/// the conversation's open transfers, it holds neither the file gate nor a
+/// Cloud awake.
+pub(super) struct StreamAccess {
+    /// The conversation's id as its record spells it.
+    pub(super) conversation: ConversationId,
+    pub(super) host: ConversationHost,
+    pub(super) device: DeviceId,
+    pub(super) open: OpenTransfer,
+}
+
 /// What ends an admission's waits: the requester leaving, and, for a file
 /// transfer, a transition that ends the conversation's transfers.
 #[derive(Clone, Copy)]
@@ -302,6 +313,46 @@ impl Shard {
                 _cloud: cloud,
             });
         }
+    }
+
+    /// Admits a user stream, or a one-shot user call that must not wake the
+    /// Host (§ Host operations): like any operation, except that a stopped
+    /// Cloud is refused instead of woken, and that the admitted stream lets
+    /// go of the file gate. It stays registered with the conversation's
+    /// transfers, so a transition ends it.
+    pub(super) async fn admit_stream(
+        &self,
+        id: &ConversationId,
+        cancel: &CancellationToken,
+    ) -> Result<StreamAccess, HostAccessError> {
+        let record = self.owned_conversation(id).await?;
+        let slot = self.conversations().slot(&record.id);
+        // As for a file transfer: no await between the check and the
+        // registration.
+        let open = slot.transfers.open().map_err(|_| Refusal::Busy)?;
+        let waits = Waits {
+            cancel,
+            ended: Some(&open.ended),
+        };
+        let files = waits.wait(slot.files.enter(Purpose::Demand)).await?;
+        let mut selected = self.select_host(&record.id, None, false).await?;
+        if !self.devices().online(&selected.device.id) {
+            return Err(match selected.device.kind {
+                DeviceKind::Managed => Refusal::Stopped.into(),
+                DeviceKind::User => HostError::offline("The device has no live runner").into(),
+            });
+        }
+        // A stream shows what the conversation's work left: it makes no
+        // directory.
+        selected.prepare = false;
+        let host = self.open_host(&record.id, &selected, None).await?;
+        drop(files);
+        Ok(StreamAccess {
+            conversation: record.id,
+            host,
+            device: selected.device.id,
+            open,
+        })
     }
 
     /// Takes the Cloud's admission: it wakes a stopped Cloud, joins a boot
