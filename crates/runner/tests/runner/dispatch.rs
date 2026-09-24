@@ -223,7 +223,7 @@ async fn declared_shell_builtin_dispatches_without_a_local_endpoint() {
         let mut job = Job::start(
             "printf body | fixture".into(),
             fixture.directory.path().into(),
-            BTreeMap::new(),
+            crate::home(fixture.directory.path()),
             true,
             scope, &demi_runner::shell::ShellRuntime::current(),
         )

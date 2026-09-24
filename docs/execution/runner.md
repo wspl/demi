@@ -384,6 +384,25 @@ places command aliases first in PATH, and restores the requested cwd. Shell
 variables and functions do not carry over to the next job; persisted profile
 changes do. The backend receives the final cwd and foreground exit status.
 
+The user login profile is the one in the job's home, the directory the job's
+`HOME` names, and the profiles see that directory as `$HOME`. A job's `HOME`
+is the one its request sets, else the device environment's, else the home
+the runner reports for the device
+([Resolve a target](sessions-and-targets.md#resolve-a-target)), so every job
+has one. For example, a runner that a service manager starts without `HOME`
+gives its jobs its account's home: they read `~/.profile` there, and a line in
+it such as `. "$HOME/.local/bin/env"` finds its file. Without that default,
+brush would read the same profile with `$HOME` unset, and the line would look
+for `/.local/bin/env`.
+
+Tests that start jobs give each job a home of its own, so no test reads the
+login profile of the machine's user. The system profile belongs to the
+machine, and jobs in tests read it too. A test therefore does not assume how
+long a job takes to start or how many open files its start holds. A system
+profile that loads version managers such as nvm can take a job a quarter of a
+second to source and hold about a hundred pipes at once, since every unit of
+a job shares the runner's open-file table ([Load](#load)).
+
 A job waits for background tasks and process substitutions before reporting
 completion. For example:
 

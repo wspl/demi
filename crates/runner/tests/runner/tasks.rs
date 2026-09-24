@@ -3,7 +3,7 @@ use demi_runner::{
     pipes::PipeClient,
     tasks::{JobConfig, JobTable, TaskCommand, TaskSpec, WorkId},
 };
-use std::{collections::BTreeMap, path::Path, time::Duration};
+use std::{path::Path, time::Duration};
 use tokio::sync::mpsc;
 
 #[derive(serde::Deserialize)]
@@ -65,7 +65,7 @@ async fn shell_job_keeps_full_logs_but_only_sends_head_and_tail_views() {
         .start(TaskSpec {
             id: "job".into(),
             cwd: root.path().into(),
-            env: BTreeMap::new(),
+            env: crate::home(root.path()),
             command: TaskCommand::Shell {
                 script: "printf '%060000d' 0; printf '%040000d' 1 >&2; mkdir child; cd child"
                     .into(),
@@ -127,7 +127,7 @@ async fn functions_and_compound_pipelines_drain_large_output_and_here_documents(
         .start(TaskSpec {
             id: "pipeline".into(),
             cwd: root.path().into(),
-            env: BTreeMap::new(),
+            env: crate::home(root.path()),
             command: TaskCommand::Shell {
                 script: "producer() { cat input; }; value=$(producer | cat | cat); printf '%s\\n' \"${#value}\"; { producer; } | wc -c; (producer) | wc -c; cat <<EOF | wc -c\n$value\nEOF\ncat <<< \"$value\" | wc -c".into(),
                 stdin: None,
@@ -171,7 +171,7 @@ async fn cancellation_terminates_a_blocking_native_builtin() {
         .start(TaskSpec {
             id: "job".into(),
             cwd: root.path().into(),
-            env: BTreeMap::new(),
+            env: crate::home(root.path()),
             command: TaskCommand::Shell {
                 script: "printf ready; sleep 60".into(),
                 stdin: None,
@@ -223,7 +223,7 @@ async fn shell_cancellation_reports_the_requesting_signal() {
         let mut job = Job::start(
             "printf ready; sleep 60".into(),
             root.path().into(),
-            BTreeMap::new(),
+            crate::home(root.path()),
             true,
             scope.clone(), &demi_runner::shell::ShellRuntime::current(),
         )
@@ -260,7 +260,7 @@ async fn shutdown_does_not_wait_for_a_blocked_output_consumer() {
         .start(TaskSpec {
             id: "spawn".into(),
             cwd: root.path().into(),
-            env: BTreeMap::new(),
+            env: crate::home(root.path()),
             command: TaskCommand::Shell {
                 script: "while :; do printf '%04096d' 0; done".into(),
                 stdin: None,
@@ -299,7 +299,7 @@ async fn jobs_share_the_runner_process_and_cancellation_is_isolated() {
         let mut blocked = Job::start(
             format!("printf ready; {script}"),
             root.path().into(),
-            BTreeMap::new(),
+            crate::home(root.path()),
             true,
             scope.clone(), &demi_runner::shell::ShellRuntime::current(),
         )
@@ -309,7 +309,7 @@ async fn jobs_share_the_runner_process_and_cancellation_is_isolated() {
         let mut sibling = Job::start(
             "printf '%s' $$; sleep 0.1; printf done".into(),
             root.path().into(),
-            BTreeMap::new(),
+            crate::home(root.path()),
             false,
             Scope::new(CancellationToken::new(), None), &demi_runner::shell::ShellRuntime::current(),
         )
@@ -359,7 +359,7 @@ async fn cancellation_reaps_external_programs_started_by_native_utilities() {
         let mut job = Job::start(
             script.into(),
             root.path().into(),
-            BTreeMap::new(),
+            crate::home(root.path()),
             false,
             scope.clone(), &demi_runner::shell::ShellRuntime::current(),
         )
@@ -405,7 +405,7 @@ async fn job_completion_preserves_process_substitution_output() {
     let mut job = Job::start(
         "cat input | tee >(sleep 0.1; cat > copied) > /dev/null".into(),
         root.path().into(),
-        BTreeMap::new(),
+        crate::home(root.path()),
         false,
         Scope::new(CancellationToken::new(), None), &demi_runner::shell::ShellRuntime::current(),
     )

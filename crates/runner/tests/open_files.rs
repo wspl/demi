@@ -361,7 +361,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
             let mut job = Job::start(
                 "echo one | cat > piped.txt".into(),
                 cwd.clone(),
-                BTreeMap::new(),
+                BTreeMap::from([("HOME".to_owned(), cwd.to_string_lossy().into_owned())]),
                 false,
                 Scope::new(CancellationToken::new(), None), &demi_runner::shell::ShellRuntime::current(),
             )
