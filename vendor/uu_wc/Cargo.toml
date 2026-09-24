@@ -168,4 +168,5 @@ check-cfg = [
 maintainer = "demi-runner"
 patches = [
     "Files, streams, the environment, printing and exit go through uucore::context, so a run embedded in a shell job uses the job's working directory, environment, standard streams and cancellation, and exit ends only the utility",
+    "A byte count whose splice fails keeps the bytes its seek skipped (src/count_fast.rs): inside a shell job splice always fails, and `wc -c` counted only the tail of a file whose size is a whole number of pages",
 ]
