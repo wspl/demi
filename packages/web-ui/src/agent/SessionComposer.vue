@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { ThinkingConfig, TokenUsage } from '@demicodes/core'
+import type { ThinkingConfig, TokenUsage } from '@demicodes/protocol'
 import { ArrowUp, File as FileIcon, HardDrive, Plus, RotateCcw, Square, X } from '@lucide/vue'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import { appOverlayStore } from '../overlay/appOverlay'
 import {
   attachmentsReady,
   attachmentSendBlockReason,
+  isComposerFile,
   type ComposerAttachment,
+  type UploadFile,
 } from './message-input/attachments'
 import { useMessageEditComposer } from './message-input/useMessageEditComposer'
 import { editHasContent, type MessageEditState } from './message-editing'
@@ -33,6 +35,8 @@ const props = withDefaults(
     disabled?: boolean
     attachments?: ComposerAttachment[]
     messageEdit?: MessageEditState | null
+    /** Uploads a file the edit composer adds, as the main composer's files are uploaded. */
+    upload: UploadFile
     /** The conversation has a host with files: the menu offers a remote file beside local ones. */
     remoteFiles?: boolean
     focused?: boolean
@@ -86,6 +90,7 @@ const emit = defineEmits<{
 const edit = useMessageEditComposer({
   state: () => props.messageEdit,
   update: (state) => emit('update:messageEdit', state),
+  upload: (file, options) => props.upload(file, options),
 })
 /** The editor shown: the edit's, or the draft's. */
 const editor = ref<InstanceType<typeof MessageEditor>>()
@@ -103,14 +108,24 @@ const sendButton = ref<InstanceType<typeof IconButton>>()
 const carried = computed(() => props.attachments.map(composerCapsule))
 /** The files the message has, in the order of their capsules: the document says so. */
 const capsules = ref<MessageCapsule[]>(carried.value)
-/** Their transfers, which the capsules in the editor read. */
+/** Their transfers, and those of the files an edit adds, which the capsules in the editor read. */
 provideTransfers({
   transfer: (id) => {
     const item = props.attachments.find((each) => each.id === id)
-    return item ? composerTransfer(item) : undefined
+    return item ? composerTransfer(item) : edit.transfers.transfer(id)
   },
-  carries: (id) => props.attachments.some((each) => each.id === id),
-  retry: (id) => emit('retryAttachment', id),
+  carries: (id) => props.attachments.some((each) => each.id === id) || edit.transfers.carries(id),
+  retry: (id) => {
+    if (props.attachments.some((each) => each.id === id)) {
+      emit('retryAttachment', id)
+    } else {
+      edit.transfers.retry(id)
+    }
+  },
+  current: (id) => {
+    const item = props.attachments.find((each) => each.id === id)
+    return item ? composerCapsule(item) : edit.transfers.current(id)
+  },
 })
 /** The files of the message, not the ones the composer still holds for an undo. */
 const carrying = computed(() => {
@@ -134,7 +149,7 @@ const sendDisabled = computed(
     props.disabled ||
     modelState.value.kind !== 'ready' ||
     (props.messageEdit
-      ? props.messageEdit.phase === 'sending' || !!edit.reading.value
+      ? props.messageEdit.phase === 'sending' || !!edit.sendBlockReason.value
       : !attachmentsReady(carrying.value)),
 )
 const sendBlockReason = computed(() => {
@@ -144,10 +159,12 @@ const sendBlockReason = computed(() => {
   if (props.disabled) {
     return undefined
   }
-  return props.messageEdit ? undefined : attachmentSendBlockReason(carrying.value)
+  return props.messageEdit
+    ? edit.sendBlockReason.value
+    : attachmentSendBlockReason(carrying.value.filter(isComposerFile).map((item) => item.phase))
 })
-// The composer shows no failure text of its own: a file that could not be
-// read for an edit is a toast, a failed upload is its capsule's Retry, and a
+// The composer shows no failure text of its own: a file an edit could not
+// take or upload is a toast, a failed upload is its capsule's Retry, and a
 // refused edit is the product's toast.
 watch(edit.attachmentError, (message) => {
   if (message) {
@@ -202,13 +219,13 @@ function attachRemote() {
   emit('attachRemote')
 }
 
-async function addFiles(files: File[]): Promise<void> {
+function addFiles(files: File[]): void {
   if (!props.messageEdit) {
     emit('addFiles', files)
     return
   }
-  // An edit reads its files itself; their capsules go in where they were told to land.
-  insertCapsules(await edit.addFiles(files))
+  // An edit uploads its files itself; their capsules go in where they were told to land.
+  insertCapsules(edit.addFiles(files))
 }
 
 /** Puts files the host took into the message, where the composer said they would land. */
@@ -402,7 +419,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
               variant="accent"
               circle
               :disabled="sendDisabled"
-              :loading="messageEdit?.phase === 'sending' || !!edit.reading.value"
+              :loading="messageEdit?.phase === 'sending'"
               :disabled-reason="sendBlockReason"
               :aria-label="submitLabel"
               @click="submit"

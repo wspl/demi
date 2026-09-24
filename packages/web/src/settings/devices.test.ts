@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
-import { productStateSchema, type ProductState } from '../api/contracts'
+import { productStateSchema, type ProductState } from '../api/unported'
 import { useProduct } from '../state/product'
 import { useDeviceSettings } from './devices'
 
@@ -42,6 +42,7 @@ beforeEach(async () => {
       state: 'running',
       operation: null,
       error: null,
+      volumes: null,
       limits: { systemBytes: 0, homeBytes: 0 },
     },
     providers: [],
@@ -78,7 +79,7 @@ beforeEach(async () => {
     if (path.startsWith('/api/exposes/') && path.endsWith('/renew') && init?.method === 'POST') {
       const id = path.split('/')[3]!
       renewals.push(id)
-      const expose = state.exposes.find((entry) => entry.id === id)
+      const expose = state.exposes?.find((entry) => entry.id === id)
       if (expose) {
         expose.expiresAt = new Date(Date.now() + 60 * 60_000).toISOString()
       }
@@ -87,7 +88,7 @@ beforeEach(async () => {
     if (path.startsWith('/api/exposes/') && init?.method === 'DELETE') {
       const id = path.split('/')[3]!
       removals.push(id)
-      state.exposes = state.exposes.filter((entry) => entry.id !== id)
+      state.exposes = state.exposes?.filter((entry) => entry.id !== id)
       return new Response(null, { status: 204 })
     }
     throw new Error(`Unexpected request: ${path}`)
@@ -131,7 +132,7 @@ test('remove drops the row once the snapshot returns without it', async () => {
 
 test('an expose that expires disappears with the next snapshot, without any request', async () => {
   const settings = useDeviceSettings()
-  state.exposes = state.exposes.filter((entry) => entry.deviceId !== 'laptop')
+  state.exposes = state.exposes?.filter((entry) => entry.deviceId !== 'laptop')
   await useProduct().refresh()
   expect(settings.exposes.map((expose) => expose.deviceId)).toEqual(['cloud'])
   expect(renewals).toEqual([])

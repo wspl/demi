@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { ProviderErrorDiagnostics } from '@demicodes/core'
+import type { ProviderErrorDiagnostics } from '@demicodes/protocol'
 import ErrorNotice from '@demicodes/web-ui/ui/ErrorNotice.vue'
 import { errorFacts, errorPresentation, errorReportText, prettyUpstream } from '../error-detail'
 

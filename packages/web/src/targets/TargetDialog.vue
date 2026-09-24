@@ -30,10 +30,11 @@ async function create(draft: WorkspaceDraft) {
     await resources.createProject(
       draft.kind === 'cloud'
         ? {
-            cloud: true,
+            kind: 'cloud',
             name: draft.name,
           }
         : {
+            kind: 'device',
             deviceId: draft.deviceId,
             path: draft.path,
             name: baseName(draft.path) || 'Workspace',

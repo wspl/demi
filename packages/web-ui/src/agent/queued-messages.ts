@@ -1,4 +1,4 @@
-import type { QueuedMessage, UserContentBlock } from '@demicodes/core'
+import type { QueuedMessage, UserContentBlock } from '@demicodes/protocol'
 
 export interface QueueDividerBlock {
   type: 'queue_divider'
@@ -13,10 +13,9 @@ export interface QueuedRenderBlock {
   content: UserContentBlock[]
 }
 
-export type QueueSource = Pick<QueuedMessage, 'id'> & Partial<Pick<QueuedMessage, 'text' | 'content'>>
-
+/** The queue as the list shows it: a message row for each entry, drawn from its content. */
 export function queuedMessagesToRenderBlocks(
-  queue: readonly QueueSource[],
+  queue: readonly QueuedMessage[],
 ): Array<QueueDividerBlock | QueuedRenderBlock> {
   if (queue.length === 0)
     return []
@@ -26,7 +25,7 @@ export function queuedMessagesToRenderBlocks(
       type: 'queued_message' as const,
       id: `queued:${item.id}`,
       queueId: item.id,
-      content: item.content ?? [{ type: 'text', text: item.text ?? '' }],
+      content: item.content,
     })),
   ]
 }

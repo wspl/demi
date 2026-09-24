@@ -1,4 +1,4 @@
-import type { Block, SessionPhase } from '@demicodes/core'
+import type { Block, SessionPhase } from '@demicodes/protocol'
 
 /** Visible transcript order distinguishes intermediate updates from final replies. */
 export function assistantFooterIds(

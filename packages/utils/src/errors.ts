@@ -94,23 +94,3 @@ export function errorCode(error: unknown): string | null {
 export function isFileNotFoundError(error: unknown): boolean {
   return errorCode(error) === 'ENOENT'
 }
-
-/**
- * An error carrying an errno-style string `code` (`ENOENT`, `EISDIR`, …), the
- * shape Node's fs errors and txiki.js's native errors share, for failures a
- * Host
- * decides itself rather than receives from the OS.
- */
-export function errnoError(
-  code: string,
-  message: string,
-  detail: {
-    syscall?: string;
-    path?: string
-  } = {}
-): Error {
-  return Object.assign(
-    new Error(message),
-    { name: 'ShellError', code, errno: 0, ...detail }
-  )
-}

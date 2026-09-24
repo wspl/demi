@@ -9,7 +9,6 @@
     "typecheck": "bun ../../scripts/typecheck-vue.ts tsconfig.app.json"
   },
   "dependencies": {
-    "@demicodes/core": "workspace:^",
     "@demicodes/protocol": "workspace:^",
     "@demicodes/web-ui": "workspace:^",
     "@lucide/vue": "^1.40.0",

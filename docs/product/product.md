@@ -99,6 +99,12 @@ inspection. [Message editing](../agent/message-editing.md) and
 boundaries. Interactive stdin is an agent-protocol capability; exposing a
 terminal input control remains separate from read-only job inspection.
 
+A pending steer can be delivered at once instead of at the next continuation
+boundary. The page then stops the running turn, which writes the steer into
+the transcript as the stop records it ([Stop](../agent/runtime.md#stop)), and
+continues the turn, so the model reads the steer next and it is never sent
+twice.
+
 ### Recovering an unfinished turn
 
 A turn can end without finishing in two ways, and the agent can go on from

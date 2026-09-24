@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test'
 import { deferred } from '@demicodes/utils'
-import type { UserContentBlock } from '@demicodes/core'
+import type { ClientContent } from '@demicodes/protocol'
 import { ConversationRuntime } from '@demicodes/web-ui/agent/conversation-runtime'
 import { toasts } from '@demicodes/web-ui/infra/toast'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
@@ -8,11 +8,41 @@ import { nextTick } from 'vue'
 import { useConversations } from './store'
 import { useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
-import { productStateSchema, type BackendConversation, type Preferences } from '../api/contracts'
+import type { ConversationSummary, Preferences } from '../api/generated/web-api'
+import { productStateSchema } from '../api/unported'
 import { applyConversationEvent, updateLiveStatus } from './activity'
 import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
 
 const realFetch = globalThis.fetch
+const FIRST = '00000000-0000-4000-8000-000000000001'
+const SECOND = '00000000-0000-4000-8000-000000000002'
+const SHA = 'a'.repeat(64)
+const model = {
+  providerId: 'stub', thinking: null, serviceTierId: null,
+  model: { id: 'stub', name: 'Stub', contextWindow: 1000, outputLimit: null, inputLimit: null, thinking: [], acceptedExtensions: [] },
+}
+/** The provider entry a conversation infers with, as the product state lists it. */
+const stubProvider = {
+  id: 'stub', kind: 'api_key' as const, providerType: 'stub', label: 'Stub',
+  wireApi: null, vendorId: null, baseUrl: null, models: null, createdAt: '2026-09-09T00:00:00.000Z',
+  details: { type: 'failed' as const, message: 'Not read in this test' },
+}
+/** A catalog with the one stub model. */
+function stubCatalog() {
+  return { providers: [{
+    providerId: 'stub', displayName: 'Stub', sourceFetchedAt: '1970-01-01T00:00:00.000Z', stale: false,
+    warnings: [], auth: { status: 'unknown' }, runtime: { status: 'ready' },
+    requiresProcessCapableHost: false,
+    availability: { type: 'available' },
+    models: [{
+      id: 'stub', displayName: 'Stub', description: null, contextWindow: 1000, outputLimit: null,
+      supportsTools: null, supportsAttachments: true, supportsVideo: null, acceptedExtensions: null,
+      supportsReasoning: null, supportedThinkingEfforts: [], defaultThinkingEffort: null,
+      canDisableThinking: null, serviceTiers: [], defaultServiceTierId: null, cost: null,
+      selection: model,
+    }],
+  }] }
+}
 
 /** The upload transport is XHR; this one answers every POST with a fresh attachment id. */
 class FakeXhr {
@@ -30,12 +60,15 @@ class FakeXhr {
   setRequestHeader(): void {}
   abort(): void {}
   send(): void {
-    this.responseText = JSON.stringify({ attachment: { id: `att-${FakeXhr.nextId++}` } })
+    this.responseText = JSON.stringify({ attachment: {
+      id: `att-${FakeXhr.nextId++}`, mediaType: 'text/plain', sizeBytes: 5, sha256: SHA,
+      createdAt: '2026-09-09T00:00:00.000Z', snippet: 'Local notes',
+    } })
     queueMicrotask(() => this.onload?.())
   }
 }
 globalThis.XMLHttpRequest = FakeXhr as unknown as typeof XMLHttpRequest
-let records: BackendConversation[]
+let records: ConversationSummary[]
 let rejectCreate: boolean
 let rejectFork: boolean
 let requests: {
@@ -45,10 +78,10 @@ let requests: {
 let pinia: ReturnType<typeof createPinia>
 let savedPreferences: Preferences
 
-function record(id: string): BackendConversation {
+function record(id: string, title = id): ConversationSummary {
   return {
     id,
-    title: id,
+    title,
     pinned: false,
     archived: false,
     readRevision: 0,
@@ -82,16 +115,13 @@ function snapshot() {
     workspaces: [],
     providers: [],
     conversations: records,
-    cloud: { device: null, state: 'unallocated', operation: null, error: null, limits: { systemBytes: 0, homeBytes: 0 } },
-    exposes: [],
-    exposeDomain: null,
   })
 }
 
 beforeEach(async () => {
   pinia = createPinia()
   setActivePinia(pinia)
-  records = [record('first'), record('second')]
+  records = [record(FIRST, 'first'), record(SECOND, 'second')]
   savedPreferences = { appearance: {}, shortcuts: {} }
   rejectCreate = false
   rejectFork = false
@@ -113,9 +143,9 @@ beforeEach(async () => {
     if (path.startsWith('/api/models')) {
       return Response.json({ providers: [] })
     }
-    if (path === '/api/conversations/first/fork') {
+    if (path === `/api/conversations/${FIRST}/fork`) {
       if (rejectFork) {
-        return Response.json({ code: 'unavailable', message: 'Fork unavailable' }, { status: 503 })
+        return Response.json({ code: 'internal_error', message: 'Fork unavailable' }, { status: 500 })
       }
       const created = records.find((item) => item.id === body.id) ?? {
         ...record(body.id), title: 'first (Fork)', providerId: 'stub', modelId: 'model',
@@ -136,7 +166,7 @@ beforeEach(async () => {
       if (rejectCreate) {
         return Response.json(
           {
-            code: 'unavailable',
+            code: 'internal_error',
             message: 'Not saved',
           },
           { status: 503 },
@@ -151,28 +181,31 @@ beforeEach(async () => {
     if (path === '/api/conversations/batch') {
       const items = body.items as {
         id: string
-        patch: Partial<BackendConversation>
+        patch: Partial<ConversationSummary>
       }[]
       return Response.json(
         {
           results: items.map((item) => {
             const current = records.find((record) => record.id === item.id)!
-            if (item.id === 'second') {
+            if (item.id === SECOND) {
               return {
+                status: 'updated',
                 id: item.id,
                 conversation: current,
                 results: [
                   {
                     field: 'archived',
                     status: 'failed',
-                    code: 'busy',
+                    code: 'turn_in_flight',
                     message: 'Turn is running',
+                    httpStatus: 409,
                   },
                 ],
               }
             }
             Object.assign(current, item.patch)
             return {
+              status: 'updated',
               id: item.id,
               conversation: current,
               results: Object.keys(item.patch).map((field) => ({
@@ -213,7 +246,7 @@ test('an empty draft saves the complete last choice and new conversations restor
   const chosen = { ...draft.model }
   const nextId = store.create('project')
   expect(store.items.find((item) => item.id === nextId)!.model).toEqual(chosen)
-  expect(store.items.find((item) => item.id === 'first')!.model.modelId).toBe('')
+  expect(store.items.find((item) => item.id === FIRST)!.model.modelId).toBe('')
   await usePreferences().flush()
   expect(savedPreferences.lastModel).toEqual(chosen)
   expect(requests.some((request) => request.path === '/api/conversations')).toBe(false)
@@ -279,7 +312,6 @@ test('sidebar stays active until the last running child closes after its parent 
     phase: 'running' as const,
     startedAt: '2026-09-13T00:00:00.000Z',
     endedAt: null,
-    metadata: null,
   }
   conversation.phase = 'idle'
   applyConversationEvent(conversation, { type: 'subagent', event: 'started', job })
@@ -316,7 +348,6 @@ test('a child keeps the failure facts of its transcript: a reset replaces them, 
     phase: 'running' as const,
     startedAt: '2026-09-13T00:00:00.000Z',
     endedAt: null,
-    metadata: null,
   }
   applyConversationEvent(conversation, { type: 'subagent', event: 'started', job })
   const lifts = { retryAt: '2026-09-22T07:37:39.000Z' }
@@ -351,7 +382,7 @@ test('new conversation is local and does not depend on the server', async () => 
   rejectCreate = true
   const id = await store.create()
   expect(id).toMatch(/^[0-9a-f-]{36}$/)
-  expect(store.items.map((item) => item.id)).toEqual([id!, 'first', 'second'])
+  expect(store.items.map((item) => item.id)).toEqual([id!, FIRST, SECOND])
   expect(store.items[0]?.persistence).toBe('draft')
   expect(store.items[0]?.load).toBe('ready')
   expect(requests.some((request) => request.path === '/api/conversations')).toBe(false)
@@ -400,7 +431,9 @@ test('a draft keeps its files; the conversation itself is created on first send'
   // The composer puts their capsules in the message and says what it now carries.
   store.arrangeFiles(conversation, taken.map((file) => file.id))
   await new Promise((resolve) => setTimeout(resolve, 0))
-  expect(conversation.files[0]).toMatchObject({ kind: 'file', name: 'notes.txt', phase: 'ready', upload: { id: 'att-1' } })
+  expect(conversation.files[0]).toMatchObject({
+    kind: 'file', name: 'notes.txt', phase: 'ready', snippet: 'Local notes', upload: { id: expect.stringMatching(/^att-/) },
+  })
   expect(requests.some((request) => request.path === '/api/conversations')).toBe(false)
   rejectCreate = true
   await store.send(conversation)
@@ -434,37 +467,19 @@ test('a file whose capsule was deleted comes back when undo brings the capsule b
 test('a message sends its text and files in the order the composer shows them', async () => {
   const store = useConversations()
   const current = store.items[0]!
-  useProduct().snapshot!.providers.push({
-    id: 'stub', kind: 'api_key', providerType: 'stub', label: 'Stub',
-    wireApi: null, vendorId: null, baseUrl: null, models: null,
-    keyConfigured: true, details: null,
-  })
+  useProduct().snapshot!.providers.push(stubProvider)
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
     if (path.startsWith('/api/models')) {
-      return Response.json({ providers: [{
-        providerId: 'stub', displayName: 'Stub', sourceFetchedAt: '', stale: false,
-        warnings: [], auth: { status: 'ready' }, runtime: { status: 'ready' },
-        requiresProcessCapableHost: false,
-        availability: { available: true, reason: null, message: null },
-        models: [{
-          id: 'stub', displayName: 'Stub', contextWindow: 1000, outputLimit: null,
-          supportsAttachments: true, supportedThinkingEfforts: [], defaultThinkingEffort: null,
-          selection: {
-            providerId: 'stub', thinking: null,
-            model: { id: 'stub', name: 'Stub', contextWindow: 1000, outputLimit: null,
-              inputLimit: null, thinking: [], acceptedExtensions: [] },
-          },
-        }],
-      }] })
+      return Response.json(stubCatalog())
     }
     if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
-    if (path.endsWith('/transcript')) return Response.json({ blocks: [], failures: {}, subagents: [] })
+    if (path.endsWith('/transcript')) return Response.json({ blocks: [], subagents: [] })
     return originalFetch(input, init)
   }) as typeof fetch
   const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
-  let sent: UserContentBlock[] = []
+  let sent: ClientContent[] = []
   const submit = spyOn(ConversationRuntime.prototype, 'submit').mockImplementation(async (content) => {
     sent = content
   })
@@ -479,15 +494,20 @@ test('a message sends its text and files in the order the composer shows them', 
     current.draft = `Compare ${ATTACHMENT_MARK} with ${ATTACHMENT_MARK}. The **modal** padding is off.`
     // The capsules were dragged into the other order.
     store.arrangeFiles(current, [current.files[1]!.id, current.files[0]!.id])
+    const upload = (name: string) => {
+      const file = current.files.find((each) => each.name === name)
+      return file?.kind === 'file' ? file.upload?.id : undefined
+    }
+    const before = upload('before.png')
+    const after = upload('after.png')
     await store.send(current)
-    expect(sent.map((block) => block.type)).toEqual(['text', 'reference', 'text', 'reference', 'text'])
-    expect(sent.filter((block) => block.type === 'text')).toEqual([
+    expect(sent).toEqual([
       { type: 'text', text: 'Compare ' },
+      { type: 'upload', ref: after!, fileName: 'after.png' },
       { type: 'text', text: ' with ' },
+      { type: 'upload', ref: before!, fileName: 'before.png' },
       { type: 'text', text: '. The **modal** padding is off.' },
     ])
-    expect(JSON.stringify(sent[1])).toContain('after.png')
-    expect(JSON.stringify(sent[3])).toContain('before.png')
   } finally {
     submit.mockRestore()
     connect.mockRestore()
@@ -514,13 +534,7 @@ test('snapshot refresh preserves live transcript and unsent draft', async () => 
   current.draft = 'Still editing'
   current.phase = 'running'
   current.blocks = [
-    {
-      type: 'extension_state_snapshot',
-      id: 'block',
-      createdAt: '2026-09-09T00:00:00.000Z',
-      extensionName: 'example',
-      state: { value: 1 },
-    },
+    { type: 'text', id: 'block', createdAt: '2026-09-09T00:00:00.000Z', model, text: 'streaming' },
   ]
   records[0]!.title = 'Server title'
   records.reverse()
@@ -536,17 +550,10 @@ test('snapshot refresh preserves live transcript and unsent draft', async () => 
 test('history remains readable during its own connection after navigation', async () => {
   const store = useConversations()
   const current = store.items[0]!
-  current.blocks = [{
-    type: 'extension_state_snapshot', id: 'cached', extensionName: 'example',
-    state: {}, createdAt: '2026-09-09T00:00:00.000Z',
-  }]
+  current.blocks = [{ type: 'text', id: 'cached', createdAt: '2026-09-09T00:00:00.000Z', model, text: 'cached' }]
   current.load = 'ready'
   current.draft = 'Keep the draft'
-  useProduct().snapshot!.providers.push({
-    id: 'stub', kind: 'api_key', providerType: 'stub', label: 'Stub',
-    wireApi: null, vendorId: null, baseUrl: null, models: null,
-    keyConfigured: true, details: null,
-  })
+  useProduct().snapshot!.providers.push(stubProvider)
   const historyRequested = deferred<void>()
   const history = deferred<Response>()
   const connecting = deferred<void>()
@@ -559,21 +566,7 @@ test('history remains readable during its own connection after navigation', asyn
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
     if (path.startsWith('/api/models')) {
-      return Response.json({ providers: [{
-        providerId: 'stub', displayName: 'Stub', sourceFetchedAt: '', stale: false,
-        warnings: [], auth: { status: 'ready' }, runtime: { status: 'ready' },
-        requiresProcessCapableHost: false,
-        availability: { available: true, reason: null, message: null },
-        models: [{
-          id: 'stub', displayName: 'Stub', contextWindow: 1000, outputLimit: null,
-          supportsAttachments: false, supportedThinkingEfforts: [], defaultThinkingEffort: null,
-          selection: {
-            providerId: 'stub', thinking: null,
-            model: { id: 'stub', name: 'Stub', contextWindow: 1000, outputLimit: null,
-              inputLimit: null, thinking: [], acceptedExtensions: [] },
-          },
-        }],
-      }] })
+      return Response.json(stubCatalog())
     }
     if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
     if (path.endsWith('/transcript')) {
@@ -588,8 +581,8 @@ test('history remains readable during its own connection after navigation', asyn
     expect(current).toMatchObject({ load: 'loading' })
     await historyRequested.promise
     expect(current).toMatchObject({ load: 'loading' })
-    useProduct().activeConversationId = 'second'
-    history.resolve(Response.json({ blocks: current.blocks, failures: {}, subagents: [] }))
+    useProduct().activeConversationId = SECOND
+    history.resolve(Response.json({ blocks: current.blocks, subagents: [] }))
     await connecting.promise
     expect(current).toMatchObject({ load: 'ready' })
     expect(current.draft).toBe('Keep the draft')
@@ -598,7 +591,7 @@ test('history remains readable during its own connection after navigation', asyn
     expect(current).toMatchObject({ load: 'failed' })
     expect(current.lastError).toBe('Connection failed')
   } finally {
-    history.resolve(Response.json({ blocks: [], failures: {}, subagents: [] }))
+    history.resolve(Response.json({ blocks: [], subagents: [] }))
     connection.resolve()
     await opening
     connect.mockRestore()
@@ -608,9 +601,9 @@ test('history remains readable during its own connection after navigation', asyn
 
 test('batch partial failure applies only the successful server records', async () => {
   const store = useConversations()
-  expect(await store.archive(['first', 'second'])).toBe(false)
-  expect(store.items.find((item) => item.id === 'first')?.archived).toBe(true)
-  expect(store.items.find((item) => item.id === 'second')?.archived).toBe(false)
+  expect(await store.archive([FIRST, SECOND])).toBe(false)
+  expect(store.items.find((item) => item.id === FIRST)?.archived).toBe(true)
+  expect(store.items.find((item) => item.id === SECOND)?.archived).toBe(false)
   expect(toasts.some((toast) => toast.message?.includes('second: Turn is running'))).toBe(true)
 })
 
@@ -641,7 +634,7 @@ test('read acknowledgements use the observed revision and wait for history', asy
 
 test('Fork preserves the source draft and opens an independent empty composer with inherited model settings', async () => {
   const store = useConversations()
-  const source = store.items.find((item) => item.id === 'first')!
+  const source = store.items.find((item) => item.id === FIRST)!
   source.draft = 'Keep this unsent message'
   source.phase = 'running'
   const request = { id: crypto.randomUUID(), blockId: 'completed-answer' }
@@ -660,10 +653,10 @@ test('failed Fork creates no local conversation; retry forwards the same destina
   const store = useConversations()
   const request = { id: crypto.randomUUID(), blockId: 'completed-answer' }
   rejectFork = true
-  await expect(store.fork('first', request)).rejects.toThrow('Fork unavailable')
+  await expect(store.fork(FIRST, request)).rejects.toThrow('Fork unavailable')
   expect(store.items.some((item) => item.id === request.id)).toBe(false)
   rejectFork = false
-  await store.fork('first', request)
+  await store.fork(FIRST, request)
   expect(requests.filter((item) => item.path.endsWith('/fork')).map((item) => item.body))
     .toEqual([request, request])
   expect(store.items.filter((item) => item.id === request.id)).toHaveLength(1)
@@ -681,7 +674,7 @@ function serveHistory(gate?: ReturnType<typeof deferred<void>>) {
       }
       requested.resolve()
       await gate?.promise
-      return Response.json({ blocks: [], failures: {}, subagents: [] })
+      return Response.json({ blocks: [], subagents: [] })
     }
     return originalFetch(input, init)
   }) as typeof fetch
@@ -691,17 +684,17 @@ function serveHistory(gate?: ReturnType<typeof deferred<void>>) {
 test('switching between opened sessions performs no reads or load reset', async () => {
   serveHistory()
   const store = useConversations()
-  await store.activate('first')
-  const first = store.items.find((item) => item.id === 'first')!
+  await store.activate(FIRST)
+  const first = store.items.find((item) => item.id === FIRST)!
   first.draft = 'Keep this input'
-  await store.activate('second')
+  await store.activate(SECOND)
   const count = requests.length
-  const returning = store.activate('first')
+  const returning = store.activate(FIRST)
   expect(first.load).toBe('ready')
-  expect(useProduct().activeConversationId).toBe('first')
+  expect(useProduct().activeConversationId).toBe(FIRST)
   await returning
-  await store.activate('second')
-  await store.activate('first')
+  await store.activate(SECOND)
+  await store.activate(FIRST)
   expect(requests).toHaveLength(count)
   expect(first.draft).toBe('Keep this input')
 })
@@ -710,9 +703,9 @@ test('leaving and returning during history loading shares the pending request', 
   const gate = deferred<void>()
   serveHistory(gate)
   const store = useConversations()
-  const first = store.activate('first')
+  const first = store.activate(FIRST)
   await store.activate(null)
-  const returning = store.activate('first')
+  const returning = store.activate(FIRST)
   gate.resolve()
   await Promise.all([first, returning])
   expect(requests.filter((item) => item.path.endsWith('/transcript'))).toHaveLength(1)
@@ -722,29 +715,29 @@ test('leaving and returning during history loading shares the pending request', 
 test('inactive context changes invalidate only that session; retry explicitly reloads', async () => {
   serveHistory()
   const store = useConversations()
-  await store.activate('first')
-  await store.activate('second')
+  await store.activate(FIRST)
+  await store.activate(SECOND)
   records[0]!.contextVersion += 1
   await useProduct().refresh()
   await nextTick()
   expect(requests.filter((item) => item.path.endsWith('/transcript'))).toHaveLength(2)
-  await store.activate('first')
+  await store.activate(FIRST)
   expect(requests.filter((item) => item.path.endsWith('/transcript'))).toHaveLength(3)
-  await store.activate('second')
+  await store.activate(SECOND)
   expect(requests.filter((item) => item.path.endsWith('/transcript'))).toHaveLength(3)
-  await store.reloadSession('second')
+  await store.reloadSession(SECOND)
   expect(requests.filter((item) => item.path.endsWith('/transcript'))).toHaveLength(4)
 })
 
 test('archive changes and removal invalidate cached history', async () => {
   serveHistory()
   const store = useConversations()
-  await store.activate('first')
+  await store.activate(FIRST)
   await store.activate(null)
   records[0]!.archived = true
   await useProduct().refresh()
   await nextTick()
-  await store.activate('first')
+  await store.activate(FIRST)
   expect(requests.filter((item) => item.path.endsWith('/transcript'))).toHaveLength(2)
   await store.activate(null)
   const removed = records.shift()!
@@ -753,7 +746,7 @@ test('archive changes and removal invalidate cached history', async () => {
   records.unshift(removed)
   await useProduct().refresh()
   await nextTick()
-  await store.activate('first')
+  await store.activate(FIRST)
   expect(requests.filter((item) => item.path.endsWith('/transcript'))).toHaveLength(3)
 })
 
@@ -762,7 +755,7 @@ test('logout cancels pending history and prevents late state restoration', async
   const requested = serveHistory(gate)
   const store = useConversations()
   const current = store.items[0]!
-  const opening = store.activate('first')
+  const opening = store.activate(FIRST)
   await requested
   store.stopAll()
   gate.resolve()
@@ -778,19 +771,14 @@ test('slow or failed model discovery does not hold history behind the loading pa
   const modelResponse = deferred<Response>()
   const originalFetch = globalThis.fetch
   const block = {
-    type: 'user', id: 'visible-history', turnId: 'history-turn', preamble: null,
-    model: {
-      providerId: 'fixture', thinking: null,
-      model: { id: 'fixture', name: 'Fixture', contextWindow: 1000,
-        outputLimit: null, inputLimit: null, thinking: [], acceptedExtensions: [] },
-    },
+    type: 'user', id: 'visible-history', turnId: 'history-turn', preamble: null, model,
     createdAt: '2026-09-13T00:00:00.000Z', content: [{ type: 'text', text: 'Read this while models load' }],
   }
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
     if (path.startsWith('/api/models')) return modelResponse.promise
     if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
-    if (path.endsWith('/transcript')) return Response.json({ blocks: [block], failures: {}, subagents: [] })
+    if (path.endsWith('/transcript')) return Response.json({ blocks: [block], subagents: [] })
     return originalFetch(input, init)
   }) as typeof fetch
   const models = useProduct().loadModels(true).catch(error => error)
@@ -815,13 +803,13 @@ test('a rename shows at once, survives a snapshot read before the write lands, a
   let answered = 0
   const fetch = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
-    if (String(input) !== '/api/conversations/first' || init?.method !== 'PATCH') {
+    if (String(input) !== `/api/conversations/${FIRST}` || init?.method !== 'PATCH') {
       return fetch(input, init)
     }
     started.resolve()
     await release.promise
     answered += 1
-    const current = records.find((item) => item.id === 'first')!
+    const current = records.find((item) => item.id === FIRST)!
     const { title } = JSON.parse(String(init.body)) as { title: string }
     if (!refuse) {
       current.title = title
@@ -829,13 +817,13 @@ test('a rename shows at once, survives a snapshot read before the write lands, a
     return Response.json({
       conversation: current,
       results: [refuse
-        ? { field: 'title', status: 'failed', code: 'archived', message: 'Restore it first' }
+        ? { field: 'title', status: 'failed', code: 'conversation_archived', message: 'Restore it first', httpStatus: 409 }
         : { field: 'title', status: 'applied' }],
     })
   }) as typeof fetch
-  const title = () => store.items.find((item) => item.id === 'first')!.title
+  const title = () => store.items.find((item) => item.id === FIRST)!.title
 
-  store.rename('first', 'Renamed')
+  store.rename(FIRST, 'Renamed')
   expect(title()).toBe('Renamed')
   await started.promise
   // The poll still reads the old title from the backend.
@@ -853,7 +841,7 @@ test('a rename shows at once, survives a snapshot read before the write lands, a
   expect(title()).toBe('Renamed')
 
   refuse = true
-  store.rename('first', 'Refused')
+  store.rename(FIRST, 'Refused')
   expect(title()).toBe('Refused')
   await settled(2)
   expect(title()).toBe('Renamed')

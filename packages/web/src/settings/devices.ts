@@ -3,8 +3,9 @@ import { useSession } from '../auth/session'
 import { computed, onScopeDispose, ref, watch } from 'vue'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { useProduct } from '../state/product'
-import { apiRequest, jsonBody } from '../api/client'
+import { apiRequest, jsonBody, readResponse } from '../api/client'
 import { renewExpose, removeExpose } from '../api/exposes'
+import { cloudResetAnswerSchema, type CloudReset } from '../api/generated/web-api'
 
 export const useDeviceSettings = defineStore('device-settings', () => {
   const product = useProduct()
@@ -27,7 +28,8 @@ export const useDeviceSettings = defineStore('device-settings', () => {
             product.snapshot.cloud.error ??
             product.snapshot.cloud.operation?.error ??
             null,
-          ...product.snapshot.cloud.limits,
+          volumes: product.snapshot.cloud.volumes,
+          limits: product.snapshot.cloud.limits,
         }
       : null,
   )
@@ -104,11 +106,12 @@ export const useDeviceSettings = defineStore('device-settings', () => {
     const current = lifetime
     reset.value = { status: 'pending' }
     try {
-      await apiRequest('/cloud/reset', {
+      const response = await apiRequest('/cloud/reset', {
         method: 'POST',
         signal: current.signal,
-        ...jsonBody({ operationId }),
+        ...jsonBody({ operationId } satisfies CloudReset),
       })
+      await readResponse(response, cloudResetAnswerSchema)
       current.signal.throwIfAborted()
       await product.revalidate()
       current.signal.throwIfAborted()

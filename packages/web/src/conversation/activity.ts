@@ -79,14 +79,14 @@ export function applyConversationEvent(
       }
     }
   } else if (event.type === 'shell_output') {
-    const current = conversation.terminals.find(
-      (terminal) => terminal.id === event.commandId,
-    )
     const status = event.status
+    const current = conversation.terminals.find(
+      (terminal) => terminal.id === status.commandId,
+    )
     const snapshot = {
-      id: event.commandId,
+      id: status.commandId,
       // The transcript names the command by its script; the shell id is the fallback.
-      name: current?.name ?? event.shellId,
+      name: current?.name ?? status.shellId,
       phase:
         status.status === 'running' ? ('running' as const) : ('exited' as const),
       startedAt:

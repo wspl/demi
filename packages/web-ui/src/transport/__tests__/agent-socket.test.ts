@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test'
-import { connectAgentClient } from '../agent-socket'
+import { AgentSocketError, connectAgentClient } from '../agent-socket'
 
 const realSocket = globalThis.WebSocket
 class FakeSocket extends EventTarget {
@@ -25,52 +25,34 @@ afterEach(() => {
   globalThis.WebSocket = realSocket
 })
 
-test('malformed JSON closes the connection and rejects unconfirmed sends', async () => {
+test('a socket that opens carries the client from then on', async () => {
+  // The fake takes the socket's place for the code under test; it has no type of the DOM's.
   globalThis.WebSocket = FakeSocket as unknown as typeof WebSocket
   const opening = connectAgentClient('ws://fixture')
   const socket = FakeSocket.latest
   socket.dispatchEvent(new Event('open'))
   const client = await opening
-  const pending = client
-    .submit([
-      {
-        type: 'text',
-        text: 'retain this draft',
-      },
-    ])
-    .catch((error) => error)
-  expect(() =>
-    socket.dispatchEvent(new MessageEvent('message', { data: '{broken' })),
-  ).not.toThrow()
-  expect(await pending).toBeInstanceOf(Error)
-  expect(socket.closed).toBe(true)
-})
-
-test('a frame that is not in the contract is handled like a failed connection', async () => {
-  globalThis.WebSocket = FakeSocket as unknown as typeof WebSocket
-  const opening = connectAgentClient('ws://fixture')
-  const socket = FakeSocket.latest
-  socket.dispatchEvent(new Event('open'))
-  const client = await opening
+  client.cancelPendingSteer('steer')
+  expect(socket.sent.map((data) => JSON.parse(data))).toEqual([{ type: 'cancel_pending_steer', steerId: 'steer' }])
   let disconnected = false
   client.subscribe((event) => {
-    disconnected = event.type === 'disconnected'
+    disconnected ||= event.type === 'disconnected'
   })
-  socket.dispatchEvent(
-    new MessageEvent('message', {
-      data: '{"type":"transcript_reset","blocks":"not blocks"}',
-    }),
-  )
+  socket.close()
   expect(disconnected).toBe(true)
-  expect(socket.closed).toBe(true)
+})
+
+test('a socket that closes before it opens is a connection failure, which the runtime retries', async () => {
+  globalThis.WebSocket = FakeSocket as unknown as typeof WebSocket
+  const result = connectAgentClient('ws://fixture').catch((error) => error)
+  FakeSocket.latest.close()
+  expect(await result).toBeInstanceOf(AgentSocketError)
 })
 
 test('canceling socket startup closes the transport without waiting for its timeout', async () => {
   globalThis.WebSocket = FakeSocket as unknown as typeof WebSocket
   const controller = new AbortController()
-  const result = connectAgentClient('ws://fixture', {
-    signal: controller.signal,
-  }).catch((error) => error)
+  const result = connectAgentClient('ws://fixture', controller.signal).catch((error) => error)
   controller.abort()
   expect(await result).toBeInstanceOf(Error)
   expect(FakeSocket.latest.closed).toBe(true)

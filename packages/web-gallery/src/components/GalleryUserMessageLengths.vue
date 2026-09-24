@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { UserContentBlock } from '@demicodes/core'
+import type { UserContentBlock } from '@demicodes/protocol'
 import UserBlock from '@demicodes/web-ui/agent/blocks/UserBlock.vue'
 import { provideMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import type { ConversationFiles } from '@demicodes/web-ui/markdown/types'
