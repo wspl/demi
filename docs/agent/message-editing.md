@@ -62,7 +62,9 @@ message, scheduled wakeup, live child, child start or close in progress, or
 child completion awaiting delivery. Admission excludes competing actions and
 completion delivery while the edit is prepared and committed, and the node's
 command storage refuses storage messages during that window
-([Command state history](command-state-history.md#fork-and-editing)).
+([Command state history](command-state-history.md#fork-and-editing)). The
+reservation ends when the edit is accepted or rejected: the replacement's turn
+may start and close children again.
 
 ### Commit and idempotency
 
@@ -77,6 +79,9 @@ The session restores command storage to the version recorded before the target
 ([Command state history](command-state-history.md)). Files, completed child
 records, and the external effects of tools that already ran stay outside this
 restore.
+
+The `edit_result` of an accepted edit follows the rewrite's `replace` patch
+and comes before any frame of the replacement's turn.
 
 Each accepted operation leaves a receipt in the checkpoint: its operation ID,
 the replacement's turn ID, and a digest of the request. The digest is the
