@@ -1230,6 +1230,7 @@ dependencies = [
  "bytes",
  "demi-agent",
  "demi-agent-protocol",
+ "demi-command-service",
  "demi-core",
  "demi-gates",
  "demi-provider",
