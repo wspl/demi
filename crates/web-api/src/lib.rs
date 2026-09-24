@@ -10,16 +10,20 @@
 
 pub mod attachments;
 pub mod auth;
+pub mod browser;
 pub mod conversations;
 pub mod devices;
 pub mod error;
 pub mod files;
 pub mod hosts;
 pub mod ids;
+pub mod panel;
 pub mod providers;
 pub mod query;
 pub mod settings;
+pub mod sidebar;
 pub mod state;
 pub mod text;
 pub mod usage;
 pub mod users;
+pub mod workspaces;
