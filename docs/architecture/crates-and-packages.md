@@ -681,7 +681,8 @@ packages under `packages/`.
   the backend binary ([Scenarios](../delivery/scenarios.md)).
 - **Public boundary:** `bun run web:dev` and the production build; no library
   API.
-- **Must not:** import `web-gallery` or Node.
+- **Must not:** import `web-gallery`, or import Node outside the
+  browser-contract suite, which starts the backend and runner processes.
 
 #### `@demicodes/web-gallery`
 
