@@ -11,7 +11,7 @@ use demi_agent_protocol::ServerFrame;
 use demi_core::{Clock, CommandId, ModelSelection, NodeId, QueuedMessage};
 use demi_gates::{ActivityGate, GateLease, Purpose, Reservation};
 use demi_provider::{ProviderRuntime, ToolDefinition};
-use demi_shell::{CommandSet, CommandStatus, JobCaller};
+use demi_shell::{CommandSet, CommandStatus, JobCaller, Reader};
 use futures_util::future::LocalBoxFuture;
 
 use crate::{
@@ -82,7 +82,11 @@ impl<H: AgentHarness> Node<H> {
         command: &CommandId,
         stdin: String,
     ) -> Result<CommandStatus, CallError> {
-        let (_, status) = self.runtime.shell_access().write(command, stdin).await?;
+        let (_, status) = self
+            .runtime
+            .shell_access()
+            .write(command, stdin, Reader::Page)
+            .await?;
         Ok(status)
     }
 
@@ -92,7 +96,11 @@ impl<H: AgentHarness> Node<H> {
         &self,
         command: &CommandId,
     ) -> Result<CommandStatus, CallError> {
-        let (_, status) = self.runtime.shell_access().abort(command).await?;
+        let (_, status) = self
+            .runtime
+            .shell_access()
+            .abort(command, Reader::Page)
+            .await?;
         Ok(status)
     }
 

@@ -30,9 +30,31 @@ pub struct CommandRecord {
     stderr: Stream,
     /// The merged output, in the order it arrived.
     chunks: Vec<Chunk>,
-    /// Where the next merged view starts, in bytes.
-    output_cursor: usize,
+    /// Where the model's next view starts.
+    model: Positions,
+    /// Where the page's next view starts.
+    page: Positions,
     files: Option<EditedFiles>,
+}
+
+/// Who reads a command's status. Each keeps its own position in the output,
+/// so neither's read changes what the other sees next (`runtime.md` §
+/// Results and previews).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reader {
+    /// The model, through the shell tools.
+    Model,
+    /// The user's page, through the shell frames.
+    Page,
+}
+
+/// Where one reader's next view of each stream, and of the merged output,
+/// starts, in bytes.
+#[derive(Debug, Default, Clone, Copy)]
+struct Positions {
+    stdout: usize,
+    stderr: usize,
+    output: usize,
 }
 
 #[derive(Debug)]
@@ -49,8 +71,6 @@ enum Phase {
 #[derive(Debug, Default)]
 struct Stream {
     text: String,
-    /// Where the next view starts, in bytes.
-    cursor: usize,
     /// The stream's length on the Host when the record holds only a view of
     /// it, such as a runner's head and tail.
     host_bytes: Option<u64>,
@@ -85,7 +105,8 @@ impl CommandRecord {
             stdout: Stream::default(),
             stderr: Stream::default(),
             chunks: Vec::new(),
-            output_cursor: 0,
+            model: Positions::default(),
+            page: Positions::default(),
             files: None,
         }
     }
@@ -132,8 +153,8 @@ impl CommandRecord {
 
     /// Ends the command with its final streams. What the end adds to a
     /// stream that was streamed follows the chunks the views showed, so a
-    /// merged cursor stays valid; a binary stdout is presented anew, from its
-    /// placeholder.
+    /// reader's merged position stays valid; a binary stdout is presented
+    /// anew, from its placeholder.
     pub fn settle(
         &mut self,
         ending: Ending,
@@ -143,8 +164,10 @@ impl CommandRecord {
     ) {
         if binary_stdout.is_some() {
             self.chunks.clear();
-            self.output_cursor = 0;
-            self.stdout.cursor = 0;
+            for positions in [&mut self.model, &mut self.page] {
+                positions.output = 0;
+                positions.stdout = 0;
+            }
         } else {
             for (stream, text) in [(StreamKind::Stdout, &stdout), (StreamKind::Stderr, &stderr)] {
                 if let Some(rest) = text.strip_prefix(self.stream(stream).text.as_str()) {
@@ -178,23 +201,34 @@ impl CommandRecord {
         }
     }
 
-    /// The status the tools see: each stream's output since the last view,
+    /// The status `reader` sees: each stream's output since its last view,
     /// at most `max_output_bytes` of it (all of it when zero), and its tail.
-    /// The view advances the cursors.
-    pub fn status(&mut self, max_output_bytes: usize, hint: Option<String>) -> CommandStatus {
+    /// The view moves only `reader`'s positions.
+    pub fn status(
+        &mut self,
+        reader: Reader,
+        max_output_bytes: usize,
+        hint: Option<String>,
+    ) -> CommandStatus {
+        let positions = match reader {
+            Reader::Model => &mut self.model,
+            Reader::Page => &mut self.page,
+        };
         let stdout = stream_view(
-            &mut self.stdout,
+            &self.stdout,
+            &mut positions.stdout,
             &self.output_dir,
             "stdout",
             max_output_bytes,
         );
         let stderr = stream_view(
-            &mut self.stderr,
+            &self.stderr,
+            &mut positions.stderr,
             &self.output_dir,
             "stderr",
             max_output_bytes,
         );
-        let output = self.merged_view(max_output_bytes);
+        let output = merged_view(&self.chunks, &mut positions.output, &self.output_dir, max_output_bytes);
         let now = Instant::now();
         let state = match &self.phase {
             Phase::Running => CommandState::Running { hint },
@@ -235,17 +269,11 @@ impl CommandRecord {
         }
     }
 
-    fn merged_len(&self) -> usize {
-        self.chunks
-            .last()
-            .map_or(0, |chunk| chunk.offset + chunk.text.len())
-    }
-
     fn push_chunk(&mut self, stream: StreamKind, text: &str) {
         if text.is_empty() {
             return;
         }
-        let offset = self.merged_len();
+        let offset = merged_len(&self.chunks);
         self.chunks.push(Chunk {
             stream,
             text: text.to_owned(),
@@ -253,8 +281,8 @@ impl CommandRecord {
         });
     }
 
-    /// Rebuilds the chunks, and the merged cursor with them, when they no
-    /// longer describe the streams' texts.
+    /// Rebuilds the chunks, and the readers' merged positions with them, when
+    /// they no longer describe the streams' texts.
     fn cover(&mut self) {
         let covered = |stream: StreamKind| -> usize {
             self.chunks
@@ -269,71 +297,87 @@ impl CommandRecord {
             return;
         }
         self.chunks.clear();
-        self.output_cursor = 0;
+        self.model.output = 0;
+        self.page.output = 0;
         self.push_chunk(StreamKind::Stdout, &self.stdout.text.clone());
         self.push_chunk(StreamKind::Stderr, &self.stderr.text.clone());
     }
+}
 
-    fn merged_view(&mut self, max_output_bytes: usize) -> OutputView {
-        let total = self.merged_len();
-        let start = self.output_cursor.min(total);
-        let mut remaining = budget(total - start, max_output_bytes);
-        let mut chunks = Vec::new();
-        let mut delivered = 0;
-        for chunk in &self.chunks {
-            if remaining == 0 {
-                break;
-            }
-            let position = start + delivered;
-            if chunk.offset + chunk.text.len() <= position {
-                continue;
-            }
-            let from = position - chunk.offset;
-            let piece = cut(&chunk.text, from, remaining);
-            delivered += piece.len();
-            remaining = remaining.saturating_sub(piece.len());
-            chunks.push(OutputChunk {
-                stream: chunk.stream,
-                text: piece.to_owned(),
-            });
-            // The budget ended inside this chunk, before a character.
-            if from + piece.len() < chunk.text.len() {
-                break;
-            }
+/// The merged output's length, in bytes.
+fn merged_len(chunks: &[Chunk]) -> usize {
+    chunks
+        .last()
+        .map_or(0, |chunk| chunk.offset + chunk.text.len())
+}
+
+/// A reader's view of the merged output from `position`, which it moves.
+fn merged_view(
+    chunks: &[Chunk],
+    position: &mut usize,
+    output_dir: &Option<String>,
+    max_output_bytes: usize,
+) -> OutputView {
+    let total = merged_len(chunks);
+    let start = (*position).min(total);
+    let mut remaining = budget(total - start, max_output_bytes);
+    let mut views = Vec::new();
+    let mut delivered = 0;
+    for chunk in chunks {
+        if remaining == 0 {
+            break;
         }
-        let next = start + delivered;
-        self.output_cursor = next;
-        let text: String = chunks.iter().map(|chunk| chunk.text.as_str()).collect();
-        let mut tail = String::new();
-        for chunk in self.chunks.iter().rev() {
-            if tail.chars().count() >= TAIL_CHARS {
-                break;
-            }
-            tail.insert_str(0, &chunk.text);
+        let at = start + delivered;
+        if chunk.offset + chunk.text.len() <= at {
+            continue;
         }
-        OutputView {
-            path: self.output_dir.clone(),
-            offset: next as u64,
-            text,
-            tail: tail_chars(&tail).to_owned(),
-            chunks,
-            bytes: total as u64,
-            truncated: next < total,
+        let from = at - chunk.offset;
+        let piece = cut(&chunk.text, from, remaining);
+        delivered += piece.len();
+        remaining = remaining.saturating_sub(piece.len());
+        views.push(OutputChunk {
+            stream: chunk.stream,
+            text: piece.to_owned(),
+        });
+        // The budget ended inside this chunk, before a character.
+        if from + piece.len() < chunk.text.len() {
+            break;
         }
+    }
+    let next = start + delivered;
+    *position = next;
+    let text: String = views.iter().map(|chunk| chunk.text.as_str()).collect();
+    let mut tail = String::new();
+    for chunk in chunks.iter().rev() {
+        if tail.chars().count() >= TAIL_CHARS {
+            break;
+        }
+        tail.insert_str(0, &chunk.text);
+    }
+    OutputView {
+        path: output_dir.clone(),
+        offset: next as u64,
+        text,
+        tail: tail_chars(&tail).to_owned(),
+        chunks: views,
+        bytes: total as u64,
+        truncated: next < total,
     }
 }
 
+/// A reader's view of one stream from `position`, which it moves.
 fn stream_view(
-    stream: &mut Stream,
+    stream: &Stream,
+    position: &mut usize,
     output_dir: &Option<String>,
     name: &str,
     max_output_bytes: usize,
 ) -> StreamView {
     let total = stream.text.len();
-    let start = stream.text.floor_char_boundary(stream.cursor.min(total));
+    let start = stream.text.floor_char_boundary((*position).min(total));
     let delta = cut(&stream.text, start, budget(total - start, max_output_bytes)).to_owned();
     let next = start + delta.len();
-    stream.cursor = next;
+    *position = next;
     StreamView {
         path: output_dir
             .as_ref()
