@@ -28,6 +28,7 @@ mod state;
 mod streams;
 mod transfer;
 mod usage;
+mod users;
 
 use std::io;
 use std::net::SocketAddr;
@@ -184,6 +185,8 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/providers/{id}/accounts/active", put(accounts::activate))
         .route("/providers/{id}/accounts/login", post(accounts::login_into))
         .route("/providers/{id}/accounts/{credential}", delete(accounts::remove))
+        .route("/users", get(users::list).post(users::create))
+        .route("/users/{id}", patch(users::reset_password))
         .route("/usage", get(usage::totals))
         .route("/usage/instance", get(usage::instance))
         .route("/conversations", get(conversations::list).post(conversations::create))
