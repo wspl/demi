@@ -66,7 +66,10 @@ pub fn protocol() -> Vec<Root> {
 
 /// `packages/web/src/api/generated`: every REST request and response body.
 pub fn web() -> Vec<Root> {
-    use api::{attachments, auth, conversations, devices, error, files, hosts, providers, settings, state, usage, users};
+    use api::{
+        attachments, auth, browser, conversations, devices, error, files, hosts, panel, providers, settings, sidebar, state,
+        usage, users, workspaces,
+    };
     vec![
         receives::<error::ErrorBody>(),
         receives::<auth::Identity>(),
@@ -134,5 +137,15 @@ pub fn web() -> Vec<Root> {
         sends::<users::CreateUser>(),
         receives::<users::CreatedUser>(),
         sends::<users::PasswordReset>(),
+        receives::<workspaces::Workspaces>(),
+        sends::<workspaces::CreateWorkspace>(),
+        sends::<workspaces::RenameWorkspace>(),
+        receives::<workspaces::WorkspaceAnswer>(),
+        sends::<sidebar::SidebarReorder>(),
+        receives::<panel::WorkPanel>(),
+        receives::<browser::BrowserTabs>(),
+        sends::<browser::OpenTab>(),
+        sends::<browser::NavigateTab>(),
+        sends::<browser::TabHistory>(),
     ]
 }
