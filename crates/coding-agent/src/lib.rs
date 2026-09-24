@@ -35,7 +35,7 @@ mod command_line {
         commands
             .register(demi_root(DemiOptions {
                 browser: true,
-                extra: Vec::new(),
+                ..DemiOptions::default()
             }))
             .unwrap();
         let root = commands
