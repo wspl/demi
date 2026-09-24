@@ -33,7 +33,7 @@ pub const DEFAULT_NODES: usize = 100;
 /// The largest result written to stdout; a larger one is shortened or fails.
 pub const INLINE_BYTES: usize = 64 * 1024;
 /// The longest text an input carries, such as typed text or an expression,
-/// in UTF-16 code units.
+/// in Unicode scalar values.
 pub const STDIN_BYTES: usize = 1024 * 1024;
 /// The largest PNG a clipboard holds, and its most pixels.
 pub const CLIPBOARD_PNG_BYTES: usize = 16 * 1024 * 1024;
@@ -46,8 +46,8 @@ pub const CONSOLE_BYTES: usize = 1024 * 1024;
 /// The CDP events a debugging connection retains, and their most bytes.
 pub const CDP_EVENTS: usize = 10000;
 pub const CDP_BYTES: usize = 8 * 1024 * 1024;
-/// The longest locator, URL, path or name an input carries, in UTF-16 code
-/// units.
+/// The longest locator, URL, path or name an input carries, in Unicode
+/// scalar values.
 pub const LOCATOR_LENGTH: usize = 4096;
 
 /// An opaque handle: `prefix`, an underscore and the URL-safe base64 of 16
@@ -341,46 +341,46 @@ macro_rules! locator_struct {
             /// Accessible role, ASCII case-insensitive, such as button, textbox, or date
             #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
             #[schemars(with = "String")]
-            #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+            #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
             pub role: Option<String>,
             /// Accessible name, with --role
             #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
             #[schemars(with = "String")]
-            #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+            #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
             pub name: Option<String>,
             /// Accessible-name regular expression, with --role
             #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
             #[schemars(with = "String")]
-            #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+            #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
             pub name_pattern: Option<String>,
             /// Rendered-text regular expression
             #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
             #[schemars(with = "String")]
-            #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+            #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
             pub text_pattern: Option<String>,
             /// Associated label text (label for, wrapping label, or aria-labelledby)
             #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
             #[schemars(with = "String")]
-            #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+            #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
             pub label: Option<String>,
             #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
             #[schemars(with = "String")]
-            #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+            #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
             pub placeholder: Option<String>,
             /// Visible text to match
             #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
             #[schemars(with = "String")]
-            #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+            #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
             pub text_match: Option<String>,
             /// data-testid attribute
             #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
             #[schemars(with = "String")]
-            #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+            #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
             pub test_id: Option<String>,
             /// CSS selector
             #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
             #[schemars(with = "String")]
-            #[garde(length(utf16, min = 1, max = LOCATOR_LENGTH))]
+            #[garde(length(chars, min = 1, max = LOCATOR_LENGTH))]
             pub css: Option<String>,
             /// Match the complete name or text
             #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
@@ -480,11 +480,11 @@ pub struct BrowserQuery {
     pub has_not: Option<Box<BrowserQuery>>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "String")]
-    #[garde(length(utf16, max = STDIN_BYTES))]
+    #[garde(length(chars, max = STDIN_BYTES))]
     pub has_text: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "String")]
-    #[garde(length(utf16, max = STDIN_BYTES))]
+    #[garde(length(chars, max = STDIN_BYTES))]
     pub has_not_text: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "bool")]

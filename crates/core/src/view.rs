@@ -115,7 +115,7 @@ serde_plain::derive_fromstr_from_deserialize!(StreamKind);
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EditedFile {
     /// Absolute, as the Host names it.
-    #[garde(length(utf16, min = 1))]
+    #[garde(length(chars, min = 1))]
     pub path: String,
     #[garde(skip)]
     pub kind: EditKind,

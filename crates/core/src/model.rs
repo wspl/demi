@@ -74,7 +74,7 @@ pub fn model_accepts_video(model: &Model) -> bool {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Model {
-    #[garde(length(utf16, min = 1))]
+    #[garde(length(chars, min = 1))]
     pub id: String,
     #[garde(skip)]
     pub name: String,
@@ -106,7 +106,7 @@ pub struct Model {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ModelSelection {
-    #[garde(length(utf16, min = 1))]
+    #[garde(length(chars, min = 1))]
     pub provider_id: String,
     #[garde(dive)]
     pub model: Model,
@@ -118,7 +118,7 @@ pub struct ModelSelection {
     /// vendor's default.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
-    #[garde(length(utf16, min = 1))]
+    #[garde(length(chars, min = 1))]
     pub service_tier_id: Option<String>,
 }
 

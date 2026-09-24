@@ -13,7 +13,7 @@ use crate::ids::{ConversationId, DeviceId, ProviderId, WorkspaceId};
 use crate::query::StrictBool;
 use crate::text::Trimmed;
 
-/// The most UTF-16 code units a conversation's title has.
+/// The most characters (Unicode scalar values) a conversation's title has.
 pub const TITLE_MAX: usize = 256;
 
 /// The most items one batch changes.
@@ -176,7 +176,7 @@ pub struct ConversationPatch {
     /// A rename: 1 to 256 characters after trimming.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "Trimmed")]
-    #[garde(inner(length(utf16, min = 1, max = TITLE_MAX)))]
+    #[garde(length(chars, min = 1, max = TITLE_MAX))]
     pub title: Option<Trimmed>,
     /// Archive, or restore.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
@@ -206,7 +206,7 @@ pub struct ConversationPatch {
 pub struct ModelChoice {
     #[garde(skip)]
     pub provider_id: ProviderId,
-    #[garde(length(utf16, min = 1))]
+    #[garde(length(chars, min = 1))]
     pub model_id: String,
 }
 

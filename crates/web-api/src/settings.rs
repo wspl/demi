@@ -81,7 +81,8 @@ pub struct Appearance {
     pub font_size: Option<u8>,
 }
 
-/// The most UTF-16 code units a shortcut's key sequence has.
+/// The most characters (Unicode scalar values) a shortcut's key sequence
+/// has.
 pub const SHORTCUT_MAX: usize = 64;
 
 /// Keyboard shortcut overrides: each a key sequence the browser reads.
@@ -91,17 +92,17 @@ pub struct Shortcuts {
     /// A new conversation.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "String")]
-    #[garde(length(utf16, max = SHORTCUT_MAX))]
+    #[garde(length(chars, max = SHORTCUT_MAX))]
     pub new: Option<String>,
     /// Showing or hiding the sidebar.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "String")]
-    #[garde(length(utf16, max = SHORTCUT_MAX))]
+    #[garde(length(chars, max = SHORTCUT_MAX))]
     pub sidebar: Option<String>,
     /// Opening the settings.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "String")]
-    #[garde(length(utf16, max = SHORTCUT_MAX))]
+    #[garde(length(chars, max = SHORTCUT_MAX))]
     pub settings: Option<String>,
 }
 
@@ -112,15 +113,15 @@ pub struct Shortcuts {
 pub struct ShortcutsPatch {
     #[serde(default, skip_serializing_if = "Option::is_none", with = "double_option")]
     #[schemars(with = "Option<String>")]
-    #[garde(length(utf16, max = SHORTCUT_MAX))]
+    #[garde(length(chars, max = SHORTCUT_MAX))]
     pub new: Option<Option<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "double_option")]
     #[schemars(with = "Option<String>")]
-    #[garde(length(utf16, max = SHORTCUT_MAX))]
+    #[garde(length(chars, max = SHORTCUT_MAX))]
     pub sidebar: Option<Option<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "double_option")]
     #[schemars(with = "Option<String>")]
-    #[garde(length(utf16, max = SHORTCUT_MAX))]
+    #[garde(length(chars, max = SHORTCUT_MAX))]
     pub settings: Option<Option<String>>,
 }
 
@@ -129,9 +130,9 @@ pub struct ShortcutsPatch {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LastModel {
-    #[garde(length(utf16, min = 1))]
+    #[garde(length(chars, min = 1))]
     pub provider_id: String,
-    #[garde(length(utf16, min = 1))]
+    #[garde(length(chars, min = 1))]
     pub model_id: String,
     /// The thinking effort; null for the model's default.
     #[serde(deserialize_with = "Option::deserialize")]

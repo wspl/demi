@@ -133,7 +133,7 @@ close to the provider's own count.
 - The replay bound below, the shell preview and the shell view window count
   Unicode scalar values, and a cut never splits one ([Tools](runtime.md#tools),
   [Views](runtime.md#views)).
-- Limits that the browser also checks count UTF-16 code units
+- Limits that the browser also checks count Unicode scalar values as well
   ([Validation at entry](../architecture/contracts.md#validation-at-entry)).
 
 ### Block estimates

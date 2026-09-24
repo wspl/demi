@@ -5,7 +5,7 @@ use std::fmt;
 
 use demi_core::Timestamp;
 use garde::Validate;
-use garde::rules::length::utf16::HasUtf16CodeUnits;
+use garde::rules::length::chars::HasChars;
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Serialize};
 
@@ -75,9 +75,9 @@ impl fmt::Debug for Password {
     }
 }
 
-impl HasUtf16CodeUnits for Password {
-    fn num_code_units(&self) -> usize {
-        self.0.encode_utf16().count()
+impl HasChars for Password {
+    fn num_chars(&self) -> usize {
+        self.0.chars().count()
     }
 }
 
@@ -103,7 +103,7 @@ pub struct SetupRequest {
     /// An `EmailAddress` is valid once it is decoded.
     #[garde(skip)]
     pub email: EmailAddress,
-    #[garde(length(utf16, min = 8, max = 1024))]
+    #[garde(length(chars, min = 8, max = 1024))]
     pub password: Password,
 }
 
@@ -114,7 +114,7 @@ pub struct Credentials {
     /// An `EmailAddress` is valid once it is decoded.
     #[garde(skip)]
     pub email: EmailAddress,
-    #[garde(length(utf16, min = 1))]
+    #[garde(length(chars, min = 1))]
     pub password: Password,
 }
 
@@ -122,7 +122,7 @@ pub struct Credentials {
 #[derive(Debug, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct NicknamePatch {
-    #[garde(length(utf16, min = 1, max = 80))]
+    #[garde(length(chars, min = 1, max = 80))]
     pub nickname: Trimmed,
 }
 
@@ -130,9 +130,9 @@ pub struct NicknamePatch {
 #[derive(Debug, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct PasswordChange {
-    #[garde(length(utf16, min = 1))]
+    #[garde(length(chars, min = 1))]
     pub current: Password,
-    #[garde(length(utf16, min = 8, max = 1024))]
+    #[garde(length(chars, min = 8, max = 1024))]
     pub next: Password,
 }
 
@@ -143,7 +143,7 @@ pub struct EmailChangeStart {
     /// An `EmailAddress` is valid once it is decoded.
     #[garde(skip)]
     pub email: EmailAddress,
-    #[garde(length(utf16, min = 1))]
+    #[garde(length(chars, min = 1))]
     pub password: Password,
 }
 
