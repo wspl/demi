@@ -267,8 +267,8 @@ impl<H: AgentHarness> SessionRuntime for NodeRuntime<H> {
         })
     }
 
-    fn context(&self) -> LocalBoxFuture<'_, Option<String>> {
-        Box::pin(self.harness.context(self.prompt_context()))
+    fn context<'a>(&'a self, seen: &'a [&'a str]) -> LocalBoxFuture<'a, Option<String>> {
+        Box::pin(self.harness.context(self.prompt_context(), seen))
     }
 
     /// The standard tools, and only these.

@@ -538,7 +538,7 @@ async fn the_system_prompt_has_the_command_help_and_a_context_change_is_saved_be
                 .collect();
             vec![event::text(&texts.join(" | ")), event::response(1, 1)]
         }
-    }))]);
+    })), Turn::Events(vec![event::text("again"), event::response(1, 1)])]);
     let fixture = Fixture::with(&script, store, ServerConfig::default());
     fixture
         .harness
@@ -560,6 +560,7 @@ async fn the_system_prompt_has_the_command_help_and_a_context_change_is_saved_be
         "{prompts:?}"
     );
     assert!(prompts[0].contains("greet hello"), "{prompts:?}");
+    drop(prompts);
     let blocks = fixture
         .server
         .tree(&conversation())
@@ -569,6 +570,12 @@ async fn the_system_prompt_has_the_command_help_and_a_context_change_is_saved_be
         .transcript()
         .blocks;
     assert_eq!(kinds(&blocks), ["user", "context", "text", "response"]);
+
+    // The next request's hook is shown what the node saw.
+    client.send(send("m2", "again")).await;
+    client.next_until(is_idle).await;
+    let seen = fixture.harness.seen.borrow();
+    assert_eq!(*seen, [vec![], vec!["The conversation now runs on the Cloud.".to_owned()]]);
 }
 
 #[tokio::test(flavor = "local")]

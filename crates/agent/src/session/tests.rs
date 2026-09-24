@@ -64,7 +64,7 @@ impl SessionRuntime for TestRuntime {
         Box::pin(async { None })
     }
 
-    fn context(&self) -> LocalBoxFuture<'_, Option<String>> {
+    fn context<'a>(&'a self, _seen: &'a [&'a str]) -> LocalBoxFuture<'a, Option<String>> {
         Box::pin(async { None })
     }
 
