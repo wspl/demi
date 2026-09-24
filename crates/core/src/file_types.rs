@@ -4,10 +4,12 @@
 //! its viewer from the same table, generated into `@demicodes/protocol`, so
 //! the two always agree.
 
+use schemars::JsonSchema;
 use serde::Serialize;
 
-/// One media type the product knows files by.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+/// One media type the product knows files by. Its schema types the table
+/// the page receives in `@demicodes/protocol`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PreviewType {
     pub media_type: &'static str,
