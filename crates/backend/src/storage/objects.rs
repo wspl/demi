@@ -45,13 +45,20 @@ impl S3Config {
     pub(crate) async fn read(path: &Path) -> Result<Self, S3ConfigError> {
         let bytes = tokio::fs::read(path).await?;
         let config: Self = serde_json::from_slice(&bytes).map_err(|error| S3ConfigError::Invalid(error.to_string()))?;
-        if config.bucket.is_empty() || config.region.is_empty() {
+        config.check()?;
+        Ok(config)
+    }
+
+    /// Checks what the JSON's shape cannot: a bucket and a region, and an
+    /// HTTPS endpoint.
+    pub(crate) fn check(&self) -> Result<(), S3ConfigError> {
+        if self.bucket.is_empty() || self.region.is_empty() {
             return Err(S3ConfigError::Invalid("bucket and region must not be empty".into()));
         }
-        if config.endpoint.as_ref().is_some_and(|endpoint| endpoint.scheme() != "https") {
+        if self.endpoint.as_ref().is_some_and(|endpoint| endpoint.scheme() != "https") {
             return Err(S3ConfigError::Invalid("the endpoint must be an HTTPS URL".into()));
         }
-        Ok(config)
+        Ok(())
     }
 
     /// The bucket's client, which checksums every upload with SHA-256 and
@@ -116,7 +123,14 @@ pub(crate) mod fake_s3 {
         metadata: Vec<(HeaderName, HeaderValue)>,
     }
 
-    type Objects = Arc<Mutex<HashMap<String, Object>>>;
+    /// The bucket's objects, and the keys of the objects created, in order.
+    #[derive(Default)]
+    struct Bucket {
+        objects: HashMap<String, Object>,
+        written: Vec<String>,
+    }
+
+    type Objects = Arc<Mutex<Bucket>>;
 
     /// A running fake, which stops when dropped.
     pub(crate) struct FakeS3 {
@@ -172,9 +186,20 @@ pub(crate) mod fake_s3 {
 
         /// The keys the bucket holds, sorted.
         pub(crate) fn keys(&self) -> Vec<String> {
-            let mut keys: Vec<String> = self.objects.lock().unwrap().keys().cloned().collect();
+            let mut keys: Vec<String> = self.objects.lock().unwrap().objects.keys().cloned().collect();
             keys.sort();
             keys
+        }
+
+        /// The keys of the objects put, in the order they were put.
+        pub(crate) fn written(&self) -> Vec<String> {
+            self.objects.lock().unwrap().written.clone()
+        }
+
+        /// The bytes of the object at `key`.
+        pub(crate) fn object(&self, key: &str) -> Option<Bytes> {
+            let bucket = self.objects.lock().unwrap();
+            bucket.objects.get(key).map(|object| object.bytes.clone())
         }
     }
 
@@ -193,9 +218,9 @@ pub(crate) mod fake_s3 {
         let etag = |bytes: &Bytes| format!("\"{:x}-{}\"", bytes.len(), bytes.first().copied().unwrap_or(0));
         match method {
             Method::PUT => {
-                let mut stored = objects.lock().unwrap();
+                let mut bucket = objects.lock().unwrap();
                 let create = headers.get("if-none-match").is_some_and(|value| value == "*");
-                if create && stored.contains_key(&key) {
+                if create && bucket.objects.contains_key(&key) {
                     return error(StatusCode::PRECONDITION_FAILED, "PreconditionFailed");
                 }
                 let metadata = headers
@@ -204,11 +229,12 @@ pub(crate) mod fake_s3 {
                     .map(|(name, value)| (name.clone(), value.clone()))
                     .collect();
                 let tag = etag(&body);
-                stored.insert(key, Object { bytes: body, metadata });
+                bucket.written.push(key.clone());
+                bucket.objects.insert(key, Object { bytes: body, metadata });
                 (StatusCode::OK, [("etag", tag)]).into_response()
             }
             Method::GET | Method::HEAD => {
-                let Some(found) = objects.lock().unwrap().get(&key).cloned() else {
+                let Some(found) = objects.lock().unwrap().objects.get(&key).cloned() else {
                     return error(StatusCode::NOT_FOUND, "NoSuchKey");
                 };
                 let mut answer = HeaderMap::new();
@@ -225,7 +251,7 @@ pub(crate) mod fake_s3 {
                 }
             }
             Method::DELETE => {
-                objects.lock().unwrap().remove(&key);
+                objects.lock().unwrap().objects.remove(&key);
                 StatusCode::NO_CONTENT.into_response()
             }
             _ => error(StatusCode::METHOD_NOT_ALLOWED, "MethodNotAllowed"),
