@@ -122,6 +122,7 @@ impl RunnerFixture {
                 name: "fixture".into(),
                 env: options.env,
                 token: Some(TOKEN.into()),
+                managed: false,
             },
         );
         let fixture = Self {
