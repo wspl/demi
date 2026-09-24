@@ -15,8 +15,8 @@ An agent starts a development server on Cloud and runs:
 
 ```text
 $ demi host expose add 127.0.0.1:5173
-Exposed 127.0.0.1:5173 on cloud as https://k7x2m9qw4p3s6t8v0w2y4z6a8b.expose.demi.example/
-Expires in 60 minutes (expose k7x2m9qw4p3s6t8v0w2y4z6a8b).
+Exposed 127.0.0.1:5173 on cloud as https://k7x2maqw4p3s6tavaw2y4z6aab.expose.demi.example/
+Expires in 60 minutes (expose k7x2maqw4p3s6tavaw2y4z6aab).
 ```
 
 The agent puts the URL in its reply. The user opens it in their own browser,
