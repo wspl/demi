@@ -73,7 +73,9 @@ pub trait AgentHarness: 'static {
     /// Before each request: the text that tells the model the
     /// conversation's execution context changed since the node last saw it,
     /// such as a target switch; none when nothing changed, and by default.
-    async fn context(&self, _context: PromptContext<'_>) -> Option<String> {
+    /// `seen` is the text of each context block the node's transcript holds,
+    /// oldest first: what the node saw.
+    async fn context(&self, _context: PromptContext<'_>, _seen: &[&str]) -> Option<String> {
         None
     }
 }
