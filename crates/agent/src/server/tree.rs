@@ -17,7 +17,7 @@ use std::{
 use demi_agent_protocol::{ModelSwitchApply, ServerFrame};
 use demi_core::{Clock, ModelSelection, NodeId};
 use demi_gates::{ActivityGate, KeyedSerialGate};
-use demi_shell::RegisterError;
+use demi_shell::{CommandStatus, RegisterError};
 use futures_util::future::join_all;
 use tokio::sync::watch;
 use tokio_util::task::{AbortOnDropHandle, TaskTracker};
@@ -32,6 +32,7 @@ use crate::{
         AdmissionError, Continuation, ModelSwitch, SessionEvent, Settle, Status, Subscription,
     },
     store::{AgentTreeStore, NodeRecord, StoreError},
+    tools,
 };
 
 /// A conversation's live tree.
@@ -170,6 +171,11 @@ impl<H: AgentHarness> Tree<H> {
         let store = (deps.stores)(root);
         let admission = ActivityGate::new();
         let runtime = deps.providers.runtime(root, &model).await?;
+        let sink = Rc::new(FrameSink::new());
+        let shell_output: Rc<dyn Fn(&CommandStatus)> = {
+            let sink = sink.clone();
+            Rc::new(move |status| sink.emit(tools::shell_output(status)))
+        };
         let assembled = node::assemble(NodeSpec {
             record: NodeRecord::root(root.clone(), deps.clock.now()),
             role: NodeRole::Root,
@@ -185,6 +191,7 @@ impl<H: AgentHarness> Tree<H> {
             first_message: None,
             store: store.clone(),
             shells: deps.shells.clone(),
+            shell_output: Some(shell_output),
             admission: admission.clone(),
             ids: deps.ids.clone(),
             clock: deps.clock.clone(),
@@ -200,7 +207,6 @@ impl<H: AgentHarness> Tree<H> {
                 apply: ModelSwitchApply::NextTurn,
             })?;
         }
-        let sink = Rc::new(FrameSink::new());
         let frames = session.subscribe({
             let sink = sink.clone();
             move |event| {
@@ -311,7 +317,8 @@ impl<H: AgentHarness> Tree<H> {
                 pending_steers: session.pending_steers(),
             },
         ];
-        for frame in root.into_iter().chain(self.replay()) {
+        let live_shells = self.root.live_shells();
+        for frame in root.into_iter().chain(self.replay()).chain(live_shells) {
             // A frame the fresh outbox refuses belongs to a socket that is
             // gone; the next emit detaches the connection.
             outbox.push(frame);
@@ -330,7 +337,7 @@ impl<H: AgentHarness> Tree<H> {
             version: snapshot.version,
             failures: None,
         });
-        for frame in self.replay() {
+        for frame in self.root.live_shells().into_iter().chain(self.replay()) {
             self.sink.emit(frame);
         }
     }
