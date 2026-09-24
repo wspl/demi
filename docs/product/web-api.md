@@ -493,17 +493,18 @@ vendor login of the machine it runs on.
 The backend applies the fields of `PATCH /api/conversations/:id` independently:
 `title` (trimmed, 1 to 256 characters), `archived`, `pinned`, `target`, and
 `model`, the provider entry and model as `{ providerId, modelId }` or null to
-clear both. A patch whose only field is refused answers that field's 404/409
-status with `{ code, message }`; otherwise the answer is the current
-conversation with `results: [{ field, status, code?, message?, httpStatus? }]`,
-200 when every field applied and 207 when any was refused. Unexpected operation
-failures are reported as 500 field results. Applied fields remain applied.
-Archive is evaluated before the other fields, so archiving and renaming together
-archives successfully but refuses the rename. A rename follows [Conversation
+clear both. A patch whose only field fails answers that field's status with
+`{ code, message }`; otherwise the answer is the current conversation with
+`results: [{ field, status, code?, message?, httpStatus? }]`, 200 when every
+field applied and 207 when any was refused. Unexpected operation failures are
+reported as 500 field results. Applied fields remain applied. Archive is
+evaluated before the other fields, so archiving and renaming together archives
+successfully but refuses the rename. A rename follows [Conversation
 titles](product.md#conversation-titles). `POST /api/conversations/batch` accepts
-up to 100 `{ id, patch }` items and returns 207 with an outcome per item: `{ id,
-status: "updated", conversation, results }`, or `{ id, status: "refused", code,
-message }` for a conversation the caller does not have.
+up to 100 `{ id, patch }` items and returns 207 with an outcome per item:
+`{ id, status: "updated", conversation, results }`, or
+`{ id, status: "refused", code, message }` for a conversation the caller does
+not have.
 
 Archive and a target change are transitions: each holds the conversation while
 it runs, and neither waits for other work. Running root or child work refuses
