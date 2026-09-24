@@ -608,7 +608,7 @@ open { model } --------------------> attach to the live tree
                 <------------------- phase, queue, pending_steers
                 <------------------- subagent started + subagent_transcript_reset,
                                      for each live subagent, depth first
-                <------------------- shell_output, for each command still running
+                <------------------- shell_output, for each live command
                 <------------------- transcript_patch { revision: r + 1 }
 ```
 
@@ -630,7 +630,7 @@ open { model } --------------------> attach to the live tree
 | `retry`, `resume`, `compact` | Run the action | `rejected` when the session is busy |
 | `shell_write { commandId, stdin }` | Write stdin to a running command | `shell_output`, then `shell_write_result` |
 | `shell_abort { commandId }` | Stop a running command | `shell_output` |
-| `sync_transcript` | Ask for a fresh transcript | `transcript_reset`, `shell_output` for running commands, the subagent replay |
+| `sync_transcript` | Ask for a fresh transcript | `transcript_reset`, `shell_output` for each live command, the subagent replay |
 | `close` | Dispose the tree | `closed` |
 
 Content in `send`, `steer` and `edit_and_send` is typed. It is text, a
@@ -679,7 +679,10 @@ attached when the frame is sent and never stored
 travels by blob reference ([Media by reference](../backend/backend.md#media-by-reference)).
 A running shell tool's status reaches the client as `shell_output`; a
 `shell_status` call sends none. Child sessions send only their transcript
-frames.
+frames. A live command is one the transcript last shows running that the
+root's shell environment still has; its `shell_output` after a transcript
+reset carries its current status, so a command that ended while no client
+watched shows as ended.
 
 ### Order and delivery
 

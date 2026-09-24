@@ -407,10 +407,15 @@ Each crate implements the provider contract for one vendor family.
   - the transcript and its estimates (`transcript::estimate`) and compaction;
   - the standard tools (`StandardTool`: `shell_exec`, `shell_status`,
     `shell_write`, `shell_abort` and `yield`), with the durable dispatch of
-    every tool call;
+    every tool call, over each node's shell environment per Host, which the
+    product's `ShellEnvironmentFactory` makes;
+  - each node's command storage as a job's rpc calls reach it
+    (`AgentServer::command_storage`), at the history generation the job
+    started in ([Mutation API and concurrency](../agent/command-state-history.md#mutation-api-and-concurrency));
   - the `demi agent` command group;
   - the harness trait (`AgentHarness`) with its subagent profiles
-    (`Profile`), where a session's provider runtimes come from
+    (`Profile`) and the Host its nodes' shell tools reach
+    (`AgentHarness::Host`), where a session's provider runtimes come from
     (`ProviderResolver`), and the tree store contract (`AgentTreeStore`,
     `SessionStore`, with the node records and checkpoints they carry in
     `store`);
@@ -425,7 +430,9 @@ Each crate implements the provider contract for one vendor family.
   tree store (`MemoryTreeStore`), which keeps media by reference over an
   in-memory blob namespace (`MemoryBlobs`), the tree store contract's cases
   that every realization passes (`store_contract`), predictable identities
-  (`SequentialIds`) and a test client that drives a connection
+  (`SequentialIds`), provider runtimes that play scripts
+  (`ScriptedProviders`), a Host type for agents without shell tools
+  (`NoHost`, `NoShells`) and a test client that drives a connection
   (`TestClient`). A product supplies
   the harness, the providers, a shell environment per Host and a tree store;
   the agent never knows which shell engine runs. Behavior:
@@ -448,7 +455,11 @@ Each crate implements the provider contract for one vendor family.
   `demi` command root: `file` (native, declared from `builtin-protocol` types),
   `todo` (rpc) and `browser` (native), with product groups such as the
   backend's `host` group composed in.
-- **Public boundary:** the harness and the command groups it builds.
+- **Public boundary:** the harness (`CodingHarness`) over the product's
+  answer to where a node runs (`HostResolver`: a node's Host and the text that
+  announces a change of it), the `demi` root (`demi_root`, with the product's
+  groups in `DemiOptions`), and the package id its native groups bind to
+  (`BUILTIN_PACKAGE`).
 - **Native binding:** the native groups declare package and operation ids. The
   backend supplies exact release descriptors at runtime; declarations import no
   compiled-in release catalog. The implementations live in `demi-commands`.
@@ -472,9 +483,10 @@ Each crate implements the provider contract for one vendor family.
   runner process for a backend at any address, with a home and state of its
   own (`RunnerProcess`), such a runner connected to a backend end of the
   fixture's own for one device (`RunnerFixture`), an in-process fake runner
-  (`TestDevice`, whose connections are `TestLink`s), the runner's native
-  fixture package (`NativeFixture`) and a policy that runs every call in one
-  command set (`CommandPolicy`). Behavior: [Runner](../execution/runner.md) and
+  (`TestDevice`, whose connections are `TestLink`s), a native package the
+  workspace built (`NativeFixture`, such as the runner's native fixture
+  package; `built_program` finds a workspace executable) and a policy that
+  runs every call in one command set (`CommandPolicy`). Behavior: [Runner](../execution/runner.md) and
   [Native command execution](../execution/native-runtime.md), which owns
   [artifact-location admission](../execution/native-runtime.md#install-the-selected-executable).
 - **Must not:** own sockets or HTTP routes (the backend's connection tasks and

@@ -1,0 +1,33 @@
+[package]
+name = "demi-coding-agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+# No doc examples: rustdoc has nothing to test.
+doctest = false
+
+[dependencies]
+demi-agent = { path = "../agent" }
+demi-builtin-protocol = { path = "../builtin-protocol" }
+demi-command-tree = { path = "../command-tree" }
+demi-core = { path = "../core" }
+demi-shell = { path = "../shell" }
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+# The scenarios run the harness in an agent server whose shells are real
+# runner jobs, with the `demi.builtin` package the workspace built; the unit
+# tests use the shell's in-memory rpc port.
+demi-agent = { path = "../agent", features = ["testing"] }
+demi-agent-protocol = { path = "../agent-protocol" }
+demi-host-remote = { path = "../host-remote", features = ["testing"] }
+demi-provider = { path = "../provider", features = ["testing"] }
+demi-shell = { path = "../shell", features = ["testing"] }
+futures-util.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
+tokio-util.workspace = true

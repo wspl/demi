@@ -7,7 +7,9 @@
 mod process;
 mod runner;
 
-pub use process::{RunnerProcess, RunnerProcessOptions, native_fixture_binary, runner_binary};
+pub use process::{
+    RunnerProcess, RunnerProcessOptions, built_program, native_fixture_binary, runner_binary,
+};
 pub use runner::{FixtureOptions, RunnerFixture};
 
 use std::{
@@ -245,17 +247,32 @@ impl TestLink {
     }
 }
 
-/// The native fixture package, whose operations the runner's own tests use
-/// (`where`, `echo`, `first`, `spin`, `result`, `retain`, `crash`): its
-/// descriptor for this host and where its executable is.
+/// A native package built in the workspace: its descriptor for this host
+/// and where its executable is.
 pub struct NativeFixture {
     pub descriptor: PackageDescriptor,
     path: PathBuf,
 }
 
 impl NativeFixture {
+    /// The runner's native fixture package, whose operations the runner's
+    /// own tests use (`where`, `echo`, `first`, `spin`, `result`, `retain`,
+    /// `crash`).
     pub fn load() -> Self {
-        let path = native_fixture_binary();
+        Self::package(
+            "demicodes.runner-test",
+            native_fixture_binary(),
+            ["where", "echo", "first", "spin", "result", "retain", "crash"],
+        )
+    }
+
+    /// The package `id` that serves `operations`, whose executable for this
+    /// host is `path`.
+    pub fn package<'a>(
+        id: &str,
+        path: PathBuf,
+        operations: impl IntoIterator<Item = &'a str>,
+    ) -> Self {
         let bytes = std::fs::read(&path).unwrap_or_else(|error| {
             panic!(
                 "read {}: {error}; build it with cargo build --workspace --features demi-runner/test-fixtures",
@@ -263,14 +280,10 @@ impl NativeFixture {
             )
         });
         let descriptor = PackageDescriptor {
-            id: "demicodes.runner-test".into(),
+            id: id.into(),
             version: "test".into(),
             protocol_version: 1,
-            operations: [
-                "where", "echo", "first", "spin", "result", "retain", "crash",
-            ]
-            .map(String::from)
-            .to_vec(),
+            operations: operations.into_iter().map(String::from).collect(),
             targets: BTreeMap::from([(
                 host_target().to_owned(),
                 PackageArtifact {
