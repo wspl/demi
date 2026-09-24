@@ -80,8 +80,10 @@ through the native service shutdown contract.
 
 ## Acceptance
 
-Verify without real models, with scripted activity and a clock the test
-controls ([Tests and time](../architecture/concurrency.md#tests-and-time)):
+Verify without real models, with scripted activity: the idle watch alone on a
+paused clock, and the release through a user's shard, which waits on the
+database, in real time with a short window
+([Tests and time](../architecture/concurrency.md#tests-and-time)):
 
 | Situation | Required result |
 | --- | --- |

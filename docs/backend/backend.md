@@ -121,6 +121,14 @@ A download arms the 60-second deadline, a lease the shard ends closes the
 connection at once even when the browser has stopped reading, and the expose
 relay forwards the peer address.
 
+The listener turns off Nagle's algorithm (`TCP_NODELAY`) on every connection
+it accepts. The runner and conversation sockets carry small messages whose
+latency matters. With the algorithm on, a small message written while an
+earlier one is still unacknowledged waits for that acknowledgement, which the
+peer may delay by tens of milliseconds. For example, the device token a
+claimed runner receives follows its pairing code, and would wait for the
+runner to acknowledge the code.
+
 ## Authentication and ownership
 
 Browser API routes use the `demi_session` cookie. It contains a random 256-bit

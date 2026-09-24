@@ -125,6 +125,8 @@ impl Shard {
             }
         };
         let recorded = self.record_phase(machine, &operation, next, phase).await;
+        // Nothing awaits from the last phase shown to the state below: a
+        // status shows both or neither.
         {
             let mut phase = machine.phase();
             // Only the reset ends the resetting phase.
@@ -173,7 +175,11 @@ impl Shard {
         self.boot(machine).await
     }
 
-    /// Writes the operation's phase, and shows it.
+    /// Writes the operation's phase, then shows it. A status read while the
+    /// write waits on the database still shows the phase before, so the
+    /// last phase shows in the same step as the state the reset leaves
+    /// (`web-api.md` § Cloud). A phase that could not be written shows too,
+    /// as the reset's outcome does.
     async fn record_phase(
         &self,
         machine: &Machine,
@@ -186,11 +192,13 @@ impl Shard {
             error,
             ..operation.clone()
         };
-        machine.operation.replace(Some(operation.clone()));
-        self.services()
+        let recorded = self
+            .services()
             .control
-            .put_managed_operation(machine.device.id.clone(), operation)
-            .await?;
+            .put_managed_operation(machine.device.id.clone(), operation.clone())
+            .await;
+        machine.operation.replace(Some(operation));
+        recorded?;
         Ok(())
     }
 }

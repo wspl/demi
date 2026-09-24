@@ -96,6 +96,25 @@ async fn tee_and_od_use_pipeline_streams() {
     );
 }
 
+/// `wc -c` counts a file whose size is a whole number of pages whole: it
+/// seeks near the end, and inside a job it reads the rest, since a job's
+/// utilities never splice.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wc_counts_a_file_of_whole_pages_whole() {
+    let root = tempfile::tempdir().unwrap();
+    // Whole pages for page sizes of 4, 16 and 64 KiB.
+    std::fs::write(root.path().join("pages.bin"), vec![7_u8; 5 * 65536]).unwrap();
+    let output = tempfile::NamedTempFile::new().unwrap();
+    let result = execute("wc -c pages.bin", options(root.path(), output.reopen().unwrap()))
+        .await
+        .unwrap();
+    assert_eq!(result.code, 0);
+    assert_eq!(
+        std::fs::read_to_string(output.path()).unwrap().trim(),
+        "327680 pages.bin"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn job_joins_background_tasks_and_preserves_foreground_exit_status() {
     let root = tempfile::tempdir().unwrap();

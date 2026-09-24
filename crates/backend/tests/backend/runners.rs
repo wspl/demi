@@ -17,7 +17,7 @@ use reqwest::StatusCode;
 use serde_json::json;
 use tokio_tungstenite::tungstenite::Message;
 
-use crate::support::{Harness, TestBackend, eventually};
+use crate::support::{Harness, TestBackend, eventually, stored_token};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_claimed_runner_reconnects_with_its_token_until_its_device_is_revoked() {
@@ -48,7 +48,9 @@ async fn a_claimed_runner_reconnects_with_its_token_until_its_device_is_revoked(
     assert_eq!(listed.len(), 1);
     assert_eq!((&listed[0].id, listed[0].online), (&device.id, true));
 
-    // A restarted runner presents its token and is the same device, online.
+    // A restarted runner presents the token it stored and is the same device,
+    // online.
+    stored_token(&runner).await;
     runner.stop().await;
     backend.until_online(&master, device.id.as_str(), false).await;
     runner.start_again();

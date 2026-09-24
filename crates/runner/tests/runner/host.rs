@@ -57,6 +57,10 @@ async fn filesystem_requests_and_kill_remain_available_during_job() {
 async fn job_environment_combines_device_request_and_owned_values() {
     tokio::time::timeout(Duration::from_secs(60), async {
         let root = tempfile::tempdir().unwrap();
+        // Neither the device nor the request names a home: the job's home is
+        // the one the runner reports, whose login profile it reads with that
+        // home as `$HOME`.
+        std::fs::write(root.path().join(".profile"), "profile_home=\"$HOME\"\n").unwrap();
         let device = BTreeMap::from([
             ("DEVICE".into(), "device".into()),
             ("OVERRIDE".into(), "old".into()),
@@ -66,7 +70,8 @@ async fn job_environment_combines_device_request_and_owned_values() {
             manifest_hash: None,
             context: context(),
             job_id: "env".into(),
-            script: "printf '%s:%s:%s' \"$DEVICE\" \"$OVERRIDE\" \"$DEMI_HOME\"".into(),
+            script: "printf '%s:%s:%s:%s:%s' \"$DEVICE\" \"$OVERRIDE\" \"$DEMI_HOME\" \"$HOME\" \"$profile_home\""
+                .into(),
             cwd: root.path().to_string_lossy().into_owned(),
             env: BTreeMap::from([
                 ("OVERRIDE".into(), "new".into()),
@@ -84,10 +89,11 @@ async fn job_environment_combines_device_request_and_owned_values() {
                 other => panic!("unexpected {other:?}"),
             }
         }
-        let home = root.path().join("state");
+        let state = root.path().join("state");
+        let home = root.path().display();
         assert_eq!(
             String::from_utf8(stdout).unwrap(),
-            format!("device:new:{}", home.display())
+            format!("device:new:{}:{home}:{home}", state.display())
         );
         host.close().await;
     })

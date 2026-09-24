@@ -444,8 +444,9 @@ impl TestBackend {
         .await;
     }
 
-    /// A runner of a new device named `name`, started, claimed by `session`
-    /// and online.
+    /// A runner of a new device named `name`, started, claimed by `session`,
+    /// online and holding its device token, so a test may stop it and start
+    /// it again as the same device.
     pub async fn pair(&self, session: &Session, name: &str) -> Paired {
         let runner = RunnerProcess::start(
             &self.url,
@@ -459,6 +460,7 @@ impl TestBackend {
         assert_eq!(claimed.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&claimed.body));
         let device = claimed.json::<ClaimedDevice>().device;
         self.until_online(session, device.id.as_str(), true).await;
+        stored_token(&runner).await;
         Paired { runner, device }
     }
 }
@@ -474,17 +476,24 @@ impl Paired {
         self.device.id.as_str()
     }
 
-    /// The device token the runner stored once it was claimed; it stores it
-    /// a moment after the backend bound it.
+    /// The device token the runner stored once it was claimed.
     pub async fn token(&self) -> String {
-        let path = self.runner.state_dir().join("runner-token");
-        eventually("the runner stores its token", || {
-            let stored = path.exists();
-            async move { stored }
-        })
-        .await;
-        std::fs::read_to_string(path).unwrap().trim().to_owned()
+        stored_token(&self.runner).await
     }
+}
+
+/// The device token `runner` stored once it was claimed. The backend binds
+/// the device before the runner hears its token, so the claim answers, and
+/// the device is online, a moment before the runner holds the token; a
+/// runner stopped in that moment comes back unpaired.
+pub async fn stored_token(runner: &RunnerProcess) -> String {
+    let path = runner.state_dir().join("runner-token");
+    eventually("the runner stores its token", || {
+        let stored = path.exists();
+        async move { stored }
+    })
+    .await;
+    std::fs::read_to_string(path).unwrap().trim().to_owned()
 }
 
 /// Waits until `check` holds, asking every 20 ms for at most 20 s.

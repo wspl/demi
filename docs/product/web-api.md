@@ -187,6 +187,9 @@ and the product state carries the same object as `cloud`:
 | `volumes` | The capacities of its system and home filesystems, `{ systemBytes, homeBytes }`; null until its first boot made them, or while the machine manager does not answer |
 | `limits` | The most each may grow to, in the same shape |
 
+The fields describe one moment: a reset reads `ready` only once `state` reads
+`running` again.
+
 Reading the status never wakes the Cloud. `POST /api/cloud/reset` takes
 `{ operationId }`, a UUID the page chooses, and answers 202 `{ operation }`.
 The backend selects and records the shipped base version at admission.

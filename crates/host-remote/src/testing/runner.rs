@@ -16,6 +16,7 @@ use axum::{
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
     routing::get,
+    serve::ListenerExt as _,
 };
 use demi_runner_protocol::wire::{self, HelloErrorCode, Inbound, MAX_MESSAGE_BYTES, Outbound};
 use demi_shell::{CommandSet, HostKey};
@@ -99,6 +100,12 @@ impl RunnerFixture {
             .route("/api/runner", get(runner_socket))
             .route("/api/pipes/{id}", get(pipe_sink).put(pipe_source))
             .with_state(edge);
+        // As the backend's edge does, every accepted socket sends small
+        // frames at once (`backend.md` § Runtime model). One that keeps
+        // Nagle's algorithm still works, only later, so a failure is ignored.
+        let listener = listener.tap_io(|stream| {
+            let _ = stream.set_nodelay(true);
+        });
         let serving = stop.clone();
         let server = tokio::spawn(async move {
             let served = axum::serve(listener, router)

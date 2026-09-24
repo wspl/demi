@@ -122,33 +122,49 @@ impl IdlePolicy for ConversationIdle {
 
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
     use std::rc::Rc;
     use std::time::Duration;
 
     use demi_web_api::conversations::ConversationTarget;
     use demi_web_api::ids::{DeviceId, UserId};
+    use tokio::sync::watch;
     use tokio::time::Instant;
     use tokio_util::sync::CancellationToken;
 
     use super::*;
     use crate::auth::sessions::TokenHash;
     use crate::backend::Services;
+    use crate::config::LifecycleTuning;
     use crate::shard::{ShardPlacement, ShardPool};
     use crate::storage::control::testing;
     use crate::storage::conversation_index::{AttachedHostRecord, ConversationChange, Creation, RecordChange};
 
     const ID: &str = "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a01";
-    const HOUR: Duration = Duration::from_secs(60 * 60);
-    const MINUTE: Duration = Duration::from_secs(60);
+
+    /// The idle window, short and in real time: the watch and the Host
+    /// access read the database, which answers on threads outside the
+    /// runtime, and a paused clock would jump to the watch's next timer
+    /// whenever the test waits for them (`concurrency.md` § Tests and time).
+    const WINDOW: Duration = Duration::from_secs(1);
+
+    /// How long a release that fell due takes to reach the test's runner:
+    /// the watch's database reads and the runner's answer.
+    const SETTLE: Duration = Duration::from_millis(100);
+
+    /// A guard against a hang, far above any wait here, not a latency bound.
+    const HANG: Duration = Duration::from_secs(30);
 
     /// Each release a device's runner answered, and when.
-    type Released = Rc<RefCell<Vec<(DeviceId, Instant)>>>;
+    type Released = watch::Sender<Vec<(DeviceId, Instant)>>;
 
-    /// A backend's services with the conversation `ID` and the master's
-    /// paired devices `names`.
+    /// A backend's services, whose idle window is `WINDOW`, with the
+    /// conversation `ID` and the master's paired devices `names`.
     async fn fixture(data: &std::path::Path, names: &[&str]) -> (std::sync::Arc<Services>, UserId, Vec<DeviceId>) {
-        let services = Services::start_for_tests(data).await;
+        let lifecycle = LifecycleTuning {
+            idle_window: WINDOW,
+            idle_poll: Duration::from_millis(50),
+        };
+        let services = Services::start_for_tests_with_lifecycle(data, lifecycle).await;
         let control = services.control.clone();
         let owner = testing::master(&control).await.id;
         let id = ConversationId::try_from(ID).unwrap();
@@ -170,15 +186,24 @@ mod tests {
     /// Connects each device through a runner the test plays, which records
     /// the releases it answers.
     fn runners(shard: &Rc<Shard>, devices: &[DeviceId]) -> Released {
-        let released: Released = Rc::default();
+        let released = Released::new(Vec::new());
         for device in devices {
             let (log, id) = (released.clone(), device.clone());
             shard.play_runner_for_tests(device, "/home/ana", move |_| {
                 let (log, id) = (log.clone(), id.clone());
-                Box::pin(async move { log.borrow_mut().push((id, Instant::now())) })
+                Box::pin(async move { log.send_modify(|released| released.push((id, Instant::now()))) })
             });
         }
         released
+    }
+
+    /// Waits until the runners answered `count` releases.
+    async fn until_released(released: &Released, count: usize) {
+        let mut answered = released.subscribe();
+        tokio::time::timeout(HANG, answered.wait_for(|released| released.len() >= count))
+            .await
+            .expect("the releases arrive")
+            .expect("the test keeps the log");
     }
 
     fn on(device: &DeviceId) -> ConversationChange {
@@ -188,7 +213,7 @@ mod tests {
         })
     }
 
-    #[tokio::test(flavor = "local", start_paused = true)]
+    #[tokio::test(flavor = "local")]
     async fn an_hour_without_activity_releases_the_conversation_on_its_main_and_attached_devices() {
         let data = tempfile::tempdir().unwrap();
         let (services, owner, devices) = fixture(data.path(), &["main", "attached"]).await;
@@ -213,24 +238,21 @@ mod tests {
                         .unwrap()
                 };
                 operate().await;
-                // Activity just before the deadline restarts a full window.
-                tokio::time::sleep(HOUR - MINUTE).await;
-                operate().await;
+                // Activity inside the window restarts a full window.
+                tokio::time::sleep(WINDOW / 2).await;
                 let active = Instant::now();
-                tokio::time::sleep(2 * MINUTE).await;
-                assert!(released.borrow().is_empty());
-                tokio::time::sleep(HOUR).await;
+                operate().await;
+                until_released(&released, 2).await;
                 let mut released = released.borrow().clone();
                 released.sort();
                 let devices: Vec<&DeviceId> = released.iter().map(|(device, _)| device).collect();
                 let mut expected = vec![&main, &attached];
                 expected.sort();
                 assert_eq!(devices, expected);
-                // Never before the window: the release reads the database,
-                // whose own thread lets the paused clock jump to the next
-                // timer while it waits, so it lands a few polls after it.
+                // Never before a full window after the last activity: the
+                // first activity's deadline released nothing.
                 for (_, at) in &released {
-                    assert!(*at - active >= HOUR && *at - active <= HOUR + 5 * MINUTE, "{:?}", *at - active);
+                    assert!(*at - active >= WINDOW, "{:?}", *at - active);
                 }
                 // The devices stay usable.
                 operate().await;
@@ -240,7 +262,7 @@ mod tests {
         pool.close().await;
     }
 
-    #[tokio::test(flavor = "local", start_paused = true)]
+    #[tokio::test(flavor = "local")]
     async fn a_conversation_on_the_cloud_sends_its_cloud_no_release_when_it_idles() {
         let data = tempfile::tempdir().unwrap();
         let (services, owner, _) = fixture(data.path(), &[]).await;
@@ -254,7 +276,7 @@ mod tests {
                 // watch runs, as a Host admission starts it.
                 let released = runners(&shard, &[cloud]);
                 shard.track_idle(&id);
-                tokio::time::sleep(3 * HOUR).await;
+                tokio::time::sleep(WINDOW + SETTLE).await;
                 assert!(released.borrow().is_empty());
             })
             .await
@@ -262,7 +284,7 @@ mod tests {
         pool.close().await;
     }
 
-    #[tokio::test(flavor = "local", start_paused = true)]
+    #[tokio::test(flavor = "local")]
     async fn a_switch_restarts_the_window_so_the_old_deadline_releases_nothing_and_an_archive_ends_it() {
         let data = tempfile::tempdir().unwrap();
         let (services, owner, devices) = fixture(data.path(), &["old", "new"]).await;
@@ -278,20 +300,24 @@ mod tests {
                     .with_host(&id, None, &CancellationToken::new(), async |_| ())
                     .await
                     .unwrap();
-                tokio::time::sleep(HOUR - MINUTE).await;
+                let operated = Instant::now();
+                tokio::time::sleep(WINDOW / 2).await;
                 // The switch releases the old device, once.
                 shard.transition(&id, on(&new)).await.unwrap();
-                tokio::time::sleep(2 * MINUTE).await;
                 let devices: Vec<DeviceId> = released.borrow().iter().map(|(device, _)| device.clone()).collect();
                 assert_eq!(devices, [old.clone()]);
-                // The archive releases the conversation everywhere and ends
+                // The old binding's deadline passes and releases nothing.
+                tokio::time::sleep_until(operated + WINDOW + SETTLE).await;
+                assert_eq!(released.borrow().len(), 1);
+                // The archive releases the conversation on the new device and
+                // on the old one, which the switch left attached, and ends
                 // its watch: no deadline releases it again.
                 shard
                     .transition(&id, RecordChange::Archived(true).into())
                     .await
                     .unwrap();
                 assert_eq!(released.borrow().len(), 3);
-                tokio::time::sleep(3 * HOUR).await;
+                tokio::time::sleep(WINDOW + SETTLE).await;
                 assert_eq!(released.borrow().len(), 3);
             })
             .await
