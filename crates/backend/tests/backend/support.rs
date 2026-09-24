@@ -418,14 +418,30 @@ impl TestBackend {
 
     /// A GET with the session's cookie and extra headers.
     pub async fn get_with(&self, path: &str, session: &Session, headers: &[(&str, &str)]) -> Answer {
+        answer(self.response(Method::GET, path, session, headers, None).await).await
+    }
+
+    /// The response to a request with the session's cookie, extra headers
+    /// and a body, before its body is read.
+    pub async fn response(
+        &self,
+        method: Method,
+        path: &str,
+        session: &Session,
+        headers: &[(&str, &str)],
+        body: Option<reqwest::Body>,
+    ) -> reqwest::Response {
         let mut request = self
             .http
-            .get(format!("{}{path}", self.url))
+            .request(method, format!("{}{path}", self.url))
             .header(COOKIE, &session.cookie);
         for (name, value) in headers {
             request = request.header(*name, *value);
         }
-        answer(request.send().await.unwrap()).await
+        if let Some(body) = body {
+            request = request.body(body);
+        }
+        request.send().await.unwrap()
     }
 
     pub async fn setup(&self) -> Session {
