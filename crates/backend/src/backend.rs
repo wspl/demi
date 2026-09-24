@@ -224,6 +224,16 @@ impl Services {
     /// The services over storage in `data`, for unit tests.
     #[cfg(test)]
     pub(crate) async fn start_for_tests(data: &std::path::Path) -> Arc<Self> {
+        Self::start_for_tests_with_lifecycle(data, LifecycleTuning::default()).await
+    }
+
+    /// The services over storage in `data` whose idle watches follow
+    /// `lifecycle`, for unit tests of the idle release.
+    #[cfg(test)]
+    pub(crate) async fn start_for_tests_with_lifecycle(
+        data: &std::path::Path,
+        lifecycle: LifecycleTuning,
+    ) -> Arc<Self> {
         let clock: Arc<dyn demi_core::Clock> = Arc::new(demi_core::SystemClock);
         let storage = Storage::open(data, clock.clone(), None).await.unwrap();
         let secret = InstanceSecret::load_or_create(data).await.unwrap();
@@ -246,7 +256,7 @@ impl Services {
             NativeCatalog::unpublished(),
             &BTreeMap::new(),
             CloudServices::new(machines, crate::config::CloudTuning::default()),
-            LifecycleTuning::default(),
+            lifecycle,
         )
         .await;
         Arc::new(services.unwrap())
