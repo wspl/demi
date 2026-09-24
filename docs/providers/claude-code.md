@@ -239,10 +239,11 @@ thinking setting.
   treats itself as running inside another Claude Code session.
 
 When the request offers tools, the provider first sends the CLI an `initialize`
-control request that declares one SDK MCP server, and waits for its success.
-It then writes the history as the first messages: earlier tool calls and their
-results as assistant text, user messages with only the user's real input, and
-no earlier reasoning.
+control request that declares one SDK MCP server, and waits for its success,
+answering the control requests the CLI sends meanwhile; a refusal, or an exit
+before the answer, fails the run. It then writes the history as the first
+messages: earlier tool calls and their results as assistant text, user
+messages with only the user's real input, and no earlier reasoning.
 
 **Continuing.** A kept process receives only what the transcript gained since
 its last request: the new user messages, steers included. The provider closes
@@ -252,6 +253,12 @@ MCP server to offer them in), or when the transcript does not continue what the
 process saw: it holds fewer user messages than the process received, or its
 first user message changed, as after an edit, a fork or compaction.
 
+Output that a kept process printed after the previous run ended belongs to no
+request, as when the CLI answered a steer in a turn of its own after the run
+stopped at the first `result`. Before it writes, the next run answers the
+control requests among that output and skips the rest, a `result` included.
+What the CLI prints after that is read as the new request's.
+
 **Reading.** Each output line is decoded by its `type` tag
 ([Reading vendor input](providers.md#reading-vendor-input)). Partial messages
 become reasoning and text events. The model's `tool_use` blocks become tool
@@ -259,10 +266,15 @@ calls, named without the `mcp__<server>__` prefix the CLI gives tools it
 reaches over MCP. The `result` line ends the request: the run ends with a
 response carrying the usage of the CLI's last API call (the result's own usage
 when it lists no calls), or with an error when the CLI reports one, shown as
-the CLI worded it. A line that fails to decode, or a `tool_use` block without an
-ID or a name, fails the run with that line as the failure record. Lines that
-report rate limits feed the account's quota
-([Vendor quota](usage-and-quota.md#vendor-quota)).
+the CLI worded it. That error's usage is not recorded: a run that fails ends
+with its error and carries no usage, so the
+[usage ledger](usage-and-quota.md#usage-ledger) has no row for it, while the
+account's quota still shows what the vendor counted. An `error` line, a failure
+the CLI reports outside a `result`, fails the run with the CLI's words. A line
+that fails to decode or is longer than 64 MiB, a `tool_use` block without an ID
+or a name, and a tool call in a request that offered no tools fail the run with
+that line as the failure record. Lines that report rate limits feed the
+account's quota ([Vendor quota](usage-and-quota.md#vendor-quota)).
 
 ## The SDK MCP channel
 
@@ -290,7 +302,8 @@ request on its own task, so `ping` and `tools/list` are answered while a
 
 A `tools/call` names the model's original tool-use ID in its `_meta` field, as
 `claudecode/toolUseId`, and Demi matches calls and results by that ID; a call
-without one gets a new unique ID. A result goes back as MCP content: text,
+without one gets a new unique ID. A control request of another kind, such as a
+hook callback, is answered with an error, and the run goes on. A result goes back as MCP content: text,
 images as base64 with their media type, and a video as text naming its media
 type. A failed tool sets the result's error flag.
 
@@ -331,7 +344,8 @@ exit ends it.
 | The `result` line | The run ends with the response, or with the CLI's error | Kept |
 | `message_stop` after tool uses | The batch is yielded and the run ends | Kept |
 | The CLI's output ends | The run fails if stored results were never asked for, or if the process exited with a nonzero status and the run was not cancelled; the message is the tail of standard error, or "Claude Code exited with code N" | Gone |
-| A malformed line or tool use | The run fails with the line as its record | Closed |
+| A malformed line or tool use, or a tool call the request offered no tools for | The run fails with the line as its record | Closed |
+| An `error` line | The run fails with the CLI's words | Closed |
 | The run is cancelled | The run ends without an event | Closed |
 | The turn drops the run's stream | — | Killed by the Host |
 | The runtime is closed: the session is disposed, or the backend builds the session a new runtime | — | Closed |
@@ -392,4 +406,7 @@ a failed installation. The routes are listed in
   account's token never reaches the paired device.
 - A real CLI, driven by hand during acceptance, completes a two-tool batch and
   its continuation, and its transcript shows every tool call arriving as an SDK
-  MCP `tools/call`.
+  MCP `tools/call`. The same transcript shows how a new process takes the
+  replayed history, what a batch's results sent together with a steer make the
+  CLI print (one `result` or two), and which lines report rate limits, in which
+  units ([Vendor quota](usage-and-quota.md#claude-code)).
