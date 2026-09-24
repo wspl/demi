@@ -15,19 +15,22 @@ use std::{
     collections::HashMap,
     fmt::Display,
     future::{Future, pending},
+    io,
+    pin::Pin,
     rc::{Rc, Weak},
     sync::Arc,
+    task::{Context, Poll},
     time::Duration,
 };
 
 use bytes::Bytes;
 use demi_runner_protocol::wire::PipeRef;
-use futures_util::{Stream, StreamExt, stream::BoxStream};
+use futures_util::{Sink, Stream, StreamExt, stream::BoxStream};
 use tokio::{
     sync::{mpsc, watch},
     time::Instant,
 };
-use tokio_util::task::TaskTracker;
+use tokio_util::{sync::PollSender, task::TaskTracker};
 
 /// How long a pipe waits for its ends.
 pub const ARRIVAL: Duration = Duration::from_secs(120);
@@ -85,6 +88,14 @@ enum Outcome {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
 pub struct PipeFailure(Arc<str>);
+
+/// A failed pipe, to a reader or writer of bytes that fails with an IO
+/// error.
+impl From<PipeFailure> for io::Error {
+    fn from(failure: PipeFailure) -> Self {
+        io::Error::other(failure)
+    }
+}
 
 /// Why a device's request cannot claim a pipe end.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -642,11 +653,79 @@ impl PipeWriter {
         self.core.fail(reason);
         self.sender = None;
     }
+
+    /// The writer as a sink of chunks, for an adapter that makes a byte
+    /// stream of one, such as `tokio_util::io::SinkWriter`. Closing the sink
+    /// is the source's end, as [`PipeWriter::end`] is; dropping it before it
+    /// closed fails the pipe.
+    pub fn into_sink(mut self) -> PipeSink {
+        let sender = self
+            .sender
+            .take()
+            .expect("a writer holds its sender until it ends or fails");
+        PipeSink {
+            sender: PollSender::new(sender),
+            core: self.core.clone(),
+            abandoned: self.abandoned,
+            closed: false,
+        }
+    }
 }
 
 impl Drop for PipeWriter {
     fn drop(&mut self) {
         if self.sender.take().is_some() {
+            self.core.fail(self.abandoned);
+        }
+    }
+}
+
+/// The source's side of a pipe as a sink of chunks: each is sent once the
+/// sink took the one before, as [`PipeWriter::write`] sends it.
+pub struct PipeSink {
+    sender: PollSender<Bytes>,
+    core: Arc<Core>,
+    abandoned: &'static str,
+    closed: bool,
+}
+
+impl Sink<Bytes> for PipeSink {
+    type Error = PipeFailure;
+
+    fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), PipeFailure>> {
+        let this = self.get_mut();
+        if let Some(failure) = this.core.failure() {
+            return Poll::Ready(Err(failure));
+        }
+        this.sender.poll_reserve(cx).map_err(|_| this.core.stopped())
+    }
+
+    fn start_send(self: Pin<&mut Self>, chunk: Bytes) -> Result<(), PipeFailure> {
+        let this = self.get_mut();
+        // An empty chunk carries nothing; the slot it reserved waits for the
+        // next one.
+        if chunk.is_empty() {
+            return Ok(());
+        }
+        this.sender.send_item(chunk).map_err(|_| this.core.stopped())
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), PipeFailure>> {
+        // A chunk is sent once the channel holds it, as a writer's is.
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_close(self: Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Result<(), PipeFailure>> {
+        let this = self.get_mut();
+        this.sender.close();
+        this.closed = true;
+        Poll::Ready(Ok(()))
+    }
+}
+
+impl Drop for PipeSink {
+    fn drop(&mut self) {
+        if !self.closed {
             self.core.fail(self.abandoned);
         }
     }

@@ -31,7 +31,7 @@ pub use link::{
 pub use manifest::{ArtifactResolver, CommandCatalog, CommandSelection};
 pub use pipes::{
     ARRIVAL, DeviceSink, DeviceSource, Pipe, PipeError, PipeFailure, PipeReader, PipeRefusal,
-    PipeWriter, Pipes,
+    PipeSink, PipeWriter, Pipes,
 };
 pub use remote_host::{
     Admission, DeviceLink, JobStart, LogPage, RemoteHost, RemoteJob, ServiceCallError, ServiceEnd,
