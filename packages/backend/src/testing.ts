@@ -1,6 +1,6 @@
 import { nativePackageFixture } from '@demicodes/host-remote/testing'
 // Integration fixtures use the production registry, pipes, packed runner and shell.
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Hono } from 'hono'
@@ -161,6 +161,8 @@ async function createFixture(
     pipes.close()
     server.stop(true)
     db.close()
+    // The runner's artifact cache holds a copy of every native package it ran.
+    await rm(stateDir, { recursive: true, force: true })
   }
   try {
     runner = await startRunner({
