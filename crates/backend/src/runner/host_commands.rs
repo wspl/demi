@@ -401,7 +401,7 @@ mod tests {
     use crate::runner::command_context::default_locale;
     use crate::shard::{ShardPlacement, ShardPool};
     use crate::storage::control::testing;
-    use crate::storage::conversation_index::{AttachedHostRecord, Creation};
+    use crate::storage::conversation_index::{AttachedHostRecord, Creation, RecordChange};
 
     const ID: &str = "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a01";
 
@@ -460,7 +460,10 @@ mod tests {
             name: "ci".into(),
             cwd: None,
         };
-        assert!(control.attach_host(id.clone(), attached).await.unwrap());
+        control
+            .change_conversation(id.clone(), RecordChange::Attach(attached))
+            .await
+            .unwrap();
         let pool = ShardPool::start(ShardPlacement::Inline, services).await.unwrap();
         let answers = pool
             .shards()

@@ -171,6 +171,15 @@ pub enum ErrorCode {
     /// holds the conversation: an archive or a target change waits for
     /// nothing and is refused.
     TurnInFlight,
+    /// The caller owns no workspace of that id.
+    WorkspaceNotFound,
+    /// The device is the conversation's main Host, which is never attached
+    /// as well.
+    HostIsMain,
+    /// Another attached host of the conversation has that name.
+    NameTaken,
+    /// Another target change of the conversation came first.
+    TargetConflict,
     /// One field of a conversation patch failed in a way the request could
     /// not cause; the fields applied stay applied.
     OperationFailed,
