@@ -146,16 +146,21 @@ async fn a_client_sees_the_roots_live_commands_writes_to_them_and_stops_them() {
         );
 
         // Closing the conversation stops the commands its shells still run:
-        // the ticker's file stops growing.
+        // the ticker's file stops growing. The turn ends when the exec's
+        // window does, which can come before the ticker's first tick: its job
+        // first reads the machine's system profile (`runner.md` § Shell
+        // jobs).
         turn(&mut second, "message-3", "Start the ticker.").await;
+        let ticks = format!("{}/ticks.txt", fixture.runner.home());
+        let size = || std::fs::metadata(&ticks).map(|ticks| ticks.len());
+        while !size().is_ok_and(|size| size > 0) {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
         second.send(ClientFrame::Close {}).await;
         assert_eq!(second.received().last(), Some(&ServerFrame::Closed));
-        let ticks = format!("{}/ticks.txt", fixture.runner.home());
-        let size = || std::fs::metadata(&ticks).unwrap().len();
-        let stopped = size();
-        assert!(stopped > 0);
+        let stopped = size().unwrap();
         tokio::time::sleep(Duration::from_millis(300)).await;
-        assert_eq!(size(), stopped);
+        assert_eq!(size().unwrap(), stopped);
         fixture.stop().await;
     })
     .await;
