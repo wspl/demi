@@ -103,14 +103,11 @@ impl IdlePolicy for ConversationIdle {
             return Ok(None);
         };
         let id = self.id.clone();
-        let run = async move {
+        Ok(Some(Box::pin(async move {
+            let _held = (files, tree);
             let record = shard.owned_conversation(&id).await.map_err(|error| error.to_string())?;
             shard.release_everywhere(&record).await.map_err(|error| error.to_string())
-        };
-        Ok(Some(Retirement {
-            held: Box::new((files, tree)),
-            run: Box::pin(run),
-        }))
+        })))
     }
 
     async fn changed(&self) {
@@ -237,6 +234,28 @@ mod tests {
                 }
                 // The devices stay usable.
                 operate().await;
+            })
+            .await
+            .unwrap();
+        pool.close().await;
+    }
+
+    #[tokio::test(flavor = "local", start_paused = true)]
+    async fn a_conversation_on_the_cloud_sends_its_cloud_no_release_when_it_idles() {
+        let data = tempfile::tempdir().unwrap();
+        let (services, owner, _) = fixture(data.path(), &[]).await;
+        let cloud = services.control.managed_device_or_create(owner.clone()).await.unwrap().id;
+        let pool = ShardPool::start(ShardPlacement::Inline, services).await.unwrap();
+        pool.shards()
+            .of(&owner)
+            .call(move |shard, _| async move {
+                let id = ConversationId::try_from(ID).unwrap();
+                // The Cloud's runner is connected, and the conversation's
+                // watch runs, as a Host admission starts it.
+                let released = runners(&shard, &[cloud]);
+                shard.track_idle(&id);
+                tokio::time::sleep(3 * HOUR).await;
+                assert!(released.borrow().is_empty());
             })
             .await
             .unwrap();
