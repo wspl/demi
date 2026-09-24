@@ -4,11 +4,12 @@ import { SerialQueue } from '@demicodes/utils'
 import { apiRequest, readResponse } from '../api/client'
 import {
   modelCatalogSchema,
+  productStateSchema,
   vendorCatalogSchema,
   type CatalogProvider,
+  type ProductState,
   type VendorCatalog,
 } from '../api/generated/web-api'
-import { productStateSchema, type ProductState } from '../api/unported'
 
 /** One account snapshot; REST polling never replaces agent transcript state. */
 export const useProduct = defineStore('product', () => {
