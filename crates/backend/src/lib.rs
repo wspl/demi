@@ -24,5 +24,6 @@ pub use llm::families::{
     SubscriptionArgs,
 };
 pub use shard::ShardPlacement;
+pub use storage::objects::S3ConfigError;
 pub use vault::logins::LoginTiming;
 pub use vault::secret::{InstanceSecret, SecretError};

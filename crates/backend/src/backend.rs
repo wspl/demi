@@ -26,6 +26,8 @@ use crate::llm::vendors::VendorCatalog;
 use crate::runner::claims::PendingClaims;
 use crate::shard::ShardPool;
 use crate::storage::blobs::BlobStores;
+use crate::storage::changes::ChangeStore;
+use crate::storage::objects::{S3Config, S3ConfigError};
 use crate::storage::control::ControlService;
 use crate::storage::conversations::{self, ConversationStores};
 use crate::storage::{StorageError, objects};
@@ -47,6 +49,8 @@ pub(crate) struct Services {
     pub(crate) control: ControlService,
     pub(crate) conversations: ConversationStores,
     pub(crate) blobs: BlobStores,
+    /// The retained edits of every conversation's commands.
+    pub(crate) changes: ChangeStore,
     pub(crate) hasher: PasswordHasher,
     pub(crate) sessions: WebSessions,
     pub(crate) limiter: LoginLimiter,
@@ -76,23 +80,27 @@ struct Storage {
     control: ControlService,
     conversations: ConversationStores,
     blobs: BlobStores,
+    changes: ChangeStore,
 }
 
 impl Storage {
-    async fn open(data_dir: &Path, clock: Arc<dyn demi_core::Clock>) -> Result<Self, StorageError> {
+    /// The databases in `data_dir`, and the object store: the S3 bucket `s3`
+    /// names, or the data directory.
+    async fn open(data_dir: &Path, clock: Arc<dyn demi_core::Clock>, s3: Option<&S3Config>) -> Result<Self, StorageError> {
         let control = ControlService::open(&data_dir.join(CONTROL_DATABASE), clock).await?;
         let rest = async {
             let conversations =
                 ConversationStores::open(data_dir.join(CONVERSATION_DATABASES), conversations::MAX_WRITERS).await?;
-            let blobs = BlobStores::new(objects::open(data_dir).await?);
-            Ok::<_, StorageError>((conversations, blobs))
+            let objects = objects::open(data_dir, s3).await?;
+            Ok::<_, StorageError>((conversations, BlobStores::new(objects.clone()), ChangeStore::new(objects)))
         }
         .await;
         match rest {
-            Ok((conversations, blobs)) => Ok(Self {
+            Ok((conversations, blobs, changes)) => Ok(Self {
                 control,
                 conversations,
                 blobs,
+                changes,
             }),
             Err(error) => {
                 // Opening the rest left no connection open; the control
@@ -141,6 +149,7 @@ impl Services {
             control,
             conversations,
             blobs,
+            changes,
         } = storage;
         let hasher = PasswordHasher::new().await?;
         let clock = providers.clock.clone();
@@ -170,6 +179,7 @@ impl Services {
             control,
             conversations,
             blobs,
+            changes,
             vault,
             assembly,
             operations,
@@ -191,7 +201,7 @@ impl Services {
     #[cfg(test)]
     pub(crate) async fn start_for_tests(data: &std::path::Path) -> Arc<Self> {
         let clock: Arc<dyn demi_core::Clock> = Arc::new(demi_core::SystemClock);
-        let storage = Storage::open(data, clock.clone()).await.unwrap();
+        let storage = Storage::open(data, clock.clone(), None).await.unwrap();
         let secret = InstanceSecret::load_or_create(data).await.unwrap();
         let providers = ProviderSetup {
             families: FamilyRegistry::builtin(),
@@ -230,6 +240,8 @@ pub enum StartError {
     Secret(#[from] SecretError),
     #[error("storage cannot be opened: {0}")]
     Storage(#[from] StorageError),
+    #[error("DEMI_CHANGE_STORE_CONFIG cannot be used: {0}")]
+    ChangeStore(S3ConfigError),
     #[error("password hashing cannot start: {0}")]
     Hashing(#[from] HashError),
     #[error("the HTTP client cannot start: {0}")]
@@ -277,7 +289,11 @@ impl Backend {
             Some(secret) => secret.clone(),
             None => InstanceSecret::load_or_create(&data_dir).await?,
         };
-        let storage = Storage::open(&data_dir, config.clock.clone()).await?;
+        let s3 = match &config.change_store {
+            Some(path) => Some(S3Config::read(path).await.map_err(StartError::ChangeStore)?),
+            None => None,
+        };
+        let storage = Storage::open(&data_dir, config.clock.clone(), s3.as_ref()).await?;
         let started = Self::serve(config, storage.clone(), &secret).await;
         if started.is_err() {
             for failure in storage.close().await {
