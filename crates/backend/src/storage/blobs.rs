@@ -7,8 +7,11 @@
 use std::sync::Arc;
 
 use bytes::Bytes;
-use demi_core::BlobRef;
+use demi_agent::store::StoreError;
+use demi_agent::store::media::BlobStore;
+use demi_core::{B64Bytes, BlobRef};
 use demi_web_api::ids::UserId;
+use futures_util::future::LocalBoxFuture;
 use object_store::path::Path;
 use object_store::{ObjectStore, ObjectStoreExt as _, PutMode, PutOptions, PutPayload};
 use sha2::{Digest, Sha256};
@@ -47,7 +50,6 @@ impl UserBlobs {
     /// Stores `bytes` and answers their name. A name always names the same
     /// bytes, so finding the object there already is success: repeated
     /// uploads of one file store it once.
-    #[cfg_attr(not(test), expect(dead_code, reason = "uploads and transcript media store blobs with the agent"))]
     pub(crate) async fn put(&self, bytes: Bytes) -> Result<BlobRef, StorageError> {
         // Hashing an upload of 25 MiB takes tens of milliseconds, which would
         // hold an async thread that long.
@@ -79,6 +81,28 @@ impl UserBlobs {
 
     fn location(&self, blob: &BlobRef) -> Path {
         self.namespace.clone().join(blob.as_str())
+    }
+}
+
+/// The namespace as the agent's media mapping reaches it: the conversation
+/// owner's, where a tree store keeps a block's media and the socket the
+/// media of the frames it sends (`runtime.md` § Media).
+impl BlobStore for UserBlobs {
+    fn put(&self, bytes: B64Bytes) -> LocalBoxFuture<'_, Result<BlobRef, StoreError>> {
+        Box::pin(async move {
+            UserBlobs::put(self, bytes.into_bytes())
+                .await
+                .map_err(|error| StoreError::Failed(error.to_string()))
+        })
+    }
+
+    fn get<'a>(&'a self, blob: &'a BlobRef) -> LocalBoxFuture<'a, Result<Option<B64Bytes>, StoreError>> {
+        Box::pin(async move {
+            let bytes = UserBlobs::get(self, blob)
+                .await
+                .map_err(|error| StoreError::Failed(error.to_string()))?;
+            Ok(bytes.map(B64Bytes::from))
+        })
     }
 }
 
