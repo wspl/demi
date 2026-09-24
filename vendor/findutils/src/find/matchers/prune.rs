@@ -4,7 +4,6 @@
 // license that can be found in the LICENSE file or at
 // https://opensource.org/licenses/MIT.
 
-use uucore::context::FileKindExt as _;
 use super::{Matcher, MatcherIO, WalkEntry};
 
 /// This matcher checks the type of the file.
