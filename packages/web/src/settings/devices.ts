@@ -19,20 +19,22 @@ export const useDeviceSettings = defineStore('device-settings', () => {
         message: string
       }
   >({ status: 'idle' })
-  const cloud = computed(() =>
-    product.snapshot?.cloud
-      ? {
-          state: product.snapshot.cloud.state,
-          phase: product.snapshot.cloud.operation?.phase ?? null,
-          error:
-            product.snapshot.cloud.error ??
-            product.snapshot.cloud.operation?.error ??
-            null,
-          volumes: product.snapshot.cloud.volumes,
-          limits: product.snapshot.cloud.limits,
-        }
-      : null,
-  )
+  // Every snapshot carries the Cloud's status; there is none only before the
+  // first snapshot arrives.
+  const cloud = computed(() => {
+    const status = product.snapshot?.cloud
+    if (!status) {
+      return null
+    }
+    return {
+      state: status.state,
+      operationId: status.operation?.id ?? null,
+      phase: status.operation?.phase ?? null,
+      error: status.error ?? status.operation?.error ?? null,
+      volumes: status.volumes,
+      limits: status.limits,
+    }
+  })
   const exposes = computed(() => product.snapshot?.exposes ?? [])
 
   /** Shared body of renew and remove: one request per expose, then a fresh snapshot. */

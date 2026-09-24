@@ -9,7 +9,7 @@ import { useConversations } from './store'
 import { useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
 import type { ConversationSummary, Preferences } from '../api/generated/web-api'
-import { productStateSchema } from '../api/unported'
+import { productState } from '../__tests__/product-state'
 import { applyConversationEvent, updateLiveStatus } from './activity'
 import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
 
@@ -100,24 +100,6 @@ function record(id: string, title = id): ConversationSummary {
   }
 }
 
-function snapshot() {
-  return productStateSchema.parse({
-    user: {
-      id: 'user',
-      email: 'test@example.test',
-      nickname: 'Test',
-      role: 'master',
-      createdAt: '2026-09-09T00:00:00.000Z',
-    },
-    mode: 'shared',
-    preferences: savedPreferences,
-    devices: [],
-    workspaces: [],
-    providers: [],
-    conversations: records,
-  })
-}
-
 beforeEach(async () => {
   pinia = createPinia()
   setActivePinia(pinia)
@@ -134,7 +116,7 @@ beforeEach(async () => {
       body,
     })
     if (path === '/api/state') {
-      return Response.json(snapshot())
+      return Response.json(productState({ preferences: savedPreferences, conversations: records }))
     }
     if (path === '/api/settings/preferences') {
       savedPreferences = { ...savedPreferences, ...body }
