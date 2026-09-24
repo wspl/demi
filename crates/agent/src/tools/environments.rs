@@ -132,6 +132,16 @@ impl Environments {
         }
     }
 
+    /// The environment that owns `command`, among those made.
+    pub(super) fn owning(&self, command: &CommandId) -> Option<Rc<dyn ShellEnvironment>> {
+        self.slots
+            .borrow()
+            .iter()
+            .filter_map(|slot| slot.environment.get())
+            .find(|environment| environment.owns_command(command))
+            .cloned()
+    }
+
     /// Ends every shell of every environment, and every environment made
     /// from now on.
     pub(crate) async fn dispose(&self) {

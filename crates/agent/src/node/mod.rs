@@ -7,10 +7,11 @@
 
 use std::{rc::Rc, sync::Arc};
 
-use demi_core::{Clock, ModelSelection, NodeId, QueuedMessage};
+use demi_core::{Clock, CommandId, ModelSelection, NodeId, QueuedMessage};
 use demi_gates::{ActivityGate, GateLease, Purpose, Reservation};
 use demi_provider::{ProviderRuntime, ToolDefinition};
-use demi_shell::{CommandSet, JobCaller, PortError, StorageOp, StorageReply};
+use demi_agent_protocol::ServerFrame;
+use demi_shell::{CommandSet, CommandStatus, JobCaller, PortError, StorageOp, StorageReply};
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
 
@@ -21,7 +22,7 @@ use crate::{
         SessionRuntime, ToolFailure, ToolInvocation, ToolOutcome,
     },
     store::{AgentTreeStore, NodeRecord, StoreError},
-    tools::{self, Environments, ShellAccess},
+    tools::{self, CallError, Environments, ShellAccess},
 };
 
 /// A node's place in its tree, which sets its lifecycle policy: a child
@@ -91,6 +92,35 @@ impl<H: AgentHarness> Node<H> {
         lifetimes: Vec<CancellationToken>,
     ) -> Result<StorageReply, PortError> {
         self.session.storage(op, lifetimes).await
+    }
+
+    /// Writes `stdin` to a running command through the node's environment
+    /// for the conversation's current Host, as `shell_write` asks.
+    pub(crate) async fn shell_write(
+        &self,
+        command: &CommandId,
+        stdin: String,
+    ) -> Result<CommandStatus, CallError> {
+        let (_, status) = self.runtime.shell_access().write(command, stdin).await?;
+        Ok(status)
+    }
+
+    /// Stops a running command through the node's environment for the
+    /// conversation's current Host, as `shell_abort` asks.
+    pub(crate) async fn shell_abort(&self, command: &CommandId) -> Result<CommandStatus, CallError> {
+        let (_, status) = self.runtime.shell_access().abort(command).await?;
+        Ok(status)
+    }
+
+    /// The `shell_output` of each command the transcript last saw running
+    /// that one of the node's environments still owns.
+    pub(crate) fn live_shells(&self) -> Vec<ServerFrame> {
+        let access = self.runtime.shell_access();
+        tools::stored_running_commands(&self.session.transcript().blocks)
+            .iter()
+            .filter_map(|command| access.status_of(command))
+            .map(|status| tools::shell_output(&status))
+            .collect()
     }
 
     /// The harness commands a child of this node inherits: this node's,
@@ -169,6 +199,8 @@ pub(crate) struct NodeRuntime<H: AgentHarness> {
     shells: Rc<dyn ShellEnvironmentFactory<H::Host>>,
     /// The node's shell environment on each Host its tools used.
     environments: Environments,
+    /// Where a running shell tool's status goes: the root's client.
+    shell_output: Option<Rc<dyn Fn(&CommandStatus)>>,
 }
 
 impl<H: AgentHarness> NodeRuntime<H> {
@@ -188,6 +220,7 @@ impl<H: AgentHarness> NodeRuntime<H> {
             environments: &self.environments,
             context: self.prompt_context(),
             commands: &self.commands,
+            progress: self.shell_output.as_deref(),
         }
     }
 }
@@ -295,6 +328,9 @@ pub(crate) struct NodeSpec<H: AgentHarness> {
     pub(crate) first_message: Option<QueuedMessage>,
     pub(crate) store: Rc<dyn AgentTreeStore>,
     pub(crate) shells: Rc<dyn ShellEnvironmentFactory<H::Host>>,
+    /// Where a running shell tool's status goes; the root's goes to its
+    /// client, a child's to no one.
+    pub(crate) shell_output: Option<Rc<dyn Fn(&CommandStatus)>>,
     pub(crate) admission: ActivityGate,
     pub(crate) ids: Rc<dyn IdSource>,
     pub(crate) clock: Arc<dyn Clock>,
@@ -340,6 +376,7 @@ pub(crate) async fn assemble<H: AgentHarness>(
         first_message,
         store,
         shells,
+        shell_output,
         admission,
         ids,
         clock,
@@ -376,6 +413,7 @@ pub(crate) async fn assemble<H: AgentHarness>(
         store: store.clone(),
         shells,
         environments: Environments::default(),
+        shell_output,
     });
     let deps = SessionDeps {
         runtime: node_runtime.clone(),
