@@ -23,15 +23,17 @@ use super::cookies::Https;
 use super::error::ApiError;
 use crate::runner::install::{backend_url, powershell_script, shell_script};
 
-/// Where the installers come from.
+/// How the backend is reached from outside, and what it serves besides the
+/// API.
 #[derive(Debug, Clone, Default)]
-pub(crate) struct Installation {
-    /// The runner releases: `manifest.json` names the current one, and each
-    /// release's directory holds its own and one executable per target.
-    pub(crate) releases: Option<PathBuf>,
-    /// The URL installed runners connect to; the request's origin without
-    /// one.
+pub(crate) struct Site {
+    /// The URL the product's pages and the runners reach the backend at;
+    /// without it, a request's own origin.
     pub(crate) public_url: Option<Url>,
+    /// The runner releases the installers serve: `manifest.json` names the
+    /// current one, and each release's directory holds its own and one
+    /// executable per target.
+    pub(crate) runner_releases: Option<PathBuf>,
 }
 
 const UNCONFIGURED: &str = "Runner releases are not configured on this backend.\n";
@@ -52,14 +54,14 @@ async fn installer(
     script: fn(&Url, &RunnerRelease) -> String,
     media_type: &'static str,
 ) -> Result<Response, ApiError> {
-    let installation = &state.installation;
-    let Some(releases) = &installation.releases else {
+    let site = &state.site;
+    let Some(releases) = &site.runner_releases else {
         return Ok((StatusCode::SERVICE_UNAVAILABLE, UNCONFIGURED).into_response());
     };
     let release = read_release(releases.join("manifest.json"))
         .await?
         .ok_or_else(|| ApiError::internal_message("the runner release directory has no manifest.json"))?;
-    let backend = match &installation.public_url {
+    let backend = match &site.public_url {
         Some(url) => url.clone(),
         None => request_origin(https, headers)?,
     };
@@ -90,7 +92,7 @@ pub(super) async fn artifact(
     Path((release, target, file)): Path<(String, String, String)>,
 ) -> Result<Response, ApiError> {
     let not_found = || ApiError::new(StatusCode::NOT_FOUND, ErrorCode::NotFound, "No such runner artifact");
-    let Some(releases) = &state.installation.releases else {
+    let Some(releases) = &state.site.runner_releases else {
         return Err(not_found());
     };
     let executable = if target.contains("windows") {

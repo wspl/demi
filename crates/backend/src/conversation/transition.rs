@@ -351,16 +351,19 @@ impl From<RecordChange> for ConversationChange {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+    use std::rc::Rc;
     use std::time::Duration;
 
-    use demi_web_api::ids::UserId;
+    use demi_runner_protocol::wire::{self, Inbound, Outbound};
+    use demi_web_api::ids::{DeviceId, UserId};
 
     use super::*;
     use crate::auth::sessions::TokenHash;
     use crate::backend::Services;
     use crate::shard::{ShardPlacement, ShardPool};
     use crate::storage::control::testing;
-    use crate::storage::conversation_index::Creation;
+    use crate::storage::conversation_index::{AttachedHostRecord, Creation};
 
     const ID: &str = "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a01";
 
@@ -425,6 +428,118 @@ mod tests {
         assert_eq!(refusals, [Err(ErrorCode::TurnInFlight); 3]);
         assert!(waited);
         assert_eq!(title, "Renamed");
+        pool.close().await;
+    }
+
+    /// A conversation release as a device's runner received it, with the
+    /// conversation's binding at that moment.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct Released {
+        device: DeviceId,
+        target: ConversationTarget,
+        attached: Vec<DeviceId>,
+        archived: bool,
+    }
+
+    /// Connects `device` through a runner the test plays, which answers
+    /// every conversation release and writes it to `log`.
+    fn runner(shard: &Rc<Shard>, device: &DeviceId, log: &Rc<RefCell<Vec<Released>>>) {
+        let driver = shard.connect_for_tests(device, "/home/ana");
+        let (answers, answered) = tokio::sync::mpsc::channel::<Result<Vec<u8>, String>>(8);
+        let (frames, mut sent) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+        let incoming = futures_util::stream::unfold(answered, |mut answered| async move {
+            answered.recv().await.map(|frame| (frame, answered))
+        });
+        let outgoing = futures_util::sink::unfold(frames, |frames, frame: Vec<u8>| async move {
+            frames.send(frame).map_err(|error| error.to_string())?;
+            Ok::<_, String>(frames)
+        });
+        tokio::task::spawn_local(driver.serve(incoming, outgoing));
+        let control = shard.services().control.clone();
+        let device = device.clone();
+        let log = log.clone();
+        tokio::task::spawn_local(async move {
+            while let Some(frame) = sent.recv().await {
+                let Ok(Inbound::ConversationRelease { id, conversation_id }) = wire::decode::<Inbound>(&frame) else {
+                    continue;
+                };
+                let conversation = ConversationId::try_from(conversation_id).unwrap();
+                let record = control.conversation(conversation.clone()).await.unwrap().unwrap();
+                let attached = control.attached_hosts(conversation).await.unwrap();
+                log.borrow_mut().push(Released {
+                    device: device.clone(),
+                    target: record.target,
+                    attached: attached.into_iter().map(|host| host.device).collect(),
+                    archived: record.archived,
+                });
+                let answer = wire::encode(&Outbound::ConversationReleased { id, error: None }).unwrap();
+                // The link ends with the test.
+                let _ = answers.send(Ok(answer.into_bytes())).await;
+            }
+        });
+    }
+
+    #[tokio::test(flavor = "local")]
+    async fn a_switch_a_detach_and_an_archive_release_the_conversation_before_they_change_its_binding() {
+        let data = tempfile::tempdir().unwrap();
+        let services = Services::start_for_tests(data.path()).await;
+        let control = services.control.clone();
+        let owner: UserId = testing::master(&control).await.id;
+        let id = ConversationId::try_from(ID).unwrap();
+        assert!(matches!(
+            control.create_conversation(owner.clone(), id.clone()).await.unwrap(),
+            Creation::Created(_)
+        ));
+        let mut devices = Vec::new();
+        for name in ["one", "two"] {
+            let device = control
+                .create_device(owner.clone(), name.into(), "linux".into(), TokenHash::of(name))
+                .await
+                .unwrap();
+            devices.push(device.id);
+        }
+        let pool = ShardPool::start(ShardPlacement::Inline, services).await.unwrap();
+        pool.shards()
+            .of(&owner)
+            .call(move |shard, _| async move {
+                let log = Rc::new(RefCell::new(Vec::new()));
+                let [one, two] = [devices[0].clone(), devices[1].clone()];
+                runner(&shard, &one, &log);
+                runner(&shard, &two, &log);
+                let on = |device: &DeviceId| ConversationTarget::Device {
+                    device_id: device.clone(),
+                    path: "/work".into(),
+                };
+                // From the Cloud, which was never made, nothing is released.
+                shard.transition(&id, ConversationChange::Target(on(&one))).await.unwrap();
+                assert!(log.borrow().is_empty());
+                let released = |device: &DeviceId, target: ConversationTarget, attached: &[DeviceId], archived| Released {
+                    device: device.clone(),
+                    target,
+                    attached: attached.to_vec(),
+                    archived,
+                };
+                shard.transition(&id, ConversationChange::Target(on(&two))).await.unwrap();
+                assert_eq!(*log.borrow(), [released(&one, on(&one), &[], false)]);
+                shard.transition(&id, RecordChange::Detach(one.clone()).into()).await.unwrap();
+                assert_eq!(log.borrow()[1], released(&one, on(&two), &[one.clone()], false));
+                // An archive releases it on the main Host and the attached
+                // ones.
+                let attach = RecordChange::Attach(AttachedHostRecord {
+                    device: one.clone(),
+                    name: "one".into(),
+                    cwd: None,
+                });
+                shard.transition(&id, attach.into()).await.unwrap();
+                shard.transition(&id, RecordChange::Archived(true).into()).await.unwrap();
+                let attached = [one.clone()];
+                assert_eq!(
+                    log.borrow()[2..],
+                    [released(&two, on(&two), &attached, false), released(&one, on(&two), &attached, false)]
+                );
+            })
+            .await
+            .unwrap();
         pool.close().await;
     }
 }

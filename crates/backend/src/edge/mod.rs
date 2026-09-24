@@ -25,6 +25,7 @@ mod query;
 mod runners;
 mod settings;
 mod state;
+mod streams;
 mod transfer;
 mod usage;
 
@@ -45,7 +46,7 @@ use tokio_util::sync::CancellationToken;
 use tower_http::trace::TraceLayer;
 
 use self::error::ApiError;
-pub(crate) use self::install::Installation;
+pub(crate) use self::install::Site;
 use self::listener::{EdgeListener, Peer};
 use crate::backend::Services;
 use crate::shard::Shards;
@@ -111,12 +112,12 @@ impl Edge {
 }
 
 /// What the routes reach: the services every request may use, the users'
-/// shards, and where the runner installers come from.
+/// shards, and how the backend is reached from outside.
 #[derive(Clone)]
 pub(crate) struct AppState {
     pub(crate) services: Arc<Services>,
     pub(crate) shards: Shards,
-    pub(crate) installation: Arc<Installation>,
+    pub(crate) site: Arc<Site>,
 }
 
 impl FromRef<AppState> for Arc<Services> {
@@ -193,6 +194,8 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/conversations/{id}/transcript", get(conversations::transcript))
         .route("/conversations/{id}/read", post(conversations::read))
         .route("/conversations/{id}/stream", get(conversations::stream))
+        .route("/conversations/{id}/streams/{name}", get(streams::open))
+        .route("/conversations/{id}/activity", post(streams::activity))
         .route("/devices", get(devices::list))
         .route("/devices/claim", post(devices::claim))
         .route("/devices/{id}", delete(devices::revoke))
@@ -268,7 +271,7 @@ mod tests {
         let state = AppState {
             services,
             shards: pool.shards(),
-            installation: Arc::default(),
+            site: Arc::default(),
         };
         let closing = CancellationToken::new();
         let app = router(state, closing.clone(), None);
