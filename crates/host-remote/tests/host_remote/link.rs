@@ -1097,6 +1097,7 @@ impl LinkPolicy for Refusing {
         &self,
         _: Rc<JobOrigin>,
         _: StorageOp,
+        _: CancellationToken,
     ) -> LocalBoxFuture<'static, Result<StorageReply, PortError>> {
         panic!("a refused call reaches no storage")
     }

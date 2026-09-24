@@ -89,8 +89,9 @@ the blob as a download.
 
 `POST /conversations` requires a client-generated UUID. A new conversation uses
 Cloud as its target without waking a machine. Retrying the same ID for the same
-owner returns the existing record (200 instead of 201). An ID owned by another
-user or reserved for a Fork returns 409 `id_unavailable`.
+owner returns the existing record (200 instead of 201). Both answer
+`{ conversation }`, the conversation as the list shows it. An ID owned by
+another user or reserved for a Fork returns 409 `id_unavailable`.
 
 `POST /conversations/:id/fork` takes a destination UUID and an assistant block ID.
 It copies a history boundary into a new conversation and returns `{ conversation,
@@ -519,7 +520,8 @@ wait for an entire inference turn.
 Archived conversations allow transcript reads and read acknowledgements;
 stream upgrades, frames on an open socket, attachment delivery, host changes
 and metadata edits are refused until restore, with 409
-`conversation_archived` where the refusal is an HTTP answer.
+`conversation_archived` where the refusal is an HTTP answer. A request to
+the stream that is not a WebSocket upgrade answers 426 `upgrade_required`.
 
 `POST /api/sidebar/reorder` takes `{ kind: "conversation" | "workspace", id,
 beforeId: string | null }`; null appends. Conversation moves stay within the same

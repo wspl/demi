@@ -20,7 +20,7 @@ impl Shard {
     pub(crate) async fn product_state(&self, user: UserDto) -> Result<ProductState, StorageError> {
         let services = self.services();
         let preferences = services.control.preferences(self.user().clone()).await?;
-        let owner = services.vault.owner_for(&user).await?;
+        let owner = services.vault.owner_for(&user.id).await?;
         let entries = services.vault.entries(owner).await?;
         let disclose = services.vault.configures(&user);
         let providers = join_all(entries.iter().map(|entry| async move {
@@ -37,12 +37,15 @@ impl Shard {
         }))
         .await;
         let devices = self.device_list().await?;
+        let mut conversations = self.conversation_summaries(false).await?;
+        conversations.extend(self.conversation_summaries(true).await?);
         Ok(ProductState {
             user,
             mode: services.mode,
             preferences,
             providers,
             devices,
+            conversations,
         })
     }
 }

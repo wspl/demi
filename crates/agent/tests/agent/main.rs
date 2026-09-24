@@ -3,6 +3,7 @@
 
 mod connections;
 mod editing;
+mod storage;
 mod store;
 mod subagents;
 mod support;

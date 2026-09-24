@@ -11,7 +11,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use demi_backend::{
-    AccountMail, Backend, BackendConfig, FamilyRegistry, LoginTiming, MailError, RunnerTuning, VerificationMail,
+    AccountMail, Backend, BackendConfig, ConversationTuning, FamilyRegistry, LoginTiming, MailError, RunnerTuning,
+    VerificationMail,
 };
 use demi_core::Clock;
 use demi_host_remote::testing::{RunnerProcess, RunnerProcessOptions};
@@ -86,6 +87,7 @@ pub struct Harness {
     models_dev_url: Option<String>,
     logins: LoginTiming,
     pub runners: RunnerTuning,
+    pub conversations: ConversationTuning,
 }
 
 impl Harness {
@@ -108,6 +110,7 @@ impl Harness {
                 ping: None,
                 ..RunnerTuning::default()
             },
+            conversations: ConversationTuning::default(),
         }
     }
 
@@ -207,6 +210,7 @@ impl Harness {
         config.families = self.families.clone();
         config.logins = self.logins;
         config.runners = self.runners;
+        config.conversations = self.conversations;
         if let Some(url) = &self.models_dev_url {
             config.models_dev_url = url.parse().unwrap();
         }

@@ -1240,6 +1240,7 @@ dependencies = [
 name = "demi-agent"
 version = "0.1.3"
 dependencies = [
+ "bytes",
  "demi-agent",
  "demi-agent-protocol",
  "demi-core",
@@ -1256,6 +1257,8 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_json_canonicalizer",
+ "serde_path_to_error",
+ "serde_with",
  "sha2",
  "thiserror",
  "tokio",
@@ -1308,6 +1311,8 @@ dependencies = [
  "clap",
  "cookie",
  "data-encoding",
+ "demi-agent",
+ "demi-agent-protocol",
  "demi-artifact",
  "demi-command-service",
  "demi-core",
@@ -1364,6 +1369,7 @@ version = "0.1.3"
 dependencies = [
  "base64 0.22.1",
  "garde",
+ "schemars",
  "serde",
  "serde_json",
  "serde_plain",
@@ -1801,6 +1807,7 @@ dependencies = [
 name = "demi-web-api"
 version = "0.1.3"
 dependencies = [
+ "demi-agent-protocol",
  "demi-command-service",
  "demi-core",
  "demi-runner-protocol",

@@ -673,9 +673,8 @@ environment for the conversation's current Host, with the handle checks of
 | `subagent`, `subagent_transcript_reset`, `subagent_transcript_patch` | Subagent lifecycle and transcripts ([Protocol](subagents.md#protocol)) |
 | `closed` | The connection is detached |
 
-`failures` is what the providers read from the error blocks a frame
-carries: the agent attaches it through the reader the backend supplies when
-the frame is sent, and never stores it
+`failures` is the backend's reading of the error blocks a frame carries,
+attached when the frame is sent and never stored
 ([Failure facts](../backend/backend.md#failure-facts)). Media in outgoing blocks
 travels by blob reference ([Media by reference](../backend/backend.md#media-by-reference)).
 A running shell tool's status reaches the client as `shell_output`; a
@@ -687,8 +686,8 @@ frames.
 - Client frames are strict: an unknown field is refused. The client accepts
   server frames with fields it does not know.
 - A frame that does not match its schema is answered with an `error` whose code
-  is `invalid_frame`, and the connection stays open. A message that is not JSON
-  closes the connection.
+  is `invalid_frame`, and the connection stays open. A message that is not JSON,
+  or a binary one, closes the connection with close code 1007 `not_json`.
 - The backend handles one connection's frames one at a time, in arrival order.
   A frame waits for the conversation's admission and is refused while the
   conversation is archived
@@ -698,8 +697,10 @@ frames.
   behind it.
 - Every frame for one attachment, whether a reply or an event, goes through
   one outbox in causal order. The outbox holds at most 4,096 frames. When it is
-  full, the server closes the connection with a close code that says the
-  client lagged; the client reconnects and adopts the running tree.
+  full, the server closes the connection with close code 4001 `lagged`; the
+  client reconnects and adopts the running tree. A backend that shuts down
+  closes its conversation sockets with 1001 `backend_closing` before it
+  disposes the trees.
 - The open handshake is one step: nothing can happen to the session between
   `opened` and `pending_steers`, so the snapshot frames agree with each other.
 - Each `transcript_patch` carries the revision one past the previous frame's.

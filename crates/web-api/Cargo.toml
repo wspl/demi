@@ -11,6 +11,7 @@ rust-version.workspace = true
 doctest = false
 
 [dependencies]
+demi-agent-protocol = { path = "../agent-protocol" }
 demi-command-service = { path = "../command-service" }
 demi-core = { path = "../core" }
 demi-runner-protocol = { path = "../runner-protocol" }

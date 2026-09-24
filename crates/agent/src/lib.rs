@@ -23,17 +23,18 @@ pub mod store;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 pub mod title;
+mod tools;
 pub mod transcript;
 
 pub use harness::{AgentHarness, Profile, PromptContext};
 pub use ids::{IdSource, RandomIds};
 pub use node::Node;
 pub use server::{
-    AgentServer, Connection, ContentError, ContentResolver, FailureReader, FileReference, FrameRx,
-    Outgoing, ProviderResolver, ResolveError, ServerConfig, ServerDeps, Tree, TreeStores,
-    read_failures,
+    AgentServer, Connection, ContentError, ContentResolver, FileReference, FrameRx, Outgoing,
+    ProviderResolver, ResolveError, ServerConfig, ServerDeps, Tree, TreeStores,
 };
 pub use session::{
     AgentSession, CompactionConfig, ForkError, RetryPolicy, SessionConfig, TranscriptSnapshot,
 };
 pub use store::{AgentTreeStore, SessionStore};
+pub use tools::{EnvironmentScope, ShellEnvironmentFactory};

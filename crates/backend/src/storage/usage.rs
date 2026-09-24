@@ -15,10 +15,6 @@ use super::control::ControlService;
 /// One answered request: who made it, in which conversation, with which
 /// entry and model, and the tokens its response reported.
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the metered runtime writes it once the agent runs one (4D)")
-)]
 pub(crate) struct UsageRow {
     pub(crate) user: UserId,
     pub(crate) conversation: ConversationId,
@@ -38,10 +34,6 @@ const TOTALS: &str = "SELECT provider_id, model_id, COUNT(*) AS requests,
 
 impl ControlService {
     /// Writes the row, timed now.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the metered runtime writes rows once the agent runs one (4D)")
-    )]
     pub(crate) async fn append_usage(&self, row: UsageRow) -> Result<(), StorageError> {
         let id = uuid::Uuid::new_v4().to_string();
         self.call(move |connection, now| {
