@@ -9,6 +9,7 @@
 //! atomic commit, whatever the realization.
 
 mod command_state;
+pub mod media;
 
 use std::rc::Rc;
 

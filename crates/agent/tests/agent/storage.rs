@@ -34,8 +34,18 @@ async fn a_jobs_storage_commits_at_its_generation_and_nothing_once_it_ended() {
     };
     let stale = PortError::Storage("the command storage handle is no longer current".into());
 
-    let committed = storage(caller.clone(), write(json!(["T1"]), 0), CancellationToken::new()).await;
-    assert_eq!(committed, Ok(StorageReply::Committed { revision: Revision(1) }));
+    let committed = storage(
+        caller.clone(),
+        write(json!(["T1"]), 0),
+        CancellationToken::new(),
+    )
+    .await;
+    assert_eq!(
+        committed,
+        Ok(StorageReply::Committed {
+            revision: Revision(1)
+        })
+    );
     let read = StorageOp::Read {
         key: "todos.json".into(),
     };
@@ -71,5 +81,13 @@ async fn a_jobs_storage_commits_at_its_generation_and_nothing_once_it_ended() {
         storage(caller, read, CancellationToken::new()).await,
         Err(stale)
     );
-    assert_eq!(fixture.store.checkpoint(&root).unwrap().command_state.revision, 1);
+    assert_eq!(
+        fixture
+            .store
+            .checkpoint(&root)
+            .unwrap()
+            .command_state
+            .revision,
+        1
+    );
 }
