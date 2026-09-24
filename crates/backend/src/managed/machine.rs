@@ -123,6 +123,13 @@ impl Cloud {
         self.closed.get()
     }
 
+    /// Whether the machine of `device` runs, which a new expose on it needs
+    /// (`expose.md` § Lifetime).
+    pub(crate) fn runs(&self, device: &DeviceId) -> bool {
+        self.machine()
+            .is_some_and(|machine| machine.device.id == *device && machine.is_running())
+    }
+
     /// Admits nothing more and ends the running machine's schedules, as the
     /// shard's close does first; a retirement already running finishes.
     pub(crate) fn stop(&self) {

@@ -57,11 +57,12 @@ An expose belongs to a user and a device, not to a conversation. It records:
 
 The public hostname is `<id>.<expose domain>`. The expose domain is instance
 configuration ([deployment](#deployment)); when none is configured the
-feature is unavailable, `add` says so, and the product shows no expose
-controls. The URL the commands and the API print takes its scheme and
-port from the backend's configured public URL, the one runners connect
-to: behind a reverse proxy on the default port the URL has no port, and a
-local backend on `3271` prints `http://<id>.expose.localhost:3271/`.
+feature is unavailable: `add` says so, there is no expose to list, renew or
+remove, and the product shows no expose controls. The URL the commands and
+the API print takes its scheme and port from the backend's configured public
+URL, the one runners connect to: behind a reverse proxy on the default port
+the URL has no port, and a local backend on `3271` prints
+`http://<id>.expose.localhost:3271/`.
 
 A conversation names the device when it creates the expose: the conversation's
 main Host, or an attached Host through `--host`. After that the conversation
@@ -228,9 +229,9 @@ Removed expose k7x2…; its URL no longer works.
 
 | Leaf | Input | Behavior |
 | --- | --- | --- |
-| `add <address> [--host <name\|id>]` | `address` is `host:port` or a port; `--host` names a main or attached Host as `demi host list` shows it | Creates the record for that device. The device must be connected: an expose for a stopped Cloud would already be destroyed. Prints the URL, the device, and the expiry. |
+| `add <address> [--host <name\|id>]` | `address` is `host:port` or a port; `--host` names a main or attached Host as `demi host list` shows it | Creates the record for that device. The device must be connected, and a Cloud running: an expose for a stopped Cloud would already be destroyed. Prints the URL, the device, and the expiry, `--json` available. |
 | `list` | none | Every expose of the user across devices, soonest expiry first, `--json` available. A Cloud that has stopped has none. |
-| `renew <id>` | an expose id | Sets the expiry to one hour from now. |
+| `renew <id>` | an expose id | Sets the expiry to one hour from now, `--json` available. |
 | `remove <id>` | an expose id | Destroys it. |
 
 An id that is not the user's, or that has expired, answers `expose_not_found`
@@ -267,9 +268,9 @@ snapshot, the host names and the request handlers.
 example `expose.demi.example`. The deployment provides a wildcard DNS record
 for `*.<domain>` pointing at the reverse proxy, a wildcard certificate, and a
 proxy rule that forwards every `*.<domain>` request to the backend with the
-`Host` header preserved and WebSocket upgrades allowed. The backend derives
-the scheme of the URLs it prints from the same forwarded-protocol handling
-its session cookie uses.
+`Host` header preserved and WebSocket upgrades allowed. The URLs the backend
+prints take their scheme and port from its public URL,
+`DEMI_BACKEND_PUBLIC_URL` ([The expose record](#the-expose-record)).
 
 For local development, Chrome and Firefox resolve `*.expose.localhost` to the
 loopback address without DNS; Safari does not. The backend's public URL

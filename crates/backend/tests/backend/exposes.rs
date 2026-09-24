@@ -1,17 +1,28 @@
-//! The expose relay (`expose.md` § The public relay, § Acceptance): a
-//! visitor's request reaches the exposed service on a real runner's device
-//! as the visitor sent it, and the service's answer, streamed or upgraded,
-//! comes back as the service sent it. The services are fixtures on this
-//! machine, which is the device's network here. The visitor and the HTTP
-//! fixture write and read raw bytes, so the header case each side wrote is
-//! what the other reads.
+//! Exposes (`expose.md`, `web-api.md` § Exposes): a service on a device
+//! under a public URL. A visitor's request reaches the exposed service on a
+//! real runner's device as the visitor sent it, and the service's answer,
+//! streamed or upgraded, comes back as the service sent it. An expose
+//! answers anyone for an hour, longer when renewed; only its owner lists,
+//! renews or removes it, the page through the Web API and the agent through
+//! `demi host expose`. The services are fixtures on this machine, which is
+//! the device's network here. The visitor and the HTTP fixture write and
+//! read raw bytes, so the header case each side wrote is what the other
+//! reads.
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
 use demi_core::Clock as _;
+use demi_provider::testing::MockVendor;
+use demi_web_api::auth::Role;
+use demi_web_api::error::ErrorCode;
+use demi_web_api::exposes::{ExposeAnswer, ExposeDto, Exposes};
+use demi_web_api::state::ProductState;
 use futures_util::{SinkExt as _, StreamExt as _};
+use jiff::SignedDuration;
+use reqwest::StatusCode;
+use serde_json::json;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt as _, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _, BufReader};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::{TcpListener, TcpStream};
@@ -23,17 +34,20 @@ use tokio_tungstenite::tungstenite::protocol::CloseFrame;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_util::task::AbortOnDropHandle;
 
+use crate::conversations::{anthropic_at, create, on_device};
 use crate::support::{Harness, Session, TestBackend};
+use crate::work::{Driven, say, shell};
 
 const DOMAIN: &str = "expose.localhost";
-/// The expose of the HTTP fixture.
-const HTTP_EXPOSE: &str = "k7x2maqw4p3s6tavaw2y4z6aab";
-/// The expose of the WebSocket fixture.
-const WEBSOCKET_EXPOSE: &str = "m3n5p7rgtxv3w5x7yez4a3c5ek";
 /// The size of the bodies that cross the relay in each direction.
 const BODY_BYTES: usize = 8 << 20;
 /// How long a step may take before the test names what never came.
 const STEP: Duration = Duration::from_secs(20);
+/// The conversation the agent works in.
+const CONVERSATION: &str = "5e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a01";
+/// Another user's account.
+const OTHER_EMAIL: &str = "other@example.test";
+const OTHER_PASSWORD: &str = "other-pass-1";
 
 #[tokio::test]
 async fn a_relayed_request_reaches_the_service_as_sent_and_its_answer_comes_back_as_sent() {
@@ -42,8 +56,7 @@ async fn a_relayed_request_reaches_the_service_as_sent_and_its_answer_comes_back
     let laptop = backend.pair(&master, "laptop").await;
     let proceed = Arc::new(Notify::new());
     let mut fixture = HttpFixture::start(proceed.clone()).await;
-    expose(&harness, &master, HTTP_EXPOSE, laptop.id(), fixture.port);
-    let host = format!("{HTTP_EXPOSE}.{DOMAIN}:{}", backend.address().port());
+    let host = host_of(&expose(&backend, &master, laptop.id(), fixture.port).await);
 
     // Header names keep their case both ways; the relay rewrites Host, adds
     // the forwarded headers and asks the service to close its connection;
@@ -180,8 +193,8 @@ async fn a_websocket_through_the_relay_carries_messages_and_close_codes_both_way
     let (backend, master) = harness.start_set_up().await;
     let laptop = backend.pair(&master, "laptop").await;
     let mut fixture = WebSocketFixture::start().await;
-    expose(&harness, &master, WEBSOCKET_EXPOSE, laptop.id(), fixture.port);
-    let url = format!("ws://{WEBSOCKET_EXPOSE}.{DOMAIN}:{}/socket", backend.address().port());
+    let host = host_of(&expose(&backend, &master, laptop.id(), fixture.port).await);
+    let url = format!("ws://{host}/socket");
 
     // The visitor's handshake reaches the service with its key, and the
     // service's switch reaches the visitor.
@@ -237,25 +250,187 @@ async fn a_websocket_through_the_relay_carries_messages_and_close_codes_both_way
     backend.close().await;
 }
 
-/// An expose of the fixture on `port` of `device`, for an hour from the
-/// backend's clock.
-fn expose(harness: &Harness, master: &Session, id: &str, device: &str, port: u16) {
-    let now = harness.clock.now().as_millisecond();
+#[tokio::test]
+async fn an_expose_answers_anyone_for_an_hour_and_only_its_owner_lists_renews_or_removes_it() {
+    let harness = Harness::new().with_expose_domain(DOMAIN);
+    let (backend, master) = harness.start_set_up().await;
+    let laptop = backend.pair(&master, "laptop").await;
+    let fixture = HttpFixture::start(Arc::new(Notify::new())).await;
+
+    // Made on a connected device of the caller's for an hour, under a URL
+    // with the backend's scheme and port; the snapshot shows it with the
+    // domain, and a visitor without a session reaches the service.
+    let exposed = expose(&backend, &master, laptop.id(), fixture.port).await;
+    let port = backend.address().port();
+    assert_eq!(exposed.url, format!("http://{}.{DOMAIN}:{port}/", exposed.id));
+    assert_eq!(exposed.address.as_str(), format!("127.0.0.1:{}", fixture.port));
+    assert_eq!(exposed.created_at, harness.clock.now());
+    assert_eq!(exposed.expires_at.as_millisecond() - exposed.created_at.as_millisecond(), 3_600_000);
+    let state: ProductState = backend.get("/api/state", Some(&master)).await.json();
+    assert_eq!(state.exposes, [exposed.clone()]);
+    assert_eq!(state.expose_domain.as_deref(), Some(DOMAIN));
+    assert_eq!(list(&backend, &master).await, [exposed.clone()]);
+    let host = host_of(&exposed);
+    assert_eq!(fetch(&backend, &host, "/hello").await, (200, "hello".to_owned()));
+
+    // Another user sees none of it and can change none of it, nor expose a
+    // service on the device.
+    harness.add_user(OTHER_EMAIL, OTHER_PASSWORD, Role::User);
+    let other = backend.login(OTHER_EMAIL, OTHER_PASSWORD).await;
+    assert!(list(&backend, &other).await.is_empty());
+    let renewal = backend.post(&format!("/api/exposes/{}/renew", exposed.id), Some(&other), json!({})).await;
+    assert_eq!(renewal.refusal(), (StatusCode::NOT_FOUND, ErrorCode::ExposeNotFound));
+    let removal = backend.delete(&format!("/api/exposes/{}", exposed.id), &other).await;
+    assert_eq!(removal.refusal(), (StatusCode::NOT_FOUND, ErrorCode::ExposeNotFound));
+    let foreign = json!({ "deviceId": laptop.id(), "address": "8080" });
+    let refused = backend.post("/api/exposes", Some(&other), foreign).await;
+    assert_eq!(refused.refusal(), (StatusCode::NOT_FOUND, ErrorCode::DeviceNotFound));
+    let portless = json!({ "deviceId": laptop.id(), "address": "localhost" });
+    let refused = backend.post("/api/exposes", Some(&master), portless).await;
+    assert_eq!(refused.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody));
+
+    // Renewed before its hour, it lives an hour from the renewal.
+    harness.clock.advance(SignedDuration::from_mins(50));
+    let renewal = backend.post(&format!("/api/exposes/{}/renew", exposed.id), Some(&master), json!({})).await;
+    assert_eq!(renewal.status, StatusCode::OK, "{}", String::from_utf8_lossy(&renewal.body));
+    let renewed = renewal.json::<ExposeAnswer>().expose;
+    assert_eq!(renewed.expires_at.as_millisecond(), harness.clock.now().as_millisecond() + 3_600_000);
+    harness.clock.advance(SignedDuration::from_mins(50));
+    assert_eq!(fetch(&backend, &host, "/hello").await.0, 200);
+
+    // A second after its expiry the URL answers as unknown, and the visit
+    // destroyed the record.
+    harness.clock.advance(SignedDuration::from_mins(10) + SignedDuration::from_secs(1));
+    let (status, page) = fetch(&backend, &host, "/hello").await;
+    assert_eq!(status, 404);
+    assert!(page.contains("does not exist"), "{page}");
+    assert_eq!(stored_exposes(&harness), 0);
+    let renewal = backend.post(&format!("/api/exposes/{}/renew", exposed.id), Some(&master), json!({})).await;
+    assert_eq!(renewal.refusal(), (StatusCode::NOT_FOUND, ErrorCode::ExposeNotFound));
+
+    // Removed, it is gone at once.
+    let removed = expose(&backend, &master, laptop.id(), fixture.port).await;
+    let removal = backend.delete(&format!("/api/exposes/{}", removed.id), &master).await;
+    assert_eq!(removal.status, StatusCode::NO_CONTENT);
+    assert_eq!(fetch(&backend, &host_of(&removed), "/hello").await.0, 404);
+    assert!(list(&backend, &master).await.is_empty());
+    let again = backend.delete(&format!("/api/exposes/{}", removed.id), &master).await;
+    assert_eq!(again.refusal(), (StatusCode::NOT_FOUND, ErrorCode::ExposeNotFound));
+    backend.close().await;
+}
+
+#[tokio::test]
+async fn the_agent_exposes_a_service_and_lists_renews_and_removes_exposes_with_demi_host_expose() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new().with_builtin_package().with_expose_domain(DOMAIN);
+    let (backend, master) = harness.start_set_up().await;
+    let fixture = HttpFixture::start(Arc::new(Notify::new())).await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/work").await;
+    create(&backend, &master, CONVERSATION).await;
+    let (_laptop, _) = on_device(&harness, &backend, &master, CONVERSATION).await;
+    let mut work = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/work").await;
+
+    // `add` exposes a service on the conversation's main Host.
+    let add = format!("demi host expose add {}", fixture.port);
+    let added = work.turn(vec![shell("t1", &add, 20_000), say("exposed")]).await;
+    let exposed = list(&backend, &master).await;
+    let [exposed] = exposed.as_slice() else {
+        panic!("one expose: {exposed:?}");
+    };
+    let printed = format!(
+        "Exposed 127.0.0.1:{} on laptop as {}\nExpires in 60 minutes (expose {}).\n",
+        fixture.port, exposed.url, exposed.id
+    );
+    assert!(added.received[0].contains(&printed), "{}", added.received[0]);
+    assert_eq!(fetch(&backend, &host_of(exposed), "/hello").await, (200, "hello".to_owned()));
+
+    // `list` shows every expose of the user under a header, or as JSON.
+    let listed = work
+        .turn(vec![shell("t2", "demi host expose list && demi host expose list --json", 20_000), say("listed")])
+        .await;
+    let address = exposed.address.as_str();
+    let header = format!("{:<26}  Device  {:<width$}  Expires  URL\n", "Expose", "Address", width = address.len());
+    let row = format!("{}  laptop  {address}  60 min   {}\n", exposed.id, exposed.url);
+    assert!(listed.received[0].contains(&format!("{header}{row}")), "{}", listed.received[0]);
+    let json = serde_json::to_string(&Exposes { exposes: vec![exposed.clone()] }).unwrap();
+    assert!(listed.received[0].contains(&json), "{}", listed.received[0]);
+
+    // `renew` and `remove` take its id; one that is gone is not found, and
+    // a host the conversation does not reach is refused.
+    let id = &exposed.id;
+    let changes = format!(
+        "demi host expose renew {id} && demi host expose remove {id} && demi host expose renew {id}; echo exit=$?; \
+         demi host expose add 8080 --host nope; echo exit=$?"
+    );
+    let changed = work.turn(vec![shell("t3", &changes, 20_000), say("changed")]).await;
+    let received = &changed.received[0];
+    for expected in [
+        format!("Expose {id} expires in 60 minutes.\n"),
+        format!("Removed expose {id}; its URL no longer works.\n"),
+        format!("expose renew: No expose {id} (expose_not_found)\n"),
+        "host nope is not reachable from this conversation".to_owned(),
+    ] {
+        assert!(received.contains(&expected), "{expected:?} in {received}");
+    }
+    assert_eq!(received.matches("exit=1").count(), 2, "{received}");
+    assert_eq!(fetch(&backend, &host_of(exposed), "/hello").await.0, 404);
+    backend.close().await;
+}
+
+#[tokio::test]
+async fn without_an_expose_domain_exposes_are_unavailable() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let laptop = backend.pair(&master, "laptop").await;
+    let body = json!({ "deviceId": laptop.id(), "address": "1234" });
+    let refused = backend.post("/api/exposes", Some(&master), body).await;
+    assert_eq!(refused.refusal(), (StatusCode::CONFLICT, ErrorCode::ExposeUnavailable));
+    let state: ProductState = backend.get("/api/state", Some(&master)).await.json();
+    assert_eq!((state.exposes, state.expose_domain), (Vec::new(), None));
+    assert!(list(&backend, &master).await.is_empty());
+    backend.close().await;
+}
+
+/// A new expose of the fixture on `port` of `device`, as the page makes it.
+async fn expose(backend: &TestBackend, session: &Session, device: &str, port: u16) -> ExposeDto {
+    let body = json!({ "deviceId": device, "address": port.to_string() });
+    let created = backend.post("/api/exposes", Some(session), body).await;
+    assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
+    created.json::<ExposeAnswer>().expose
+}
+
+/// The `Host` a visitor of the expose sends: its URL's host and port.
+fn host_of(expose: &ExposeDto) -> String {
+    let url = url::Url::parse(&expose.url).unwrap();
+    format!("{}:{}", url.host_str().unwrap(), url.port().unwrap())
+}
+
+/// The session's exposes, as `GET /api/exposes` lists them.
+async fn list(backend: &TestBackend, session: &Session) -> Vec<ExposeDto> {
+    let listed = backend.get("/api/exposes", Some(session)).await;
+    assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
+    listed.json::<Exposes>().exposes
+}
+
+/// How many expose records the control database holds.
+fn stored_exposes(harness: &Harness) -> i64 {
     harness
         .control_database()
-        .execute(
-            "INSERT INTO exposes (id, user_id, device_id, address, created_at, expires_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            rusqlite::params![
-                id,
-                master.user.id.as_str(),
-                device,
-                format!("127.0.0.1:{port}"),
-                now,
-                now + 3_600_000
-            ],
-        )
-        .unwrap();
+        .query_row("SELECT COUNT(*) FROM exposes", [], |row| row.get(0))
+        .unwrap()
+}
+
+/// A visitor's request for `path` of the expose at `host`, answered whole:
+/// its status and its body.
+async fn fetch(backend: &TestBackend, host: &str, path: &str) -> (u16, String) {
+    let (mut read, mut write) = visit(backend).await;
+    let request = format!("GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n");
+    write.write_all(request.as_bytes()).await.unwrap();
+    let head = read_head(&mut read).await;
+    let status = head.line.split(' ').nth(1).unwrap().parse().unwrap();
+    let mut body = String::new();
+    read.read_to_string(&mut body).await.unwrap();
+    (status, body)
 }
 
 /// A visitor's connection to the backend, in raw bytes.
@@ -392,7 +567,7 @@ enum Seen {
 /// `/headers` answers with headers of mixed case and two cookies,
 /// `/upload` reads a chunked body whole and answers `BODY_BYTES` chunked,
 /// `/events` streams two events, the second once `proceed` is notified,
-/// and `/refuse` refuses an upgrade.
+/// `/refuse` refuses an upgrade, and `/hello` says hello.
 struct HttpFixture {
     port: u16,
     seen: mpsc::UnboundedReceiver<Seen>,
@@ -465,6 +640,10 @@ async fn serve_http(socket: TcpStream, seen: mpsc::UnboundedSender<Seen>, procee
                 ended_after_answer,
             })
             .unwrap();
+        }
+        "/hello" => {
+            let answer = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 5\r\n\r\nhello";
+            write.write_all(answer.as_bytes()).await.unwrap();
         }
         "/refuse" => {
             seen.send(Seen::Request { head, body: Vec::new() }).unwrap();

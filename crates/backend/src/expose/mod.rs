@@ -1,8 +1,13 @@
 //! Exposes (`expose.md`): a service on one of the user's devices under a
-//! public URL. The records live in storage; the owner's shard admits each
-//! relayed connection, which is where the record, the device and the
+//! public URL for an hour. The records live in storage, and the shard
+//! creates, lists, renews and removes them (`records`), for the page and for
+//! the agent's `demi host expose` (`commands`). The owner's shard admits
+//! each relayed connection, which is where the record, the device and the
 //! connection limit are checked, and hands the edge the network stream's
 //! ends with a lease; the edge relays the bytes (`edge::expose`).
+
+mod commands;
+mod records;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -14,6 +19,8 @@ use demi_shell::HostErrorKind;
 use demi_web_api::ids::ExposeId;
 use tokio_util::sync::CancellationToken;
 
+pub(crate) use self::commands::expose_group;
+pub(crate) use self::records::ExposeError;
 use crate::shard::Shard;
 use crate::shard::lease::Lease;
 use crate::storage::StorageError;
@@ -44,6 +51,11 @@ impl FromStr for ExposeDomain {
 }
 
 impl ExposeDomain {
+    /// The domain, in lowercase.
+    pub(crate) fn as_str(&self) -> &str {
+        &self.0
+    }
+
     /// The label an expose hostname puts before this domain: `host`, a
     /// `Host` header's host without its port, is `<label>.<domain>` in any
     /// case, and the label has no dot. `None` for any other host.
@@ -83,6 +95,16 @@ impl Exposes {
             id: id.clone(),
             ended: expose.ended.clone(),
         })
+    }
+
+    /// Ends every connection of the exposes `ids`, which were destroyed.
+    pub(crate) fn end<'a>(&self, ids: impl IntoIterator<Item = &'a ExposeId>) {
+        let live = self.0.borrow();
+        for id in ids {
+            if let Some(expose) = live.get(id) {
+                expose.ended.cancel();
+            }
+        }
     }
 
     /// Ends every connection, as the shard's close does.
@@ -166,10 +188,10 @@ impl Shard {
         // Counted before the record is read, so an expose that ends while it
         // is read ends this connection too.
         let registration = self.exposes().register(id).ok_or(RelayRefusal::Limit)?;
-        let record = self.services().control.expose(id.clone()).await?;
-        let record = record
-            .filter(|record| record.user == *self.user() && self.services().clock.now() < record.expires_at)
-            .ok_or(RelayRefusal::NotFound)?;
+        let record = self.owned_expose(id).await?.ok_or(RelayRefusal::NotFound)?;
+        if self.destroy_if_expired(&record).await? {
+            return Err(RelayRefusal::NotFound);
+        }
         if registration.ended.is_cancelled() {
             return Err(RelayRefusal::Removed);
         }

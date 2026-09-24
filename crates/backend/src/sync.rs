@@ -41,6 +41,7 @@ impl Shard {
         let mut conversations = self.conversation_summaries(false).await?;
         conversations.extend(self.conversation_summaries(true).await?);
         let cloud = self.cloud_status().await?;
+        let exposes = self.list_exposes().await?;
         Ok(ProductState {
             user,
             mode: services.mode,
@@ -48,8 +49,8 @@ impl Shard {
             providers,
             workspaces: workspaces.into_iter().map(|workspace| workspace.dto()).collect(),
             devices,
-            exposes: Vec::new(),
-            expose_domain: None,
+            exposes,
+            expose_domain: services.expose_domain.as_ref().map(|domain| domain.as_str().to_owned()),
             conversations,
             cloud,
         })

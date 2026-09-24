@@ -322,8 +322,9 @@ An expose record carries `id`, `deviceId`, `address`, `url`, `createdAt`
 and `expiresAt`. `GET /api/exposes` returns `{ exposes }`, the caller's
 exposes soonest expiry first. `POST /api/exposes` takes `{ deviceId, address }`
 for a caller-owned, connected device and returns 201 with `{ expose }`; a
-device that is offline or a stopped Cloud answers 409 `device_offline`, and
-an instance without an expose domain answers 409 `expose_unavailable`.
+device that is not the caller's answers 404 `device_not_found`, a device that
+is offline or a stopped Cloud answers 409 `device_offline`, and an instance
+without an expose domain answers 409 `expose_unavailable`.
 `POST /api/exposes/:id/renew` sets the expiry to one hour from now and
 returns `{ expose }`. `DELETE /api/exposes/:id` destroys it, ends its
 connections, and returns 204. An expose the caller does not own, or one that

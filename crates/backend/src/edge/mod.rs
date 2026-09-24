@@ -17,6 +17,7 @@ mod cookies;
 mod devices;
 mod error;
 mod expose;
+mod exposes;
 mod files;
 mod gate;
 mod hosts;
@@ -233,6 +234,9 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/workspaces/{id}", patch(workspaces::rename).delete(workspaces::delete))
         .route("/cloud", get(cloud::status))
         .route("/cloud/reset", post(cloud::reset))
+        .route("/exposes", get(exposes::list).post(exposes::create))
+        .route("/exposes/{id}", delete(exposes::remove))
+        .route("/exposes/{id}/renew", post(exposes::renew))
         .route("/devices", get(devices::list))
         .route("/devices/claim", post(devices::claim))
         .route("/devices/{id}", delete(devices::revoke))
