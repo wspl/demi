@@ -56,6 +56,26 @@ fn package_decoding_enforces_value_constraints() {
     }
 }
 
+#[test]
+fn an_artifact_url_is_http_or_https_without_credentials() {
+    use demi_command_service::protocol::ArtifactLocation;
+    let valid = |url: &str| {
+        let location: ArtifactLocation =
+            serde_json::from_value(serde_json::json!({ "url": url })).unwrap();
+        garde::Validate::validate(&location).is_ok()
+    };
+    assert!(valid("https://demi-native.s3.amazonaws.com/native/blobs/a"));
+    assert!(valid("http://192.168.5.2:3271/native-artifacts/a"));
+    for refused in [
+        "https://user:secret@demi-native.s3.amazonaws.com/native/blobs/a",
+        "ftp://192.168.5.2/native-artifacts/a",
+        "file:///native-artifacts/a",
+        "native-artifacts/a",
+    ] {
+        assert!(!valid(refused), "{refused}");
+    }
+}
+
 /// Decodes and validates invocation metadata as the service boundary does.
 fn decode_invocation(value: serde_json::Value) -> Result<(), String> {
     use demi_command_service::protocol::{Invocation, Metadata};
