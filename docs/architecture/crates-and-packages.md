@@ -469,9 +469,9 @@ Each crate implements the provider contract for one vendor family.
   backend's `host` group composed in.
 - **Public boundary:** the harness (`CodingHarness`) over the product's
   answer to where a node runs (`HostResolver`: a node's Host and the text that
-  announces a change of it), the `demi` root (`demi_root`, with the product's
-  groups in `DemiOptions`), and the package id its native groups bind to
-  (`BUILTIN_PACKAGE`, `builtin-protocol`'s `PACKAGE`).
+  announces a change of it) and the `demi` root (`demi_root`, with the
+  product's groups in `DemiOptions`). Its native groups bind to
+  `builtin-protocol`'s `PACKAGE`, which the backend imports from there too.
 - **Native binding:** the native groups declare package and operation ids. The
   backend supplies exact release descriptors at runtime; declarations import no
   compiled-in release catalog. The implementations live in `demi-commands`.
@@ -497,8 +497,8 @@ Each crate implements the provider contract for one vendor family.
   fixture's own for one device (`RunnerFixture`), an in-process fake runner
   (`TestDevice`, whose connections are `TestLink`s), a native package the
   workspace built (`NativeFixture`, such as the runner's native fixture
-  package; `built_program` finds a workspace executable) and a policy that
-  runs every call in one command set (`CommandPolicy`). Behavior: [Runner](../execution/runner.md) and
+  package) and a policy that runs every call in one command set
+  (`CommandPolicy`). Behavior: [Runner](../execution/runner.md) and
   [Native command execution](../execution/native-runtime.md), which owns
   [artifact-location admission](../execution/native-runtime.md#install-the-selected-executable).
 - **Must not:** own sockets or HTTP routes (the backend's connection tasks and

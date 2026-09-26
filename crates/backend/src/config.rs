@@ -7,8 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use demi_builtin_protocol::live;
-use demi_coding_agent::BUILTIN_PACKAGE;
+use demi_builtin_protocol::{PACKAGE as BUILTIN_PACKAGE, live};
 use demi_command_tree::NativeOperation;
 use demi_core::{Clock, SystemClock};
 use demi_web_api::settings::InstanceMode;
