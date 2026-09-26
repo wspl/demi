@@ -1380,11 +1380,7 @@ export const useConversations = defineStore('conversations', () => {
     removeQueued: (conversation: Conversation, id: string) =>
       action(conversation, (runtime) => runtime.dequeueMessage(id)),
     sendQueued: (conversation: Conversation, id: string) =>
-      action(conversation, (runtime) =>
-        conversation.phase === 'idle'
-          ? runtime.sendQueuedMessage(id)
-          : runtime.steerQueuedMessage(id),
-      ),
+      action(conversation, (runtime) => runtime.sendQueuedNow(id)),
     removePendingSteer: (conversation: Conversation, id: string) =>
       action(conversation, (runtime) => runtime.deletePendingSteer(id)),
     interruptWithSteer: (conversation: Conversation, id: string) =>

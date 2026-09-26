@@ -105,6 +105,13 @@ the transcript as the stop records it ([Stop](../agent/runtime.md#stop)), and
 continues the turn, so the model reads the steer next and it is never sent
 twice.
 
+A queued message can be sent now. While a turn runs, the page turns it into a
+steer of that turn; otherwise it moves the message to the front of the queue,
+so it runs next. A turn that refuses the steer, because it is ending or being
+stopped, leaves the message queued
+([Messages and the queue](../agent/runtime.md#messages-and-the-queue)); the
+page then moves it to the front, and the user sees no error.
+
 ### Recovering an unfinished turn
 
 A turn can end without finishing in two ways, and the agent can go on from

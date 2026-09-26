@@ -15,7 +15,7 @@ use reqwest::StatusCode;
 use serde_json::{Value, json};
 
 use crate::conversations::{
-    FIRST, SECOND, Socket, THIRD, anthropic, answer, create, kinds, last_text, on_device, send, settled, summaries,
+    FIRST, SECOND, Socket, THIRD, anthropic, answer, create, kinds, last_text, on_device, send, summaries,
     tool_result, tool_use, transcript,
 };
 use crate::support::{Harness, MASTER_EMAIL, MASTER_PASSWORD};
@@ -148,7 +148,6 @@ async fn a_fork_of_a_conversation_the_backend_no_longer_holds_reads_its_stored_h
     source.chat("m1", "U1").await;
     vendor.respond(answer(&["A2"], 1, 1));
     source.chat("m2", "U2").await;
-    settled(&backend, &master, FIRST).await;
     backend.close().await;
 
     let backend = harness.start().await;
@@ -188,7 +187,6 @@ async fn a_fork_keeps_the_edits_its_history_made_in_a_copy_of_its_own() {
     ));
     vendor.respond(answer(&["Written."], 1, 1));
     source.chat("m1", "Write the notes").await;
-    settled(&backend, &master, FIRST).await;
     let blocks = transcript(&backend, &master, FIRST).await.blocks;
     let Some(Block::ToolCall(call)) = blocks.get(1) else {
         panic!("{blocks:?}");

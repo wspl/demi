@@ -1,4 +1,4 @@
-export { AgentClient, EditRejectedError, SessionError } from './client'
+export { AgentClient, EditRejectedError, SessionError, SteerRejectedError } from './client'
 export type { AgentClientListener, ClientSessionEvent, Failures, ServerFrameOf } from './events'
 export { applyTranscriptPatches } from './patch'
 export {

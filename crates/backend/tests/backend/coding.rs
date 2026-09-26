@@ -9,7 +9,7 @@ use demi_core::Block;
 use demi_provider::testing::MockVendor;
 use serde_json::json;
 
-use crate::conversations::{FIRST, Socket, anthropic, answer, create, kinds, on_device, settled, tool_use, transcript};
+use crate::conversations::{FIRST, Socket, anthropic, answer, create, kinds, on_device, tool_use, transcript};
 use crate::support::Harness;
 
 #[tokio::test]
@@ -42,7 +42,6 @@ async fn a_conversation_on_a_paired_device_runs_the_coding_agents_commands_there
     assert!(continued.contains("Created ") && continued.contains("notes.txt"), "{continued}");
     assert!(continued.contains("laptop"), "the main Host is the device: {continued}");
 
-    settled(&backend, &master, FIRST).await;
     let blocks = transcript(&backend, &master, FIRST).await.blocks;
     // Each request's response follows what it streamed.
     assert_eq!(kinds(&blocks), ["user", "tool_call", "response", "text", "response"]);
