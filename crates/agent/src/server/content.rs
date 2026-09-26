@@ -1,18 +1,17 @@
 //! A frame's content as the session receives it (`runtime.md` § Client
 //! frames): text and references as they are, uploads and remote files as
-//! the backend resolved them, and, in an edit, the files the edited message
-//! already holds, its media with their bytes loaded again. The backend
-//! resolves the files; no frame carries bytes.
+//! the backend resolved them, and, in an edit, the references to the files
+//! the edited message holds, which the session resolves from that message
+//! (`message-editing.md` § Files the edit keeps). No frame carries bytes.
 
-use demi_agent_protocol::{ClientContent, MediaRef};
+use demi_agent_protocol::ClientContent;
 use demi_core::UserContentBlock;
 use futures_util::future::LocalBoxFuture;
 
 use crate::session::EditContent;
 
 /// A file a message's content refers to, which only the backend can
-/// resolve: an upload it holds, a file on a paired device, or a medium an
-/// edited message holds in the caller's blobs.
+/// resolve: an upload it holds or a file on a paired device.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FileReference {
     /// An upload by its attachment id, written under `file_name`.
@@ -24,17 +23,13 @@ pub enum FileReference {
         device_id: String,
         path: String,
     },
-    /// A medium an edit keeps, by its blob reference.
-    Media(MediaRef),
 }
 
 /// Where the backend resolves the files of one frame's content
 /// (`backend.md` § Media by reference): an upload is written to the
 /// conversation's Host and becomes its native media block, when it has one,
 /// then its attachment record, or the text that says it is unavailable; a
-/// remote file becomes its reference once its device may be read; a kept
-/// medium becomes its block with its bytes
-/// ([`crate::store::media::kept_media`]).
+/// remote file becomes its reference once its device may be read.
 pub trait ContentResolver {
     /// The blocks each reference stands for, in the order given. All of one
     /// frame's references are resolved together, so that none is granted
@@ -75,15 +70,15 @@ pub(crate) async fn resolve_message(
         .into_iter()
         .map(|part| match part {
             EditContent::Content(block) => Ok(block),
-            EditContent::KeptAttachment(_) => Err(ContentError::invalid(
-                "Only an edit refers to the files its message holds",
-            )),
+            EditContent::KeptAttachment(_) | EditContent::KeptMedia(_) => Err(
+                ContentError::invalid("Only an edit refers to the files its message holds"),
+            ),
         })
         .collect()
 }
 
-/// Resolves an edit's content, keeping its references to the edited
-/// message's attachment records for the session.
+/// Resolves an edit's content, keeping its references to the files the
+/// edited message holds for the session.
 pub(crate) async fn resolve_edit(
     resolver: &dyn ContentResolver,
     content: Vec<ClientContent>,
@@ -106,7 +101,6 @@ async fn resolve(
                 device_id: device_id.clone(),
                 path: path.clone(),
             }),
-            ClientContent::Media { media } => Some(FileReference::Media(media.clone())),
             _ => None,
         })
         .collect();
@@ -133,12 +127,11 @@ async fn resolve(
                     reference,
                 }));
             }
-            ClientContent::Upload { .. }
-            | ClientContent::RemoteFile { .. }
-            | ClientContent::Media { .. } => {
+            ClientContent::Upload { .. } | ClientContent::RemoteFile { .. } => {
                 let blocks = resolved.next().expect("each file reference was resolved");
                 parts.extend(blocks.into_iter().map(EditContent::Content));
             }
+            ClientContent::Media { media } => parts.push(EditContent::KeptMedia(media)),
             ClientContent::Attachment { path } => parts.push(EditContent::KeptAttachment(path)),
         }
     }

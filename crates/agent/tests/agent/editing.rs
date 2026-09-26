@@ -14,8 +14,8 @@ use demi_agent_protocol::{
     TranscriptVersion,
 };
 use demi_core::{
-    Attachment, B64Bytes, BlobRef, Block, BlockId, MediaSource, NodeId, OperationId, SessionPhase,
-    Timestamp, TurnId, UserContentBlock,
+    Attachment, B64Bytes, BlobRef, Block, BlockId, DocumentSource, MediaSource, NodeId,
+    OperationId, SessionPhase, Timestamp, TurnId, UserContentBlock,
 };
 use demi_provider::{
     InferenceItem,
@@ -393,23 +393,43 @@ async fn an_edit_is_refused_while_work_waits_and_a_failed_save_changes_nothing()
     );
 }
 
+/// An edit keeps a file by naming it: an attachment record by its path, and
+/// an image, a video or a document by its kind and blob. The session puts
+/// the edited message's own block in its place, so the model reads the
+/// bytes and the block keeps its media type and file name; a file the
+/// message does not hold is refused (`message-editing.md` § Files the edit
+/// keeps).
 #[tokio::test(flavor = "local")]
-async fn an_edit_keeps_the_files_its_message_holds_and_refuses_a_path_it_does_not() {
+async fn an_edit_keeps_the_files_its_message_holds_and_refuses_one_it_does_not() {
     let script = ScriptedRuntime::new([said("a chart"), said("the same chart")]);
     // The store keeps media in a blob namespace, as the product's does, so
-    // the page names the image the message holds by its blob.
+    // the page names the media the message holds by their blobs.
     let blobs = MemoryBlobs::new();
     let store = MemoryTreeStore::with_blobs(blobs.clone());
     let fixture = Fixture::with(&script, store, ServerConfig::default());
-    let files = TestFiles::with_blobs(blobs.clone());
+    let files = TestFiles::new();
     let png = B64Bytes::new(vec![0x89, b'P', b'N', b'G']);
+    let mp4 = B64Bytes::new(b"\0\0\0\x18ftypmp42".to_vec());
+    let pdf = B64Bytes::new(b"%PDF-1.7".to_vec());
     let image = UserContentBlock::Image {
         source: MediaSource::Binary {
             data: png.clone(),
             media_type: "image/png".into(),
         },
     };
-    let blob = blobs.put(png).await.unwrap();
+    let video = UserContentBlock::Video {
+        source: MediaSource::Binary {
+            data: mp4.clone(),
+            media_type: "video/mp4".into(),
+        },
+    };
+    let document = UserContentBlock::Document {
+        source: DocumentSource::Binary {
+            data: pdf.clone(),
+            media_type: "application/pdf".into(),
+            file_name: "paper.pdf".into(),
+        },
+    };
     let record = UserContentBlock::Attachment(Attachment {
         name: "chart.png".into(),
         path: "/home/demi/.demi/attachments/conversation/chart.png".into(),
@@ -419,10 +439,20 @@ async fn an_edit_keeps_the_files_its_message_holds_and_refuses_a_path_it_does_no
         snippet: None,
     });
     files.upload("upload-1", vec![image.clone(), record.clone()]);
+    files.upload("upload-2", vec![video.clone()]);
+    files.upload("upload-3", vec![document.clone()]);
+    let [png_blob, mp4_blob, pdf_blob] = [png, mp4, pdf].map(|bytes| BlobRef::of(bytes.as_bytes()));
+    // Another message's image: the caller's own blob, which this message
+    // does not hold.
+    let elsewhere = blobs.put(B64Bytes::new(b"GIF89a".to_vec())).await.unwrap();
     let mut client =
         TestClient::connect_with(&fixture.server, &conversation(), "/workspace", files);
     client.send(open(test_model())).await;
     client.received();
+    let upload = |reference: &str, file_name: &str| ClientContent::Upload {
+        r#ref: reference.into(),
+        file_name: file_name.into(),
+    };
     client
         .send(ClientFrame::Send {
             message_id: TurnId::try_from("m1").unwrap(),
@@ -430,74 +460,123 @@ async fn an_edit_keeps_the_files_its_message_holds_and_refuses_a_path_it_does_no
                 ClientContent::Text {
                     text: "look".into(),
                 },
-                ClientContent::Upload {
-                    r#ref: "upload-1".into(),
-                    file_name: "chart.png".into(),
-                },
+                upload("upload-1", "chart.png"),
+                upload("upload-2", "clip.mp4"),
+                upload("upload-3", "paper.pdf"),
             ],
         })
         .await;
     frames_until(&mut client, is_idle).await;
     let target = user_block(&fixture, "m1");
     let version = session_of(&fixture).transcript().version;
+    let image_ref = |blob: &BlobRef| ClientContent::Media {
+        media: MediaRef::Image {
+            r#ref: blob.clone(),
+            media_type: "image/png".into(),
+        },
+    };
 
-    let unknown = vec![ClientContent::Attachment {
-        path: "/elsewhere/chart.png".into(),
-    }];
-    client.send(edit("op1", &target, &version, unknown)).await;
-    let refused = edit_outcome(&client.received());
+    let mut refusals = Vec::new();
+    for (operation, unknown) in [
+        (
+            "op1",
+            ClientContent::Attachment {
+                path: "/elsewhere/chart.png".into(),
+            },
+        ),
+        ("op2", image_ref(&elsewhere)),
+        (
+            "op3",
+            ClientContent::Media {
+                media: MediaRef::Video {
+                    r#ref: png_blob.clone(),
+                    media_type: "video/mp4".into(),
+                },
+            },
+        ),
+    ] {
+        client
+            .send(edit(operation, &target, &version, vec![unknown]))
+            .await;
+        refusals.push(edit_outcome(&client.received()));
+    }
+    assert_eq!(
+        refusals,
+        [
+            rejected("The edited message holds no attachment at /elsewhere/chart.png"),
+            rejected(&format!("The edited message holds no image {elsewhere}")),
+            rejected(&format!("The edited message holds no video {png_blob}")),
+        ]
+    );
     let kept = vec![
         ClientContent::Text {
             text: "look again".into(),
         },
+        image_ref(&png_blob),
         ClientContent::Media {
-            media: MediaRef::Image {
-                r#ref: blob.clone(),
-                media_type: "image/png".into(),
+            media: MediaRef::Video {
+                r#ref: mp4_blob.clone(),
+                media_type: "video/mp4".into(),
+            },
+        },
+        // The block keeps what the message holds, whatever else the
+        // reference says.
+        ClientContent::Media {
+            media: MediaRef::Document {
+                r#ref: pdf_blob.clone(),
+                media_type: "text/plain".into(),
+                file_name: "renamed.txt".into(),
             },
         },
         ClientContent::Attachment {
             path: "/home/demi/.demi/attachments/conversation/chart.png".into(),
         },
     ];
-    client.send(edit("op2", &target, &version, kept)).await;
+    client.send(edit("op4", &target, &version, kept)).await;
     let frames = frames_until(&mut client, is_idle).await;
 
-    assert_eq!(
-        refused,
-        rejected("The edited message holds no attachment at /elsewhere/chart.png")
-    );
     assert!(matches!(
         edit_outcome(&frames),
         EditOutcome::Accepted { .. }
     ));
-    // The replacement keeps the image by its blob and the record as the
-    // edited message held it, and the model reads the image's bytes.
+    // The model reads the bytes of the message's own blocks; the store keeps
+    // them by their blobs.
     let again = UserContentBlock::Text {
         text: "look again".into(),
     };
+    assert_eq!(
+        script.requests()[1].items.first(),
+        Some(&InferenceItem::UserMessage {
+            content: vec![again.clone(), image, video, document, record.clone()]
+        })
+    );
     let stored = fixture.store.checkpoint(&conversation()).unwrap();
     let Block::User(replacement) = &stored.transcript[0] else {
         panic!("{:?}", stored.transcript)
     };
+    let by_reference = |blob: &BlobRef, media_type: &str| MediaSource::Ref {
+        r#ref: blob.clone(),
+        media_type: media_type.into(),
+    };
     assert_eq!(
         replacement.content,
         [
-            again.clone(),
+            again,
             UserContentBlock::Image {
-                source: MediaSource::Ref {
-                    r#ref: blob,
-                    media_type: "image/png".into(),
+                source: by_reference(&png_blob, "image/png"),
+            },
+            UserContentBlock::Video {
+                source: by_reference(&mp4_blob, "video/mp4"),
+            },
+            UserContentBlock::Document {
+                source: DocumentSource::Ref {
+                    r#ref: pdf_blob,
+                    media_type: "application/pdf".into(),
+                    file_name: "paper.pdf".into(),
                 },
             },
-            record.clone()
+            record
         ]
-    );
-    assert_eq!(
-        script.requests()[1].items.first(),
-        Some(&InferenceItem::UserMessage {
-            content: vec![again, image, record]
-        })
     );
 }
 

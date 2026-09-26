@@ -10,8 +10,8 @@ use std::{
 };
 
 use demi_agent_protocol::{
-    ClientContent, ClientFrame, ClientFrameKind, EditOutcome, EditRequest, ModelSwitchApply,
-    ServerFrame, SteerOutcome,
+    ClientFrame, ClientFrameKind, EditOutcome, EditRequest, ModelSwitchApply, ServerFrame,
+    SteerOutcome,
 };
 use demi_core::{BlockId, ModelSelection, NodeId, SessionPhase, TurnId};
 use tokio::sync::mpsc::{self, error::TrySendError};
@@ -407,11 +407,7 @@ impl<H: AgentHarness> Connection<H> {
     /// a repeated request is answered from its receipt, or shares the
     /// acceptance in flight, before any of its files is resolved; a new one
     /// resolves its content and returns once the replacement is durable.
-    async fn edit(
-        &self,
-        session: &AgentSession,
-        request: EditRequest<ClientContent>,
-    ) -> Result<TurnId, String> {
+    async fn edit(&self, session: &AgentSession, request: EditRequest) -> Result<TurnId, String> {
         let digest = edit_digest(&request);
         let check = session
             .check_edit(&request.operation_id, &digest, &request.version)

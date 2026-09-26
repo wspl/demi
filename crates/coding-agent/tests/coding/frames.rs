@@ -27,6 +27,7 @@ fn command_of(status: &ShellStatus) -> &CommandId {
     &status.command().command_id
 }
 
+// Over a second: three messages start a command each as a shell job.
 #[tokio::test(flavor = "local")]
 async fn a_client_sees_the_roots_live_commands_writes_to_them_and_stops_them() {
     within(async {
@@ -36,11 +37,11 @@ async fn a_client_sees_the_roots_live_commands_writes_to_them_and_stops_them() {
             Turn::Events(vec![exec("long", "sleep 30", 200)]),
             Turn::Respond(Box::new(|_| reply("sleeping"))),
             Turn::Events(vec![exec(
-                "ticker",
-                "while true; do echo tick >> ../ticks.txt; sleep 0.05; done",
+                "sleeper",
+                "sh -c 'echo $$ > ../sleeper.pid; exec sleep 30'",
                 200,
             )]),
-            Turn::Respond(Box::new(|_| reply("ticking"))),
+            Turn::Respond(Box::new(|_| reply("sleeping again"))),
         ]);
         let fixture = Fixture::start(&script).await;
         let mut client = fixture.opened().await;
@@ -147,21 +148,31 @@ async fn a_client_sees_the_roots_live_commands_writes_to_them_and_stops_them() {
         );
 
         // Closing the conversation stops the commands its shells still run:
-        // the ticker's file stops growing. The turn ends when the exec's
-        // window does, which can come before the ticker's first tick: its job
-        // first reads the machine's system profile (`runner.md` § Shell
+        // the sleeper's process ends. The turn ends when the exec's window
+        // does, which can come before the sleeper wrote its process id: its
+        // job first reads the machine's system profile (`runner.md` § Shell
         // jobs).
-        turn(&mut second, "message-3", "Start the ticker.").await;
-        let ticks = format!("{}/ticks.txt", fixture.runner.home());
-        let size = || std::fs::metadata(&ticks).map(|ticks| ticks.len());
-        while !size().is_ok_and(|size| size > 0) {
+        turn(&mut second, "message-3", "Start the sleeper.").await;
+        let written = format!("{}/sleeper.pid", fixture.runner.home());
+        let sleeper = loop {
+            // The line is whole once it ends with its newline.
+            let pid = std::fs::read_to_string(&written)
+                .ok()
+                .and_then(|line| line.strip_suffix('\n')?.parse::<i32>().ok());
+            if let Some(pid) = pid {
+                break rustix::process::Pid::from_raw(pid).expect("a process id is positive");
+            }
             tokio::time::sleep(Duration::from_millis(10)).await;
-        }
+        };
         second.send(ClientFrame::Close {}).await;
         assert_eq!(second.received().last(), Some(&ServerFrame::Closed));
-        let stopped = size().unwrap();
-        tokio::time::sleep(Duration::from_millis(300)).await;
-        assert_eq!(size().unwrap(), stopped);
+        let ended = tokio::time::timeout(Duration::from_secs(10), async {
+            while rustix::process::test_kill_process(sleeper).is_ok() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await;
+        assert!(ended.is_ok(), "the sleeper still runs after the close");
         fixture.stop().await;
     })
     .await;
@@ -170,6 +181,7 @@ async fn a_client_sees_the_roots_live_commands_writes_to_them_and_stops_them() {
 /// The page and the model each keep their own place in a command's output:
 /// the page reading a running command's output leaves all of it to the
 /// model's next `shell_status` (`runtime.md` § Results and previews).
+// Over a second: the command runs as a shell job.
 #[tokio::test(flavor = "local")]
 async fn the_pages_read_of_a_running_command_leaves_its_output_to_the_model() {
     within(async {
@@ -178,9 +190,9 @@ async fn the_pages_read_of_a_running_command_leaves_its_output_to_the_model() {
         let asked = command.clone();
         let seen = checked.clone();
         let script = ScriptedRuntime::new([
-            // The output comes after the exec's window: nothing of it is in
+            // The output waits for the page's write, so nothing of it is in
             // the exec's result.
-            Turn::Events(vec![exec("later", "sleep 0.3; echo later; read line", 100)]),
+            Turn::Events(vec![exec("later", "read go; echo later; read line", 100)]),
             Turn::Respond(Box::new(|_| reply("started"))),
             Turn::Respond(Box::new(move |_| {
                 vec![event::tool_call(
@@ -200,17 +212,29 @@ async fn the_pages_read_of_a_running_command_leaves_its_output_to_the_model() {
         let started = command_of(&shell_outputs(&frames)[0]).clone();
         *command.borrow_mut() = Some(started.clone());
 
-        // The page reads the output as it comes.
+        // The page lets the output come, then reads it as it comes: in its
+        // write's answer and in fresh transcripts.
+        client
+            .send(ClientFrame::ShellWrite {
+                command_id: started.clone(),
+                stdin: "go\n".into(),
+            })
+            .await;
+        let mut frames = client.received();
         let mut read = String::new();
-        while !read.contains("later") {
-            client.send(ClientFrame::SyncTranscript {}).await;
-            let outputs = shell_outputs(&client.received());
+        loop {
+            let outputs = shell_outputs(&frames);
             let [status] = &outputs[..] else {
                 panic!("{outputs:?}");
             };
             assert_eq!(command_of(status), &started);
             read.push_str(&status.command().output.text);
+            if read.contains("later") {
+                break;
+            }
             tokio::time::sleep(Duration::from_millis(20)).await;
+            client.send(ClientFrame::SyncTranscript {}).await;
+            frames = client.received();
         }
 
         // The model's look still shows all of it.

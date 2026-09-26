@@ -15,7 +15,7 @@
 use std::time::Duration;
 
 use demi_agent::testing::{client_text, model_of};
-use demi_agent_protocol::{ClientContent, ClientFrame, EditOutcome, EditRequest, ServerFrame};
+use demi_agent_protocol::{ClientFrame, EditOutcome, EditRequest, ServerFrame};
 use demi_core::{Block, SessionPhase, UserContentBlock};
 use demi_provider::testing::MockVendor;
 use serde_json::json;
@@ -43,7 +43,7 @@ async fn edit_request(
     target: &str,
     operation: &str,
     replacement: &str,
-) -> EditRequest<ClientContent> {
+) -> EditRequest {
     socket.send(&ClientFrame::SyncTranscript {}).await;
     let synced = socket.until(|frame| matches!(frame, ServerFrame::TranscriptReset { .. })).await;
     let Some(ServerFrame::TranscriptReset { blocks, version, .. }) = synced.into_iter().last() else {
