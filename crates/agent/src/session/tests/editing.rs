@@ -4,7 +4,7 @@
 //! order of saves, where the cut falls, and what stays accepted when the
 //! replacement's turn fails.
 
-use demi_core::{AgentMessage, AgentMessageEvent, BlockId, Sender};
+use demi_core::BlockId;
 use demi_shell::{PortError, StorageOp};
 
 use super::*;
@@ -26,22 +26,6 @@ fn published(session: &AgentSession) -> (Subscription, Rc<RefCell<Vec<Transcript
         }
     });
     (subscription, patches)
-}
-
-/// A message from another agent of the tree to the root.
-fn agent_message() -> AgentMessage {
-    AgentMessage {
-        id: BlockId::try_from("m1").unwrap(),
-        sender: Sender {
-            id: NodeId::try_from("child").unwrap(),
-            description: "reader".into(),
-            round: 1,
-        },
-        recipient_id: root(),
-        timestamp: Timestamp::UNIX_EPOCH,
-        content: "found it".into(),
-        event: AgentMessageEvent::Message {},
-    }
 }
 
 /// Stops the running action in a task of its own; the task ends once the
@@ -143,7 +127,7 @@ async fn while_an_edit_saves_nothing_of_it_shows_and_the_session_admits_only_the
     assert_eq!(session.retry().err(), Some(AdmissionError::Editing));
     assert_eq!(session.compact().err(), Some(AdmissionError::Editing));
     assert_eq!(
-        session.accept_agent_message(agent_message()).await,
+        session.accept_agent_message(agent_message("m1")).await,
         Err(AgentMessageError::Editing)
     );
     let read = StorageOp::Read { key: "todo".into() };
@@ -405,14 +389,7 @@ async fn an_accepted_edit_stays_accepted_when_its_turn_fails_and_neither_a_repea
         said("recovered"),
     ]);
     let store = MemoryTreeStore::new();
-    let runs = Rc::new(Cell::new(0));
-    let effect = tool("effect", {
-        let runs = runs.clone();
-        move |_| {
-            runs.set(runs.get() + 1);
-            Box::pin(async { Ok(output("permanent result")) })
-        }
-    });
+    let (effect, runs) = counted("effect", "permanent result");
     let session = start(&provider, vec![effect], &store, SessionConfig::default()).await;
     session.send(text("A"), turn("A")).unwrap().await.unwrap();
     let failures = Rc::new(RefCell::new(Vec::new()));

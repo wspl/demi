@@ -29,22 +29,12 @@ use crate::{
     subagents::{checkpoint, child_record},
     support::{
         CommandRun, Fixture, Gate, Model, TestHarness, agent, command_storage, conversation,
-        frames_until, held, is_idle, kinds, open, send, until,
+        frames_until, held, is_idle, kinds, open, send, session_of, until,
     },
 };
 
 fn said(text: &str) -> Turn {
     Turn::Events(vec![event::text(text), event::response(1, 1)])
-}
-
-fn session_of(fixture: &Fixture) -> demi_agent::AgentSession {
-    fixture
-        .server
-        .tree(&conversation())
-        .expect("the tree is live")
-        .root()
-        .session()
-        .clone()
 }
 
 /// The `user` block of the turn `turn`.
