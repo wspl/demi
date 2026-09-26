@@ -72,7 +72,7 @@ fn invocation(operation: &str, conversation: &str) -> Invocation {
 /// A running fixture service and the lease that keeps it, as a job's context
 /// would.
 async fn resident(root: &Path) -> (ServiceRegistry, ServiceLease, Resident) {
-    let services = ServiceRegistry::new(root.join("cache"), root.into(), BTreeMap::new())
+    let services = ServiceRegistry::new(root.join("cache"), None, root.into(), BTreeMap::new())
         .await
         .unwrap();
     let bytes = tokio::fs::read(env!("CARGO_BIN_EXE_demi-native-fixture"))

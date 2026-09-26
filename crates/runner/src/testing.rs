@@ -45,7 +45,7 @@ impl Dispatch {
     /// Installs `manifest` (a manifest body with its `hash`) in `root`; the
     /// runner test binary stands in for the command aliases.
     pub async fn new(root: &Path, manifest: serde_json::Value, pipes: PipeClient) -> Self {
-        let services = ServiceRegistry::new(root.join("artifacts"), root.into(), BTreeMap::new())
+        let services = ServiceRegistry::new(root.join("artifacts"), None, root.into(), BTreeMap::new())
             .await
             .expect("service registry");
         let paths = ContextPaths::new(
@@ -219,7 +219,7 @@ impl Host {
         let state = crate::state::RunnerState::open(root.join("state"))
             .await
             .expect("runner state");
-        let registry = ServiceRegistry::new(root.join("artifacts"), root.into(), env.clone())
+        let registry = ServiceRegistry::new(root.join("artifacts"), None, root.into(), env.clone())
             .await
             .expect("service registry");
         let (log, _layer) = crate::host_log::open(root.join("log")).await.expect("host log");
