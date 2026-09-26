@@ -529,11 +529,11 @@ Each crate implements the provider contract for one vendor family.
   (`LoginTiming`), the conversations' bounds (`ConversationTuning`), the
   Cloud's and the idle clock's times and limits (`CloudTuning`,
   `LifecycleTuning`), the native command packages their commands bind to
-  (`NativeCatalog`, which the executable makes with `publish_native` from
-  `DEMI_NATIVE_CONFIG`) and the user stream declarations. Its `testing`
-  feature adds `Backend::hold_commits`, which holds the commits of the
-  conversations' checkpoints (`CommitHold`) for the scenarios that stop a save
-  at its commit
+  (`NativeCatalog`, which the executable and the scenarios make with
+  `publish_native` from a `DEMI_NATIVE_CONFIG` file) and the user stream
+  declarations. Its `testing` feature adds `Backend::hold_commits`, which
+  holds the commits of the conversations' checkpoints (`CommitHold`) for the
+  scenarios that stop a save at its commit
   ([Message editing](../agent/message-editing.md#durability-and-failure-boundaries)).
   For suites that start the executable, the example program
   `scripted_machines` runs the scripted machine manager of its scenarios
