@@ -300,7 +300,9 @@ next to the wire's types, so that a command program depends on one crate.
   (demand and maintenance leases, reservations and its `GateState` snapshot),
   `ActivityHub`, `SerialGate` and `KeyedSerialGate`.
 - **Public boundary:** the types above. Their semantics are in
-  [Locks](concurrency.md#locks).
+  [Locks](concurrency.md#locks). Its `testing` feature adds
+  `ActivityGate::waiting`, how many entrants wait behind a reservation, so a
+  test waits for an operation to be held instead of for time.
 - **Must not:** know users, conversations, devices or any other domain.
 
 #### `artifact`
@@ -550,7 +552,10 @@ Each crate implements the provider contract for one vendor family.
   declarations. Its `testing` feature adds `Backend::hold_commits`, which
   holds the commits of the conversations' checkpoints (`CommitHold`) for the
   scenarios that stop a save at its commit
-  ([Message editing](../agent/message-editing.md#durability-and-failure-boundaries)).
+  ([Message editing](../agent/message-editing.md#durability-and-failure-boundaries)),
+  and `Backend::file_gate`, a conversation's file gate, whose lease is the
+  conversation's work to the idle rules and whose waiting entrants show an
+  operation a transition holds.
   For suites that start the executable, the example program
   `scripted_machines` runs the scripted machine manager of its scenarios
   ([Browser-contract suite](../delivery/scenarios.md#browser-contract-suite)).

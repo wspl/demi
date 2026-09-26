@@ -16,6 +16,7 @@ use std::time::Duration;
 
 use demi_agent::testing::model_of;
 use demi_backend::{FamilyRegistry, LifecycleTuning};
+use demi_gates::Purpose;
 use demi_provider::testing::MockVendor;
 use demi_web_api::cloud::{CloudResetAnswer, CloudState, CloudStatus, ResetPhase};
 use demi_web_api::devices::DeviceKind;
@@ -118,6 +119,9 @@ async fn the_first_uses_of_two_conversations_boot_one_cloud_which_stops_when_idl
     assert_eq!(status(&backend, &master).await.state, CloudState::Unallocated);
     assert_eq!(harness.manager.calls(), ["reconcile"]);
 
+    // A lease of the first conversation's file gate is its work: the Cloud
+    // stays awake until the test has looked, and idles once it ends.
+    let working = backend.file_gate(&master, FIRST).await.enter(Purpose::Demand).await;
     let (first, second) = tokio::join!(
         a.turn(vec![shell("a1", "echo 0 > note", 20_000), say("a wrote")]),
         b.turn(vec![shell("b1", "echo 1 > note", 20_000), say("b wrote")]),
@@ -139,6 +143,7 @@ async fn the_first_uses_of_two_conversations_boot_one_cloud_which_stops_when_idl
     assert!(listed.entries.iter().any(|entry| entry.name == "note"), "{listed:?}");
 
     // Idle, the Cloud is saved and stops once.
+    drop(working);
     let hibernate = format!("hibernate:{device}");
     eventually("the idle Cloud stops", || async {
         harness.manager.count(&hibernate) == 1 && !harness.manager.running(&device)
@@ -380,12 +385,16 @@ async fn a_reset_holds_a_cloud_conversation_until_it_ends_and_leaves_one_that_on
     let during = local.turn(vec![shell("l1", "echo on-alpha", 20_000), say("done")]).await;
     assert!(during.received[0].contains("on-alpha"), "{}", during.received[0]);
 
-    // The Cloud conversation waits instead of failing, and opens by itself
-    // once the reset ends.
+    // The Cloud conversation waits instead of failing, at its file gate,
+    // which the reset holds, and opens by itself once the reset ends.
+    let mut waiting = backend.file_gate(&master, FIRST).await.waiting();
     {
         let opening = cloud.reconnect(&backend, &master, FIRST, &cloud_model);
         tokio::pin!(opening);
-        assert!(tokio::time::timeout(Duration::from_millis(300), &mut opening).await.is_err());
+        tokio::select! {
+            () = &mut opening => panic!("the open did not wait for the reset"),
+            waits = waiting.wait_for(|count| *count > 0) => assert!(waits.is_ok()),
+        }
         proceed.notify_one();
         opening.await;
     }
@@ -488,6 +497,9 @@ async fn the_clouds_device_log_answers_while_it_runs_and_a_stopped_cloud_says_so
     harness.cloud.sweep = Duration::from_millis(50);
     let (backend, master) = harness.start_set_up().await;
     create(&backend, &master, FIRST).await;
+    // A lease of the conversation's file gate is its work: the Cloud stays
+    // awake while the test reads its log, and idles once it ends.
+    let working = backend.file_gate(&master, FIRST).await.enter(Purpose::Demand).await;
     let listing = format!("/api/conversations/{FIRST}/fs");
     let listed = backend.get(&listing, Some(&master)).await;
     assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
@@ -504,6 +516,7 @@ async fn the_clouds_device_log_answers_while_it_runs_and_a_stopped_cloud_says_so
     };
     eventually("the running Cloud's log says it is online", || async { onlines().await == 1 }).await;
 
+    drop(working);
     until_status(&backend, &master, "the idle Cloud stops", |status| status.state == CloudState::Off).await;
     let stopped = backend.get(&log, Some(&master)).await;
     assert_eq!(stopped.refusal(), (StatusCode::CONFLICT, ErrorCode::DeviceOffline));
@@ -611,12 +624,17 @@ async fn a_reset_holds_a_conversation_on_a_paired_device_whose_provider_runs_on_
     harness.manager.script(|script| script.hold_reset = Some((held.clone(), proceed.clone())));
     reset(&backend, &master, RESET).await;
     held.notified().await;
-    // It waits instead of failing, and opens by itself when the reset ends.
+    // It waits instead of failing, at its file gate, which the reset holds,
+    // and opens by itself when the reset ends.
+    let mut waiting = backend.file_gate(&master, FIRST).await.waiting();
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     {
         let opening = socket.open(&model);
         tokio::pin!(opening);
-        assert!(tokio::time::timeout(Duration::from_millis(300), &mut opening).await.is_err());
+        tokio::select! {
+            _ = &mut opening => panic!("the open did not wait for the reset"),
+            waits = waiting.wait_for(|count| *count > 0) => assert!(waits.is_ok()),
+        }
         proceed.notify_one();
         opening.await;
     }

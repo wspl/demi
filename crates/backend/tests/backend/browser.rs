@@ -9,6 +9,7 @@
 
 use std::time::Duration;
 
+use demi_gates::Purpose;
 use demi_web_api::error::ErrorCode;
 use reqwest::StatusCode;
 use serde_json::{Value, json};
@@ -130,24 +131,13 @@ async fn listing_a_running_clouds_tabs_does_not_keep_it_awake() {
     let device = the_cloud(&harness);
     // Closing a tab starts the browser's service, which the Cloud's runner
     // installs first. The close restarts the window as it is admitted and is
-    // no activity after that, so file reads keep the Cloud up meanwhile.
-    let mut rested = Instant::now();
-    let tab = format!("{}/{ABSENT}", tabs(&id));
-    let closed = {
-        let closing = backend.delete(&tab, &master);
-        tokio::pin!(closing);
-        loop {
-            tokio::select! {
-                closed = &mut closing => break closed,
-                () = tokio::time::sleep(Duration::from_millis(100)) => {
-                    rested = Instant::now();
-                    let read = backend.get(&format!("/api/conversations/{id}/fs"), Some(&master)).await;
-                    assert_eq!(read.status, StatusCode::OK, "{}", String::from_utf8_lossy(&read.body));
-                }
-            }
-        }
-    };
+    // no activity after that, so a lease of the conversation's file gate,
+    // which is its work, keeps the Cloud up meanwhile.
+    let working = backend.file_gate(&master, &id).await.enter(Purpose::Demand).await;
+    let closed = backend.delete(&format!("{}/{ABSENT}", tabs(&id)), &master).await;
     assert_eq!(closed.status, StatusCode::NO_CONTENT, "{}", String::from_utf8_lossy(&closed.body));
+    let rested = Instant::now();
+    drop(working);
     // The page lists the tabs again and again, and the Cloud idles and
     // stops all the same, a window after the last activity. A listing the
     // stop overtakes finds the runner gone.

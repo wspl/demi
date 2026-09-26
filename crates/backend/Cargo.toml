@@ -12,8 +12,9 @@ doctest = false
 
 [features]
 # A hold on the commits of the conversations' checkpoints (`CommitHold`), for
-# the scenarios that stop a save at its commit.
-testing = []
+# the scenarios that stop a save at its commit, and a conversation's file gate
+# with the view of the entrants waiting at it (`Backend::file_gate`).
+testing = ["demi-gates/testing"]
 
 [dependencies]
 demi-agent = { path = "../agent" }

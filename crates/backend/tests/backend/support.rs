@@ -522,6 +522,12 @@ impl TestBackend {
         self.backend.hold_commits()
     }
 
+    /// The file gate of `session`'s user's conversation `conversation`.
+    pub async fn file_gate(&self, session: &Session, conversation: &str) -> demi_gates::ActivityGate {
+        let conversation = demi_web_api::ids::ConversationId::try_from(conversation).unwrap();
+        self.backend.file_gate(&session.user.id, &conversation).await
+    }
+
     /// The `ws://` URL of `path`.
     pub fn ws_url(&self, path: &str) -> String {
         format!("ws://{}{path}", self.backend.local_addr())
