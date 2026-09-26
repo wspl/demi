@@ -7,8 +7,10 @@
 //! backend, the same edit answers its receipt without asking the model again,
 //! and an edit from the old snapshot is refused. While the edit's commit is
 //! held, the page learns nothing of the edit, the model is not asked, and a
-//! reload reads the history before it. No test calls a real model; the
-//! device is a real runner.
+//! reload reads the history before it. The page sees a turn end only once
+//! the save that ends it has committed, so an edit it sends the moment it
+//! sees idle is admitted. No test calls a real model; the device is a real
+//! runner.
 
 use std::time::Duration;
 
@@ -19,7 +21,7 @@ use demi_provider::testing::MockVendor;
 use serde_json::json;
 
 use crate::conversations::{
-    FIRST, Socket, anthropic, answer, create, on_device, settled, tool_result, tool_use, transcript,
+    FIRST, Socket, anthropic, answer, create, on_device, send, tool_result, tool_use, transcript,
 };
 use crate::support::Harness;
 
@@ -64,6 +66,11 @@ async fn edit_request(
     }
 }
 
+/// Whether a frame tells the page that the session is idle.
+fn idle(frame: &ServerFrame) -> bool {
+    matches!(frame, ServerFrame::Phase { phase: SessionPhase::Idle })
+}
+
 /// Whether a frame tells the page of an edit: its result, or a change of the
 /// transcript.
 fn tells_of_an_edit(frame: &ServerFrame) -> bool {
@@ -94,9 +101,6 @@ async fn an_edit_restores_the_todos_keeps_the_files_and_answers_its_receipt_afte
     socket.chat("m2", "B-removed").await;
     vendor.respond(answer(&["answer-C-removed"], 1, 1));
     socket.chat("m3", "C-removed").await;
-    // The phase turns idle before the save that ends the turn; an edit needs
-    // a settled session, which the tree is once that save has committed.
-    settled(&backend, &master, FIRST).await;
 
     let request = edit_request(&mut socket, "B-removed", "edit-1", "B-edited").await;
     let repeated = ClientFrame::EditAndSend { request: request.clone() };
@@ -111,7 +115,7 @@ async fn an_edit_restores_the_todos_keeps_the_files_and_answers_its_receipt_afte
     vendor.respond(answer(&["answer-edited"], 1, 1));
     let accepted = edit(&mut socket, &repeated).await;
     assert!(matches!(accepted, EditOutcome::Accepted { .. }), "{accepted:?}");
-    socket.until(|frame| matches!(frame, ServerFrame::Phase { phase: demi_core::SessionPhase::Idle })).await;
+    socket.until(idle).await;
     // The model reads the history the edit kept and the new message, on a
     // fresh runtime; the removed turns and their tool result are gone.
     let replayed = vendor.requests()[asked].json()["messages"].to_string();
@@ -164,9 +168,9 @@ async fn an_edit_reaches_the_page_and_the_model_only_once_its_transaction_commit
     vendor.respond(answer(&["answer-A-kept"], 1, 1));
     socket.chat("m1", "A-kept").await;
     vendor.respond(answer(&["answer-B-removed"], 1, 1));
+    // The socket saw the turn end, so every save of the turns has committed,
+    // and the next save is the edit's.
     socket.chat("m2", "B-removed").await;
-    // Every save of the turns has committed, so the next save is the edit's.
-    settled(&backend, &master, FIRST).await;
     let history = transcript(&backend, &master, FIRST).await.blocks;
     let request = edit_request(&mut socket, "B-removed", "edit-1", "B-edited").await;
 
@@ -196,8 +200,60 @@ async fn an_edit_reaches_the_page_and_the_model_only_once_its_transaction_commit
         "{answered:?}"
     );
     assert!(answered.iter().any(|frame| matches!(frame, ServerFrame::TranscriptPatch { .. })), "{answered:?}");
-    socket.until(|frame| matches!(frame, ServerFrame::Phase { phase: SessionPhase::Idle })).await;
+    socket.until(idle).await;
     let replayed = vendor.requests()[asked].json()["messages"].to_string();
     assert!(replayed.contains("B-edited") && !replayed.contains("B-removed"), "{replayed}");
+    backend.close().await;
+}
+
+#[tokio::test]
+async fn the_page_sees_a_turn_end_once_its_save_commits_and_an_edit_sent_then_is_admitted() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    let model = model_of(&provider, "claude-opus-4-8");
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open(&model).await;
+    vendor.respond(answer(&["answer-A"], 1, 1));
+    socket.chat("m1", "A-kept").await;
+
+    // The next turn answers, and the save that ends it waits at its commit.
+    let hold = backend.hold_commits();
+    vendor.respond(answer(&["answer-B"], 1, 1));
+    socket.send(&send("m2", "B-removed")).await;
+    tokio::time::timeout(Duration::from_secs(10), hold.until_waiting(1))
+        .await
+        .expect("the turn reaches its save");
+    // Meanwhile the page has not seen the turn end: the reset that answers a
+    // sync follows every frame sent before it, and none of them says idle.
+    socket.send(&ClientFrame::SyncTranscript {}).await;
+    let meanwhile = socket.until(|frame| matches!(frame, ServerFrame::TranscriptReset { .. })).await;
+    assert!(!meanwhile.iter().any(idle), "the page saw the turn end before its save committed: {meanwhile:?}");
+    let Some(ServerFrame::TranscriptReset { blocks, version, .. }) = meanwhile.last() else {
+        unreachable!()
+    };
+    let target_block_id = blocks
+        .iter()
+        .find(|block| matches!(block, Block::User(user) if user.turn_id.as_str() == "m2"))
+        .expect("the message")
+        .id()
+        .clone();
+    let request = EditRequest {
+        operation_id: "edit-1".try_into().unwrap(),
+        target_block_id,
+        version: version.clone(),
+        content: client_text("B-edited"),
+    };
+
+    // Once the save commits, the page sees the turn end, and an edit it sends
+    // at that moment is admitted.
+    hold.release();
+    socket.until(idle).await;
+    vendor.respond(answer(&["answer-edited"], 1, 1));
+    let outcome = edit(&mut socket, &ClientFrame::EditAndSend { request }).await;
+    assert!(matches!(outcome, EditOutcome::Accepted { .. }), "{outcome:?}");
+    socket.until(idle).await;
     backend.close().await;
 }

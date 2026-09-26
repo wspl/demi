@@ -18,7 +18,7 @@ use demi_provider::testing::{MockResponse, MockVendor};
 use reqwest::StatusCode;
 use serde_json::{Value, json};
 
-use crate::conversations::{Socket, anthropic_at, answer, create, kinds, settled, tool_use, transcript};
+use crate::conversations::{Socket, anthropic_at, answer, create, kinds, tool_use, transcript};
 use crate::support::{Harness, Paired, Session, TestBackend};
 
 /// The conversation ids the scenarios create.
@@ -45,10 +45,9 @@ fn directory(device: &Paired, name: &str) -> PathBuf {
 }
 
 /// Moves the conversation to `path` on `device`, as the page's target
-/// switch does, once the tree saved its last turn: a switch refuses running
-/// work.
+/// switch does. A switch refuses running work, so it follows a turn whose
+/// end the socket has seen.
 pub(crate) async fn switch(backend: &TestBackend, master: &Session, id: &str, device: &Paired, path: &Path) {
-    settled(backend, master, id).await;
     let target = json!({ "target": { "kind": "device", "deviceId": device.id(), "path": path.to_str().unwrap() } });
     let moved = backend.patch(&format!("/api/conversations/{id}"), master, target).await;
     assert_eq!(moved.status, StatusCode::OK, "{}", String::from_utf8_lossy(&moved.body));
@@ -339,7 +338,6 @@ async fn a_runner_lost_in_the_middle_of_a_command_ends_it_and_the_returned_runne
 /// Each shell call's command and the files it kept, in the transcript's
 /// order.
 async fn kept_files(backend: &TestBackend, master: &Session, id: &str) -> Vec<(String, Vec<EditedFile>)> {
-    settled(backend, master, id).await;
     transcript(backend, master, id)
         .await
         .blocks

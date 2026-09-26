@@ -1,7 +1,8 @@
 //! The action worker (`runtime.md` § Actions, § A turn): one task per
 //! session runs one action at a time. An action holds the tree's admission
-//! while it runs, records how it ended, saves its checkpoint once the session
-//! is idle again, and then starts the next waiting action.
+//! while it runs, records how it ended, saves its checkpoint, and then starts
+//! the next waiting action; the session shows idle only once that save has
+//! committed and nothing waits.
 
 use std::rc::{Rc, Weak};
 
@@ -100,8 +101,10 @@ async fn run_action(s: &Rc<SessionShared>, started: StartedAction) {
     let outcome = conclude(s, &cancel, body);
     cancel.acknowledge(s.read(|core| core.can_abort_again()));
     s.update(|core| core.end_action());
-    // The save after the phase is idle: a checkpoint that says an action was
-    // running is one the process died in.
+    // The closing save records the session idle, so a checkpoint that says
+    // an action was running is one the process died in; clients see the
+    // phase go idle only once it has committed, when the next action starts
+    // or the session settles.
     let outcome = match (outcome, persist::flush(s).await) {
         (outcome, Ok(())) => outcome,
         (Outcome::Completed, Err(error)) => {

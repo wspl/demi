@@ -754,7 +754,6 @@ async fn cloud_projects_share_the_users_one_machine_and_a_deleted_project_keeps_
     // its files stay.
     let in_use = backend.delete(&format!("/api/workspaces/{}", first.id), &master).await;
     assert_eq!(in_use.refusal(), (StatusCode::CONFLICT, ErrorCode::WorkspaceInUse));
-    crate::conversations::settled(&backend, &master, FIRST).await;
     let away = backend
         .patch(&format!("/api/conversations/{FIRST}"), &master, json!({ "target": { "kind": "cloud" } }))
         .await;
