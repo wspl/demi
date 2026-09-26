@@ -7,6 +7,10 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+
+# vendor/ holds the vendored Rust crates until Gate C; without -mod=mod Go
+# reads it as a Go vendor tree and refuses to build.
+export GOFLAGS="${GOFLAGS:-} -mod=mod"
 base="${1:-go/main}"
 
 # The generated contract bindings exist once the generator is in place (F4b).
