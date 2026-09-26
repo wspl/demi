@@ -248,6 +248,10 @@ them under the selected Host's `~/.demi/attachments/<conversation>/`, outside
 the workspace. The agent receives an attachment record, with the same snippet
 for a text file, and any native media block it can consume. A missing or
 inaccessible upload becomes an explicit attachment-unavailable text block.
+An edit's kept media are blob references into the caller's namespace; the
+socket loads their bytes the way a session load does before the agent
+receives the content
+([Files the edit keeps](../agent/message-editing.md#files-the-edit-keeps)).
 
 A remote-file reference retains its device and absolute path instead of
 copying bytes. The backend checks ownership and connectivity before adding
