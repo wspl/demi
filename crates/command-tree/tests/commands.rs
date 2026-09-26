@@ -342,16 +342,14 @@ fn groups_name_distinct_subcommands() {
     assert!(group(json!([])).is_err());
 }
 
-fn input(schema: Value) -> Result<demi_command_tree::InputSpec, String> {
+fn input(schema: Value) -> Result<(), String> {
     let schema: demi_command_tree::Schema = serde_json::from_value(schema).unwrap();
-    demi_command_tree::InputSpec::from_schema(&schema).map_err(|error| error.to_string())
+    demi_command_tree::check_input_subset(&schema).map_err(|error| error.to_string())
 }
 
 #[test]
 fn the_input_subset_takes_scalars_enums_and_arrays_and_refuses_the_rest() {
-    use demi_command_tree::FieldKind;
-
-    let spec = input(json!({"title": "Args", "type": "object", "additionalProperties": false,
+    input(json!({"title": "Args", "type": "object", "additionalProperties": false,
         "required": ["path"], "properties": {
             "path": {"type": "string", "minLength": 1, "description": "A file"},
             "count": {"type": "integer", "format": "uint32", "minimum": 0},
@@ -359,18 +357,6 @@ fn the_input_subset_takes_scalars_enums_and_arrays_and_refuses_the_rest() {
             "tags": {"type": "array", "items": {"type": "string", "pattern": "^[a-z]+$"}, "maxItems": 3},
             "force": {"type": "boolean"}}}))
     .unwrap();
-    let fields: Vec<_> = spec
-        .fields()
-        .iter()
-        .map(|field| (field.name.as_str(), field.kind.clone(), field.required))
-        .collect();
-    assert_eq!(fields, [
-        ("path", FieldKind::String, true),
-        ("count", FieldKind::Integer, false),
-        ("mode", FieldKind::Enum(vec!["fast".into(), "slow".into()]), false),
-        ("tags", FieldKind::Array(Box::new(FieldKind::String)), false),
-        ("force", FieldKind::Boolean, false),
-    ]);
 
     let refused = |field: Value| {
         input(json!({"type": "object", "additionalProperties": false,
@@ -431,6 +417,5 @@ fn declared_argument_types_generate_schemas_inside_the_subset() {
     assert_eq!(value["required"], json!(["path", "tags"]));
     assert_eq!(value["properties"]["count"]["maximum"], json!(9));
     assert_eq!(value["properties"]["mode"]["enum"], json!(["fast", "slow"]));
-    let spec = input(value).unwrap();
-    assert_eq!(spec.fields().len(), 6);
+    input(value).unwrap();
 }

@@ -13,34 +13,6 @@ use serde_json::{Map, Value};
 
 use crate::{DeclarationError, Schema, invalid};
 
-/// A command's input as a table of fields, in declaration order. A schema
-/// outside the subset has none: [`InputSpec::from_schema`] refuses it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InputSpec {
-    fields: Vec<InputField>,
-}
-
-/// One field of a command's input.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InputField {
-    pub name: String,
-    pub kind: FieldKind,
-    pub required: bool,
-}
-
-/// What values a field takes.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FieldKind {
-    String,
-    Number,
-    Integer,
-    Boolean,
-    /// One of these strings.
-    Enum(Vec<String>),
-    /// Values of one scalar kind, repeated.
-    Array(Box<FieldKind>),
-}
-
 /// What an input object may say besides its fields.
 const OBJECT_KEYWORDS: &[&str] = &[
     "type",
@@ -69,70 +41,58 @@ const FIELD_KEYWORDS: &[&str] = &[
     "maxItems",
 ];
 
-impl InputSpec {
-    /// Checks that `schema` is inside the input subset: an object that allows
-    /// no other properties, whose fields are strings, numbers, integers,
-    /// booleans, string enums or arrays of one of those, each with only the
-    /// bounds the subset names. A refusal names the field and why.
-    pub fn from_schema(schema: &Schema) -> Result<Self, DeclarationError> {
-        let object = schema.value();
-        for keyword in object.keys() {
-            if !OBJECT_KEYWORDS.contains(&keyword.as_str()) {
-                return Err(invalid(format!(
-                    "command input uses \"{keyword}\", outside the command input subset"
-                )));
+/// Checks that `schema` is inside the command input subset: an object that
+/// allows no other properties, whose fields are strings, numbers, integers,
+/// booleans, string enums or arrays of one of those, each with only the
+/// bounds the subset names. A refusal names the field and why. Registration
+/// runs it; argv parsing and help read each field's schema itself.
+pub fn check_input_subset(schema: &Schema) -> Result<(), DeclarationError> {
+    let object = schema.value();
+    for keyword in object.keys() {
+        if !OBJECT_KEYWORDS.contains(&keyword.as_str()) {
+            return Err(invalid(format!(
+                "command input uses \"{keyword}\", outside the command input subset"
+            )));
+        }
+    }
+    if object.get("type").and_then(Value::as_str) != Some("object") {
+        return Err(invalid("command input must describe an object".into()));
+    }
+    if object.get("additionalProperties") != Some(&Value::Bool(false)) {
+        return Err(invalid(
+            "command input must refuse unknown fields (additionalProperties: false)".into(),
+        ));
+    }
+    let empty = Map::new();
+    let properties = match object.get("properties") {
+        None => &empty,
+        Some(Value::Object(properties)) => properties,
+        Some(_) => return Err(invalid("command input properties must be an object".into())),
+    };
+    match object.get("required") {
+        None => {}
+        Some(Value::Array(names)) => {
+            for name in names {
+                if !name
+                    .as_str()
+                    .is_some_and(|name| properties.contains_key(name))
+                {
+                    return Err(invalid(format!(
+                        "command input requires an undeclared field {name}"
+                    )));
+                }
             }
         }
-        if object.get("type").and_then(Value::as_str) != Some("object") {
-            return Err(invalid("command input must describe an object".into()));
-        }
-        if object.get("additionalProperties") != Some(&Value::Bool(false)) {
-            return Err(invalid(
-                "command input must refuse unknown fields (additionalProperties: false)".into(),
-            ));
-        }
-        let empty = Map::new();
-        let properties = match object.get("properties") {
-            None => &empty,
-            Some(Value::Object(properties)) => properties,
-            Some(_) => return Err(invalid("command input properties must be an object".into())),
-        };
-        let required: HashSet<&str> = match object.get("required") {
-            None => HashSet::new(),
-            Some(Value::Array(names)) => names
-                .iter()
-                .map(|name| {
-                    name.as_str()
-                        .filter(|name| properties.contains_key(*name))
-                        .ok_or_else(|| {
-                            invalid(format!("command input requires an undeclared field {name}"))
-                        })
-                })
-                .collect::<Result<_, _>>()?,
-            Some(_) => return Err(invalid("command input required must be a list".into())),
-        };
-        let fields = properties
-            .iter()
-            .map(|(name, schema)| {
-                let kind = field_kind(schema)
-                    .map_err(|reason| invalid(format!("input \"{name}\": {reason}")))?;
-                Ok(InputField {
-                    name: name.clone(),
-                    kind,
-                    required: required.contains(name.as_str()),
-                })
-            })
-            .collect::<Result<_, DeclarationError>>()?;
-        Ok(Self { fields })
+        Some(_) => return Err(invalid("command input required must be a list".into())),
     }
-
-    pub fn fields(&self) -> &[InputField] {
-        &self.fields
+    for (name, schema) in properties {
+        check_field(schema).map_err(|reason| invalid(format!("input \"{name}\": {reason}")))?;
     }
+    Ok(())
 }
 
-/// The kind of a field's schema, or why the subset refuses it.
-fn field_kind(schema: &Value) -> Result<FieldKind, String> {
+/// Why the subset refuses a field's schema, if it does.
+fn check_field(schema: &Value) -> Result<(), String> {
     let Value::Object(schema) = schema else {
         return Err("must be a schema object".into());
     };
@@ -175,22 +135,16 @@ fn field_kind(schema: &Value) -> Result<FieldKind, String> {
     }
     match kind {
         "string" => match schema.get("enum") {
-            None => Ok(FieldKind::String),
-            Some(Value::Array(values)) => values
-                .iter()
-                .map(|value| match value {
-                    Value::String(value) => Ok(value.clone()),
-                    Value::Null => Err("allows null; an optional field is absent instead".into()),
-                    _ => Err("is an enum of values that are not all strings".to_owned()),
-                })
-                .collect::<Result<_, _>>()
-                .map(FieldKind::Enum),
+            None => Ok(()),
+            Some(Value::Array(values)) => values.iter().try_for_each(|value| match value {
+                Value::String(_) => Ok(()),
+                Value::Null => Err("allows null; an optional field is absent instead".into()),
+                _ => Err("is an enum of values that are not all strings".into()),
+            }),
             Some(_) => Err("has an enum that is not a list".into()),
         },
         _ if schema.contains_key("enum") => Err("is an enum of values that are not strings".into()),
-        "number" => Ok(FieldKind::Number),
-        "integer" => Ok(FieldKind::Integer),
-        "boolean" => Ok(FieldKind::Boolean),
+        "number" | "integer" | "boolean" => Ok(()),
         "array" => {
             let items = schema
                 .get("items")
@@ -198,8 +152,7 @@ fn field_kind(schema: &Value) -> Result<FieldKind, String> {
             if items.get("type").and_then(Value::as_str) == Some("array") {
                 return Err("is an array of arrays, which has no command-line form".into());
             }
-            let element = field_kind(items).map_err(|reason| format!("its items: {reason}"))?;
-            Ok(FieldKind::Array(Box::new(element)))
+            check_field(items).map_err(|reason| format!("its items: {reason}"))
         }
         "object" => Err("is a nested object, which has no command-line form".into()),
         other => Err(format!("has type \"{other}\", outside the command input subset")),

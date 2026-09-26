@@ -13,7 +13,7 @@ mod input;
 mod parse;
 
 pub use help::HELP_DEFAULTS;
-pub use input::{FieldKind, InputField, InputSpec, command_schema_settings};
+pub use input::{check_input_subset, command_schema_settings};
 pub use parse::{Parsed, Selected, UsageError};
 
 use std::{
