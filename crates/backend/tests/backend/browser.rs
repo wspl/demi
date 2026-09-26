@@ -113,8 +113,7 @@ async fn a_stopped_cloud_is_not_woken_to_list_close_or_move_its_tabs() {
 async fn listing_a_running_clouds_tabs_does_not_keep_it_awake() {
     let mut harness = Harness::new().with_builtin_package();
     // Longer than the time between two listings, so that listings counted
-    // as activity would keep the Cloud up: each one starts the browser's
-    // service again, about three seconds in a debug build.
+    // as activity would keep the Cloud up.
     harness.lifecycle = idle_after(Duration::from_secs(4));
     harness.cloud.sweep = Duration::from_millis(50);
     let (backend, master) = harness.start_set_up().await;

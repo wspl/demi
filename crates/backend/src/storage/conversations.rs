@@ -34,7 +34,9 @@ struct Stores {
     /// Opening a database takes its file's turn, so two first calls cannot
     /// both create it and give it its schema.
     opening: KeyedSerialGate<DatabaseFile>,
-    /// The hold a test put on the checkpoints' commits.
+    /// The hold a test put on the checkpoints' commits. A `std` mutex: the
+    /// test's thread sets it and the shard threads read it as a save
+    /// starts, without awaiting.
     #[cfg(feature = "testing")]
     hold: Mutex<Option<Arc<Hold>>>,
 }
@@ -135,15 +137,14 @@ impl ConversationStores {
     /// released.
     #[cfg(feature = "testing")]
     pub(crate) fn hold_commits(&self) -> CommitHold {
-        let gate = Arc::new(tokio::sync::RwLock::new(()));
-        let closed = gate.clone().try_write_owned().expect("a new gate is open");
         let (waiting, watched) = tokio::sync::watch::channel(0);
-        let hold = Arc::new(Hold { gate, waiting });
-        *self.0.hold.lock().unwrap_or_else(PoisonError::into_inner) = Some(hold);
-        CommitHold {
-            closed,
-            waiting: watched,
-        }
+        let hold = Arc::new(Hold {
+            released: Mutex::new(false),
+            opened: std::sync::Condvar::new(),
+            waiting,
+        });
+        *self.0.hold.lock().unwrap_or_else(PoisonError::into_inner) = Some(hold.clone());
+        CommitHold { hold, waiting: watched }
     }
 }
 
@@ -237,9 +238,7 @@ impl CommitPoint {
 /// that dies inside the save leaves it.
 #[cfg(feature = "testing")]
 pub struct CommitHold {
-    /// Dropping it opens the gate, so a hold a failed test leaves behind
-    /// holds nothing.
-    closed: tokio::sync::OwnedRwLockWriteGuard<()>,
+    hold: Arc<Hold>,
     waiting: tokio::sync::watch::Receiver<usize>,
 }
 
@@ -256,14 +255,28 @@ impl CommitHold {
 
     /// Lets the waiting commits and every later one through.
     pub fn release(self) {
-        drop(self.closed);
+        drop(self);
     }
 }
 
-/// The gate a held commit waits at, and how many wait.
+/// Dropping a hold releases it, so one that a failed test leaves behind
+/// holds nothing.
+#[cfg(feature = "testing")]
+impl Drop for CommitHold {
+    fn drop(&mut self) {
+        *self.hold.released.lock().unwrap_or_else(PoisonError::into_inner) = true;
+        self.hold.opened.notify_all();
+    }
+}
+
+/// Whether a hold is released, and how many commits wait at it.
 #[cfg(feature = "testing")]
 struct Hold {
-    gate: Arc<tokio::sync::RwLock<()>>,
+    /// A `std` mutex with a condition variable: a commit waits on its
+    /// writer's thread, which has no runtime to await on, and the lock is
+    /// held only to read or set the flag.
+    released: Mutex<bool>,
+    opened: std::sync::Condvar,
     waiting: tokio::sync::watch::Sender<usize>,
 }
 
@@ -272,7 +285,12 @@ impl Hold {
     /// Waits, on the writer's thread, until the hold is released.
     fn pass(&self) {
         self.waiting.send_modify(|waiting| *waiting += 1);
-        drop(self.gate.blocking_read());
+        let released = self.released.lock().unwrap_or_else(PoisonError::into_inner);
+        drop(
+            self.opened
+                .wait_while(released, |released| !*released)
+                .unwrap_or_else(PoisonError::into_inner),
+        );
         self.waiting.send_modify(|waiting| *waiting -= 1);
     }
 }
