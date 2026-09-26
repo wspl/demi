@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed, inject, provide } from 'vue'
+import { inject, provide } from 'vue'
 import { X } from '@lucide/vue'
 import IconButton from './IconButton.vue'
 import ScrollArea from './ScrollArea.vue'
 import { onKeyStroke } from '@vueuse/core'
 import { createOverlayFamily, overlayFamilyKey } from '../overlay/overlayFamily'
 import type { OverlayStore } from '../overlay/overlayStore'
-import { overlayContainerKey, overlayInlineKey } from '../overlay/overlayContainer'
+import { overlayInlineKey, useOverlayTarget } from '../overlay/overlayContainer'
 import { dialogNestingKey } from '../overlay/dialogNesting'
 import { useOverlay } from '../composables/useOverlay'
 
@@ -40,8 +40,7 @@ const emit = defineEmits<{
 }>()
 
 // A dialog confined to a host container never blocks the page, so it is not exclusive.
-const container = inject(overlayContainerKey, null)
-const teleportTarget = computed(() => container?.value ?? 'body')
+const { container, to: teleportTarget, ready } = useOverlayTarget()
 // Inline: the panel sits in flow at its own size, with no scrim, for a catalog specimen.
 const inline = inject(overlayInlineKey, false)
 const family = createOverlayFamily()
@@ -69,7 +68,7 @@ onKeyStroke('Escape', (event) => {
 </script>
 
 <template>
-  <Teleport :to="teleportTarget" :disabled="inline">
+  <Teleport v-if="ready" :to="teleportTarget" :disabled="inline">
     <!-- One transition for scrim and panel: a nested one never gets to leave, since the
          outer v-if unmounts the subtree. The panel's scale rides on the same stage classes. -->
     <Transition name="dialog" appear>
