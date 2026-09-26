@@ -22,6 +22,44 @@ use crate::commands::{contexts::ExecutionContext, dispatch::Dispatcher};
 #[error("shell job cancelled")]
 pub struct Cancelled;
 
+/// What a test sees of a job's work, so that it can cancel the job at a
+/// known point: how many of the job's units wait inside an interruptible
+/// read, write or sleep, and how often the job has checked for cancellation,
+/// which a loop does at every step.
+#[cfg(feature = "test-fixtures")]
+#[derive(Default)]
+pub struct Activity {
+    waiting: std::sync::atomic::AtomicUsize,
+    checks: std::sync::atomic::AtomicUsize,
+}
+
+#[cfg(feature = "test-fixtures")]
+impl Activity {
+    pub fn waiting(&self) -> usize {
+        self.waiting.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    pub fn checks(&self) -> usize {
+        self.checks.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Counts a unit as waiting until the guard drops.
+    fn wait(&self) -> Waiting<'_> {
+        self.waiting.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Waiting(self)
+    }
+}
+
+#[cfg(feature = "test-fixtures")]
+struct Waiting<'a>(&'a Activity);
+
+#[cfg(feature = "test-fixtures")]
+impl Drop for Waiting<'_> {
+    fn drop(&mut self) {
+        self.0.waiting.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 /// A pipe that becomes readable when a token is cancelled: a task closes its
 /// write end then. It lives as long as the scope that made it.
 #[cfg(unix)]
@@ -72,6 +110,8 @@ pub struct Scope {
     /// mutex: the synchronous hooks of the job's interpreter and utility
     /// threads share it for short sections that never await.
     files: Arc<Mutex<HashMap<FileIdentity, PathBuf>>>,
+    #[cfg(feature = "test-fixtures")]
+    activity: Arc<Activity>,
 }
 
 impl Scope {
@@ -84,10 +124,22 @@ impl Scope {
             files: Arc::new(Mutex::new(HashMap::new())),
             #[cfg(unix)]
             interrupt: Arc::new(Mutex::new(None)),
+            #[cfg(feature = "test-fixtures")]
+            activity: Arc::default(),
         }
     }
 
+    /// What the job's units are doing, for a test.
+    #[cfg(feature = "test-fixtures")]
+    pub fn activity(&self) -> &Activity {
+        &self.activity
+    }
+
     pub fn check(&self) -> io::Result<()> {
+        #[cfg(feature = "test-fixtures")]
+        self.activity
+            .checks
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         if self.cancellation.is_cancelled() {
             // Read/Write helpers retry Interrupted; cancellation must escape them.
             Err(io::Error::other(Cancelled))
@@ -144,6 +196,8 @@ impl Scope {
         if buffer.is_empty() {
             return Ok(0);
         }
+        #[cfg(feature = "test-fixtures")]
+        let _waiting = self.activity.wait();
         self.ready(file, false)?;
         #[cfg(windows)]
         let _operation = self.interruptible_io()?;
@@ -158,6 +212,8 @@ impl Scope {
         if buffer.is_empty() {
             return Ok(0);
         }
+        #[cfg(feature = "test-fixtures")]
+        let _waiting = self.activity.wait();
         self.ready(file, true)?;
         // Bound pipe writes so cancellation remains observable under backpressure.
         #[cfg(windows)]
@@ -328,6 +384,8 @@ impl Scope {
     #[cfg(unix)]
     pub fn sleep(&self, duration: Duration) -> io::Result<()> {
         use rustix::event::{PollFd, PollFlags, Timespec};
+        #[cfg(feature = "test-fixtures")]
+        let _waiting = self.activity.wait();
         self.check()?;
         let interrupt = self.interrupt()?;
         let deadline = std::time::Instant::now() + duration;
@@ -348,6 +406,8 @@ impl Scope {
 
     #[cfg(windows)]
     pub fn sleep(&self, duration: Duration) -> io::Result<()> {
+        #[cfg(feature = "test-fixtures")]
+        let _waiting = self.activity.wait();
         let started = std::time::Instant::now();
         loop {
             self.check()?;
