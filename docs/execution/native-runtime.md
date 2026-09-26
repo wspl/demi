@@ -288,7 +288,16 @@ anything holds a lease on it:
 - an open [user stream](#user-streams) running in it;
 - a start in progress, for a call waiting until the service is ready;
 - the manifest installed on the connection, so consecutive jobs reuse the
-  service instead of starting it again.
+  service instead of starting it again;
+- the package release that the connection's user streams bound last, one per
+  package, so consecutive user calls reuse the service as consecutive jobs do.
+  It lasts until the connection ends; a stream that binds another release of
+  the package moves the lease to that release.
+
+For example, the page lists the conversation browser's tabs with a one-shot
+`browser.tabs` call each time it is shown again. The first listing on a
+connection starts the `demi.builtin` service; the next ones find it running,
+whether or not a job has run.
 
 When the last lease ends, the registry asks the service for its
 [conversation status](#conversation-scoped-state). A service that still holds a
@@ -416,7 +425,9 @@ for a [service stream](runner.md#service-streams). The runner invokes the
 operation with `POST /v1/invoke`, the contract every command uses, in the
 resident service that holds the conversation's state: the invocation uses the
 same package binding as the conversation's jobs, so it reaches the same
-service, and the open stream holds a lease on that service. Its
+service, and the open stream holds a lease on that service. The connection
+keeps the service for its next streams
+([Keep a service resident](#keep-a-service-resident)). Its
 [command context](#command-context) names the conversation and a `user`
 caller, with the user's locale. Its `cwd` is the conversation's directory and
 its environment is empty.
