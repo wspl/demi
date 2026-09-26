@@ -190,11 +190,7 @@ where
                             // A peer may close after receiving shutdown/GOAWAY while
                             // h2 still has its final control frames queued. Calls are
                             // cancelled and joined below; no completion is fabricated.
-                            if draining && error.get_io().is_some_and(|io| matches!(
-                                io.kind(), std::io::ErrorKind::BrokenPipe
-                                    | std::io::ErrorKind::ConnectionReset
-                                    | std::io::ErrorKind::UnexpectedEof
-                            )) {
+                            if draining && crate::stream::peer_closed(&error) {
                                 break Ok(());
                             }
                             break Err(error.into());
