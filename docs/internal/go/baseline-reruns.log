@@ -1,0 +1,89 @@
+=== packages/agent/src/__tests__/subagent.test.ts
+(fail) spawn returns creation while a child delivers its result separately [20304.40ms]
+(fail) a sibling shows and messages another sibling through the directory [1297.11ms]
+(fail) spawn succeeds while the child runs; cancelling the invoking shell does not abort the child [5264.59ms]
+(fail) start request ids survive reopening and deduplicate spawn and each resumed round [2485.18ms]
+ 34 pass
+ 4 fail
+=== packages/agent/src/__tests__/tools.test.ts
+(fail) AgentServer keeps the custom preview policy across model changes and live session takeover [1328.92ms]
+ 17 pass
+ 1 fail
+=== packages/backend/src/__tests__/claude-chain.e2e.test.ts
+(fail) claude-code on a runner: vault token in the CLI env, native wire to a mock upstream [1534.70ms]
+ 0 pass
+ 1 fail
+=== packages/backend/src/__tests__/host-shell.test.ts
+(fail) host shell --host: the job runs on the named host with the caller's pipes attached both ways, nothing bulk crosses the sockets; the directory carries [5989.50ms]
+ 1 pass
+ 1 fail
+=== packages/backend/src/__tests__/provider-accounts.test.ts
+ 2 pass
+ 0 fail
+=== packages/backend/src/__tests__/request-bodies.test.ts
+(fail) a JSON body over its cap, or an attachment over its own, is refused before it is read [1054.94ms]
+ 0 pass
+ 1 fail
+=== packages/backend/src/__tests__/scenarios/edit-tracking.test.ts
+(fail) retained edits are call history on runner:paired [11559.08ms]
+(fail) retained edits are call history on cloud [10813.56ms]
+ 0 pass
+ 2 fail
+=== packages/backend/src/__tests__/scenarios/expose.test.ts
+(fail) expose acceptance > 3: a WebSocket echo carries text and binary and the close codes both ways [31.81ms]
+(fail) expose acceptance > 8: the 65th concurrent connection answers 503 and a closed one admits again [567.58ms]
+ 9 pass
+ 2 fail
+=== packages/backend/src/__tests__/scenarios/s1-files.test.ts
+(fail) S1 file workflow on cloud > create, read, edit, list [10362.13ms]
+(fail) S1 file workflow on runner:alpha > create, read, edit, list [10647.14ms]
+(fail) (unnamed) [53.51ms]
+ 0 pass
+ 3 fail
+=== packages/backend/src/__tests__/scenarios/s3-long-commands.test.ts
+(fail) S3 long commands on cloud > stdin fed with shell_write reaches the command [737.27ms]
+(fail) S3 long commands on runner:alpha > stdin fed with shell_write reaches the command [922.67ms]
+ 5 pass
+ 2 fail
+=== packages/backend/src/__tests__/scenarios/s6-switch.test.ts
+(fail) cloud → runner → cloud, files staying with their target [10566.20ms]
+ 0 pass
+ 1 fail
+=== packages/backend/src/__tests__/working-tree.test.ts
+(fail) archiving a conversation ends its open transfers instead of waiting for them [776.17ms]
+(fail) an upload streams into place whole, asks before it writes over a file, and never over a directory [903.50ms]
+ 3 pass
+ 2 fail
+=== packages/coding-agent/src/__tests__/coding-marathon.test.ts
+(fail) coding agent completes an demi/todo workflow through shell session tools [5998.69ms]
+(fail) coding agent preserves workflow state across multiple user messages [5091.02ms]
+(fail) coding agent iterates from a failing check to a passing fix [5047.48ms]
+ 3 pass
+ 3 fail
+=== packages/coding-agent/src/__tests__/demi-command.test.ts
+(fail) demi file read returns a text file as text [11084.95ms]
+(fail) file bodies use quoted heredocs and body options fail before changing files [10326.23ms]
+(fail) demi file read emits raw bytes; binary files surface as binaryStdout at the boundary [10314.42ms]
+(fail) demi --help documents byte-stream reads, and any word stays usable as a file name [10800.89ms]
+(fail) demi file create writes a new file from heredoc content [10055.07ms]
+(fail) demi allows paths outside default cwd when the namespace allows them [10040.01ms]
+(fail) demi file patch can modify paths outside default cwd when Host.fs allows them [10201.29ms]
+(fail) demi file edit replaces exact text and fails on ambiguous matches [10263.58ms]
+(fail) demi file edit uses context only when it disambiguates to one nearest match [10058.62ms]
+(fail) demi file patch deletes files with a /dev/null target [10300.69ms]
+(fail) demi file patch validates all files before writing any changes [10055.39ms]
+ 4 pass
+ 11 fail
+=== packages/host-remote/src/__tests__/runner/conformance.test.ts
+(fail) the Rust runner passes the Host conformance suite over its actual wire [230.64ms]
+ 0 pass
+ 1 fail
+=== packages/host-remote/src/__tests__/runner/net.test.ts
+(fail) net streams: 1 MiB echoes byte-equal through both pipes, input EOF half-closes, refusals carry the code, connection loss closes the socket [15121.89ms]
+ 1 pass
+ 1 fail
+=== packages/host-remote/src/__tests__/runner/service-streams.test.ts
+(fail) the page going away cancels the invocation, and the runner reports both pipes [2065.32ms]
+ 3 pass
+ 1 fail
+done

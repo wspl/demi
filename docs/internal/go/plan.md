@@ -167,8 +167,27 @@ means every test that passes in the baseline.
 
 **Gate 0, baseline** (at `6e043eb1`, `bun run test`, 13 min 18 s including the
 Rust build): 1560 tests in 273 files; 1499 pass, 19 skip, 42 fail in 17 files.
-The failures are rerun one file at a time to separate load and environment
-failures from real ones; the result is recorded here and in the ledger.
+Rerun one file at a time with a 20 s timeout, 37 failures in 16 files
+reproduce; only `provider-accounts.test.ts` passes, so load explains almost
+none of them. Clusters:
+
+- Native `demi` commands through the runner hang for about 10 s
+  (`demi-command.test.ts` 11, `coding-marathon.test.ts` 3, scenarios `s1-files`,
+  `s6-switch`, `edit-tracking`, `claude-chain.e2e`). Example: `demi file create
+  note.txt <<'EOF' …` is still `running` after 10 s.
+- Standard input and stream plumbing: `s3-long-commands` (stdin through
+  `shell_write`), `host-shell` (`--host` pipes), `net.test.ts` (1 MiB echo),
+  `service-streams.test.ts` (cancel on page loss), `working-tree.test.ts`
+  (uploads, transfers on archive).
+- Others: the runner's Host conformance suite, `expose` (WebSocket echo, 65th
+  connection), `request-bodies` (body caps), `agent` `tools.test.ts` and
+  `subagent.test.ts`.
+
+The product was used on macOS; on Linux here these behaviors fail. F5 triages
+each one: a cause outside the product (missing credential, network, tool) is
+excluded and recorded; a product failure on Linux becomes a required behavior
+of the WP that owns it, so the Go line must pass it. "100%" in the gates means
+the baseline pass set plus these required behaviors.
 
 **Gate A, the Go runner replaces the old runner** (old TS backend, old Rust
 native packages):
@@ -314,7 +333,7 @@ is not used), because it starts cold and is deleted afterwards.
 | WP | Slot | Agent | State | Notes |
 |---|---|---|---|---|
 | F1 | — | orchestrator | in progress | `go/main` pushed at `6e043eb1` |
-| F5 | — | orchestrator | in progress | baseline run done; reruns of the 17 failing files running |
+| F5 | — | orchestrator | in progress | baseline and serial reruns done (37 reproducible failures); triage next |
 
 ## Working method notes
 
