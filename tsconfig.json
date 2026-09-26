@@ -15,10 +15,9 @@
     "verbatimModuleSyntax": true,
     "noEmit": true,
     "paths": {
-      "@demicodes/runner-protocol/release": ["./packages/runner-protocol/src/release.ts"],
       "@demicodes/*": ["./packages/*/src/index.ts"]
     }
   },
-  "include": ["packages/*/src", "scripts/typecheck-vue.ts", "scripts/__tests__", "scripts/native/**/*.ts", "crates/demi-commands/src/browser/capture"],
+  "include": ["packages/*/src", "scripts/typecheck-vue.ts", "scripts/__tests__", "crates/demi-commands/src/browser/capture"],
   "exclude": ["packages/web-ui", "packages/web-gallery", "packages/web"]
 }

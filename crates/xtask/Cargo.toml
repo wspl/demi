@@ -13,16 +13,21 @@ demi-builtin-protocol = { path = "../builtin-protocol" }
 demi-claude-protocol = { path = "../claude-protocol" }
 demi-command-service = { path = "../command-service" }
 demi-core = { path = "../core" }
+demi-machines-protocol = { path = "../machines-protocol" }
 demi-runner-protocol = { path = "../runner-protocol" }
 demi-web-api = { path = "../web-api" }
 clap = { version = "4", features = ["derive", "env"] }
+flate2 = "1"
+garde.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+tar = { version = "0.4", default-features = false }
 thiserror.workspace = true
 tempfile = "3"
 tokio.workspace = true
 tokio-util.workspace = true
+zstd = { version = "0.13", default-features = false }
 
 [dev-dependencies]
 demi-artifact = { path = "../artifact", features = ["testing"] }

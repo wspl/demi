@@ -12,9 +12,6 @@ use tokio_util::sync::CancellationToken;
 
 use super::{BrowserError, Result};
 
-/// Where the Cloud image preinstalls the release.
-#[cfg(unix)]
-const IMAGE_ROOT: &str = "/opt/demi/browsers";
 /// Where the service installs it, under the user's home.
 const HOME_ROOT: &str = ".demi/browsers";
 
@@ -73,7 +70,7 @@ async fn install(cancel: &CancellationToken) -> Result<PathBuf> {
     };
     #[cfg(unix)]
     {
-        let preinstalled = PathBuf::from(IMAGE_ROOT).join(&archive.digest.sha256);
+        let preinstalled = PathBuf::from(demi_builtin_protocol::release::IMAGE_BROWSERS).join(&archive.digest.sha256);
         let found = demi_artifact::installed(&preinstalled, &archive, cancel)
             .await
             .map_err(|error| failed(&version, error))?;
@@ -98,7 +95,7 @@ async fn install(cancel: &CancellationToken) -> Result<PathBuf> {
 pub(super) fn roots() -> Vec<PathBuf> {
     let mut roots = Vec::new();
     #[cfg(unix)]
-    roots.push(PathBuf::from(IMAGE_ROOT));
+    roots.push(PathBuf::from(demi_builtin_protocol::release::IMAGE_BROWSERS));
     if let Some(home) = std::env::home_dir().filter(|home| home.is_absolute()) {
         roots.push(home.join(HOME_ROOT));
     }
