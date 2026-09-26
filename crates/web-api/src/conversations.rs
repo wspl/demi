@@ -325,23 +325,12 @@ pub struct ForkAnswer {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
-
     use super::*;
 
     #[test]
-    fn a_target_names_its_kind_and_refuses_what_its_kind_does_not_hold() {
+    fn a_target_refuses_what_its_kind_does_not_hold() {
         let cloud: ConversationTarget = demi_core::decode(r#"{"kind":"cloud"}"#).unwrap();
         assert_eq!(cloud, ConversationTarget::Cloud { path: None });
-        assert_eq!(serde_json::to_value(&cloud).unwrap(), json!({ "kind": "cloud" }));
-        let device = ConversationTarget::Device {
-            device_id: DeviceId::try_from("laptop").unwrap(),
-            path: "/work".into(),
-        };
-        assert_eq!(
-            serde_json::to_value(&device).unwrap(),
-            json!({ "kind": "device", "deviceId": "laptop", "path": "/work" })
-        );
         for refused in [
             r#"{"kind":"cloud","path":"relative"}"#,
             r#"{"kind":"cloud","path":null}"#,

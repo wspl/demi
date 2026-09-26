@@ -1,7 +1,5 @@
 //! What the browser sends (`runtime.md` § Client frames).
 
-use std::future::Future;
-
 use demi_core::{
     BlobRef, BlockId, CommandId, DocumentSource, MediaSource, ModelSelection, NodeId,
     OperationId, TurnId, UserContentBlock, is_blank,
@@ -14,9 +12,8 @@ use crate::TranscriptVersion;
 
 /// A frame the browser sends. The connection belongs to one conversation, so
 /// no frame names a session or a working directory. `C` is the content of
-/// `send`, `steer` and `edit_and_send`: [`ClientContent`] as the browser
-/// sends it, or what the backend resolves it into before the session sees
-/// it ([`ClientFrame::map_content`]).
+/// `send`, `steer` and `edit_and_send`, [`ClientContent`] as the browser
+/// sends it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(
     tag = "type",
@@ -171,63 +168,6 @@ where
             Self::SyncTranscript {} => ClientFrameKind::SyncTranscript,
             Self::Close {} => ClientFrameKind::Close,
         }
-    }
-
-    /// The frame with the content of `send`, `steer` or `edit_and_send`
-    /// replaced by what `resolve` makes of it, such as the attachment records
-    /// of uploads written to the Host. Every other frame is unchanged and
-    /// never calls `resolve`.
-    pub async fn map_content<D, E, F, Fut>(self, resolve: F) -> Result<ClientFrame<D>, E>
-    where
-        D: garde::Validate<Context = ()>,
-        F: FnOnce(Vec<C>) -> Fut,
-        Fut: Future<Output = Result<Vec<D>, E>>,
-    {
-        let frame = match self {
-            Self::Open { model } => ClientFrame::Open { model },
-            Self::Send {
-                message_id,
-                content,
-            } => ClientFrame::Send {
-                message_id,
-                content: resolve(content).await?,
-            },
-            Self::EditAndSend { request } => ClientFrame::EditAndSend {
-                request: EditRequest {
-                    operation_id: request.operation_id,
-                    target_block_id: request.target_block_id,
-                    version: request.version,
-                    content: resolve(request.content).await?,
-                },
-            },
-            Self::Steer { steer_id, content } => ClientFrame::Steer {
-                steer_id,
-                content: resolve(content).await?,
-            },
-            Self::CancelPendingSteer { steer_id } => ClientFrame::CancelPendingSteer { steer_id },
-            Self::DequeueMessage { message_id } => ClientFrame::DequeueMessage { message_id },
-            Self::SendQueuedMessage { message_id } => ClientFrame::SendQueuedMessage { message_id },
-            Self::SteerQueuedMessage {
-                message_id,
-                steer_id,
-            } => ClientFrame::SteerQueuedMessage {
-                message_id,
-                steer_id,
-            },
-            Self::ClearMessageQueue {} => ClientFrame::ClearMessageQueue {},
-            Self::SetProvider { model, apply } => ClientFrame::SetProvider { model, apply },
-            Self::Abort {} => ClientFrame::Abort {},
-            Self::AbortSubagents {} => ClientFrame::AbortSubagents {},
-            Self::AbortSubagent { subagent_id } => ClientFrame::AbortSubagent { subagent_id },
-            Self::Retry {} => ClientFrame::Retry {},
-            Self::Resume {} => ClientFrame::Resume {},
-            Self::Compact {} => ClientFrame::Compact {},
-            Self::ShellWrite { command_id, stdin } => ClientFrame::ShellWrite { command_id, stdin },
-            Self::ShellAbort { command_id } => ClientFrame::ShellAbort { command_id },
-            Self::SyncTranscript {} => ClientFrame::SyncTranscript {},
-            Self::Close {} => ClientFrame::Close {},
-        };
-        Ok(frame)
     }
 }
 
