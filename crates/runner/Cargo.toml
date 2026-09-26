@@ -83,6 +83,8 @@ diffutils = "0.5.0"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+# The open-file limit, raised at start and restored in children (`runner.md` § Load).
+rlimit = "0.11"
 rustix = { version = "1", features = ["event", "fs", "pipe", "process"] }
 uu_chmod = "0.11"
 uu_chown = "0.11"
