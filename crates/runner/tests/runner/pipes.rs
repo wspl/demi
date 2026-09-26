@@ -8,8 +8,12 @@ use tokio::{
 };
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
+/// Only opening a connection has a deadline: an answer's headers, a body
+/// and an upload each stay quiet for three times as long and still complete.
 #[tokio::test]
 async fn quiet_uploads_delayed_headers_and_bodies_outlive_the_connect_deadline() {
+    const DEADLINE: Duration = Duration::from_millis(200);
+    const QUIET: Duration = Duration::from_millis(600);
     tokio::time::timeout(Duration::from_secs(60), async {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let origin = format!("http://{}", listener.local_addr().unwrap());
@@ -37,17 +41,18 @@ async fn quiet_uploads_delayed_headers_and_bodies_outlive_the_connect_deadline()
                         assert!(body.contains("last"));
                         socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await.unwrap();
                     } else if text.starts_with("GET /headers ") {
-                        tokio::time::sleep(Duration::from_secs(16)).await;
+                        tokio::time::sleep(QUIET).await;
                         socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\nreply").await.unwrap();
                     } else {
                         socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\nConnection: close\r\n\r\nfirst").await.unwrap();
-                        tokio::time::sleep(Duration::from_secs(16)).await;
+                        tokio::time::sleep(QUIET).await;
                         socket.write_all(b"last!").await.unwrap();
                     }
                 });
             }
         });
-        let client = PipeClient::new(&origin.parse().unwrap(), tokio::sync::watch::Sender::new(Some("test-token".parse().unwrap())).subscribe()).unwrap();
+        let token = tokio::sync::watch::Sender::new(Some("test-token".parse().unwrap())).subscribe();
+        let client = PipeClient::with_connect_timeout(&origin.parse().unwrap(), token, DEADLINE).unwrap();
         let cancel = CancellationToken::new();
         let collect = async |path| {
             let mut stream = client.get(path, cancel.clone()).await.unwrap();
@@ -59,7 +64,7 @@ async fn quiet_uploads_delayed_headers_and_bodies_outlive_the_connect_deadline()
             match index {
                 0 => Some((Ok::<_, io::Error>(Bytes::from_static(b"first")), 1)),
                 1 => {
-                    tokio::time::sleep(Duration::from_secs(16)).await;
+                    tokio::time::sleep(QUIET).await;
                     Some((Ok(Bytes::from_static(b"last")), 2))
                 }
                 _ => None,
