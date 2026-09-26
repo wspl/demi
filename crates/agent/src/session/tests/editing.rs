@@ -196,11 +196,7 @@ async fn a_stop_while_an_edit_prepares_rejects_it_and_while_it_saves_the_save_de
         ..test_runtime(Vec::new())
     };
     let session = start_on(&provider, runtime, &store, SessionConfig::default()).await;
-    session
-        .send(text("A"), turn("A"))
-        .unwrap()
-        .await
-        .unwrap();
+    session.send(text("A"), turn("A")).unwrap().await.unwrap();
     let before = session.transcript();
 
     // Stopped while its preamble is prepared: rejected, and the accepted
@@ -272,11 +268,7 @@ async fn dispose_during_an_edits_save_waits_for_it_and_keeps_the_accepted_replac
         Arc::new(FixedClock(Timestamp::UNIX_EPOCH)),
     )
     .await;
-    session
-        .send(text("A"), turn("A"))
-        .unwrap()
-        .await
-        .unwrap();
+    session.send(text("A"), turn("A")).unwrap().await.unwrap();
     let gate = store.hold_saves();
     let editing = spawn_edit(&session, edit_of(&session, "A", "op1", "A2"));
     until(|| gate.waiting() == 1).await;
@@ -351,7 +343,13 @@ async fn a_save_under_way_when_an_edit_starts_commits_first_and_brings_back_no_r
     ])]);
     let store = MemoryTreeStore::new();
     let (write_once, _releases, started) = gated_tool("write_once");
-    let session = start(&provider, vec![write_once], &store, SessionConfig::default()).await;
+    let session = start(
+        &provider,
+        vec![write_once],
+        &store,
+        SessionConfig::default(),
+    )
+    .await;
     let _running = session.send(text("write it"), turn("A")).unwrap();
     started.await.unwrap();
     // The process dies during the tool.
@@ -416,11 +414,7 @@ async fn an_accepted_edit_stays_accepted_when_its_turn_fails_and_neither_a_repea
         }
     });
     let session = start(&provider, vec![effect], &store, SessionConfig::default()).await;
-    session
-        .send(text("A"), turn("A"))
-        .unwrap()
-        .await
-        .unwrap();
+    session.send(text("A"), turn("A")).unwrap().await.unwrap();
     let failures = Rc::new(RefCell::new(Vec::new()));
     let _listener = session.subscribe({
         let failures = failures.clone();
@@ -490,12 +484,14 @@ async fn an_edit_of_the_first_a_middle_or_the_last_message_keeps_exactly_the_blo
     ]);
     let store = MemoryTreeStore::new();
     let note = tool("note", |_| Box::pin(async { Ok(output("noted")) }));
-    let written = start(&provider, vec![note.clone()], &store, SessionConfig::default()).await;
-    written
-        .send(text("A"), turn("A"))
-        .unwrap()
-        .await
-        .unwrap();
+    let written = start(
+        &provider,
+        vec![note.clone()],
+        &store,
+        SessionConfig::default(),
+    )
+    .await;
+    written.send(text("A"), turn("A")).unwrap().await.unwrap();
     let running = written.send(text("B"), turn("B")).unwrap();
     until(|| provider.requests().len() == 3).await;
     written
@@ -503,11 +499,7 @@ async fn an_edit_of_the_first_a_middle_or_the_last_message_keeps_exactly_the_blo
         .unwrap();
     let _ = release.send(());
     running.await.unwrap();
-    written
-        .send(text("C"), turn("C"))
-        .unwrap()
-        .await
-        .unwrap();
+    written.send(text("C"), turn("C")).unwrap().await.unwrap();
     let before = written.transcript().blocks;
     assert_eq!(
         kinds(&before),

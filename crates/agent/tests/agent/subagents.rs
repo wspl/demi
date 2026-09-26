@@ -656,7 +656,7 @@ async fn abort_closes_the_subtree_and_dispose_detaches_it_for_the_next_open() {
     assert!(model.is_done());
 }
 
-fn checkpoint(queue: Vec<QueuedMessage>, blocks: Vec<Block>) -> CheckpointUpdate {
+pub(crate) fn checkpoint(queue: Vec<QueuedMessage>, blocks: Vec<Block>) -> CheckpointUpdate {
     CheckpointUpdate {
         state: CheckpointState {
             phase: SessionPhase::Idle,
@@ -674,7 +674,7 @@ fn checkpoint(queue: Vec<QueuedMessage>, blocks: Vec<Block>) -> CheckpointUpdate
     }
 }
 
-fn child_record(id: &str, parent: &str, profile: Option<&str>) -> NodeRecord {
+pub(crate) fn child_record(id: &str, parent: &str, profile: Option<&str>) -> NodeRecord {
     NodeRecord {
         id: NodeId::try_from(id).unwrap(),
         parent: Some(NodeId::try_from(parent).unwrap()),
