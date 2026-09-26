@@ -136,29 +136,30 @@ wave). References are paths in the baseline worktree `/home/user/demi-base`.
 
 ## Schedule
 
-Three implementer slots, so about 11 waves after wave 0. A wave is the time of
-one size-1 WP including verification. The table is indicative; the scheduling
-rule below decides.
+Decided by the user on 2026-09-26: the parts that are still TypeScript come
+first (backend, agent, providers, host access, shell environment, coding agent,
+machines). The runner, the native packages and the 41 utilities stay Rust for
+now and are a later to-do (lanes S, T, N; gates A, B and the native half of C).
+The Go backend talks to the existing Rust runner over the runner wire, so the
+product keeps working at every step.
 
-| Wave | s1 | s2 | s3 | s4 (light) |
-|---|---|---|---|---|
-| 0 | F1–F3, F4a (orchestrator) | F4b | F5 inventory (Explore) | baseline reruns |
-| 1 | S1 | N1 | P1 | T0 |
-| 2 | S2 | T1a | A1 | verify |
-| 3 | S3 | T1b | A2 | verify |
-| 4 | E1 | T1c → **Gate A** | A3 | verify |
-| 5 | H1 | T2a | P2 | verify |
-| 6 | E2 | T2b | H2 | verify |
-| 7 | E3 | T2c → **Gate B** | A4 | verify |
-| 8 | E4 | P3a | P4 | verify |
-| 9 | N2 + N5 | P3b → **Gate D** | M0, M1 | verify |
-| 10 | N3 | — | M1 | verify |
-| 11 | N4 → **Gate C** | X1 | — | verify |
+Paused work is kept on pushed branches: `go/wip/S1-shell` (shell core on the
+mvdan/sh fork), `go/wip/T1a-text` (text utilities), `go/wip/T0-corpora` (corpus
+round 1 plus the merge; round 2 had not committed yet; its review is
+`reviews/T0-round1.md`).
 
-Scheduling rule: when a slot frees, it takes the ready WP with the highest
-priority. Priority: (1) the WPs of the next gate in the order A, B, D, C; (2) the
-backend chain P1 → A1 → A2 → A3 → E3; (3) the rest. Among equal priorities, the
-WP whose lane agent is idle goes first (context reuse).
+Order now (dependencies in the work package table):
+
+| Step | s1 | s2 | s3 |
+|---|---|---|---|
+| now | E1 storage | F4b fixes → F4c agent protocol | M0 + M1 machines |
+| after F4b | H1 runner registry | F4c | M1 |
+| after F4c | E2 HTTP and auth | P1 provider core | A1 agent core |
+| then | H2, E4 | P2, P3a, P3b, P4 | A2, A3, A4 |
+| then | E3 conversations → **Gate D** | | |
+
+s4 is the verification slot. Rule: a freed slot takes the ready WP on the path
+to Gate D with the longest remaining chain (A1 → A2 → A3 → E3 first).
 
 ## Gates
 
@@ -337,11 +338,13 @@ is not used), because it starts cold and is deleted afterwards.
 | F3 | — | done | runner, edit tracking, native runtime, commands, package boundaries, native builds (`e00717bc`); docs that only name locations (browser, scenarios, overview, sessions-and-targets, file-previews, live view) are updated when their WP merges |
 | F4a | — | done | `internal/toolctx`, `internal/toolctx/toolctxtest` (`cbcb5d5d`, `6bfdea40`) |
 | F4b | s2 | fixing round 1 (H1 deep-nesting stack overflow; M1 record key order; L1–L6) | 5 of 7 packages generated, 6,855 corpus cases; core/agentproto split into F4c (design `6eb8299c`); `-mod=mod` needed while vendor/ holds Rust (`763449da`) |
+| E1 | s1 | implementing | |
+| M0/M1 | s3 | implementing | |
 | F4c | s2 | next | agent protocol contracts, same agent as F4b |
 | F5 | — | done | triage: 37 failures → 11 causes; 22 environment (stripped native binary now used), 6 product (ledger L1–L10), 8 test-side, 1 unresolved (C4); ledger done (`ledger.md`: ~373 behaviors, 242 old test files; A1–A3 split, pipes.rs → S2, utilities_* → S1 accepted); triage running |
-| S1 | s1 | implementing | |
-| T0 | s4 | round 2 (recycled to a new agent on the stronger model: round 1 too thin for Gate B) | review `reviews/T0-round1.md`; decisions D1 name-order walks, D2 StdinKind (`37282cf5`), D3 full registry in Check |
-| T1a | s3 | implementing | |
+| S1 | — | paused (later) | `go/wip/S1-shell` |
+| T0 | — | paused (later); round 2 to redo | review `reviews/T0-round1.md`; decisions D1 name-order walks, D2 StdinKind (`37282cf5`), D3 full registry in Check |
+| T1a | — | paused (later) | `go/wip/T1a-text` |
 
 ## Working method notes
 
