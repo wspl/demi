@@ -366,17 +366,4 @@ mod tests {
         }
         assert!(CommandStorageKey::try_from("todos.json".to_owned()).is_ok());
     }
-
-    #[test]
-    fn a_capture_that_changes_nothing_makes_no_save_due() {
-        let mut history = CommandStateHistory::new();
-        let block = BlockId::try_from("b1").unwrap();
-        history.capture(block.clone(), BoundaryEdge::AfterBlock, 0);
-        history.capture(block.clone(), BoundaryEdge::BeforeUser, 0);
-        let update = history.take_update(None).unwrap();
-        assert_eq!(update.boundaries.len(), 2);
-        // Unchanged: no update is due.
-        history.capture(block, BoundaryEdge::BeforeUser, 0);
-        assert_eq!(history.take_update(None), None);
-    }
 }

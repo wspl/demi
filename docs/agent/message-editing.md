@@ -49,19 +49,24 @@ record holds, and the image's `media` by blob reference. New files arrive as
 uploads or remote files, as in a send
 ([Client frames](runtime.md#client-frames)).
 
-The session replaces each `attachment` reference with the target message's
-record for that path. A path that no attachment record of the target message
-holds rejects the edit without mutation, so an edit cannot take over a file
-that another message received.
+The session puts the target message's own block in the place of each
+reference, and takes nothing from elsewhere:
 
-The model receives a kept medium's bytes, not its reference. Before the
-session sees the edit, the backend loads each `media` reference's bytes from
-the caller's blob namespace, as it resolves an upload's, through the agent's
-one mapping between inline bytes and references
-([Media](runtime.md#media)): the chart's reference becomes its image block
-with the bytes, which the store saves by reference again. A reference whose
-blob is gone becomes the text `[missing image blob <ref>]`, as it does when a
-session is loaded.
+- An `attachment` reference names the record that holds its path.
+- A `media` reference names a block of its kind (`image`, `video` or
+  `document`) by its blob: the block matches when the SHA-256 of its bytes,
+  which names the blob that holds them
+  ([Encodings and digests](../backend/storage.md#encodings-and-digests)),
+  equals the reference. The block keeps the media type and, for a document,
+  the file name as the message holds them, whatever the reference says. It
+  carries the bytes the session holds ([Media](runtime.md#media)), so the
+  model reads the chart itself, and the store saves it by reference again.
+
+A reference that no block of the target message matches rejects the edit
+without mutation: `The edited message holds no attachment at <path>`, or
+`The edited message holds no <kind> <ref>`. So an edit cannot take over a
+file that another message received, nor any other blob of the caller. The
+backend resolves neither kind of reference.
 
 ### Admission
 

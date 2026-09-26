@@ -9,6 +9,7 @@ use demi_provider::testing::{ScriptedRuntime, Turn};
 
 use crate::support::{Fixture, exec, reply, scripts, turn, within};
 
+// About two seconds: four messages run a shell job each, on two Hosts.
 #[tokio::test(flavor = "local")]
 async fn a_node_keeps_each_hosts_shell_and_a_handle_answers_only_on_its_host() {
     within(async {
