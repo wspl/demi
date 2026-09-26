@@ -10,6 +10,7 @@ mod cloud;
 mod coding;
 mod conversations;
 mod edge;
+mod editing;
 mod exposes;
 mod families;
 mod files;
