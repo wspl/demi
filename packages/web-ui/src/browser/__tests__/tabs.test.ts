@@ -1,16 +1,18 @@
 import { expect, test } from 'bun:test'
+import type { LiveViewerMessage } from '@demicodes/protocol'
 import { deferred } from '@demicodes/utils'
+import { ref } from 'vue'
 import { BrowserTabsController, BrowserTabsError, type BrowserTabData, type BrowserTabInfo, type BrowserTabsApi } from '../tabs'
 
 const AGENT_TAB: BrowserTabInfo = {
-  id: 't_agent',
+  id: 't_agentaaaaaaaaaaaaaaaaa',
   title: 'Login',
   url: 'http://localhost:3000/login',
   createdBy: { kind: 'agent', nodeId: 'root' },
 }
-const USER_TAB: BrowserTabInfo = { id: 't_user', title: '', url: 'about:blank', createdBy: { kind: 'user' } }
+const USER_TAB: BrowserTabInfo = { id: 't_useraaaaaaaaaaaaaaaaaa', title: '', url: 'about:blank', createdBy: { kind: 'user' } }
 
-function harness(api: Partial<BrowserTabsApi>) {
+function harness(api: Partial<BrowserTabsApi>, visibility = ref<DocumentVisibilityState>('visible')) {
   const panel: BrowserTabData[] = []
   const controller = new BrowserTabsController(
     {
@@ -23,6 +25,7 @@ function harness(api: Partial<BrowserTabsApi>) {
       ...api,
     },
     { bound: () => panel, add: (data) => void panel.push(data) },
+    visibility,
   )
   return { controller, panel }
 }
@@ -116,4 +119,41 @@ test('a panel tab that lost its binding gets the tab this page opened for it, no
   controller.adopt({ tabs: [] })
   await controller.open('panel-1', 'about:blank', (tab) => void bound.push(tab.id))
   expect(opens).toBe(2)
+})
+
+test('a hidden page closes its view, and shown again watches the shown tab on a new view', () => {
+  const visibility = ref<DocumentVisibilityState>('visible')
+  const views: Array<{ sent: LiveViewerMessage[]; closed: boolean }> = []
+  const decoder = new TextDecoder()
+  const { controller } = harness(
+    {
+      stream: () => {
+        const view = { sent: [] as LiveViewerMessage[], closed: false }
+        views.push(view)
+        return {
+          send: (bytes) => void view.sent.push(JSON.parse(decoder.decode(bytes.subarray(5))) as LiveViewerMessage),
+          close: () => {
+            view.closed = true
+          },
+        }
+      },
+    },
+    visibility,
+  )
+  controller.show(AGENT_TAB.id)
+  expect(views).toHaveLength(1)
+  // Nobody can watch a hidden page, and an open view would keep its Cloud awake.
+  visibility.value = 'hidden'
+  expect(views[0]!.closed).toBe(true)
+  expect(controller.session.value).toBeNull()
+  // Another tab shown meanwhile opens nothing either.
+  controller.hide(AGENT_TAB.id)
+  controller.show(USER_TAB.id)
+  expect(views).toHaveLength(1)
+  visibility.value = 'visible'
+  expect(views).toHaveLength(2)
+  expect(views[1]!.sent.map((message) => message.type)).toEqual(['hello', 'watch'])
+  expect(views[1]!.sent.at(-1)).toEqual({ type: 'watch', tab: USER_TAB.id })
+  controller.dispose()
+  expect(views[1]!.closed).toBe(true)
 })

@@ -1,12 +1,16 @@
 //! Provider entries (`web-api.md` § Model configuration and provider
 //! inspection, `providers.md` § Credential vault, `models.md`): API-key
-//! entries sealed at rest and answered without their key, the vendor list
-//! from a scripted models.dev, each catalog source with its cache, and the
-//! provider test through a real family against a scripted vendor.
+//! entries sealed at rest and answered without their key, the master's
+//! entries serving every user's conversations on a shared instance and
+//! nobody else's on an isolated one, the vendor list from a scripted
+//! models.dev, each catalog source with its cache, and the provider test
+//! through a real family against a scripted vendor.
 
 use std::sync::Arc;
 use std::time::Duration;
 
+use demi_agent::testing::model_of;
+use demi_agent_protocol::{ClientFrame, ServerFrame};
 use demi_backend::FamilyRegistry;
 use demi_core::WireApi;
 use demi_provider::CatalogError;
@@ -21,6 +25,7 @@ use jiff::SignedDuration;
 use reqwest::StatusCode;
 use serde_json::{Value, json};
 
+use crate::conversations::{self, FIRST, Socket};
 use crate::families::{Directory, ScriptedKey, catalog};
 use crate::support::{Harness, MASTER_EMAIL, MASTER_PASSWORD, Session, TestBackend};
 
@@ -268,13 +273,28 @@ async fn on_a_shared_instance_only_the_master_configures_and_everyone_infers_wit
             .refusal(),
         (StatusCode::FORBIDDEN, ErrorCode::Forbidden)
     );
+    // A user's conversation infers with the instance's entry.
+    let model = model_of(shared.id.as_str(), "m");
+    conversations::create(&backend, &bob, FIRST).await;
+    let mut socket = Socket::connect(&backend, &bob, FIRST).await;
+    socket.open(&model).await;
+    let turn = socket.chat("m1", "hello").await;
+    assert!(serde_json::to_string(&turn).unwrap().contains("\"ok\""), "{turn:?}");
+    drop(socket);
     backend.close().await;
 
     // The entries stay the master's own under the other mode, and nobody
-    // else's.
+    // else's: another user's conversation cannot select them.
     let backend = harness.start_in_mode(InstanceMode::Isolated).await;
     let master = backend.login(MASTER_EMAIL, MASTER_PASSWORD).await;
     let bob = backend.login("bob@example.test", "bob-pass-1").await;
+    let mut socket = Socket::connect(&backend, &bob, FIRST).await;
+    socket.send(&ClientFrame::Open { model }).await;
+    let ServerFrame::Error { code, .. } = socket.frame().await else {
+        panic!("another user's entry is not the user's to select");
+    };
+    assert_eq!(code.as_deref(), Some("provider_not_found"));
+    drop(socket);
     assert_eq!(
         backend
             .get("/api/providers", Some(&master))

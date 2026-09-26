@@ -238,7 +238,8 @@ next to the wire's types, so that a command program depends on one crate.
     and `Manifest::build`, so both ends compute the hash one way;
   - the managed boot record (`ManagedBoot`) and the runner release record
     (`RunnerRelease`);
-  - `Signal`;
+  - `Signal`, and the platform a runner reports in its hello
+    (`RunnerPlatform`);
   - the protocol constants: `VERSION`, `MAX_MESSAGE_BYTES`, `JOB_VIEW_BYTES`,
     `STDIN_CHUNK_BYTES`, `LOG_READ_LINES` and `SERVICE_STDERR_CHARS`.
 - **Conversation scope:** jobs and service streams carry the
@@ -275,9 +276,10 @@ next to the wire's types, so that a command program depends on one crate.
   `ConversationPatch` and `ProviderDto`; the error body (`ErrorBody`) and
   `ErrorCode`, the one list of every error code the browser can see; and the
   identifier and text types those bodies use. It reuses the runner's
-  working-tree change types (`GitChanges`), `builtin-protocol`'s browser tab
-  types and `command-service`'s command locale (`CommandLocale`, which the
-  browser reports as a preference) instead of declaring them again. A Host
+  working-tree change types (`GitChanges`) and platform (`RunnerPlatform`, a
+  device's platform), `builtin-protocol`'s browser tab types and
+  `command-service`'s command locale (`CommandLocale`, which the browser
+  reports as a preference) instead of declaring them again. A Host
   log line is its own type: the runner wire carries its time as integer
   milliseconds, the browser as an RFC 3339 time.
 - **Public boundary:** the types above; their TypeScript form is generated into
@@ -469,9 +471,9 @@ Each crate implements the provider contract for one vendor family.
   backend's `host` group composed in.
 - **Public boundary:** the harness (`CodingHarness`) over the product's
   answer to where a node runs (`HostResolver`: a node's Host and the text that
-  announces a change of it), the `demi` root (`demi_root`, with the product's
-  groups in `DemiOptions`), and the package id its native groups bind to
-  (`BUILTIN_PACKAGE`, `builtin-protocol`'s `PACKAGE`).
+  announces a change of it) and the `demi` root (`demi_root`, with the
+  product's groups in `DemiOptions`). Its native groups bind to
+  `builtin-protocol`'s `PACKAGE`, which the backend imports from there too.
 - **Native binding:** the native groups declare package and operation ids. The
   backend supplies exact release descriptors at runtime; declarations import no
   compiled-in release catalog. The implementations live in `demi-commands`.
@@ -497,8 +499,8 @@ Each crate implements the provider contract for one vendor family.
   fixture's own for one device (`RunnerFixture`), an in-process fake runner
   (`TestDevice`, whose connections are `TestLink`s), a native package the
   workspace built (`NativeFixture`, such as the runner's native fixture
-  package; `built_program` finds a workspace executable) and a policy that
-  runs every call in one command set (`CommandPolicy`). Behavior: [Runner](../execution/runner.md) and
+  package) and a policy that runs every call in one command set
+  (`CommandPolicy`). Behavior: [Runner](../execution/runner.md) and
   [Native command execution](../execution/native-runtime.md), which owns
   [artifact-location admission](../execution/native-runtime.md#install-the-selected-executable).
 - **Must not:** own sockets or HTTP routes (the backend's connection tasks and

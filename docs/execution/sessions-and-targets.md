@@ -261,15 +261,18 @@ archived conversation, like any operation, with two differences:
   user stream shows, so the page learns that the Host is stopped. Work the
   user starts from the view, such as opening a new browser tab, is ordinary
   demand and wakes it.
-- Once admitted, it does not hold the conversation's file gate or keep a Cloud
-  awake. Its traffic is retention, not activity; the user operations it carries
-  report activity separately ([Activity](resource-lifecycle.md#activity)).
+- Once admitted, it does not hold the conversation's file gate, so a
+  transition ends it instead of waiting for it. While it is open the
+  conversation is active, which keeps a Cloud awake
+  ([Activity](resource-lifecycle.md#activity)).
 
 An archive, a target or directory change, and a detach end the conversation's
 user streams as they end file transfers; a Cloud stop or reset ends them with
 the device's other work. A one-shot user call that must not wake the Host,
-such as listing the conversation browser's tabs, is admitted the same way and
-ends the same way: a transition ends it instead of waiting for it to finish.
+such as listing or closing the conversation browser's tabs, is admitted the
+same way and ends the same way: a transition ends it instead of waiting for it
+to finish. A call that operates the Host, such as closing a tab, is activity; a
+look at what runs there, such as listing the tabs, is not.
 
 Backend shutdown ends every open transfer and user stream before it saves and
 stops the user's Cloud, so a download left open never keeps a Cloud from being

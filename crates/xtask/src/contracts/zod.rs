@@ -219,11 +219,13 @@ impl Writer<'_> {
 fn string_schema(string: &StringShape) -> String {
     let mut code = String::from(match string.format {
         StringFormat::Text => "z.string()",
+        // The bounds that follow check what the trim leaves, as Rust's do.
+        StringFormat::Trimmed => "z.string().trim()",
         // Core's `Timestamp` writes UTC with three fractional digits, the
         // contract's one spelling of a time.
         StringFormat::DateTime => "z.iso.datetime({ precision: 3 })",
         StringFormat::Email => "z.email()",
-        StringFormat::Url => "z.url()",
+        StringFormat::HttpUrl => "z.url({ protocol: z.regexes.httpProtocol })",
         StringFormat::Base64 => "z.base64()",
     });
     if let Some(min) = string.min_length {

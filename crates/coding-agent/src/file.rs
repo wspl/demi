@@ -2,11 +2,11 @@
 //! `demi.builtin` package beside the file, its arguments declared from the
 //! `builtin-protocol` types (`commands.md` § File commands).
 
+use demi_builtin_protocol::PACKAGE;
 use demi_builtin_protocol::file::{CreateArgs, EditArgs, PatchArgs, ReadArgs};
 use demi_command_tree::NativeOperation;
 use demi_shell::{GroupBuilder, LeafBuilder};
 
-use crate::BUILTIN_PACKAGE;
 
 pub(crate) fn file_group() -> GroupBuilder {
     GroupBuilder::new(
@@ -63,7 +63,7 @@ fn leaf(name: &str, summary: &str) -> LeafBuilder {
         name,
         summary,
         NativeOperation {
-            package: BUILTIN_PACKAGE.into(),
+            package: PACKAGE.into(),
             operation: format!("file.{name}"),
         },
     )

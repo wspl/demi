@@ -1,6 +1,5 @@
 import { BrowserTabsError, type BrowserTabsApi } from '@demicodes/web-ui/browser/tabs'
 import { liveStreamAt } from '@demicodes/web-ui/transport/live-stream'
-import { reportActivity } from './activity'
 import { ApiError, apiRequest, apiUrl, jsonBody, readResponse } from './client'
 import {
   browserTabSchema,
@@ -52,6 +51,5 @@ export function browserTabsApi(conversationId: string): BrowserTabsApi {
       await request(`${tabs}/${encodeURIComponent(tab)}/history`, { method: 'POST', ...jsonBody({ action } satisfies TabHistory) })
     },
     stream: liveStreamAt(stream.toString()),
-    onOperation: () => void reportActivity(conversationId),
   }
 }

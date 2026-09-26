@@ -117,7 +117,7 @@ impl Socket {
     }
 
     /// The frames up to and including the first `done` accepts.
-    async fn until(&mut self, done: impl Fn(&ServerFrame) -> bool) -> Vec<ServerFrame> {
+    pub(crate) async fn until(&mut self, done: impl Fn(&ServerFrame) -> bool) -> Vec<ServerFrame> {
         let mut frames = Vec::new();
         loop {
             let frame = self.frame().await;
@@ -226,6 +226,18 @@ pub(crate) fn tool_use(id: &str, name: &str, input: &Value) -> MockResponse {
             "delta": { "type": "input_json_delta", "partial_json": input.to_string() } }),
     ];
     message(block, "tool_use", 1, 1)
+}
+
+/// The text of the tool result `id` that a Messages API `request` carries.
+pub(crate) fn tool_result(request: &Value, id: &str) -> String {
+    let result = request["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|message| message["content"].as_array().into_iter().flatten())
+        .find(|block| block["type"] == "tool_result" && block["tool_use_id"] == id)
+        .unwrap_or_else(|| panic!("no result of {id}: {request}"));
+    result["content"][0]["text"].as_str().unwrap().to_owned()
 }
 
 /// One message of one content block, whose frames `block` opens and fills.
