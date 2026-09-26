@@ -54,10 +54,16 @@ pub struct ServiceProcess {
 }
 
 impl ServiceProcess {
-    /// Starts `program` with `args` and connects to it.
-    pub async fn start(program: impl AsRef<Path>, args: &[&str]) -> Result<Self, ServiceError> {
+    /// Starts `program` with `args`, and `env` beside the test's environment,
+    /// and connects to it.
+    pub async fn start(
+        program: impl AsRef<Path>,
+        args: &[&str],
+        env: &[(&str, &str)],
+    ) -> Result<Self, ServiceError> {
         let mut child = Command::new(program.as_ref())
             .args(args)
+            .envs(env.iter().copied())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())

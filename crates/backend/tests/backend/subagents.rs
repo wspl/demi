@@ -121,26 +121,16 @@ impl ProviderFamily for Tree {
             return Err(FamilyError::WrongCredential);
         };
         Ok(Arc::new(TreeProvider {
-            id: args.entry_id,
             scripts: self.0.clone(),
         }))
     }
 }
 
 struct TreeProvider {
-    id: String,
     scripts: Arc<Scripts>,
 }
 
 impl Provider for TreeProvider {
-    fn id(&self) -> &str {
-        &self.id
-    }
-
-    fn display_name(&self) -> &str {
-        "Tree"
-    }
-
     fn capabilities(&self) -> Capabilities {
         Capabilities::default()
     }

@@ -31,10 +31,6 @@ const SIGNATURE_TAG: &str = "openai:";
 /// The configuration of an `openai` entry, as the backend decoded it.
 #[derive(Debug, Clone)]
 pub struct OpenAiConfig {
-    /// The entry's id.
-    pub id: String,
-    /// The entry's label.
-    pub display_name: String,
     pub api_key: Secret,
     /// The API's base, such as `https://api.openai.com/v1`; `None` for that
     /// default. The provider appends the request's path unless the URL
@@ -71,8 +67,6 @@ pub struct OpenAiProvider {
 
 /// What the provider and all its runtimes share.
 struct Shared {
-    id: String,
-    display_name: String,
     authorization: HeaderValue,
     url: Url,
     wire: WireApi,
@@ -91,8 +85,6 @@ impl OpenAiProvider {
         };
         Self {
             shared: Arc::new(Shared {
-                id: config.id,
-                display_name: config.display_name,
                 authorization: config.api_key.bearer(),
                 url: endpoint_url(&base, path),
                 wire: config.wire,
@@ -104,14 +96,6 @@ impl OpenAiProvider {
 }
 
 impl Provider for OpenAiProvider {
-    fn id(&self) -> &str {
-        &self.shared.id
-    }
-
-    fn display_name(&self) -> &str {
-        &self.shared.display_name
-    }
-
     fn capabilities(&self) -> Capabilities {
         Capabilities::default()
     }

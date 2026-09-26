@@ -121,9 +121,12 @@ async fn private_endpoint_streams_binary_input_on_demand_and_joins_cancelled_cal
 
 /// A refused client waits while the runner holds its lock, and fails at once
 /// when the runner has stopped or crashed (`commands.md` § External command
-/// clients).
+/// clients). The clock is paused: the client's pauses between attempts and
+/// the test's deadlines pass as soon as nothing else can happen, so "at once"
+/// is within a second of that clock and "waits" is half a second of it,
+/// however loaded the machine.
 #[cfg(unix)]
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_client_waits_for_a_busy_runner_but_not_for_a_gone_one() {
     // Stopped: the runner removed its endpoint.
     let server = Server::start(Arc::new(Commands {
@@ -171,9 +174,8 @@ async fn a_client_waits_for_a_busy_runner_but_not_for_a_gone_one() {
     let alive = std::fs::File::create(busy.path().join("ipc.alive")).unwrap();
     alive.try_lock().unwrap();
     let mut queued = Vec::new();
-    // A connect that does not finish within a second is one the full queue
-    // holds back; a loaded machine can take far longer than 100 ms for one
-    // that the queue still takes.
+    // A connect that fails or does not finish is one the full queue holds
+    // back.
     while let Ok(Ok(stream)) = tokio::time::timeout(
         Duration::from_secs(1),
         tokio::net::UnixStream::connect(&socket),
