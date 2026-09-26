@@ -27,8 +27,7 @@ pub(super) struct Installation {
 
 /// The pinned Chrome for Testing release (`browser.md` § Browser distribution).
 fn release() -> Result<BrowserRelease> {
-    BrowserRelease::parse(include_str!("releases/chrome.json"))
-        .map_err(|error| BrowserError::Configuration(error.to_string()))
+    BrowserRelease::pinned().map_err(|error| BrowserError::Configuration(error.to_string()))
 }
 
 /// The pinned release's version, such as `153.0.8010.36`.

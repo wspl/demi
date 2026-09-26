@@ -6,7 +6,7 @@ import { browserInstallationSchema, browserReleaseSchema } from '../../packages/
 
 const root = z.string().min(1).parse(process.argv[2])
 const arch = z.enum(['aarch64', 'x86_64']).parse(process.argv[3])
-const release = browserReleaseSchema.parse(JSON.parse(await readFile(new URL('../../crates/demi-commands/src/browser/releases/chrome.json', import.meta.url), 'utf8')))
+const release = browserReleaseSchema.parse(JSON.parse(await readFile(new URL('../../crates/builtin-protocol/src/release/chrome.json', import.meta.url), 'utf8')))
 const record = release.platforms.find(platform => platform.target === `${arch}-unknown-linux-musl`)
 if (!record) throw new Error(`Chrome release is unavailable for ${arch}`)
 const cache = resolve(import.meta.dir, '../../.cache/browser-releases', release.version)

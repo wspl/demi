@@ -22,6 +22,12 @@ impl BrowserRelease {
     pub fn parse(json: &str) -> Result<Self, DecodeError> {
         crate::decode_slice(json.as_bytes())
     }
+
+    /// The release this build of Demi pins, whose record is
+    /// `release/chrome.json` beside this module.
+    pub fn pinned() -> Result<Self, DecodeError> {
+        Self::parse(include_str!("release/chrome.json"))
+    }
 }
 
 /// One platform's archive.
