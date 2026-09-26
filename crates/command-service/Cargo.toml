@@ -11,8 +11,8 @@ rust-version.workspace = true
 doctest = false
 
 [features]
-# Built programs and a started service binary for tests
-# (`command_service::testing`).
+# Built programs, a started service binary and the runner's native fixture's
+# operations for tests (`command_service::testing`).
 testing = []
 
 [dependencies]
