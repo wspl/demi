@@ -3,7 +3,9 @@
 //! published through `artifact`'s verified release publication. A command
 //! package's descriptor lists the operations its contract crate declares; a
 //! runner release is named by the SHA-256 of its versions and targets, and
-//! the top-level manifest names the release packaged last.
+//! the top-level manifest names the release packaged last; the backend's and
+//! the machine manager's record names the executable, its version and its
+//! targets.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -16,13 +18,15 @@ use tokio_util::sync::CancellationToken;
 
 use super::{Error, Executable};
 
-/// The workspace version, which every crate inherits: a command package's
-/// release version.
+/// The workspace version, which every crate inherits: the version a command
+/// package, the backend and the machine manager are released as.
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// A command package release's record.
 const DESCRIPTOR: &str = "descriptor.json";
 /// A runner release's record, and the pointer beside the releases.
 const MANIFEST: &str = "manifest.json";
+/// A backend or machine manager release's record.
+const RELEASE: &str = "release.json";
 
 #[derive(clap::Args)]
 pub struct Options {
@@ -43,23 +47,7 @@ pub struct Options {
 }
 
 pub fn run(options: Options) -> Result<(), Error> {
-    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
-    let packaged = runtime.block_on(async {
-        let cancel = CancellationToken::new();
-        // An interrupt stops the publication, which then leaves nothing
-        // behind.
-        let interrupt = tokio::spawn({
-            let cancel = cancel.clone();
-            async move {
-                if tokio::signal::ctrl_c().await.is_ok() {
-                    cancel.cancel();
-                }
-            }
-        });
-        let packaged = package(&options, &cancel).await;
-        interrupt.abort();
-        packaged
-    })?;
+    let packaged = crate::interruptible(|cancel| async move { package(&options, &cancel).await })??;
     println!("{packaged}");
     Ok(())
 }
@@ -70,6 +58,8 @@ enum Release {
     /// A command package: its id and the operations its program serves, as
     /// its contract crate declares them.
     Package { id: &'static str, operations: Vec<String> },
+    /// The backend or the machine manager: the executable of one version.
+    Executable,
 }
 
 /// What a release carries of its executable: the built file of each target.
@@ -93,7 +83,7 @@ async fn package(options: &Options, cancel: &CancellationToken) -> Result<String
                 .map(|operation| operation.name().to_owned())
                 .to_vec(),
         },
-        Executable::Backend | Executable::Machines => return Err(Error::NoRelease(executable)),
+        Executable::Backend | Executable::Machines => Release::Executable,
     };
     let artifacts = super::artifacts(options.artifacts.as_deref())?;
     let output = std::path::absolute(&options.output)?;
@@ -132,6 +122,7 @@ async fn package(options: &Options, cancel: &CancellationToken) -> Result<String
     match release {
         Release::Runner => runner(&output, built, cancel).await,
         Release::Package { id, operations } => command_package(&output, id, operations, built, cancel).await,
+        Release::Executable => executable_release(&output, executable, built, cancel).await,
     }
 }
 
@@ -161,6 +152,39 @@ async fn command_package(
     Ok(format!(
         "Native package {id}@{VERSION}: {digest}\n{}",
         output.join(DESCRIPTOR).display()
+    ))
+}
+
+/// A backend or machine manager release's record: the executable, the
+/// workspace version it carries, and each target's file.
+#[derive(Serialize)]
+struct ExecutableRelease<'a> {
+    executable: &'a str,
+    version: &'a str,
+    targets: &'a BTreeMap<String, PackageArtifact>,
+}
+
+/// Publishes the release of the backend or the machine manager at `output`.
+async fn executable_release(
+    output: &Path,
+    executable: Executable,
+    built: Built,
+    cancel: &CancellationToken,
+) -> Result<String, Error> {
+    let bytes = record(&ExecutableRelease {
+        executable: executable.name(),
+        version: VERSION,
+        targets: &built.targets,
+    })?;
+    let record = ReleaseRecord {
+        name: RELEASE,
+        bytes: &bytes,
+    };
+    demi_artifact::publish_release(output, record, &built.files, cancel).await?;
+    Ok(format!(
+        "Release {}@{VERSION}\n{}",
+        executable.name(),
+        output.join(RELEASE).display()
     ))
 }
 
@@ -293,6 +317,38 @@ mod tests {
         );
         assert_eq!(pointer(&output), second);
         assert_eq!(names(&output), releases);
+    }
+
+    #[tokio::test]
+    async fn a_backend_or_manager_release_records_its_version_and_is_immutable_per_version() {
+        let root = tempfile::tempdir().unwrap();
+        let artifacts = root.path().join("artifacts");
+        let linux = ["aarch64-unknown-linux-musl", "x86_64-unknown-linux-musl"];
+        let cancel = CancellationToken::new();
+        build(&artifacts, Executable::Machines, &linux, "manager");
+        let output = root.path().join("demi-machines");
+        package(&options(Executable::Machines, &artifacts, &output, &[]), &cancel)
+            .await
+            .unwrap();
+        let mut targets = serde_json::Map::new();
+        for target in linux {
+            let path = artifacts.join(target).join("release/demi-machines");
+            let digest = demi_artifact::digest(&path, u64::MAX, &cancel).await.unwrap();
+            targets.insert(target.to_owned(), serde_json::json!({"sha256": digest.sha256, "size": digest.size}));
+        }
+        let record: serde_json::Value = serde_json::from_slice(&std::fs::read(output.join(RELEASE)).unwrap()).unwrap();
+        let expected = serde_json::json!({"executable": "demi-machines", "version": VERSION, "targets": targets});
+        assert_eq!(record, expected);
+        assert_eq!(names(&output), [linux[0], RELEASE, linux[1]]);
+        assert_eq!(
+            std::fs::read(output.join(linux[1]).join("demi-machines")).unwrap(),
+            b"manager x86_64-unknown-linux-musl"
+        );
+        // Another build of the same version is refused: a published version
+        // is immutable.
+        build(&artifacts, Executable::Machines, &linux, "rebuilt");
+        let refused = package(&options(Executable::Machines, &artifacts, &output, &[]), &cancel).await;
+        assert!(matches!(refused, Err(Error::Artifact(demi_artifact::Error::Conflict(_)))), "{refused:?}");
     }
 
     #[tokio::test]
