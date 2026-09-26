@@ -15,6 +15,8 @@ use serde_json::json;
 
 use crate::support::{Fixture, exec, is_idle, last_result, reply, scripts, turn, within};
 
+// Several seconds: six scripts over two messages run a shell job each, and
+// the first `demi file` starts the `demi.builtin` service.
 #[tokio::test(flavor = "local")]
 async fn a_coding_workflow_edits_files_tracks_todos_and_keeps_its_shell_across_messages() {
     within(async {
@@ -225,6 +227,8 @@ fn command_id(result: &str) -> CommandId {
     CommandId::try_from(field(result, "commandId")).unwrap()
 }
 
+// Over a second: two commands run as shell jobs, which the model checks,
+// feeds and stops.
 #[tokio::test(flavor = "local")]
 async fn the_shell_tools_feed_a_waiting_command_stop_a_long_one_and_yield_between_checks() {
     within(async {
