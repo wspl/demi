@@ -8,7 +8,9 @@ use std::time::Duration;
 
 use demi_host_remote::testing::{RunnerProcess, RunnerProcessOptions};
 use demi_runner_protocol::values::DeviceToken;
-use demi_runner_protocol::wire::{self, HelloErrorCode, HostIdentity, Inbound, Outbound, RunnerInfo, RunnerPlatform};
+use demi_runner_protocol::wire::{
+    self, ArtifactOwner, HelloErrorCode, HostIdentity, Inbound, Outbound, RunnerInfo, RunnerPlatform, StreamArtifactOwner,
+};
 use demi_web_api::devices::{ClaimedDevice, DeviceKind, DeviceLog};
 use demi_web_api::error::ErrorCode;
 use demi_web_api::files::Directory;
@@ -245,10 +247,24 @@ async fn hellos_with_one_token_at_once_bind_one_socket_and_a_repeated_hello_chan
     );
     assert!(backend.online(&master, laptop.id()).await);
     // A second hello on the bound socket is no new registration: the
-    // backend answers nothing, and the socket stays the device's.
+    // backend answers nothing, and the socket stays the device's. The backend
+    // handles a runner's messages in order, so the refusal of a request sent
+    // after the hello is the first answer that arrives.
     bound.send(&message).await;
     bound.send(&Outbound::Pong { jobs: 0 }).await;
-    assert!(tokio::time::timeout(Duration::from_millis(300), bound.next()).await.is_err());
+    let after = Outbound::ArtifactResolve {
+        id: "after-hello".into(),
+        owner: ArtifactOwner::Stream(StreamArtifactOwner {
+            stream_id: "none".into(),
+        }),
+        sha256: "0".repeat(64),
+        target: demi_command_service::protocol::host_target().into(),
+    };
+    bound.send(&after).await;
+    match bound.next().await {
+        Some(Inbound::ArtifactLocation { id, error: Some(_), .. }) if id == "after-hello" => {}
+        answer => panic!("expected the refusal of the later request first, got {answer:?}"),
+    }
     assert!(backend.online(&master, laptop.id()).await);
     drop(bound);
     backend.until_online(&master, laptop.id(), false).await;

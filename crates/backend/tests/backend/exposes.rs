@@ -18,6 +18,7 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use demi_core::Clock as _;
+use demi_gates::Purpose;
 use demi_provider::testing::MockVendor;
 use demi_web_api::auth::Role;
 use demi_web_api::cloud::ResetPhase;
@@ -510,9 +511,13 @@ async fn a_clouds_exposes_outlive_its_checkpoints_and_end_when_it_stops_idle() {
     harness.cloud.sweep = Duration::from_millis(50);
     harness.cloud.checkpoint_interval = Duration::from_millis(300);
     let (backend, master) = harness.start_set_up().await;
-    let mut fixture = HttpFixture::start(Arc::new(Notify::new())).await;
+    let proceed = Arc::new(Notify::new());
+    let mut fixture = HttpFixture::start(proceed.clone()).await;
     let provider = anthropic_at(&backend, &master, &vendor, "/work").await;
     create(&backend, &master, CONVERSATION).await;
+    // A lease of the conversation's file gate is its work: the Cloud does
+    // not idle before the test has looked, and idles once it ends.
+    let working = backend.file_gate(&master, CONVERSATION).await.enter(Purpose::Demand).await;
     let mut work = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/work").await;
     work.turn(vec![shell("t1", "true", 20_000), say("awake")]).await;
     let device = the_cloud(&harness);
@@ -521,40 +526,28 @@ async fn a_clouds_exposes_outlive_its_checkpoints_and_end_when_it_stops_idle() {
     let mut held = hold(&backend, &host).await;
 
     // A checkpoint keeps the Cloud running, and its expose and the
-    // expose's connection with it. File reads keep the conversation active
-    // meanwhile, so that the Cloud does not idle before the test has looked.
+    // expose's connection with it: what the service sends on the connection
+    // afterwards still arrives.
     let checkpoint = format!("checkpoint:{device}");
     let before = harness.manager.count(&checkpoint);
-    let rested = std::cell::Cell::new(Instant::now());
-    let checked = async {
-        eventually("the Cloud checkpoints", || async { harness.manager.count(&checkpoint) > before }).await;
-        assert_eq!(fetch(&backend, &host, "/hello").await, (200, "hello".to_owned()));
-        assert!(held.is_open().await);
-        assert_eq!(list(&backend, &master).await, [exposed.clone()]);
-    };
-    let active = async {
-        loop {
-            rested.set(Instant::now());
-            let read = backend.get(&format!("/api/conversations/{CONVERSATION}/fs"), Some(&master)).await;
-            assert_eq!(read.status, StatusCode::OK, "{}", String::from_utf8_lossy(&read.body));
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
-    };
-    tokio::select! {
-        () = checked => {}
-        _ = active => unreachable!("the reads go on until the test has looked"),
-    }
+    eventually("the Cloud checkpoints", || async { harness.manager.count(&checkpoint) > before }).await;
+    assert_eq!(fetch(&backend, &host, "/hello").await, (200, "hello".to_owned()));
+    proceed.notify_one();
+    assert_eq!(held.until("still\n").await, "still\n");
+    assert_eq!(list(&backend, &master).await, [exposed.clone()]);
 
-    // Idle, the Cloud stops a window after the last read, and its expose
+    // Idle, the Cloud stops a window after its work ends, and its expose
     // ends with it, before the Cloud is saved.
+    let rested = Instant::now();
+    drop(working);
     held.ended().await;
     assert_eq!(fixture.next().await, Seen::Released);
     assert!(list(&backend, &master).await.is_empty());
     let stopped = harness.manager.arrival(&format!("hibernate:{device}"), PATIENCE).await;
     assert!(
-        stopped >= rested.get() + window,
-        "the Cloud stopped {:?} after the last read",
-        stopped.saturating_duration_since(rested.get())
+        stopped >= rested + window,
+        "the Cloud stopped {:?} after its work ended",
+        stopped.saturating_duration_since(rested)
     );
     assert_eq!(fetch(&backend, &host, "/hello").await.0, 404);
     backend.close().await;
@@ -685,13 +678,10 @@ struct Held {
 }
 
 impl Held {
-    /// Whether the connection is still open: nothing arrives on it for a
-    /// moment, not even its end.
-    async fn is_open(&mut self) -> bool {
-        let mut byte = [0; 1];
-        tokio::time::timeout(Duration::from_millis(100), self.read.read(&mut byte))
-            .await
-            .is_err()
+    /// The answer in progress, read on until its text ends with `end`.
+    async fn until(&mut self, end: &str) -> String {
+        let read = tokio::time::timeout(STEP, read_until(&mut self.read, end)).await;
+        read.expect("the service's text arrives")
     }
 
     /// Waits until the backend closed the connection, with its answer cut
@@ -916,8 +906,14 @@ async fn serve_http(socket: TcpStream, seen: mpsc::UnboundedSender<Seen>, procee
             write.write_all(head.as_bytes()).await.unwrap();
             write.write_all(chunk("held\n").as_bytes()).await.unwrap();
             let mut byte = [0; 1];
-            // Its end, a failure or a stray byte all end the hold.
-            let _ = read.read(&mut byte).await;
+            // Its end, a failure or a stray byte all end the hold; each
+            // `proceed` sends one more chunk meanwhile.
+            loop {
+                tokio::select! {
+                    _ = read.read(&mut byte) => break,
+                    () = proceed.notified() => write.write_all(chunk("still\n").as_bytes()).await.unwrap(),
+                }
+            }
             seen.send(Seen::Released).unwrap();
         }
         "/refuse" => {

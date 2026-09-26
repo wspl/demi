@@ -88,6 +88,14 @@ tests on a paused clock pin the exact boundaries of timer rules. A scenario
 that needs wall time to pass, such as an expose's expiry, sets an injected
 clock instead of waiting.
 
+A scenario never fits a step into such a window. One that looks at a running
+Cloud holds its conversation's file gate while it looks (`file_gate` of the
+backend's `testing` feature): a lease of that gate is the conversation's work,
+so the Cloud idles only after the lease ends, and a lower bound on the stop
+counts from there. One that shows an operation a transition holds waits until
+the operation waits at that gate (`ActivityGate::waiting`, from `demi-gates`'
+`testing` feature), and fails if the operation finishes first.
+
 ## Required scenario coverage
 
 The matrix defines the observations each path requires.
