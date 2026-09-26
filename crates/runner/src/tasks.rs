@@ -168,13 +168,12 @@ impl JobTable {
         let config = self.config.clone();
         let closed = self.closed.clone();
         self.running.spawn(async move {
-            let id = spec.id.clone();
             let run = config.run(spec, receiver, signal_receiver, cancel, closed.clone());
             let outcome = std::panic::AssertUnwindSafe(run).catch_unwind().await;
             let terminal = match outcome {
                 Ok(Ok(terminal)) => Ok(terminal),
-                Ok(Err(error)) => failure(&key, id, error.to_string()),
-                Err(_) => failure(&key, id, "task owner panicked".into()),
+                Ok(Err(error)) => failure_exit(&key, error.to_string()),
+                Err(_) => failure_exit(&key, "task owner panicked".into()),
             };
             match terminal {
                 Ok(message) => {
@@ -565,6 +564,20 @@ impl JobConfig {
             pipe_tasks.wait().await;
         }
         let error = failure.or(exit.error);
+        // `signal` names only the signal that ended the process. A failure of
+        // the runner's own that left no status is the work's spawn error;
+        // beside a status it is only logged, since the status says how the
+        // work ended.
+        let spawn_error = match error {
+            Some(reason) if exit.code.is_none() && exit.signal.is_none() => {
+                Some(runner_failure(reason))
+            }
+            Some(reason) => {
+                tracing::warn!("{kind:?} ended with a failure of the runner's: {reason}");
+                None
+            }
+            None => None,
+        };
         match job {
             Some((logs, scratch, recorder)) => {
                 let output = logs.finish().await?;
@@ -577,8 +590,8 @@ impl JobConfig {
                 wire::encode(&wire::Outbound::JobExit {
                     job_id: id,
                     exit_code: exit.code,
-                    signal: error.or(exit.signal),
-                    spawn_error: None,
+                    signal: exit.signal,
+                    spawn_error,
                     cwd,
                     output: Some(output),
                     files,
@@ -589,8 +602,8 @@ impl JobConfig {
             None => wire::encode(&wire::Outbound::SpawnExit {
                 spawn_id: id,
                 exit_code: exit.code,
-                signal: error.or(exit.signal),
-                spawn_error: None,
+                signal: exit.signal,
+                spawn_error,
             })
                 .map_err(io::Error::other),
         }
@@ -651,30 +664,35 @@ impl Execution {
     }
 }
 
-fn failure(kind: &WorkId, id: String, error: String) -> Result<wire::Frame, wire::WireError> {
-    match kind {
-        WorkId::Job(_) => wire::encode(&wire::Outbound::JobExit {
-            job_id: id,
+/// The exit of work the runner could not run, or failed before its end was
+/// known: no status, and the reason as its spawn error.
+pub(crate) fn failure_exit(work: &WorkId, reason: String) -> Result<wire::Frame, wire::WireError> {
+    let spawn_error = Some(runner_failure(reason));
+    match work {
+        WorkId::Job(id) => wire::encode(&wire::Outbound::JobExit {
+            job_id: id.clone(),
             exit_code: None,
-            signal: Some(error),
-            spawn_error: Some(wire::SpawnError {
-                kind: wire::SpawnErrorKind::Other,
-                detail: None,
-            }),
+            signal: None,
+            spawn_error,
             cwd: None,
             output: None,
             files: Vec::new(),
             files_truncated: false,
         }),
-        WorkId::Spawn(_) => wire::encode(&wire::Outbound::SpawnExit {
-            spawn_id: id,
+        WorkId::Spawn(id) => wire::encode(&wire::Outbound::SpawnExit {
+            spawn_id: id.clone(),
             exit_code: None,
-            signal: Some(error),
-            spawn_error: Some(wire::SpawnError {
-                kind: wire::SpawnErrorKind::Other,
-                detail: None,
-            }),
+            signal: None,
+            spawn_error,
         }),
+    }
+}
+
+/// The spawn error of work the runner failed itself, in its words.
+fn runner_failure(reason: String) -> wire::SpawnError {
+    wire::SpawnError {
+        kind: wire::SpawnErrorKind::Other,
+        detail: Some(reason),
     }
 }
 
