@@ -79,12 +79,14 @@ request after the pass.
 
 When the summary request itself exceeds the model's context
 (`context_length_exceeded`), the pass retries with the first half of the
-window, halving again until one block is left. Other outcomes leave the
-history unchanged:
+window, halving again until one block is left; a previous boundary and its
+marker at the start of the window stay in it and do not count. Other outcomes
+leave the history unchanged:
 
 - An empty summary compacts nothing.
-- Another failure of the summary request fails the action, after the retries
-  of [Retries](failures-and-recovery.md#retries). The copy's `retry_scheduled`
+- A request that still exceeds the context with one block left, or another
+  failure of the summary request, fails the action, after the retries of
+  [Retries](failures-and-recovery.md#retries). The copy's `retry_scheduled`
   events reach the client like the turn's own.
 - Stop stops the copy and then the action.
 
@@ -247,6 +249,7 @@ a real model.
 | The model calls a tool during a summary | The copy runs it through the ordinary tool loop; the session's transcript and command state do not change |
 | Stop during a summary | No boundary; the copy is closed; the action ends as stopped |
 | A summary request exceeds the context | The pass retries with half the window and inserts one boundary |
+| A summary request exceeds the context with one block left, after a previous boundary or without one | The action fails with `context_length_exceeded`; the transcript is unchanged |
 | A transient failure of a summary request | It is retried, and the client receives `retry_scheduled` |
 | An empty summary, or a failed summary request | No boundary or marker |
 | A turn keeps hitting the threshold | The turn continues after at most three compactions; no pass summarizes only a previous summary |
