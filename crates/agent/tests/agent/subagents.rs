@@ -2,14 +2,14 @@
 //! `demi agent` calls a node's jobs make, the frames the root's connection
 //! receives, what each model is asked, and the tree store's records.
 
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc, time::Duration};
 
 use demi_agent::{
     AgentTreeStore, Profile, ServerConfig,
     store::{
         CheckpointState, CheckpointUpdate, ClosePhase, CommandStateSnapshot, NodeClose, NodeRecord,
     },
-    testing::{MemoryTreeStore, test_model, text},
+    testing::{MemoryTreeStore, model_of, test_model, text},
 };
 use demi_agent_protocol::{ClientFrame, JobPhase, ServerFrame, SubagentEvent, TranscriptPatch};
 use demi_core::{
@@ -20,8 +20,9 @@ use demi_provider::{
     InferenceItem,
     testing::{Turn, event},
 };
-use demi_shell::{RpcError, StorageOp, StorageReply};
+use demi_shell::{CommandSet, RpcError, StorageOp, StorageReply};
 use serde_json::{Value, json};
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::support::{
@@ -65,6 +66,18 @@ async fn spawn(fixture: &Fixture, caller: &NodeId, args: Value) -> NodeId {
     let run = agent(&fixture.server, caller, "spawn", args).await;
     assert_eq!(run.code, 0, "{run:?}");
     child_id(&run)
+}
+
+/// A spawn as a job of `caller`, in a task of its own: a start waits for its
+/// parent's provider runtime, which the parent's running turn holds.
+fn spawn_during_turn(fixture: &Fixture, caller: &NodeId, args: Value) -> JoinHandle<NodeId> {
+    let server = fixture.server.clone();
+    let caller = caller.clone();
+    tokio::task::spawn_local(async move {
+        let run = agent(&server, &caller, "spawn", args).await;
+        assert_eq!(run.code, 0, "{run:?}");
+        child_id(&run)
+    })
 }
 
 /// The failure a call wrote.
@@ -920,6 +933,10 @@ async fn a_start_request_is_safe_to_retry_and_outlives_a_cancelled_call() {
     .await;
     let child = lifecycle(&frames)[0].1.clone();
     frames_until(&mut client, is_idle).await;
+    // The receipts are the root's command storage: they outlive its tree.
+    client.send(ClientFrame::Close {}).await;
+    frames_until(&mut client, |frame| *frame == ServerFrame::Closed).await;
+    let mut client = fixture.opened().await;
 
     let retried = agent(
         &fixture.server,
@@ -1304,21 +1321,10 @@ async fn a_grandchild_completes_into_its_parent_which_then_completes_into_the_wo
     )
     .await;
     frames_until(&mut client, is_idle).await;
-    let grandchild_start = tokio::task::spawn_local({
-        let server = fixture.server.clone();
-        let parent = parent.clone();
-        async move {
-            agent(
-                &server,
-                &parent,
-                "spawn",
-                json!({ "prompt": "task grandchild" }),
-            )
-            .await
-        }
-    });
+    let grandchild_start =
+        spawn_during_turn(&fixture, &parent, json!({ "prompt": "task grandchild" }));
     gate.open();
-    let grandchild = child_id(&grandchild_start.await.unwrap());
+    let grandchild = grandchild_start.await.unwrap();
     let frames = frames_until(&mut client, is_closed(&parent)).await;
     until(|| root_receipts(&fixture).len() == 2).await;
 
@@ -1373,4 +1379,220 @@ async fn a_grandchild_completes_into_its_parent_which_then_completes_into_the_wo
             ),
         ]
     );
+}
+
+/// The execution context the harness gives each node once.
+const ON_THE_CLOUD: &str = "The conversation now runs on the Cloud.";
+
+/// How many `context` blocks the node's stored transcript holds.
+fn contexts(fixture: &Fixture, node: &NodeId) -> usize {
+    fixture
+        .store
+        .checkpoint(node)
+        .unwrap()
+        .transcript
+        .iter()
+        .filter(|block| matches!(block, Block::Context(_)))
+        .count()
+}
+
+#[tokio::test(flavor = "local")]
+async fn a_grandchild_inherits_its_parents_profile_and_every_node_reads_the_execution_context_itself()
+ {
+    let mut worker_model = model_of("stub", "worker-model");
+    worker_model.model.context_window = 200_000;
+    let worker = Profile {
+        name: "worker".into(),
+        description: "Works through a task list.".into(),
+        system_prompt: Some(Rc::new(|_, help: &str| format!("worker prompt\n{help}"))),
+        commands: Some(Rc::new(|_: &CommandSet| CommandSet::new())),
+        can_spawn_subagents: true,
+        model: Some(worker_model),
+    };
+    let harness = TestHarness {
+        profiles: vec![worker],
+        context: RefCell::new(Some(ON_THE_CLOUD.into())),
+        ..TestHarness::default()
+    };
+    let model = Model::default();
+    let (outer_gate, inner_gate) = (Gate::new(), Gate::new());
+    model.root([said("noted")]);
+    model.child(
+        "task outer",
+        [held_said(&outer_gate, "delegated"), said("outer done")],
+    );
+    model.child("task inner", [held_said(&inner_gate, "inner done")]);
+    let fixture = fixture(&model, harness);
+    let mut client = fixture.opened().await;
+
+    let outer = spawn(
+        &fixture,
+        &root(),
+        json!({ "prompt": "task outer", "profile": "worker" }),
+    )
+    .await;
+    let inner_start = spawn_during_turn(&fixture, &outer, json!({ "prompt": "task inner" }));
+    outer_gate.open();
+    let inner = inner_start.await.unwrap();
+    let listed = agent(&fixture.server, &inner, "list", json!({})).await;
+    inner_gate.open();
+    frames_until(&mut client, is_closed(&outer)).await;
+    frames_until(&mut client, is_idle).await;
+
+    // Spawned without a profile under the worker, the grandchild runs the
+    // worker's prompt and model, and keeps the `demi agent` group, which the
+    // worker's narrowing of the harness commands cannot take away.
+    let inner_asked = &model.requests_of("task inner")[0];
+    assert!(inner_asked.system_prompt.starts_with("worker prompt\n"));
+    assert!(inner_asked.system_prompt.contains("demi agent send"));
+    assert!(!inner_asked.system_prompt.contains("greet"));
+    assert_eq!(inner_asked.model_id, "worker-model");
+    assert_eq!(listed.code, 0, "{listed:?}");
+    // Each node reads the execution context itself, once, whatever its
+    // prompt: the root reading it later took nothing from its children.
+    for node in [&root(), &outer, &inner] {
+        assert_eq!(contexts(&fixture, node), 1, "{node}");
+    }
+    assert!(request_text(inner_asked).contains(ON_THE_CLOUD));
+    assert!(model.is_done());
+}
+
+#[tokio::test(flavor = "local")]
+async fn a_reopened_tree_restores_a_childs_own_children_before_the_child_can_settle() {
+    let model = Model::default();
+    let (outer_gate, never) = (Gate::new(), Gate::new());
+    model.root([said("noted")]);
+    model.child(
+        "task outer",
+        [held_said(&outer_gate, "delegated"), said("outer done")],
+    );
+    model.child(
+        "task inner",
+        [held_said(&never, "never said"), said("inner done")],
+    );
+    let fixture = fixture(&model, TestHarness::default());
+    let mut client = fixture.opened().await;
+    let outer = spawn(&fixture, &root(), json!({ "prompt": "task outer" })).await;
+    let inner_start = spawn_during_turn(&fixture, &outer, json!({ "prompt": "task inner" }));
+    outer_gate.open();
+    let inner = inner_start.await.unwrap();
+    let outer_session = fixture
+        .server
+        .node(&root(), &outer)
+        .unwrap()
+        .session()
+        .clone();
+    until(|| outer_session.is_settled()).await;
+
+    // The tree goes while the inner child runs and the outer one, idle,
+    // waits for it; both stay live in the store.
+    client.send(ClientFrame::Close {}).await;
+    frames_until(&mut client, |frame| *frame == ServerFrame::Closed).await;
+    for node in [&outer, &inner] {
+        assert!(
+            fixture.store.record(node).unwrap().closed.is_none(),
+            "{node}"
+        );
+    }
+
+    // Reopened, the outer child reads its own children before anything
+    // watches it: idle and without a child yet, it does not close.
+    let reading = fixture.store.hold_children_of(&outer);
+    let opening = tokio::task::spawn_local({
+        let reopened = fixture.client();
+        async move {
+            reopened.send(open(test_model())).await;
+            reopened
+        }
+    });
+    until(|| reading.waiting() == 1).await;
+    for _ in 0..200 {
+        tokio::task::yield_now().await;
+    }
+    assert!(fixture.store.record(&outer).unwrap().closed.is_none());
+    reading.release();
+    let mut reopened = opening.await.unwrap();
+    let frames = frames_until(&mut reopened, is_closed(&outer)).await;
+    frames_until(&mut reopened, is_idle).await;
+
+    // It waited for the inner child's rerun turn, and closed after it.
+    let events: Vec<(SubagentEvent, NodeId)> = lifecycle(&frames)
+        .into_iter()
+        .map(|(event, node, _)| (event, node))
+        .collect();
+    assert_eq!(
+        events,
+        [
+            (SubagentEvent::Started, outer.clone()),
+            (SubagentEvent::Started, inner.clone()),
+            (SubagentEvent::Closed, inner.clone()),
+            (SubagentEvent::Closed, outer.clone()),
+        ]
+    );
+    assert_eq!(
+        closed_phase(&fixture, &inner),
+        Some(ClosePhase::Completed {
+            result: "inner done".into()
+        })
+    );
+    assert_eq!(
+        closed_phase(&fixture, &outer),
+        Some(ClosePhase::Completed {
+            result: "outer done".into()
+        })
+    );
+    let senders: Vec<NodeId> = root_receipts(&fixture)
+        .into_iter()
+        .map(|message| message.sender.id)
+        .collect();
+    assert_eq!(senders, [outer]);
+    assert!(model.is_done());
+}
+
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_child_waiting_on_its_yield_stays_live_while_no_action_holds_the_tree() {
+    let model = Model::default();
+    let gate = Gate::new();
+    model.root([said("noted")]);
+    model.child(
+        "task wait",
+        [
+            held(
+                &gate,
+                vec![
+                    event::tool_call("wait-1", "yield", json!({ "durationMs": 60_000 })),
+                    event::response(1, 1),
+                ],
+            ),
+            said("waited"),
+        ],
+    );
+    let fixture = Fixture::with_model_on_tokio_time(&model, TestHarness::default());
+    let mut client = fixture.opened().await;
+    let child = spawn(&fixture, &root(), json!({ "prompt": "task wait" })).await;
+    let tree = fixture.server.tree(&root()).unwrap();
+    until(|| model.requests_of("task wait").len() == 1).await;
+
+    // While the child's turn runs, the idle root cannot reserve the tree.
+    assert!(!tree.is_quiescent());
+    assert!(tree.admission().try_reserve().is_none());
+    gate.open();
+    until(|| tree.admission().state().demand == 0).await;
+    // The turn ended on the yield: no action holds the tree, yet the child
+    // stays live, and the tree with it.
+    assert!(fixture.store.record(&child).unwrap().closed.is_none());
+    assert!(!tree.is_quiescent());
+
+    tokio::time::sleep(Duration::from_secs(61)).await;
+    frames_until(&mut client, is_closed(&child)).await;
+    frames_until(&mut client, is_idle).await;
+    assert_eq!(
+        closed_phase(&fixture, &child),
+        Some(ClosePhase::Completed {
+            result: "waited".into()
+        })
+    );
+    assert!(tree.is_quiescent());
+    assert!(tree.admission().try_reserve().is_some());
+    assert!(model.is_done());
 }

@@ -503,6 +503,13 @@ stored as blob references is loaded back before the request
 ([Tree store](#tree-store)). A tool call's input is replayed as the JSON value
 the provider supplied, or as text when it is not valid JSON.
 
+Replay reads only what the blocks hold for the model, never an ID or a time,
+and a block keeps its place. The same history therefore gives the same items in
+any session, and each request's items begin with the previous request's until a
+history rewrite or a new `compaction_boundary` changes what is replayed. With
+an unchanged system prompt and tools, a provider that caches request prefixes
+reuses them ([Keeping the cache prefix](compaction.md#keeping-the-cache-prefix)).
+
 ### Views
 
 A `tool_call` block's `view` carries bounded data for the user. It is never

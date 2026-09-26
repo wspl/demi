@@ -12,8 +12,8 @@ use std::{
 
 use demi_agent_protocol::{AbortTarget, ModelSwitchApply, TranscriptPatch};
 use demi_core::{
-    Block, FailureSource, NodeId, OperationId, SessionPhase, Timestamp, ToolCallStatus,
-    ToolResultContentBlock, TurnId, UserContentBlock,
+    AgentMessage, AgentMessageEvent, Block, BlockId, FailureSource, NodeId, OperationId, Sender,
+    SessionPhase, Timestamp, ToolCallStatus, ToolResultContentBlock, TurnId, UserContentBlock,
 };
 use demi_gates::{ActivityGate, GateLease, Purpose};
 use demi_provider::{
@@ -114,6 +114,19 @@ fn output(text: &str) -> ToolOutcome {
         view: None,
         effect: None,
     }
+}
+
+/// A tool that answers `answer`, and how many times it ran.
+fn counted(name: &str, answer: &'static str) -> ((String, Invoke), Rc<Cell<u32>>) {
+    let runs = Rc::new(Cell::new(0));
+    let invoke = tool(name, {
+        let runs = runs.clone();
+        move |_| {
+            runs.set(runs.get() + 1);
+            Box::pin(async move { Ok(output(answer)) })
+        }
+    });
+    (invoke, runs)
 }
 
 /// What lets each waiting call of a gated tool finish, in call order.
@@ -385,6 +398,33 @@ impl ProviderRuntime for NumberedRuntime {
     fn close(&mut self) -> LocalBoxFuture<'_, ()> {
         self.log.borrow_mut().closed.push(self.number);
         self.script.close()
+    }
+}
+
+/// A run that streams `partial` and then waits until it is stopped.
+fn partial_then_hang(partial: &str) -> Turn {
+    use futures_util::StreamExt;
+    let delta = event::text(partial);
+    Turn::Stream(Box::new(move |_| {
+        futures_util::stream::iter([delta])
+            .chain(futures_util::stream::pending())
+            .boxed_local()
+    }))
+}
+
+/// A message from the agent `child` of the tree to the root.
+fn agent_message(id: &str) -> AgentMessage {
+    AgentMessage {
+        id: BlockId::try_from(id).unwrap(),
+        sender: Sender {
+            id: NodeId::try_from("child").unwrap(),
+            description: "UI implementation".into(),
+            round: 1,
+        },
+        recipient_id: root(),
+        timestamp: Timestamp::UNIX_EPOCH,
+        content: format!("Result {id}"),
+        event: AgentMessageEvent::Message {},
     }
 }
 
@@ -740,7 +780,6 @@ async fn restore_after_a_crash_during_a_tool_completes_the_call_as_interrupted_w
     ])]);
     let store = MemoryTreeStore::new();
     let (write_once, _releases, started) = gated_tool("write_once");
-    let runs = Rc::new(RefCell::new(0));
     let session = start(
         &provider,
         vec![write_once],
@@ -760,13 +799,7 @@ async fn restore_after_a_crash_during_a_tool_completes_the_call_as_interrupted_w
         event::text("carried on"),
         event::response(1, 1),
     ])]);
-    let counting = tool("write_once", {
-        let runs = runs.clone();
-        move |_| {
-            *runs.borrow_mut() += 1;
-            Box::pin(async { Ok(output("wrote again")) })
-        }
-    });
+    let (counting, runs) = counted("write_once", "wrote again");
     let deps = SessionDeps {
         runtime: Rc::new(test_runtime(vec![counting])),
         store: crashed.session_store(&root()),
@@ -794,7 +827,7 @@ async fn restore_after_a_crash_during_a_tool_completes_the_call_as_interrupted_w
         .unwrap()
         .await
         .unwrap();
-    assert_eq!(*runs.borrow(), 0);
+    assert_eq!(runs.get(), 0);
     let request = &later.requests()[0];
     assert_eq!(
         item_kinds(&request.items),

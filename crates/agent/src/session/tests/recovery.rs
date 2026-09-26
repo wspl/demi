@@ -174,6 +174,43 @@ async fn four_transient_failures_end_the_turn_with_the_last_and_a_long_vendor_wa
     );
 }
 
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_transient_failure_after_a_tool_round_is_retried_without_running_the_tool_again() {
+    let provider = ScriptedRuntime::new([
+        Turn::Events(vec![
+            event::tool_call("call-1", "once", json!({})),
+            event::response(1, 1),
+        ]),
+        Turn::Events(vec![failure(Some(ErrorCode::RateLimit), None)]),
+        Turn::Events(vec![event::text("done"), event::response(1, 1)]),
+    ]);
+    let store = MemoryTreeStore::new();
+    let (once, runs) = counted("once", "did it");
+    let session = start(&provider, vec![once], &store, SessionConfig::default()).await;
+    let (_subscription, reports) = retries(&session);
+
+    let end = session.send(text("run"), turn("t1")).unwrap().await;
+
+    // The failed attempt began after the round, and nothing it wrote
+    // outlives it: it is retried, and the round stays as it was.
+    assert_eq!(end, Ok(ActionEnd::Completed));
+    assert_eq!(runs.get(), 1);
+    assert_eq!(reports.borrow().len(), 1);
+    assert_eq!(
+        kinds(&session.transcript().blocks),
+        [
+            "user",
+            "tool_call:completed",
+            "response",
+            "text",
+            "response"
+        ]
+    );
+    let requests = provider.requests();
+    assert_eq!(requests.len(), 3);
+    assert_eq!(requests[2].items, requests[1].items);
+}
+
 #[tokio::test(flavor = "local")]
 async fn resume_after_a_failure_that_followed_a_tool_continues_after_its_result() {
     let provider = ScriptedRuntime::new([
@@ -189,14 +226,7 @@ async fn resume_after_a_failure_that_followed_a_tool_continues_after_its_result(
         Turn::Events(vec![event::text("carried on"), event::response(1, 1)]),
     ]);
     let store = MemoryTreeStore::new();
-    let runs = Rc::new(RefCell::new(0));
-    let once = tool("once", {
-        let runs = runs.clone();
-        move |_| {
-            *runs.borrow_mut() += 1;
-            Box::pin(async { Ok(output("did it")) })
-        }
-    });
+    let (once, runs) = counted("once", "did it");
     let session = start(&provider, vec![once], &store, SessionConfig::default()).await;
     assert!(
         session
@@ -218,7 +248,7 @@ async fn resume_after_a_failure_that_followed_a_tool_continues_after_its_result(
 
     session.resume().unwrap().await.unwrap();
 
-    assert_eq!(*runs.borrow(), 1);
+    assert_eq!(runs.get(), 1);
     assert_eq!(
         kinds(&session.transcript().blocks),
         [
@@ -321,13 +351,16 @@ async fn retry_reruns_the_last_input_turn_with_its_steers_as_one_replacement() {
 #[tokio::test(flavor = "local")]
 async fn resume_after_a_stop_marks_the_stop_resumed_and_continues_the_turn() {
     let provider = ScriptedRuntime::new([
-        Turn::pending(),
+        partial_then_hang("interim finding"),
         Turn::Events(vec![event::text("continued"), event::response(1, 1)]),
     ]);
     let store = MemoryTreeStore::new();
     let session = start(&provider, Vec::new(), &store, SessionConfig::default()).await;
     let running = session.send(text("go"), turn("t1")).unwrap();
-    until(|| provider.requests().len() == 1).await;
+    until(|| session.transcript().blocks.len() == 2).await;
+    session
+        .steer(text("extra constraint"), BlockId::try_from("s1").unwrap())
+        .unwrap();
     session.abort().await;
     running.await.unwrap();
 
@@ -336,9 +369,31 @@ async fn resume_after_a_stop_marks_the_stop_resumed_and_continues_the_turn() {
     let blocks = session.transcript().blocks;
     assert_eq!(
         kinds(&blocks),
-        ["user", "abort", "resume", "text", "response"]
+        [
+            "user", "text", "steer", "abort", "resume", "text", "response"
+        ]
     );
-    assert!(matches!(&blocks[1], Block::Abort(abort) if abort.is_resumed));
+    assert!(matches!(&blocks[3], Block::Abort(abort) if abort.is_resumed));
+    // The continued turn asks with what it had streamed and the steer it
+    // took, each once.
+    assert_eq!(
+        provider.requests()[1].items.as_ref(),
+        [
+            InferenceItem::UserMessage {
+                content: text("go")
+            },
+            InferenceItem::AssistantText {
+                model_id: "test-model".into(),
+                text: "interim finding".into(),
+            },
+            InferenceItem::UserSteer {
+                content: text("extra constraint"),
+            },
+            InferenceItem::UserMessage {
+                content: text(RESUME_TEXT),
+            },
+        ]
+    );
 }
 
 #[tokio::test(flavor = "local")]

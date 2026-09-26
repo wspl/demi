@@ -553,31 +553,30 @@ async fn a_switch_to_another_provider_builds_its_runtime_and_closes_the_old_one_
 async fn the_system_prompt_has_the_command_help_and_a_context_change_is_saved_before_the_request() {
     let store = MemoryTreeStore::new();
     let stored_at_request = Rc::new(std::cell::RefCell::new(Vec::new()));
-    let script = ScriptedRuntime::new([Turn::Respond(Box::new({
-        let store = store.clone();
-        let stored_at_request = stored_at_request.clone();
-        move |request| {
-            *stored_at_request.borrow_mut() =
-                kinds(&store.checkpoint(&conversation()).unwrap().transcript);
-            let texts: Vec<String> = request
-                .items
-                .iter()
-                .map(|item| match item {
-                    InferenceItem::UserMessage { content } => {
-                        serde_json::to_string(content).unwrap()
-                    }
-                    other => format!("{other:?}"),
-                })
-                .collect();
-            vec![event::text(&texts.join(" | ")), event::response(1, 1)]
-        }
-    })), Turn::Events(vec![event::text("again"), event::response(1, 1)])]);
+    let script = ScriptedRuntime::new([
+        Turn::Respond(Box::new({
+            let store = store.clone();
+            let stored_at_request = stored_at_request.clone();
+            move |request| {
+                *stored_at_request.borrow_mut() =
+                    kinds(&store.checkpoint(&conversation()).unwrap().transcript);
+                let texts: Vec<String> = request
+                    .items
+                    .iter()
+                    .map(|item| match item {
+                        InferenceItem::UserMessage { content } => {
+                            serde_json::to_string(content).unwrap()
+                        }
+                        other => format!("{other:?}"),
+                    })
+                    .collect();
+                vec![event::text(&texts.join(" | ")), event::response(1, 1)]
+            }
+        })),
+        Turn::Events(vec![event::text("again"), event::response(1, 1)]),
+    ]);
     let fixture = Fixture::with(&script, store, ServerConfig::default());
-    fixture
-        .harness
-        .context
-        .borrow_mut()
-        .push_back("The conversation now runs on the Cloud.".into());
+    *fixture.harness.context.borrow_mut() = Some("The conversation now runs on the Cloud.".into());
     let mut client = fixture.opened().await;
 
     client.send(send("m1", "hi")).await;
@@ -608,7 +607,13 @@ async fn the_system_prompt_has_the_command_help_and_a_context_change_is_saved_be
     client.send(send("m2", "again")).await;
     client.next_until(is_idle).await;
     let seen = fixture.harness.seen.borrow();
-    assert_eq!(*seen, [vec![], vec!["The conversation now runs on the Cloud.".to_owned()]]);
+    assert_eq!(
+        *seen,
+        [
+            vec![],
+            vec!["The conversation now runs on the Cloud.".to_owned()]
+        ]
+    );
 }
 
 #[tokio::test(flavor = "local")]
