@@ -276,11 +276,40 @@ async fn shutdown_does_not_wait_for_a_blocked_output_consumer() {
     assert_eq!(table.len(), 0);
 }
 
+/// A job that blocks, in any of the ways below, ends with `SIGKILL` and no
+/// work left when it is cancelled. The blocked jobs run at once beside a
+/// sibling job, which prints the runner's process as its `$$`, waits in
+/// `read` through every cancellation and then finishes as it would alone.
 #[tokio::test]
 async fn jobs_share_the_runner_process_and_cancellation_is_isolated() {
-    use demi_runner::shell::{job::Job, scope::Scope};
+    use demi_runner::{
+        process::{OutputStream, ProcessInput},
+        shell::{ShellRuntime, job::Job, scope::Scope},
+    };
     use tokio_util::sync::CancellationToken;
-    for script in [
+    let root = tempfile::tempdir().unwrap();
+    let mut sibling = Job::start(
+        "printf '%s' $$; read go; printf done".into(),
+        root.path().into(),
+        crate::home(root.path()),
+        false,
+        Scope::new(CancellationToken::new(), None),
+        &ShellRuntime::current(),
+    )
+    .await
+    .unwrap();
+    let process = std::process::id().to_string();
+    let mut printed = Vec::new();
+    while printed.len() < process.len() {
+        let chunk = tokio::time::timeout(Duration::from_secs(60), sibling.output.recv())
+            .await
+            .unwrap()
+            .expect("the sibling prints its process");
+        assert!(matches!(chunk.stream, OutputStream::Stdout));
+        printed.extend(chunk.bytes);
+    }
+    assert_eq!(String::from_utf8(printed).unwrap(), process);
+    let blocked = [
         "while :; do :; done",
         "printf line | sed ':again; b again'",
         "jq -n 'def forever: forever; forever'",
@@ -293,53 +322,46 @@ async fn jobs_share_the_runner_process_and_cancellation_is_isolated() {
         "(sleep 60) & wait",
         "cat <(sleep 60)",
         "touch file; tail -f -s 60 file",
-    ] {
+    ]
+    .map(|script| async move {
         let root = tempfile::tempdir().unwrap();
         let scope = Scope::new(CancellationToken::new(), None);
-        let mut blocked = Job::start(
+        let mut job = Job::start(
             format!("printf ready; {script}"),
             root.path().into(),
             crate::home(root.path()),
             true,
-            scope.clone(), &demi_runner::shell::ShellRuntime::current(),
+            scope.clone(),
+            &ShellRuntime::current(),
         )
-            .await
+        .await
         .unwrap();
-        wait_for_job_ready(&mut blocked).await;
-        let mut sibling = Job::start(
-            "printf '%s' $$; sleep 0.1; printf done".into(),
-            root.path().into(),
-            crate::home(root.path()),
-            false,
-            Scope::new(CancellationToken::new(), None), &demi_runner::shell::ShellRuntime::current(),
-        )
-            .await
-        .unwrap();
-        tokio::time::sleep(Duration::from_millis(30)).await;
-        blocked.cancel();
-        let (exit, _) = tokio::time::timeout(Duration::from_secs(3), blocked.wait())
+        wait_for_job_ready(&mut job).await;
+        job.cancel();
+        let (exit, _) = tokio::time::timeout(Duration::from_secs(3), job.wait())
             .await
             .expect(script);
         assert_eq!(exit.signal.as_deref(), Some("SIGKILL"), "{script}");
         assert_eq!(scope.tasks.len(), 0, "{script}");
-        let mut output = Vec::new();
-        while let Some(chunk) = tokio::time::timeout(Duration::from_secs(3), sibling.output.recv())
-            .await
-            .unwrap()
-        {
-            assert!(matches!(
-                chunk.stream,
-                demi_runner::process::OutputStream::Stdout
-            ));
-            output.extend(chunk.bytes);
-        }
-        let (exit, _) = sibling.wait().await;
-        assert_eq!(exit.code, Some(0), "{:?}", exit.error);
-        assert_eq!(
-            String::from_utf8(output).unwrap(),
-            format!("{}done", std::process::id())
-        );
+    });
+    futures_util::future::join_all(blocked).await;
+    sibling
+        .input
+        .send(ProcessInput::Bytes(bytes::Bytes::from_static(b"go\n")))
+        .await
+        .unwrap();
+    sibling.input.send(ProcessInput::End).await.unwrap();
+    let mut rest = Vec::new();
+    while let Some(chunk) = tokio::time::timeout(Duration::from_secs(3), sibling.output.recv())
+        .await
+        .unwrap()
+    {
+        assert!(matches!(chunk.stream, OutputStream::Stdout));
+        rest.extend(chunk.bytes);
     }
+    assert_eq!(rest, b"done");
+    let (exit, _) = sibling.wait().await;
+    assert_eq!(exit.code, Some(0), "{:?}", exit.error);
 }
 
 #[cfg(unix)]

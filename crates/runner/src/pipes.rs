@@ -1,12 +1,12 @@
 use bytes::Bytes;
 use futures_util::{Stream, StreamExt, stream::BoxStream};
-use std::{io, sync::Arc};
+use std::{io, sync::Arc, time::Duration};
 use demi_runner_protocol::values::{BackendUrl, DeviceToken};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
 /// How long a pipe's connection may take to open.
-const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 /// The most of a pipe's answer the runner reads: a confirmation, or the words
 /// of a refusal.
 const ANSWER_BYTES: usize = 16 * 1024;
@@ -21,6 +21,18 @@ pub struct PipeClient {
 
 impl PipeClient {
     pub fn new(backend: &BackendUrl, token: watch::Receiver<Option<DeviceToken>>) -> io::Result<Self> {
+        Self::with_connect_timeout(backend, token, CONNECT_TIMEOUT)
+    }
+
+    /// A client whose connections may take at most `connect_timeout` to
+    /// open. Only opening has a deadline: a request, an answer or a body may
+    /// stay quiet for as long as its pipe lasts. [`PipeClient::new`] gives a
+    /// connection 15 seconds.
+    pub fn with_connect_timeout(
+        backend: &BackendUrl,
+        token: watch::Receiver<Option<DeviceToken>>,
+        connect_timeout: Duration,
+    ) -> io::Result<Self> {
         let mut origin = backend.url().clone();
         match origin.scheme() {
             "ws" => origin
@@ -35,7 +47,7 @@ impl PipeClient {
         origin.set_query(None);
         let http = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
-            .connect_timeout(CONNECT_TIMEOUT)
+            .connect_timeout(connect_timeout)
             .build()
             .map_err(io::Error::other)?;
         Ok(Self {

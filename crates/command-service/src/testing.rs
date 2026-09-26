@@ -1,10 +1,12 @@
 //! Test support (`crates-and-packages.md` § command-service): the programs a
-//! test finds beside itself, and a command service's binary started and
-//! driven with a client.
+//! test finds beside itself, a command service's binary started and driven
+//! with a client, and the count of the process's pauses before trying an
+//! operation again.
 
 use std::{
     path::{Path, PathBuf},
     process::{ExitStatus, Stdio},
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 use tokio::{
@@ -13,6 +15,21 @@ use tokio::{
 };
 
 use crate::{Client, ServiceError};
+
+/// Every pause a [`crate::descriptors::Backoff`] of this process has taken.
+static PAUSES: AtomicU64 = AtomicU64::new(0);
+
+pub(crate) fn count_pause() {
+    PAUSES.fetch_add(1, Ordering::Relaxed);
+}
+
+/// How many times this process has paused before trying an operation again
+/// ([`crate::descriptors::Backoff`]). Nothing else shows that an operation
+/// waits out a lack of open files instead of failing, so a test that takes
+/// every descriptor away watches this count.
+pub fn pauses() -> u64 {
+    PAUSES.load(Ordering::Relaxed)
+}
 
 /// A program Cargo built into the target directory this test runs from,
 /// such as a workspace crate's executable.
