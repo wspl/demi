@@ -170,6 +170,8 @@ impl Devices {
 impl Shard {
     /// Takes the socket of a runner that presented `device`'s token.
     pub(crate) async fn adopt_runner(self: Rc<Self>, device: DeviceRecord, runner: RunnerInfo, mut socket: WebSocket) {
+        #[cfg(feature = "testing")]
+        self.services().hellos.pass(crate::HelloStep::Bind).await;
         let slot = self.devices().slot(&device.id);
         slot.settled().await;
         // From this check until the link is published nothing awaits, so two

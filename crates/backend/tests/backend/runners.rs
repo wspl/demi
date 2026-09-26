@@ -6,6 +6,8 @@
 
 use std::time::Duration;
 
+use demi_agent_protocol::ClientFrame;
+use demi_backend::HelloStep;
 use demi_host_remote::testing::{RunnerProcess, RunnerProcessOptions};
 use demi_runner_protocol::values::DeviceToken;
 use demi_runner_protocol::wire::{self, HelloErrorCode, HostIdentity, Inbound, Outbound, RunnerInfo, RunnerPlatform};
@@ -16,7 +18,9 @@ use futures_util::{SinkExt as _, StreamExt as _};
 use reqwest::StatusCode;
 use serde_json::json;
 use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 
+use crate::conversations::{FIRST, Socket, create};
 use crate::support::{Harness, TestBackend, eventually, stored_token};
 
 #[tokio::test(flavor = "multi_thread")]
@@ -252,6 +256,66 @@ async fn hellos_with_one_token_at_once_bind_one_socket_and_a_repeated_hello_chan
     drop(bound);
     backend.until_online(&master, laptop.id(), false).await;
     backend.close().await;
+}
+
+/// A runner that goes away while its token is looked up is let go at once,
+/// without waiting for the lookup: the backend never adopts its socket, so
+/// the device never comes online for it (`runner.md` § Connection and
+/// identity).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_runner_that_goes_away_while_its_token_is_looked_up_is_let_go_and_never_comes_online() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let mut laptop = backend.pair(&master, "laptop").await;
+    let token = laptop.token().await;
+    laptop.runner.stop().await;
+    backend.until_online(&master, laptop.id(), false).await;
+
+    let lookups = backend.hold_hellos(HelloStep::TokenLookup);
+    let mut runner = RawRunner::connect(&backend).await;
+    runner.send(&hello(wire::VERSION, Some(&token), None)).await;
+    lookups.until_arrived(1).await;
+    // The backend ends the connection while the lookup still waits.
+    runner.0.close(None).await.unwrap();
+    assert_eq!(runner.next().await, None);
+    lookups.release();
+    backend.close().await;
+}
+
+/// A runner whose hello reaches its device's shard as the backend shuts
+/// down is not welcomed: a closing shard binds no runner, so the runner's
+/// connection closes without an answer, and the shutdown ends (`runner.md`
+/// § Connection and identity, `backend.md` § Startup and shutdown).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_runner_whose_hello_meets_the_shutdown_is_never_welcomed() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let mut laptop = backend.pair(&master, "laptop").await;
+    let token = laptop.token().await;
+    laptop.runner.stop().await;
+    backend.until_online(&master, laptop.id(), false).await;
+    // A page's conversation socket, which the shard closes early in its own
+    // close, before its runners' connections; the answer to a frame shows
+    // that the shard serves it.
+    create(&backend, &master, FIRST).await;
+    let mut page = Socket::connect(&backend, &master, FIRST).await;
+    page.send(&ClientFrame::Abort {}).await;
+    page.frame().await;
+
+    let binds = backend.hold_hellos(HelloStep::Bind);
+    let mut runner = RawRunner::connect(&backend).await;
+    runner.send(&hello(wire::VERSION, Some(&token), None)).await;
+    binds.until_arrived(1).await;
+    let answered = async move {
+        assert_eq!(page.closed().await, Some(u16::from(CloseCode::Away)));
+        binds.release();
+        let answer = runner.next().await;
+        // A welcomed runner would keep the shutdown waiting for it.
+        drop(runner);
+        answer
+    };
+    let ((), answer) = tokio::join!(backend.close(), answered);
+    assert_eq!(answer, None, "the backend welcomed a runner while it shut down");
 }
 
 #[tokio::test(flavor = "multi_thread")]

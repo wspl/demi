@@ -94,6 +94,9 @@ pub(crate) struct Services {
     pub(crate) expose_domain: Option<ExposeDomain>,
     /// How the public relay treats its connections.
     pub(crate) expose_tuning: ExposeTuning,
+    /// The step a test holds runners' hellos at (`Backend::hold_hellos`).
+    #[cfg(feature = "testing")]
+    pub(crate) hellos: crate::runner::hold::HelloHolds,
 }
 
 /// Where runners, Cloud guests and expose visitors reach this backend:
@@ -275,6 +278,8 @@ impl Services {
             lifecycle,
             expose_domain,
             expose_tuning,
+            #[cfg(feature = "testing")]
+            hellos: crate::runner::hold::HelloHolds::default(),
         })
     }
 
@@ -517,6 +522,13 @@ impl Backend {
     #[cfg(feature = "testing")]
     pub fn hold_commits(&self) -> crate::CommitHold {
         self.services.conversations.hold_commits()
+    }
+
+    /// Holds every runner's hello at `step` from now on, until the hold is
+    /// released.
+    #[cfg(feature = "testing")]
+    pub fn hold_hellos(&self, step: crate::HelloStep) -> crate::HelloHold {
+        self.services.hellos.hold(step)
     }
 
     /// Shuts the backend down. The listener closes first, so no new work
