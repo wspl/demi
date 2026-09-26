@@ -15,7 +15,10 @@
 // map[string]any, whose keys are encoded sorted because a Go map has no order.
 package zodrt
 
-import "iter"
+import (
+	"iter"
+	"slices"
+)
 
 // Optional is an object field the schema lets the sender omit (`.optional()`).
 // It is never null: a present field holds a value of T.
@@ -57,38 +60,56 @@ type Object []Field
 
 // Record is a Zod record: its keys keep the order they were set in, as a
 // JavaScript object keeps them. The zero value is an empty record.
+//
+// A Record is a value: a copy never shares a change with the original. Set
+// therefore writes to a new array whenever the old one may be shared, and a
+// lookup scans the entries; records are small (environments, arguments,
+// targets), and a decoder builds a large one without Set.
 type Record[K ~string, V any] struct {
-	keys   []K
-	values map[K]V
+	entries []recordEntry[K, V]
+}
+
+type recordEntry[K ~string, V any] struct {
+	key   K
+	value V
 }
 
 // Set sets a key's value; a new key goes after the existing ones.
 func (r *Record[K, V]) Set(key K, value V) {
-	if r.values == nil {
-		r.values = make(map[K]V)
+	for index, entry := range r.entries {
+		if entry.key == key {
+			entries := slices.Clone(r.entries)
+			entries[index].value = value
+			r.entries = entries
+			return
+		}
 	}
-	if _, ok := r.values[key]; !ok {
-		r.keys = append(r.keys, key)
-	}
-	r.values[key] = value
+	// Clipping makes append copy instead of writing into an array a copy of
+	// this record may also hold.
+	r.entries = append(slices.Clip(r.entries), recordEntry[K, V]{key: key, value: value})
 }
 
 // Get returns a key's value.
 func (r Record[K, V]) Get(key K) (V, bool) {
-	value, ok := r.values[key]
-	return value, ok
+	for _, entry := range r.entries {
+		if entry.key == key {
+			return entry.value, true
+		}
+	}
+	var zero V
+	return zero, false
 }
 
 // Len is the number of keys.
 func (r Record[K, V]) Len() int {
-	return len(r.keys)
+	return len(r.entries)
 }
 
 // All yields the entries in key order.
 func (r Record[K, V]) All() iter.Seq2[K, V] {
 	return func(yield func(K, V) bool) {
-		for _, key := range r.keys {
-			if !yield(key, r.values[key]) {
+		for _, entry := range r.entries {
+			if !yield(entry.key, entry.value) {
 				return
 			}
 		}

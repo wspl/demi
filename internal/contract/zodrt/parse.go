@@ -118,7 +118,10 @@ func ParseRecord[K ~string, V any](key Parser[K], item Parser[V]) Parser[Record[
 		if err != nil {
 			return Record[K, V]{}, err
 		}
-		var out Record[K, V]
+		// Built without Set, so a large record decodes in linear time. A
+		// key repeated in a Go-built tree keeps its first position.
+		entries := make([]recordEntry[K, V], 0, len(fields))
+		positions := make(map[K]int, len(fields))
 		for _, field := range fields {
 			parsedKey, err := key(field.Key)
 			if err != nil {
@@ -128,9 +131,14 @@ func ParseRecord[K ~string, V any](key Parser[K], item Parser[V]) Parser[Record[
 			if err != nil {
 				return Record[K, V]{}, At(field.Key, err)
 			}
-			out.Set(parsedKey, parsed)
+			if position, ok := positions[parsedKey]; ok {
+				entries[position].value = parsed
+				continue
+			}
+			positions[parsedKey] = len(entries)
+			entries = append(entries, recordEntry[K, V]{key: parsedKey, value: parsed})
 		}
-		return out, nil
+		return Record[K, V]{entries: entries}, nil
 	}
 }
 

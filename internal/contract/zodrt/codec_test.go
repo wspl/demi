@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"math"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -251,6 +252,76 @@ func TestDecodersRefuseMalformedText(t *testing.T) {
 	} {
 		if _, err := DecodeMsgpack(frame); err == nil {
 			t.Errorf("MessagePack %x decoded", frame)
+		}
+	}
+}
+
+// Headers may claim 2^32-1 entries at every level; the memory a decoder
+// reserves must follow the bytes that arrive, not the claims.
+func TestDecodeMsgpackIgnoresClaimedLengths(t *testing.T) {
+	var frame []byte
+	for range 240 {
+		frame = append(frame, 0xdd, 0xff, 0xff, 0xff, 0xff)
+	}
+	for range 240 {
+		frame = append(frame, 0xdf, 0xff, 0xff, 0xff, 0xff, 0xa1, 'k')
+	}
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	if _, err := DecodeMsgpack(frame); err == nil {
+		t.Fatal("a truncated frame decoded")
+	}
+	runtime.ReadMemStats(&after)
+	if allocated := after.TotalAlloc - before.TotalAlloc; allocated > 256*uint64(len(frame)) {
+		t.Errorf("decoding %d bytes allocated %d bytes", len(frame), allocated)
+	}
+}
+
+// A copy of a record never sees a change made through another copy.
+func TestRecordCopiesDoNotAlias(t *testing.T) {
+	var original Record[string, int]
+	original.Set("a", 1)
+	original.Set("b", 2)
+	copied := original
+	copied.Set("c", 3)
+	copied.Set("a", 10)
+	if _, ok := original.Get("c"); ok || original.Len() != 2 {
+		t.Errorf("a new key leaked into the original: %d keys", original.Len())
+	}
+	if value, _ := original.Get("a"); value != 1 {
+		t.Errorf("an overwrite leaked into the original: %d", value)
+	}
+	original.Set("d", 4)
+	if _, ok := copied.Get("d"); ok {
+		t.Error("the original's new key leaked into the copy")
+	}
+	if value, _ := copied.Get("c"); value != 3 {
+		t.Errorf("the copy's key was overwritten: %d", value)
+	}
+	parsed, err := ParseRecord(String, Int)(Object{{Key: "x", Value: 1.0}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := parsed
+	other.Set("y", 2)
+	other.Set("x", 5)
+	if value, _ := parsed.Get("x"); value != 1 || parsed.Len() != 1 {
+		t.Error("a decoded record shares changes with its copy")
+	}
+}
+
+// Portable JSON revives only the forms stringifyPortableJson writes.
+func TestPortableJSONRefusesNonCanonicalForms(t *testing.T) {
+	for _, text := range []string{
+		`{"__demiUint8Array":true,"base64":"AQ ID"}`,
+		`{"__demiUint8Array":true,"base64":"AQID\n"}`,
+		`{"__demiBigInt":true,"value":"0x10"}`,
+		`{"__demiBigInt":true,"value":" 12 "}`,
+		`{"__demiBigInt":true,"value":"012"}`,
+	} {
+		if _, err := DecodeJSON([]byte(text), true); err == nil {
+			t.Errorf("%s decoded", text)
 		}
 	}
 }

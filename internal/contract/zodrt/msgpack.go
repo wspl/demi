@@ -52,9 +52,10 @@ func decodeMsgpackValue(decoder *msgpack.Decoder, reader *bytes.Reader, depth in
 		if err != nil {
 			return nil, err
 		}
-		// Each item takes at least a byte, so a length the frame cannot
-		// hold allocates no more than the frame.
-		items := make([]any, 0, min(length, reader.Len()))
+		// A header may claim more items than the frame holds; nothing is
+		// reserved for the claim, so memory grows only with the items that
+		// actually decode, at any depth.
+		var items []any
 		for range length {
 			item, err := decodeMsgpackValue(decoder, reader, depth+1)
 			if err != nil {
@@ -71,8 +72,9 @@ func decodeMsgpackValue(decoder *msgpack.Decoder, reader *bytes.Reader, depth in
 		if err != nil {
 			return nil, err
 		}
-		fields := make(Object, 0, min(length, reader.Len()))
-		positions := make(map[string]int, min(length, reader.Len()))
+		// As for arrays, nothing is reserved for the claimed length.
+		var fields Object
+		positions := map[string]int{}
 		for range length {
 			keyCode, err := decoder.PeekCode()
 			if err != nil {
@@ -95,6 +97,9 @@ func decodeMsgpackValue(decoder *msgpack.Decoder, reader *bytes.Reader, depth in
 	case msgpcode.IsString(code):
 		return decodeMsgpackString(decoder)
 	}
+	// A scalar's allocation is bounded by the library: it reads a bin or str
+	// longer than 1 MB in chunks as the bytes arrive, so a claimed length
+	// the frame does not hold reserves no more than that.
 	value, err := decoder.DecodeInterface()
 	if err != nil {
 		return nil, err

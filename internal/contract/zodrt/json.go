@@ -176,9 +176,11 @@ func reviveMarker(node Object) (any, error) {
 	}
 	if fields[bytesMarker] == true {
 		if text, ok := fields["base64"].(string); ok {
+			// DecodeString skips line breaks; the canonical form has none,
+			// so the text must be exactly what encoding the bytes writes.
 			data, err := base64.StdEncoding.DecodeString(text)
-			if err != nil {
-				return nil, fmt.Errorf("malformed portable bytes: %w", err)
+			if err != nil || base64.StdEncoding.EncodeToString(data) != text {
+				return nil, fmt.Errorf("malformed portable bytes %q", text)
 			}
 			return data, nil
 		}
@@ -186,7 +188,7 @@ func reviveMarker(node Object) (any, error) {
 	if fields[bigIntMarker] == true {
 		if text, ok := fields["value"].(string); ok {
 			number, ok := new(big.Int).SetString(text, 10)
-			if !ok {
+			if !ok || number.String() != text {
 				return nil, fmt.Errorf("malformed portable big integer %q", text)
 			}
 			return number, nil
