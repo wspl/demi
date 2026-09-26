@@ -30,7 +30,7 @@ use crate::{
     services::ServiceHandle,
     shell::ShellRuntime,
     state::{RunnerConfig, RunnerState},
-    tasks::{Commands, JobConfig, JobTable, TaskCommand, TaskSpec, WorkId},
+    tasks::{Commands, JobConfig, JobTable, TaskCommand, TaskSpec, WorkId, failure_exit},
     volumes::{ManagedVolume, Volumes},
 };
 use demi_runner_protocol::values::{BackendUrl, DeviceToken};
@@ -440,41 +440,18 @@ impl Owner<'_> {
     /// Starts a job or raw process, or routes its input and signals. A start
     /// that cannot begin is answered with its exit.
     async fn task(&mut self, message: Inbound) -> io::Result<()> {
-        let started = matches!(message, Inbound::JobStart { .. } | Inbound::Spawn { .. });
         let routed = self.start_or_route(&message);
         self.registered.management.set_jobs(self.jobs.job_count());
         let Err(error) = routed else {
             return Ok(());
         };
-        if !started {
-            return Err(error);
-        }
+        let work = match message {
+            Inbound::JobStart { job_id, .. } => WorkId::Job(job_id),
+            Inbound::Spawn { spawn_id, .. } => WorkId::Spawn(spawn_id),
+            _ => return Err(error),
+        };
         tracing::warn!("backend work could not start: {error}");
-        let reason = Some(error.to_string());
-        let failure = Some(wire::SpawnError {
-            kind: wire::SpawnErrorKind::Other,
-            detail: None,
-        });
-        let reply = match message {
-            Inbound::JobStart { job_id, .. } => wire::encode(&wire::Outbound::JobExit {
-                job_id,
-                exit_code: None,
-                signal: reason,
-                spawn_error: failure,
-                cwd: None,
-                output: None,
-                files: Vec::new(),
-                files_truncated: false,
-            }),
-            Inbound::Spawn { spawn_id, .. } => wire::encode(&wire::Outbound::SpawnExit {
-                spawn_id,
-                exit_code: None,
-                signal: reason,
-                spawn_error: failure,
-            }),
-            _ => unreachable!("only starts are answered"),
-        }
-        .map_err(io::Error::other)?;
+        let reply = failure_exit(&work, error.to_string()).map_err(io::Error::other)?;
         self.send(reply).await
     }
 
