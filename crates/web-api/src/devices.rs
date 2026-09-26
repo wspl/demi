@@ -1,7 +1,7 @@
 //! Devices: the list, pairing, and a Host's log (`web-api.md` § Workspaces,
 //! devices, and attached hosts, § Device log).
 
-use demi_core::{Nullable, Timestamp};
+use demi_core::{MAX_SAFE_INTEGER, Nullable, Timestamp};
 use demi_runner_protocol::wire::RunnerPlatform;
 use garde::Validate;
 use schemars::JsonSchema;
@@ -82,6 +82,7 @@ pub struct DeviceLogLine {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct DeviceLog {
     pub lines: Vec<DeviceLogLine>,
+    #[garde(range(max = MAX_SAFE_INTEGER))]
     pub next: u64,
 }
 
