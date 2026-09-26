@@ -33,10 +33,13 @@ The scenario harness, the *world*, starts the backend inside the test process,
 with its production shard threads and a temporary data directory. In place of
 external services it registers a scripted model as a provider family, serves
 a scripted machine manager on a Unix socket, and serves local fixtures in
-place of models.dev and the Claude Code release distribution. It pairs real
-runner processes, records every runner wire frame in both directions, and owns
-cleanup. The runners are the real runner executable, which the test starts
-from the target directory it runs from
+place of models.dev and the Claude Code release distribution. It loads the
+native packages the workspace built as development releases, which the
+backend's development store serves to the runners
+([Backend deployment configuration](../execution/native-runtime.md#backend-deployment-configuration)).
+It pairs real runner processes, records every runner wire frame in both
+directions, and owns cleanup. The runners are the real runner executable,
+which the test starts from the target directory it runs from
 ([Validation](builds-and-releases.md#validation)). The fakes come from the
 test-support features of the crates that own what they fake
 ([Crates and packages](../architecture/crates-and-packages.md)); the scripted

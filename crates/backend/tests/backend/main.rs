@@ -19,6 +19,7 @@ mod forks;
 mod install;
 mod isolation;
 mod machines;
+mod native;
 mod panel;
 mod providers;
 mod runners;

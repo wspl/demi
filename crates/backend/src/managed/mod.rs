@@ -17,12 +17,9 @@ mod reset;
 mod status;
 mod uses;
 
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
-use demi_runner_protocol::values::BackendUrl;
 use tokio::sync::mpsc;
-use url::Url;
 
 pub(crate) use self::access::MachineAccess;
 pub(crate) use self::capacity::CloudCapacity;
@@ -35,13 +32,11 @@ use crate::config::CloudTuning;
 use crate::shard::Shards;
 
 /// What every shard's Cloud shares: the machine manager's client, the
-/// capacity across users, the Cloud's settings, and the URL a Cloud's
-/// runner connects to.
+/// capacity across users, and the Cloud's settings.
 pub(crate) struct CloudServices {
     pub(crate) machines: MachinesClient,
     pub(crate) capacity: CloudCapacity,
     pub(crate) tuning: CloudTuning,
-    backend_url: OnceLock<BackendUrl>,
 }
 
 impl CloudServices {
@@ -50,38 +45,7 @@ impl CloudServices {
             capacity: CloudCapacity::new(tuning.capacity),
             machines,
             tuning,
-            backend_url: OnceLock::new(),
         }
-    }
-
-    /// Sets the URL a Cloud's runner connects to once the backend listens
-    /// on `address`, before it serves: the public URL, or without one the
-    /// listener's own address.
-    pub(crate) fn listening(&self, public: Option<&Url>, address: SocketAddr) {
-        let url = match public {
-            Some(public) => public.as_str().parse::<BackendUrl>(),
-            None => {
-                // A listener on every address is reached on the loopback one.
-                let ip = match address.ip() {
-                    IpAddr::V4(ip) if ip.is_unspecified() => IpAddr::V4(Ipv4Addr::LOCALHOST),
-                    IpAddr::V6(ip) if ip.is_unspecified() => IpAddr::V6(Ipv6Addr::LOCALHOST),
-                    ip => ip,
-                };
-                format!("http://{}", SocketAddr::new(ip, address.port())).parse::<BackendUrl>()
-            }
-        };
-        match url {
-            // A backend listens once; a second call finds the URL set.
-            Ok(url) => {
-                let _ = self.backend_url.set(url);
-            }
-            Err(error) => tracing::error!("the URL a Cloud's runner connects to is not usable: {error}"),
-        }
-    }
-
-    /// The URL a Cloud's runner connects to, once the backend listens.
-    pub(crate) fn backend_url(&self) -> Option<&BackendUrl> {
-        self.backend_url.get()
     }
 }
 

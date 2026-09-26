@@ -182,8 +182,8 @@ impl Shard {
     fn expose_dto(&self, record: ExposeRecord, domain: &ExposeDomain) -> ExposeDto {
         let backend = self
             .services()
-            .cloud
-            .backend_url()
+            .public_url
+            .get()
             .expect("the backend listens before it serves a request or a command");
         ExposeDto {
             url: expose_url(&record.id, domain, backend.url()),

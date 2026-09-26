@@ -12,6 +12,7 @@ pub(crate) mod devices;
 pub(crate) mod files;
 pub(crate) mod host_commands;
 pub(crate) mod install;
+pub(crate) mod local_store;
 pub(crate) mod native;
 mod policy;
 pub(crate) mod publication;
