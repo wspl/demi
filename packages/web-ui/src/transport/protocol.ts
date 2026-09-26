@@ -1,6 +1,6 @@
-// The model catalog as the components read it. Decoupled from
-// @demicodes/provider so the component library stays portable: hosts map their
-// own catalogs onto these DTOs.
+// The model catalog as the components read it. Decoupled from the backend's
+// catalog so the component library stays portable: hosts map their own
+// catalogs onto these DTOs.
 
 export interface ProviderInfo {
   id: string
