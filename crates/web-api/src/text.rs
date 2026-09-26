@@ -77,7 +77,9 @@ impl JsonSchema for EmailAddress {
 }
 
 /// Text whose surrounding white space is removed when it arrives, as a name
-/// a user types; the field's garde rule bounds what remains.
+/// a user types; the field's garde rule bounds what remains. Its schema's
+/// `trimmed` format tells the browser's schema to trim before it checks the
+/// bounds.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(from = "String")]
 pub struct Trimmed(String);
@@ -114,12 +116,13 @@ impl JsonSchema for Trimmed {
     }
 
     fn json_schema(_: &mut SchemaGenerator) -> Schema {
-        json_schema!({ "type": "string" })
+        json_schema!({ "type": "string", "format": "trimmed" })
     }
 }
 
 /// The base URL of a vendor's API, as an entry configures it: an `http` or
-/// `https` URL (`providers.md` § Endpoints).
+/// `https` URL (`providers.md` § Endpoints), which its schema's `http-url`
+/// format tells the browser's schema.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct EndpointUrl(Url);
@@ -167,7 +170,7 @@ impl JsonSchema for EndpointUrl {
     }
 
     fn json_schema(_: &mut SchemaGenerator) -> Schema {
-        json_schema!({ "type": "string", "format": "uri" })
+        json_schema!({ "type": "string", "format": "http-url" })
     }
 }
 

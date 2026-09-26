@@ -223,7 +223,6 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/conversations/{id}/read", post(conversations::read))
         .route("/conversations/{id}/stream", get(conversations::stream))
         .route("/conversations/{id}/streams/{name}", get(streams::open))
-        .route("/conversations/{id}/activity", post(streams::activity))
         .route("/conversations/{id}/panel", get(panel::read).put(panel::save))
         .route("/conversations/{id}/browser/tabs", get(browser::list).post(browser::open))
         .route("/conversations/{id}/browser/tabs/{tab}", delete(browser::close))

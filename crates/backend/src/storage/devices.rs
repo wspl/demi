@@ -4,6 +4,7 @@
 //! device is online is its runner connection's, not a record's.
 
 use demi_core::Timestamp;
+use demi_runner_protocol::wire::RunnerPlatform;
 use demi_web_api::devices::DeviceKind;
 use demi_web_api::ids::{DeviceId, UserId};
 use rusqlite::{Connection, OptionalExtension, Row, params};
@@ -20,7 +21,7 @@ pub(crate) struct DeviceRecord {
     pub(crate) user: UserId,
     pub(crate) kind: DeviceKind,
     pub(crate) name: String,
-    pub(crate) platform: String,
+    pub(crate) platform: RunnerPlatform,
     pub(crate) claimed_at: Timestamp,
     pub(crate) last_seen_at: Option<Timestamp>,
 }
@@ -29,7 +30,7 @@ const DEVICE_COLUMNS: &str = "id, user_id, kind, name, platform, claimed_at, las
 
 /// The name and platform of the one device a user's Cloud is.
 const CLOUD_NAME: &str = "Cloud";
-const CLOUD_PLATFORM: &str = "linux";
+const CLOUD_PLATFORM: RunnerPlatform = RunnerPlatform::Linux;
 
 impl ControlService {
     /// Stores a device the user paired, with the hash of the token its
@@ -38,7 +39,7 @@ impl ControlService {
         &self,
         user: UserId,
         name: String,
-        platform: String,
+        platform: RunnerPlatform,
         token: TokenHash,
     ) -> Result<DeviceRecord, StorageError> {
         let id = DeviceId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty");
@@ -51,7 +52,7 @@ impl ControlService {
                     user.as_str(),
                     DeviceKind::User.to_string(),
                     name,
-                    platform,
+                    platform.to_string(),
                     token.as_str(),
                     now.as_millisecond()
                 ],
@@ -97,7 +98,7 @@ impl ControlService {
                 "INSERT INTO devices (id, user_id, kind, name, platform, token_hash, claimed_at, last_seen_at)
                  VALUES (?1, ?2, 'managed', ?3, ?4, NULL, ?5, NULL)
                  ON CONFLICT DO NOTHING",
-                params![id.as_str(), user.as_str(), CLOUD_NAME, CLOUD_PLATFORM, now.as_millisecond()],
+                params![id.as_str(), user.as_str(), CLOUD_NAME, CLOUD_PLATFORM.to_string(), now.as_millisecond()],
             )?;
             let device = one(&transaction, "kind = 'managed' AND user_id = ?1", user.as_str())?;
             transaction.commit()?;
@@ -185,7 +186,7 @@ fn device_row(row: &Row<'_>) -> Result<DeviceRecord, StorageError> {
         user: decode("devices", "user_id", UserId::try_from(row.get::<_, String>("user_id")?))?,
         kind: decode("devices", "kind", row.get::<_, String>("kind")?.parse::<DeviceKind>())?,
         name: row.get("name")?,
-        platform: row.get("platform")?,
+        platform: decode("devices", "platform", row.get::<_, String>("platform")?.parse::<RunnerPlatform>())?,
         claimed_at: instant(row, "devices", "claimed_at")?,
         last_seen_at,
     })
@@ -216,7 +217,7 @@ mod tests {
             .unwrap();
         let owner = user(&control).await;
         let laptop = control
-            .create_device(owner.clone(), "laptop".into(), "darwin".into(), TokenHash::of("one"))
+            .create_device(owner.clone(), "laptop".into(), RunnerPlatform::Darwin, TokenHash::of("one"))
             .await
             .unwrap();
         assert_eq!(laptop.last_seen_at, None);
@@ -228,7 +229,7 @@ mod tests {
         assert!(control.device(laptop.id.clone()).await.unwrap().unwrap().last_seen_at.is_some());
 
         let desktop = control
-            .create_device(owner.clone(), "desktop".into(), "linux".into(), TokenHash::of("two"))
+            .create_device(owner.clone(), "desktop".into(), RunnerPlatform::Linux, TokenHash::of("two"))
             .await
             .unwrap();
         let (first, second) = tokio::join!(

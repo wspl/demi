@@ -123,6 +123,7 @@ mod tests {
     use demi_web_api::ids::UserId;
 
     use super::*;
+    use demi_runner_protocol::wire::RunnerPlatform;
     use crate::auth::sessions::TokenHash;
     use crate::backend::Services;
     use crate::shard::{ShardPlacement, ShardPool};
@@ -152,7 +153,7 @@ mod tests {
             let control = control.clone();
             async move {
                 control
-                    .create_device(user, "build".into(), "linux".into(), TokenHash::of(token))
+                    .create_device(user, "build".into(), RunnerPlatform::Linux, TokenHash::of(token))
                     .await
                     .unwrap()
                     .id

@@ -16,12 +16,13 @@ use demi_agent::{
     },
 };
 use demi_agent_protocol::{ClientFrame, ServerFrame};
-use demi_builtin_protocol::Operation;
-use demi_coding_agent::{BUILTIN_PACKAGE, CodingHarness, DemiOptions, HostResolver, demi_root};
+use demi_builtin_protocol::{Operation, PACKAGE};
+use demi_coding_agent::{CodingHarness, DemiOptions, HostResolver, demi_root};
+use demi_command_service::testing::built_program;
 use demi_core::{Block, CommandId, NodeId, SessionPhase, ToolResultContentBlock, ToolView, TurnId};
 use demi_host_remote::{
     CommandCatalog, ContextSource, EnvironmentOptions, RemoteHost, RemoteShellEnvironmentFactory,
-    testing::{FixtureOptions, NativeFixture, RunnerFixture, built_program},
+    testing::{FixtureOptions, NativeFixture, RunnerFixture},
 };
 use demi_provider::{
     InferenceItem, InferenceRequest, ProviderEvent,
@@ -97,7 +98,7 @@ impl Fixture {
         let providers = Rc::new(ScriptedProviders::default());
         providers.provide("stub", script);
         let builtin = NativeFixture::package(
-            BUILTIN_PACKAGE,
+            PACKAGE,
             built_program("demi-commands"),
             Operation::names(),
         );

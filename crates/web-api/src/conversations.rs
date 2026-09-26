@@ -3,7 +3,7 @@
 //! state and page synchronization).
 
 use demi_agent_protocol::{Failures, SubagentJob};
-use demi_core::{Block, BlockId, ModelSelection, Nullable, Timestamp};
+use demi_core::{Block, BlockId, MAX_SAFE_INTEGER, ModelSelection, Nullable, Timestamp};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::{double_option, unwrap_or_skip};
@@ -70,10 +70,12 @@ pub struct ConversationSummary {
     pub archived: bool,
     pub pinned: bool,
     /// The output revision the user last acknowledged.
+    #[garde(range(max = MAX_SAFE_INTEGER))]
     pub read_revision: u64,
     pub target: ConversationTarget,
     /// Advances with every change of the conversation's execution context,
     /// such as a target switch.
+    #[garde(range(max = MAX_SAFE_INTEGER))]
     pub context_version: u64,
     /// The provider entry the conversation last selected; null for none.
     #[serde(deserialize_with = "Option::deserialize")]
@@ -91,6 +93,7 @@ pub struct ConversationSummary {
     pub status: ConversationStatus,
     /// The output revision: it advances with each saved change of output,
     /// never with the user's input alone.
+    #[garde(range(max = MAX_SAFE_INTEGER))]
     pub revision: u64,
     /// Whether output is newer than the read revision.
     pub unread: bool,
@@ -142,7 +145,7 @@ pub struct ConversationsQuery {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct ReadRequest {
-    #[garde(range(max = demi_core::MAX_SAFE_INTEGER))]
+    #[garde(range(max = MAX_SAFE_INTEGER))]
     pub revision: u64,
 }
 
