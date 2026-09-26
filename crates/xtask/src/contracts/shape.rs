@@ -69,10 +69,15 @@ pub struct StringShape {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StringFormat {
     Text,
+    /// Text web-api's `Trimmed` trims when it arrives: its bounds count what
+    /// remains (format `trimmed`).
+    Trimmed,
     /// A time as core's `Timestamp` writes it.
     DateTime,
     Email,
-    Url,
+    /// An `http` or `https` URL, as web-api's `EndpointUrl` reads it (format
+    /// `http-url`).
+    HttpUrl,
     /// Bytes as core's `B64Bytes` writes them.
     Base64,
 }
@@ -265,9 +270,10 @@ fn read_string(schema: &Map<String, Value>, at: &str) -> Result<Shape, Unsupport
         schema.get("contentEncoding").and_then(Value::as_str),
     ) {
         (None, None) => StringFormat::Text,
+        (Some("trimmed"), None) => StringFormat::Trimmed,
         (Some("date-time"), None) => StringFormat::DateTime,
         (Some("email"), None) => StringFormat::Email,
-        (Some("uri"), None) => StringFormat::Url,
+        (Some("http-url"), None) => StringFormat::HttpUrl,
         (None, Some("base64")) => StringFormat::Base64,
         (format, encoding) => {
             return Err(unsupported(
