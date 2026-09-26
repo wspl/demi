@@ -527,9 +527,13 @@ Each crate implements the provider contract for one vendor family.
   Cloud's and the idle clock's times and limits (`CloudTuning`,
   `LifecycleTuning`), the native command packages their commands bind to
   (`NativeCatalog`, which the executable makes with `publish_native` from
-  `DEMI_NATIVE_CONFIG`) and the user stream declarations. For suites that
-  start the executable, the example program `scripted_machines` runs the
-  scripted machine manager of its scenarios
+  `DEMI_NATIVE_CONFIG`) and the user stream declarations. Its `testing`
+  feature adds `Backend::hold_commits`, which holds the commits of the
+  conversations' checkpoints (`CommitHold`) for the scenarios that stop a save
+  at its commit
+  ([Message editing](../agent/message-editing.md#durability-and-failure-boundaries)).
+  For suites that start the executable, the example program
+  `scripted_machines` runs the scripted machine manager of its scenarios
   ([Browser-contract suite](../delivery/scenarios.md#browser-contract-suite)).
 - **Must not:** be linked by another crate; put business logic in the HTTP
   layer beyond routing and validation; return secrets or proxy model traffic;

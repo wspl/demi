@@ -82,8 +82,8 @@ restore.
 
 The `edit_result` of an accepted edit follows the rewrite's `replace` patch
 and comes before any frame of the replacement's turn. Both follow the commit:
-until the transaction has committed, the backend sends a client nothing of the
-edit but the session's phase, and the replacement's inference has not started.
+before it, the backend has sent a client nothing of the edit but the session's
+phase, and the replacement's inference has not started.
 
 Each accepted operation leaves a receipt in the checkpoint: its operation ID,
 the replacement's turn ID, and a digest of the request. The digest is the
