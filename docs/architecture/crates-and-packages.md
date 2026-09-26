@@ -298,17 +298,19 @@ next to the wire's types, so that a command program depends on one crate.
 
 #### `artifact`
 
-- **Owns:** verified download over HTTPS with a declared size and SHA-256,
-  and the measured download that establishes them when a release is prepared;
-  digests; durable atomic publication; release publication (a directory of
-  verified files and the record that describes them, published once and
-  immutable); the install lock between processes; install receipts; and
-  archive installation (a verified zip archive unpacked into a directory named
-  by its SHA-256, with the receipt that checks it before each use), which
-  installs Chrome for Testing on a paired device and into the Cloud image.
-  Every download-and-verify path and every durable atomic write goes through
-  it: the runner's artifact cache, the Chrome and Claude Code installers, the
-  machine manager's image store and `xtask` release packaging.
+- **Owns:** verified download over HTTPS with a declared size and SHA-256
+  (plain HTTP too for the runner's artifact cache, whose digests come from the
+  pinned descriptor), and the measured download that establishes them when a
+  release is prepared; digests; durable atomic publication; release
+  publication (a directory of verified files and the record that describes
+  them, published once and immutable); the install lock between processes;
+  install receipts; and archive installation (a verified zip archive unpacked
+  into a directory named by its SHA-256, with the receipt that checks it
+  before each use), which installs Chrome for Testing on a paired device and
+  into the Cloud image. Every download-and-verify path and every durable
+  atomic write goes through it: the runner's artifact cache, the Chrome and
+  Claude Code installers, the machine manager's image store and `xtask`
+  release packaging.
 - **Public boundary:** the functions and types above.
 - **Must not:** choose what to install or read release pointers: its callers
   name the location, size and digest they expect.
@@ -532,11 +534,11 @@ Each crate implements the provider contract for one vendor family.
   (`LoginTiming`), the conversations' bounds (`ConversationTuning`), the
   Cloud's and the idle clock's times and limits (`CloudTuning`,
   `LifecycleTuning`), the native command packages their commands bind to
-  (`NativeCatalog`, which the executable makes with `publish_native` from
-  `DEMI_NATIVE_CONFIG`) and the user stream declarations. Its `testing`
-  feature adds `Backend::hold_commits`, which holds the commits of the
-  conversations' checkpoints (`CommitHold`) for the scenarios that stop a save
-  at its commit
+  (`NativeCatalog`, which the executable and the scenarios make with
+  `publish_native` from a `DEMI_NATIVE_CONFIG` file) and the user stream
+  declarations. Its `testing` feature adds `Backend::hold_commits`, which
+  holds the commits of the conversations' checkpoints (`CommitHold`) for the
+  scenarios that stop a save at its commit
   ([Message editing](../agent/message-editing.md#durability-and-failure-boundaries)).
   For suites that start the executable, the example program
   `scripted_machines` runs the scripted machine manager of its scenarios

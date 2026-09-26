@@ -1,6 +1,8 @@
 //! The test backend: a data directory, a clock the test moves, a mailbox
 //! that captures verification codes, a machine manager the test scripts,
-//! and an HTTP client that sends a session's cookie.
+//! the native packages the workspace built as development releases, which
+//! the backend's local store serves its runners, and an HTTP client that
+//! sends a session's cookie.
 
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -8,18 +10,19 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
 use demi_backend::{
     AccountMail, Backend, BackendConfig, CloudTuning, ConversationTuning, ExposeDomain, ExposeTuning, FamilyRegistry,
-    LifecycleTuning, LoginTiming, MailError, NativeCatalog, RunnerTuning, VerificationMail,
+    LifecycleTuning, LoginTiming, MailError, NativeCatalog, RunnerTuning, VerificationMail, publish_native,
 };
 use demi_builtin_protocol::{Operation, PACKAGE as BUILTIN_PACKAGE};
+use demi_command_service::protocol::{PackageDescriptor, host_target};
 use demi_command_service::testing::built_program;
 use demi_command_tree::NativeOperation;
 use demi_core::Clock;
-use demi_host_remote::testing::{NativeFixture, RunnerProcess, RunnerProcessOptions};
+use demi_host_remote::testing::{NativeFixture, RunnerProcess, RunnerProcessOptions, native_fixture_binary};
 use demi_web_api::auth::{Identity, Role, UserDto};
 use demi_web_api::devices::{ClaimedDevice, DeviceDto, Devices};
 use demi_web_api::error::{ErrorBody, ErrorCode};
@@ -29,6 +32,8 @@ use reqwest::header::{COOKIE, HeaderMap, SET_COOKIE};
 use reqwest::{Method, StatusCode};
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
+use tokio::sync::OnceCell;
+use tokio_util::sync::CancellationToken;
 
 use crate::machines::ScriptedManager;
 
@@ -45,6 +50,40 @@ const NO_CLAUDE_RELEASES: &str = "http://127.0.0.1:9/claude-code-releases";
 pub const MASTER_EMAIL: &str = "master@example.test";
 pub const MASTER_PASSWORD: &str = "master-pass-1";
 pub const SESSION_COOKIE: &str = "demi_session";
+
+/// A native package the workspace built: its descriptor for this machine's
+/// target, whose digest each test process computes once, and its program.
+pub struct Built {
+    pub descriptor: PackageDescriptor,
+    pub program: PathBuf,
+}
+
+impl Built {
+    fn new<'a>(id: &str, program: PathBuf, operations: impl IntoIterator<Item = &'a str>) -> Self {
+        let descriptor = NativeFixture::package(id, program.clone(), operations).descriptor;
+        Self { descriptor, program }
+    }
+}
+
+/// `demi.builtin`, from `demi-commands`.
+static BUILTIN: LazyLock<Built> =
+    LazyLock::new(|| Built::new(BUILTIN_PACKAGE, built_program("demi-commands"), Operation::names()));
+
+/// `demi.claude`, from `demi-claude`.
+static CLAUDE: LazyLock<Built> = LazyLock::new(|| {
+    Built::new(
+        demi_claude_protocol::PACKAGE,
+        built_program("demi-claude"),
+        demi_claude_protocol::Operation::ALL.map(demi_claude_protocol::Operation::name),
+    )
+});
+
+/// The runner's native fixture package: `echo` answers what the page
+/// sends, `where` reports its context and directory.
+pub static FIXTURE: LazyLock<Built> = LazyLock::new(|| Built {
+    descriptor: NativeFixture::load().descriptor,
+    program: native_fixture_binary(),
+});
 
 /// Wall-clock time the test sets.
 pub struct ManualClock(Mutex<Timestamp>);
@@ -106,7 +145,10 @@ pub struct Harness {
     pub runners: RunnerTuning,
     pub conversations: ConversationTuning,
     runner_releases: Option<PathBuf>,
-    native: Option<NativeCatalog>,
+    /// The `DEMI_NATIVE_CONFIG` the harness wrote, and the catalog its
+    /// first backend loaded from it, which later starts reuse.
+    native_config: Option<PathBuf>,
+    native: OnceCell<NativeCatalog>,
     user_streams: Option<BTreeMap<String, NativeOperation>>,
     pub lifecycle: LifecycleTuning,
     pub cloud: CloudTuning,
@@ -144,7 +186,8 @@ impl Harness {
                 ..ConversationTuning::default()
             },
             runner_releases: None,
-            native: None,
+            native_config: None,
+            native: OnceCell::new(),
             user_streams: None,
             lifecycle: LifecycleTuning::default(),
             cloud: CloudTuning::default(),
@@ -162,25 +205,16 @@ impl Harness {
     }
 
     /// Conversations whose commands bind to the `demi.builtin` package the
-    /// workspace built, which a runner on this machine installs from where
-    /// it was built.
-    pub fn with_builtin_package(mut self) -> Self {
-        let builtin = Arc::new(NativeFixture::package(
-            BUILTIN_PACKAGE,
-            built_program("demi-commands"),
-            Operation::names(),
-        ));
-        let packages = vec![builtin.descriptor.clone()];
-        self.native = Some(NativeCatalog::new(packages, move || builtin.resolver()).unwrap());
-        self
+    /// workspace built, which runners install from the backend.
+    pub fn with_builtin_package(self) -> Self {
+        self.with_release(&BUILTIN)
     }
 
     /// Conversations whose user streams bind to the runner's native test
     /// fixture: `echo` answers what the page sends, `where` reports its
     /// context and directory.
     pub fn with_native_fixture(mut self) -> Self {
-        let fixture = Arc::new(NativeFixture::load());
-        let package = fixture.descriptor.id.clone();
+        let package = FIXTURE.descriptor.id.clone();
         let stream = |operation: &str| NativeOperation {
             package: package.clone(),
             operation: operation.into(),
@@ -189,8 +223,31 @@ impl Harness {
             ("echo".to_owned(), stream("echo")),
             ("where".to_owned(), stream("where")),
         ]));
-        let packages = vec![fixture.descriptor.clone()];
-        self.native = Some(NativeCatalog::new(packages, move || fixture.resolver()).unwrap());
+        self.with_release(&FIXTURE)
+    }
+
+    /// A development release of `built` for this machine's target, and a
+    /// `DEMI_NATIVE_CONFIG` whose local store serves it
+    /// (`native-runtime.md` § Backend deployment configuration): the
+    /// conversations bind to its package, and every runner, a paired
+    /// device's or the Cloud's, downloads its program from the backend.
+    fn with_release(mut self, built: &Built) -> Self {
+        let root = self.data.path().join("native");
+        let executable = built.program.file_name().unwrap().to_str().unwrap();
+        let release = root.join(executable);
+        let target = release.join(host_target());
+        std::fs::create_dir_all(&target).unwrap();
+        // The release links the program the workspace built rather than
+        // copying it.
+        std::os::unix::fs::symlink(&built.program, target.join(executable)).unwrap();
+        std::fs::write(release.join("descriptor.json"), serde_json::to_vec(&built.descriptor).unwrap()).unwrap();
+        let config = json!({
+            "releases": [{ "directory": executable, "executable": executable }],
+            "store": { "provider": "local" },
+        });
+        let path = root.join("native.json");
+        std::fs::write(&path, config.to_string()).unwrap();
+        self.native_config = Some(path);
         self
     }
 
@@ -219,17 +276,10 @@ impl Harness {
     }
 
     /// A Claude Code provider's CLI is listed and installed by the
-    /// `demi.claude` package the workspace built, which a Cloud's runner on
-    /// this machine runs from where it was built.
-    pub fn with_claude_package(mut self) -> Self {
-        let claude = Arc::new(NativeFixture::package(
-            demi_claude_protocol::PACKAGE,
-            built_program("demi-claude"),
-            demi_claude_protocol::Operation::ALL.map(demi_claude_protocol::Operation::name),
-        ));
-        let packages = vec![claude.descriptor.clone()];
-        self.native = Some(NativeCatalog::new(packages, move || claude.resolver()).unwrap());
-        self
+    /// `demi.claude` package the workspace built, which a Cloud's runner
+    /// installs from the backend.
+    pub fn with_claude_package(self) -> Self {
+        self.with_release(&CLAUDE)
     }
 
     pub fn with_logins(mut self, logins: LoginTiming) -> Self {
@@ -322,7 +372,11 @@ impl Harness {
         config.runners = self.runners;
         config.runner_releases = self.runner_releases.clone();
         config.conversations = self.conversations;
-        if let Some(native) = &self.native {
+        if let Some(path) = &self.native_config {
+            let native = self
+                .native
+                .get_or_init(|| async { publish_native(path, &CancellationToken::new()).await.unwrap() })
+                .await;
             config.native = native.clone();
         }
         if let Some(streams) = &self.user_streams {
@@ -505,13 +559,17 @@ pub async fn stored_token(runner: &RunnerProcess) -> String {
     std::fs::read_to_string(path).unwrap().trim().to_owned()
 }
 
-/// Waits until `check` holds, asking every 20 ms for at most 20 s.
+/// How long a scenario waits for something that should come true before it
+/// fails as hung.
+pub const PATIENCE: Duration = Duration::from_secs(20);
+
+/// Waits until `check` holds, asking every 20 ms for at most [`PATIENCE`].
 pub async fn eventually<F, Fut>(what: &str, mut check: F)
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = bool>,
 {
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+    let deadline = tokio::time::Instant::now() + PATIENCE;
     while !check().await {
         assert!(tokio::time::Instant::now() < deadline, "never came true: {what}");
         tokio::time::sleep(Duration::from_millis(20)).await;

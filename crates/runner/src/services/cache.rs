@@ -30,7 +30,9 @@ impl ArtifactCache {
         crate::fs::chmod(&root, 0o700).await?;
         Ok(Self {
             root,
-            http: demi_artifact::client()?,
+            // The pinned descriptor decides what is installed, so a backend
+            // on plain HTTP may serve its executables itself.
+            http: demi_artifact::client_allowing_http()?,
         })
     }
 
@@ -118,7 +120,7 @@ impl ArtifactCache {
                     let mut input = tokio::fs::File::open(path).await?;
                     demi_artifact::copy(&mut input, expected, staged.file(), cancel).await?;
                 }
-                ArtifactSource::Https { url, expires_at } => {
+                ArtifactSource::Url { url, expires_at } => {
                     let expired = || expires_at.is_some_and(|expires| expires <= SystemTime::now());
                     if expired() {
                         if refreshed {

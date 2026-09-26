@@ -76,7 +76,8 @@ mod tests {
         let native = NativeCatalog::unpublished();
         let harness = conversation_harness(Weak::new(), &native);
         let commands = harness.commands();
-        native.catalog().select(&commands).expect("the commands bind to no missing package");
+        let catalog = native.catalog(&crate::backend::PublicUrl::default());
+        catalog.select(&commands).expect("the commands bind to no missing package");
         let help = commands.render_help();
         assert!(help.contains("demi todo") && help.contains("demi host"), "{help}");
         assert!(!help.contains("demi file") && !help.contains("demi browser"), "{help}");

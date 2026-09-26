@@ -46,14 +46,14 @@ over the manager's Unix socket.
 
 | Module | Responsibility | Design contract |
 |---|---|---|
-| `edge` | The listener and router, the session gate, request extractors and body limits, error codes, installer and browser-asset routes, and the byte copies of file transfers, pipes, user streams and the expose relay | [Web API](../product/web-api.md) |
+| `edge` | The listener and router, the session gate, request extractors and body limits, error codes, installer, native artifact and browser-asset routes, and the byte copies of file transfers, pipes, user streams and the expose relay | [Web API](../product/web-api.md) |
 | `shard` | Shard threads, each user's shard, calls into it, socket adoption, leases | [Runtime model](#runtime-model) |
 | `config` | The typed configuration, validated at startup | [Configuration](#configuration) |
 | `auth` | Accounts, password hashing, web sessions, login lockout, email-change delivery | [Authentication and ownership](#authentication-and-ownership), [Product](../product/product.md#user-system) |
 | `settings` | Per-user preferences | [Web API](../product/web-api.md#user-preferences) |
 | `sync` | The reconstructible application snapshot for browser polling | [Browser synchronization](#browser-synchronization) |
 | `conversation` | Agent-tree hosting, frame scoping, attachment and remote-file references, history and Fork, summaries and titles, target resolution and transitions, the conversation's host access, file transfers and user streams | [Sessions and targets](../execution/sessions-and-targets.md) |
-| `runner` | Pairing, device links and runner connections, the rpc relay and each session's commands, the product's `demi host` group, installer scripts, native artifact publication | [Runner](../execution/runner.md), [Commands](../execution/commands.md) |
+| `runner` | Pairing, device links and runner connections, the rpc relay and each session's commands, the product's `demi host` group, installer scripts, native artifact publication and the development store | [Runner](../execution/runner.md), [Commands](../execution/commands.md), [Native runtime](../execution/native-runtime.md#backend-deployment-configuration) |
 | `lifecycle` | The conversation idle clock and the conversation release | [Conversation idle and Host resource release](../execution/resource-lifecycle.md) |
 | `managed` | Cloud policy and capacity, machine transitions, reset and recovery, the machine manager's client | [Managed hosts](../cloud/managed-hosts.md) |
 | `expose` | Expose records and their lifetime, live relay connections, the `demi host expose` leaves | [Host expose](../execution/expose.md) |
@@ -291,7 +291,8 @@ At startup the backend:
 
 1. Reads its configuration and validates all of it; an error names the
    variable ([Configuration](#configuration)).
-2. Loads the native command releases and publishes their artifacts
+2. Loads the native command releases and publishes their artifacts to object
+   storage, or, with a development store, verifies them and serves them itself
    ([Native runtime](../execution/native-runtime.md#publish-artifacts-before-enabling-commands)).
    An interrupt or termination signal during publication stops the start.
 3. Opens the data directory and loads the instance secret.
@@ -348,9 +349,9 @@ and an error names the variable. `demi-backend --help` lists the flags.
 | `DEMI_BACKEND_DATA` | The data directory. Default `~/.demi/backend`. | [Storage](storage.md#ownership-and-layout) |
 | `DEMI_BACKEND_PORT` | The TCP port the backend listens on, 1 to 65535. Default 3271. | — |
 | `DEMI_INSTANCE_MODE` | `shared` or `isolated`. Required. | [Product](../product/product.md#instance-mode-shared-vs-isolated) |
-| `DEMI_BACKEND_PUBLIC_URL` | The URL runners and Cloud guests connect to; installers embed it, and expose URLs take their scheme and port from it. Required. | [Cloud setup](../cloud/setup.md#configuration) |
+| `DEMI_BACKEND_PUBLIC_URL` | The URL runners and Cloud guests connect to; installers embed it, expose URLs take their scheme and port from it, and a development store's downloads are on it. Required. | [Cloud setup](../cloud/setup.md#configuration) |
 | `DEMI_MACHINES_SOCKET` | The machine manager's Unix socket. Required: every deployment has Cloud. | [Cloud setup](../cloud/setup.md#configuration) |
-| `DEMI_NATIVE_CONFIG` | The native command releases and the object storage they are published to. Required. | [Native runtime](../execution/native-runtime.md#backend-deployment-configuration) |
+| `DEMI_NATIVE_CONFIG` | The native command releases, and the object storage they are published to or the development store that serves them. Required. | [Native runtime](../execution/native-runtime.md#backend-deployment-configuration) |
 | `DEMI_CHANGE_STORE_CONFIG` | Puts the object store in an S3 bucket. Optional: the data directory holds it otherwise. | [Storage](storage.md#the-object-store) |
 | `DEMI_INSTANCE_SECRET` | The instance secret as 64 hexadecimal digits. Optional: generated into the data directory otherwise. | [Storage](storage.md#passwords-and-credentials-at-rest) |
 | `DEMI_EXPOSE_DOMAIN` | The domain of expose hostnames. Optional: without it, exposes are unavailable. | [Host expose](../execution/expose.md#deployment) |
@@ -358,6 +359,87 @@ and an error names the variable. `demi-backend --help` lists the flags.
 | `DEMI_RUNNER_RELEASE_DIR` | The runner releases the installer routes serve. Optional: without it, those routes answer 503. | [Builds and releases](../delivery/builds-and-releases.md) |
 | `DEMI_CLAUDE_RELEASES_URL` | The Claude Code distribution whose newest release the CLI on each Cloud follows. Default `https://downloads.claude.ai/claude-code-releases`, the vendor's. | [Claude Code](../providers/claude-code.md#which-version) |
 | `DEMI_LOG` | What the backend writes to its standard error, in `tracing-subscriber`'s `Targets` syntax: comma-separated, a default level and `target=level` pairs, each pair covering its target and the targets below it. For example, `info,demi::provider::claude_code::wire=trace` adds the Claude Code CLI's raw exchange to the default. Default `info`. | [Claude Code](../providers/claude-code.md#process-lifetime) |
+
+## Development backend
+
+A developer runs the backend on their own machine with the native programs
+they just built, as development releases that the backend serves its runners
+itself. For example, on an Apple silicon Mac whose Cloud runs in Lima, the
+Hosts in use are the Mac, `aarch64-apple-darwin`, and the Cloud guest,
+`aarch64-unknown-linux-musl`:
+
+1. Build the runner and both command programs for those targets, and package
+   a development release of each
+   ([Builds and releases](../delivery/builds-and-releases.md#packaging)).
+   A command package's release directory is immutable: to package a changed
+   program again, remove its directory first.
+
+   ```sh
+   cargo xtask native build \
+     --sdk /Library/Developer/CommandLineTools/SDKs/MacOSX<version>.sdk \
+     --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
+   cargo xtask native package --package demi-runner --output .cache/releases/runners \
+     --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
+   cargo xtask native package --package demi-commands --output .cache/releases/demi-builtin \
+     --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
+   cargo xtask native package --package demi-claude --output .cache/releases/demi-claude \
+     --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
+   ```
+
+2. Name the command releases in `.cache/releases/native.json`, with the
+   development store, which uploads nothing and serves their executables at
+   `/native-artifacts/<sha256>`
+   ([Backend deployment configuration](../execution/native-runtime.md#backend-deployment-configuration)):
+
+   ```json
+   {
+     "releases": [
+       { "directory": "demi-builtin", "executable": "demi-commands" },
+       { "directory": "demi-claude", "executable": "demi-claude" }
+     ],
+     "store": { "provider": "local" }
+   }
+   ```
+
+3. Run the machine manager in Lima; its script prints the Mac's address that
+   the Cloud guest reaches
+   ([Mac backend with local Lima](../cloud/setup.md#mac-backend-with-local-lima)).
+   The Cloud's runner comes from the Cloud image, so a runner change reaches
+   the Cloud through a
+   [Cloud image refresh](../delivery/builds-and-releases.md#cloud-image-refresh);
+   a command program's change reaches it through the development store.
+4. Build the backend with the one Cargo selection and start it from the
+   repository root. The public URL must be the one the manager allows
+   (`DEMI_MANAGED_BACKEND_URL`): the Cloud's runner, the installers and the
+   development store's downloads use it.
+
+   ```sh
+   cargo build --workspace --all-targets --features demi-runner/test-fixtures
+   DEMI_BACKEND_DATA=~/.demi/development \
+   DEMI_INSTANCE_MODE=isolated \
+   DEMI_BACKEND_PUBLIC_URL=http://<address the guest reaches>:3271 \
+   DEMI_MACHINES_SOCKET=~/.lima/demi-machines/sock/demi-machines.sock \
+   DEMI_NATIVE_CONFIG=.cache/releases/native.json \
+   DEMI_RUNNER_RELEASE_DIR=.cache/releases/runners \
+   DEMI_EXPOSE_DOMAIN=expose.localhost \
+   target/debug/demi-backend
+   ```
+
+5. Run the web application
+   ([Development and checks](../product/web-application.md#development-and-checks))
+   and create the first account. Pair the Mac with the installer, which
+   installs the runner from the runner release and prints a pairing code to
+   claim in the page:
+
+   ```sh
+   curl -fsSL http://<address the guest reaches>:3271/install.sh | sh
+   ```
+
+The variables left out keep their defaults ([Configuration](#configuration)):
+the backend listens on port 3271, the object store stays in the data
+directory, the instance secret is generated there, and Vite serves the page,
+so `DEMI_WEB_DIRECTORY` is not needed. `DEMI_EXPOSE_DOMAIN` is optional;
+without it, exposes are off.
 
 ## Deployment and user ownership
 
