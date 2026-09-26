@@ -56,6 +56,9 @@ async fn cancellation_interrupts_output_backpressure() {
     .unwrap();
 }
 
+/// About 1.5 s in the Linux container: the killed descendant is reparented
+/// to the container's init, which reaps it about once a second, and its PID
+/// answers until then.
 #[tokio::test]
 async fn cancellation_kills_descendant_process_group() {
     tokio::time::timeout(Duration::from_secs(60), async {

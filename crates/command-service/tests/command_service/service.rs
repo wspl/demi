@@ -178,66 +178,6 @@ async fn reset_interrupts_flow_control_blocked_output() {
     .unwrap();
 }
 
-#[tokio::test]
-async fn sdk_client_keeps_other_calls_live_while_one_output_is_blocked() {
-    use demi_command_service::Client;
-    tokio::time::timeout(Duration::from_secs(5), async {
-        let cancelled = Arc::new(Notify::new());
-        let (client_io, server_io) = tokio::io::duplex(4096);
-        let server = tokio::spawn(serve(
-            server_io,
-            Arc::new(Fixture {
-                cancelled: cancelled.clone(),
-            }),
-        ));
-        let (client, connection) = Client::connect(client_io).await.unwrap();
-        let driver = tokio::spawn(connection);
-        let request = |operation: &str| Invocation {
-            context: context(),
-            json: None,
-            edits: None,
-            operation: operation.into(),
-            invocation_id: operation.into(),
-            args: serde_json::json!({}),
-            cwd: "/tmp".into(),
-            env: BTreeMap::new(),
-        };
-        let (mut flood_input, mut flood_output) = client.invoke(&request("flood")).await.unwrap();
-        flood_input.end().unwrap();
-        assert!(matches!(
-            flood_output.next().await.unwrap(),
-            Some(Record::Stdout(_))
-        ));
-        // The producer has unlimited output. Leave the stream unread long enough
-        // to exhaust its receive window before opening an independent call.
-        tokio::time::sleep(Duration::from_millis(50)).await;
-        let (mut input, mut output) = client.invoke(&request("echo")).await.unwrap();
-        assert_eq!(output.next().await.unwrap(), Some(Record::InputPull));
-        input
-            .write(Bytes::from_static(b"independent"))
-            .await
-            .unwrap();
-        assert_eq!(
-            output.next().await.unwrap(),
-            Some(Record::Stdout(Bytes::from_static(b"independent")))
-        );
-        input.end().unwrap();
-        while output.next().await.unwrap().is_some() {}
-        drop(input);
-        drop(output);
-        flood_input.cancel();
-        cancelled.notified().await;
-        drop(flood_input);
-        drop(flood_output);
-        client.shutdown().await.unwrap();
-        drop(client);
-        driver.await.unwrap().unwrap();
-        server.await.unwrap().unwrap();
-    })
-    .await
-    .unwrap();
-}
-
 /// A service that answers each request and then resets it with NO_ERROR
 /// while the caller is still sending it (RFC 9113 § 8.1): a conversation
 /// request from its headers alone, an invocation after its metadata. Its

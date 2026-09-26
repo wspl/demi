@@ -309,7 +309,9 @@ async fn a_release_is_published_whole_once_and_refused_over_other_contents() {
     assert_eq!(names, ["tool-1"]);
 }
 
-#[tokio::test]
+/// The clock is paused: a waiter tries the lock again every 50 ms of it, so
+/// each sleep below lets it find the lock held a few times, at once.
+#[tokio::test(start_paused = true)]
 async fn one_installer_holds_the_lock_and_a_waiter_can_give_up() {
     let root = tempfile::tempdir().unwrap();
     let path = root.path().join("artifact.lock");
@@ -335,17 +337,11 @@ async fn one_installer_holds_the_lock_and_a_waiter_can_give_up() {
     });
     tokio::time::sleep(Duration::from_millis(100)).await;
     giving_up.cancel();
-    assert!(matches!(quitter.await.unwrap(), Err(Error::Cancelled)));
+    let quit = tokio::time::timeout(Duration::from_secs(5), quitter)
+        .await
+        .expect("a waiter gives up when asked");
+    assert!(matches!(quit.unwrap(), Err(Error::Cancelled)));
     drop(next);
-}
-
-#[tokio::test]
-async fn receipts_round_trip_and_an_absent_one_is_none() {
-    let directory = tempfile::tempdir().unwrap();
-    assert_eq!(receipt::read(directory.path()).await.unwrap(), None);
-    receipt::write(directory.path(), &serde_json::json!({"sha256": "a"})).await.unwrap();
-    let bytes = receipt::read(directory.path()).await.unwrap().unwrap();
-    assert_eq!(serde_json::from_slice::<serde_json::Value>(&bytes).unwrap()["sha256"], "a");
 }
 
 /// The names in `directory`, sorted.

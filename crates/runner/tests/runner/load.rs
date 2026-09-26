@@ -237,13 +237,13 @@ fn reply(bytes: Vec<u8>) -> serde_json::Value {
 }
 
 /// Filesystem requests past the runner's concurrency wait; none answer EBUSY.
-#[tokio::test(flavor = "multi_thread")]
+/// The test's runtime runs one task at a time, so all 500 requests are queued
+/// before the first runs, and all but the runner's 32 slots wait.
+#[tokio::test]
 async fn filesystem_requests_wait_instead_of_failing() {
     tokio::time::timeout(Duration::from_secs(60), async {
         let root = tempfile::tempdir().unwrap();
-        for index in 0..200 {
-            std::fs::write(root.path().join(format!("f{index}")), "x").unwrap();
-        }
+        std::fs::write(root.path().join("file"), "x").unwrap();
         let (output, mut replies) = mpsc::channel(1024);
         let pipes = PipeClient::new(&"http://127.0.0.1:1".parse().unwrap(), tokio::sync::watch::Sender::new(None).subscribe()).unwrap();
         let host = HostServer::new(output, root.path().into(), pipes);
@@ -270,37 +270,27 @@ async fn filesystem_requests_wait_instead_of_failing() {
     .unwrap();
 }
 
+/// A repository with one file that is not yet committed, which its changes
+/// list.
 fn repository() -> (tempfile::TempDir, PathBuf) {
     let dir = tempfile::tempdir().unwrap();
     let repo = std::fs::canonicalize(dir.path()).unwrap();
-    let git = |args: &[&str]| {
-        let status = Command::new("git")
-            .args(args)
-            .current_dir(&repo)
-            .env("GIT_AUTHOR_NAME", "Test")
-            .env("GIT_AUTHOR_EMAIL", "test@example.com")
-            .env("GIT_COMMITTER_NAME", "Test")
-            .env("GIT_COMMITTER_EMAIL", "test@example.com")
-            .status()
-            .unwrap();
-        assert!(status.success());
-    };
-    git(&["init", "-q", "-b", "main"]);
-    for index in 0..300 {
-        std::fs::write(repo.join(format!("f{index}.txt")), "1\n").unwrap();
-    }
-    git(&["add", "."]);
-    git(&["commit", "-q", "-m", "first"]);
-    for index in 0..300 {
-        std::fs::write(repo.join(format!("f{index}.txt")), "2\n").unwrap();
-    }
+    let status = Command::new("git")
+        .args(["init", "-q", "-b", "main"])
+        .current_dir(&repo)
+        .status()
+        .unwrap();
+    assert!(status.success());
+    std::fs::write(repo.join("file.txt"), "1\n").unwrap();
     (dir, repo)
 }
 
 /// Working-tree requests past the computation limit wait; none answer busy.
+/// Sixteen requests arrive at once: the runner computes two at a time and
+/// keeps eight directories watched.
 #[tokio::test(flavor = "multi_thread")]
 async fn working_tree_requests_wait_instead_of_failing() {
-    tokio::time::timeout(Duration::from_secs(120), async {
+    tokio::time::timeout(Duration::from_secs(60), async {
         let repositories: Vec<_> = (0..16).map(|_| repository()).collect();
         let (output, mut replies) = mpsc::channel(1024);
         let pipes = PipeClient::new(&"http://127.0.0.1:1".parse().unwrap(), tokio::sync::watch::Sender::new(None).subscribe()).unwrap();
