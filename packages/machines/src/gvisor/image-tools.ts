@@ -2,7 +2,6 @@
 import { chmod, mkdir, mkdtemp, rename, rm, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { z } from 'zod'
-import { decodeUtf8 } from '@demicodes/utils'
 
 /**
  * The tools a backend with managed hosts needs on its machine; checked once at
@@ -39,10 +38,8 @@ export async function runTool(
     killSignal: 'SIGKILL'
   })
   const [stdout, stderr, code] = await Promise.all([
-    new Response(child.stdout).arrayBuffer()
-      .then((bytes) => decodeUtf8(new Uint8Array(bytes))),
-    new Response(child.stderr).arrayBuffer()
-      .then((bytes) => decodeUtf8(new Uint8Array(bytes))),
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
     child.exited,
   ])
   return { code, stdout, stderr }

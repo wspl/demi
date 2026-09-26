@@ -1,5 +1,4 @@
 ---
-'@demicodes/backend': minor
 '@demicodes/web-ui': minor
 ---
 
