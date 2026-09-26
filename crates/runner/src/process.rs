@@ -6,6 +6,7 @@ use std::{
     time::Duration,
 };
 
+use brush_core::execution_host::ChildAttributes;
 use bytes::Bytes;
 use demi_command_service::descriptors::{self, Backoff};
 use process_wrap::tokio::{ChildWrapper, CommandWrap, KillOnDrop};
@@ -80,7 +81,7 @@ impl ChildProcess {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        let mut command = wrap(command, options.process_group);
+        let mut command = wrap(command, options.process_group, &ChildAttributes::default());
         let mut child = match start(|| command.spawn()).await {
             Ok(child) => child,
             Err(error) => return Err(classify_failure(error, &options).await),
@@ -299,32 +300,93 @@ pub fn raise_open_file_limit() -> io::Result<(u64, u64)> {
     Ok((soft, raised))
 }
 
-/// Gives a process the runner starts the open-file limits the runner was
-/// started with, the ones it would have from a terminal (`runner.md` § Load).
-/// A program that uses `select()`, or that closes every descriptor up to its
-/// limit, misbehaves with the runner's raised one. Each call adds a hook, so
-/// a command needs one call.
+/// The limits a process the runner starts gets for `resource` unless its
+/// job's `ulimit` set others: for open files the ones the runner was started
+/// with, otherwise the runner's own, which the process inherits
+/// (`runner.md` § Load).
 #[cfg(unix)]
-pub(crate) fn inherit_open_file_limit(command: &mut std::process::Command) {
-    use std::os::unix::process::CommandExt;
-    let Some(&(soft, hard)) = STARTED_WITH.get() else {
-        return;
-    };
-    // SAFETY: the hook runs in the child between fork and exec. It makes one
-    // `setrlimit` call, which is async-signal-safe, and allocates nothing
-    // unless that call fails.
-    unsafe {
-        command.pre_exec(move || rlimit::setrlimit(rlimit::Resource::NOFILE, soft, hard));
+pub fn child_limit(resource: rlimit::Resource) -> io::Result<(u64, u64)> {
+    match STARTED_WITH.get() {
+        Some(&limits) if resource == rlimit::Resource::NOFILE => Ok(limits),
+        _ => resource.get(),
     }
 }
 
-/// A command the runner starts: it gets the open-file limit the runner was
-/// started with, is killed when its handle is dropped and, with `group`,
-/// leads a process group of its own (a job object on Windows).
-pub(crate) fn wrap(command: Command, group: bool) -> CommandWrap {
+/// The runner's own file mode creation mask, which a process it starts
+/// inherits unless its job's `umask` set another. Nothing in the runner
+/// changes it (`runner.md` § Builtins that act on a process), so it is read
+/// once: from `/proc` on Linux, elsewhere by setting a strict mask and
+/// restoring the old one, which the runner does as it starts, before any job
+/// runs.
+#[cfg(unix)]
+pub fn umask() -> u32 {
+    static UMASK: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
+    *UMASK.get_or_init(|| {
+        #[cfg(target_os = "linux")]
+        if let Some(umask) = procfs::process::Process::myself()
+            .and_then(|process| process.status())
+            .ok()
+            .and_then(|status| status.umask)
+        {
+            return umask;
+        }
+        // A file created meanwhile gets the stricter mask, never a looser one.
+        let strict = rustix::fs::Mode::from_raw_mode(0o077);
+        let umask = rustix::process::umask(strict);
+        rustix::process::umask(umask);
+        u32::from(umask.as_raw_mode())
+    })
+}
+
+/// Gives a process the runner starts its attributes before it runs its
+/// program: the open-file limits the runner was started with, the ones it
+/// would have from a terminal (`runner.md` § Load), and what its job's
+/// `umask` and `ulimit` set (`runner.md` § Builtins that act on a process).
+/// A program that uses `select()`, or that closes every descriptor up to its
+/// limit, misbehaves with the runner's raised limit. Each call adds a hook,
+/// so a command needs one call.
+#[cfg(unix)]
+pub(crate) fn set_attributes(command: &mut std::process::Command, attributes: &ChildAttributes) {
+    use std::os::unix::process::CommandExt;
+    let mut limits = attributes.limits.clone();
+    if let Some(&(soft, hard)) = STARTED_WITH.get()
+        && !limits.iter().any(|&(resource, ..)| resource == rlimit::Resource::NOFILE)
+    {
+        limits.push((rlimit::Resource::NOFILE, soft, hard));
+    }
+    // A umask has nine bits, which every platform's mode type holds.
+    let umask = attributes
+        .umask
+        .map(|umask| rustix::fs::Mode::from_raw_mode(umask as rustix::fs::RawMode));
+    if limits.is_empty() && umask.is_none() {
+        return;
+    }
+    // SAFETY: the hook runs in the child between fork and exec. It makes only
+    // `umask` and `setrlimit` calls, which are async-signal-safe, and
+    // allocates nothing unless one of them fails.
+    unsafe {
+        command.pre_exec(move || {
+            if let Some(umask) = umask {
+                rustix::process::umask(umask);
+            }
+            for &(resource, soft, hard) in &limits {
+                rlimit::setrlimit(resource, soft, hard)?;
+            }
+            Ok(())
+        });
+    }
+}
+
+/// A command the runner starts: it gets its `attributes` and the open-file
+/// limit the runner was started with, is killed when its handle is dropped
+/// and, with `group`, leads a process group of its own (a job object on
+/// Windows).
+pub(crate) fn wrap(command: Command, group: bool, attributes: &ChildAttributes) -> CommandWrap {
     let mut command = CommandWrap::from(command);
     #[cfg(unix)]
-    inherit_open_file_limit(command.command_mut().as_std_mut());
+    set_attributes(command.command_mut().as_std_mut(), attributes);
+    #[cfg(windows)]
+    let _no_attributes_on_windows = attributes;
     command.wrap(KillOnDrop);
     if group {
         #[cfg(unix)]

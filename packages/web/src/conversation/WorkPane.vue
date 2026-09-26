@@ -116,10 +116,10 @@ watch(finishedToolCalls, () => {
   void browser.value?.refresh()
 })
 
+// The browser kind reads its tab list itself when the page is shown again.
 function refreshVisible(): void {
   if (document.visibilityState === 'visible') {
     state.value.changes.refresh()
-    void browser.value?.refresh()
   }
 }
 onMounted(() => {

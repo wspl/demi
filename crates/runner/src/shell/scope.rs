@@ -11,7 +11,7 @@ use std::{
 };
 
 use brush_core::{
-    execution_host::{ExecutionHost, FileControl},
+    execution_host::{ChildAttributes, ExecutionHost, FileControl},
     processes::ChildProcess,
 };
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -440,14 +440,15 @@ impl ExecutionHost for Scope {
         self.descriptors(tempfile::tempfile)
     }
 
-    fn spawn(&self, mut command: Command) -> io::Result<ChildProcess> {
+    fn spawn(&self, mut command: Command, attributes: &ChildAttributes) -> io::Result<ChildProcess> {
         if let Some(context) = &self.commands {
             command.env(
                 crate::commands::command_client::CONTEXT_ENV,
                 &context.execution.id,
             );
         }
-        let mut command = crate::process::wrap(tokio::process::Command::from(command), true);
+        let command = tokio::process::Command::from(command);
+        let mut command = crate::process::wrap(command, true, attributes);
         // A start that waits (`crate::process::start`) ends with the job.
         let mut child = crate::process::start_blocking(|| {
             self.check()?;
@@ -508,50 +509,60 @@ pub fn resolve_path(path: &Path, cwd: &Path) -> PathBuf {
     cwd.join(path)
 }
 
-impl uucore::context::Control for Scope {
+/// What a standard utility runs with: its job's scope, and the attributes of
+/// the shell that ran it for the programs it starts.
+pub(crate) struct UtilityControl {
+    pub(crate) scope: Scope,
+    pub(crate) attributes: ChildAttributes,
+}
+
+impl uucore::context::Control for UtilityControl {
     fn open(&self, path: &Path, options: &std::fs::OpenOptions, writing: bool) -> io::Result<File> {
-        self.open_file(path, options, writing && tracked_utility())
+        self.scope
+            .open_file(path, options, writing && tracked_utility())
     }
     fn edit(&self, path: &Path) -> Option<Box<dyn Send>> {
-        tracked_utility().then(|| self.edit(path)).flatten()
+        tracked_utility().then(|| self.scope.edit(path)).flatten()
     }
     fn edit_file(&self, file: &File) -> Option<Box<dyn Send>> {
         if !tracked_utility() {
             return None;
         }
-        self.edit(&self.file_path(file)?)
+        self.scope.edit(&self.scope.file_path(file)?)
     }
     fn check(&self) -> io::Result<()> {
-        self.check()
+        self.scope.check()
     }
     fn duplicate(&self, file: &File) -> io::Result<File> {
-        self.duplicate(file)
+        self.scope.duplicate(file)
     }
     fn read(&self, file: &File, bytes: &mut [u8]) -> io::Result<usize> {
-        self.read(file, bytes)
+        self.scope.read(file, bytes)
     }
     fn write(&self, file: &File, bytes: &[u8]) -> io::Result<usize> {
-        self.write_with_tracking(file, bytes, tracked_utility())
+        self.scope
+            .write_with_tracking(file, bytes, tracked_utility())
     }
     fn sleep(&self, duration: Duration) -> io::Result<()> {
-        self.sleep(duration)
+        self.scope.sleep(duration)
     }
     fn resolve(&self, path: &Path, cwd: &Path) -> PathBuf {
         resolve_path(path, cwd)
     }
     fn task_guard(&self) -> Box<dyn Send + Sync> {
-        Box::new(self.tasks.token())
+        Box::new(self.scope.tasks.token())
     }
     /// A utility's child program, such as `env`'s or `xargs`'s, starts as
-    /// the job's own commands do.
+    /// the job's own commands do, with the attributes of the shell that ran
+    /// the utility.
     fn spawn(
         &self,
         command: &mut process_wrap::std::CommandWrap,
     ) -> io::Result<Box<dyn process_wrap::std::ChildWrapper>> {
         #[cfg(unix)]
-        crate::process::inherit_open_file_limit(command.command_mut());
+        crate::process::set_attributes(command.command_mut(), &self.attributes);
         crate::process::start_blocking(|| {
-            self.check()?;
+            self.scope.check()?;
             command.spawn()
         })
     }
