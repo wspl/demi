@@ -31,7 +31,3 @@ tokio-util.workspace = true
 demi-artifact = { path = "../artifact", features = ["testing"] }
 futures-util.workspace = true
 sha2 = "0.10"
-
-[package.metadata.demi]
-id = "demi.claude"
-operations = ["claude.ensure", "claude.status"]

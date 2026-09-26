@@ -1,0 +1,4 @@
+# `cargo xtask` runs the repository's development commands
+# (`docs/architecture/crates-and-packages.md` § xtask).
+[alias]
+xtask = "run --package xtask --"

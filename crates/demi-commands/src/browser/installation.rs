@@ -189,5 +189,9 @@ fn failed(version: &str, error: demi_artifact::Error) -> BrowserError {
         error @ Error::Archive(_) => {
             BrowserError::Installation(format!("{version} could not be extracted: {error}"))
         }
+        // An installation publishes no release, so it meets no conflict.
+        error @ Error::Conflict(_) => {
+            BrowserError::Installation(format!("{version} installation failed: {error}"))
+        }
     }
 }
