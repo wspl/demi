@@ -12,7 +12,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use demi_agent::testing::model_of;
+use demi_agent::testing::{field, model_of, preview};
 use demi_core::{Block, EditedFile, ToolView};
 use demi_provider::testing::{MockResponse, MockVendor};
 use reqwest::StatusCode;
@@ -514,14 +514,6 @@ async fn after_a_backend_restart_the_runner_comes_back_and_the_conversation_goes
     backend.close().await;
 }
 
-/// The value of `name` in a shell tool's result, such as its `commandId`.
-fn field<'a>(result: &'a str, name: &str) -> &'a str {
-    result
-        .lines()
-        .find_map(|line| line.strip_prefix(&format!("{name}: ")))
-        .unwrap_or_else(|| panic!("no {name} in {result}"))
-}
-
 /// A conversation that worked on `alpha` and then moved to `beta`, which
 /// left `alpha` attached.
 async fn moved_from_alpha_to_beta(
@@ -614,21 +606,27 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
     assert!(result.starts_with("status: running"), "{result}");
     let command = field(result, "commandId").to_owned();
     // The far job's error output reaches the model while the job runs: the
-    // model reads the command's output until `ready` is there. The far
-    // job's start (a login shell on alpha) may outlast the window above.
-    let mut output = result.clone();
+    // model reads the command's output, each read showing what came since
+    // the one before, until `ready` is there. The far job's start (a login
+    // shell on alpha) may outlast the window above, and its shell's printf
+    // writes a byte at a time, so `ready` may come split between reads.
+    let mut output = preview(result).to_owned();
     let deadline = tokio::time::Instant::now() + crate::support::PATIENCE;
     let mut reads = 0;
     while !output.contains("ready") {
-        assert!(tokio::time::Instant::now() < deadline, "the far job's ready never came: {output}");
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert!(tokio::time::Instant::now() < deadline, "the far job's ready never came: {output:?}");
+        // Each read is a turn of two requests, and the backend starts at most
+        // 120 a minute (`usage-and-quota.md` § Rate limit): 400 ms apart, the
+        // reads of the whole wait make at most 100.
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
         reads += 1;
         let status = json!({ "commandId": command });
         let read = work
             .turn(vec![tool_use(&format!("s{reads}"), "shell_status", &status), say("still waiting")])
             .await;
-        assert!(read.received[0].starts_with("status: running"), "{}", read.received[0]);
-        output.push_str(&read.received[0]);
+        let result = read.received.first().expect("the read reaches the model");
+        assert!(result.starts_with("status: running"), "{result}");
+        output.push_str(preview(result));
     }
 
     let write = json!({ "commandId": command, "stdin": "hello\n" });

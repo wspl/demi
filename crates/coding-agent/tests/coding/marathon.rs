@@ -4,6 +4,7 @@
 
 use std::{cell::RefCell, rc::Rc};
 
+use demi_agent::testing::{field, preview};
 use demi_agent_protocol::{ClientFrame, ServerFrame, ShellStatus};
 use demi_core::CommandId;
 use demi_provider::{
@@ -12,9 +13,7 @@ use demi_provider::{
 };
 use serde_json::json;
 
-use crate::support::{
-    Fixture, exec, field, is_idle, last_result, preview, reply, scripts, turn, within,
-};
+use crate::support::{Fixture, exec, is_idle, last_result, reply, scripts, turn, within};
 
 #[tokio::test(flavor = "local")]
 async fn a_coding_workflow_edits_files_tracks_todos_and_keeps_its_shell_across_messages() {
