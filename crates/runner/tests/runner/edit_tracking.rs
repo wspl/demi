@@ -42,11 +42,13 @@ async fn redirections_descriptors_and_utilities_record_actual_contents() {
     let root = tempfile::tempdir().unwrap();
     let tracking = recorder(root.path(), "job");
     fs::write(root.path().join("sorted"), "pear\napple\n").unwrap();
+    fs::write(root.path().join("restored"), "same\n").unwrap();
     run(
         root.path(),
         tracking.clone(),
         concat!(
             "printf 'one\\n' > file; ",
+            "printf 'changed\\n' > restored; printf 'same\\n' > restored; ",
             "exec 3>>file; printf 'two\\n' >&3; exec 3>&-; ",
             "printf 'tea\\n' | tee tee-file >/dev/null; ",
             "sort sorted -o sorted; ",
@@ -108,6 +110,9 @@ async fn redirected_external_output_is_forwarded_through_the_recorder() {
     }
 }
 
+/// Jobs that take turns writing one file each keep their own edits: another
+/// job's write does not change an after side a job captured, and a job's
+/// next edit starts from what the other job left.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn another_job_cannot_change_an_already_captured_after_side() {
     let root = tempfile::tempdir().unwrap();
@@ -116,14 +121,23 @@ async fn another_job_cannot_change_an_already_captured_after_side() {
     fs::write(root.path().join("file"), "before\n").unwrap();
     run(root.path(), a.clone(), "echo A > file").await;
     run(root.path(), b.clone(), "echo B > file").await;
+    run(root.path(), a.clone(), "echo C > file").await;
     let report = a.report().unwrap();
-    let edit = &report.files[0].edits[0];
+    let edits: Vec<_> = report.files[0]
+        .edits
+        .iter()
+        .map(|edit| {
+            (
+                fs::read_to_string(edit.original.as_ref().unwrap()).unwrap(),
+                fs::read_to_string(edit.modified.as_ref().unwrap()).unwrap(),
+            )
+        })
+        .collect();
     assert_eq!(
-        fs::read_to_string(edit.original.as_ref().unwrap()).unwrap(),
-        "before\n"
-    );
-    assert_eq!(
-        fs::read_to_string(edit.modified.as_ref().unwrap()).unwrap(),
-        "A\n"
+        edits,
+        [
+            ("before\n".to_owned(), "A\n".to_owned()),
+            ("B\n".to_owned(), "C\n".to_owned())
+        ]
     );
 }
