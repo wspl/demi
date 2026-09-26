@@ -4,6 +4,8 @@
 // file that was distributed with this source code.
 // spell-checker:disable
 
+#[cfg(not(debug_assertions))]
+use crate::context::FileKindExt as _;
 use crate::context::PathExt as _;
 use crate::error::UError;
 
