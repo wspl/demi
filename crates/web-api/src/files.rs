@@ -2,7 +2,7 @@
 //! working tree (`web-api.md` § Device files and remote references, § File
 //! text and working tree changes).
 
-use demi_core::{Nullable, Timestamp};
+use demi_core::{MAX_SAFE_INTEGER, Nullable, Timestamp};
 use demi_runner_protocol::wire::GitChanges;
 use garde::Validate;
 use schemars::JsonSchema;
@@ -30,6 +30,7 @@ pub struct DirectoryEntry {
     pub name: String,
     pub is_directory: bool,
     pub is_symbolic_link: bool,
+    #[garde(range(max = MAX_SAFE_INTEGER))]
     pub size: u64,
     pub modified_at: Timestamp,
 }
