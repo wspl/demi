@@ -420,10 +420,8 @@ which is a pipe, into a directory of the environment, and then attach to the
 input. Observers run
 in an isolated world, so pages can neither see nor call them.
 
-A user operation, meaning a button press, a key, a wheel turn, a paste or a
-control choice but not pointer movement, is conversation activity. The page
-reports it at most every 30 seconds
-([Activity](../execution/resource-lifecycle.md#activity)). Watching is not activity.
+An open view is conversation activity, whether the user operates it or only
+watches ([Activity](../execution/resource-lifecycle.md#activity)).
 
 ## Security
 
@@ -489,9 +487,9 @@ crate and package; for the live view:
 | `demi-commands` | The live view module: viewers, capture control, delivery and congestion, heartbeat, input, viewport modes and screen ratio, served by the live hub and the capture channel; the capture extension and page observers as embedded resources; launch configuration. |
 | `command-service`, `runner`, `runner-protocol`, `host-remote` | [User streams](../execution/native-runtime.md#user-streams) and [service streams](../execution/runner.md#service-streams), with no browser knowledge. |
 | `coding-agent` | Declaring `viewport set --scale` with the other `demi browser` commands. |
-| `backend` | Declaring the `browser` user stream; the user stream route, where the user's shard admits and ends the stream and the edge relays its bytes with backpressure; activity reports; the [browser tab routes](../product/web-api.md#conversation-browser-tabs), which call the browser's own operations and hold no browser logic. |
+| `backend` | Declaring the `browser` user stream; the user stream route, where the user's shard admits and ends the stream and the edge relays its bytes with backpressure; the [browser tab routes](../product/web-api.md#conversation-browser-tabs), which call the browser's own operations and hold no browser logic. |
 | `web-ui` | The `browser` tab kind: its tab source, which lists, opens and closes tabs through an interface the consumer supplies, and its content, the live view: video, input, native control overlays, clipboard, dialogs, the viewport menu, and what it shows while a tab is opening, gone, or out of reach. It depends on `@demicodes/protocol` for the live protocol, as it depends on `@demicodes/agent-client` for agent frames. |
-| `web`, `web-gallery` | The product's stream source, tab routes and activity reports; a gallery source that encodes its own picture, keeps its own tab list and speaks the protocol, so the kind shows without a Host. |
+| `web`, `web-gallery` | The product's stream source and tab routes; a gallery source that encodes its own picture, keeps its own tab list and speaks the protocol, so the kind shows without a Host. |
 | `packages/guest-image` | Fonts for Chinese, Japanese and Korean text in the Cloud guest image. |
 
 ## Rationale

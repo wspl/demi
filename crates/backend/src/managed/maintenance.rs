@@ -38,8 +38,8 @@ impl Shard {
     }
 
     /// What the conversations using the Cloud, in any role, are doing: a
-    /// turn of their tree, or an operation holding their file gate, keeps
-    /// the Cloud awake.
+    /// turn of their tree, an operation holding their file gate, or a user
+    /// stream someone has open keeps the Cloud awake.
     async fn cloud_conversations_activity(&self) -> Result<Activity, String> {
         let uses = self.cloud_uses().await.map_err(|error| error.to_string())?;
         Ok(uses
