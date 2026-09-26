@@ -168,6 +168,8 @@ async fn a_fork_of_a_conversation_the_backend_no_longer_holds_reads_its_stored_h
     backend.close().await;
 }
 
+// Several seconds: a real device installs the builtin package for the command
+// whose edits the Fork keeps.
 #[tokio::test]
 async fn a_fork_keeps_the_edits_its_history_made_in_a_copy_of_its_own() {
     let vendor = MockVendor::start().await;
@@ -220,6 +222,7 @@ async fn a_fork_keeps_the_edits_its_history_made_in_a_copy_of_its_own() {
     backend.close().await;
 }
 
+// Several seconds: three turns each run a `demi todo` job on a real device.
 #[tokio::test]
 async fn a_fork_keeps_the_todos_its_history_had() {
     let vendor = MockVendor::start().await;

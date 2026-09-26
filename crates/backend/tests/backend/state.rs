@@ -17,7 +17,7 @@ use crate::support::Harness;
 
 #[tokio::test]
 async fn the_state_is_the_users_snapshot_and_revalidates_by_its_etag() {
-    let harness = Harness::new();
+    let mut harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
 
     let first = backend.get("/api/state", Some(&master)).await;
@@ -81,11 +81,11 @@ async fn the_state_is_the_users_snapshot_and_revalidates_by_its_etag() {
     assert_ne!(changed_etag, etag);
 
     // An existing user's snapshot after a restart is the same body, so the
-    // same ETag. The backend comes back at its address, as a deployment's
-    // public URL stays.
-    let address = backend.address();
+    // same ETag. The backend comes back under the same public URL, as a
+    // deployment's stays, on a port of its own.
     backend.close().await;
-    let backend = harness.start_at(address).await;
+    harness.public_url = Some(state.public_url.parse().unwrap());
+    let backend = harness.start().await;
     let again = backend
         .get_with("/api/state", &master, &[("if-none-match", &changed_etag)])
         .await;
