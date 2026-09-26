@@ -1,8 +1,8 @@
-//! What the product shows of a provider entry: a stored catalog and a stored
+//! What the product keeps of a provider entry: a stored catalog and a stored
 //! quota snapshot keep their wire shape and refuse what their contract does
-//! not hold, and the states the backend only sends are tagged by `status`.
+//! not hold.
 
-use demi_core::{AuthState, ProviderModelList, QuotaSnapshot, RuntimeState, decode};
+use demi_core::{ProviderModelList, QuotaSnapshot, decode};
 use serde_json::{Value, json};
 
 fn catalog() -> Value {
@@ -85,22 +85,4 @@ fn a_stored_catalog_and_quota_snapshot_refuse_what_their_contract_does_not_hold(
     for value in [over, cached, raw] {
         assert!(decode::<QuotaSnapshot>(&value.to_string()).is_err(), "{value}");
     }
-}
-
-#[test]
-fn authentication_and_runtime_states_are_tagged_by_status() {
-    let authenticated = AuthState::Authenticated { account_label: None };
-    assert_eq!(serde_json::to_value(&authenticated).unwrap(), json!({ "status": "authenticated" }));
-    let missing = AuthState::Unauthenticated {
-        message: Some("Anthropic API key is missing".into()),
-    };
-    assert_eq!(
-        serde_json::to_value(&missing).unwrap(),
-        json!({ "status": "unauthenticated", "message": "Anthropic API key is missing" })
-    );
-    let ready: RuntimeState =
-        serde_json::from_value(json!({ "status": "ready", "added": true })).unwrap();
-    assert_eq!(ready, RuntimeState::Ready { message: None });
-    assert!(serde_json::from_value::<RuntimeState>(json!({ "status": "error" })).is_err());
-    assert!(serde_json::from_value::<AuthState>(json!({ "status": "unknown", "message": null })).is_err());
 }

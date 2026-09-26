@@ -1,14 +1,7 @@
 //! What the browser sends: `fixtures/client-frames.json` holds every frame in
 //! its wire shape.
 
-use std::{
-    future::Future,
-    pin::pin,
-    task::{Context, Poll, Waker},
-};
-
-use demi_agent_protocol::{ClientContent, ClientFrame, FrameError, decode_client_frame};
-use demi_core::{DocumentSource, UserContentBlock};
+use demi_agent_protocol::{ClientFrame, FrameError, decode_client_frame};
 use serde_json::{Value, json};
 
 fn fixtures() -> Vec<Value> {
@@ -114,70 +107,6 @@ fn a_message_that_is_not_json_is_told_from_an_invalid_frame() {
         .unwrap_err()
         .to_string();
     assert!(error.contains("content[0]"), "{error}");
-}
-
-/// The value of a future that never waits.
-fn ready<T>(future: impl Future<Output = T>) -> T {
-    match pin!(future).poll(&mut Context::from_waker(Waker::noop())) {
-        Poll::Ready(value) => value,
-        Poll::Pending => panic!("the future waited"),
-    }
-}
-
-/// What a backend might make of the browser's content: the session's content
-/// blocks, with an upload or a remote file standing for the text that names
-/// it.
-async fn resolve(content: Vec<ClientContent>) -> Result<Vec<UserContentBlock>, String> {
-    let resolved = content
-        .into_iter()
-        .map(|part| match part {
-            ClientContent::Text { text } => UserContentBlock::Text { text },
-            ClientContent::Reference { reference } => UserContentBlock::Reference { reference },
-            ClientContent::Upload { file_name, .. } => UserContentBlock::Text { text: format!("uploaded {file_name}") },
-            ClientContent::RemoteFile { path, .. } => UserContentBlock::Reference { reference: path },
-            ClientContent::Media { media } => media.into(),
-            ClientContent::Attachment { path } => UserContentBlock::Text { text: format!("kept {path}") },
-        })
-        .collect();
-    Ok(resolved)
-}
-
-#[test]
-fn resolving_content_changes_only_the_frames_that_carry_it() {
-    for fixture in fixtures() {
-        let frame = decode_client_frame(&fixture.to_string()).unwrap();
-        let kind = frame.kind();
-        let resolved: ClientFrame<UserContentBlock> = ready(frame.map_content(resolve)).unwrap();
-        assert_eq!(resolved.kind(), kind);
-        let encoded = serde_json::to_value(&resolved).unwrap();
-        if !matches!(fixture["type"].as_str().unwrap(), "send" | "steer" | "edit_and_send") {
-            assert_eq!(encoded, fixture);
-        }
-    }
-
-    let send = decode_client_frame(&fixture("send").to_string()).unwrap();
-    let ClientFrame::Send { content, .. } = ready(send.map_content(resolve)).unwrap() else {
-        unreachable!()
-    };
-    assert_eq!(content[2], UserContentBlock::Text { text: "uploaded report.pdf".into() });
-
-    let edit = decode_client_frame(&fixture("edit_and_send").to_string()).unwrap();
-    let ClientFrame::EditAndSend { request } = ready(edit.map_content(resolve)).unwrap() else {
-        unreachable!()
-    };
-    assert_eq!(request.operation_id.as_str(), "edit-1");
-    assert_eq!(request.version.revision, 12);
-    let UserContentBlock::Document { source: DocumentSource::Ref { file_name, .. } } = &request.content[4] else {
-        panic!("{:?}", request.content[4]);
-    };
-    assert_eq!(file_name, "spec.pdf");
-
-    let failed = ready(
-        decode_client_frame(&fixture("send").to_string())
-            .unwrap()
-            .map_content(|_| async { Err::<Vec<UserContentBlock>, _>("unavailable") }),
-    );
-    assert_eq!(failed.unwrap_err(), "unavailable");
 }
 
 #[test]

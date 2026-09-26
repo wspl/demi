@@ -74,10 +74,6 @@ impl Block {
         on_block!(self, block => &block.id)
     }
 
-    pub fn created_at(&self) -> Timestamp {
-        on_block!(self, block => block.created_at)
-    }
-
     /// The model selection that was current when the block was written.
     pub fn model(&self) -> &ModelSelection {
         on_block!(self, block => &block.model)

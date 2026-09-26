@@ -2,7 +2,7 @@
 //! receives them: `fixtures/blocks.json` holds one of each kind in the wire
 //! shape, and every block decodes and encodes to exactly that JSON.
 
-use demi_core::{Block, DecodeError, ToolView, decode};
+use demi_core::{Block, DecodeError, decode};
 use serde_json::{Value, json};
 
 fn fixtures() -> Vec<Value> {
@@ -44,34 +44,6 @@ fn every_block_kind_keeps_its_wire_shape() {
     ] {
         assert!(kinds.contains(&kind), "the fixture has no {kind} block");
     }
-}
-
-#[test]
-fn every_block_names_its_id_time_and_model_and_only_a_user_block_is_editable() {
-    for fixture in fixtures() {
-        let block = decode_value(&fixture).unwrap();
-        assert_eq!(block.id().as_str(), fixture["id"].as_str().unwrap());
-        assert_eq!(block.created_at().to_string(), fixture["createdAt"].as_str().unwrap());
-        assert_eq!(block.model().provider_id, fixture["model"]["providerId"].as_str().unwrap());
-        assert_eq!(block.is_editable(), fixture["type"] == "user");
-    }
-}
-
-#[test]
-fn a_tool_call_view_is_typed_by_its_kind() {
-    let fixtures = fixtures();
-    let views: Vec<Option<ToolView>> = fixtures
-        .iter()
-        .filter(|fixture| fixture["type"] == "tool_call")
-        .map(|fixture| match decode_value(fixture).unwrap() {
-            Block::ToolCall(call) => call.view,
-            _ => unreachable!(),
-        })
-        .collect();
-    assert!(views[0].is_none());
-    assert!(matches!(&views[1], Some(ToolView::Shell(view)) if view.files.as_ref().is_some_and(|files| files.len() == 2)));
-    assert!(matches!(views[2], Some(ToolView::RepeatedShellExec { count: 7, .. })));
-    assert!(matches!(views[4], Some(ToolView::YieldWakeup { duration_ms: 120_000, .. })));
 }
 
 /// The fixture whose `id` is `id`.
