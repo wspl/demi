@@ -1,18 +1,19 @@
 //! Native artifact publication (`native-runtime.md` § Publish artifacts
 //! before enabling commands, § Backend deployment configuration): before the
 //! backend accepts requests, every native command release `DEMI_NATIVE_CONFIG`
-//! names is verified whole (its descriptor, and each of the six targets'
-//! executable by size and SHA-256), its executables are uploaded once each as
-//! content-addressed objects, its descriptor and then its immutable
-//! package-and-version mapping are published, and only then does the
-//! catalog serve. A write never replaces an object: finding one in place is
-//! success when its size and digest are the ones published, and a refusal
-//! otherwise. Runners download an executable from a URL signed for five
-//! minutes.
+//! names is verified whole (its descriptor, and each target's executable by
+//! size and SHA-256). For object storage, a release must carry all six
+//! targets; its executables are uploaded once each as content-addressed
+//! objects, its descriptor and then its immutable package-and-version mapping
+//! are published, and only then does the catalog serve. A write never
+//! replaces an object: finding one in place is success when its size and
+//! digest are the ones published, and a refusal otherwise. Runners download
+//! an executable from a URL signed for five minutes. A development store
+//! uploads nothing and takes a release of fewer targets: the backend serves
+//! the executables itself (`local_store`).
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path as FilePath, PathBuf};
-use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -29,7 +30,8 @@ use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
-use super::native::NativeCatalog;
+use super::local_store::LocalArtifacts;
+use super::native::{NativeCatalog, Store};
 use crate::storage::objects::S3Config;
 
 /// How long a runner's signed download URL stays valid.
@@ -54,19 +56,26 @@ const COMPONENT: &AsciiSet = &NON_ALPHANUMERIC
     .remove(b'(')
     .remove(b')');
 
-/// `DEMI_NATIVE_CONFIG`: the releases to publish and where.
+/// `DEMI_NATIVE_CONFIG`: the releases, and the store runners download their
+/// executables from.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct NativeConfig {
-    /// The key prefix of every published object.
-    #[serde(default = "default_prefix")]
-    prefix: String,
+    /// The key prefix of every object published to S3; the local store
+    /// takes none.
+    prefix: Option<String>,
     releases: Vec<Release>,
     store: NativeStore,
 }
 
-fn default_prefix() -> String {
-    "native".into()
+/// The key prefix of S3 objects when the configuration names none.
+const DEFAULT_PREFIX: &str = "native";
+
+impl NativeConfig {
+    /// The key prefix of the objects published to S3.
+    fn prefix(&self) -> &str {
+        self.prefix.as_deref().unwrap_or(DEFAULT_PREFIX)
+    }
 }
 
 /// One release directory: `descriptor.json`, and one executable per target
@@ -78,12 +87,29 @@ struct Release {
     executable: String,
 }
 
-/// The object storage the releases are published to; S3 is the one
-/// protocol.
+/// Where runners download the executables: object storage the releases
+/// are published to, where S3 is the one protocol, or a development store,
+/// which is the backend itself.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(tag = "provider", rename_all = "lowercase")]
 enum NativeStore {
     S3(S3Config),
+    Local(LocalStore),
+}
+
+/// A development store's settings: it has none.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LocalStore {}
+
+/// Which targets a release must carry.
+#[derive(Debug, Clone, Copy)]
+enum Targets {
+    /// All six: a release published to object storage.
+    All,
+    /// At least one, each that its descriptor names: a development release,
+    /// which only the local store loads.
+    Named,
 }
 
 /// Why publication stopped the start.
@@ -102,17 +128,30 @@ pub enum PublicationError {
 }
 
 /// Publishes the releases the configuration file at `path` names and makes
-/// the catalog of them, which the conversations' commands bind to. The
-/// backend accepts requests only once this completed; `cancel` interrupts
-/// it.
+/// the catalog of them, which the conversations' commands bind to: to object
+/// storage, or, for the local store, to the backend's own route, which
+/// uploads nothing. The backend accepts requests only once this completed;
+/// `cancel` interrupts it.
 pub async fn publish_native(path: &FilePath, cancel: &CancellationToken) -> Result<NativeCatalog, PublicationError> {
     let config = NativeConfig::read(path).await?;
-    let NativeStore::S3(s3) = &config.store;
-    let store = Arc::new(s3.builder().build()?);
-    let published = publish(&config.releases, &config.prefix, store, cancel).await?;
-    let artifacts = published.artifacts;
-    let resolver = move || Rc::new(artifacts.clone()) as Rc<dyn ArtifactResolver>;
-    NativeCatalog::new(published.packages, resolver).map_err(|error| PublicationError::Config(error.to_string()))
+    let catalog = match &config.store {
+        NativeStore::S3(s3) => {
+            let store = Arc::new(s3.builder().build()?);
+            let published = publish(&config.releases, config.prefix(), store, cancel).await?;
+            NativeCatalog::new(published.packages, Store::Signed(published.artifacts))
+        }
+        NativeStore::Local(LocalStore {}) => {
+            let verified = verify_all(&config.releases, Targets::Named, cancel).await?;
+            let artifacts = LocalArtifacts::new(verified.iter().flat_map(|release| release.executables.iter().cloned()));
+            let packages: Vec<PackageDescriptor> = verified.into_iter().map(|release| release.descriptor).collect();
+            tracing::info!(
+                packages = packages.len(),
+                "the development store serves the native releases' executables itself"
+            );
+            NativeCatalog::new(packages, Store::Local(Arc::new(artifacts)))
+        }
+    };
+    catalog.map_err(|error| PublicationError::Config(error.to_string()))
 }
 
 impl NativeConfig {
@@ -122,21 +161,27 @@ impl NativeConfig {
         let invalid = |reason: String| PublicationError::Config(format!("{}: {reason}", path.display()));
         let bytes = tokio::fs::read(path).await.map_err(|error| invalid(error.to_string()))?;
         let mut config: Self = serde_json::from_slice(&bytes).map_err(|error| invalid(error.to_string()))?;
-        // Segments of letters, digits, `_` and `-`, beginning with a letter
-        // or digit.
-        let prefix_ok = config
-            .prefix
-            .bytes()
-            .next()
-            .is_some_and(|byte| byte.is_ascii_alphanumeric())
-            && config.prefix.split('/').all(|segment| {
-                !segment.is_empty()
-                    && segment
-                        .bytes()
-                        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
-            });
-        if !prefix_ok {
-            return Err(invalid(format!("{} is no object key prefix", config.prefix)));
+        match (&config.store, &config.prefix) {
+            (NativeStore::S3(s3), _) => {
+                let prefix = config.prefix();
+                // Segments of letters, digits, `_` and `-`, beginning with a
+                // letter or digit.
+                let prefix_ok = prefix.bytes().next().is_some_and(|byte| byte.is_ascii_alphanumeric())
+                    && prefix.split('/').all(|segment| {
+                        !segment.is_empty()
+                            && segment
+                                .bytes()
+                                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+                    });
+                if !prefix_ok {
+                    return Err(invalid(format!("{prefix} is no object key prefix")));
+                }
+                s3.check().map_err(|error| invalid(error.to_string()))?;
+            }
+            (NativeStore::Local(_), Some(_)) => {
+                return Err(invalid("prefix names object storage keys, and the local store has none".into()));
+            }
+            (NativeStore::Local(_), None) => {}
         }
         let base = path.parent().unwrap_or(FilePath::new(""));
         for release in &mut config.releases {
@@ -150,8 +195,6 @@ impl NativeConfig {
             }
             release.directory = base.join(&release.directory);
         }
-        let NativeStore::S3(s3) = &config.store;
-        s3.check().map_err(|error| invalid(error.to_string()))?;
         Ok(config)
     }
 }
@@ -180,15 +223,7 @@ async fn publish<S>(
 where
     S: ObjectStore + Signer,
 {
-    let mut verified = Vec::with_capacity(releases.len());
-    let mut ids = HashSet::new();
-    for release in releases {
-        let release = verify(release, cancel).await?;
-        if !ids.insert(release.descriptor.id.clone()) {
-            return Err(PublicationError::Config(format!("{} is released twice", release.descriptor.id)));
-        }
-        verified.push(release);
-    }
+    let verified = verify_all(releases, Targets::All, cancel).await?;
     // Each executable once, however many releases carry it.
     let mut uploads: HashMap<String, (PathBuf, PackageArtifact)> = HashMap::new();
     for release in &verified {
@@ -258,9 +293,28 @@ where
     })
 }
 
-/// Reads a release's descriptor and checks every target's executable
-/// against it.
-async fn verify(release: &Release, cancel: &CancellationToken) -> Result<Verified, PublicationError> {
+/// Verifies every release: its descriptor, and the executables of the
+/// targets it must carry. Two releases of one package are refused.
+async fn verify_all(
+    releases: &[Release],
+    targets: Targets,
+    cancel: &CancellationToken,
+) -> Result<Vec<Verified>, PublicationError> {
+    let mut verified = Vec::with_capacity(releases.len());
+    let mut ids = HashSet::new();
+    for release in releases {
+        let release = verify(release, targets, cancel).await?;
+        if !ids.insert(release.descriptor.id.clone()) {
+            return Err(PublicationError::Config(format!("{} is released twice", release.descriptor.id)));
+        }
+        verified.push(release);
+    }
+    Ok(verified)
+}
+
+/// Reads a release's descriptor and checks the executable of each target it
+/// must carry against it.
+async fn verify(release: &Release, targets: Targets, cancel: &CancellationToken) -> Result<Verified, PublicationError> {
     let refused = |reason: String| PublicationError::Release {
         directory: release.directory.clone(),
         reason,
@@ -270,11 +324,18 @@ async fn verify(release: &Release, cancel: &CancellationToken) -> Result<Verifie
         .map_err(|error| refused(format!("descriptor.json: {error}")))?;
     let value = serde_json::from_slice(&text).map_err(|error| refused(format!("descriptor.json: {error}")))?;
     let descriptor = PackageDescriptor::parse(value).map_err(|error| refused(format!("descriptor.json: {error}")))?;
-    let mut executables = Vec::with_capacity(TARGETS.len());
-    for target in TARGETS {
+    let carried: Vec<&str> = match targets {
+        Targets::All => TARGETS.to_vec(),
+        Targets::Named => descriptor.targets.keys().map(String::as_str).collect(),
+    };
+    if carried.is_empty() {
+        return Err(refused("it carries no target".into()));
+    }
+    let mut executables = Vec::with_capacity(carried.len());
+    for target in carried {
         let expected = descriptor
             .targets
-            .get(*target)
+            .get(target)
             .ok_or_else(|| refused(format!("it lacks a target: {target}")))?;
         let suffix = if target.contains("windows") { ".exe" } else { "" };
         let path = release
@@ -353,7 +414,7 @@ async fn put_immutable(
 /// The published executables' downloads, signed on each request. `Send`,
 /// so each shard makes its resolver of it.
 #[derive(Clone)]
-struct SignedArtifacts {
+pub(crate) struct SignedArtifacts {
     signer: Arc<dyn Signer>,
     prefix: String,
     /// Each published executable's size, by SHA-256.
@@ -538,15 +599,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_configuration_names_releases_beside_it_and_an_s3_store() {
+    async fn the_configuration_names_releases_beside_it_and_an_s3_or_a_local_store() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("native.json");
         let write = |text: &str| std::fs::write(&path, text).unwrap();
         write(r#"{"releases":[{"directory":"./demi-commands","executable":"demi-commands"}],"store":{"provider":"s3","bucket":"demi-native","region":"us-east-1"}}"#);
         let config = NativeConfig::read(&path).await.unwrap();
-        assert_eq!(config.prefix, "native");
+        assert_eq!(config.prefix(), "native");
         assert_eq!(config.releases[0].directory, directory.path().join("./demi-commands"));
+        write(r#"{"releases":[{"directory":"demi-commands","executable":"demi-commands"}],"store":{"provider":"local"}}"#);
+        let config = NativeConfig::read(&path).await.unwrap();
+        assert_eq!(config.store, NativeStore::Local(LocalStore {}));
         for refused in [
+            r#"{"prefix":"native","releases":[{"directory":"d","executable":"a"}],"store":{"provider":"local"}}"#,
+            r#"{"releases":[{"directory":"d","executable":"a"}],"store":{"provider":"local","bucket":"b"}}"#,
             r#"{"store":{"provider":"s3","bucket":"b","region":"r"}}"#,
             r#"{"releases":[{"directory":"d","executable":"a.exe"}],"store":{"provider":"s3","bucket":"b","region":"r"}}"#,
             r#"{"releases":[{"directory":"d","executable":"a"}],"store":{"provider":"gcs","bucket":"b","region":"r"}}"#,

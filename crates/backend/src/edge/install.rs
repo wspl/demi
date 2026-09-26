@@ -1,9 +1,11 @@
 //! The public installation routes (`web-api.md` § Resource index): the
 //! runner installers for the backend's current runner release, and the
 //! runner executables of each release, from the directory
-//! `DEMI_RUNNER_RELEASE_DIR` names (`builds-and-releases.md` § Packaging).
-//! Neither holds a credential; pairing grants device access. Without the
-//! directory, the installers answer 503 and the executables 404.
+//! `DEMI_RUNNER_RELEASE_DIR` names (`builds-and-releases.md` § Packaging);
+//! and a development store's command executables (`native-runtime.md`
+//! § Backend deployment configuration). None holds a credential; pairing
+//! grants device access. Without the runner release directory, the
+//! installers answer 503 and the runner executables 404.
 
 use std::path::PathBuf;
 
@@ -38,8 +40,8 @@ pub(crate) struct Site {
 
 const UNCONFIGURED: &str = "Runner releases are not configured on this backend.\n";
 
-/// How much of a runner executable one read sends. `ReaderStream` reads 4 KiB
-/// by default, which cut a runner of many megabytes into tens of thousands of
+/// How much of an executable one read sends. `ReaderStream` reads 4 KiB by
+/// default, which cut a runner of many megabytes into tens of thousands of
 /// chunks.
 const ARTIFACT_READ: usize = 256 * 1024;
 
@@ -118,7 +120,30 @@ pub(super) async fn artifact(
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Err(not_found()),
         Err(error) => return Err(ApiError::internal_message(error.to_string())),
     };
-    let size = opened
+    immutable_download(opened).await
+}
+
+/// A development store's command executable, by its SHA-256: only one that
+/// a release the backend loaded carries; any other digest answers 404.
+pub(super) async fn native_artifact(
+    State(state): State<AppState>,
+    Path(sha256): Path<String>,
+) -> Result<Response, ApiError> {
+    let Some(path) = state.services.native.local_file(&sha256) else {
+        return Err(ApiError::new(StatusCode::NOT_FOUND, ErrorCode::NotFound, "No such native artifact"));
+    };
+    // The backend verified the file when it loaded the release: a file that
+    // is gone since is the deployment's fault.
+    let opened = tokio::fs::File::open(path)
+        .await
+        .map_err(|error| ApiError::internal_message(format!("{}: {error}", path.display())))?;
+    immutable_download(opened).await
+}
+
+/// `file`, an immutable executable, as a download: its whole length in large
+/// reads, cacheable for a year.
+async fn immutable_download(file: tokio::fs::File) -> Result<Response, ApiError> {
+    let size = file
         .metadata()
         .await
         .map_err(|error| ApiError::internal_message(error.to_string()))?
@@ -128,7 +153,7 @@ pub(super) async fn artifact(
         (CACHE_CONTROL, HeaderValue::from_static("public, max-age=31536000, immutable")),
         (CONTENT_LENGTH, HeaderValue::from(size)),
     ];
-    Ok((headers, Body::from_stream(ReaderStream::with_capacity(opened, ARTIFACT_READ))).into_response())
+    Ok((headers, Body::from_stream(ReaderStream::with_capacity(file, ARTIFACT_READ))).into_response())
 }
 
 /// The release record at `path`, when there is one; a record that does not
