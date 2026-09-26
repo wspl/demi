@@ -1,15 +1,17 @@
-//! Verified downloads and copies, digests, publication, release publication,
-//! the install lock, receipts and zip extraction.
+//! Verified and measured downloads, copies, digests, publication, release
+//! publication, the install lock, receipts and archive installation.
 
-use std::{io::Write as _, path::Path, time::Duration};
+use std::{path::Path, time::Duration};
 
 use demi_artifact::{
-    Digest, Error, InstallLock, Mode, Permissions, Publication, ReleaseFile, ReleaseRecord, Staged,
-    Verifier, copy, digest, download, extract_zip, publish, publish_bytes, publish_directory,
-    publish_release, receipt, testing::loopback_client,
+    Archive, Digest, Error, InstallLock, Mode, Permissions, Publication, ReleaseFile, ReleaseRecord,
+    Staged, Verifier, copy, digest, download, download_measured, install_archive, installed, publish,
+    publish_bytes, publish_directory, publish_release, receipt,
+    testing::{Answer, Server, loopback_client, zip},
+    zip_holds,
 };
 use sha2::{Digest as _, Sha256};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 use tokio_util::sync::CancellationToken;
 
 const BODY: &[u8] = b"verified bytes";
@@ -21,34 +23,23 @@ fn declared(bytes: &[u8]) -> Digest {
     }
 }
 
-/// A local HTTP server that answers every request with `status`, `body` and
-/// an optional Content-Length.
-async fn serve(status: &'static str, body: &'static [u8], length: Option<usize>) -> String {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let address = listener.local_addr().unwrap();
-    tokio::spawn(async move {
-        loop {
-            let Ok((mut socket, _)) = listener.accept().await else {
-                return;
-            };
-            tokio::spawn(async move {
-                let mut request = vec![0; 4096];
-                let _read = socket.read(&mut request).await;
-                let length = length.map_or(String::new(), |length| format!("content-length: {length}\r\n"));
-                let head = format!("HTTP/1.1 {status}\r\n{length}connection: close\r\n\r\n");
-                let _written = socket.write_all(head.as_bytes()).await;
-                let _written = socket.write_all(body).await;
-            });
-        }
-    });
-    format!("http://{address}/artifact")
+/// A fixture server that answers `/artifact` with `status` and `body`,
+/// declaring its length when `length` says so.
+async fn serve(status: u16, body: &[u8], length: bool) -> Server {
+    let answer = Answer {
+        status,
+        body: body.to_vec(),
+        length,
+    };
+    Server::start([("/artifact".to_owned(), answer)]).await
 }
 
 #[tokio::test]
 async fn a_download_is_verified_as_it_arrives() {
     let client = loopback_client().unwrap();
     let cancel = CancellationToken::new();
-    let url = serve("200 OK", BODY, Some(BODY.len())).await;
+    let server = serve(200, BODY, true).await;
+    let url = server.url("/artifact");
     let mut output = Vec::new();
     download(&client, &url, &declared(BODY), &mut output, &cancel).await.unwrap();
     assert_eq!(output, BODY);
@@ -66,14 +57,15 @@ async fn a_download_is_verified_as_it_arrives() {
     let result = download(&client, &url, &short, &mut Vec::new(), &cancel).await;
     assert!(matches!(result, Err(Error::Size { declared: 3, .. })), "{result:?}");
     // Without a length, bytes past the declared size stop the download.
-    let unsized_url = serve("200 OK", BODY, None).await;
+    let unsized_server = serve(200, BODY, false).await;
+    let unsized_url = unsized_server.url("/artifact");
     let result = download(&client, &unsized_url, &short, &mut Vec::new(), &cancel).await;
     assert!(matches!(result, Err(Error::TooLarge { declared: 3 })), "{result:?}");
-    let missing = serve("404 Not Found", b"", Some(0)).await;
+    let missing = server.url("/elsewhere");
     let result = download(&client, &missing, &declared(BODY), &mut Vec::new(), &cancel).await;
     assert!(matches!(result, Err(Error::Rejected { status: 404 })), "{result:?}");
-    let moved = serve("302 Found", b"", Some(0)).await;
-    let result = download(&client, &moved, &declared(BODY), &mut Vec::new(), &cancel).await;
+    let moved = serve(302, b"", true).await;
+    let result = download(&client, &moved.url("/artifact"), &declared(BODY), &mut Vec::new(), &cancel).await;
     assert!(matches!(result, Err(Error::Rejected { status: 302 })), "{result:?}");
     cancel.cancel();
     let result = download(&client, &url, &declared(BODY), &mut Vec::new(), &cancel).await;
@@ -81,9 +73,31 @@ async fn a_download_is_verified_as_it_arrives() {
 }
 
 #[tokio::test]
+async fn a_measured_download_reports_what_arrived_within_its_limit() {
+    let client = loopback_client().unwrap();
+    let cancel = CancellationToken::new();
+    let server = serve(200, BODY, true).await;
+    let mut output = Vec::new();
+    let measured = download_measured(&client, &server.url("/artifact"), 1024, &mut output, &cancel)
+        .await
+        .unwrap();
+    assert_eq!((output.as_slice(), measured), (BODY, declared(BODY)));
+    // A declared length past the limit fails before the body, and without
+    // one, bytes past the limit stop the download.
+    let result = download_measured(&client, &server.url("/artifact"), 3, &mut Vec::new(), &cancel).await;
+    assert!(matches!(result, Err(Error::TooLarge { declared: 3 })), "{result:?}");
+    let unsized_server = serve(200, BODY, false).await;
+    let result = download_measured(&client, &unsized_server.url("/artifact"), 3, &mut Vec::new(), &cancel).await;
+    assert!(matches!(result, Err(Error::TooLarge { declared: 3 })), "{result:?}");
+    let result = download_measured(&client, &server.url("/elsewhere"), 1024, &mut Vec::new(), &cancel).await;
+    assert!(matches!(result, Err(Error::Rejected { status: 404 })), "{result:?}");
+}
+
+#[tokio::test]
 async fn the_download_client_refuses_plain_http() {
     let client = demi_artifact::client().unwrap();
-    let url = serve("200 OK", BODY, Some(BODY.len())).await;
+    let server = serve(200, BODY, true).await;
+    let url = server.url("/artifact");
     let result = download(&client, &url, &declared(BODY), &mut Vec::new(), &CancellationToken::new()).await;
     assert!(matches!(result, Err(Error::Download(_))), "{result:?}");
 }
@@ -333,34 +347,98 @@ async fn receipts_round_trip_and_an_absent_one_is_none() {
     assert_eq!(serde_json::from_slice::<serde_json::Value>(&bytes).unwrap()["sha256"], "a");
 }
 
-fn archive(entries: &[(&str, &[u8])]) -> tempfile::NamedTempFile {
-    let mut file = tempfile::NamedTempFile::new().unwrap();
-    let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
-    for (name, contents) in entries {
-        writer
-            .start_file(*name, zip::write::SimpleFileOptions::default())
-            .unwrap();
-        writer.write_all(contents).unwrap();
-    }
-    let bytes = writer.finish().unwrap().into_inner();
-    file.write_all(&bytes).unwrap();
-    file
+/// The names in `directory`, sorted.
+fn names(directory: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(directory)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    names
 }
 
 #[tokio::test]
-async fn a_zip_extracts_inside_its_destination_only() {
-    let root = tempfile::tempdir().unwrap();
+async fn an_archive_is_installed_once_and_checked_before_each_use() {
+    let client = loopback_client().unwrap();
     let cancel = CancellationToken::new();
-    let good = archive(&[("app/bin/tool", b"tool")]);
-    let destination = root.path().join("extracted");
-    extract_zip(good.path(), &destination, &cancel).await.unwrap();
-    assert_eq!(std::fs::read(destination.join("app/bin/tool")).unwrap(), b"tool");
-    let escaping = archive(&[("../escaped", b"no")]);
-    let result = extract_zip(escaping.path(), &root.path().join("other"), &cancel).await;
+    let bytes = zip(&[("app/bin/tool", b"tool"), ("app/data", b"data")]);
+    let server = Server::start([("/app.zip".to_owned(), Answer::ok(bytes.clone()))]).await;
+    let archive = Archive {
+        url: server.url("/app.zip"),
+        digest: declared(&bytes),
+        executable: "app/bin/tool".to_owned(),
+    };
+    let root = tempfile::tempdir().unwrap();
+    let directory = root.path().join(&archive.digest.sha256);
+    assert_eq!(installed(&directory, &archive, &cancel).await.unwrap(), None);
+    // Two installers at once: one downloads, the other finds its result.
+    let (first, second) = tokio::join!(
+        install_archive(&client, root.path(), &archive, &cancel),
+        install_archive(&client, root.path(), &archive, &cancel),
+    );
+    let executable = first.unwrap();
+    assert_eq!(second.unwrap(), executable);
+    assert_eq!(executable, directory.join("app/bin/tool"));
+    assert_eq!(std::fs::read(&executable).unwrap(), b"tool");
+    assert_eq!(std::fs::read(directory.join("app/data")).unwrap(), b"data");
+    assert_eq!(server.requests(), 1);
+    assert_eq!(installed(&directory, &archive, &cancel).await.unwrap(), Some(executable.clone()));
+    // Nothing but the installation and its lock stays in the root.
+    let lock = format!("{}.lock", archive.digest.sha256);
+    assert_eq!(names(root.path()), [archive.digest.sha256.clone(), lock.clone()]);
+    // A changed executable fails the check, and a new install neither
+    // replaces it nor downloads again.
+    std::fs::write(&executable, b"changed").unwrap();
+    let result = installed(&directory, &archive, &cancel).await;
+    assert!(matches!(result, Err(Error::Installation { .. })), "{result:?}");
+    let result = install_archive(&client, root.path(), &archive, &cancel).await;
+    assert!(matches!(result, Err(Error::Installation { .. })), "{result:?}");
+    assert_eq!(server.requests(), 1);
+    std::fs::remove_file(directory.join(receipt::FILE)).unwrap();
+    let result = installed(&directory, &archive, &cancel).await;
+    assert!(matches!(result, Err(Error::Installation { .. })), "{result:?}");
+    // An archive that is not the declared one, or lacks its executable,
+    // installs nothing.
+    let other = tempfile::tempdir().unwrap();
+    let wrong = Archive {
+        digest: Digest {
+            sha256: "0".repeat(64),
+            ..archive.digest.clone()
+        },
+        ..archive.clone()
+    };
+    let result = install_archive(&client, other.path(), &wrong, &cancel).await;
+    assert!(matches!(result, Err(Error::Digest)), "{result:?}");
+    let lacking = Archive {
+        executable: "app/bin/other".to_owned(),
+        ..archive.clone()
+    };
+    let result = install_archive(&client, other.path(), &lacking, &cancel).await;
+    assert!(matches!(result, Err(Error::Archive(_))), "{result:?}");
+    let locks = [format!("{}.lock", "0".repeat(64)), lock];
+    assert_eq!(names(other.path()), locks);
+}
+
+#[tokio::test]
+async fn an_archive_extracts_inside_its_installation_only_and_names_its_files() {
+    let client = loopback_client().unwrap();
+    let cancel = CancellationToken::new();
+    let escaping = zip(&[("app/bin/tool", b"tool"), ("../escaped", b"no")]);
+    let server = Server::start([("/escaping.zip".to_owned(), Answer::ok(escaping.clone()))]).await;
+    let archive = Archive {
+        url: server.url("/escaping.zip"),
+        digest: declared(&escaping),
+        executable: "app/bin/tool".to_owned(),
+    };
+    let root = tempfile::tempdir().unwrap();
+    let installs = root.path().join("installs");
+    let result = install_archive(&client, &installs, &archive, &cancel).await;
     assert!(matches!(result, Err(Error::Archive(_))), "{result:?}");
     assert!(!root.path().join("escaped").exists());
-    let cancelled = CancellationToken::new();
-    cancelled.cancel();
-    let result = extract_zip(good.path(), &root.path().join("cancelled"), &cancelled).await;
-    assert!(matches!(result, Err(Error::Cancelled)), "{result:?}");
+    assert_eq!(names(&installs), [format!("{}.lock", archive.digest.sha256)]);
+    let file = root.path().join("app.zip");
+    std::fs::write(&file, zip(&[("app/bin/tool", b"tool")])).unwrap();
+    assert!(zip_holds(&file, "app/bin/tool").await.unwrap());
+    assert!(!zip_holds(&file, "app/bin").await.unwrap());
+    assert!(!zip_holds(&file, "app/bin/other").await.unwrap());
 }
