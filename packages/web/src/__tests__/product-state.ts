@@ -23,6 +23,7 @@ export function productState(parts: Partial<z.input<typeof productStateSchema>> 
     devices: [],
     exposes: [],
     exposeDomain: null,
+    publicUrl: 'http://127.0.0.1:3271/',
     conversations: [],
     cloud: {
       device: null,

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { productState } from '../__tests__/product-state'
 import type { ProductState } from '../api/generated/web-api'
+import { useDeviceInstallation } from '../devices/pairing'
 import { useProduct } from '../state/product'
 import { useDeviceSettings } from './devices'
 
@@ -54,6 +55,7 @@ beforeEach(async () => {
       },
     ],
     exposeDomain: 'expose.demi.example',
+    publicUrl: 'http://192.168.5.2:3271/',
   })
   renewals = []
   removals = []
@@ -133,4 +135,11 @@ test('an instance without an expose domain lists nothing', async () => {
   state.exposes = []
   await useProduct().refresh()
   expect(useDeviceSettings().exposes).toEqual([])
+})
+
+test('the install command fetches the installers from the backend the snapshot names, not the page origin', () => {
+  expect(useDeviceInstallation().value).toEqual({
+    shellInstallerUrl: 'http://192.168.5.2:3271/install.sh',
+    powershellInstallerUrl: 'http://192.168.5.2:3271/install.ps1',
+  })
 })

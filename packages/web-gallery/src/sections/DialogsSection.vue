@@ -11,6 +11,7 @@ import AddSkillSourceDialog from '@demicodes/web-ui/settings/AddSkillSourceDialo
 import { WIRE_API_LABELS, type SettingsModelDraft, type SettingsVendor } from '@demicodes/web-ui/settings/types'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
 import type { PairingPhase } from '@demicodes/web-ui/devices/pairing'
+import type { DeviceInstallation } from '@demicodes/web-ui/devices/installation'
 import WorkspaceDialog from '@demicodes/web-ui/hosts/WorkspaceDialog.vue'
 import type { WorkspaceDevice } from '@demicodes/web-ui/hosts/workspace'
 import FileBrowserDialog from '@demicodes/web-ui/files/FileBrowserDialog.vue'
@@ -20,7 +21,7 @@ import GalleryDialogFrame from '../components/GalleryDialogFrame.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { mockVendors } from '../fixtures/settings'
-import { demoDeviceInstallation } from '../fixtures/device-installation'
+import { demoDeviceInstallation, developmentDeviceInstallation } from '../fixtures/device-installation'
 import { createGalleryFileHosts } from '../fixtures/files'
 import { useGalleryView } from '../gallery-views'
 import { productWould } from '../product-would'
@@ -121,8 +122,13 @@ const modelEditors: {
   { variant: 'edit', mode: 'edit', model, pending: false },
   { variant: 'edit · saving', mode: 'edit', model, pending: true },
 ]
-const pairingPhases: { variant: string; phase: PairingPhase }[] = [
+const pairingPhases: { variant: string; phase: PairingPhase; installation?: DeviceInstallation }[] = [
   { variant: 'start the runner', phase: { kind: 'setup' } },
+  {
+    variant: 'start the runner · development backend over http',
+    phase: { kind: 'setup' },
+    installation: developmentDeviceInstallation,
+  },
   { variant: 'enter the code', phase: { kind: 'code' } },
   { variant: 'pairing', phase: { kind: 'pairing' } },
   { variant: 'connected', phase: { kind: 'done', device: { id: 'demo-device', name: 'zan-mbp' } } },
@@ -290,7 +296,7 @@ const resetPhases: {
               <DevicePairingDialog
                 :is-open="open"
                 :overlay-store="appOverlayStore"
-                :installation="demoDeviceInstallation"
+                :installation="item.installation ?? demoDeviceInstallation"
                 :phase="pairingShown[index]!"
                 @close="close"
                 @next="pairingShown[index] = { kind: 'code' }"

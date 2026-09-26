@@ -18,7 +18,7 @@ import { useConversations } from './conversation/store'
 import { useWorkPanel } from './conversation/work'
 import { useResources } from './state/resources'
 import { useSession } from './auth/session'
-import { claimDevice, deviceInstallation } from './devices/pairing'
+import { claimDevice, useDeviceInstallation } from './devices/pairing'
 const session = useSession()
 const conversations = useConversations()
 const resources = useResources()
@@ -37,6 +37,7 @@ const folded = computed({
 })
 // Connect new device, from the host menu or elsewhere, pairs right here rather than in settings.
 const pairing = useDevicePairing(claimDevice)
+const installation = useDeviceInstallation()
 watch(
   () => resources.pairingOpen,
   (wanted) => {
@@ -186,10 +187,11 @@ useAppShortcuts(
       <SettingsDialog @sign-out="signOut" />
       <TargetDialog />
       <DevicePairingDialog
+        v-if="installation"
         :is-open="pairing.isOpen.value"
         stack
         :overlay-store="appOverlayStore"
-        :installation="deviceInstallation"
+        :installation="installation"
         :phase="pairing.phase.value"
         @close="resources.pairingOpen = false"
         @next="pairing.phase.value = { kind: 'code' }"

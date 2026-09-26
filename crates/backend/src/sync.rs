@@ -51,6 +51,12 @@ impl Shard {
             devices,
             exposes,
             expose_domain: services.expose_domain.as_ref().map(|domain| domain.as_str().to_owned()),
+            public_url: services
+                .public_url
+                .get()
+                .expect("the backend listens before it serves a request")
+                .as_str()
+                .to_owned(),
             conversations,
             cloud,
         })

@@ -23,7 +23,8 @@ const props = defineProps<{
   resetError?: string | null
   devices: SettingsDevice[]
   overlayStore: OverlayStore
-  installation: DeviceInstallation
+  /** Null until the host knows where its backend serves the installers. */
+  installation: DeviceInstallation | null
   claimDevice: (code: string, signal?: AbortSignal) => Promise<PairingResult>
 }>()
 const emit = defineEmits<{
@@ -101,6 +102,7 @@ const { isOpen, phase, open, close, submit } = useDevicePairing(
       </AsyncRegion>
     </SettingsGroup>
     <DevicePairingDialog
+      v-if="installation"
       :is-open="isOpen"
       :overlay-store="overlayStore"
       :installation="installation"
