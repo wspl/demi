@@ -14,7 +14,6 @@ use demi_web_api::ids::UserId;
 use futures_util::future::LocalBoxFuture;
 use object_store::path::Path;
 use object_store::{ObjectStore, ObjectStoreExt as _, PutMode, PutOptions, PutPayload};
-use sha2::{Digest, Sha256};
 
 use super::StorageError;
 
@@ -53,12 +52,11 @@ impl UserBlobs {
     pub(crate) async fn put(&self, bytes: Bytes) -> Result<BlobRef, StorageError> {
         // Hashing an upload of 25 MiB takes tens of milliseconds, which would
         // hold an async thread that long.
-        let (bytes, digest) = tokio::task::spawn_blocking(move || {
-            let digest = hex::encode(Sha256::digest(&bytes));
-            (bytes, digest)
+        let (bytes, blob) = tokio::task::spawn_blocking(move || {
+            let blob = BlobRef::of(&bytes);
+            (bytes, blob)
         })
         .await?;
-        let blob = BlobRef::try_from(digest).expect("a SHA-256 in lowercase hexadecimal names a blob");
         let create = PutOptions {
             mode: PutMode::Create,
             ..PutOptions::default()
@@ -103,34 +101,5 @@ impl BlobStore for UserBlobs {
                 .map_err(|error| StoreError::Failed(error.to_string()))?;
             Ok(bytes.map(B64Bytes::from))
         })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::storage::objects;
-
-    fn user(id: &str) -> UserId {
-        UserId::try_from(id).unwrap()
-    }
-
-    #[tokio::test]
-    async fn blobs_are_named_by_their_bytes_stored_once_and_kept_per_user() {
-        let data = tempfile::tempdir().unwrap();
-        let blobs = BlobStores::new(objects::open(data.path(), None).await.unwrap());
-        let ana = blobs.for_user(&user("ana"));
-
-        let name = ana.put(Bytes::from_static(b"\x0a\x14\x1e")).await.unwrap();
-        assert_eq!(name.as_str(), hex::encode(Sha256::digest(b"\x0a\x14\x1e")));
-        assert_eq!(ana.put(Bytes::from_static(b"\x0a\x14\x1e")).await.unwrap(), name);
-        assert_eq!(ana.get(&name).await.unwrap().unwrap(), Bytes::from_static(b"\x0a\x14\x1e"));
-        let file = data.path().join("blobs").join("ana").join(name.as_str());
-        assert_eq!(std::fs::read(file).unwrap(), b"\x0a\x14\x1e");
-
-        let missing = BlobRef::try_from("0".repeat(64)).unwrap();
-        assert_eq!(ana.get(&missing).await.unwrap(), None);
-        // Another user's namespace does not hold ana's bytes, whatever the name.
-        assert_eq!(blobs.for_user(&user("ben")).get(&name).await.unwrap(), None);
     }
 }

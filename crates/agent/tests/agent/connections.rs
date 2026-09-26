@@ -1,13 +1,14 @@
-//! Connections to a conversation's live tree: the open handshake, takeover
-//! by a second connection, two opens at once, the refusals of frames that
-//! need a session, a client that stops reading, and the eviction of a tree
-//! left detached and quiescent.
+//! Connections to a conversation's live tree: the open handshake, two opens
+//! at once, the refusals of frames that need a session, a connection dropped
+//! with its socket, and the eviction of a tree left detached and quiescent.
+//! The backend's scenarios show a takeover and a client that falls behind
+//! over the real socket.
 
 use std::time::Duration;
 
 use demi_agent::{
-    Outgoing, ServerConfig,
-    testing::{MemoryTreeStore, model_of, test_model},
+    Outgoing,
+    testing::{TestFiles, model_of, test_model},
 };
 use demi_agent_protocol::{ClientFrame, ClientFrameKind, ServerFrame, SteerOutcome};
 use demi_core::{BlockId, NodeId, SessionPhase};
@@ -61,38 +62,6 @@ async fn the_open_handshake_is_one_step_and_each_patch_is_one_revision_past_the_
         }
     }
     assert!(revision > version.revision);
-}
-
-#[tokio::test(flavor = "local")]
-async fn a_second_connection_takes_the_tree_over_and_the_first_can_take_it_back() {
-    let script = ScriptedRuntime::new([Turn::Events(vec![
-        event::text("hello"),
-        event::response(1, 1),
-    ])]);
-    let fixture = Fixture::new(&script);
-    let mut first = fixture.opened().await;
-    first.send(send("m1", "hi")).await;
-    first.next_until(is_idle).await;
-
-    let mut second = fixture.opened().await;
-
-    assert_eq!(first.next().await, Some(ServerFrame::Closed));
-    first.send(send("m2", "again")).await;
-    assert_eq!(
-        first.next().await,
-        Some(rejected(ClientFrameKind::Send, "No session is open"))
-    );
-    // One tree: the second connection adopted it, nothing was resolved again.
-    assert_eq!(fixture.resolver.calls.borrow().len(), 1);
-    let tree = fixture.server.tree(&conversation()).unwrap();
-    assert_eq!(tree.root().session().transcript().blocks.len(), 3);
-
-    first.send(open(test_model())).await;
-    assert_eq!(
-        first.next_until(is_pending_steers).await.first(),
-        Some(&ServerFrame::Opened)
-    );
-    assert_eq!(second.next().await, Some(ServerFrame::Closed));
 }
 
 #[tokio::test(flavor = "local")]
@@ -235,56 +204,47 @@ async fn an_unknown_provider_leaves_the_connection_unattached() {
     assert!(fixture.store.record(&conversation()).is_none());
 }
 
+/// The backend drops a connection when its socket is gone: the connection
+/// detaches from its tree, and its outbox ends once the frames it holds are
+/// read, so the socket's writer ends too.
 #[tokio::test(flavor = "local")]
-async fn a_client_that_stops_reading_is_closed_as_lagging_and_a_reopen_adopts_the_running_tree() {
-    let deltas = (0..40)
-        .map(|index| event::text(&format!("{index} ")))
-        .collect::<Vec<_>>();
-    let script =
-        ScriptedRuntime::new([Turn::Events([deltas, vec![event::response(1, 1)]].concat())]);
-    let config = ServerConfig {
-        outbox_frames: 16,
-        ..ServerConfig::default()
-    };
-    let fixture = Fixture::with(&script, MemoryTreeStore::new(), config);
-    let mut slow = fixture.opened().await;
-
-    slow.send(send("m1", "talk")).await;
-    let tree = fixture.server.tree(&conversation()).unwrap();
-    tree.root().session().settled().await;
-
-    assert_eq!(slow.outgoing().await, Outgoing::Lagged);
-    assert!(!tree.is_attached());
-    let mut again = fixture.client();
-    again.send(open(test_model())).await;
-    let handshake = again.received();
-    let ServerFrame::TranscriptReset { blocks, .. } = &handshake[1] else {
-        panic!("{handshake:?}");
-    };
-    let serialized = serde_json::to_string(&blocks[1]).unwrap();
-    assert!(serialized.contains("39 "), "{serialized}");
-    assert_eq!(fixture.resolver.calls.borrow().len(), 1);
-
-    // A connection whose socket is gone detaches, and its outbox ends.
-    let (connection, mut frames) = fixture.server.connect(
-        conversation(),
-        "/workspace".into(),
-        demi_agent::testing::TestFiles::new(),
-    );
+async fn a_connection_dropped_with_its_socket_detaches_and_its_outbox_ends() {
+    let script = ScriptedRuntime::new(Vec::new());
+    let fixture = Fixture::new(&script);
+    let (connection, mut frames) =
+        fixture
+            .server
+            .connect(conversation(), "/workspace".into(), TestFiles::new());
     connection.handle(open(test_model())).await;
+    let tree = fixture.server.tree(&conversation()).unwrap();
+    assert!(tree.is_attached());
+
     drop(connection);
-    let mut drained = Vec::new();
-    loop {
-        match frames.recv().await {
-            Outgoing::Frame(frame) => drained.push(frame),
-            outgoing => {
-                assert_eq!(outgoing, Outgoing::Closed);
-                break;
+
+    assert!(!tree.is_attached());
+    let read = tokio::time::timeout(Duration::from_secs(10), async {
+        let mut drained = Vec::new();
+        loop {
+            match frames.recv().await {
+                Outgoing::Frame(frame) => drained.push(frame),
+                outgoing => return (drained, outgoing),
             }
         }
-    }
-    assert_eq!(drained.len(), 5);
-    assert!(!tree.is_attached());
+    })
+    .await;
+    let (drained, end) = read.expect("the outbox ends");
+    assert_eq!(end, Outgoing::Closed);
+    let handshake: Vec<String> = drained.iter().map(frame_type).collect();
+    assert_eq!(
+        handshake,
+        [
+            "opened",
+            "transcript_reset",
+            "phase",
+            "queue",
+            "pending_steers"
+        ]
+    );
 }
 
 #[tokio::test(flavor = "local", start_paused = true)]

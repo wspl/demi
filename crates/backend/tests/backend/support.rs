@@ -51,18 +51,81 @@ pub const MASTER_EMAIL: &str = "master@example.test";
 pub const MASTER_PASSWORD: &str = "master-pass-1";
 pub const SESSION_COOKIE: &str = "demi_session";
 
+/// Where the harness keeps the development releases of the packages the
+/// workspace built: Cargo's directory for integration tests, which outlives
+/// the test process, since every backend of the process serves the same
+/// release files.
+const RELEASES: &str = concat!(env!("CARGO_TARGET_TMPDIR"), "/backend-releases");
+
 /// A native package the workspace built: its descriptor for this machine's
-/// target, whose digest each test process computes once, and its program.
+/// target and its program, and the catalog a backend loads from its
+/// development release. Each test process computes the digest once and
+/// publishes the release once: both read the whole program, most of a second
+/// for `demi-commands`.
 pub struct Built {
     pub descriptor: PackageDescriptor,
     pub program: PathBuf,
+    published: OnceCell<NativeCatalog>,
 }
 
 impl Built {
     fn new<'a>(id: &str, program: PathBuf, operations: impl IntoIterator<Item = &'a str>) -> Self {
         let descriptor = NativeFixture::package(id, program.clone(), operations).descriptor;
-        Self { descriptor, program }
+        Self {
+            descriptor,
+            program,
+            published: OnceCell::new(),
+        }
     }
+
+    /// The catalog of this package's development release for this machine's
+    /// target, published as a backend publishes the releases its
+    /// `DEMI_NATIVE_CONFIG` names (`native-runtime.md` § Backend deployment
+    /// configuration): the conversations bind to its package, and every
+    /// runner, a paired device's or the Cloud's, downloads its program from
+    /// the backend.
+    async fn catalog(&self) -> NativeCatalog {
+        let published = self.published.get_or_init(|| async {
+            let config = self.write_release();
+            publish_native(&config, &CancellationToken::new()).await.unwrap()
+        });
+        published.await.clone()
+    }
+
+    /// Writes the release, which links the program the workspace built
+    /// rather than copying it, and the configuration that names it; answers
+    /// the configuration's path. Each file is replaced whole, so a backend
+    /// of another test process that reads it meanwhile reads it whole.
+    fn write_release(&self) -> PathBuf {
+        let root = PathBuf::from(RELEASES);
+        let executable = self.program.file_name().unwrap().to_str().unwrap();
+        let release = root.join(executable);
+        let target = release.join(host_target());
+        std::fs::create_dir_all(&target).unwrap();
+        let link = target.join(executable);
+        let staged = target.join(format!(".{executable}.{}", std::process::id()));
+        // A link a killed process of the same id left staged goes; usually
+        // there is none to remove.
+        let _ = std::fs::remove_file(&staged);
+        std::os::unix::fs::symlink(&self.program, &staged).unwrap();
+        std::fs::rename(&staged, &link).unwrap();
+        replace(&release.join("descriptor.json"), &serde_json::to_vec(&self.descriptor).unwrap());
+        let config = json!({
+            "releases": [{ "directory": executable, "executable": executable }],
+            "store": { "provider": "local" },
+        });
+        let path = root.join(format!("{executable}.json"));
+        replace(&path, config.to_string().as_bytes());
+        path
+    }
+}
+
+/// Writes `bytes` to `path` whole: to a file of this process's beside it,
+/// then renamed over it.
+fn replace(path: &std::path::Path, bytes: &[u8]) {
+    let staged = path.with_extension(format!("{}.tmp", std::process::id()));
+    std::fs::write(&staged, bytes).unwrap();
+    std::fs::rename(&staged, path).unwrap();
 }
 
 /// `demi.builtin`, from `demi-commands`.
@@ -83,6 +146,7 @@ static CLAUDE: LazyLock<Built> = LazyLock::new(|| {
 pub static FIXTURE: LazyLock<Built> = LazyLock::new(|| Built {
     descriptor: NativeFixture::load().descriptor,
     program: native_fixture_binary(),
+    published: OnceCell::new(),
 });
 
 /// Wall-clock time the test sets.
@@ -145,10 +209,10 @@ pub struct Harness {
     pub runners: RunnerTuning,
     pub conversations: ConversationTuning,
     runner_releases: Option<PathBuf>,
-    /// The `DEMI_NATIVE_CONFIG` the harness wrote, and the catalog its
-    /// first backend loaded from it, which later starts reuse.
-    native_config: Option<PathBuf>,
-    native: OnceCell<NativeCatalog>,
+    /// The package whose development release the backends load.
+    release: Option<&'static Built>,
+    /// The URL runners connect to; without it, the listener's own address.
+    pub public_url: Option<url::Url>,
     user_streams: Option<BTreeMap<String, NativeOperation>>,
     pub lifecycle: LifecycleTuning,
     pub cloud: CloudTuning,
@@ -186,8 +250,8 @@ impl Harness {
                 ..ConversationTuning::default()
             },
             runner_releases: None,
-            native_config: None,
-            native: OnceCell::new(),
+            release: None,
+            public_url: None,
             user_streams: None,
             lifecycle: LifecycleTuning::default(),
             cloud: CloudTuning::default(),
@@ -206,8 +270,9 @@ impl Harness {
 
     /// Conversations whose commands bind to the `demi.builtin` package the
     /// workspace built, which runners install from the backend.
-    pub fn with_builtin_package(self) -> Self {
-        self.with_release(&BUILTIN)
+    pub fn with_builtin_package(mut self) -> Self {
+        self.release = Some(&*BUILTIN);
+        self
     }
 
     /// Conversations whose user streams bind to the runner's native test
@@ -223,31 +288,7 @@ impl Harness {
             ("echo".to_owned(), stream("echo")),
             ("where".to_owned(), stream("where")),
         ]));
-        self.with_release(&FIXTURE)
-    }
-
-    /// A development release of `built` for this machine's target, and a
-    /// `DEMI_NATIVE_CONFIG` whose local store serves it
-    /// (`native-runtime.md` § Backend deployment configuration): the
-    /// conversations bind to its package, and every runner, a paired
-    /// device's or the Cloud's, downloads its program from the backend.
-    fn with_release(mut self, built: &Built) -> Self {
-        let root = self.data.path().join("native");
-        let executable = built.program.file_name().unwrap().to_str().unwrap();
-        let release = root.join(executable);
-        let target = release.join(host_target());
-        std::fs::create_dir_all(&target).unwrap();
-        // The release links the program the workspace built rather than
-        // copying it.
-        std::os::unix::fs::symlink(&built.program, target.join(executable)).unwrap();
-        std::fs::write(release.join("descriptor.json"), serde_json::to_vec(&built.descriptor).unwrap()).unwrap();
-        let config = json!({
-            "releases": [{ "directory": executable, "executable": executable }],
-            "store": { "provider": "local" },
-        });
-        let path = root.join("native.json");
-        std::fs::write(&path, config.to_string()).unwrap();
-        self.native_config = Some(path);
+        self.release = Some(&*FIXTURE);
         self
     }
 
@@ -278,8 +319,9 @@ impl Harness {
     /// A Claude Code provider's CLI is listed and installed by the
     /// `demi.claude` package the workspace built, which a Cloud's runner
     /// installs from the backend.
-    pub fn with_claude_package(self) -> Self {
-        self.with_release(&CLAUDE)
+    pub fn with_claude_package(mut self) -> Self {
+        self.release = Some(&*CLAUDE);
+        self
     }
 
     pub fn with_logins(mut self, logins: LoginTiming) -> Self {
@@ -354,7 +396,11 @@ impl Harness {
     }
 
     /// A backend listening on `address`, such as the one an earlier start
-    /// of the same data directory had, which its runners reconnect to.
+    /// of the same data directory had, which its runners reconnect to: a
+    /// runner's state names its backend's URL. Only a restart whose runners
+    /// must come back uses it, since another test may take the port between
+    /// the close and the start; one that needs only a stable URL sets
+    /// `public_url` and starts on a port of its own.
     pub async fn start_at(&self, address: SocketAddr) -> TestBackend {
         self.launch(address, self.mode).await
     }
@@ -372,12 +418,9 @@ impl Harness {
         config.runners = self.runners;
         config.runner_releases = self.runner_releases.clone();
         config.conversations = self.conversations;
-        if let Some(path) = &self.native_config {
-            let native = self
-                .native
-                .get_or_init(|| async { publish_native(path, &CancellationToken::new()).await.unwrap() })
-                .await;
-            config.native = native.clone();
+        config.public_url = self.public_url.clone();
+        if let Some(built) = self.release {
+            config.native = built.catalog().await;
         }
         if let Some(streams) = &self.user_streams {
             config.user_streams = streams.clone();
@@ -485,6 +528,12 @@ impl TestBackend {
         self.backend.hold_hellos(step)
     }
 
+    /// The file gate of `session`'s user's conversation `conversation`.
+    pub async fn file_gate(&self, session: &Session, conversation: &str) -> demi_gates::ActivityGate {
+        let conversation = demi_web_api::ids::ConversationId::try_from(conversation).unwrap();
+        self.backend.file_gate(&session.user.id, &conversation).await
+    }
+
     /// The `ws://` URL of `path`.
     pub fn ws_url(&self, path: &str) -> String {
         format!("ws://{}{path}", self.backend.local_addr())
@@ -563,6 +612,23 @@ pub async fn stored_token(runner: &RunnerProcess) -> String {
     })
     .await;
     std::fs::read_to_string(path).unwrap().trim().to_owned()
+}
+
+/// `length` bytes that `seed` varies, which repeat only every 64,256 bytes,
+/// so that a read from a shifted offset shows. One period is made a byte at a
+/// time and then copied, since making every byte one at a time is slow in a
+/// debug build.
+pub fn pattern(length: usize, seed: u8) -> Vec<u8> {
+    const PERIOD: usize = 251 * 256;
+    let period: Vec<u8> = (0..PERIOD)
+        .map(|index| ((index * 31 + (index >> 8)) % 251) as u8 ^ seed)
+        .collect();
+    let mut bytes = Vec::with_capacity(length);
+    while bytes.len() < length {
+        let take = (length - bytes.len()).min(PERIOD);
+        bytes.extend_from_slice(&period[..take]);
+    }
+    bytes
 }
 
 /// How long a scenario waits for something that should come true before it

@@ -54,7 +54,7 @@ fn every_backend_frame_decodes_and_encodes_to_the_same_bytes() {
 #[test]
 fn every_runner_frame_decodes_and_encodes_to_the_same_bytes() {
     let frames = corpus("runner-to-backend");
-    assert_eq!(frames.len(), 54);
+    assert_eq!(frames.len(), 53);
     for (name, bytes) in frames {
         let message: Outbound =
             wire::decode(&bytes).unwrap_or_else(|error| panic!("{name}: {error}"));

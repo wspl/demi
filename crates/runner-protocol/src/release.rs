@@ -55,22 +55,30 @@ impl RunnerRelease {
 mod tests {
     use super::*;
 
-    /// A release record as `cargo xtask native package` writes it, compacted.
-    const RECORD: &str = r#"{"release":"317dd84e2ce0846a1bea4bc5959959c04af7ba8e4de32b3752fdd6b409f7b1a5","wire":19,"commandProtocol":1,"targets":{"aarch64-apple-darwin":{"sha256":"dbf18cb3af50a3348a834ea9cee7981f7354f84aa89764f4d68812c81ebe045b","size":38772096},"aarch64-unknown-linux-musl":{"sha256":"5d4219232ad6a95b2a0e72097011e91ae3773e8523e8032788904fa0e9164197","size":38710848}}}"#;
+    /// A release record as `cargo xtask native package` writes it, compacted,
+    /// for the wire this build speaks.
+    fn record() -> String {
+        format!(
+            r#"{{"release":"317dd84e2ce0846a1bea4bc5959959c04af7ba8e4de32b3752fdd6b409f7b1a5","wire":{},"commandProtocol":1,"targets":{{"aarch64-apple-darwin":{{"sha256":"dbf18cb3af50a3348a834ea9cee7981f7354f84aa89764f4d68812c81ebe045b","size":38772096}},"aarch64-unknown-linux-musl":{{"sha256":"5d4219232ad6a95b2a0e72097011e91ae3773e8523e8032788904fa0e9164197","size":38710848}}}}}}"#,
+            wire::VERSION
+        )
+    }
 
     #[test]
     fn a_release_record_is_checked_in_every_field() {
-        RunnerRelease::decode(RECORD.as_bytes()).expect("the record as written is valid");
+        let record = record();
+        RunnerRelease::decode(record.as_bytes()).expect("the record as written is valid");
+        let wire = format!(r#""wire":{}"#, wire::VERSION);
         for (from, to) in [
-            (r#""release":"317dd84e"#, r#""release":"317DD84E"#),
-            (r#""wire":19"#, r#""wire":18"#),
-            (r#""commandProtocol":1"#, r#""commandProtocol":2"#),
-            ("aarch64-apple-darwin", "aarch64-apple-ios"),
-            (r#""size":38772096"#, r#""size":0"#),
-            (r#""wire":19"#, r#""wire":19,"channel":"beta""#),
+            (r#""release":"317dd84e"#.to_owned(), r#""release":"317DD84E"#.to_owned()),
+            (wire.clone(), format!(r#""wire":{}"#, wire::VERSION - 1)),
+            (r#""commandProtocol":1"#.to_owned(), r#""commandProtocol":2"#.to_owned()),
+            ("aarch64-apple-darwin".to_owned(), "aarch64-apple-ios".to_owned()),
+            (r#""size":38772096"#.to_owned(), r#""size":0"#.to_owned()),
+            (wire.clone(), format!(r#"{wire},"channel":"beta""#)),
         ] {
-            let record = RECORD.replacen(from, to, 1);
-            assert!(RunnerRelease::decode(record.as_bytes()).is_err(), "{record}");
+            let changed = record.replacen(&from, &to, 1);
+            assert!(RunnerRelease::decode(changed.as_bytes()).is_err(), "{changed}");
         }
     }
 }

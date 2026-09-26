@@ -11,7 +11,7 @@ use serde::de::{self, MapAccess, Visitor};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use super::{FileStat, GitChanges, Readdir};
+use super::{DirEntry, FileStat, GitChanges};
 
 /// A successful fs call's reply.
 #[derive(Debug, Clone, PartialEq)]
@@ -29,7 +29,7 @@ pub enum FsResult {
     Exists(bool),
     Stat(FileStat),
     Lstat(FileStat),
-    Readdir(Readdir),
+    Readdir(Vec<DirEntry>),
     Mkdir,
     Rm,
     Cp,

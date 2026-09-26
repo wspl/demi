@@ -1,7 +1,8 @@
 //! Test support (feature `testing`): an in-memory tree store with the
 //! contract's semantics, predictable identities, a model selection, provider
-//! runtimes that play scripts, and a client that drives one connection the
-//! way a socket would. No test calls a real model.
+//! runtimes that play scripts, a client that drives one connection the way a
+//! socket would, and readers of a shell tool's result. No test calls a real
+//! model.
 
 use std::{
     cell::{Cell, RefCell},
@@ -16,7 +17,6 @@ use demi_core::{
 };
 use demi_provider::{ProviderRuntime, testing::ScriptedRuntime};
 use futures_util::future::LocalBoxFuture;
-use sha2::{Digest, Sha256};
 
 use demi_shell::{Host, HostError, HostFs, HostIdentity, HostKey, HostProcess, ShellEnvironment};
 
@@ -133,6 +133,24 @@ pub fn client_text(text: &str) -> Vec<ClientContent> {
     }]
 }
 
+/// The value of a shell tool result's `name: value` line, such as its
+/// `commandId` (`runtime.md` § Results and previews).
+pub fn field<'a>(result: &'a str, name: &str) -> &'a str {
+    result
+        .lines()
+        .find_map(|line| line.strip_prefix(name)?.strip_prefix(": "))
+        .unwrap_or_else(|| panic!("the result has no {name}:\n{result}"))
+}
+
+/// The output a shell tool result shows, what the command wrote since the
+/// model's last look; empty when it shows none.
+pub fn preview(result: &str) -> &str {
+    let Some((_, preview)) = result.split_once("\npreview:\n") else {
+        return "";
+    };
+    preview.split("\nnext: ").next().unwrap_or(preview)
+}
+
 /// Makes one provider's runtimes.
 type Runtimes = Rc<dyn Fn() -> Box<dyn ProviderRuntime>>;
 
@@ -204,28 +222,16 @@ impl Clock for TokioClock {
     }
 }
 
-/// Uploads a test gave the blocks they resolve to, and the media an edit
-/// keeps, loaded from the blob namespace the test gave, as a backend loads
-/// them from the caller's; every other file reference is refused, as a
-/// backend refuses one it does not hold.
+/// Uploads a test gave the blocks they resolve to; every other file
+/// reference is refused, as a backend refuses one it does not hold.
 #[derive(Debug, Default)]
 pub struct TestFiles {
     uploads: RefCell<BTreeMap<String, Vec<UserContentBlock>>>,
-    blobs: Option<Rc<MemoryBlobs>>,
 }
 
 impl TestFiles {
     pub fn new() -> Rc<Self> {
         Rc::new(Self::default())
-    }
-
-    /// Files whose kept media are loaded from `blobs`, the namespace the
-    /// test's store keeps media in.
-    pub fn with_blobs(blobs: Rc<MemoryBlobs>) -> Rc<Self> {
-        Rc::new(Self {
-            blobs: Some(blobs),
-            ..Self::default()
-        })
     }
 
     /// The upload `reference` resolves to `blocks`.
@@ -255,15 +261,6 @@ impl ContentResolver for TestFiles {
                     }
                     FileReference::RemoteFile { device_id, .. } => {
                         return Err(refused(format!("device {device_id} is not paired")));
-                    }
-                    FileReference::Media(kept) => {
-                        let Some(blobs) = &self.blobs else {
-                            return Err(refused("no blob namespace holds kept media".to_owned()));
-                        };
-                        let part = media::kept_media(kept, &**blobs)
-                            .await
-                            .map_err(|error| refused(error.to_string()))?;
-                        vec![part]
                     }
                 };
                 resolved.push(blocks);
@@ -698,8 +695,7 @@ impl MemoryBlobs {
 
 impl BlobStore for MemoryBlobs {
     fn put(&self, bytes: B64Bytes) -> LocalBoxFuture<'_, Result<BlobRef, StoreError>> {
-        let name = format!("{:x}", Sha256::digest(bytes.as_bytes()));
-        let blob = BlobRef::try_from(name).expect("a SHA-256 in hexadecimal names a blob");
+        let blob = BlobRef::of(bytes.as_bytes());
         self.blobs.borrow_mut().insert(blob.clone(), bytes);
         Box::pin(async move { Ok(blob) })
     }
@@ -753,11 +749,13 @@ impl<H: AgentHarness> TestClient<H> {
 
     /// Every frame waiting now.
     pub fn received(&mut self) -> Vec<ServerFrame> {
-        let mut frames = Vec::new();
-        while let Some(Outgoing::Frame(frame)) = self.frames.try_recv() {
-            frames.push(frame);
-        }
-        frames
+        waiting_frames(&mut self.frames)
+    }
+
+    /// The connection and its outbox apart, for a test that looks at what
+    /// the page has heard while a frame of its is still being handled.
+    pub fn split(&mut self) -> (&Connection<H>, &mut FrameRx) {
+        (&self.connection, &mut self.frames)
     }
 
     /// The frames up to and including the first that `until` accepts.
@@ -781,6 +779,15 @@ impl<H: AgentHarness> TestClient<H> {
     pub fn connection(&self) -> &Connection<H> {
         &self.connection
     }
+}
+
+/// Every frame `outbox` holds now.
+pub fn waiting_frames(outbox: &mut FrameRx) -> Vec<ServerFrame> {
+    let mut frames = Vec::new();
+    while let Some(Outgoing::Frame(frame)) = outbox.try_recv() {
+        frames.push(frame);
+    }
+    frames
 }
 
 /// The tree store contract's cases (`subagents.md` § Persistence), for any
