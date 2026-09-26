@@ -10,9 +10,7 @@ use serde_with::rust::unwrap_or_skip;
 use crate::TranscriptVersion;
 
 /// A frame the browser sends. The connection belongs to one conversation, so
-/// no frame names a session or a working directory. `C` is the content of
-/// `send`, `steer` and `edit_and_send`, [`ClientContent`] as the browser
-/// sends it.
+/// no frame names a session or a working directory.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(
     tag = "type",
@@ -20,12 +18,7 @@ use crate::TranscriptVersion;
     rename_all_fields = "camelCase",
     deny_unknown_fields
 )]
-pub enum ClientFrame<C = ClientContent>
-where
-    // garde's derive validates the content, so content of every kind is
-    // itself validatable.
-    C: garde::Validate<Context = ()>,
-{
+pub enum ClientFrame {
     /// Attach this connection to the conversation's tree, restoring it when
     /// it is not live, and align the tree's model with `model`.
     Open {
@@ -37,19 +30,19 @@ where
         #[garde(skip)]
         message_id: TurnId,
         #[garde(dive)]
-        content: Vec<C>,
+        content: Vec<ClientContent>,
     },
     /// Replace a user message and everything after it.
     EditAndSend {
         #[garde(dive)]
-        request: EditRequest<C>,
+        request: EditRequest,
     },
     /// Add input to the running turn; its id is its `steer` block's.
     Steer {
         #[garde(skip)]
         steer_id: BlockId,
         #[garde(dive)]
-        content: Vec<C>,
+        content: Vec<ClientContent>,
     },
     CancelPendingSteer {
         #[garde(skip)]
@@ -140,10 +133,7 @@ pub enum ClientFrameKind {
 serde_plain::derive_display_from_serialize!(ClientFrameKind);
 serde_plain::derive_fromstr_from_deserialize!(ClientFrameKind);
 
-impl<C> ClientFrame<C>
-where
-    C: garde::Validate<Context = ()>,
-{
+impl ClientFrame {
     pub fn kind(&self) -> ClientFrameKind {
         match self {
             Self::Open { .. } => ClientFrameKind::Open,
@@ -168,9 +158,7 @@ where
             Self::Close {} => ClientFrameKind::Close,
         }
     }
-}
 
-impl ClientFrame {
     /// The rules across a frame's content that its type does not hold: what
     /// the edited message already holds (`media`, `attachment`) appears only
     /// in `edit_and_send`, and an edit keeps text or a file.
@@ -212,10 +200,7 @@ impl ClientFrame {
 /// A replacement of a user message and everything after it (`message-editing.md`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct EditRequest<C = ClientContent>
-where
-    C: garde::Validate<Context = ()>,
-{
+pub struct EditRequest {
     /// Chosen by the browser, so a repeated request is recognized.
     #[garde(skip)]
     pub operation_id: OperationId,
@@ -227,7 +212,7 @@ where
     pub version: TranscriptVersion,
     /// The complete replacement content.
     #[garde(length(min = 1), dive)]
-    pub content: Vec<C>,
+    pub content: Vec<ClientContent>,
 }
 
 /// One part of the content the browser sends. Files are referred to, never

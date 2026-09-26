@@ -6,7 +6,7 @@
 
 use std::{cell::OnceCell, rc::Rc};
 
-use demi_agent_protocol::{ClientContent, EditRequest, MediaRef, TranscriptVersion};
+use demi_agent_protocol::{EditRequest, MediaRef, TranscriptVersion};
 use demi_command_service::protocol::canonical_digest;
 use demi_core::{
     B64Bytes, BlobRef, Block, BlockId, DocumentSource, MediaSource, OperationId, UserContentBlock,
@@ -130,7 +130,7 @@ pub(crate) async fn accepted(mut acceptance: Acceptance) -> Result<EditReceipt, 
 /// The SHA-256 of an edit request's RFC 8785 canonical JSON, as the browser
 /// sent it, before its uploads are resolved (`message-editing.md` § Commit
 /// and idempotency).
-pub(crate) fn edit_digest(request: &EditRequest<ClientContent>) -> String {
+pub(crate) fn edit_digest(request: &EditRequest) -> String {
     canonical_digest(request).expect("an edit request serializes")
 }
 
