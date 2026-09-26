@@ -5,7 +5,7 @@
 //! forms; where the bytes go is the store's decision, and the agent server
 //! never holds a blob namespace.
 
-use demi_agent_protocol::{MediaRef, ServerFrame, TranscriptPatch};
+use demi_agent_protocol::{ServerFrame, TranscriptPatch};
 use demi_core::{
     B64Bytes, BlobRef, Block, DocumentSource, MediaSource, ToolMediaSource, ToolResultContentBlock,
     UserContentBlock,
@@ -156,19 +156,6 @@ pub async fn rehydrate(block: &mut Block, blobs: &dyn BlobStore) -> Result<(), S
         }
         _ => Ok(()),
     }
-}
-
-/// The content part a medium an edit keeps becomes (`message-editing.md`
-/// § Files the edit keeps): its block with the bytes put back from `blobs`
-/// as [`rehydrate`] puts them back, or the text that says its blob is gone.
-pub async fn kept_media(
-    media: MediaRef,
-    blobs: &dyn BlobStore,
-) -> Result<UserContentBlock, StoreError> {
-    let mut part = [UserContentBlock::from(media)];
-    rehydrate_content(&mut part, blobs).await?;
-    let [part] = part;
-    Ok(part)
 }
 
 async fn rehydrate_content(

@@ -1524,6 +1524,7 @@ dependencies = [
  "serde_json",
  "serde_plain",
  "serde_with",
+ "sha2",
  "thiserror",
 ]
 

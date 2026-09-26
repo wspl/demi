@@ -668,10 +668,11 @@ path (`{ type: "attachment", path }`)
 ([Files the edit keeps](message-editing.md#files-the-edit-keeps)). A `send`
 or `steer` that holds `media` or `attachment` is an invalid frame. No frame
 carries file bytes. The backend
-resolves uploads, remote files and an edit's kept media before the session
-sees the content
+resolves uploads and remote files before the session sees the content
 ([Media by reference](../backend/backend.md#media-by-reference),
-[Device files and remote references](../product/web-api.md#device-files-and-remote-references)).
+[Device files and remote references](../product/web-api.md#device-files-and-remote-references)),
+and the session resolves an edit's kept files from the edited message
+([Files the edit keeps](message-editing.md#files-the-edit-keeps)).
 
 `shell_write` and `shell_abort` reach the command through the root's shell
 environment for the conversation's current Host, with the handle checks of
@@ -832,8 +833,8 @@ atomic commits of the same store ([Persistence](subagents.md#persistence)).
 - Loading a session for inference puts the bytes back. A reference whose blob
   is missing becomes the text `[missing <kind> blob <ref>]`, so the turn goes
   on; a malformed reference is a decode error.
-- The media an edit keeps arrive as references, and the backend puts their
-  bytes back the same way before the session sees the edit
+- The media an edit keeps arrive as references to blocks the edited message
+  holds, and the session puts those blocks, bytes and all, in their place
   ([Files the edit keeps](message-editing.md#files-the-edit-keeps)). A live
   session's transcript therefore holds bytes, never a reference.
 - The agent defines this mapping between inline bytes and references; where

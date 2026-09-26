@@ -14,7 +14,6 @@ use demi_web_api::ids::UserId;
 use futures_util::future::LocalBoxFuture;
 use object_store::path::Path;
 use object_store::{ObjectStore, ObjectStoreExt as _, PutMode, PutOptions, PutPayload};
-use sha2::{Digest, Sha256};
 
 use super::StorageError;
 
@@ -53,12 +52,11 @@ impl UserBlobs {
     pub(crate) async fn put(&self, bytes: Bytes) -> Result<BlobRef, StorageError> {
         // Hashing an upload of 25 MiB takes tens of milliseconds, which would
         // hold an async thread that long.
-        let (bytes, digest) = tokio::task::spawn_blocking(move || {
-            let digest = hex::encode(Sha256::digest(&bytes));
-            (bytes, digest)
+        let (bytes, blob) = tokio::task::spawn_blocking(move || {
+            let blob = BlobRef::of(&bytes);
+            (bytes, blob)
         })
         .await?;
-        let blob = BlobRef::try_from(digest).expect("a SHA-256 in lowercase hexadecimal names a blob");
         let create = PutOptions {
             mode: PutMode::Create,
             ..PutOptions::default()
