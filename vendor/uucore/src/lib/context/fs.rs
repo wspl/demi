@@ -11,11 +11,7 @@ use std::{
 pub struct File(std::fs::File);
 impl File {
     pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
-        super::check_cancelled();
-        if let Some(file) = super::descriptor(path.as_ref()) {
-            return file.try_clone().map(Self);
-        }
-        std::fs::File::open(super::resolve(path)).map(Self)
+        OpenOptions::new().read(true).open(path)
     }
     pub fn create(path: impl AsRef<Path>) -> io::Result<Self> {
         OpenOptions::new().write(true).create(true).truncate(true).open(path)
@@ -27,7 +23,7 @@ impl File {
         OpenOptions::new()
     }
     pub fn try_clone(&self) -> io::Result<Self> {
-        self.0.try_clone().map(Self)
+        super::duplicate(&self.0).map(Self)
     }
     pub fn set_len(&self, size: u64) -> io::Result<()> {
         super::check_cancelled();
@@ -141,7 +137,7 @@ impl OpenOptions {
     pub fn open(&self, path: impl AsRef<Path>) -> io::Result<File> {
         super::check_cancelled();
         if let Some(file) = super::descriptor(path.as_ref()) {
-            return file.try_clone().map(File);
+            return super::duplicate(&file).map(File);
         }
         let path = super::resolve(path);
         match super::control() {

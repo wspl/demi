@@ -145,6 +145,9 @@ impl Shard {
     async fn reset_steps(&self, machine: &Rc<Machine>, operation: ManagedOperation) -> Result<(), CloudError> {
         let services = self.services();
         let device = &machine.device.id;
+        // The machine stops, and its exposes end with it (`expose.md`
+        // § Lifetime).
+        self.destroy_exposes_on(device).await;
         self.record_phase(machine, &operation, ResetPhase::Stopping, None).await?;
         if let Some(transition) = machine.transition() {
             // A boot or a save that failed still finishes before the reset
@@ -213,11 +216,14 @@ fn reset_params(machine: &Machine, operation: &ManagedOperation) -> ResetParams 
 
 /// Recovers before the backend serves (`backend.md` § Startup and shutdown):
 /// the manager stops and saves every machine and recovers its incomplete
-/// operations, and each reset this backend left unfinished finishes its
-/// disk step, which is idempotent by its id, is announced, and is recorded
-/// as failed so that a retry boots the Cloud. Nothing boots here.
+/// operations, so the exposes an earlier backend left on a Cloud end
+/// (`expose.md` § Lifetime), and each reset this backend left unfinished
+/// finishes its disk step, which is idempotent by its id, is announced, and
+/// is recorded as failed so that a retry boots the Cloud. Nothing boots
+/// here.
 pub(crate) async fn recover_resets(services: &Services) -> Result<(), RecoveryError> {
     services.cloud.machines.call(ReconcileParams {}).await?;
+    services.control.delete_cloud_exposes().await?;
     for (device, operation) in services.control.unfinished_managed_operations().await? {
         let record = services
             .control

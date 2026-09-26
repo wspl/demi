@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { productState } from '../__tests__/product-state'
-import type { ProductState } from '../api/unported'
+import type { ProductState } from '../api/generated/web-api'
 import { useProduct } from '../state/product'
 import { useDeviceSettings } from './devices'
 
@@ -37,18 +37,18 @@ beforeEach(async () => {
     },
     exposes: [
       {
-        id: 'k7x2m9qw4p3s6t8v0w2y4z6a8b',
+        id: 'k7x2maqw4p3s6tavaw2y4z6aab',
         deviceId: 'laptop',
         address: '127.0.0.1:5173',
-        url: 'https://k7x2m9qw4p3s6t8v0w2y4z6a8b.expose.demi.example/',
+        url: 'https://k7x2maqw4p3s6tavaw2y4z6aab.expose.demi.example/',
         createdAt: '2026-09-17T00:00:00.000Z',
         expiresAt: '2026-09-17T00:59:00.000Z',
       },
       {
-        id: 'm3n5p7r9t1v3w5x7y9z1a3c5e',
+        id: 'm3n5p7rgtxv3w5x7yez4a3c5ek',
         deviceId: 'cloud',
         address: '127.0.0.1:8080',
-        url: 'https://m3n5p7r9t1v3w5x7y9z1a3c5e.expose.demi.example/',
+        url: 'https://m3n5p7rgtxv3w5x7yez4a3c5ek.expose.demi.example/',
         createdAt: '2026-09-17T00:00:00.000Z',
         expiresAt: '2026-09-17T00:30:00.000Z',
       },
@@ -68,7 +68,7 @@ beforeEach(async () => {
     if (path.startsWith('/api/exposes/') && path.endsWith('/renew') && init?.method === 'POST') {
       const id = path.split('/')[3]!
       renewals.push(id)
-      const expose = state.exposes?.find((entry) => entry.id === id)
+      const expose = state.exposes.find((entry) => entry.id === id)
       if (expose) {
         expose.expiresAt = new Date(Date.now() + 60 * 60_000).toISOString()
       }
@@ -77,7 +77,7 @@ beforeEach(async () => {
     if (path.startsWith('/api/exposes/') && init?.method === 'DELETE') {
       const id = path.split('/')[3]!
       removals.push(id)
-      state.exposes = state.exposes?.filter((entry) => entry.id !== id)
+      state.exposes = state.exposes.filter((entry) => entry.id !== id)
       return new Response(null, { status: 204 })
     }
     throw new Error(`Unexpected request: ${path}`)
@@ -94,14 +94,14 @@ afterEach(() => {
 test('the snapshot feeds the expose list', () => {
   const settings = useDeviceSettings()
   expect(settings.exposes.map((expose) => expose.id)).toEqual([
-    'k7x2m9qw4p3s6t8v0w2y4z6a8b',
-    'm3n5p7r9t1v3w5x7y9z1a3c5e',
+    'k7x2maqw4p3s6tavaw2y4z6aab',
+    'm3n5p7rgtxv3w5x7yez4a3c5ek',
   ])
 })
 
 test('renew asks the API and shows the moved expiry from the next snapshot', async () => {
   const settings = useDeviceSettings()
-  const id = 'k7x2m9qw4p3s6t8v0w2y4z6a8b'
+  const id = 'k7x2maqw4p3s6tavaw2y4z6aab'
   await settings.renewExpose(id)
   expect(renewals).toEqual([id])
   expect(removals).toEqual([])
@@ -111,17 +111,17 @@ test('renew asks the API and shows the moved expiry from the next snapshot', asy
 
 test('remove drops the row once the snapshot returns without it', async () => {
   const settings = useDeviceSettings()
-  const id = 'm3n5p7r9t1v3w5x7y9z1a3c5e'
+  const id = 'm3n5p7rgtxv3w5x7yez4a3c5ek'
   await settings.removeExpose(id)
   expect(removals).toEqual([id])
   expect(settings.exposes.map((expose) => expose.id)).toEqual([
-    'k7x2m9qw4p3s6t8v0w2y4z6a8b',
+    'k7x2maqw4p3s6tavaw2y4z6aab',
   ])
 })
 
 test('an expose that expires disappears with the next snapshot, without any request', async () => {
   const settings = useDeviceSettings()
-  state.exposes = state.exposes?.filter((entry) => entry.deviceId !== 'laptop')
+  state.exposes = state.exposes.filter((entry) => entry.deviceId !== 'laptop')
   await useProduct().refresh()
   expect(settings.exposes.map((expose) => expose.deviceId)).toEqual(['cloud'])
   expect(renewals).toEqual([])

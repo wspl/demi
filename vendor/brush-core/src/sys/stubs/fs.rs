@@ -24,6 +24,10 @@ pub fn get_default_standard_utils_paths() -> Vec<std::path::PathBuf> {
     vec![]
 }
 
+/// The path of the device that discards all I/O; this platform has none, so
+/// opening it fails.
+pub const NULL_DEVICE: &str = "/dev/null";
+
 /// Opens a null file that will discard all I/O.
 ///
 /// This is a stub implementation that returns an error.

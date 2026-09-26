@@ -295,10 +295,13 @@ fn spawn_async_ao_list_in_task<'a, SE: extensions::ShellExtensions>(
     // Mark the child shell as not interactive; we don't want it messing with the terminal too much.
     cloned_shell.options_mut().interactive = false;
 
-    // Redirect stdin to null, per spec.
-    if let Ok(null) = openfiles::null() {
-        cloned_params.set_fd(openfiles::OpenFiles::STDIN_FD, null);
-    }
+    // Redirect stdin to null, per spec. The owner waits out a lack of
+    // descriptors; if the open fails even so, reads fail, and the list never
+    // reads the job's own input.
+    let null = cloned_shell.open_null().unwrap_or_else(|_| {
+        ioutils::FailingReaderWriter::new("failed to open the null device").into()
+    });
+    cloned_params.set_fd(openfiles::OpenFiles::STDIN_FD, null);
 
     let guard = cloned_shell.execution_guard();
     let join_handle = tokio::task::spawn_blocking(move || {
@@ -474,8 +477,8 @@ async fn spawn_pipeline_processes(
     if pipeline_len > 1 {
         for _ in 0..(pipeline_len - 1) {
             let (reader, writer) = shell.pipe()?;
-            pipe_readers.push(Some(reader.into()));
-            pipe_writers.push(Some(writer.into()));
+            pipe_readers.push(Some(shell.scoped(reader.into())?));
+            pipe_writers.push(Some(shell.scoped(writer.into())?));
         }
         // Push `None` to the readers; it will be popped off by the *first* command, which will
         // mean that command gets its stdin from the execution parameters' current stdin.
@@ -781,11 +784,15 @@ impl Execute for ast::CoprocessCommand {
         // Set up the pipes that we'll use to communicate with the coprocess.
         let (stdin_reader, stdin_writer) = shell.pipe()?;
         let (stdout_reader, stdout_writer) = shell.pipe()?;
+        let stdin_reader = shell.scoped(stdin_reader.into())?;
+        let stdin_writer = shell.scoped(stdin_writer.into())?;
+        let stdout_reader = shell.scoped(stdout_reader.into())?;
+        let stdout_writer = shell.scoped(stdout_writer.into())?;
 
         // Allocate new fds in the (parent) shell for the read end of the coprocess's stdout
         // and the write end of the coprocess's stdin.
-        let stdout_fd = shell.open_files_mut().add(stdout_reader.into())?;
-        let stdin_fd = shell.open_files_mut().add(stdin_writer.into())?;
+        let stdout_fd = shell.open_files_mut().add(stdout_reader)?;
+        let stdin_fd = shell.open_files_mut().add(stdin_writer)?;
 
         // Crete a subshell that the coprocess will own and run in.
         let mut child_shell = shell.clone();
@@ -795,10 +802,10 @@ impl Execute for ast::CoprocessCommand {
         let mut child_params = params.clone();
         child_params
             .open_files
-            .set_fd(OpenFiles::STDIN_FD, stdin_reader.into());
+            .set_fd(OpenFiles::STDIN_FD, stdin_reader);
         child_params
             .open_files
-            .set_fd(OpenFiles::STDOUT_FD, stdout_writer.into());
+            .set_fd(OpenFiles::STDOUT_FD, stdout_writer);
 
         let body = self.body.clone();
         let guard = child_shell.execution_guard();
@@ -1893,7 +1900,7 @@ pub(crate) async fn setup_redirect(
                 io_here.doc.flatten()
             };
 
-            let f = setup_open_file_with_contents(io_here_doc.as_str())?;
+            let f = setup_open_file_with_contents(shell, io_here_doc.as_str())?;
 
             params.open_files.set_fd(fd_num, f);
         }
@@ -1905,7 +1912,7 @@ pub(crate) async fn setup_redirect(
             let mut expanded_word = expansion::basic_expand_word(shell, params, word).await?;
             expanded_word.push('\n');
 
-            let f = setup_open_file_with_contents(expanded_word.as_str())?;
+            let f = setup_open_file_with_contents(shell, expanded_word.as_str())?;
 
             params.open_files.set_fd(fd_num, f);
         }
@@ -1977,7 +1984,7 @@ fn setup_process_substitution(
 
     // Set up pipe so we can connect to the command.
     let (reader, writer) = shell.pipe()?;
-    let (reader, writer) = (reader.into(), writer.into());
+    let (reader, writer) = (shell.scoped(reader.into())?, shell.scoped(writer.into())?);
 
     let target_file = match kind {
         ast::ProcessSubstitutionKind::Read => {
@@ -2018,13 +2025,16 @@ fn setup_process_substitution(
     Ok((candidate_fd_num, target_file))
 }
 
-fn setup_open_file_with_contents(contents: &str) -> Result<OpenFile, error::Error> {
+fn setup_open_file_with_contents(
+    shell: &Shell<impl extensions::ShellExtensions>,
+    contents: &str,
+) -> Result<OpenFile, error::Error> {
     use std::io::Seek as _;
 
     // Redirections are prepared before their reader starts. A temporary file
     // accepts arbitrary document sizes without waiting for pipe capacity.
-    let mut file = tempfile::tempfile()?;
+    let mut file = shell.temporary_file()?;
     file.write_all(contents.as_bytes())?;
     file.rewind()?;
-    Ok(file.into())
+    Ok(shell.scoped(file.into())?)
 }

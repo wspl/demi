@@ -505,7 +505,7 @@ fn account(row: &Row<'_>) -> Result<Account, StorageError> {
 }
 
 /// `now` moved on by `by`.
-fn later(now: Timestamp, by: SignedDuration) -> Result<Timestamp, StorageError> {
+pub(super) fn later(now: Timestamp, by: SignedDuration) -> Result<Timestamp, StorageError> {
     now.to_jiff()
         .checked_add(by)
         .map(Timestamp::truncate)

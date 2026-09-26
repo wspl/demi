@@ -12,6 +12,7 @@ use crate::auth::email_change::EmailChangeError;
 use crate::auth::passwords::HashError;
 use crate::conversation::host_access::{HostAccessError, host_error_code};
 use crate::conversation::stream::StreamError;
+use crate::expose::ExposeError;
 use crate::llm::assembly::AssemblyError;
 use crate::managed::CloudError;
 use crate::runner::files::{TextError, TextRefusal};
@@ -197,6 +198,15 @@ impl From<CloudError> for ApiError {
     fn from(error: CloudError) -> Self {
         let (code, status) = error.code();
         Self::new(status_of(status), code, error.to_string())
+    }
+}
+
+impl From<ExposeError> for ApiError {
+    fn from(error: ExposeError) -> Self {
+        match error.code() {
+            Some((code, status)) => Self::new(status_of(status), code, error.to_string()),
+            None => Self::internal(&error),
+        }
     }
 }
 

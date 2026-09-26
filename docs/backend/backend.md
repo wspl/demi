@@ -111,11 +111,15 @@ of the device's owner.
 The edge uses axum because its handlers are thin: parse, authenticate, check
 ownership, then call a shared service or a shard. axum's requirement that a
 handler's future be `Send` therefore costs nothing, and its extractors, tower
-middleware and socket-free router tests come with it. axum serves over the
-backend's own listener, which gives every connection an idle deadline and a
-close handle and exposes the peer address. A download arms the 60-second
-deadline, a lease the shard ends closes the connection at once even when the
-browser has stopped reading, and the expose relay forwards the peer address.
+middleware and socket-free router tests come with it. The edge serves the
+connections of the backend's own listener itself, with hyper's HTTP/1
+server: it keeps each header name's case, which the expose relay passes on
+and axum's `serve` cannot, and it answers a request for an expose hostname
+with the relay before the router sees it. The listener gives every
+connection an idle deadline and a close handle and exposes the peer address.
+A download arms the 60-second deadline, a lease the shard ends closes the
+connection at once even when the browser has stopped reading, and the expose
+relay forwards the peer address.
 
 The listener turns off Nagle's algorithm (`TCP_NODELAY`) on every connection
 it accepts. The runner and conversation sockets carry small messages whose
@@ -293,7 +297,9 @@ At startup the backend:
 3. Opens the data directory and loads the instance secret.
 4. Opens the control database; a new database receives its schema.
 5. Starts the shared services and the shard threads.
-6. Recovers before it serves: the machine manager reconciles its machines, an
+6. Recovers before it serves: the machine manager reconciles its machines,
+   which stops every Cloud, so the exposes an earlier backend left on a Cloud
+   are destroyed ([Host expose](../execution/expose.md#lifetime)), an
    interrupted Cloud reset finishes committing its disks and is marked failed
    so that a retry starts the Cloud
    ([Managed hosts](../cloud/managed-hosts.md#system-reset)), and Fork

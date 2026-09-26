@@ -29,6 +29,7 @@ use crate::backend::Services;
 use crate::conversation::host_access::Conversations;
 use crate::conversation::titles::Titles;
 use crate::conversation::{self, ConversationHarness, ConversationParts};
+use crate::expose::Exposes;
 use crate::llm::claude_cli::ClaudeCli;
 use crate::lifecycle::conversations::ConversationWatches;
 use crate::managed::Cloud;
@@ -87,6 +88,8 @@ pub(crate) struct Shard {
     idle_watches: ConversationWatches,
     /// The Claude Code CLI work on the user's Cloud.
     claude_cli: ClaudeCli,
+    /// The user's exposes with relayed connections open.
+    exposes: Exposes,
 }
 
 impl Shard {
@@ -116,6 +119,7 @@ impl Shard {
             cloud: Cloud::default(),
             idle_watches: ConversationWatches::default(),
             claude_cli: ClaudeCli::default(),
+            exposes: Exposes::default(),
         }
     }
 
@@ -161,6 +165,10 @@ impl Shard {
         &self.pipes
     }
 
+    pub(crate) fn exposes(&self) -> &Exposes {
+        &self.exposes
+    }
+
     pub(crate) fn commands(&self) -> &CommandRouter {
         &self.commands
     }
@@ -197,17 +205,18 @@ impl Shard {
 
     /// Ends the user's work in order (`backend.md` § Startup and shutdown):
     /// the idle watches stop, and a retirement already running finishes;
-    /// title requests are aborted; the conversation sockets end; open file
-    /// transfers and user streams end, and stay closed; the agent turns are
-    /// aborted while their runners are still connected; the Cloud is saved
-    /// and stopped; the runner connections close, their work ends with
-    /// them, and then the pipes fail. The answer says why the Cloud was not
-    /// saved, when it was not.
+    /// title requests are aborted and relayed expose connections end; the
+    /// conversation sockets end; open file transfers and user streams end,
+    /// and stay closed; the agent turns are aborted while their runners are
+    /// still connected; the Cloud is saved and stopped; the runner
+    /// connections close, their work ends with them, and then the pipes
+    /// fail. The answer says why the Cloud was not saved, when it was not.
     async fn close(&self) -> Option<String> {
         self.closing.cancel();
         self.stop_idle_watches();
         self.cloud.stop();
         self.titles.abort_all();
+        self.exposes.end_all();
         self.conversation_sockets.close();
         self.conversation_sockets.wait().await;
         let _transfers_closed = self.conversations.end_transfers().await;

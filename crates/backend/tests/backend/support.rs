@@ -12,8 +12,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use demi_backend::{
-    AccountMail, Backend, BackendConfig, CloudTuning, ConversationTuning, FamilyRegistry, LifecycleTuning, LoginTiming,
-    MailError, NativeCatalog, RunnerTuning, VerificationMail,
+    AccountMail, Backend, BackendConfig, CloudTuning, ConversationTuning, ExposeDomain, ExposeTuning, FamilyRegistry,
+    LifecycleTuning, LoginTiming, MailError, NativeCatalog, RunnerTuning, VerificationMail,
 };
 use demi_builtin_protocol::Operation;
 use demi_coding_agent::BUILTIN_PACKAGE;
@@ -112,6 +112,8 @@ pub struct Harness {
     pub cloud: CloudTuning,
     /// Runs the Clouds of every backend this harness starts.
     pub manager: ScriptedManager,
+    expose_domain: Option<ExposeDomain>,
+    pub exposes: ExposeTuning,
 }
 
 impl Harness {
@@ -147,7 +149,16 @@ impl Harness {
             lifecycle: LifecycleTuning::default(),
             cloud: CloudTuning::default(),
             manager: ScriptedManager::start(),
+            expose_domain: None,
+            exposes: ExposeTuning::default(),
         }
+    }
+
+    /// Exposes under `domain`, whose hostnames the backend answers with the
+    /// public relay.
+    pub fn with_expose_domain(mut self, domain: &str) -> Self {
+        self.expose_domain = Some(domain.parse().unwrap());
+        self
     }
 
     /// Conversations whose commands bind to the `demi.builtin` package the
@@ -304,6 +315,8 @@ impl Harness {
         config.cloud = self.cloud;
         config.clock = self.clock.clone();
         config.web_directory = self.web_directory.clone();
+        config.expose_domain = self.expose_domain.clone();
+        config.exposes = self.exposes;
         config.families = self.families.clone();
         config.logins = self.logins;
         config.runners = self.runners;
