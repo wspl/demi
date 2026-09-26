@@ -568,11 +568,27 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
     // runs.
     let far = "printf \"ready\\n\" >&2; read line; printf \"%s\" \"$line\" > got.txt; sh -c \"echo \\$\\$ > far.pid; exec /bin/sleep 30\"";
     let script = format!("demi host shell --host alpha '{far}'");
-    let started = work.turn(vec![shell("t1", &script, 3_000), say("waiting")]).await;
+    let started = work.turn(vec![shell("t1", &script, 500), say("waiting")]).await;
     let result = &started.received[0];
     assert!(result.starts_with("status: running"), "{result}");
-    assert!(result.contains("ready"), "{result}");
     let command = field(result, "commandId").to_owned();
+    // The far job's error output reaches the model while the job runs: the
+    // model reads the command's output until `ready` is there. The far
+    // job's start (a login shell on alpha) may outlast the window above.
+    let mut output = result.clone();
+    let deadline = tokio::time::Instant::now() + crate::support::PATIENCE;
+    let mut reads = 0;
+    while !output.contains("ready") {
+        assert!(tokio::time::Instant::now() < deadline, "the far job's ready never came: {output}");
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        reads += 1;
+        let status = json!({ "commandId": command });
+        let read = work
+            .turn(vec![tool_use(&format!("s{reads}"), "shell_status", &status), say("still waiting")])
+            .await;
+        assert!(read.received[0].starts_with("status: running"), "{}", read.received[0]);
+        output.push_str(&read.received[0]);
+    }
 
     let write = json!({ "commandId": command, "stdin": "hello\n" });
     work.turn(vec![tool_use("t2", "shell_write", &write), say("fed")]).await;

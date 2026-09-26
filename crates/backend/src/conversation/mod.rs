@@ -85,7 +85,7 @@ pub(crate) fn conversation_parts(
     let agent = AgentServer::new(ServerDeps {
         harness: Rc::new(conversation_harness(shard.clone(), &services.native)),
         providers,
-        shells: Rc::new(ShardShellEnvironments::new(shard, services.native.catalog())),
+        shells: Rc::new(ShardShellEnvironments::new(shard, services.native.catalog(&services.public_url))),
         stores,
         clock: services.clock.clone(),
         ids: Rc::new(RandomIds),

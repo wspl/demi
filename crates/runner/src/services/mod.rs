@@ -80,16 +80,16 @@ pub enum ExitReason {
 /// Where the runner fetches an artifact from.
 pub enum ArtifactSource {
     Local(PathBuf),
-    Https {
+    Url {
         url: String,
         expires_at: Option<SystemTime>,
     },
 }
 
 impl ArtifactSource {
-    /// A location the backend returned: an HTTPS URL, which the wire checked
-    /// as it was read, or a local path, which this machine's rules make
-    /// absolute or not.
+    /// A location the backend returned: an HTTP or HTTPS URL, which the wire
+    /// checked as it was read, or a local path, which this machine's rules
+    /// make absolute or not.
     pub fn from_location(location: ArtifactLocation) -> Result<Self, RuntimeError> {
         match location {
             ArtifactLocation::Url(location) => {
@@ -107,7 +107,7 @@ impl ArtifactSource {
                             })
                     })
                     .transpose()?;
-                Ok(ArtifactSource::Https {
+                Ok(ArtifactSource::Url {
                     url: location.url,
                     expires_at,
                 })
