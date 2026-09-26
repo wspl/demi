@@ -85,7 +85,6 @@ impl ChangeStore {
     /// Stores one segment's two sides: the copy before it, empty for a
     /// segment that created the file, and the copy after it. Both must be
     /// text the browser can show.
-    #[expect(clippy::too_many_arguments, reason = "a segment is named by all of them")]
     async fn keep(
         &self,
         conversation: &ConversationId,

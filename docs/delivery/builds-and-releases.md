@@ -202,15 +202,30 @@ There is no hosted CI. Developers run the checks on their machines, and
 release acceptance runs the shared Rust suite on each platform that ships a
 feature.
 
+Every Rust command but the Chrome suite's selects the same thing: the whole
+workspace with the runner's `test-fixtures` feature, which builds the fixture
+programs the tests start. Cargo unifies features over what one command
+selects, so a command that selected one crate or other features would build
+its own copy of every shared dependency.
+
 | Command | What it runs |
 | --- | --- |
-| `cargo xtask check` | Formatting, clippy with the workspace lints, the tests, and the crate boundary check |
-| `cargo xtask test` | The tests, after building the executables they start and naming each one in an environment variable |
-| `cargo xtask test-browser` | The tests that start Chrome, after installing the pinned Chrome for Testing and naming it the same way |
+| `cargo check --workspace --all-targets --features demi-runner/test-fixtures` | The type check of every crate, test and example |
+| `cargo test --workspace --features demi-runner/test-fixtures` | The Rust tests, the crate boundary check among them ([Boundary checks](../architecture/crates-and-packages.md#boundary-checks)); `--test <name>` runs one test target |
+| `cargo fmt --all --check` | Formatting, by rustfmt's defaults |
+| `DEMI_TEST_CHROME=<chrome> cargo test --workspace --features demi-runner/test-fixtures,demi-commands/testing --test browser -- --include-ignored --test-threads=1` | The tests that start Chrome, one at a time, with the executable of the pinned Chrome for Testing release; the selection adds the page-driving helpers of `demi-commands` |
+| `bun run test` | The TypeScript tests, after it builds the programs they start with the same selection |
 
-A test finds an executable through the variable `cargo xtask test` sets; it
-does not build one itself. An ordinary test run starts no Chrome; release
-acceptance runs the Chrome tests. The machine manager builds only for Linux, so
+A test that starts another program, such as a runner or `demi-commands`,
+starts the one Cargo built into the target directory the test runs from
+(`command_service::testing::built_program`); it builds nothing itself.
+`cargo test` of the whole selection builds every program first, while one
+test target builds only what it links, so before running one alone that
+starts another crate's program, build the selection with
+`cargo build --workspace --all-targets --features demi-runner/test-fixtures`.
+The TypeScript tests take the programs from `DEMI_TEST_PROGRAMS`, which
+`bun run test` sets to that directory. An ordinary test run starts no Chrome;
+release acceptance runs the Chrome tests. The machine manager builds only for Linux, so
 on a Mac its tests are cross-built with cargo-zigbuild and run in the Lima VM
 ([Verification](../cloud/managed-hosts.md#verification)). The tests that need
 root are ignored in an ordinary run; as root, `--include-ignored` runs them,
