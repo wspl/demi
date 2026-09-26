@@ -125,9 +125,13 @@ It returns 409 `device_in_use` while workspaces point at that device. Successful
 revocation closes its connection and removes its conversation attachments.
 Pairing accepts a live code and returns the claimed device; expired/unknown codes
 return 404 and excessive attempts 429. The installation routes contain no
-credential and do not grant device access. The runner receives a pending code;
-the signed-in browser claims it through
-`POST /api/devices/claim`. Device tokens are delivered only to the runner.
+credential and do not grant device access. The install command the page shows
+fetches the installer from the origin of the state's `publicUrl`, not from the
+page's own origin, which in development is Vite's, and lets `curl` use only
+that URL's scheme, TLS 1.2 or newer for `https`; a development backend serves
+plain `http`. The runner receives a pending code; the signed-in browser claims
+it through `POST /api/devices/claim`. Device tokens are delivered only to the
+runner.
 
 Attached-host responses contain device identity, name, cwd, online state, and
 attachment time. A conversation's main device cannot also be attached: attaching
@@ -631,7 +635,8 @@ beyond current output are refused.
 `GET /api/state` returns the current user, mode, preferences, projects, active
 and archived conversation summaries, devices (the paired ones and the user's
 Cloud device, which the file and working-tree routes address alike), public
-provider status and Cloud state. Each provider entry of the user's scope
+provider status, Cloud state, and `publicUrl`, the URL runners connect to
+(`DEMI_BACKEND_PUBLIC_URL`). Each provider entry of the user's scope
 carries its `details`: `{ type: "read", ... }` with what
 `GET /api/providers/:id/status` answers, or `{ type: "failed", message }` for
 an entry whose provider could not be read, which leaves the others intact. It
