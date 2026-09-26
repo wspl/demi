@@ -15,11 +15,11 @@ use demi_backend::{
     AccountMail, Backend, BackendConfig, CloudTuning, ConversationTuning, ExposeDomain, ExposeTuning, FamilyRegistry,
     LifecycleTuning, LoginTiming, MailError, NativeCatalog, RunnerTuning, VerificationMail,
 };
-use demi_builtin_protocol::Operation;
-use demi_coding_agent::BUILTIN_PACKAGE;
+use demi_builtin_protocol::{Operation, PACKAGE as BUILTIN_PACKAGE};
+use demi_command_service::testing::built_program;
 use demi_command_tree::NativeOperation;
 use demi_core::Clock;
-use demi_host_remote::testing::{NativeFixture, RunnerProcess, RunnerProcessOptions, built_program};
+use demi_host_remote::testing::{NativeFixture, RunnerProcess, RunnerProcessOptions};
 use demi_web_api::auth::{Identity, Role, UserDto};
 use demi_web_api::devices::{ClaimedDevice, DeviceDto, Devices};
 use demi_web_api::error::{ErrorBody, ErrorCode};

@@ -7,9 +7,7 @@
 mod process;
 mod runner;
 
-pub use process::{
-    RunnerProcess, RunnerProcessOptions, built_program, native_fixture_binary, runner_binary,
-};
+pub use process::{RunnerProcess, RunnerProcessOptions, native_fixture_binary, runner_binary};
 pub use runner::{FixtureOptions, RunnerFixture};
 
 use std::{

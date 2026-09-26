@@ -407,7 +407,7 @@ mod tests {
     use object_store::aws::AmazonS3Builder;
     use sha2::{Digest as _, Sha256};
 
-    use demi_coding_agent::BUILTIN_PACKAGE;
+    use demi_builtin_protocol::PACKAGE as BUILTIN_PACKAGE;
 
     use super::*;
     use crate::storage::objects::fake_s3::FakeS3;
