@@ -217,7 +217,7 @@ fn manifest() -> serde_json::Value {
         }],
         "runner": {
             "release": "f".repeat(64),
-            "wire": 18,
+            "wire": demi_runner_protocol::wire::VERSION,
             "commandProtocol": 1,
             "targets": { "aarch64-unknown-linux-musl": runner },
         },
