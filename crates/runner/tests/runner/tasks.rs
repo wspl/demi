@@ -205,19 +205,22 @@ async fn cancellation_terminates_a_blocking_native_builtin() {
     assert_eq!(table.len(), 0);
 }
 
+/// Each signal runs in a job of its own, and the jobs run together: each is a
+/// login shell that reads the machine's profile first.
 #[tokio::test]
 async fn shell_cancellation_reports_the_requesting_signal() {
     use demi_runner::shell::{job::Job, scope::Scope};
     use tokio_util::sync::CancellationToken;
 
-    for signal in [
+    let signals = [
         Some(Signal::Terminate),
         Some(Signal::Interrupt),
         Some(Signal::Hangup),
         Some(Signal::Quit),
         Some(Signal::Kill),
         None,
-    ] {
+    ]
+    .map(|signal| async move {
         let root = tempfile::tempdir().unwrap();
         let scope = Scope::new(CancellationToken::new(), None);
         let mut job = Job::start(
@@ -249,7 +252,8 @@ async fn shell_cancellation_reports_the_requesting_signal() {
         assert_eq!(exit.code, None);
         assert!(exit.error.is_none());
         assert_eq!(scope.tasks.len(), 0);
-    }
+    });
+    futures_util::future::join_all(signals).await;
 }
 
 #[tokio::test]
@@ -394,18 +398,21 @@ async fn jobs_share_the_runner_process_and_cancellation_is_isolated() {
     std::mem::ManuallyDrop::into_inner(shell).shutdown_background();
 }
 
+/// Each utility runs in a job of its own, and the jobs run together: each is
+/// a login shell that reads the machine's profile first.
 #[cfg(unix)]
 #[tokio::test]
 async fn cancellation_reaps_external_programs_started_by_native_utilities() {
     use demi_runner::shell::{job::Job, scope::Scope};
     use tokio_util::sync::CancellationToken;
-    for script in [
+    let scripts = [
         "/bin/sh -c 'echo $$ > child.pid; exec /bin/sleep 60'",
         "printf x | xargs /bin/sh -c 'echo $$ > child.pid; exec /bin/sleep 60'",
         "find . -maxdepth 0 -exec /bin/sh -c 'echo $$ > child.pid; exec /bin/sleep 60' ';'",
         "find . -maxdepth 0 -exec /bin/sh -c 'echo $$ > child.pid; exec /bin/sleep 60' sh '{}' +",
         "printf x | sed 'e echo $$ > child.pid; exec /bin/sleep 60'",
-    ] {
+    ]
+    .map(|script| async move {
         let root = tempfile::tempdir().unwrap();
         let scope = Scope::new(CancellationToken::new(), None);
         let mut job = Job::start(
@@ -444,7 +451,8 @@ async fn cancellation_reaps_external_programs_started_by_native_utilities() {
             std::io::Error::last_os_error().raw_os_error(),
             Some(libc::ESRCH)
         );
-    }
+    });
+    futures_util::future::join_all(scripts).await;
 }
 
 #[tokio::test]

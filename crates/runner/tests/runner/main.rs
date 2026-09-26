@@ -1,9 +1,7 @@
-//! The runner's integration tests that can share a process. Each test binary
-//! costs a link and, on macOS, a first-launch check when it is new, so the
-//! tests live here. The few that change or saturate process-wide state keep
-//! binaries of their own: the open file limit, the global subscriber, the
-//! utilities' environment, and the load tests, which fill the process's one
-//! shell runtime that every test here shares.
+//! The runner's integration tests, in one process. Each test binary costs a
+//! link and, when it is new, a first-launch check, so the tests live here.
+//! Only the open-file test keeps a binary of its own (`tests/open_files.rs`):
+//! it lowers the process's open-file limit and holds every descriptor left.
 
 mod artifact_cache;
 mod command_client;
@@ -13,12 +11,15 @@ mod edit_tracking;
 mod fs;
 mod git;
 mod host;
+mod load;
 mod local;
 mod pipes;
 mod process;
+mod registration;
 mod services;
 mod shell;
 mod tasks;
+mod utilities;
 
 // Each test's whole-body timeout is a hang guard of 60 s, not a latency
 // check: the tests here share one shell runtime and run together, as a
