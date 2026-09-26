@@ -692,7 +692,8 @@ pub(crate) fn execute_external_command(
 
     if let Some(host) = context.shell.execution_host() {
         let outputs = forward_external_outputs(&context, &mut cmd)?;
-        return Ok(ExecutionSpawnResult::StartedProcess(host.spawn(cmd)?.with_outputs(outputs)));
+        let child = host.spawn(cmd, context.shell.child_attributes())?;
+        return Ok(ExecutionSpawnResult::StartedProcess(child.with_outputs(outputs)));
     }
 
     match sys::process::spawn(cmd) {

@@ -59,11 +59,6 @@ pub const UTILITIES: &[(&str, Entry)] = &[
     ("rg", ripgrep::uumain),
 ];
 
-/// Whether a job runs `name` in process.
-pub fn is_utility(name: &str) -> bool {
-    UTILITIES.iter().any(|(utility, _)| *utility == name)
-}
-
 #[cfg(unix)]
 fn stat(args: Vec<std::ffi::OsString>) -> i32 {
     uu_stat::uumain(args.into_iter())
