@@ -332,6 +332,16 @@ is not used), because it starts cold and is deleted afterwards.
 7. Report: what changed, files, tests run and results, deviations, open
    questions, design gaps.
 
+## Paused (2026-09-26, by the user)
+
+Everything is paused; no agent runs. Work is on pushed branches:
+`go/wip/E1-storage`, `go/wip/F4b-contracts` (round 3 fixes f700686b, awaiting
+its third verification; then merge, then F4c with the machineswire removal and
+imagemanifest), `go/wip/M1-machines` (built against a local copy of F4b's
+runnerwire), plus the earlier `go/wip/S1-shell`, `go/wip/T1a-text`,
+`go/wip/T0-corpora`. To resume: re-verify F4b, merge it, then continue E1, M1
+and F4c from their branches (new agents, with this plan and their briefs).
+
 ## Status
 
 | WP | Slot | State | Notes |
