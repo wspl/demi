@@ -66,8 +66,6 @@ export interface LiveState {
 export interface LiveSessionOptions {
   open: OpenLiveStream
   platform: 'mac' | 'windows' | 'linux' | 'other'
-  /** A user operation; the product reports conversation activity. */
-  onOperation?: () => void
   /** Text the watched tab copied, for the viewer's own clipboard. */
   onClipboard?: (text: string) => void
   /** The browser's tabs, each time the view reports them. */
@@ -119,8 +117,6 @@ export class LiveSession {
   private panelReport: { panel: PanelSize; ratio: number; screen: PanelSize } | null = null
   /** The page closed this view; nothing reopens it. */
   private done = false
-  /** The first operation is activity; then at most every 30 seconds. */
-  private operated = Number.NEGATIVE_INFINITY
 
   constructor(private readonly options: LiveSessionOptions) {
     this.received = this.time()
@@ -232,12 +228,6 @@ export class LiveSession {
       return
     }
     this.send(message)
-    const now = this.time()
-    // Watching is not activity; operating is, at most every 30 seconds.
-    if (now - this.operated >= 30_000) {
-      this.operated = now
-      this.options.onOperation?.()
-    }
   }
 
   private receive(reader: LiveFrameReader, bytes: Uint8Array): void {

@@ -59,7 +59,7 @@ pub(super) async fn claim(
         .create_device(
             user.id.clone(),
             pending.runner.name.clone(),
-            pending.runner.platform.clone(),
+            pending.runner.platform,
             TokenHash::of(token.expose()),
         )
         .await?;

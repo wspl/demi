@@ -1,21 +1,24 @@
 //! Uploads (`web-api.md` § Uploads and media, `backend.md` § Media by
 //! reference): a file's bytes go to the caller's blobs with its record, the
-//! answer says what the backend read from them, and a message that names the
-//! upload writes the file to the conversation's Host, gives the model the
-//! file's native medium and record, and shows the page the medium by
-//! reference. No test calls a real model.
+//! answer says what the backend read from them, and a message or a steer
+//! that names the upload writes the file to the conversation's Host, gives
+//! the model the file's native medium and record, and shows the page the
+//! medium by reference. A frame whose media cannot be stored reaches the
+//! page as an error, and the frames after it still arrive. No test calls a
+//! real model.
 
 use demi_agent::testing::model_of;
-use demi_agent_protocol::{ClientContent, ClientFrame};
-use demi_core::{Block, MediaSource, TurnId, UserContentBlock};
+use demi_agent_protocol::{ClientContent, ClientFrame, ServerFrame, SteerOutcome};
+use demi_core::{Block, BlockId, FileExtension, MediaSource, SessionPhase, TurnId, UserContentBlock};
 use demi_provider::testing::MockVendor;
 use demi_web_api::attachments::{ATTACHMENT_MAX_BYTES, AttachmentAnswer, AttachmentDto};
 use demi_web_api::auth::Role;
 use demi_web_api::error::ErrorCode;
 use reqwest::{Method, StatusCode};
+use serde_json::json;
 use sha2::{Digest as _, Sha256};
 
-use crate::conversations::{FIRST, Socket, anthropic, answer, create, on_device, settled, transcript};
+use crate::conversations::{FIRST, Socket, anthropic, answer, create, on_device, send, settled, tool_use, transcript};
 use crate::support::{Answer, Harness, Session, TestBackend, answer as read};
 
 /// A PNG image's first bytes, from which the backend reads its type.
@@ -34,7 +37,9 @@ async fn upload(backend: &TestBackend, session: &Session, name: &str, media_type
     uploaded.json::<AttachmentAnswer>().attachment
 }
 
-fn with_upload(id: &str, text: &str, uploads: &[(&AttachmentDto, &str)]) -> ClientFrame {
+/// A text and the uploads it names under their file names, as the
+/// composer sends them.
+fn naming(text: &str, uploads: &[(&AttachmentDto, &str)]) -> Vec<ClientContent> {
     let mut content = vec![ClientContent::Text { text: text.into() }];
     for (attachment, file_name) in uploads {
         content.push(ClientContent::Upload {
@@ -42,10 +47,21 @@ fn with_upload(id: &str, text: &str, uploads: &[(&AttachmentDto, &str)]) -> Clie
             file_name: (*file_name).to_owned(),
         });
     }
+    content
+}
+
+fn with_upload(id: &str, text: &str, uploads: &[(&AttachmentDto, &str)]) -> ClientFrame {
     ClientFrame::Send {
         message_id: TurnId::try_from(id).unwrap(),
-        content,
+        content: naming(text, uploads),
     }
+}
+
+/// The model's shell call that waits until the file `go` appears where the
+/// conversation works.
+fn wait_for_go() -> demi_provider::testing::MockResponse {
+    let script = "until [ -f go ]; do sleep 0.05; done";
+    tool_use("toolu_wait", "shell_exec", &json!({ "description": "Wait", "script": script, "timeoutMs": 60_000 }))
 }
 
 #[tokio::test]
@@ -56,7 +72,7 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
     harness.add_user("ana@example.test", "ana-pass-1", Role::User);
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
-    let (paired, _root) = on_device(&harness, &backend, &master, FIRST).await;
+    let (paired, root) = on_device(&harness, &backend, &master, FIRST).await;
 
     // The answer says what the backend read from the bytes: a type it
     // recognizes, and a text file's opening, which the name decides.
@@ -135,5 +151,74 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
     socket.send(&with_upload("m2", "Once more", &[(&image, "shot.png")])).await;
     socket.until_idle().await;
     assert_eq!(std::fs::read(format!("{directory}/shot-2.png")).unwrap(), PNG);
+
+    // A steer names an upload as a message does: the file goes to the Host,
+    // and the running turn's next request reads its image and its record.
+    vendor.respond(wait_for_go());
+    vendor.respond(answer(&["Steered."], 1, 1));
+    socket.send(&send("m3", "Wait for the file")).await;
+    vendor.received(3).await;
+    let steer = ClientFrame::Steer {
+        steer_id: BlockId::try_from("s1").unwrap(),
+        content: naming("And this one", &[(&image, "shot.png")]),
+    };
+    socket.send(&steer).await;
+    let steered = socket.until(|frame| matches!(frame, ServerFrame::SteerResult { .. })).await;
+    assert!(
+        matches!(steered.last(), Some(ServerFrame::SteerResult { outcome: SteerOutcome::Accepted, .. })),
+        "{steered:?}"
+    );
+    std::fs::write(format!("{root}/go"), "").unwrap();
+    // The turn was running before the steer's answer came.
+    socket.until(|frame| matches!(frame, ServerFrame::Phase { phase: SessionPhase::Idle })).await;
+    assert_eq!(std::fs::read(format!("{directory}/shot-3.png")).unwrap(), PNG);
+    let continued = vendor.requests()[3].json()["messages"].to_string();
+    assert!(continued.contains("And this one") && continued.contains(&base64), "{continued}");
+    assert!(continued.contains(&format!("{directory}/shot-3.png")), "{continued}");
+    backend.close().await;
+}
+
+#[tokio::test]
+async fn a_frame_whose_media_cannot_be_stored_reaches_the_page_as_an_error_and_the_turn_goes_on() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    let (_paired, root) = on_device(&harness, &backend, &master, FIRST).await;
+    std::fs::write(format!("{root}/shot.png"), PNG).unwrap();
+    // The owner's blob namespace cannot be made, so nothing can be stored
+    // there: the object store's directory `blobs/<user>` is a file.
+    let blobs = harness.data_dir().join("blobs");
+    std::fs::create_dir_all(&blobs).unwrap();
+    std::fs::write(blobs.join(master.user.id.as_str()), "").unwrap();
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    let mut model = model_of(&provider, "claude-opus-4-8");
+    model.model.accepted_extensions = Some(vec![FileExtension::Png]);
+    socket.open(&model).await;
+
+    // The shell's stdout is a picture, which the tool's result carries to a
+    // model that reads PNG.
+    vendor.respond(tool_use(
+        "toolu_1",
+        "shell_exec",
+        &json!({ "description": "Show it", "script": "cat shot.png", "timeoutMs": 60_000 }),
+    ));
+    vendor.respond(answer(&["A picture."], 1, 1));
+    let turn = socket.chat("m1", "Show me the picture").await;
+
+    // The frame that brought the picture is an error, since no frame carries
+    // media bytes; the frames after it arrive, and the model read the
+    // picture all the same.
+    let failed = turn
+        .iter()
+        .position(|frame| matches!(frame, ServerFrame::Error { code, .. } if code.as_deref() == Some("frame_send_failed")))
+        .unwrap_or_else(|| panic!("{turn:?}"));
+    let later = serde_json::to_string(&turn[failed + 1..]).unwrap();
+    assert!(later.contains("A picture."), "{later}");
+    let base64 = data_encoding::BASE64.encode(&PNG);
+    assert!(!serde_json::to_string(&turn).unwrap().contains(&base64));
+    let continued = vendor.requests()[1].json()["messages"].to_string();
+    assert!(continued.contains(&base64), "{continued}");
     backend.close().await;
 }

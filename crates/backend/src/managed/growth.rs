@@ -48,7 +48,7 @@ impl Shard {
 
 #[cfg(test)]
 mod tests {
-    use demi_runner_protocol::wire::VolumeName;
+    use demi_runner_protocol::wire::{RunnerPlatform, VolumeName};
 
     use crate::auth::sessions::TokenHash;
     use crate::backend::Services;
@@ -63,7 +63,7 @@ mod tests {
         let owner = testing::master(&control).await.id;
         let cloud = control.managed_device_or_create(owner.clone()).await.unwrap().id;
         let laptop = control
-            .create_device(owner.clone(), "laptop".into(), "darwin".into(), TokenHash::of("laptop"))
+            .create_device(owner.clone(), "laptop".into(), RunnerPlatform::Darwin, TokenHash::of("laptop"))
             .await
             .unwrap()
             .id;

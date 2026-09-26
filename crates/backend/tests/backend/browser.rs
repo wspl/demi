@@ -1,15 +1,20 @@
 //! The conversation browser's tab routes (`web-api.md` § Conversation
 //! browser tabs), against the `demi.builtin` package the workspace built,
-//! on a paired device's real runner and on a Cloud that never started. No
-//! browser runs: the operations answer as a browser that does not run
-//! does, so no Chrome is needed. Opening a tab starts one, which the
-//! browser's own tests and the live view's acceptance cover.
+//! on a paired device's real runner, on a Cloud that never started, and on
+//! a running Cloud, which listing its tabs does not keep awake
+//! (`resource-lifecycle.md` § Activity). No browser runs: the operations
+//! answer as a browser that does not run does, so no Chrome is needed.
+//! Opening a tab starts one, which the browser's own tests and the live
+//! view's acceptance cover.
+
+use std::time::Duration;
 
 use demi_web_api::error::ErrorCode;
 use reqwest::StatusCode;
 use serde_json::{Value, json};
 
-use crate::support::{Harness, Session, TestBackend};
+use crate::cloud::{idle_after, the_cloud};
+use crate::support::{Harness, Session, TestBackend, eventually};
 
 /// A tab id the browser never gave out.
 const ABSENT: &str = "t_nosuchtabnosuchtabnosu";
@@ -101,6 +106,37 @@ async fn a_stopped_cloud_is_not_woken_to_list_close_or_move_its_tabs() {
     // Looking made no Cloud.
     let devices: Value = backend.get("/api/devices", Some(&master)).await.json();
     assert_eq!(devices["devices"], json!([]));
+    backend.close().await;
+}
+
+#[tokio::test]
+async fn listing_a_running_clouds_tabs_does_not_keep_it_awake() {
+    let mut harness = Harness::new().with_builtin_package();
+    // Longer than the time between two listings, so that listings counted
+    // as activity would keep the Cloud up: each one starts the browser's
+    // service again, about three seconds in a debug build.
+    harness.lifecycle = idle_after(Duration::from_secs(4));
+    harness.cloud.sweep = Duration::from_millis(50);
+    let (backend, master) = harness.start_set_up().await;
+    let id = conversation(&backend, &master).await;
+    // Reading the conversation's files wakes the Cloud it works on.
+    let listed = backend.get(&format!("/api/conversations/{id}/fs"), Some(&master)).await;
+    assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
+    let device = the_cloud(&harness);
+    // The page lists the tabs again and again, and the Cloud idles and
+    // stops all the same. A listing the stop overtakes finds the runner
+    // gone.
+    eventually("the Cloud whose tabs are listed stops", || async {
+        let listed = backend.get(&tabs(&id), Some(&master)).await;
+        let answered = match listed.status {
+            StatusCode::OK => true,
+            StatusCode::CONFLICT => listed.refusal().1 == ErrorCode::DeviceOffline,
+            _ => false,
+        };
+        assert!(answered, "{}", String::from_utf8_lossy(&listed.body));
+        !harness.manager.running(&device)
+    })
+    .await;
     backend.close().await;
 }
 

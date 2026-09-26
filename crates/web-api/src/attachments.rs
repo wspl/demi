@@ -2,7 +2,7 @@
 //! caller's blobs with one attachment record, and a send, steer or edit
 //! frame names the upload by its id.
 
-use demi_core::{BlobRef, Timestamp};
+use demi_core::{BlobRef, MAX_SAFE_INTEGER, Timestamp};
 use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -36,6 +36,7 @@ pub struct AttachmentAnswer {
 pub struct AttachmentDto {
     pub id: AttachmentId,
     pub media_type: String,
+    #[garde(range(max = MAX_SAFE_INTEGER))]
     pub size_bytes: u64,
     /// The bytes in the caller's blobs.
     pub sha256: BlobRef,
