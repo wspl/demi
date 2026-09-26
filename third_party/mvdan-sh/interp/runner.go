@@ -12,15 +12,15 @@ import (
 	"io"
 	"io/fs"
 	"iter"
+	"maps"
 	"math"
-	mathrand "math/rand/v2"
 	"os"
-	"path/filepath"
 	"runtime"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"mvdan.cc/sh/v3/expand"
@@ -38,8 +38,6 @@ const (
 	// shellReplyVar, or REPLY, is a special variable in Bash that is used to store the result of
 	// the select command or of the read command, when no variable name is specified
 	shellReplyVar = "REPLY"
-
-	fifoNamePrefix = "sh-interp-"
 )
 
 func (r *Runner) fillExpandConfig(ctx context.Context) {
@@ -84,25 +82,23 @@ func (r *Runner) fillExpandConfig(ctx context.Context) {
 			if len(ps.Stmts) == 0 { // nothing to do
 				return os.DevNull, nil
 			}
-
-			// We can't atomically create a random unused temporary FIFO.
-			// Similar to [os.CreateTemp],
-			// keep trying new random paths until one does not exist.
-			// We use a uint64 because a uint32 easily runs into retries.
-			var path string
-			try := 0
-			for {
-				path = filepath.Join(r.tempDir, fifoNamePrefix+strconv.FormatUint(mathrand.Uint64(), 16))
-				err := mkfifo(path, 0o666)
-				if err == nil {
-					break
-				}
-				if !os.IsExist(err) {
-					return "", fmt.Errorf("cannot create fifo: %v", err)
-				}
-				if try++; try > 100 {
-					return "", fmt.Errorf("giving up at creating fifo: %v", err)
-				}
+			// Like Bash, connect the substitution through a pipe and name the
+			// shell's end as "/dev/fd/N". The shell keeps that end open until
+			// the statement that expanded it finishes, so a command can open
+			// the path, and a subprocess finds it as [HandlerContext.Descriptors].
+			pr, pw, err := os.Pipe()
+			if err != nil {
+				return "", fmt.Errorf("cannot create pipe: %v", err)
+			}
+			shellEnd, substEnd := pr, pw
+			if ps.Op == syntax.CmdOut {
+				shellEnd, substEnd = pw, pr
+			}
+			fd, err := fileDescriptor(shellEnd)
+			if err != nil {
+				pr.Close()
+				pw.Close()
+				return "", fmt.Errorf("cannot create pipe: %v", err)
 			}
 
 			r2 := r.subshell(true)
@@ -114,46 +110,35 @@ func (r *Runner) fillExpandConfig(ctx context.Context) {
 				exit: new(exitStatus),
 			}
 			r.bgProcs = append(r.bgProcs, bg)
-			go func() {
+			r.procSubsts = append(r.procSubsts, procSubst{fd: fd, file: shellEnd})
+			if r.fds == nil {
+				r.fds = make(map[int]Descriptor)
+			}
+			if ps.Op == syntax.CmdOut {
+				r.fds[fd] = Descriptor{Writer: shellEnd}
+			} else {
+				r.fds[fd] = Descriptor{Reader: shellEnd}
+			}
+			r.goTask(func() {
 				defer func() {
 					*bg.exit = r2.exit
 					close(bg.done)
 				}()
+				defer substEnd.Close()
 				switch ps.Op {
 				case syntax.CmdIn:
-					f, err := os.OpenFile(path, os.O_WRONLY, 0)
-					if err != nil {
-						r.errf("cannot open fifo for stdout: %v\n", err)
-						return
-					}
-					r2.stdout = f
-					defer func() {
-						if err := f.Close(); err != nil {
-							r.errf("closing stdout fifo: %v\n", err)
-						}
-						os.Remove(path)
-					}()
+					r2.stdout = substEnd
 				case syntax.CmdOut:
-					f, err := os.OpenFile(path, os.O_RDONLY, 0)
-					if err != nil {
-						r.errf("cannot open fifo for stdin: %v\n", err)
-						return
-					}
-					r2.stdin = f
+					r2.stdin = substEnd
 					r2.stdout = stdout
-
-					defer func() {
-						f.Close()
-						os.Remove(path)
-					}()
 				default:
 					// Should only happen if we forgot a case above.
 					panic(fmt.Sprintf("unexpected process substitution operator: %q", ps.Op))
 				}
 				r2.stmts(ctx, ps.Stmts)
 				r2.exit.exiting = false // subshells don't exit the parent shell
-			}()
-			return path, nil
+			})
+			return "/dev/fd/" + strconv.Itoa(fd), nil
 		},
 	}
 	r.updateExpandOpts()
@@ -197,7 +182,7 @@ func (r *Runner) expandErr(err error) {
 	}
 	errMsg := err.Error()
 	fmt.Fprintln(r.stderr, errMsg)
-	_, unsetParam := errors.AsType[expand.UnsetParameterError](err)
+	_, unsetParam := internal.AsType[expand.UnsetParameterError](err)
 	switch {
 	case unsetParam, errMsg == "invalid indirect expansion":
 		// TODO: These errors are treated as fatal by bash.
@@ -271,6 +256,8 @@ func (r *Runner) handlerCtx(ctx context.Context, kind handlerKind, pos syntax.Po
 		Pos:            pos,
 		Stdout:         r.stdout,
 		Stderr:         r.stderr,
+		Descriptors:    maps.Clone(r.fds),
+		Umask:          r.umask,
 		LastExitStatus: int(r.lastExit.code),
 	}
 	if r.stdin != nil { // do not leave hc.Stdin as a typed nil
@@ -280,11 +267,30 @@ func (r *Runner) handlerCtx(ctx context.Context, kind handlerKind, pos syntax.Po
 }
 
 func (r *Runner) out(s string) {
-	io.WriteString(r.stdout, s)
+	_, err := io.WriteString(r.stdout, s)
+	r.brokenPipe(err)
 }
 
 func (r *Runner) outf(format string, a ...any) {
-	fmt.Fprintf(r.stdout, format, a...)
+	_, err := fmt.Fprintf(r.stdout, format, a...)
+	r.brokenPipe(err)
+}
+
+// brokenPipe notes that writing the shell's standard output failed because
+// nothing reads it; see [Runner.call].
+func (r *Runner) brokenPipe(err error) {
+	if errors.Is(err, syscall.EPIPE) {
+		r.pipeBroken = true
+	}
+}
+
+// goTask runs task on a new goroutine; see [Tasks].
+func (r *Runner) goTask(task func()) {
+	if r.spawn != nil {
+		r.spawn(task)
+		return
+	}
+	go task()
 }
 
 func (r *Runner) errf(format string, a ...any) {
@@ -311,33 +317,66 @@ func (r *Runner) stmt(ctx context.Context, st *syntax.Stmt) {
 		return
 	}
 	r.exit = exitStatus{}
+	substs := len(r.procSubsts)
 	if st.Background || st.Disown {
 		r2 := r.subshell(true)
 		st2 := *st
 		st2.Background = false
 		st2.Disown = false
+		bgCtx, kill := context.WithCancelCause(ctx)
 		bg := bgProc{
 			done: make(chan struct{}),
 			exit: new(exitStatus),
+			kill: kill,
 		}
 		r.bgProcs = append(r.bgProcs, bg)
-		go func() {
-			r2.Run(ctx, &st2)
+		r.goTask(func() {
+			defer kill(nil)
+			r2.Run(bgCtx, &st2)
 			r2.exit.exiting = false // subshells don't exit the parent shell
+			if killed, ok := context.Cause(bgCtx).(killedBy); ok {
+				// Like a process that the signal terminated.
+				r2.exit = exitStatus{code: uint8(128 + killed.signal)}
+			}
 			*bg.exit = r2.exit
 			close(bg.done)
-		}()
+		})
 	} else {
 		r.stmtSync(ctx, st)
 	}
+	r.closeProcSubsts(substs)
 	r.lastExit = r.exit
 }
 
+// procSubst is the shell's end of a process substitution.
+type procSubst struct {
+	fd   int
+	file *os.File
+}
+
+// closeProcSubsts closes the shell's ends of the process substitutions
+// expanded since there were n of them, as Bash does once the statement that
+// expanded them finishes. This gives a reading substitution its end of file,
+// and a writing one an error once it writes without a reader.
+func (r *Runner) closeProcSubsts(n int) {
+	for _, ps := range r.procSubsts[n:] {
+		delete(r.fds, ps.fd)
+		ps.file.Close()
+	}
+	clear(r.procSubsts[n:])
+	r.procSubsts = r.procSubsts[:n]
+}
+
 func (r *Runner) stmtSync(ctx context.Context, st *syntax.Stmt) {
-	oldIn, oldOut, oldErr := r.stdin, r.stdout, r.stderr
+	oldIn, oldOut, oldErr, oldFds := r.stdin, r.stdout, r.stderr, r.fds
+	if len(st.Redirs) > 0 {
+		// Redirections change a copy, which the shell keeps only for exec.
+		r.fds = maps.Clone(r.fds)
+	}
 	var closers []io.Closer
+	var released []Descriptor // descriptors closed by "N>&-" or "N<&-"
 	for _, rd := range st.Redirs {
-		cls, err := r.redir(ctx, rd)
+		cls, err := r.redir(ctx, rd, &released)
 		if err != nil {
 			if !r.exit.fatalExit {
 				// A fatal error from a handler is reported by [Runner.Run].
@@ -374,13 +413,45 @@ func (r *Runner) stmtSync(ctx context.Context, st *syntax.Stmt) {
 	if r.keepRedirs {
 		// The exec builtin made this statement's redirections apply to the
 		// shell itself, so don't undo them and keep their files open.
+		// A descriptor it closed is closed for good once no other refers to it.
 		r.keepRedirs = false
+		r.kept = append(r.kept, closers...)
+		for _, d := range released {
+			r.closeUnreferenced(d)
+		}
 	} else if len(st.Redirs) > 0 {
-		r.stdin, r.stdout, r.stderr = oldIn, oldOut, oldErr
+		r.stdin, r.stdout, r.stderr, r.fds = oldIn, oldOut, oldErr, oldFds
 		for _, cls := range closers {
 			cls.Close()
 		}
 	}
+}
+
+// closeUnreferenced closes the reader and writer of d when this shell opened
+// them with "exec" and none of its descriptors refers to them any more.
+// Files that a parent shell opened stay open, as they are shared with it.
+func (r *Runner) closeUnreferenced(d Descriptor) {
+	for _, end := range [...]any{d.Reader, d.Writer} {
+		i := slices.IndexFunc(r.kept, func(kept io.Closer) bool { return any(kept) == end })
+		if i < 0 || r.refersTo(end) {
+			continue
+		}
+		r.kept[i].Close()
+		r.kept = slices.Delete(r.kept, i, i+1)
+	}
+}
+
+// refersTo reports whether one of the shell's descriptors is end.
+func (r *Runner) refersTo(end any) bool {
+	if end == any(r.stdin) || end == any(r.stdout) || end == any(r.stderr) {
+		return true
+	}
+	for _, d := range r.fds {
+		if end == any(d.Reader) || end == any(d.Writer) {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *Runner) cmd(ctx context.Context, cm syntax.Command) {
@@ -498,7 +569,7 @@ func (r *Runner) cmd(ctx context.Context, cm syntax.Command) {
 				r.stmt(ctx, cm.Y)
 			}
 		case syntax.Pipe, syntax.PipeAll:
-			pr, pw, err := newPipe()
+			pr, pw, err := r.pipeHandler(r.handlerCtx(ctx, handlerKindPipe, cm.OpPos))
 			if err != nil {
 				r.exit.fatal(err) // not being able to create a pipe is rare but critical
 				return
@@ -513,7 +584,9 @@ func (r *Runner) cmd(ctx context.Context, cm syntax.Command) {
 			oldIn := r.stdin
 			r.stdin = pr
 			var wg sync.WaitGroup
-			wg.Go(func() {
+			wg.Add(1)
+			r.goTask(func() {
+				defer wg.Done()
 				r2.stmt(ctx, cm.X)
 				r2.exit.exiting = false // subshells don't exit the parent shell
 				pw.Close()
@@ -922,7 +995,7 @@ func (r *Runner) match(pat, name string) bool {
 	if err != nil {
 		// A malformed pattern simply does not match, like in bash.
 		// Any other error, such as an unsupported extended pattern, is reported.
-		if _, ok := errors.AsType[*pattern.SyntaxError](err); !ok {
+		if _, ok := internal.AsType[*pattern.SyntaxError](err); !ok {
 			r.expandErr(err)
 		}
 		return false
@@ -945,20 +1018,22 @@ func (r *Runner) stmts(ctx context.Context, stmts []*syntax.Stmt) {
 	}
 }
 
-func (r *Runner) hdocReader(rd *syntax.Redirect) (stdinFile, error) {
-	pr, pw, err := newPipe()
+// pipeFrom returns the read end of a pipe from which a task reads body.
+func (r *Runner) pipeFrom(ctx context.Context, body string) (io.ReadCloser, error) {
+	pr, pw, err := r.pipeHandler(r.handlerCtx(ctx, handlerKindPipe, todoPos))
 	if err != nil {
 		return nil, err
 	}
-	hdoc := r.hdocString(rd)
-	// We write to the pipe in a new goroutine,
+	// We write to the pipe in a new task,
 	// as pipe writes may block once the buffer gets full.
-	// We still construct and buffer the entire heredoc first,
-	// as doing it concurrently would lead to different semantics and be racy.
-	go func() {
-		io.WriteString(pw, hdoc)
+	// The body is built beforehand, as doing it concurrently
+	// would lead to different semantics and be racy.
+	r.goTask(func() {
+		// The write fails when the reader closes first,
+		// such as when the command does not read all of its input.
+		io.WriteString(pw, body)
 		pw.Close()
-	}()
+	})
 	return pr, nil
 }
 
@@ -1031,100 +1106,141 @@ func (r *Runner) hdocString(rd *syntax.Redirect) string {
 	return buf.String()
 }
 
-func (r *Runner) redir(ctx context.Context, rd *syntax.Redirect) (io.Closer, error) {
+// redir applies one redirection, returning what to close once the statement
+// finishes. A descriptor that it closes is added to released.
+func (r *Runner) redir(ctx context.Context, rd *syntax.Redirect, released *[]Descriptor) (io.Closer, error) {
+	fd := 1 // the output redirections below
+	switch rd.Op {
+	case syntax.RdrIn, syntax.RdrInOut, syntax.DplIn, syntax.Hdoc, syntax.DashHdoc, syntax.WordHdoc:
+		fd = 0
+	}
+	if rd.N != nil {
+		n, err := strconv.Atoi(rd.N.Value)
+		if err != nil || n < 0 {
+			return nil, fmt.Errorf("unsupported redirect fd: %v", rd.N.Value)
+		}
+		fd = n
+	}
 	// Note that Hdoc is nil for an empty here-document.
 	if rd.Op == syntax.Hdoc || rd.Op == syntax.DashHdoc {
-		pr, err := r.hdocReader(rd)
+		pr, err := r.pipeFrom(ctx, r.hdocString(rd))
 		if err != nil {
 			return nil, err
 		}
-		r.stdin = pr
+		r.setFd(fd, Descriptor{Reader: pr})
 		return pr, nil
-	}
-
-	orig := &r.stdout
-	if rd.N != nil {
-		switch rd.N.Value {
-		case "0":
-			// Note that the input redirects below always use stdin (0)
-			// because we don't support anything else right now.
-		case "1":
-			// The default for the output redirects below.
-		case "2":
-			orig = &r.stderr
-		default:
-			return nil, fmt.Errorf("unsupported redirect fd: %v", rd.N.Value)
-		}
 	}
 	arg := r.literal(rd.Word)
 	switch rd.Op {
 	case syntax.WordHdoc:
-		pr, pw, err := newPipe()
+		pr, err := r.pipeFrom(ctx, arg+"\n")
 		if err != nil {
 			return nil, err
 		}
-		r.stdin = pr
-		// We write to the pipe in a new goroutine,
-		// as pipe writes may block once the buffer gets full.
-		go func() {
-			io.WriteString(pw, arg)
-			io.WriteString(pw, "\n")
-			pw.Close()
-		}()
+		r.setFd(fd, Descriptor{Reader: pr})
 		return pr, nil
-	case syntax.DplOut:
-		switch arg {
-		case "1":
-			*orig = r.stdout
-		case "2":
-			*orig = r.stderr
-		case "-":
-			*orig = io.Discard // closing the output writer
-		default:
+	case syntax.DplOut, syntax.DplIn:
+		if arg == "-" {
+			if d, ok := r.fd(fd); ok {
+				*released = append(*released, d)
+			}
+			r.closeFd(fd)
+			return nil, nil
+		}
+		from, err := strconv.Atoi(arg)
+		if err != nil || from < 0 {
 			return nil, fmt.Errorf("unhandled %v arg: %q", rd.Op, arg)
 		}
+		d, ok := r.fd(from)
+		if !ok || (rd.Op == syntax.DplOut && d.Writer == nil) || (rd.Op == syntax.DplIn && d.Reader == nil) {
+			return nil, fmt.Errorf("%d: bad file descriptor", from)
+		}
+		r.setFd(fd, d)
 		return nil, nil
-	case syntax.RdrIn, syntax.RdrOut, syntax.AppOut,
+	case syntax.RdrIn, syntax.RdrInOut, syntax.RdrOut, syntax.RdrClob, syntax.AppOut,
 		syntax.RdrAll, syntax.AppAll:
 		// done further below
-	case syntax.DplIn:
-		switch arg {
-		case "-":
-			r.stdin = nil // closing the input file
-		default:
-			return nil, fmt.Errorf("unhandled %v arg: %q", rd.Op, arg)
-		}
-		return nil, nil
 	default:
 		return nil, fmt.Errorf("unhandled redirect op: %v", rd.Op)
 	}
 	mode := os.O_RDONLY
 	switch rd.Op {
+	case syntax.RdrInOut:
+		mode = os.O_RDWR | os.O_CREATE
 	case syntax.AppOut, syntax.AppAll:
 		mode = os.O_WRONLY | os.O_CREATE | os.O_APPEND
-	case syntax.RdrOut, syntax.RdrAll:
+	case syntax.RdrOut, syntax.RdrClob, syntax.RdrAll:
 		mode = os.O_WRONLY | os.O_CREATE | os.O_TRUNC
 	}
-	f, err := r.open(ctx, arg, mode, 0o644, false)
+	f, err := r.open(ctx, arg, mode, 0o666, false)
 	if err != nil {
 		return nil, err
 	}
 	switch rd.Op {
 	case syntax.RdrIn:
-		stdin, err := newStdinFile(f)
-		if err != nil {
-			return nil, err
-		}
-		r.stdin = stdin
-	case syntax.RdrOut, syntax.AppOut:
-		*orig = f
+		r.setFd(fd, Descriptor{Reader: f})
+	case syntax.RdrInOut:
+		r.setFd(fd, Descriptor{Reader: f, Writer: f})
+	case syntax.RdrOut, syntax.RdrClob, syntax.AppOut:
+		r.setFd(fd, Descriptor{Writer: f})
 	case syntax.RdrAll, syntax.AppAll:
 		r.stdout = f
 		r.stderr = f
-	default:
-		return nil, fmt.Errorf("unhandled redirect op: %v", rd.Op)
 	}
 	return f, nil
+}
+
+// fd returns the shell's open descriptor n.
+func (r *Runner) fd(n int) (Descriptor, bool) {
+	switch n {
+	case 0:
+		return Descriptor{Reader: r.stdin}, r.stdin != nil
+	case 1:
+		return Descriptor{Writer: r.stdout}, r.stdout != io.Discard
+	case 2:
+		return Descriptor{Writer: r.stderr}, r.stderr != io.Discard
+	}
+	d, ok := r.fds[n]
+	return d, ok
+}
+
+// setFd makes d the shell's descriptor n. Standard input keeps only the
+// reader, and standard output and error only the writer.
+func (r *Runner) setFd(n int, d Descriptor) {
+	switch n {
+	case 0:
+		r.stdin = d.Reader
+	case 1:
+		r.stdout = d.Writer
+		if d.Writer == nil {
+			r.stdout = io.Discard
+		}
+	case 2:
+		r.stderr = d.Writer
+		if d.Writer == nil {
+			r.stderr = io.Discard
+		}
+	default:
+		if r.fds == nil {
+			r.fds = make(map[int]Descriptor)
+		}
+		r.fds[n] = d
+	}
+}
+
+// closeFd closes the shell's descriptor n. Output to a closed standard
+// output or error is discarded.
+func (r *Runner) closeFd(n int) {
+	switch n {
+	case 0:
+		r.stdin = nil
+	case 1:
+		r.stdout = io.Discard
+	case 2:
+		r.stderr = io.Discard
+	default:
+		delete(r.fds, n)
+	}
 }
 
 func (r *Runner) loopStmtsBroken(ctx context.Context, stmts []*syntax.Stmt) bool {
@@ -1182,6 +1298,12 @@ func (r *Runner) call(ctx context.Context, pos syntax.Pos, args []string) {
 	}
 	if IsBuiltin(name) {
 		r.exit = r.builtin(ctx, pos, name, args[1:])
+		if r.pipeBroken {
+			// Exit like the SIGPIPE signal makes Bash exit. Otherwise, a loop
+			// such as "while :; do echo y; done | head -n1" would never end.
+			r.pipeBroken = false
+			r.exit = exitStatus{code: uint8(128 + sigPipe), exiting: true}
+		}
 		return
 	}
 	r.exec(ctx, pos, args)
@@ -1192,19 +1314,19 @@ func (r *Runner) exec(ctx context.Context, pos syntax.Pos, args []string) {
 }
 
 func (r *Runner) open(ctx context.Context, path string, flags int, mode os.FileMode, print bool) (io.ReadWriteCloser, error) {
-	// If we are opening a FIFO temporary file created by the interpreter itself,
-	// don't pass this along to the open handler as it will not work at all
-	// unless [os.OpenFile] is used directly with it.
-	// Matching by directory and basename prefix isn't perfect, but works.
-	//
-	// If we want FIFOs to use a handler in the future, they probably
-	// need their own separate handler API matching Unix-like semantics.
-	dir, name := filepath.Split(path)
-	dir = strings.TrimSuffix(dir, "/")
-	if dir == r.tempDir && strings.HasPrefix(name, fifoNamePrefix) {
-		return os.OpenFile(path, flags, mode)
+	// A path such as "/dev/stderr" names the shell's own descriptor, not the
+	// one the process has under that number.
+	if fd, ok := DescriptorPath(path); ok {
+		d, ok := r.fd(fd)
+		if !ok {
+			err := &os.PathError{Op: "open", Path: path, Err: fs.ErrNotExist}
+			if print {
+				r.errf("%v\n", err)
+			}
+			return nil, err
+		}
+		return descriptorFile{d}, nil
 	}
-
 	f, err := r.openHandler(r.handlerCtx(ctx, handlerKindOpen, todoPos), path, flags, mode)
 	// TODO: support wrapped PathError returned from openHandler.
 	switch err.(type) {
@@ -1234,3 +1356,48 @@ func (r *Runner) access(ctx context.Context, name string, mode AccessMode) error
 	path := absPath(r.Dir, name)
 	return r.accessHandler(r.handlerCtx(ctx, handlerKindAccess, todoPos), path, mode)
 }
+
+// DescriptorPath returns the shell descriptor that path names:
+// "/dev/stdin", "/dev/stdout" and "/dev/stderr" name 0, 1 and 2,
+// and "/dev/fd/N" names N.
+func DescriptorPath(path string) (int, bool) {
+	switch path {
+	case "/dev/stdin":
+		return 0, true
+	case "/dev/stdout":
+		return 1, true
+	case "/dev/stderr":
+		return 2, true
+	}
+	number, ok := strings.CutPrefix(path, "/dev/fd/")
+	if !ok {
+		return 0, false
+	}
+	fd, err := strconv.Atoi(number)
+	if err != nil || fd < 0 {
+		return 0, false
+	}
+	return fd, true
+}
+
+// descriptorFile is a shell descriptor opened by its path, such as
+// "/dev/stderr". Closing it leaves the descriptor open.
+type descriptorFile struct {
+	d Descriptor
+}
+
+func (f descriptorFile) Read(p []byte) (int, error) {
+	if f.d.Reader == nil {
+		return 0, syscall.EBADF
+	}
+	return f.d.Reader.Read(p)
+}
+
+func (f descriptorFile) Write(p []byte) (int, error) {
+	if f.d.Writer == nil {
+		return 0, syscall.EBADF
+	}
+	return f.d.Writer.Write(p)
+}
+
+func (descriptorFile) Close() error { return nil }

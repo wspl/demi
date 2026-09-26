@@ -6,7 +6,6 @@ package interp_test
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"math/bits"
@@ -127,7 +126,7 @@ func TestMain(m *testing.M) {
 		)
 		ctx := context.Background()
 		if err := runner.Run(ctx, file); err != nil {
-			if es, ok := errors.AsType[interp.ExitStatus](err); ok {
+			if es, ok := internal.AsType[interp.ExitStatus](err); ok {
 				os.Exit(int(es))
 			}
 
@@ -1558,19 +1557,87 @@ var runTests = []runTest{
 	// redirects
 	{
 		"echo foo >&5",
-		"unhandled >& arg: \"5\"\nexit status 1 #JUSTERR",
+		"5: bad file descriptor\nexit status 1 #JUSTERR",
 	},
 	{
-		"echo foo 5>a",
-		"unsupported redirect fd: 5\nexit status 1 #IGNORE",
+		"echo foo 5>a; cat a",
+		"foo\n",
 	},
 	{
-		"echo foo >|a",
-		"unhandled redirect op: >|\nexit status 1 #IGNORE",
+		"echo foo >|a; cat a",
+		"foo\n",
 	},
 	{
-		"echo foo >a; read -r line <>a",
-		"unhandled redirect op: <>\nexit status 1 #IGNORE",
+		"echo foo >a; read -r line <>a; echo $line",
+		"foo\n",
+	},
+	{
+		"exec 3>a; echo foo >&3; exec 3>&-; echo bar >&3; cat a",
+		"3: bad file descriptor\nfoo\n #JUSTERR",
+	},
+	{
+		"exec 3>>a; echo foo >&3; echo bar 1>&3; exec 3>&-; cat a",
+		"foo\nbar\n",
+	},
+	{
+		"echo foo 3>&1 >&3",
+		"foo\n",
+	},
+	{
+		"echo foo >a; exec 4<a; read -r line <&4; echo $line",
+		"foo\n",
+	},
+	{
+		"echo foo >/dev/stderr 2>&1 | sed 's/o/a/g'",
+		"foo\n",
+	},
+	{
+		"echo foo 2>&1 >/dev/stderr | sed 's/o/a/g'",
+		"faa\n",
+	},
+	{
+		"exec 3>a; echo foo >/dev/fd/3; cat a",
+		"foo\n",
+	},
+	{
+		"cat <(echo foo) <(echo bar)",
+		"foo\nbar\n",
+	},
+	{
+		"echo <(true) | cut -c1-8",
+		"/dev/fd/\n",
+	},
+	{
+		"while :; do echo y; done | head -n1",
+		"y\n",
+	},
+	{
+		"(while :; do echo y; done; echo unreachable >&2) | head -n1",
+		"y\n",
+	},
+	{
+		"umask 027; umask; umask -S; umask -p",
+		"0027\nu=rwx,g=rx,o=\numask 0027\n",
+	},
+	{
+		"umask u=rwx,g=rx,o=; umask; umask g-x,o+r; umask; (umask 077); umask",
+		"0027\n0033\n0033\n",
+	},
+	{
+		"sleep 10 & kill $!; wait $!; echo $?",
+		"143\n",
+	},
+	{
+		"sleep 10 & kill -9 $!; wait $!; echo $?; sleep 10 & kill -s KILL $!; wait $!; echo $?",
+		"137\n137\n",
+	},
+	{
+		"(sleep 10; echo unreachable) & kill -TERM $!; wait; echo done",
+		"done\n",
+	},
+	{
+		"umask 0999",
+		"umask: 0999: octal number out of range\nexit status 1 #JUSTERR",
 	},
 	{
 		"echo foo >&1 | sed 's/o/a/g'",
@@ -5490,7 +5557,7 @@ func TestRunnerIncremental(t *testing.T) {
 	defer cancel()
 	for _, stmt := range file.Stmts {
 		err := r.Run(ctx, stmt)
-		if _, ok := errors.AsType[interp.ExitStatus](err); !ok && err != nil {
+		if _, ok := internal.AsType[interp.ExitStatus](err); !ok && err != nil {
 			// Keep track of unexpected errors.
 			b.WriteString(err.Error())
 		}
@@ -5515,7 +5582,7 @@ func TestRunnerIncrementalExitTrap(t *testing.T) {
 	var exit interp.ExitStatus
 	for _, stmt := range file.Stmts {
 		err := r.Run(ctx, stmt)
-		if es, ok := errors.AsType[interp.ExitStatus](err); ok {
+		if es, ok := internal.AsType[interp.ExitStatus](err); ok {
 			exit = es
 		} else if err != nil {
 			b.WriteString(err.Error())
@@ -5792,6 +5859,7 @@ func TestRunnerNonFileStdin(t *testing.T) {
 	if err := r.Run(ctx, file); err != nil {
 		cb.WriteString(err.Error())
 	}
-	// TODO: just like with heredocs, the first print_ok call consumes all stdin.
-	qt.Assert(t, qt.Equals(cb.String(), "a\nexec ok\nb\nexec ok\nc\nexec ok\n"))
+	// The default exec handler lets os/exec copy a reader that is not a file,
+	// so the first print_ok call consumes all stdin.
+	qt.Assert(t, qt.Equals(cb.String(), "a\nexec ok\n"))
 }

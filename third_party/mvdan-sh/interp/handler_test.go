@@ -7,7 +7,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -22,6 +21,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"mvdan.cc/sh/v3/internal"
 	"mvdan.cc/sh/v3/interp"
 	"mvdan.cc/sh/v3/syntax"
 )
@@ -564,7 +564,7 @@ func TestKillTimeout(t *testing.T) {
 				}()
 				err = r.Run(ctx, file)
 				if test.forcedKill {
-					if _, ok := errors.AsType[interp.ExitStatus](err); ok || err == nil {
+					if _, ok := internal.AsType[interp.ExitStatus](err); ok || err == nil {
 						t.Error("command was not force-killed")
 					}
 				} else {

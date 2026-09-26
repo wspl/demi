@@ -129,7 +129,10 @@ func (o *overlayEnviron) Each(f func(name string, vr expand.Variable) bool) {
 	}
 }
 
-func execEnv(env expand.Environ) []string {
+// ExecEnv returns the variables of env that a program started by an
+// [ExecHandlerFunc] receives: the exported ones with a string value,
+// as "name=value".
+func ExecEnv(env expand.Environ) []string {
 	list := make([]string, 0, 64)
 	for name, vr := range env.Each {
 		if !vr.IsSet() {

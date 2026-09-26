@@ -12,7 +12,6 @@ package interp
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -26,6 +25,7 @@ import (
 	"time"
 
 	"mvdan.cc/sh/v3/expand"
+	"mvdan.cc/sh/v3/internal"
 	"mvdan.cc/sh/v3/syntax"
 )
 
@@ -42,11 +42,6 @@ import (
 type Runner struct {
 	// Env specifies the initial environment for the interpreter, which must
 	// not be nil. It can only be set via [Env].
-	//
-	// If it includes a TMPDIR variable describing an absolute directory,
-	// it is used as the directory in which to create temporary files needed
-	// for the interpreter's use, such as named pipes for process substitutions.
-	// Otherwise, [os.TempDir] is used.
 	Env expand.Environ
 
 	// writeEnv overlays [Runner.Env] so that we can write environment variables
@@ -56,9 +51,6 @@ type Runner struct {
 	// Dir specifies the working directory of the command, which must be an
 	// absolute path. It can only be set via [Dir].
 	Dir string
-
-	// tempDir is either $TMPDIR from [Runner.Env], or [os.TempDir].
-	tempDir string
 
 	// Params are the current shell parameters, e.g. from running a shell
 	// file or calling a function. Accessible via the $@/$* family of vars.
@@ -100,7 +92,32 @@ type Runner struct {
 	// accessHandler is a function responsible for checking file access. It must be non-nil.
 	accessHandler AccessHandlerFunc
 
-	stdin  stdinFile // e.g. the read end of a pipe
+	// pipeHandler creates pipes for pipelines and here-documents. It must be non-nil.
+	pipeHandler PipeHandlerFunc
+
+	// spawn starts the interpreter's concurrent work; see [Tasks].
+	// It may be nil, in which case a go statement is used.
+	spawn func(task func())
+
+	// umask is the file mode creation mask, set by [Umask] and the umask builtin.
+	umask fs.FileMode
+
+	// fds holds the open file descriptors above 2, such as one opened by
+	// "exec 3>file" or the parent's end of a process substitution.
+	fds map[int]Descriptor
+
+	// pipeBroken is set when writing standard output failed with EPIPE.
+	pipeBroken bool
+
+	// kept holds the files that "exec" redirections opened for this shell,
+	// which it closes once "exec N>&-" leaves no descriptor referring to one.
+	kept []io.Closer
+
+	// procSubsts holds the shell's ends of the process substitutions
+	// expanded by the statement being run, closed once it finishes.
+	procSubsts []procSubst
+
+	stdin  io.Reader // e.g. the read end of a pipe
 	stdout io.Writer
 	stderr io.Writer
 
@@ -157,7 +174,8 @@ type Runner struct {
 	origDir    string
 	origParams []string
 	origOpts   runnerOpts
-	origStdin  stdinFile
+	origUmask  fs.FileMode
+	origStdin  io.Reader
 	origStdout io.Writer
 	origStderr io.Writer
 
@@ -239,9 +257,9 @@ func (e *exitStatus) fromHandlerError(err error) {
 	if err == nil {
 		return
 	}
-	if exit, ok := errors.AsType[errBuiltinExitStatus](err); ok {
+	if exit, ok := internal.AsType[errBuiltinExitStatus](err); ok {
 		*e = exitStatus(exit)
-	} else if es, ok := errors.AsType[ExitStatus](err); ok {
+	} else if es, ok := internal.AsType[ExitStatus](err); ok {
 		e.err = err
 		e.code = uint8(es)
 	} else {
@@ -255,6 +273,23 @@ type bgProc struct {
 	done chan struct{}
 
 	exit *exitStatus
+
+	// kill stops the background process on behalf of the kill builtin,
+	// with the signal as the cause; see [killedBy].
+	kill context.CancelCauseFunc
+}
+
+// killedBy is the cause of a background process's context
+// when the kill builtin stopped it.
+type killedBy struct{ signal int }
+
+func (k killedBy) Error() string { return fmt.Sprintf("killed by signal %d", k.signal) }
+
+// Descriptor is one open file descriptor of the shell. Reader is set when it
+// is open for reading, Writer when it is open for writing, and both for "<>".
+type Descriptor struct {
+	Reader io.Reader
+	Writer io.Writer
 }
 
 type alias struct {
@@ -275,6 +310,8 @@ func New(opts ...RunnerOption) (*Runner, error) {
 		readDirHandler: DefaultReadDirHandler2(),
 		statHandler:    DefaultStatHandler(),
 		accessHandler:  DefaultAccessHandler(),
+		pipeHandler:    DefaultPipeHandler(),
+		umask:          0o022,
 	}
 	r.dirStack = r.dirBootstrap[:0]
 	// turn "on" the default Bash options
@@ -597,30 +634,51 @@ func AccessHandler(f AccessHandlerFunc) RunnerOption {
 	}
 }
 
+// PipeHandler sets the pipe handler. See [PipeHandlerFunc] for more info.
+func PipeHandler(f PipeHandlerFunc) RunnerOption {
+	return func(r *Runner) error {
+		r.pipeHandler = f
+		return nil
+	}
+}
+
+// Tasks sets how the interpreter starts its concurrent work: background
+// commands, pipeline stages, process substitutions and here-document writers.
+// Each task is a function that spawn must run on a new goroutine. By default,
+// the interpreter uses a go statement.
+//
+// [Runner.Run] does not wait for background commands and process
+// substitutions; an embedder that must know when all of the interpreter's work
+// has finished counts the tasks it is given.
+func Tasks(spawn func(task func())) RunnerOption {
+	return func(r *Runner) error {
+		r.spawn = spawn
+		return nil
+	}
+}
+
+// Umask sets the initial file mode creation mask, which the umask builtin
+// reports and changes, and which handlers receive via [HandlerContext.Umask].
+// The interpreter does not apply it itself; the default is 0o022.
+func Umask(mask fs.FileMode) RunnerOption {
+	return func(r *Runner) error {
+		r.umask = mask & fs.ModePerm
+		return nil
+	}
+}
+
 // StdIO configures an interpreter's standard input, standard output, and
 // standard error. If out or err are nil, they default to a writer that discards
 // the output.
 //
-// Note that providing a non-nil standard input other than [*os.File] will require
-// an [os.Pipe] and spawning a goroutine to copy into it,
-// as an [os.File] is the only way to share a reader with subprocesses.
-// This may cause the interpreter to consume the entire reader.
-// See [os/exec.Cmd.Stdin].
-//
-// When providing an [*os.File] as standard input, consider using an [os.Pipe]
-// as it has the best chance to support cancellable reads via [os.File.SetReadDeadline],
-// so that cancelling the runner's context can stop a blocked standard input read.
-//
-// On js/wasm, where there are no subprocesses nor OS pipes, any reader is used
-// directly, and read deadlines are not supported: cancelling the runner's
-// context cannot stop a blocked standard input read.
+// Any reader is used directly as standard input; an [ExecHandlerFunc] that
+// starts a subprocess decides how to hand it over. The read builtin cancels a
+// blocked read when the reader has a SetReadDeadline method, as [*os.File]
+// and [net.Conn] do; otherwise cancelling the runner's context cannot stop a
+// blocked standard input read.
 func StdIO(in io.Reader, out, err io.Writer) RunnerOption {
 	return func(r *Runner) error {
-		stdin, _err := newStdinFile(in)
-		if _err != nil {
-			return _err
-		}
-		r.stdin = stdin
+		r.stdin = in
 		if out == nil {
 			out = io.Discard
 		}
@@ -853,6 +911,7 @@ func (r *Runner) Reset() {
 		r.origDir = r.Dir
 		r.origParams = r.Params
 		r.origOpts = r.opts
+		r.origUmask = r.umask
 		r.origStdin = r.stdin
 		r.origStdout = r.stdout
 		r.origStderr = r.stderr
@@ -868,25 +927,18 @@ func (r *Runner) Reset() {
 		for _, mw := range slices.Backward(r.execMiddlewares) {
 			r.execHandler = mw(r.execHandler)
 		}
-		// Fill tempDir; only need to do this once given that Env will not change.
-		if dir := r.Env.Get("TMPDIR").String(); filepath.IsAbs(dir) {
-			r.tempDir = dir
-		} else {
-			r.tempDir = os.TempDir()
-		}
-		// Clean it as we will later do a string prefix match.
-		r.tempDir = filepath.Clean(r.tempDir)
 	}
 	// reset the internal state
 	*r = Runner{
 		Env:            r.Env,
-		tempDir:        r.tempDir,
 		callHandler:    r.callHandler,
 		execHandler:    r.execHandler,
 		openHandler:    r.openHandler,
 		readDirHandler: r.readDirHandler,
 		statHandler:    r.statHandler,
 		accessHandler:  r.accessHandler,
+		pipeHandler:    r.pipeHandler,
+		spawn:          r.spawn,
 
 		// These can be set by functions like [Dir] or [Params], but
 		// builtins can overwrite them; reset the fields to whatever the
@@ -894,6 +946,7 @@ func (r *Runner) Reset() {
 		Dir:    r.origDir,
 		Params: r.origParams,
 		opts:   r.origOpts,
+		umask:  r.origUmask,
 		stdin:  r.origStdin,
 		stdout: r.origStdout,
 		stderr: r.origStderr,
@@ -901,6 +954,7 @@ func (r *Runner) Reset() {
 		origDir:    r.origDir,
 		origParams: r.origParams,
 		origOpts:   r.origOpts,
+		origUmask:  r.origUmask,
 		origStdin:  r.origStdin,
 		origStdout: r.origStdout,
 		origStderr: r.origStderr,
@@ -979,7 +1033,7 @@ func NewExitStatus(status uint8) error {
 //
 //go:fix inline
 func IsExitStatus(err error) (status uint8, ok bool) {
-	if es, ok := errors.AsType[ExitStatus](err); ok {
+	if es, ok := internal.AsType[ExitStatus](err); ok {
 		return uint8(es), true
 	}
 	return 0, false
@@ -1071,7 +1125,6 @@ func (r *Runner) subshell(background bool) *Runner {
 	// sensitive ones like [errgroup.Group], and to do deep copies of slices.
 	r2 := &Runner{
 		Dir:            r.Dir,
-		tempDir:        r.tempDir,
 		Params:         r.Params,
 		callHandler:    r.callHandler,
 		execHandler:    r.execHandler,
@@ -1079,6 +1132,10 @@ func (r *Runner) subshell(background bool) *Runner {
 		readDirHandler: r.readDirHandler,
 		statHandler:    r.statHandler,
 		accessHandler:  r.accessHandler,
+		pipeHandler:    r.pipeHandler,
+		spawn:          r.spawn,
+		umask:          r.umask,
+		fds:            maps.Clone(r.fds),
 		stdin:          r.stdin,
 		stdout:         r.stdout,
 		stderr:         r.stderr,

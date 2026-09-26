@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -1023,8 +1024,215 @@ func (r *Runner) builtin(ctx context.Context, pos syntax.Pos, name string, args 
 		}
 		r.setVar(arrayName, vr)
 
+	case "umask":
+		return r.umaskBuiltin(args)
+	case "kill":
+		return r.killBuiltin(ctx, pos, args)
 	default:
 		return failf(2, "%s: unsupported builtin\n", name)
+	}
+	return exit
+}
+
+// umaskBuiltin implements "umask [-p] [-S] [mode]".
+func (r *Runner) umaskBuiltin(args []string) (exit exitStatus) {
+	symbolic, reusable := false, false
+	fp := flagParser{remaining: args}
+	for fp.more() {
+		switch flag := fp.flag(); flag {
+		case "-S":
+			symbolic = true
+		case "-p":
+			reusable = true
+		default:
+			r.errf("umask: invalid option %q\n", flag)
+			exit.code = 2
+			return exit
+		}
+	}
+	args = fp.args()
+	switch len(args) {
+	case 0:
+	case 1:
+		mask, err := parseUmask(r.umask, args[0])
+		if err != nil {
+			r.errf("umask: %v\n", err)
+			exit.code = 1
+			return exit
+		}
+		r.umask = mask
+		return exit
+	default:
+		r.errf("umask: too many arguments\n")
+		exit.code = 2
+		return exit
+	}
+	value := fmt.Sprintf("%04o", uint32(r.umask))
+	if symbolic {
+		value = symbolicUmask(r.umask)
+	}
+	if reusable {
+		if symbolic {
+			r.outf("umask -S %s\n", value)
+		} else {
+			r.outf("umask %s\n", value)
+		}
+		return exit
+	}
+	r.outf("%s\n", value)
+	return exit
+}
+
+// parseUmask parses an octal mask like "022", or a symbolic mode like
+// "u=rwx,g=rx,o=" or "g-w" that describes the permissions to allow.
+func parseUmask(current fs.FileMode, value string) (fs.FileMode, error) {
+	if value != "" && value[0] >= '0' && value[0] <= '9' {
+		mask, err := strconv.ParseUint(value, 8, 32)
+		if err != nil || mask > 0o777 {
+			return 0, fmt.Errorf("%s: octal number out of range", value)
+		}
+		return fs.FileMode(mask), nil
+	}
+	allowed := ^current & fs.ModePerm
+	for clause := range strings.SplitSeq(value, ",") {
+		i := strings.IndexAny(clause, "+-=")
+		if i < 0 {
+			return 0, fmt.Errorf("%s: invalid symbolic mode operator", value)
+		}
+		var who fs.FileMode
+		for _, c := range clause[:i] {
+			switch c {
+			case 'u':
+				who |= 0o700
+			case 'g':
+				who |= 0o070
+			case 'o':
+				who |= 0o007
+			case 'a':
+				who |= 0o777
+			default:
+				return 0, fmt.Errorf("%s: invalid symbolic mode character", value)
+			}
+		}
+		if who == 0 {
+			who = 0o777
+		}
+		var perm fs.FileMode
+		for _, c := range clause[i+1:] {
+			switch c {
+			case 'r':
+				perm |= 0o444
+			case 'w':
+				perm |= 0o222
+			case 'x':
+				perm |= 0o111
+			default:
+				return 0, fmt.Errorf("%s: invalid symbolic mode character", value)
+			}
+		}
+		switch clause[i] {
+		case '+':
+			allowed |= perm & who
+		case '-':
+			allowed &^= perm & who
+		case '=':
+			allowed = allowed&^who | perm&who
+		}
+	}
+	return ^allowed & fs.ModePerm, nil
+}
+
+// symbolicUmask describes the permissions that mask allows, like "umask -S".
+func symbolicUmask(mask fs.FileMode) string {
+	allowed := ^mask & fs.ModePerm
+	var sb strings.Builder
+	for i, who := range []string{"u", "g", "o"} {
+		if i > 0 {
+			sb.WriteByte(',')
+		}
+		sb.WriteString(who + "=")
+		bits := allowed >> (6 - 3*i)
+		for j, perm := range "rwx" {
+			if bits&(0o4>>j) != 0 {
+				sb.WriteRune(perm)
+			}
+		}
+	}
+	return sb.String()
+}
+
+// killBuiltin implements "kill [-s sig | -n num | -sig] id...". A background
+// command of this shell, named by "$!" as "g1" and so on, has no process to
+// signal: its context is cancelled, and "wait" reports it as terminated by the
+// signal. Any other process is signalled by the kill program found in PATH.
+func (r *Runner) killBuiltin(ctx context.Context, pos syntax.Pos, args []string) (exit exitStatus) {
+	failf := func(code uint8, format string, args ...any) exitStatus {
+		r.errf(format, args...)
+		exit.code = code
+		return exit
+	}
+	signal, _ := signalNumber("TERM")
+	var options []string // passed on to the kill program
+	rest := args
+	for len(rest) > 0 && strings.HasPrefix(rest[0], "-") && rest[0] != "-" {
+		arg := rest[0]
+		rest = rest[1:]
+		if arg == "--" {
+			break
+		}
+		var name string
+		switch arg {
+		case "-s", "-n":
+			if len(rest) == 0 {
+				return failf(2, "kill: %s: option requires an argument\n", arg)
+			}
+			name = rest[0]
+			options = append(options, arg, rest[0])
+			rest = rest[1:]
+		case "-l", "-L":
+			// Listing signals is left to the kill program.
+			r.exec(ctx, pos, append([]string{"kill"}, args...))
+			return r.exit
+		default:
+			name = arg[1:]
+			options = append(options, arg)
+		}
+		number, err := strconv.Atoi(name)
+		if err != nil {
+			var ok bool
+			number, ok = signalNumber(strings.ToUpper(name))
+			if !ok {
+				return failf(1, "kill: %s: invalid signal specification\n", name)
+			}
+		}
+		signal = number
+	}
+	if len(rest) == 0 {
+		return failf(2, "kill: usage: kill [-s sigspec | -n signum | -sigspec] pid ...\n")
+	}
+	var others []string
+	for _, arg := range rest {
+		id, ok := strings.CutPrefix(arg, "g")
+		if !ok {
+			others = append(others, arg)
+			continue
+		}
+		n := atoi(id)
+		if n <= 0 || n > int64(len(r.bgProcs)) {
+			r.errf("kill: %s: no such job\n", arg)
+			exit.code = 1
+			continue
+		}
+		bg := r.bgProcs[n-1]
+		if bg.kill != nil {
+			bg.kill(killedBy{signal: signal})
+		}
+	}
+	if len(others) > 0 {
+		r.exec(ctx, pos, slices.Concat([]string{"kill"}, options, []string{"--"}, others))
+		if !r.exit.ok() {
+			exit = r.exit
+		}
 	}
 	return exit
 }
@@ -1070,19 +1278,22 @@ func (r *Runner) readLine(ctx context.Context, raw bool) ([]byte, error) {
 	var line []byte
 	esc := false
 
-	stopc := make(chan struct{})
-	stop := context.AfterFunc(ctx, func() {
-		r.stdin.SetReadDeadline(time.Now())
-		close(stopc)
-	})
-	defer func() {
-		if !stop() {
-			// The AfterFunc was started.
-			// Wait for it to complete, and reset the file's deadline.
-			<-stopc
-			r.stdin.SetReadDeadline(time.Time{})
-		}
-	}()
+	// Cancel a blocked read when the reader supports deadlines.
+	if stdin, ok := r.stdin.(interface{ SetReadDeadline(time.Time) error }); ok {
+		stopc := make(chan struct{})
+		stop := context.AfterFunc(ctx, func() {
+			stdin.SetReadDeadline(time.Now())
+			close(stopc)
+		})
+		defer func() {
+			if !stop() {
+				// The AfterFunc was started.
+				// Wait for it to complete, and reset the file's deadline.
+				<-stopc
+				stdin.SetReadDeadline(time.Time{})
+			}
+		}()
+	}
 	for {
 		var buf [1]byte
 		n, err := r.stdin.Read(buf[:])

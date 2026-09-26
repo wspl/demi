@@ -8,16 +8,35 @@ package interp
 import (
 	"context"
 	"errors"
+	"os"
 	"os/user"
 	"strconv"
+	"strings"
 	"syscall"
 
 	"golang.org/x/sys/unix"
 	"mvdan.cc/sh/v3/syntax"
 )
 
-func mkfifo(path string, mode uint32) error {
-	return unix.Mkfifo(path, mode)
+// sigPipe is the number of the SIGPIPE signal.
+const sigPipe = int(syscall.SIGPIPE)
+
+// signalNumber returns the number of the signal named like "TERM" or "SIGTERM".
+func signalNumber(name string) (int, bool) {
+	number := unix.SignalNum("SIG" + strings.TrimPrefix(name, "SIG"))
+	return int(number), number != 0
+}
+
+// fileDescriptor returns the descriptor number of f without calling
+// [os.File.Fd], which would stop deadlines from working on it.
+func fileDescriptor(f *os.File) (int, error) {
+	conn, err := f.SyscallConn()
+	if err != nil {
+		return 0, err
+	}
+	var fd int
+	err = conn.Control(func(sysfd uintptr) { fd = int(sysfd) })
+	return fd, err
 }
 
 // defaultAccess is similar to checking the permission bits from [io/fs.FileInfo],

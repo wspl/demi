@@ -44,6 +44,7 @@ const (
 	handlerKindReadDir             // [ReadDirHandlerFunc2]
 	handlerKindStat                // [StatHandlerFunc]
 	handlerKindAccess              // [AccessHandlerFunc]
+	handlerKindPipe                // [PipeHandlerFunc]
 )
 
 // HandlerContext is the data passed to all the handler functions via [context.WithValue].
@@ -67,17 +68,22 @@ type HandlerContext struct {
 	// It may be invalid if the operation has no relevant position information.
 	Pos syntax.Pos
 
-	// TODO(v4): use an os.File for stdin below directly.
-
 	// Stdin is the interpreter's current standard input reader.
-	// It is always an [*os.File], except on js/wasm, where it may be
-	// any reader; the type here remains an [io.Reader]
-	// due to backwards compatibility.
+	// It is nil when standard input is closed, as by "<&-".
 	Stdin io.Reader
 	// Stdout is the interpreter's current standard output writer.
 	Stdout io.Writer
 	// Stderr is the interpreter's current standard error writer.
 	Stderr io.Writer
+
+	// Descriptors holds the interpreter's open file descriptors above 2,
+	// by number, such as one opened by "exec 3>file" or the parent's end
+	// of a process substitution, whose path is "/dev/fd/" and the number.
+	// It is nil when there are none.
+	Descriptors map[int]Descriptor
+
+	// Umask is the file mode creation mask; see [Umask].
+	Umask fs.FileMode
 
 	// LastExitStatus is the value that "$?" would hold when the handler is called.
 	// A [CallHandlerFunc] or [ExecHandlerFunc] runs as part of its own command,
@@ -149,11 +155,12 @@ func DefaultExecHandler(killTimeout time.Duration) ExecHandlerFunc {
 		newCmd := func() *exec.Cmd {
 			cmd := exec.CommandContext(ctx, path)
 			cmd.Args = args
-			cmd.Env = execEnv(hc.Env)
+			cmd.Env = ExecEnv(hc.Env)
 			cmd.Dir = hc.Dir
 			cmd.Stdin = hc.Stdin
 			cmd.Stdout = hc.Stdout
 			cmd.Stderr = hc.Stderr
+			cmd.ExtraFiles = extraFiles(hc.Descriptors)
 			if killTimeout > 0 && runtime.GOOS != "windows" {
 				// On cancellation, send an interrupt signal first, and let
 				// WaitDelay escalate to a kill signal if the process does not
@@ -212,6 +219,27 @@ func DefaultExecHandler(killTimeout time.Duration) ExecHandlerFunc {
 	}
 }
 
+// extraFiles returns the descriptors above 2 that are files, such as the
+// shell's ends of process substitutions, placed at their numbers
+// as [exec.Cmd.ExtraFiles] expects.
+func extraFiles(descriptors map[int]Descriptor) []*os.File {
+	var files []*os.File
+	for fd, d := range descriptors {
+		file, ok := d.Writer.(*os.File)
+		if !ok {
+			file, ok = d.Reader.(*os.File)
+		}
+		if !ok || fd < 3 {
+			continue
+		}
+		for len(files) <= fd-3 {
+			files = append(files, nil)
+		}
+		files[fd-3] = file
+	}
+	return files
+}
+
 // runScriptENOEXEC runs a file as a shell script with a new shell,
 // as POSIX requires when the kernel fails to execute it with ENOEXEC.
 // The new shell does not inherit functions or unexported variables.
@@ -235,7 +263,7 @@ func runScriptENOEXEC(ctx context.Context, hc HandlerContext, killTimeout time.D
 	}
 	r, err := New(
 		Dir(hc.Dir),
-		Env(expand.ListEnviron(execEnv(hc.Env)...)),
+		Env(expand.ListEnviron(ExecEnv(hc.Env)...)),
 		StdIO(hc.Stdin, hc.Stdout, hc.Stderr),
 		ExecHandler(DefaultExecHandler(killTimeout)),
 	)
@@ -376,7 +404,7 @@ func pathExts(env expand.Environ) []string {
 
 // OpenHandlerFunc is a handler which opens files.
 // It is called for all files that are opened directly by the shell,
-// such as in redirects, except for named pipes created by process substitutions.
+// such as in redirects.
 // The context includes a [HandlerContext] value.
 // Files opened by executed programs are not included.
 //
@@ -412,6 +440,15 @@ func DefaultOpenHandler() OpenHandlerFunc {
 		return os.OpenFile(path, flag, perm)
 	}
 }
+
+// PipeHandlerFunc is a handler which creates a pipe: for each pipeline, and
+// for each here-document or here-string, whose body a task writes into it.
+// The context includes a [HandlerContext] value.
+//
+// Closing the reader must make writes fail, and a write to a pipe without a
+// reader should fail with an error matching [syscall.EPIPE], so that the
+// interpreter stops a writing shell like the SIGPIPE signal would.
+type PipeHandlerFunc func(ctx context.Context) (io.ReadCloser, io.WriteCloser, error)
 
 // ReadDirHandlerFunc is a handler which reads directories. It is called during
 // shell globbing, if enabled.

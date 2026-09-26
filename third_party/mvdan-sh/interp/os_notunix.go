@@ -8,12 +8,36 @@ package interp
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
 
 	"mvdan.cc/sh/v3/syntax"
 )
 
-func mkfifo(path string, mode uint32) error {
-	return fmt.Errorf("unsupported")
+// sigPipe is the number that Unix gives the SIGPIPE signal.
+const sigPipe = 13
+
+// signalNumber knows the numbers that Unix gives the signals common to all
+// Unix systems, as there are no signals to send here.
+func signalNumber(name string) (int, bool) {
+	switch strings.TrimPrefix(name, "SIG") {
+	case "HUP":
+		return 1, true
+	case "INT":
+		return 2, true
+	case "QUIT":
+		return 3, true
+	case "KILL":
+		return 9, true
+	case "TERM":
+		return 15, true
+	}
+	return 0, false
+}
+
+// fileDescriptor is unsupported, as process substitutions are.
+func fileDescriptor(f *os.File) (int, error) {
+	return 0, fmt.Errorf("unsupported")
 }
 
 // defaultAccess attempts to emulate access(2) on Windows.
