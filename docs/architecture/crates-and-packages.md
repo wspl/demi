@@ -552,9 +552,13 @@ Each crate implements the provider contract for one vendor family.
   holds the commits of the conversations' checkpoints (`CommitHold`) for the
   scenarios that stop a save at its commit
   ([Message editing](../agent/message-editing.md#durability-and-failure-boundaries)),
-  and `Backend::file_gate`, a conversation's file gate, whose lease is the
+  `Backend::file_gate`, a conversation's file gate, whose lease is the
   conversation's work to the idle rules and whose waiting entrants show an
-  operation a transition holds.
+  operation a transition holds, and `Backend::hold_hellos`, which holds
+  runners' hellos at one step (`HelloStep`: the token's lookup, or the shard's
+  bind) for the scenarios that race a hello against its runner going away and
+  against shutdown
+  ([Runner](../execution/runner.md#connection-and-identity)).
   For suites that start the executable, the example program
   `scripted_machines` runs the scripted machine manager of its scenarios
   ([Browser-contract suite](../delivery/scenarios.md#browser-contract-suite)).
