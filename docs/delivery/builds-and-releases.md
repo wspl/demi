@@ -3,10 +3,11 @@
 The backend, the machine manager, the runner, and the command programs are
 Rust executables built from one Cargo workspace. A developer builds all of them
 on their own machine: the cross tools installed there compile every target, and
-`cargo xtask` runs the builds, packages the releases, and assembles the Cloud
-image. [Crates and packages](../architecture/crates-and-packages.md#crates)
-lists the crates; this document covers the executables, their targets, and
-their releases.
+`cargo xtask` runs the builds, packages the releases, pins the Chrome for
+Testing release, and assembles the Cloud image.
+[Crates and packages](../architecture/crates-and-packages.md#crates) lists the
+crates; this document covers the executables, their targets, and their
+releases.
 
 For example, trying a runner change on an Apple silicon Mac whose Cloud runs in
 Lima needs two targets: `aarch64-apple-darwin` for the Mac as a paired device,
@@ -159,6 +160,8 @@ cargo xtask native package --package demi-claude \
   --artifacts .cache/native-target --output .cache/releases/demi-claude-<version>
 cargo xtask native package --package demi-runner \
   --artifacts .cache/native-target --output .cache/releases/runners
+cargo xtask native package --package demi-backend \
+  --artifacts .cache/native-target --output .cache/releases/demi-backend-<version>
 ```
 
 Each executable has its own kind of release:
@@ -179,8 +182,26 @@ Each executable has its own kind of release:
   the runners installed from them.
 - **Backend and machine manager.** Each is released as one executable per
   target that carries the workspace version
-  ([Package versioning](package-versioning.md#rust-executables)). The layout of
-  their release directory is an open decision.
+  ([Package versioning](package-versioning.md#rust-executables)). Its release
+  directory holds `release.json` and one subdirectory per target with the
+  executable. `release.json` names the executable, the version, and each
+  target's executable SHA-256 and byte size, the same entry as a
+  descriptor's `targets`:
+
+  ```json
+  {
+    "executable": "demi-machines",
+    "version": "0.1.3",
+    "targets": {
+      "x86_64-unknown-linux-musl": { "sha256": "<SHA-256 in hex>", "size": 8523528 }
+    }
+  }
+  ```
+
+  No Demi program reads the record; it tells whoever copies the executable
+  to a server what to check the copy against. Since a packaged version is
+  immutable (below), a development build of an unchanged version goes to a
+  directory of its own.
 
 Every release is published the same way, through the one verified publication
 of the artifact library
@@ -210,6 +231,27 @@ The Cloud image embeds a Linux runner release and the command package releases.
 `cargo xtask cloud-image package` assembles the image on a Linux builder of the
 image's architecture: [Cloud images](../cloud/images.md) defines the image, and
 the [guest image build](../../packages/guest-image/README.md) gives the steps.
+
+## Chrome for Testing
+
+Each Demi release pins one Chrome for Testing version
+([Browser distribution](../browser/browser.md#browser-distribution)).
+`cargo xtask browser-release` pins the version it is given:
+
+```sh
+cargo xtask browser-release 153.0.8010.36
+```
+
+It reads that version's official download metadata and, for each platform
+Demi supports, downloads the `chrome` archive from Chrome for Testing's
+download host through the artifact library, measures its size and SHA-256, and
+checks that it holds the executable the record names. It then writes the
+release record, `crates/builtin-protocol/src/release/chrome.json`, which
+`demi-commands` compiles in and the Cloud image build installs from; commit it
+with the change that adopts the version. Chrome for Testing publishes no
+Windows arm64 build, so the record carries five of the six targets. The
+downloads are not kept: every installer downloads its archive again and checks
+it against the record.
 
 ## Validation
 

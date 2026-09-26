@@ -2,6 +2,7 @@
 //! § xtask). `cargo xtask` runs them; `bun run contracts` builds the
 //! workspace and runs `target/debug/xtask contracts`.
 
+mod browser;
 mod contracts;
 mod native;
 
@@ -9,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
+use tokio_util::sync::CancellationToken;
 
 #[derive(Parser)]
 #[command(name = "xtask", about = "The repository's development commands")]
@@ -24,6 +26,8 @@ enum Command {
     /// Builds the native executables and packages their releases.
     #[command(subcommand)]
     Native(native::Command),
+    /// Pins a Chrome for Testing version: writes its release record.
+    BrowserRelease(browser::Options),
 }
 
 /// The repository's root directory.
@@ -33,6 +37,29 @@ fn repository() -> PathBuf {
         .nth(2)
         .expect("xtask sits two directories below the repository's root")
         .to_owned()
+}
+
+/// Runs `work` on a runtime of this thread with a token that an interrupt
+/// cancels, so a publication it makes stops and leaves nothing behind.
+fn interruptible<T, F>(work: impl FnOnce(CancellationToken) -> F) -> std::io::Result<T>
+where
+    F: Future<Output = T>,
+{
+    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
+    Ok(runtime.block_on(async {
+        let cancel = CancellationToken::new();
+        let interrupt = tokio::spawn({
+            let cancel = cancel.clone();
+            async move {
+                if tokio::signal::ctrl_c().await.is_ok() {
+                    cancel.cancel();
+                }
+            }
+        });
+        let result = work(cancel).await;
+        interrupt.abort();
+        result
+    }))
 }
 
 fn main() -> ExitCode {
@@ -53,6 +80,13 @@ fn main() -> ExitCode {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {
                 eprintln!("xtask native: {error}");
+                ExitCode::FAILURE
+            }
+        },
+        Command::BrowserRelease(options) => match browser::run(options) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("xtask browser-release: {error}");
                 ExitCode::FAILURE
             }
         },
