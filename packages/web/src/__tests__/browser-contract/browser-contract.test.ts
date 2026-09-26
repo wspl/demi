@@ -9,7 +9,6 @@ import { ApiError, apiRequest, jsonBody, readResponse } from '../../api/client'
 import {
   claimedDeviceSchema,
   conversationAnswerSchema,
-  conversationsSchema,
   conversationUpdateSchema,
   devicesSchema,
   modelCatalogSchema,
@@ -122,26 +121,6 @@ function connect(id: string) {
 /** The transcript the backend serves cold, from the conversation's database. */
 async function coldTranscript(id: string) {
   return readResponse(await apiRequest(`/conversations/${id}/transcript`), transcriptSchema)
-}
-
-/**
- * Waits until the conversation no longer runs. The save that ends an action
- * follows the idle phase the socket shows, and the transcript route reads
- * what the save wrote.
- */
-async function settled(id: string): Promise<void> {
-  const deadline = Date.now() + SETTLE_MS
-  for (;;) {
-    const { conversations } = await readResponse(await apiRequest('/conversations'), conversationsSchema)
-    const summary = conversations.find((conversation) => conversation.id === id)
-    if (summary && summary.status !== 'running' && summary.status !== 'compacting') {
-      return
-    }
-    if (Date.now() > deadline) {
-      throw new Error(`The conversation still runs after ${SETTLE_MS} ms: ${JSON.stringify(summary)}`)
-    }
-    await Bun.sleep(50)
-  }
 }
 
 /** A device paired as the page pairs one: its runner prints a code, and the signed-in page claims it. */
@@ -284,8 +263,8 @@ test('after a reload, the transcript the client assembled from live patches equa
   try {
     await live.open(model)
     await live.send([text('Run a command')])
+    // A send resolves when the socket shows idle, once the turn's save has committed.
     await live.send([text('Answer again')])
-    await settled(id)
     assembled = live.transcript().blocks
   } finally {
     live.disconnect()

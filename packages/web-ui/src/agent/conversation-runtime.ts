@@ -1,5 +1,5 @@
 import { shallowRef, triggerRef } from 'vue'
-import { SessionError, type AgentClient, type ClientSessionEvent } from '@demicodes/agent-client'
+import { SessionError, SteerRejectedError, type AgentClient, type ClientSessionEvent } from '@demicodes/agent-client'
 import { asError } from '@demicodes/utils'
 import type { ClientContent, EditRequest, ModelSelection, TranscriptVersion } from '@demicodes/protocol'
 import { AgentSocketError } from '../transport/agent-socket'
@@ -109,13 +109,26 @@ export class ConversationRuntime {
     client.dequeueMessage(id)
   }
 
-  async sendQueuedMessage(id: string): Promise<void> {
+  /**
+   * Sends a queued message now (`product.md` § Conversations and projects):
+   * while a turn runs, it becomes a steer of that turn; otherwise it moves to
+   * the front of the queue and runs next. A turn that refuses the steer, as
+   * one that is ending does, leaves the message queued, so it moves to the
+   * front instead and the refusal is no error.
+   */
+  async sendQueuedNow(id: string): Promise<void> {
     const client = await this.ensureOpen()
+    if (this.options.state.phase !== 'idle') {
+      try {
+        await client.steerQueuedMessage(id)
+        return
+      } catch (error) {
+        if (!(error instanceof SteerRejectedError)) {
+          throw error
+        }
+      }
+    }
     client.sendQueuedMessage(id)
-  }
-
-  async steerQueuedMessage(id: string): Promise<void> {
-    await (await this.ensureOpen()).steerQueuedMessage(id)
   }
 
   async deletePendingSteer(id: string): Promise<void> {

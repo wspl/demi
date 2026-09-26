@@ -109,49 +109,30 @@ for (const ending of ['rejected', 'disconnected'] as const) {
   })
 }
 
-test('each queued send resolves on its own phase cycle, and one leaving the queue resolves without running', async () => {
+test('a queued send ends when the next message runs or the session is idle, and one leaving the queue ends without running', async () => {
   const h = harness()
   const settled: string[] = []
   const first = h.client.send([{ type: 'text', text: 'first' }]).then(() => settled.push('first'))
   const second = h.client.send([{ type: 'text', text: 'second' }]).then(() => settled.push('second'))
   const third = h.client.send([{ type: 'text', text: 'third' }]).then(() => settled.push('third'))
-  const [, secondSend, thirdSend] = h.sent.filter((frame) => frame.type === 'send')
-  if (secondSend?.type !== 'send' || thirdSend?.type !== 'send') {
+  const [firstSend, secondSend, thirdSend] = h.sent.filter((frame) => frame.type === 'send')
+  if (firstSend?.type !== 'send' || secondSend?.type !== 'send' || thirdSend?.type !== 'send') {
     throw new Error('three sends were expected')
   }
   h.receive({ type: 'phase', phase: 'running' })
+  h.receive({ type: 'transcript_reset', blocks: [user('u1', firstSend.messageId, 'first')], version: { epoch: 'e', revision: 1 } })
   h.receive({ type: 'queue', queue: [{ id: secondSend.messageId, content: [] }, { id: thirdSend.messageId, content: [] }] })
   h.client.dequeueMessage(secondSend.messageId)
   await second
   expect(settled).toEqual(['second'])
-  h.receive({ type: 'phase', phase: 'idle' })
+  // The third message runs right after the first, with no idle between them.
+  h.receive({ type: 'queue', queue: [] })
+  h.receive({ type: 'transcript_patch', patches: [{ op: 'add', index: 1, value: user('u3', thirdSend.messageId, 'third') }], revision: 2 })
   await first
-  h.receive({ type: 'phase', phase: 'running' })
-  await settle()
   expect(settled).toEqual(['second', 'first'])
   h.receive({ type: 'phase', phase: 'idle' })
   await third
   expect(settled).toEqual(['second', 'first', 'third'])
-})
-
-test('a send moved to the front runs on the next phase cycle', async () => {
-  const h = harness()
-  const settled: string[] = []
-  h.client.send([{ type: 'text', text: 'running' }]).then(() => settled.push('running'))
-  h.client.send([{ type: 'text', text: 'later' }]).then(() => settled.push('later'))
-  const promoted = h.client.send([{ type: 'text', text: 'sooner' }]).then(() => settled.push('sooner'))
-  const sooner = h.sent.at(-1)
-  if (sooner?.type !== 'send') {
-    throw new Error('a send was expected')
-  }
-  h.receive({ type: 'phase', phase: 'running' })
-  h.client.sendQueuedMessage(sooner.messageId)
-  expect(h.sent.at(-1)).toEqual({ type: 'send_queued_message', messageId: sooner.messageId })
-  h.receive({ type: 'phase', phase: 'idle' })
-  h.receive({ type: 'phase', phase: 'running' })
-  h.receive({ type: 'phase', phase: 'idle' })
-  await promoted
-  expect(settled).toEqual(['running', 'sooner'])
 })
 
 test('a queued message turned into a steer settles its send when the steer is accepted', async () => {

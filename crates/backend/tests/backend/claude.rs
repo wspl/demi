@@ -26,7 +26,6 @@ use reqwest::StatusCode;
 use serde_json::{Value, json};
 
 use crate::conversations::{Socket, create, last_text, on_device, transcript};
-use crate::conversations::settled as conversation_settled;
 use crate::support::{Harness, Session, TestBackend};
 
 const CONVERSATION: &str = "3c1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a01";
@@ -109,9 +108,9 @@ async fn settled(backend: &TestBackend, session: &Session, provider: &str) -> Pr
     }
 }
 
-/// The conversation's transcript once its turn is saved.
+/// The conversation's transcript, which holds a turn once the socket has
+/// seen it end.
 async fn saved(backend: &TestBackend, session: &Session) -> Vec<Block> {
-    conversation_settled(backend, session, CONVERSATION).await;
     transcript(backend, session, CONVERSATION).await.blocks
 }
 

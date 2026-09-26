@@ -124,9 +124,17 @@ described in [Compaction](compaction.md#compaction).
 While an action runs, its stage is one of: preparing (before the first
 request), streaming from the provider, running tools, compacting, or
 finalizing (saving at the end). Clients see the phase `idle`, `running` or
-`compacting`. The phase, the visible queue and whether the session has settled
-are derived from the one status and the waiting actions; no second flag records
-them.
+`compacting`: `compacting` while a pass runs, and `running` in every other
+stage, finalizing included. The phase turns `idle` only once the save that
+ends the action has committed and no other action starts; the next waiting
+action starts without an `idle` between the two. For example, the user queues
+a message while the agent answers: the page sees `running` through the answer,
+its closing save and the queued message's turn, and `idle` once that turn's
+save has committed. So a client that sees `idle` can edit at once
+([Admission](message-editing.md#admission)), and what it then reads from the
+backend includes the finished turn. The phase, the visible queue and whether
+the session has settled are derived from the one status and the waiting
+actions; no second flag records them.
 
 The session reports each change as plain data once the change is complete, in
 the order the changes happened. A listener may call back into the session;
@@ -798,8 +806,9 @@ atomic commits of the same store ([Persistence](subagents.md#persistence)).
   points save at once: before tools are dispatched, after a `context` block,
   when an action ends, when an agent message is admitted or written, on a
   history rewrite or an edit commit, and on dispose. The save at the end of an
-  action happens after the phase is idle, so a checkpoint that says an action
-  was running is one the process died in.
+  action records the phase idle, so a checkpoint that says an action was
+  running is one the process died in; clients see the phase go idle only once
+  that save has committed ([A turn](#a-turn)).
 - A save is due when the transcript, command state, edit receipts, the queue,
   the waiting agent messages or the model selection changed. The phase alone
   never makes a save due.
@@ -847,6 +856,7 @@ where a tool runs; no test calls a real model.
 | Stop during a stream | `abort_result` arrives after the stopped marker is in the transcript; the stopped send's action ends as stopped, not failed |
 | Stop while resume saves its unwind | The transcript holds the unwind and one stopped marker, and no `resume` block without a turn |
 | Dispose during a turn | The final checkpoint has the phase `running`, the interruption record, the aborted tool calls and the queued messages |
+| A turn's closing save is held at its commit | The client sees no `idle` until the save commits; an edit it sends the moment it sees `idle` is admitted |
 | A message is queued while a tool runs | The queue is saved without any transcript change |
 | Two opens of one conversation at once | One live tree |
 | A client stops reading | The connection closes as lagging; a reconnect adopts the running tree and its turn completes |

@@ -27,6 +27,14 @@ export class EditRejectedError extends Error {
   }
 }
 
+/** A correlated refusal: the steer was not accepted, and a queued message it came from stays queued. */
+export class SteerRejectedError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'SteerRejectedError'
+  }
+}
+
 /** An `error` frame: a failed turn, a refused frame or a failed save, with its code and diagnostics. */
 export class SessionError extends Error {
   readonly code: string | null
@@ -45,12 +53,16 @@ const CONFIRMATION_MS = 30_000
 
 type ActionCommand = 'send' | 'retry' | 'resume' | 'compact'
 
-/** A wait for the action a frame starts, which settles when its phase cycle ends. */
+/**
+ * A wait for the action a frame starts. `sent` until the session takes the
+ * action: a send is `queued` while it waits behind another action, and
+ * `running` once its message is written; any other action is `running` once
+ * the session leaves `idle` after it was sent.
+ */
 interface ActionWaiter {
   command: ActionCommand
   messageId: string | null
-  /** Whether the session has left `idle` for this action. */
-  started: boolean
+  status: 'sent' | 'queued' | 'running'
   resolve: () => void
   reject: (error: Error) => void
 }
@@ -118,7 +130,7 @@ export class AgentClient {
     })
   }
 
-  /** Sends a message; resolves when the action it starts ends. */
+  /** Sends a message; resolves when the action it starts ends, or once it leaves the queue without running. */
   send(content: ClientContent[]): Promise<void> {
     const messageId = createId()
     return this.action('send', messageId, { type: 'send', messageId, content })
@@ -175,16 +187,7 @@ export class AgentClient {
 
   /** Moves a queued message to the front, so that it runs next. */
   sendQueuedMessage(messageId: string): void {
-    if (!this.sendFrame({ type: 'send_queued_message', messageId })) {
-      return
-    }
-    const waiter = this.queuedSendWaiter(messageId)
-    if (!waiter) {
-      return
-    }
-    this.actionWaiters.splice(this.actionWaiters.indexOf(waiter), 1)
-    const next = this.actionWaiters.findIndex((candidate) => candidate.command === 'send' && !candidate.started)
-    this.actionWaiters.splice(next === -1 ? this.actionWaiters.length : next, 0, waiter)
+    this.sendFrame({ type: 'send_queued_message', messageId })
   }
 
   /** Turns a queued message into a steer of the running turn; resolves when the steer is accepted. */
@@ -391,7 +394,7 @@ export class AgentClient {
       return Promise.reject(new Error('Agent connection closed'))
     }
     return new Promise((resolve, reject) => {
-      this.actionWaiters.push({ command, messageId, started: false, resolve, reject })
+      this.actionWaiters.push({ command, messageId, status: 'sent', resolve, reject })
       this.sendFrame(frame)
     })
   }
@@ -406,10 +409,10 @@ export class AgentClient {
     })
   }
 
-  /** The wait of a queued `send` that has not started. */
+  /** The wait of a `send` whose message has not run. */
   private queuedSendWaiter(messageId: string): ActionWaiter | undefined {
     return this.actionWaiters.find(
-      (waiter) => waiter.command === 'send' && waiter.messageId === messageId && !waiter.started,
+      (waiter) => waiter.command === 'send' && waiter.messageId === messageId && waiter.status !== 'running',
     )
   }
 
@@ -476,6 +479,7 @@ export class AgentClient {
         this.transcriptState = { status: 'current', version: frame.version }
         this.removeWrittenSteers(true)
         this.emit({ type: 'transcript_reset', blocks: this.blocks, failures: this.failures })
+        this.followSends()
         return
       case 'transcript_patch':
         this.patchTranscript(frame)
@@ -490,6 +494,7 @@ export class AgentClient {
       case 'queue':
         this.queue = frame.queue
         this.emit(frame)
+        this.followSends()
         return
       case 'pending_steers':
         this.pending = structuredClone(frame.pendingSteers)
@@ -529,7 +534,7 @@ export class AgentClient {
         this.emit(frame)
         // A turn that failed is a transcript record; the wait learns it by the error's type.
         const error = new SessionError(frame)
-        const active = this.actionWaiters.find((waiter) => waiter.started)
+        const active = this.actionWaiters.find((waiter) => waiter.status === 'running')
         if (active) {
           this.settleAction(active, () => active.reject(error))
         } else {
@@ -586,6 +591,7 @@ export class AgentClient {
     this.failures = { ...this.failures, ...frame.failures }
     this.removeWrittenSteers(true)
     this.emit({ type: 'transcript_patch', patches: frame.patches, blocks: this.blocks, failures: this.failures })
+    this.followSends()
   }
 
   /** The root's rule, for each subagent's stream. */
@@ -645,30 +651,57 @@ export class AgentClient {
     if (frame.outcome.status === 'accepted') {
       waiter.resolve()
     } else {
-      waiter.reject(new Error(frame.outcome.reason))
+      waiter.reject(new SteerRejectedError(frame.outcome.reason))
     }
   }
 
-  /** An action starts when the session leaves `idle` and ends when it returns. */
+  /**
+   * The session shows `idle` only once nothing runs or waits, and an action
+   * that follows another starts without an `idle` between them
+   * (`runtime.md` § A turn). So an action other than a send starts when the
+   * session leaves `idle`, and at `idle` every action the session took has
+   * ended.
+   */
   private followPhase(previous: SessionPhase | null, phase: SessionPhase): void {
     if (phase !== 'idle') {
       if (previous === 'idle' || previous === null) {
-        const next = this.actionWaiters.find((waiter) => !waiter.started)
+        const next = this.actionWaiters.find((waiter) => waiter.command !== 'send' && waiter.status === 'sent')
         if (next) {
-          next.started = true
+          next.status = 'running'
         }
       }
       return
     }
-    const active = this.actionWaiters.find((waiter) => waiter.started)
-    if (active) {
-      this.settleAction(active, () => active.resolve())
+    for (const waiter of this.actionWaiters.filter((candidate) => candidate.status !== 'sent')) {
+      this.settleAction(waiter, () => waiter.resolve())
     }
   }
 
-  /** A refused command fails the first wait for it that has not started, else the first. */
+  /**
+   * A send is queued once the queue holds its message, and runs once its
+   * message is written. The session runs one action at a time, so a message
+   * that starts to run ends the action that ran before it.
+   */
+  private followSends(): void {
+    const queued = new Set(this.queue.map((message) => message.id))
+    const written = new Set(this.blocks.flatMap((block) => (block.type === 'user' ? [block.turnId] : [])))
+    const waiting = this.actionWaiters.filter((waiter) => waiter.command === 'send' && waiter.status !== 'running')
+    for (const waiter of waiting) {
+      if (waiter.messageId !== null && written.has(waiter.messageId)) {
+        const ended = this.actionWaiters.filter((candidate) => candidate.status === 'running')
+        for (const previous of ended) {
+          this.settleAction(previous, () => previous.resolve())
+        }
+        waiter.status = 'running'
+      } else if (waiter.messageId !== null && queued.has(waiter.messageId)) {
+        waiter.status = 'queued'
+      }
+    }
+  }
+
+  /** A refused command fails the first wait for it that the session has not taken, else the first. */
   private rejectAction(command: string, error: Error): void {
-    const waiter = this.actionWaiters.find((candidate) => candidate.command === command && !candidate.started)
+    const waiter = this.actionWaiters.find((candidate) => candidate.command === command && candidate.status === 'sent')
       ?? this.actionWaiters.find((candidate) => candidate.command === command)
     if (waiter) {
       this.settleAction(waiter, () => waiter.reject(error))
