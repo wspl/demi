@@ -176,6 +176,13 @@ For a cache miss, the runner completes these steps:
 3. Apply executable permissions where required and publish the verified file
    atomically into the cache.
 
+The cache is private to the runner's user and only publication writes it, so
+an entry is verified once, as it is published. A later start reuses the entry
+without reading it: the runner checks only that it is a regular file of the
+declared size, and a mismatch fails the install rather than being repaired.
+Hashing the entry again would make every service start read the whole
+executable.
+
 Concurrent callers share one download per digest. Cancelling one caller preserves
 a download still needed by another. If the download fails or is cancelled, the
 runner releases the response and removes the temporary file. The runner never

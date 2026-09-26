@@ -1,8 +1,8 @@
 //! The verified executable cache (`native-runtime.md` § Install the selected
 //! executable): one file per artifact digest, published only once its size
-//! and SHA-256 match what the descriptor declares. The service registry
-//! starts one install per digest at a time, so concurrent callers share it and
-//! the cache keeps no state of its own.
+//! and SHA-256 match what the descriptor declares, and reused unread from
+//! then on. The service registry starts one install per digest at a time, so
+//! concurrent callers share it and the cache keeps no state of its own.
 
 use std::{
     io,
@@ -35,7 +35,8 @@ impl ArtifactCache {
     }
 
     /// The cached executable for `artifact`, downloaded on a miss. A cached
-    /// file that no longer matches its digest fails the install.
+    /// entry that is not a regular file of the declared size fails the
+    /// install.
     pub async fn install(
         &self,
         artifact: &PackageArtifact,
@@ -43,22 +44,31 @@ impl ArtifactCache {
         cancel: &CancellationToken,
     ) -> Result<PathBuf, RuntimeError> {
         let destination = self.root.join(&artifact.sha256);
-        let expected = Digest {
-            size: artifact.size,
-            sha256: artifact.sha256.clone(),
-        };
         match tokio::fs::symlink_metadata(&destination).await {
+            // The entry was verified as it was published, and nothing else
+            // writes this private directory, so a hit is not read again:
+            // every service start would otherwise hash the whole executable.
+            // Damage its metadata shows fails the install; it is not repaired.
             Ok(metadata) => {
-                if !metadata.is_file()
-                    || demi_artifact::digest(&destination, artifact.size, cancel).await? != expected
-                {
+                if !metadata.is_file() {
                     return Err(demi_artifact::Error::Digest.into());
+                }
+                if metadata.len() != artifact.size {
+                    return Err(demi_artifact::Error::Size {
+                        declared: artifact.size,
+                        actual: metadata.len(),
+                    }
+                    .into());
                 }
                 return Ok(destination);
             }
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
             Err(error) => return Err(error.into()),
         }
+        let expected = Digest {
+            size: artifact.size,
+            sha256: artifact.sha256.clone(),
+        };
         // Out of open files, the download waits for one; the five minutes
         // count only an attempt that has its files (`runner.md` § Load).
         let mut backoff = demi_command_service::descriptors::Backoff::default();
