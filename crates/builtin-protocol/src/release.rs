@@ -1,6 +1,7 @@
-//! The pinned Chrome for Testing release and what an installation records
-//! (`browser.md` § Browser distribution). Installers never resolve a moving
-//! channel: a release names each platform's archive by URL, size and digest.
+//! The pinned Chrome for Testing release (`browser.md` § Browser
+//! distribution). Installers never resolve a moving channel: a release names
+//! each platform's archive by URL, size and digest, and `artifact`'s archive
+//! installation installs it.
 
 use serde::{Deserialize, Serialize};
 
@@ -46,22 +47,4 @@ pub struct ReleasePlatform {
     /// The executable's path inside the archive.
     #[garde(length(min = 1))]
     pub executable: String,
-}
-
-/// What an installation records beside its files: the SHA-256 of the archive
-/// it came from and of its executable.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct BrowserInstallation {
-    #[garde(pattern(r"^[a-f0-9]{64}$"))]
-    pub archive_hash: String,
-    #[garde(pattern(r"^[a-f0-9]{64}$"))]
-    pub executable_hash: String,
-}
-
-impl BrowserInstallation {
-    /// Decodes an installation's record.
-    pub fn parse(bytes: &[u8]) -> Result<Self, DecodeError> {
-        crate::decode_slice(bytes)
-    }
 }
