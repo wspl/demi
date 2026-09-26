@@ -214,6 +214,12 @@ fn manifests_verify_their_packages_bindings_and_hash() {
         .unwrap();
     descriptor["operations"] = json!(["file.read", "file.read"]);
     assert!(Manifest::parse(duplicated).is_err());
+    // A received tree follows the declaration rules, whatever built it.
+    let mut contradictory = manifest();
+    contradictory["roots"]["fixture"]["tree"]["subcommands"][0]["positionals"] =
+        json!(["path", "body"]);
+    let error = Manifest::parse(contradictory).unwrap_err().to_string();
+    assert!(error.contains("multiple input sources for body"), "{error}");
 }
 
 #[test]
@@ -276,4 +282,24 @@ fn a_built_manifest_pins_its_native_commands_and_hashes_as_the_recorded_one() {
     assert!(refusal(vec![rpc(), rpc()], vec![]).contains("duplicate root"));
     let twice = packages().into_iter().chain(packages()).collect();
     assert!(refusal(vec![], twice).contains("duplicate native package"));
+    let contradictory = declaration(json!({"name": "note", "summary": "Note", "kind": "rpc",
+        "input": {"type": "object", "properties": {"text": {"type": "string"}}},
+        "positionals": ["text"], "stdinField": "text"}));
+    assert!(refusal(vec![contradictory], vec![]).contains("multiple input sources for text"));
+
+    // The hash covers every declaration and every descriptor, since a runner
+    // keeps an installed manifest until the hash changes.
+    let hash = |roots: Vec<Node<NativeOperation>>, packages: Vec<PackageDescriptor>| {
+        Manifest::build(roots, packages).unwrap().hash
+    };
+    let hinted = |hint: &str| {
+        declaration(json!({"name": "rpc", "summary": "Rpc", "kind": "rpc", "runningHint": hint}))
+    };
+    assert_ne!(
+        hash(vec![hinted("working")], vec![]),
+        hash(vec![hinted("still working")], vec![])
+    );
+    let mut released = packages();
+    released[0].version = "next".into();
+    assert_ne!(hash(vec![rpc()], released), hash(vec![rpc()], packages()));
 }
