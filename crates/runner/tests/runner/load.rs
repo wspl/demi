@@ -84,7 +84,7 @@ async fn resident(root: &Path) -> (ServiceRegistry, ServiceLease, Resident) {
         id: "fixture".into(),
         version: "1.0.0".into(),
         protocol_version: 1,
-        operations: ["where", "echo", "first", "spin", "result", "retain", "crash"]
+        operations: demi_command_service::testing::FIXTURE_OPERATIONS
             .map(String::from)
             .to_vec(),
         targets: BTreeMap::from([(

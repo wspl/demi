@@ -12,8 +12,8 @@ use demi_command_service::protocol::{
 };
 use demi_runner::host_log::{self, Query};
 use demi_runner::services::{
-    ArtifactResolver, ArtifactSource, Resident, RuntimeError, ServiceHandle, ServiceRegistry,
-    target,
+    ArtifactResolver, ArtifactSource, Decision, Resident, RuntimeError, ServiceHandle,
+    ServiceRegistry, target,
 };
 use futures_util::future::BoxFuture;
 use sha2::{Digest, Sha256};
@@ -26,7 +26,7 @@ use std::{
     },
     time::Duration,
 };
-use tokio::sync::Notify;
+use tokio::sync::{Notify, broadcast};
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::{Layer as _, filter::LevelFilter, layer::SubscriberExt as _};
 
@@ -68,7 +68,7 @@ async fn fixture(root: &Path, variant: usize) -> (PackageDescriptor, PathBuf) {
         id: format!("fixture-{variant}"),
         version: "1.0.0".into(),
         protocol_version: 1,
-        operations: ["where", "echo", "first", "spin", "result", "retain", "crash"]
+        operations: demi_command_service::testing::FIXTURE_OPERATIONS
             .map(String::from)
             .to_vec(),
         targets: BTreeMap::from([(
@@ -142,6 +142,16 @@ async fn stopped(resident: &Resident) {
     })
     .await
     .expect("the service stops");
+}
+
+/// The registry's next decision about the service of `digest`.
+async fn decided(decisions: &mut broadcast::Receiver<(String, Decision)>, digest: &str) -> Decision {
+    loop {
+        let (about, decision) = decisions.recv().await.expect("the registry decides");
+        if about == digest {
+            return decision;
+        }
+    }
 }
 
 /// Gives the registry time to decide, then checks the service still answers.
@@ -230,6 +240,40 @@ async fn a_service_that_cannot_say_what_it_holds_stays() {
         drop(lease);
         stays(&resident).await;
         services.release_conversation("unanswerable").await.unwrap();
+        stopped(&resident).await;
+        registry.close().await;
+    })
+    .await
+    .unwrap();
+}
+
+/// A release that ends while the service's answer to what it holds is on its
+/// way makes that answer stale, so the registry asks again, and the service,
+/// which now holds nothing, stops (`native-runtime.md` § Keep a service
+/// resident).
+#[tokio::test]
+async fn an_answer_from_before_a_release_is_asked_again() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let root = tempfile::tempdir().unwrap();
+        let registry = registry(root.path()).await;
+        let mut decisions = registry.decisions();
+        let services = registry.handle();
+        let (descriptor, path) = fixture(root.path(), 0).await;
+        let digest = digest(&descriptor);
+        let lease = services.lease(digest.clone()).await;
+        let resident = acquire(&services, &descriptor, local(path)).await;
+        assert_eq!(decided(&mut decisions, &digest).await, Decision::Leased);
+        // While it holds `stall`, the fixture reads what it holds at once and
+        // answers only when told to.
+        assert_eq!(call(&resident, "retain", "stall").await, 0);
+        drop(lease);
+        assert_eq!(decided(&mut decisions, &digest).await, Decision::Asks);
+        assert_eq!(call(&resident, "stalled", "test").await, 0);
+        // The release ends while the answer, which still names `stall`, waits.
+        services.release_conversation("stall").await.unwrap();
+        assert_eq!(call(&resident, "proceed", "test").await, 0);
+        assert_eq!(decided(&mut decisions, &digest).await, Decision::Asks);
+        assert_eq!(decided(&mut decisions, &digest).await, Decision::Stops);
         stopped(&resident).await;
         registry.close().await;
     })

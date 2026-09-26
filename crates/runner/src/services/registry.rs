@@ -41,11 +41,34 @@ const RELEASE_TIMEOUT: Duration = Duration::from_secs(360);
 const ANSWER_BYTES: usize = 1024 * 1024;
 /// Requests waiting for the owner; a sender waits for room.
 const REQUESTS: usize = 64;
+/// The decisions a test's view holds before the test reads them.
+#[cfg(feature = "test-fixtures")]
+const DECISIONS: usize = 64;
+
+/// What the registry does about a service whose leases or conversations
+/// changed, as a test sees it (`test-fixtures`): the registry keeps a service
+/// by doing nothing, which a test could otherwise only wait out.
+#[cfg(feature = "test-fixtures")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Decision {
+    /// A lease still holds it, and nothing is asked.
+    Leased,
+    /// It is asked what it holds; a decision about the answer follows.
+    Asks,
+    /// It holds a conversation, and stays.
+    Holds,
+    /// It could not say what it holds, and stays.
+    Unanswered,
+    /// It holds nothing, and stops.
+    Stops,
+}
 
 /// The registry's owner task and the handle to it.
 pub struct ServiceRegistry {
     handle: ServiceHandle,
     owner: tokio::task::JoinHandle<()>,
+    #[cfg(feature = "test-fixtures")]
+    decisions: tokio::sync::broadcast::Sender<(String, Decision)>,
 }
 
 impl ServiceRegistry {
@@ -60,6 +83,8 @@ impl ServiceRegistry {
     ) -> Result<Self, RuntimeError> {
         let cache = Arc::new(ArtifactCache::new(cache, image).await?);
         let (requests, receiver) = mpsc::channel(REQUESTS);
+        #[cfg(feature = "test-fixtures")]
+        let (decisions, _) = tokio::sync::broadcast::channel(DECISIONS);
         let owner = Owner {
             cache,
             cwd,
@@ -71,15 +96,26 @@ impl ServiceRegistry {
             checks: JoinSet::new(),
             work: JoinSet::new(),
             stop: CancellationToken::new(),
+            #[cfg(feature = "test-fixtures")]
+            decisions: decisions.clone(),
         };
         Ok(Self {
             handle: ServiceHandle { requests },
             owner: tokio::spawn(owner.run(receiver)),
+            #[cfg(feature = "test-fixtures")]
+            decisions,
         })
     }
 
     pub fn handle(&self) -> ServiceHandle {
         self.handle.clone()
+    }
+
+    /// What the registry decides from now on, with each service's digest,
+    /// in the order it decides.
+    #[cfg(feature = "test-fixtures")]
+    pub fn decisions(&self) -> tokio::sync::broadcast::Receiver<(String, Decision)> {
+        self.decisions.subscribe()
     }
 
     /// Stops every service and waits until each has ended. The owner also
@@ -281,14 +317,16 @@ struct Owner {
     work: JoinSet<Work>,
     /// Stops every service; each one's own token is a child of it.
     stop: CancellationToken,
+    #[cfg(feature = "test-fixtures")]
+    decisions: tokio::sync::broadcast::Sender<(String, Decision)>,
 }
 
 /// One artifact digest: the leases on it and its current service.
 #[derive(Default)]
 struct Entry {
     leases: usize,
-    /// Counts lease changes, so a status answer from before the last change
-    /// is asked again.
+    /// Counts the lease changes and the releases that ended, so a status
+    /// answer from before the last of them is asked again.
     changes: u64,
     current: Option<Current>,
 }
@@ -467,6 +505,8 @@ impl Owner {
             return;
         };
         if entry.leases > 0 {
+            #[cfg(feature = "test-fixtures")]
+            decided(&self.decisions, digest, Decision::Leased);
             return;
         }
         let Some(current) = &mut entry.current else {
@@ -485,6 +525,8 @@ impl Owner {
             );
             current.stop.cancel();
             self.entries.remove(digest);
+            #[cfg(feature = "test-fixtures")]
+            decided(&self.decisions, digest, Decision::Stops);
             return;
         };
         if current.checking {
@@ -501,6 +543,8 @@ impl Owner {
             let holds = status(&client).await;
             Checked { holds, ..checked }
         });
+        #[cfg(feature = "test-fixtures")]
+        decided(&self.decisions, digest, Decision::Asks);
     }
 
     fn checked(&mut self, checked: Checked) {
@@ -516,6 +560,8 @@ impl Owner {
         };
         current.checking = false;
         if entry.leases > 0 {
+            #[cfg(feature = "test-fixtures")]
+            decided(&self.decisions, &checked.digest, Decision::Leased);
             return;
         }
         // Leases came and went while the service answered: what it holds
@@ -525,7 +571,10 @@ impl Owner {
             return;
         }
         match checked.holds {
-            Ok(true) => {}
+            Ok(true) => {
+                #[cfg(feature = "test-fixtures")]
+                decided(&self.decisions, &checked.digest, Decision::Holds);
+            }
             Ok(false) => {
                 tracing::info!(
                     "service {} holds no lease or conversation and stops",
@@ -533,13 +582,19 @@ impl Owner {
                 );
                 current.stop.cancel();
                 self.entries.remove(&checked.digest);
+                #[cfg(feature = "test-fixtures")]
+                decided(&self.decisions, &checked.digest, Decision::Stops);
             }
             // A service that cannot say what it holds is not one that holds
             // nothing: stopping it would end every conversation it serves.
-            Err(error) => tracing::warn!(
-                "service {} did not say which conversations it holds ({error}); it stays",
-                current.id
-            ),
+            Err(error) => {
+                tracing::warn!(
+                    "service {} did not say which conversations it holds ({error}); it stays",
+                    current.id
+                );
+                #[cfg(feature = "test-fixtures")]
+                decided(&self.decisions, &checked.digest, Decision::Unanswered);
+            }
         }
     }
 
@@ -638,7 +693,13 @@ impl Owner {
             Work::Retired { result, reply } => {
                 // The caller may have gone; the release happened regardless.
                 let _gone = reply.send(result);
-                // A released conversation may leave a service holding none.
+                // A released conversation may leave a service holding none,
+                // and an answer about what it holds that was given before the
+                // release ended may still name the conversation: the release
+                // is a change, after which such an answer is asked again.
+                for entry in self.entries.values_mut() {
+                    entry.changes += 1;
+                }
                 let digests: Vec<_> = self.entries.keys().cloned().collect();
                 for digest in digests {
                     self.consider(&digest);
@@ -731,6 +792,17 @@ async fn live(
         }
     };
     state.send_replace(State::Ended(Arc::new(error)));
+}
+
+/// Tells a test's view what the registry decided about `digest`'s service.
+#[cfg(feature = "test-fixtures")]
+fn decided(
+    decisions: &tokio::sync::broadcast::Sender<(String, Decision)>,
+    digest: &str,
+    decision: Decision,
+) {
+    // Nothing receives it unless a test reads the view.
+    let _unread = decisions.send((digest.to_owned(), decision));
 }
 
 /// Whether the service holds any conversation (`native-runtime.md`

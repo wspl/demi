@@ -253,14 +253,13 @@ pub struct NativeFixture {
 }
 
 impl NativeFixture {
-    /// The runner's native fixture package, whose operations the runner's
-    /// own tests use (`where`, `echo`, `first`, `spin`, `result`, `retain`,
-    /// `crash`).
+    /// The runner's native fixture package
+    /// (`demi_command_service::testing::FIXTURE_OPERATIONS`).
     pub fn load() -> Self {
         Self::package(
             "demicodes.runner-test",
             native_fixture_binary(),
-            ["where", "echo", "first", "spin", "result", "retain", "crash"],
+            demi_command_service::testing::FIXTURE_OPERATIONS,
         )
     }
 
