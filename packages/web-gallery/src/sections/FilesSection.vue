@@ -16,6 +16,7 @@ import { createMemoryFileSource, dir, file } from '@demicodes/web-ui/files/memor
 import type { FileBrowserMode, FileBrowserSource } from '@demicodes/web-ui/files/types'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import GalleryDialogFrame from '../components/GalleryDialogFrame.vue'
+import { productWould } from '../product-would'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { createGalleryRemoteFileHosts, laptopTree } from '../fixtures/files'
@@ -598,10 +599,10 @@ onMounted(() => {
         title="Select folder"
         note="Creating or moving a workspace: the dialog opens at the device's projects, with the recent workspaces as places. Choose another device in the address bar; the offline device is listed but cannot be chosen."
       >
-        <GalleryDialogFrame>
+        <GalleryDialogFrame v-slot="{ open, close }">
           <FileBrowserDialog
             :key="folderKey"
-            :is-open="true"
+            :is-open="open"
             :overlay-store="appOverlayStore"
             mode="directory"
             title="Select folder"
@@ -612,6 +613,7 @@ onMounted(() => {
             :host-id="folderHostId"
             @select="folderChosen = $event"
             @update:host-id="selectHost('folder', $event)"
+            @close="close"
           />
         </GalleryDialogFrame>
         <p class="select-none text-[12px] text-fg-subtle">
@@ -623,10 +625,10 @@ onMounted(() => {
         title="Open file"
         note="The composer's remote attachment: opens inside the conversation's workspace. Folders are entered, a file is the answer. Cloud shows no status and remains selectable while asleep; its source wakes it when browsing."
       >
-        <GalleryDialogFrame>
+        <GalleryDialogFrame v-slot="{ open, close }">
           <FileBrowserDialog
             :key="fileKey"
-            :is-open="true"
+            :is-open="open"
             :overlay-store="appOverlayStore"
             mode="file"
             title="Open file"
@@ -637,6 +639,7 @@ onMounted(() => {
             :host-id="fileHostId"
             @select="fileChosen = $event"
             @update:host-id="selectHost('file', $event)"
+            @close="close"
           />
         </GalleryDialogFrame>
         <p class="select-none text-[12px] text-fg-subtle">
@@ -648,10 +651,10 @@ onMounted(() => {
         title="New project"
         note="The working-environment dialog on its form: Device or Cloud. A device asks which one (Add device after the menu stands in for pairing) and a directory; the Cloud only asks a name, the project named after the folder, with Browse… turning the dialog into the folder browser. A name already in the list is refused under the form."
       >
-        <GalleryDialogFrame class="max-w-md">
+        <GalleryDialogFrame v-slot="{ open, close }" class="max-w-md">
           <WorkspaceDialog
             :key="workspaceKey"
-            :is-open="true"
+            :is-open="open"
             :overlay-store="appOverlayStore"
             :devices="workspaceDevices"
             :message="workspaceMessage"
@@ -659,6 +662,7 @@ onMounted(() => {
             :places-for="placesFor"
             @create="createWorkspace"
             @connect-device="connectWorkspaceDevice"
+            @close="close"
           />
         </GalleryDialogFrame>
         <p class="select-none text-[12px] text-fg-subtle">
@@ -724,9 +728,9 @@ onMounted(() => {
         title="Narrow"
         note="At a phone width the device and nav keep the toolbar's left, the places become a menu at its right, the path takes its own row under it, Forward and the date column go, and the address bar turns its crumbs into glyphs."
       >
-        <GalleryDialogFrame class="max-w-[22rem]">
+        <GalleryDialogFrame v-slot="{ open, close }" class="max-w-[22rem]">
           <FileBrowserDialog
-            :is-open="true"
+            :is-open="open"
             :overlay-store="appOverlayStore"
             mode="directory"
             :source="narrowHost.source"
@@ -735,6 +739,8 @@ onMounted(() => {
             :hosts="hosts"
             :host-id="narrowHostId"
             @update:host-id="narrowHostId = $event"
+            @select="productWould(`Use ${$event} as the project's folder`)"
+            @close="close"
           />
         </GalleryDialogFrame>
       </GallerySection>
