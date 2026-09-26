@@ -1,7 +1,8 @@
-//! Declarations, help and command lines against the cases the TypeScript
-//! command loader shares, and the declaration rules' refusals.
+//! Declarations, help and command lines: the cases the TypeScript command
+//! loader shares, how a command line fills each field and is refused, and
+//! the declaration rules' refusals.
 
-use demi_command_tree::Node;
+use demi_command_tree::{Node, Parsed};
 use serde_json::{Value, json};
 
 fn fixture() -> Value {
@@ -15,6 +16,33 @@ fn fixture_tree() -> Node {
     serde_json::from_value(fixture()["manifest"]["roots"]["fixture"]["tree"].clone()).unwrap()
 }
 
+/// What a command line comes to, as the runner reads it: `argv` after the
+/// root's name, and the body read from stdin for a leaf that takes one.
+fn read(tree: &Node, argv: &[&str], stdin: Option<&str>) -> Result<Parsed, String> {
+    let argv: Vec<String> = argv.iter().map(|token| (*token).to_owned()).collect();
+    let selected = tree.select(&argv).map_err(|error| error.to_string())?;
+    let parsed = selected.parse(&argv).map_err(|error| error.to_string())?;
+    match selected.node.leaf() {
+        Some(leaf) if !parsed.help => parsed
+            .validate(leaf, stdin.map(str::to_owned))
+            .map_err(|error| error.to_string()),
+        _ => Ok(parsed),
+    }
+}
+
+/// The values a command line fills.
+fn values(tree: &Node, argv: &[&str], stdin: Option<&str>) -> Value {
+    let parsed = read(tree, argv, stdin).unwrap_or_else(|error| panic!("{argv:?}: {error}"));
+    Value::Object(parsed.values)
+}
+
+/// Why a command line is refused.
+fn refusal(tree: &Node, argv: &[&str], stdin: Option<&str>) -> String {
+    read(tree, argv, stdin)
+        .err()
+        .unwrap_or_else(|| panic!("{argv:?} is accepted"))
+}
+
 #[test]
 fn help_and_command_lines_match_the_shared_cases() {
     let fixture = fixture();
@@ -22,18 +50,13 @@ fn help_and_command_lines_match_the_shared_cases() {
     tree.validate().unwrap();
     assert_eq!(tree.help("fixture"), fixture["help"].as_str().unwrap());
     for case in fixture["cases"].as_array().unwrap() {
-        let argv: Vec<String> = serde_json::from_value(case["argv"].clone()).unwrap();
-        let result = (|| {
-            let selected = tree.select(&argv)?;
-            let parsed = selected.parse(&argv)?;
-            if parsed.help {
-                return Ok(parsed);
-            }
-            parsed.validate(
-                selected.node.leaf().unwrap(),
-                Some(case["stdin"].as_str().unwrap().into()),
-            )
-        })();
+        let argv: Vec<&str> = case["argv"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|token| token.as_str().unwrap())
+            .collect();
+        let result = read(&tree, &argv, case["stdin"].as_str());
         if case["invalid"] == true {
             assert!(result.is_err(), "argv={argv:?}");
         } else {
@@ -44,6 +67,246 @@ fn help_and_command_lines_match_the_shared_cases() {
             );
         }
     }
+}
+
+/// A leaf's input: an object with `properties` that requires `required` and
+/// allows nothing else.
+fn object(properties: Value, required: &[&str]) -> Value {
+    json!({"type": "object", "properties": properties, "required": required,
+        "additionalProperties": false})
+}
+
+/// Commands with fields from every source, after the TypeScript shell's
+/// command tests.
+fn filer() -> Node {
+    let tree: Node = serde_json::from_value(json!({
+        "name": "filer", "summary": "Create, edit, and list files.", "subcommands": [
+            {"name": "create", "summary": "Create a file.", "kind": "rpc",
+                "input": object(json!({"path": {"type": "string"},
+                    "content": {"type": "string", "maxLength": 8, "description": "File content"}}),
+                    &["path", "content"]),
+                "positionals": ["path"], "stdinField": "content"},
+            {"name": "edit", "summary": "Replace text in a file.", "kind": "rpc",
+                "input": object(json!({"path": {"type": "string"}, "old": {"type": "string"},
+                    "new": {"type": "string"}, "occurrence": {"type": "integer", "minimum": 1}}),
+                    &["path", "old", "new"]),
+                "positionals": ["path"]},
+            {"name": "measure", "summary": "Record readings.", "kind": "rpc",
+                "input": object(json!({"v": {"type": "array", "items": {"type": "number"}},
+                    "label": {"type": "array", "items": {"type": "string"}},
+                    "quiet": {"type": "boolean"}}), &["v"])},
+            {"name": "forward", "summary": "Forward argv.", "kind": "rpc",
+                "input": object(json!({"args": {"type": "array", "items": {"type": "string"}}}),
+                    &["args"]),
+                "restField": "args"},
+            {"name": "status", "summary": "Set a status.", "kind": "rpc",
+                "input": object(json!({"status": {"type": "string",
+                    "enum": ["pending", "in_progress", "done"]}}), &[])},
+            {"name": "list", "summary": "List files.", "kind": "rpc",
+                "output": {"json": object(json!({"files": {"type": "array",
+                    "items": {"type": "string"}}}), &["files"])}},
+            {"name": "watch", "summary": "Background pollers.", "subcommands": [
+                {"name": "get", "summary": "Read a poller.", "kind": "rpc",
+                    "input": object(json!({"id": {"type": "string"}}), &["id"]),
+                    "positionals": ["id"]}]}]
+    }))
+    .unwrap();
+    tree.validate().unwrap();
+    tree
+}
+
+#[test]
+fn each_field_takes_its_value_from_its_one_source() {
+    let filer = filer();
+    assert_eq!(
+        values(&filer, &["create", "note.txt"], Some("body")),
+        json!({"path": "note.txt", "content": "body"})
+    );
+    // A stdin body has no option form, even beside a body.
+    for option in [
+        &["--content"][..],
+        &["--content", "inline"],
+        &["--content=inline"],
+    ] {
+        let argv = [&["create", "note.txt"][..], option].concat();
+        let error = refusal(&filer, &argv, Some("body"));
+        assert!(
+            error.starts_with("\"filer create\" reads content only from stdin. Remove --content"),
+            "{error}"
+        );
+    }
+    // A positional has no option form, and a standalone -- ends the options.
+    assert_eq!(
+        refusal(&filer, &["create", "note.txt", "inline"], Some("body")),
+        "Unexpected positional argument \"inline\""
+    );
+    let error = refusal(&filer, &["create", "--path", "note.txt"], Some("body"));
+    assert!(
+        error.starts_with("\"path\" is a positional argument for \"filer create\""),
+        "{error}"
+    );
+    assert_eq!(
+        values(&filer, &["create", "--", "--help"], Some("body"))["path"],
+        "--help"
+    );
+    // A rest field takes the tokens after -- as they are, and only those.
+    assert_eq!(
+        values(&filer, &["forward", "--", "--help", "--json"], None),
+        json!({"args": ["--help", "--json"]})
+    );
+    let error = refusal(&filer, &["forward", "--args", "value"], None);
+    assert!(
+        error.starts_with("\"args\" is passed after -- for \"filer forward\""),
+        "{error}"
+    );
+    // Help shows each field in its source's form, never a body as an option.
+    let help = filer.help("filer");
+    assert!(
+        help.contains("  filer create <path> <<'EOF'\n  <content>\n  EOF\n"),
+        "{help}"
+    );
+    assert!(
+        help.contains("    Stdin body: content - File content"),
+        "{help}"
+    );
+    assert!(help.contains("  filer forward -- <args>...\n"), "{help}");
+    for option in ["--path", "--content", "--args"] {
+        assert!(!help.contains(option), "{option} in {help}");
+    }
+}
+
+#[test]
+fn an_option_value_never_swallows_the_next_option() {
+    let filer = filer();
+    assert_eq!(
+        refusal(
+            &filer,
+            &["edit", "note.txt", "--old", "--new", "replacement"],
+            None
+        ),
+        "Missing value for \"--old\""
+    );
+    // --name=value passes a value that begins with --, or an empty one.
+    assert_eq!(
+        values(
+            &filer,
+            &["edit", "note.txt", "--old=--help", "--new="],
+            None
+        ),
+        json!({"path": "note.txt", "old": "--help", "new": ""})
+    );
+    assert_eq!(
+        refusal(
+            &filer,
+            &["edit", "note.txt", "--old", "a", "--old", "b", "--new", "c"],
+            None
+        ),
+        "Duplicate value for \"old\""
+    );
+}
+
+#[test]
+fn argv_text_becomes_the_value_its_field_declares_and_one_refusal_names_every_failure() {
+    let filer = filer();
+    // Each element of a repeated option converts on its own.
+    assert_eq!(
+        values(&filer, &["measure", "--v", "12", "--v", "13"], None),
+        json!({"v": [12, 13]})
+    );
+    assert_eq!(
+        values(
+            &filer,
+            &["measure", "--v", "1.5", "--label", "a", "--quiet"],
+            None
+        ),
+        json!({"v": [1.5], "label": ["a"], "quiet": true})
+    );
+    assert_eq!(
+        values(&filer, &["measure", "--v", "1", "--quiet=false"], None)["quiet"],
+        false
+    );
+    assert_eq!(
+        values(
+            &filer,
+            &["edit", "f", "--old", "a", "--new", "b", "--occurrence", "2"],
+            None
+        )["occurrence"],
+        2
+    );
+    // Text that spells no such value stays text, and the one refusal names
+    // its field beside every other failure without repeating a value.
+    let error = refusal(&filer, &["measure", "--v", "twelve", "--quiet=maybe"], None);
+    assert!(error.starts_with("Invalid command arguments: "), "{error}");
+    for failure in [
+        "\"v.0\" is not of type \"number\"",
+        "\"quiet\" is not of type \"boolean\"",
+    ] {
+        assert!(error.contains(failure), "{error} lacks {failure}");
+    }
+    assert!(
+        !error.contains("twelve") && !error.contains("maybe"),
+        "{error}"
+    );
+    let error = refusal(&filer, &["edit", "f", "--occurrence", "NaN"], None);
+    for failure in [
+        "\"occurrence\" is not of type \"integer\"",
+        "\"old\" is a required property",
+        "\"new\" is a required property",
+    ] {
+        assert!(error.contains(failure), "{error} lacks {failure}");
+    }
+    assert_eq!(
+        refusal(&filer, &["create", "note.txt"], Some("a long body")),
+        "Invalid command arguments: \"content\" is longer than 8 characters"
+    );
+}
+
+#[test]
+fn a_command_is_found_and_named_by_its_full_path() {
+    // A bare root leaf reads its arguments right after its name.
+    let kcenv: Node = serde_json::from_value(json!({"name": "kcenv",
+        "summary": "Read an environment key.", "kind": "rpc",
+        "input": object(json!({"key": {"type": "string"}}), &["key"]),
+        "positionals": ["key"]}))
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(read(&kcenv, &["HOME"], None).unwrap()).unwrap(),
+        json!({"path": ["kcenv"], "help": false, "values": {"key": "HOME"}, "json": false})
+    );
+    let filer = filer();
+    // A group with nothing after it asks for its help.
+    let group = read(&filer, &["watch"], None).unwrap();
+    assert!(group.help);
+    assert_eq!(group.path, ["filer", "watch"]);
+    assert_eq!(
+        values(&filer, &["watch", "get", "my-id"], None),
+        json!({"id": "my-id"})
+    );
+    assert_eq!(
+        refusal(&filer, &["watch", "missing"], None),
+        "Unknown subcommand \"filer watch missing\""
+    );
+    assert_eq!(
+        refusal(&filer, &["watch", "get", "my-id", "--missing", "x"], None),
+        "Unknown option \"--missing\" for \"filer watch get\""
+    );
+}
+
+#[test]
+fn json_output_is_offered_and_accepted_only_where_declared() {
+    let filer = filer();
+    let help = filer.help("filer");
+    // Help shows an enum's choices, and --json only where an output schema is.
+    assert!(
+        help.contains("  filer status [--status <pending|in_progress|done>]\n"),
+        "{help}"
+    );
+    assert!(help.contains("  filer list [--json]\n"), "{help}");
+    assert!(read(&filer, &["list", "--json"], None).unwrap().json);
+    assert_eq!(
+        refusal(&filer, &["status", "--json"], None),
+        "Command \"filer status\" does not define JSON output"
+    );
 }
 
 #[test]
