@@ -338,6 +338,20 @@ Running out is never an answer either: a working-tree request does not report
 a directory as outside a repository because it could not open the
 repository's files.
 
+A process start also waits, for about a second, while its program is busy.
+Linux refuses to run a file that any process holds open for writing, and the
+runner causes that itself. For example, it copies a service's executable into
+its cache and starts it while another thread starts a job's `git`. Starting a
+process copies the runner process first, and the copy holds every file the
+runner had open, the cache file too, until it runs `git` a moment later. A
+service start in that moment fails with `Text file busy` although the runner
+has closed the file, and a job that writes a script and runs it can meet the
+same. Every copy the runner makes runs its program at once, so the wait is
+short; a program still busy after a second is open for writing elsewhere, and
+its start fails. Every process the runner starts waits this way: services, raw
+processes, a job's commands and the programs its utilities start, such as
+`env` and `xargs`.
+
 **Known gap.** Inside a running job, only three of the shell's own needs wait
 today: creating a pipe, opening a file and starting a process, which go
 through the job's hooks. The embedded shell makes other descriptors without

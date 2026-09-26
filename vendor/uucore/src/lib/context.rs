@@ -27,6 +27,14 @@ pub trait Control: Send + Sync {
     fn sleep(&self, duration: std::time::Duration) -> std::io::Result<()>;
     fn resolve(&self, path: &Path, cwd: &Path) -> PathBuf;
     fn task_guard(&self) -> Box<dyn Send + Sync>;
+    /// Starts a child program. The embedding owner may wait out what keeps
+    /// it from starting for a while, such as a lack of open files.
+    fn spawn(
+        &self,
+        command: &mut process_wrap::std::CommandWrap,
+    ) -> std::io::Result<Box<dyn process_wrap::std::ChildWrapper>> {
+        command.spawn()
+    }
 }
 
 /// Cancellation unwinds one utility invocation, never the embedding process.

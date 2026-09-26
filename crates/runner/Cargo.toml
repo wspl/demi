@@ -29,7 +29,8 @@ tracing-subscriber.workspace = true
 clap = { version = "4", features = ["derive", "env"] }
 hostname = "0.4"
 subtle = "2"
-process-wrap.workspace = true
+# `std` for the utilities' child programs (uucore's `context::Control::spawn`).
+process-wrap = { workspace = true, features = ["std"] }
 filetime = "0.2"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
 uuid = { version = "1", features = ["v4"] }

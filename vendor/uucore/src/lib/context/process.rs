@@ -62,11 +62,15 @@ impl Command {
     }
     pub fn spawn(&mut self) -> std::io::Result<Child> {
         super::check_cancelled();
-        let mut inner = self.0.spawn()?;
+        let control = super::control();
+        let mut inner = match &control {
+            Some(control) => control.spawn(&mut self.0)?,
+            None => self.0.spawn()?,
+        };
         let stdin = inner.stdin().take().map(child_file);
         let stdout = inner.stdout().take().map(child_file);
         let stderr = inner.stderr().take().map(child_file);
-        let guard = super::control().map(|control| control.task_guard());
+        let guard = control.map(|control| control.task_guard());
         Ok(Child {
             inner,
             stdin,
