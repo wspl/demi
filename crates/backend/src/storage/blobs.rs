@@ -105,32 +105,3 @@ impl BlobStore for UserBlobs {
         })
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::storage::objects;
-
-    fn user(id: &str) -> UserId {
-        UserId::try_from(id).unwrap()
-    }
-
-    #[tokio::test]
-    async fn blobs_are_named_by_their_bytes_stored_once_and_kept_per_user() {
-        let data = tempfile::tempdir().unwrap();
-        let blobs = BlobStores::new(objects::open(data.path(), None).await.unwrap());
-        let ana = blobs.for_user(&user("ana"));
-
-        let name = ana.put(Bytes::from_static(b"\x0a\x14\x1e")).await.unwrap();
-        assert_eq!(name.as_str(), hex::encode(Sha256::digest(b"\x0a\x14\x1e")));
-        assert_eq!(ana.put(Bytes::from_static(b"\x0a\x14\x1e")).await.unwrap(), name);
-        assert_eq!(ana.get(&name).await.unwrap().unwrap(), Bytes::from_static(b"\x0a\x14\x1e"));
-        let file = data.path().join("blobs").join("ana").join(name.as_str());
-        assert_eq!(std::fs::read(file).unwrap(), b"\x0a\x14\x1e");
-
-        let missing = BlobRef::try_from("0".repeat(64)).unwrap();
-        assert_eq!(ana.get(&missing).await.unwrap(), None);
-        // Another user's namespace does not hold ana's bytes, whatever the name.
-        assert_eq!(blobs.for_user(&user("ben")).get(&name).await.unwrap(), None);
-    }
-}

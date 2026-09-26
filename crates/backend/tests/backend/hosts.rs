@@ -12,7 +12,7 @@ use demi_web_api::error::ErrorCode;
 use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};
 
-use crate::support::{Answer, Harness, Paired, Session, TestBackend};
+use crate::support::{Answer, Harness, Paired, Session, TestBackend, pattern};
 
 const CONVERSATION: &str = "3c2b1a0f-8f3a-4c1e-9d2b-7a1c2e3f4a01";
 
@@ -144,7 +144,7 @@ async fn a_switch_ends_the_open_download_instead_of_waiting_for_it() {
     let laptop = backend.pair(&master, "laptop").await;
     let on_laptop = directory(&laptop, "work");
     assert_eq!(switch(&backend, &master, target(&laptop, &on_laptop)).await.status, StatusCode::OK);
-    let video: Vec<u8> = (0..64 * 1024 * 1024).map(|index: usize| (index % 251) as u8).collect();
+    let video = pattern(64 * 1024 * 1024, 0);
     std::fs::write(on_laptop.join("long.mp4"), &video).unwrap();
     let path = on_laptop.join("long.mp4");
     let route = format!(
