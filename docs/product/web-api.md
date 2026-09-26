@@ -54,7 +54,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Attachments | `POST /attachments` with raw bytes; `GET /blobs/:sha256?type=...` |
 | Attached hosts | `GET /conversations/:id/hosts`, `POST .../hosts { deviceId }`, `PATCH .../hosts/:deviceId { name }`, `DELETE .../hosts/:deviceId` |
 | Runner transport | `WS /runner`; device-authenticated `PUT/GET /pipes/:id` for source/sink streams |
-| Public installation | `GET /install.sh`, `GET /install.ps1`, `GET /runner-artifacts/:release/:target/:file` (root paths, outside `/api`) |
+| Public installation | `GET /install.sh`, `GET /install.ps1`, `GET /runner-artifacts/:release/:target/:file`, and a development store's command executables, `GET /native-artifacts/:sha256` ([Backend deployment configuration](../execution/native-runtime.md#backend-deployment-configuration)) (root paths, outside `/api`) |
 
 ### Request bodies
 

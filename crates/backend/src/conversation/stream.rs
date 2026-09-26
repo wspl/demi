@@ -242,7 +242,7 @@ impl Shard {
             args: args.cloned(),
             json: args.map(|_| true),
             cwd: host.root.clone(),
-            resolver: self.services().native.resolver(),
+            resolver: self.services().native.resolver(&self.services().public_url),
         })
     }
 

@@ -467,8 +467,8 @@ impl Shard {
             .rotate_device_token(device.clone(), TokenHash::of(token.expose()))
             .await?;
         let backend_url = services
-            .cloud
-            .backend_url()
+            .public_url
+            .get()
             .cloned()
             .ok_or_else(|| CloudError::Failed("The backend does not listen yet".into()))?;
         let wake = WakeParams {
