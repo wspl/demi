@@ -100,8 +100,8 @@ wave). References are paths in the baseline worktree `/home/user/demi-base`.
 
 | ID | Scope | Reference | Owned Go paths | Depends on | Size |
 |---|---|---|---|---|---|
-| S1 | Shell core: fork mvdan/sh; job scope, completion, cancellation, exit status; open handler records edits; exec handler routes declared roots, utilities, external programs; login profiles and HOME; background jobs, here-docs, process substitution | `crates/runner/src/shell/`, `docs/demi-next/runner.md`, `edit-tracking.md`; tests `shell.rs`, `edit_tracking.rs`, `pipes.rs`, `tasks.rs`, `load.rs`, `open_files.rs` | `internal/shell`, `third_party/mvdan-sh` | F | 1.5 |
-| S2 | Runner connection and host operations: registration, pairing, claim, wire codec against the old TS backend, filesystem and process operations, pipes, file contents, Host log, management, command-alias mode, state | `crates/runner/src/{connection,host,host_log,management,mode,state,stdio,process,pipes,fs,files,paths,net,volumes}`; tests `connection.rs`, `host.rs`, `mode.rs`, `process.rs`, `fs.rs`, `local.rs` | `internal/runner/{connection,host,hostlog,management,state,alias}`, `cmd/demi-runner` | F | 1 |
+| S1 | Shell core: fork mvdan/sh; job scope, completion, cancellation, exit status; open handler records edits; exec handler routes declared roots, utilities, external programs; login profiles and HOME; background jobs, here-docs, process substitution | `crates/runner/src/shell/`, `docs/demi-next/runner.md`, `edit-tracking.md`; tests `shell.rs`, `edit_tracking.rs`, `tasks.rs`, `load.rs`, `open_files.rs`, `utilities_cat.rs`, `utilities_catalog.rs` | `internal/shell`, `third_party/mvdan-sh` | F | 1.5 |
+| S2 | Runner connection and host operations: registration, pairing, claim, wire codec against the old TS backend, filesystem and process operations, pipes, file contents, Host log, management, command-alias mode, state | `crates/runner/src/{connection,host,host_log,management,mode,state,stdio,process,pipes,fs,files,paths,net,volumes}`; tests `connection.rs`, `host.rs`, `mode.rs`, `process.rs`, `fs.rs`, `local.rs`, `pipes.rs` | `internal/runner/{connection,host,hostlog,management,state,alias}`, `cmd/demi-runner` | F | 1 |
 | S3 | Native package execution (manifests, artifact cache, command-service client), resident services, git status and diff (go-git), working tree and watch | `crates/runner/src/{commands,git.rs,tree_watch.rs,file_diff.rs}`; tests `dispatch.rs`, `command_client.rs`, `artifact_cache.rs`, `git.rs`, `conversations.rs` | `internal/runner/{native,services,artifacts,git,tree}` | S2, N1 | 1 |
 | T0 | Differential corpus harness and corpora for all 41 utilities: core and extended option sets, cases, expected output from the GNU tools here | GNU coreutils 9.4, grep 3.11, sed 4.9, findutils 4.9, diffutils 3.10, rg, jq | `internal/testing/gnucorpus`, `testdata/gnu` | F4a | 1 (light, s4) |
 | T1a | Text: cat head tail wc tee sort uniq cut tr | `crates/runner/src/shell/utilities.rs`, `vendor/uu_*` | `internal/tools/text` | F4a, T0 | 1 |
@@ -337,7 +337,7 @@ is not used), because it starts cold and is deleted afterwards.
 | F3 | — | done | runner, edit tracking, native runtime, commands, package boundaries, native builds (`e00717bc`); docs that only name locations (browser, scenarios, overview, sessions-and-targets, file-previews, live view) are updated when their WP merges |
 | F4a | — | done | `internal/toolctx`, `internal/toolctx/toolctxtest` (`cbcb5d5d`, `6bfdea40`) |
 | F4b | s2 | implementing | |
-| F5 | — | running | triage agent, ledger agent |
+| F5 | — | running | ledger done (`ledger.md`: ~373 behaviors, 242 old test files; A1–A3 split, pipes.rs → S2, utilities_* → S1 accepted); triage running |
 | S1 | s1 | implementing | |
 | T0 | s4 | implementing | |
 | T1a | s3 | implementing | |
