@@ -337,7 +337,7 @@ is not used), because it starts cold and is deleted afterwards.
 | F2 | — | done | AGENTS.md Go section, `.golangci.yml`, `scripts/go-check.sh` (`e00717bc`) |
 | F3 | — | done | runner, edit tracking, native runtime, commands, package boundaries, native builds (`e00717bc`); docs that only name locations (browser, scenarios, overview, sessions-and-targets, file-previews, live view) are updated when their WP merges |
 | F4a | — | done | `internal/toolctx`, `internal/toolctx/toolctxtest` (`cbcb5d5d`, `6bfdea40`) |
-| F4b | s2 | fixing round 1 (H1 deep-nesting stack overflow; M1 record key order; L1–L6) | 5 of 7 packages generated, 6,855 corpus cases; core/agentproto split into F4c (design `6eb8299c`); `-mod=mod` needed while vendor/ holds Rust (`763449da`) |
+| F4b | s2 | fixing round 3 (round 2 fixed H1, M1, L1–L6; new H2 nested preallocation memory blowup, N1 Record aliasing) | 5 of 7 packages generated, 6,855 corpus cases; core/agentproto split into F4c (design `6eb8299c`); `-mod=mod` needed while vendor/ holds Rust (`763449da`) |
 | E1 | s1 | implementing | |
 | M0/M1 | s3 | implementing | |
 | F4c | s2 | next | agent protocol contracts, same agent as F4b |
