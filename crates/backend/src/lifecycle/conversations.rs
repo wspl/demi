@@ -36,14 +36,20 @@ impl Shard {
         }
     }
 
+    /// Whether the conversation's idle watch runs: from its first Host
+    /// admission until it released the conversation or was ended.
+    pub(crate) fn tracks_idle(&self, id: &ConversationId) -> bool {
+        self.idle_watches()
+            .watches
+            .borrow()
+            .get(id)
+            .is_some_and(|watch| !watch.is_finished())
+    }
+
     /// Starts the conversation's idle watch unless one runs, as each Host
     /// admission does.
     pub(crate) fn track_idle(&self, id: &ConversationId) {
-        if self.is_closing() {
-            return;
-        }
-        let mut watches = self.idle_watches().watches.borrow_mut();
-        if watches.get(id).is_some_and(|watch| !watch.is_finished()) {
+        if self.is_closing() || self.tracks_idle(id) {
             return;
         }
         let policy = ConversationIdle {
@@ -52,7 +58,8 @@ impl Shard {
         };
         let lifecycle = &self.services().lifecycle;
         let watch = super::watch(policy, lifecycle.idle_window, lifecycle.idle_poll, self.tasks().clone());
-        watches.insert(id.clone(), AbortOnDropHandle::new(self.tasks().spawn_local(watch)));
+        let watch = AbortOnDropHandle::new(self.tasks().spawn_local(watch));
+        self.idle_watches().watches.borrow_mut().insert(id.clone(), watch);
     }
 
     /// Starts the conversation's idle watch again, as a won target switch
@@ -147,11 +154,10 @@ mod tests {
     /// access read the database, which answers on threads outside the
     /// runtime, and a paused clock would jump to the watch's next timer
     /// whenever the test waits for them (`concurrency.md` § Tests and time).
-    const WINDOW: Duration = Duration::from_secs(1);
-
-    /// How long a release that fell due takes to reach the test's runner:
-    /// the watch's database reads and the runner's answer.
-    const SETTLE: Duration = Duration::from_millis(100);
+    /// A test that shows activity restarting the window acts again half a
+    /// window after the first activity, which leaves the half as margin for
+    /// the database's answers on a loaded machine.
+    const WINDOW: Duration = Duration::from_millis(800);
 
     /// A guard against a hang, far above any wait here, not a latency bound.
     const HANG: Duration = Duration::from_secs(30);
@@ -208,6 +214,16 @@ mod tests {
             .expect("the test keeps the log");
     }
 
+    /// Waits until the conversation's idle watch has ended, as it does once
+    /// it released the conversation.
+    async fn until_retired(shard: &Shard, id: &ConversationId) {
+        let deadline = Instant::now() + HANG;
+        while shard.tracks_idle(id) {
+            assert!(Instant::now() < deadline, "the idle watch never ended");
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+
     fn on(device: &DeviceId) -> ConversationChange {
         ConversationChange::Target(ConversationTarget::Device {
             device_id: device.clone(),
@@ -215,6 +231,8 @@ mod tests {
         })
     }
 
+    // A window and a half of real time: the second activity comes half a
+    // window after the first, to show that it restarts a full window.
     #[tokio::test(flavor = "local")]
     async fn an_hour_without_activity_releases_the_conversation_on_its_main_and_attached_devices() {
         let data = tempfile::tempdir().unwrap();
@@ -275,10 +293,14 @@ mod tests {
             .call(move |shard, _| async move {
                 let id = ConversationId::try_from(ID).unwrap();
                 // The Cloud's runner is connected, and the conversation's
-                // watch runs, as a Host admission starts it.
+                // watch runs, as a Host admission starts it; once the window
+                // has passed, the watch retires the conversation and ends,
+                // and the Cloud heard nothing.
                 let released = runners(&shard, &[cloud]);
+                let started = Instant::now();
                 shard.track_idle(&id);
-                tokio::time::sleep(WINDOW + SETTLE).await;
+                until_retired(&shard, &id).await;
+                assert!(started.elapsed() >= WINDOW, "{:?}", started.elapsed());
                 assert!(released.borrow().is_empty());
             })
             .await
@@ -286,6 +308,8 @@ mod tests {
         pool.close().await;
     }
 
+    // A window and a half of real time: the switch comes half a window after
+    // the activity, and the release it leads to a full window after it.
     #[tokio::test(flavor = "local")]
     async fn a_switch_restarts_the_window_so_the_old_deadline_releases_nothing_and_an_archive_ends_it() {
         let data = tempfile::tempdir().unwrap();
@@ -298,29 +322,45 @@ mod tests {
                 let released = runners(&shard, &devices);
                 let [old, new] = [devices[0].clone(), devices[1].clone()];
                 shard.transition(&id, on(&old)).await.unwrap();
-                shard
-                    .with_host(&id, None, &CancellationToken::new(), async |_| ())
-                    .await
-                    .unwrap();
-                let operated = Instant::now();
+                let operate = async || {
+                    shard
+                        .with_host(&id, None, &CancellationToken::new(), async |_| ())
+                        .await
+                        .unwrap()
+                };
+                operate().await;
                 tokio::time::sleep(WINDOW / 2).await;
                 // The switch releases the old device, once.
+                let switched = Instant::now();
                 shard.transition(&id, on(&new)).await.unwrap();
                 let devices: Vec<DeviceId> = released.borrow().iter().map(|(device, _)| device.clone()).collect();
                 assert_eq!(devices, [old.clone()]);
-                // The old binding's deadline passes and releases nothing.
-                tokio::time::sleep_until(operated + WINDOW + SETTLE).await;
-                assert_eq!(released.borrow().len(), 1);
-                // The archive releases the conversation on the new device and
-                // on the old one, which the switch left attached, and ends
-                // its watch: no deadline releases it again.
+                // The old binding's deadline releases nothing: the next
+                // releases are the new binding's, on the new device and on
+                // the old one, which the switch left attached, a full window
+                // after the switch.
+                until_released(&released, 3).await;
+                until_retired(&shard, &id).await;
+                let mut later = released.borrow()[1..].to_vec();
+                later.sort();
+                let devices: Vec<&DeviceId> = later.iter().map(|(device, _)| device).collect();
+                let mut expected = vec![&new, &old];
+                expected.sort();
+                assert_eq!(devices, expected);
+                for (_, at) in &later {
+                    assert!(*at - switched >= WINDOW, "{:?}", *at - switched);
+                }
+                // The archive releases the conversation on both at once and
+                // ends the watch the next Host admission started, so no
+                // deadline releases it again.
+                operate().await;
+                assert!(shard.tracks_idle(&id));
                 shard
                     .transition(&id, RecordChange::Archived(true).into())
                     .await
                     .unwrap();
-                assert_eq!(released.borrow().len(), 3);
-                tokio::time::sleep(WINDOW + SETTLE).await;
-                assert_eq!(released.borrow().len(), 3);
+                assert_eq!(released.borrow().len(), 5);
+                assert!(!shard.tracks_idle(&id));
             })
             .await
             .unwrap();
