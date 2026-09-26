@@ -21,10 +21,10 @@ use demi_artifact::{Archive, Digest, Mode, Permissions, Publication, ReleaseFile
 use demi_builtin_protocol::release::{BrowserRelease, IMAGE_BROWSERS};
 use demi_command_service::protocol::{PackageArtifact, PackageDescriptor};
 use demi_machines_protocol::image::{
-    ARTIFACTS_PATH, Architecture, CloudImageManifest, FormatVersion, INIT_PATH, InstalledPackage, ManifestError,
-    Os, RUNNER_PATH, RootfsArchive, RootfsFile, StandaloneTool,
+    Architecture, CloudImageManifest, FormatVersion, INIT_PATH, InstalledPackage, ManifestError, Os, RUNNER_PATH,
+    RootfsArchive, RootfsFile, StandaloneTool,
 };
-use demi_runner_protocol::release::RunnerRelease;
+use demi_runner_protocol::{image::ARTIFACTS_PATH, release::RunnerRelease};
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
