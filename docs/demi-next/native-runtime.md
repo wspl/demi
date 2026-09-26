@@ -4,7 +4,7 @@ This document defines native command execution: binding a command to a release,
 installing its executable, and running it in a shared service. The execution
 contract comes first; protocol, publication, and build requirements follow.
 
-The runner is a Rust process with an embedded brush shell. Native command
+The runner is a Go process with an embedded shell interpreter. Native command
 algorithms run in separate executables that stay running to serve multiple calls.
 These *resident services* can be released independently of the runner. The runner
 embeds no JavaScript engine.
@@ -69,7 +69,7 @@ The responsibility boundaries are:
 | Shared command-service SDK | Handle framing, HTTP/2, byte IO, and cancellation over supplied transport. |
 | Native package | Implement operations, validate their arguments, and release operation resources. |
 
-The shared SDK owns no artifact or process management. Brush builtins and external
+The shared SDK owns no artifact or process management. Shell builtins and external
 command clients use the same dispatcher, which supplies validated operation
 metadata to the native service. Application callbacks return to the embedding
 application instead. The native service never receives raw CLI requests.
@@ -78,7 +78,7 @@ Related contracts define the surrounding behavior:
 
 - [Command declarations](commands.md): CLI parsing and manifest semantics.
 - [Local forwarding](commands.md#external-command-clients): external clients and endpoint access.
-- [Runner jobs](runner.md#shell-jobs): brush, profiles, and whole-job cleanup.
+- [Runner jobs](runner.md#shell-jobs): the interpreter, utilities, profiles, and whole-job cleanup.
 - [Package boundaries](../package-boundaries.md#source-organization): source module ownership.
 
 ## Bind an exact package
@@ -509,15 +509,14 @@ Cross-compilation and native execution are separate acceptance checks.
 
 | Platform | Target triples | Release toolchain |
 | --- | --- | --- |
-| macOS | `aarch64-apple-darwin`, `x86_64-apple-darwin` | cargo-zigbuild with Apple SDK |
-| Linux | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl` | cargo-zigbuild, static musl |
-| Windows | `aarch64-pc-windows-msvc`, `x86_64-pc-windows-msvc` | cargo-xwin, LLVM and Microsoft SDK, static CRT |
+| macOS | `darwin/arm64`, `darwin/amd64` | Go toolchain, `CGO_ENABLED=0` |
+| Linux | `linux/arm64`, `linux/amd64` | Go toolchain, `CGO_ENABLED=0`, static |
+| Windows | `windows/arm64`, `windows/amd64` | Go toolchain, `CGO_ENABLED=0` |
 
 Release validation requires all of the following:
 
 - Pin release tools and SDKs.
-- Inspect Linux artifacts for unexpected shared-library dependencies. Selecting
-  musl alone does not establish a self-contained executable.
+- Inspect Linux artifacts for unexpected shared-library dependencies.
 - Run the same protocol and command conformance cases on every target.
 - Supply native artifacts. Emulation or source-only support is insufficient.
 
@@ -587,30 +586,33 @@ descriptors are not valid publication inputs.
 ## Contract generation and validation
 
 Design rules above define the contract. Their executable schemas are maintained
-once in the owning TypeScript packages. Generated Rust must enforce the same
+once in the owning TypeScript packages. Generated Go must enforce the same
 constraints without a second manually maintained definition.
 
-| Schema owner | Consumer |
+| Schema owner | Go package |
 | --- | --- |
-| `packages/runner-protocol/src/schemas.ts` — runner messages | `crates/runner/build.rs` |
-| `packages/command-loader/src/manifest/schema.ts` — manifests | `crates/runner/build.rs` |
-| `packages/browser-protocol` — browser business schemas | `crates/demi-commands/build.rs` |
-| `packages/command-protocol/src/index.ts` — native wire and descriptors | `crates/command-service/build.rs` |
+| `packages/runner-protocol/src/schemas.ts` — runner messages | `internal/contract/runnerwire` |
+| `packages/command-loader/src/manifest/schema.ts` — manifests | `internal/contract/manifest` |
+| `packages/browser-protocol` — browser business schemas | `internal/contract/browser` |
+| `packages/command-protocol/src/index.ts` — native wire and descriptors | `internal/contract/cmdservice` |
 
-Cargo transforms the schema into boundary validation during the build:
+`scripts/generate-go-contracts.ts` (`bun run go:contracts`) transforms the
+schemas into Go types with boundary validation:
 
 ```text
-Zod schemas -> Cargo build -> generated Rust -> boundary validation
+Zod schemas -> scripts/go-zod.ts -> generated Go -> boundary validation
 ```
 
-Normal Cargo builds run generation, with Bun and installed workspace dependencies
-as prerequisites. Build scripts may invoke JS/TS tooling. Generated files stay
-in `OUT_DIR`, are included by the crate and are not committed. The shared
-command-service library exposes its bindings to the runner and native programs.
+Generation runs before every Go build and test (`scripts/go-check.sh`), with Bun
+and installed workspace dependencies as prerequisites. Generated files
+(`zz_generated*.go`) are not committed; each contract package commits only its
+package documentation.
 
-Rust validates fixed contracts directly, including literals, enums, ranges,
+Go validates fixed contracts directly, including literals, enums, ranges,
 string and array constraints, record keys, required/optional/null values, and
-operation uniqueness. Unsupported Zod constructs or refinements fail generation.
+operation uniqueness. Decoding and validation happen in one step, so no caller
+holds an unvalidated value. Unsupported Zod constructs or refinements fail
+generation.
 
 Generated types alone do not establish validation. Fixed contract validation must
 not round-trip values through JSON or a separately generated JSON Schema.

@@ -102,7 +102,7 @@ The arrows below show calls, not process containment. Both entry paths converge
 before the dispatcher selects the execution destination.
 
 ```text
-Brush builtin -------- direct call ------> Dispatcher
+Shell builtin -------- direct call ------> Dispatcher
 External client ------ local forwarding -> Dispatcher
 
 Dispatcher -------- native operation ----> Target command service
@@ -126,7 +126,7 @@ the context, resolves the command, parses input, and dispatches the selected lea
 A native package never receives an unvalidated CLI request.
 
 `command-loader` owns manifest serialization and TypeScript loading. SDK embedders
-use `createLoader` with explicit RPC and native executors. The Rust runner uses
+use `createLoader` with explicit RPC and native executors. The Go runner uses
 generated manifest types and its own dispatcher, with shared CLI fixtures to
 check argument behavior. The TypeScript loader does not manage processes or
 object-store credentials.
@@ -138,11 +138,12 @@ composition, immutable releases, installation, and service lifetime.
 
 ## External command clients
 
-An external program such as `xargs` calls a declared root through an alias to
+An external program such as a Python script calls a declared root through an alias to
 `demi-runner`. The alias basename selects the root. The client forwards raw argv,
 cwd, environment, and its live execution context, then streams command IO. It
-contains no native command algorithms. Brush builtins call the dispatcher directly
-and do not need this extra process or connection.
+contains no native command algorithms. Shell builtins and in-process utilities
+(`xargs`, `find -exec`, `env`) call the dispatcher directly and do not need this
+extra process or connection.
 
 The runner injects the endpoint and the job's opaque context handle into its
 jobs. The handle leads the runner to the job's live execution context, and with
@@ -200,7 +201,7 @@ a faulty handler that cannot stop follows the
 
 ## Implementation discrepancy
 
-The Rust dispatcher checks help before consuming a command body. The TypeScript
+The Go dispatcher checks help before consuming a command body. The TypeScript
 `runRegisteredCommand` entry point currently consumes finite stdin for a leaf with
 `stdinField` before checking its parsed help flag. `createLoader` uses that entry
 point too. A local fixture calling a `stdinField` leaf with `--help` observed one

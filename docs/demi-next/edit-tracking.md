@@ -23,7 +23,7 @@ browser fetches them when a file is opened.
 
 | Recorded | Not recorded |
 | --- | --- |
-| A file a brush redirection opens for writing (`>`, `>>`, `<>`, `exec 3>f`). | Writes by external programs that do not participate in recording: git, python, node, user-installed tools. |
+| A file a shell redirection opens for writing (`>`, `>>`, `<>`, `exec 3>f`). | Writes by external programs that do not participate in recording: git, python, node, user-installed tools. |
 | A file an embedded utility opens for writing, writes whole, or renames over (`sed -i`, `tee`, `sort -o`, `uniq` with an output file). | Copies and hard links (`cp`), deletions, renames as moves, directories, permissions, ownership, times. |
 | Files created or modified by `demi file create`, `demi file edit`, and `demi file patch`, including when one patch edits several files. | Edits prepared by a native command but never written, or successfully rolled back. |
 | Every in-process part of the job: subshells, functions, background tasks, process substitutions. | Reads, and the empty file `mktemp` creates. |
@@ -69,14 +69,15 @@ not enter the recorder. Closing the lock file releases it on normal return,
 unwinding or process death. Recording failures never change the command result;
 they are logged to the runner/service diagnostic stream.
 
-The shared recording implementation lives in `command-service/edits`: both the
+The shared recording implementation lives in `internal/commandservice/edits`: both the
 runner and native command service use this file interface. The runner creates
 the job's private `changes` directory next to its retained output, and provides
 that directory and the installation's lock file as an `EditContext`. Its journal
 and context have schemas in `command-protocol`; they are not another message
 stream and never appear on command stdout or stderr.
 
-Brush and `context::fs` enter this recorder for their write operations. Opened
+The interpreter's open handler and the utilities' file access
+(`toolctx.Files`) enter this recorder for their write operations. Opened
 regular files are registered with their identity so cloned descriptors, utility
 stdout and shell descriptor duplication retain their association with the path.
 Writes to an old descriptor after its path was replaced do not edit the file now
@@ -193,10 +194,10 @@ Only Uncommitted mode lists files and offers a changed-file tree.
 
 | Where | Responsibility |
 | --- | --- |
-| `vendor/brush-core`, `vendor/uucore`, `vendor/sed` | Route writable opens, file writes and temporary-file publication through the execution owner's hooks. |
-| `packages/command-protocol`, `crates/command-service` | Define the recording context/journal and implement the shared bounded recorder with OS locking. |
-| `crates/demi-commands` | Record create, edit, patch publication and rollback using the invocation's recorder. |
-| `crates/runner` | Create job recording contexts, associate descriptors with paths, forward redirected external output, finalize reports and share line counting with the working tree. |
+| `third_party/mvdan-sh`, `internal/toolctx`, `internal/tools` | Route writable opens, file writes and temporary-file publication through the job's file access. |
+| `packages/command-protocol`, `internal/commandservice` | Define the recording context/journal and implement the shared bounded recorder with OS locking. |
+| `internal/commands` | Record create, edit, patch publication and rollback using the invocation's recorder. |
+| `internal/runner`, `internal/shell` | Create job recording contexts, associate open files with paths, forward redirected external output, finalize reports and share line counting with the working tree. |
 | `packages/runner-protocol`, `packages/shell`, `packages/host-remote` | Carry the report through command completion. |
 | `packages/backend` | Publish snapshots before tool completion, retain conversation history, authorize reads and serve individual edit segments. |
 | `packages/agent` | Carry the small file/segment list in the shell tool view, exclusively for the user. |
