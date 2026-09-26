@@ -723,10 +723,10 @@ packages under `packages/`.
 
 - **Owns:** the chroot steps of the Linux Cloud image build (debootstrap, apt,
   the `demi` user and sudo configuration, init and the shell skeleton), written
-  as shell. `xtask` packages the result: it embeds the verified runner and
-  native releases, Chrome and uv, and writes `rootfs.tar.zst` with its
-  manifest. [Cloud images](../cloud/images.md) owns the artifact and build
-  contract.
+  as shell, and the pin of uv. `xtask` packages the result: it embeds the
+  verified runner and native releases, Chrome and uv, and writes
+  `rootfs.tar.zst` with its manifest. [Cloud images](../cloud/images.md) owns
+  the artifact and build contract.
 - **Build boundary:** filesystem assembly runs at build time; native binaries
   come from the machine's cross tools
   ([Builds and releases](../delivery/builds-and-releases.md)). No guest kernel,
@@ -774,7 +774,7 @@ machines -> artifact, machines-protocol, runner-protocol
 runner -> artifact, command-service, command-tree, gates, runner-protocol
 demi-commands -> artifact, builtin-protocol, command-service, gates
 demi-claude -> artifact, claude-protocol, command-service
-xtask -> agent-protocol, artifact, builtin-protocol, claude-protocol, command-service, command-tree, core, machines-protocol, runner-protocol, web-api
+xtask -> agent-protocol, artifact, builtin-protocol, claude-protocol, command-service, core, machines-protocol, runner-protocol, web-api
 ```
 
 ### TypeScript packages

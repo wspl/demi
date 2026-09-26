@@ -54,9 +54,13 @@ runtime.
 
 `xtask` itself is not released. It runs on the developer's machine. The Linux
 builder of the Cloud image runs a Linux musl build of it, which the developer's
-machine cross-compiles, for example with
-`cargo zigbuild --release -p xtask --target aarch64-unknown-linux-musl` for an
-arm64 builder ([guest image build](../../packages/guest-image/README.md)).
+machine cross-compiles beside the native builds, for an arm64 builder with
+([guest image build](../../packages/guest-image/README.md)):
+
+```sh
+cargo zigbuild --release --locked -p xtask \
+  --target aarch64-unknown-linux-musl --target-dir .cache/native-target
+```
 
 ## Toolchain
 

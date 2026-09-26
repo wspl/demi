@@ -1,37 +1,62 @@
 #!/usr/bin/env bash
-# The container root filesystem (managed-hosts.md § The shipped base): Ubuntu
-# 26.04 by debootstrap, the toolchain from packages.txt, uv as one binary,
-# the guest user `demi` (uid 1000) with passwordless sudo, the runner as
-# /usr/bin/demi-runner, released as a verified root archive.
-# Runs as root on Linux. Usage: sudo rootfs/build.sh <aarch64|x86_64>
+# Builds a Cloud image release (images.md § Build pipeline) as root on a Linux
+# builder, for the builder's architecture. This script is the first stage:
+# Ubuntu 26.04 by debootstrap, the toolchain from packages.txt and tini, the
+# guest user `demi` (uid 1000) with passwordless sudo, and the file overlay.
+# The second stage is `xtask cloud-image package`, built for this builder on
+# the developer's machine: it embeds the runner, the command packages, Chrome
+# for Testing and uv, and publishes the verified root archive and manifest.
+#
+# Usage: sudo bash rootfs/build.sh --xtask PATH --runners DIR --package DIR...
+#          --output DIR [--work DIR] [--mirror URL]
 set -euo pipefail
-arch="${1:?arch}"
 here="$(cd "$(dirname "$0")/.." && pwd)"
-out="${DEMI_CLOUD_BUILD_DIR:-$here/out/$arch}"
-image="${DEMI_CLOUD_IMAGE_OUTPUT:?set DEMI_CLOUD_IMAGE_OUTPUT to a new release directory}"
-runner="${DEMI_CLOUD_RUNNER:-$out/demi-runner}"
-[ -x "$runner" ] || {
-  echo "build the runner first: runner/build.sh $arch" >&2
+xtask=""
+runners=""
+packages=()
+output=""
+work=/var/tmp/demi-cloud-root
+mirror=""
+usage() {
+  echo 'usage: build.sh --xtask PATH --runners DIR --package DIR [--package DIR]...' >&2
+  echo '         --output DIR [--work DIR] [--mirror URL]' >&2
   exit 2
 }
-case "$arch" in
+while [ "$#" -gt 0 ]; do
+  [ "$#" -ge 2 ] || usage
+  case "$1" in
+    --xtask) xtask=$2 ;;
+    --runners) runners=$2 ;;
+    --package) packages+=(--package "$2") ;;
+    --output) output=$2 ;;
+    --work) work=$2 ;;
+    --mirror) mirror=$2 ;;
+    *) echo "unknown argument: $1" >&2; usage ;;
+  esac
+  shift 2
+done
+[ -n "$xtask" ] && [ -n "$runners" ] && [ "${#packages[@]}" -gt 0 ] && [ -n "$output" ] || usage
+[ -x "$xtask" ] || { echo "no xtask executable at $xtask" >&2; exit 2; }
+# A release is immutable: every build publishes a new one.
+[ ! -e "$output" ] || { echo "$output exists: choose a new release directory" >&2; exit 2; }
+case "$(uname -m)" in
   aarch64)
     deb_arch=arm64
+    mirror="${mirror:-http://ports.ubuntu.com/ubuntu-ports}"
     ;;
   x86_64)
     deb_arch=amd64
+    mirror="${mirror:-http://archive.ubuntu.com/ubuntu}"
     ;;
   *)
-    echo "unknown arch $arch" >&2
+    echo "no Cloud image is built for $(uname -m)" >&2
     exit 2
     ;;
 esac
-[ "$(uname -m)" = "$arch" ] || { echo 'assemble the image on a matching Linux architecture' >&2; exit 2; }
-work="${ROOTFS_WORK:-$here/out/rootfs-$arch}"
-suite="${UBUNTU_SUITE:-resolute}"
-uv_version="${UV_VERSION:-0.12.13}"
-mirror="${UBUNTU_MIRROR:-http://ports.ubuntu.com/ubuntu-ports}"
-[ "$deb_arch" = amd64 ] && mirror="${UBUNTU_MIRROR:-http://archive.ubuntu.com/ubuntu}"
+# The Ubuntu release of the image, 26.04; the manifest records it.
+suite=resolute
+# What the build creates is readable by `demi`, whatever the caller's umask.
+umask 022
 
 rm -rf "$work"
 mkdir -p "$work"
@@ -73,9 +98,6 @@ in_chroot locale-gen en_US.UTF-8
 in_chroot apt-get clean
 rm -rf "$work/var/lib/apt/lists/"*
 
-# Install the same pinned browser archive consumed by paired-device installers.
-bun --conditions development "$here/../../scripts/native/install-browser.ts" "$work" "$arch"
-
 # The guest user, its sudo, its shell.
 in_chroot groupadd -g 1000 demi
 in_chroot useradd -m -u 1000 -g 1000 -s /bin/bash demi
@@ -88,36 +110,18 @@ chmod 0440 "$work/etc/sudoers.d/demi"
 echo demi > "$work/etc/hostname"
 # Programs see the sandbox mount table.
 ln -sf /proc/self/mounts "$work/etc/mtab"
-
-# uv: one binary from its release, checked against the published digest.
-uv_dir="$out/uv-$uv_version"
-uv_asset="uv-$arch-unknown-linux-gnu.tar.gz"
-if [ ! -x "$uv_dir/uv" ]; then
-  mkdir -p "$uv_dir"
-  uv_url="https://github.com/astral-sh/uv/releases/download/$uv_version/$uv_asset"
-  curl -fsSL "$uv_url" -o "$uv_dir/$uv_asset"
-  curl -fsSL "$uv_url.sha256" -o "$uv_dir/$uv_asset.sha256"
-  (cd "$uv_dir" && sha256sum -c "$uv_asset.sha256")
-  tar -xzf "$uv_dir/$uv_asset" -C "$uv_dir" --strip-components=1
-fi
-install -m 0755 "$uv_dir/uv" "$uv_dir/uvx" "$work/usr/local/bin/"
-
-# Init reaps processes; the runner supplies per-job command aliases.
-install -m 0755 "$runner" "$work/usr/bin/demi-runner"
-ln -s demi-runner "$work/usr/bin/demi"
 # /home is the owner's image; the rootfs carries only the mount point.
 rm -rf "$work/home/demi"
 mkdir -p "$work/home"
 umount "$work/dev" "$work/sys" "$work/proc"
 trap - EXIT
-rm -f "$work/etc/resolv.conf"
 
-# Native command packages and the immutable release are packed by the shared schema.
+# No runtime state, network configuration or machine identity of the builder.
+rm -f "$work/etc/resolv.conf"
 rm -rf "$work/dev/"* "$work/run/"* "$work/tmp/"*
 rm -f "$work/etc/machine-id" "$work/var/lib/dbus/machine-id"
 touch "$work/etc/resolv.conf"
-bun --conditions development "$here/package.ts" \
-  --root "$work" --arch "$arch" --output "$image" \
-  --uv-version "$uv_version" --uv-archive "$uv_dir/$uv_asset" "${@:2}"
-[ "${KEEP_ROOTFS_WORK:-}" = 1 ] || rm -rf "$work"
-echo "$image"
+# The second stage prints the release's base version.
+"$xtask" cloud-image package --root "$work" --runners "$runners" \
+  "${packages[@]}" --output "$output"
+rm -rf "$work"

@@ -195,7 +195,8 @@ guest-reachable Mac URL to configure. Verify the connection by starting a
 managed device through the backend. Do not assume a particular Lima gateway
 address works on every installation.
 
-With an image already built inside Lima:
+With an image already built inside Lima
+([guest image build](../../packages/guest-image/README.md)):
 
 ```sh
 cargo xtask native build --package demi-machines --target aarch64-unknown-linux-musl
