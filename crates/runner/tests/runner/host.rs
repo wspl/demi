@@ -6,7 +6,7 @@ use std::{collections::BTreeMap, time::Duration};
 
 use demi_command_service::protocol::{CommandCaller, CommandContext, CommandLocale};
 use demi_runner::{
-    connection::wire::{FsResult, Inbound, OutputStream, Outbound, Signal},
+    connection::wire::{FsResult, Inbound, OutputStream, Outbound, Signal, SpawnError, SpawnErrorKind},
     testing::Host,
 };
 
@@ -47,6 +47,50 @@ async fn filesystem_requests_and_kill_remain_available_during_job() {
             matches!(&exit, Outbound::JobExit { job_id, .. } if job_id == "live"),
             "{exit:?}"
         );
+        host.close().await;
+    })
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn a_start_the_runner_cannot_begin_ends_with_its_reason_as_the_spawn_error() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let root = tempfile::tempdir().unwrap();
+        let mut host = Host::start(root.path(), BTreeMap::new()).await.online().await;
+        let start = || Inbound::JobStart {
+            manifest_hash: None,
+            context: context(),
+            job_id: "twin".into(),
+            script: "sleep 60".into(),
+            cwd: root.path().to_string_lossy().into_owned(),
+            env: BTreeMap::new(),
+            stdin: None,
+            stdout: None,
+        };
+        // A second start under a live job's id cannot begin: its exit has no
+        // status, and the runner's reason is the spawn error's detail, never
+        // the signal.
+        host.send(start()).await;
+        host.send(start()).await;
+        let exit = host.frame().await;
+        assert!(
+            matches!(
+                &exit,
+                Outbound::JobExit {
+                    job_id,
+                    exit_code: None,
+                    signal: None,
+                    spawn_error: Some(SpawnError {
+                        kind: SpawnErrorKind::Other,
+                        detail: Some(detail),
+                    }),
+                    ..
+                } if job_id == "twin" && detail == "duplicate live task id"
+            ),
+            "{exit:?}"
+        );
+        // Closing ends the first job with the connection.
         host.close().await;
     })
     .await
