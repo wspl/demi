@@ -1115,15 +1115,19 @@ async fn a_nested_command_prints_its_groups_help_and_only_json_output_that_match
     for refused in [&not_json, &mismatch] {
         assert_eq!(exited(refused), 1, "{}", refused.stderr.tail);
         assert_eq!(refused.stdout.delta, "");
-        assert!(!refused.stderr.delta.is_empty());
     }
+    // Each refusal says that the command's --json output failed, and how.
     assert!(
-        mismatch
+        not_json
             .stderr
             .delta
-            .contains("\"ok\" is not of type \"boolean\""),
+            .starts_with("demi-runner: --json output is not JSON: "),
         "{}",
-        mismatch.stderr.delta
+        not_json.stderr.delta
+    );
+    assert_eq!(
+        mismatch.stderr.delta,
+        "demi-runner: --json output does not match its schema: \"ok\" is not of type \"boolean\"\n"
     );
     // A usage error exits 1 and names the field at fault.
     let usage = run(&shell, "probe json emit").await;
