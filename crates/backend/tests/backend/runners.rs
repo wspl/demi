@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use demi_host_remote::testing::{RunnerProcess, RunnerProcessOptions};
 use demi_runner_protocol::values::DeviceToken;
-use demi_runner_protocol::wire::{self, HelloErrorCode, HostIdentity, Inbound, Outbound, RunnerInfo};
+use demi_runner_protocol::wire::{self, HelloErrorCode, HostIdentity, Inbound, Outbound, RunnerInfo, RunnerPlatform};
 use demi_web_api::devices::{ClaimedDevice, DeviceKind, DeviceLog};
 use demi_web_api::error::ErrorCode;
 use demi_web_api::files::Directory;
@@ -132,7 +132,7 @@ fn hello(protocol: u32, token: Option<&str>, managed: Option<bool>) -> Outbound 
         device_token: token.map(|token| DeviceToken::try_from(token.to_owned()).unwrap()),
         runner: RunnerInfo {
             name: "raw".into(),
-            platform: "test".into(),
+            platform: RunnerPlatform::Linux,
             version: "0".into(),
             native_target: None,
             identity: HostIdentity {

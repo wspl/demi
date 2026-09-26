@@ -6,7 +6,7 @@ use demi_runner::{
     state::{self, RunnerState},
     stdio::{self, standard_file},
 };
-use demi_runner_protocol::{boot::ManagedBoot, values::BackendUrl};
+use demi_runner_protocol::{boot::ManagedBoot, values::BackendUrl, wire::RunnerPlatform};
 use tracing_subscriber::{
     Layer as _, filter::LevelFilter, layer::SubscriberExt as _, util::SubscriberInitExt as _,
 };
@@ -229,13 +229,12 @@ async fn runner(cli: Cli, shell: demi_runner::shell::ShellRuntime) -> io::Result
         native_target: Some(demi_runner::services::target().into()),
         name: name.unwrap_or_else(|| identity.hostname.clone()),
         platform: if cfg!(target_os = "macos") {
-            "darwin"
+            RunnerPlatform::Darwin
         } else if cfg!(windows) {
-            "win32"
+            RunnerPlatform::Win32
         } else {
-            "linux"
-        }
-        .into(),
+            RunnerPlatform::Linux
+        },
         version: installation
             .release
             .unwrap_or_else(|| env!("CARGO_PKG_VERSION").into()),

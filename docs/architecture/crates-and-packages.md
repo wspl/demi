@@ -236,7 +236,8 @@ next to the wire's types, so that a command program depends on one crate.
     and `Manifest::build`, so both ends compute the hash one way;
   - the managed boot record (`ManagedBoot`) and the runner release record
     (`RunnerRelease`);
-  - `Signal`;
+  - `Signal`, and the platform a runner reports in its hello
+    (`RunnerPlatform`);
   - the protocol constants: `VERSION`, `MAX_MESSAGE_BYTES`, `JOB_VIEW_BYTES`,
     `STDIN_CHUNK_BYTES`, `LOG_READ_LINES` and `SERVICE_STDERR_CHARS`.
 - **Conversation scope:** jobs and service streams carry the
@@ -273,9 +274,10 @@ next to the wire's types, so that a command program depends on one crate.
   `ConversationPatch` and `ProviderDto`; the error body (`ErrorBody`) and
   `ErrorCode`, the one list of every error code the browser can see; and the
   identifier and text types those bodies use. It reuses the runner's
-  working-tree change types (`GitChanges`), `builtin-protocol`'s browser tab
-  types and `command-service`'s command locale (`CommandLocale`, which the
-  browser reports as a preference) instead of declaring them again. A Host
+  working-tree change types (`GitChanges`) and platform (`RunnerPlatform`, a
+  device's platform), `builtin-protocol`'s browser tab types and
+  `command-service`'s command locale (`CommandLocale`, which the browser
+  reports as a preference) instead of declaring them again. A Host
   log line is its own type: the runner wire carries its time as integer
   milliseconds, the browser as an RFC 3339 time.
 - **Public boundary:** the types above; their TypeScript form is generated into

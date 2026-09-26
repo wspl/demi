@@ -17,6 +17,13 @@ import { emptyLocalState, readLocalState, writeLocalState } from './local'
 import type { Device, Project } from './types'
 
 /** Product data and page state. Components own interaction and presentation. */
+/** The file browser's name of each platform a runner reports. */
+const FILE_BROWSER_PLATFORMS: Record<DeviceDto['platform'], Device['platform']> = {
+  darwin: 'macos',
+  win32: 'windows',
+  linux: 'linux',
+}
+
 /** A snapshot device as the file browser and the work panel take it. */
 function productDevice(device: DeviceDto): Device {
   return {
@@ -26,12 +33,7 @@ function productDevice(device: DeviceDto): Device {
     online: device.online,
     home: device.home,
     seen: device.lastSeenAt ?? undefined,
-    platform:
-      device.platform === 'darwin' || device.platform === 'macos'
-        ? 'macos'
-        : device.platform === 'win32' || device.platform === 'windows'
-          ? 'windows'
-          : 'linux',
+    platform: FILE_BROWSER_PLATFORMS[device.platform],
   }
 }
 

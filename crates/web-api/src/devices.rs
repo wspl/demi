@@ -2,6 +2,7 @@
 //! devices, and attached hosts, § Device log).
 
 use demi_core::{Nullable, Timestamp};
+use demi_runner_protocol::wire::RunnerPlatform;
 use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -21,16 +22,17 @@ pub enum DeviceKind {
 serde_plain::derive_display_from_serialize!(DeviceKind);
 serde_plain::derive_fromstr_from_deserialize!(DeviceKind);
 
-/// A device as the browser sees it. `online` says whether its runner is
-/// connected now; `home` is the home directory it reported when it last
-/// connected, null until then (the backend keeps it in memory only).
+/// A device as the browser sees it. `platform` is the one its runner
+/// reported; `online` says whether its runner is connected now; `home` is
+/// the home directory it reported when it last connected, null until then
+/// (the backend keeps it in memory only).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceDto {
     pub id: DeviceId,
     pub kind: DeviceKind,
     pub name: String,
-    pub platform: String,
+    pub platform: RunnerPlatform,
     pub claimed_at: Timestamp,
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<Timestamp>")]
