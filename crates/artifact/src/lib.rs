@@ -1,6 +1,7 @@
 //! Verified bytes (`crates-and-packages.md` § artifact): downloads over HTTPS
-//! with a declared size and SHA-256, digests, durable atomic publication, the
-//! install lock between processes, install receipts and archive extraction.
+//! with a declared size and SHA-256, digests, durable atomic publication,
+//! release publication, the install lock between processes, install receipts
+//! and archive extraction.
 //! Callers name the location, size and digest they expect; nothing here
 //! chooses what to install.
 
@@ -10,6 +11,7 @@ mod download;
 mod lock;
 mod publish;
 pub mod receipt;
+mod release;
 
 pub use archive::extract_zip;
 pub use digest::{Digest, Verifier, digest};
@@ -19,6 +21,7 @@ pub use publish::{
     Mode, Permissions, Publication, Staged, publish, publish_bytes, publish_bytes_blocking,
     publish_directory,
 };
+pub use release::{ReleaseFile, ReleaseRecord, publish_release};
 
 #[cfg(feature = "testing")]
 pub mod testing {
@@ -55,6 +58,10 @@ pub enum Error {
     Digest,
     #[error("the archive cannot be extracted: {0}")]
     Archive(String),
+    /// A release already at its directory differs from the one being
+    /// published: a published release is immutable.
+    #[error("{} is already published with other contents", .0.display())]
+    Conflict(std::path::PathBuf),
     #[error("cancelled")]
     Cancelled,
 }
