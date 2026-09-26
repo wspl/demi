@@ -24,13 +24,18 @@ fn sha(bytes: &[u8]) -> String {
 struct Releases {
     directory: tempfile::TempDir,
     runner: Vec<u8>,
+    /// The runner's size and digest, which every release names.
+    artifact: Value,
 }
 
 impl Releases {
     fn new() -> Self {
+        let runner = std::fs::read(runner_binary()).unwrap();
+        let artifact = json!({ "sha256": sha(&runner), "size": runner.len() });
         Self {
             directory: tempfile::Builder::new().prefix("demi-releases-").tempdir().unwrap(),
-            runner: std::fs::read(runner_binary()).unwrap(),
+            runner,
+            artifact,
         }
     }
 
@@ -45,11 +50,10 @@ impl Releases {
         let executable = self.directory.path().join(&release).join(host_target()).join("demi-runner");
         std::fs::create_dir_all(executable.parent().unwrap()).unwrap();
         std::fs::write(&executable, &self.runner).unwrap();
-        let artifact = json!({ "sha256": sha(&self.runner), "size": self.runner.len() });
         // Test-only: every target names this machine's runner.
         let targets: serde_json::Map<String, Value> = TARGETS
             .iter()
-            .map(|target| ((*target).to_owned(), artifact.clone()))
+            .map(|target| ((*target).to_owned(), self.artifact.clone()))
             .collect();
         let manifest = json!({
             "release": release,

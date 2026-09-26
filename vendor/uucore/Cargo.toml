@@ -561,4 +561,5 @@ maintainer = "demi-runner"
 patches = [
     "uucore::context (src/lib/context.rs and src/lib/context/, added): the explicit execution context of one embedded utility run on its thread: working directory, environment and standard streams, the embedding owner's hooks for opening, duplicating, reading, writing, sleeping, starting child programs and cancellation and for recording edits, exit as an unwinding request, and threads that inherit the context; a child program receives its copies of the invocation's streams and descriptors when it starts, and a failed copy is an error, not a panic",
     "uucore's own features read and write files, the environment and the terminal through that context; File::open and File::try_clone, and the copies of the shell's /dev/fd descriptors, go through the owner's opening and duplicating hooks",
+    "The invocation's umask (Context::umask) is the one a file or directory the utility creates without a mode of its own gets (context::fs OpenOptions, DirBuilder, create_dir, create_dir_all and write), since the process's umask may belong to its embedding owner",
 ]

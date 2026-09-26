@@ -265,6 +265,10 @@ async fn runner(cli: Cli, shell: demi_runner::shell::ShellRuntime) -> io::Result
         }
         Err(error) => tracing::warn!("the open-file limit could not be raised: {error}"),
     }
+    // Read once before any job runs, since reading it may briefly set a
+    // stricter one (`process::umask`).
+    #[cfg(unix)]
+    let _umask = demi_runner::process::umask();
     let options = Options {
         backend,
         log: log.reader(),

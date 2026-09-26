@@ -72,7 +72,8 @@ impl ResidentService {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        let mut command = crate::process::wrap(command, true);
+        let attributes = brush_core::execution_host::ChildAttributes::default();
+        let mut command = crate::process::wrap(command, true, &attributes);
         // A start that waits (`crate::process::start`) ends with `stop`.
         let mut child = tokio::select! {
             biased;

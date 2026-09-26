@@ -332,7 +332,9 @@ loads a version manager such as nvm, and launchd gives a service on macOS a
 limit of 256. So when it starts, the runner raises its own limit as far as the
 system allows: to the hard limit, and on macOS to at most the kernel's limit
 for one process. Every process it starts gets back the limit the runner was
-started with, the one it would have from a terminal, because some programs
+started with, the one it would have from a terminal, unless its job's `ulimit`
+set another ([Builtins that act on a process](#builtins-that-act-on-a-process)),
+because some programs
 misbehave with a very high one: a program that uses `select()` cannot watch a
 descriptor numbered 1024 or above, and some programs close every descriptor up
 to their limit before they start. Windows has no such limit.
@@ -451,6 +453,34 @@ The caller sees `started`, then a running job, then `done` and completion.
 A tool timeout returns the running job's handle. `shell_status` observes that job,
 and `shell_abort` cancels it. Background tasks remain job-owned rather than
 becoming detached services. Brush's internal tasks do not expose OS PIDs in `$!`.
+
+### Builtins that act on a process
+
+In bash, a few builtins act on the shell's own process: `exec` replaces it
+with a program, `ulimit` and `umask` set the limits and file mode mask that it
+and its children have, `kill $$` signals it, and `suspend` stops it. A job's
+shell has no process of its own: it runs in the runner, whose process every
+job, stream and request shares. A job that ran `exec node server.js` the bash
+way would turn the runner into `node`, which ends every other job and the
+device's connection, and a job's `umask 000` would make every file the runner
+creates afterwards writable by anyone. So in a job each of these acts for the
+job's shell instead, or fails. A job's shell starts with what the runner gives
+the processes it starts: the runner's umask and limits, and for open files the
+limits the runner was started with ([Load](#load)).
+
+| Builtin | In a job |
+| --- | --- |
+| `exec CMD` | Runs CMD as `command CMD` would, a standard utility in the runner or a program through the job's process start, then ends the shell with CMD's status. In a subshell it ends the subshell. With only redirections, they stay with the shell, as in bash. |
+| `ulimit` | Sets and shows the limits of the processes the shell starts from then on; a subshell keeps its own. Without `-S` or `-H` it sets both limits, as in bash. The system checks a new limit when it is set: the shell starts `/bin/sh -c :` with it, and a limit the system refuses, such as a hard limit raised without privilege or open files above macOS's cap, fails there and changes nothing, as it would in bash. |
+| `umask` | Sets and shows the mask of the processes the shell starts and of the files its redirections and standard utilities create. The runner's own mask still applies beneath it inside the runner, so there a job's mask can only take permissions away. For example, under the usual runner mask `022`, a job's `umask 002` gives its programs group-writable files, but its redirections still create files with mode `644`. |
+| `kill` | Signals any process but the runner. `$$` is the runner's process ID and 0 its process group, so `kill $$` and `kill 0` fail with a message. |
+| `suspend`, `fg` | Fail: a job has no job control, as a bash script has none, and `suspend` would stop the runner. |
+
+A job's limits apply to its processes only: its builtins and standard
+utilities run in the runner, with the runner's limits. The other builtins act
+on the shell alone already: `cd` and the directory stack, `trap`, which
+installs no signal handler in the runner, `set` and `shopt`, `exit`, `wait`,
+`jobs` and `bg`. `times` shows the runner's processor time, not the job's.
 
 ### Cancellation and completion
 
