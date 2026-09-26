@@ -339,7 +339,6 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
                 id: "r".into(),
                 path: ".".into(),
                 cwd: None,
-                with_file_types: Some(true),
             })
             .map_err(|error| error.to_string())?;
             let value = reply_for(&replies, "id", "r").await;

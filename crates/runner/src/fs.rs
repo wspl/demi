@@ -71,7 +71,6 @@ async fn call(
         FsReaddir {
             path: value,
             cwd,
-            with_file_types,
             ..
         } => {
             let target = path(value, cwd)?;
@@ -87,11 +86,7 @@ async fn call(
                     is_symbolic_link: kind.is_symlink(),
                 });
             }
-            FsResult::Readdir(if *with_file_types == Some(true) {
-                wire::Readdir::Entries(entries)
-            } else {
-                wire::Readdir::Names(entries.into_iter().map(|entry| entry.name).collect())
-            })
+            FsResult::Readdir(entries)
         }
         FsMkdir {
             path: value,

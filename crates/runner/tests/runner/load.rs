@@ -252,7 +252,6 @@ async fn filesystem_requests_wait_instead_of_failing() {
                 id: format!("r{index}"),
                 path: ".".into(),
                 cwd: None,
-                with_file_types: Some(true),
             })
             .unwrap();
         }
