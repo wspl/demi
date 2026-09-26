@@ -8,6 +8,7 @@ use std::{
     num::{NonZeroU32, NonZeroU64},
 };
 
+use demi_machines_protocol::image::{INIT_PATH, RUNNER_PATH};
 use oci_spec::{
     OciSpecError,
     runtime::{
@@ -77,7 +78,7 @@ pub fn spec(boot: &Boot<'_>) -> Result<Spec, OciSpecError> {
         .user(UserBuilder::default().uid(USER_ID).gid(USER_ID).build()?)
         .cwd("/home/demi")
         .args(
-            ["/usr/bin/tini", "--", "/usr/bin/demi-runner", "run", "--managed-boot", BOOT_RECORD]
+            [INIT_PATH, "--", RUNNER_PATH, "run", "--managed-boot", BOOT_RECORD]
                 .map(String::from)
                 .to_vec(),
         )
