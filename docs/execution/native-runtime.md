@@ -252,6 +252,13 @@ The runner allows **6 seconds** for the shutdown request and process exit.
 If shutdown fails or exceeds that deadline, the runner terminates and reaps the
 child. Startup failures also release the process and its transports.
 
+Once the shutdown is answered, either side may close its transport while the
+other still has closing HTTP/2 frames queued. For example, the service exits as
+soon as its connection has drained, while the caller's connection may still be
+sending its own GOAWAY; that write then fails with a broken pipe. On either
+side, a write into the closed pipe or socket, a reset or an end of input after
+an answered shutdown ends the connection and is not a failure.
+
 EOF ends input, not execution. Cancellation requires the handler to stop and
 release its resources; resetting a stream or aborting a task is insufficient.
 The [protocol limits](#validation-and-flow-control) set the cancellation grace.
@@ -462,9 +469,16 @@ The caller preserves the chunk boundary across HTTP/2 DATA frames. A short
 live-stdin read does not authorize another read. Receive-window capacity does
 not authorize reading stdin either.
 
-A handler may finish without reading all of its input. The service then ends
-the request with `RST_STREAM(NO_ERROR)`, and a caller's EOF after that is not
-an error.
+A handler may finish without reading all of its input, and a
+[conversation request](#conversation-scoped-state) is answered from its
+metadata alone. Once its response is complete, the service ends such a
+request with `RST_STREAM(NO_ERROR)`, and whatever the caller still sends after
+that, an input chunk or its EOF, is dropped, not an error. A conversation
+request's metadata is its whole body, so the caller sends it together with
+END_STREAM and has nothing left to send when the answer comes. Otherwise a
+loaded caller that ends a release in a second step can find the request
+already reset, and a release the service answered would look failed, which
+retires the service ([Keep a service resident](#keep-a-service-resident)).
 
 ### Response records and completion
 
