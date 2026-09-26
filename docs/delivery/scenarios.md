@@ -71,7 +71,10 @@ filesystem isolation. Its reset clears runner state while retaining home; a
 successful scripted reset does not demonstrate replacement of system
 packages.
 
-Restart tests reuse the data directory and a fixed backend port. Runner
+Restart tests reuse the data directory. A backend restart whose runners come
+back listens at the address it had, since a runner keeps its backend's URL;
+one that needs only the same public URL configures that URL and listens on a
+port of its own, because another test may take a released port. Runner
 restarts reuse device identity and persistent directories. Multi-user scenarios
 must use separate authenticated sessions; the world's default helper uses one
 session and must not be mistaken for an isolation test by itself.

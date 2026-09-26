@@ -4,12 +4,13 @@
 
 use std::{cell::RefCell, rc::Rc, time::Duration};
 
+use demi_agent::testing::preview;
 use demi_agent_protocol::{ClientFrame, ServerFrame, ShellStatus};
 use demi_core::CommandId;
 use demi_provider::testing::{ScriptedRuntime, Turn, event};
 use serde_json::json;
 
-use crate::support::{Fixture, exec, last_result, preview, reply, turn, within};
+use crate::support::{Fixture, exec, last_result, reply, turn, within};
 
 /// The statuses among `frames`, in order.
 fn shell_outputs(frames: &[ServerFrame]) -> Vec<ShellStatus> {

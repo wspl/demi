@@ -6,10 +6,10 @@
 //! over a socket that took the conversation over, or after a restart of the
 //! backend, the same edit answers its receipt without asking the model again,
 //! and an edit from the old snapshot is refused. While the edit's commit is
-//! held, the page learns nothing of the edit, the model is not asked, and a
-//! reload reads the history before it. The page sees a turn end only once
-//! the save that ends it has committed, so an edit it sends the moment it
-//! sees idle is admitted. No test calls a real model; the device is a real
+//! held, the model is not asked and a reload reads the history before it;
+//! the page hears of the edit once it commits. The page sees a turn end only
+//! once the save that ends it has committed, so an edit it sends the moment
+//! it sees idle is admitted. No test calls a real model; the device is a real
 //! runner.
 
 use std::time::Duration;
@@ -71,15 +71,9 @@ fn idle(frame: &ServerFrame) -> bool {
     matches!(frame, ServerFrame::Phase { phase: SessionPhase::Idle })
 }
 
-/// Whether a frame tells the page of an edit: its result, or a change of the
-/// transcript.
-fn tells_of_an_edit(frame: &ServerFrame) -> bool {
-    matches!(
-        frame,
-        ServerFrame::EditResult { .. } | ServerFrame::TranscriptPatch { .. } | ServerFrame::TranscriptReset { .. }
-    )
-}
 
+// Over a second: a real device runs the turns' jobs, and its runner comes back
+// after the backend's restart.
 #[tokio::test]
 async fn an_edit_restores_the_todos_keeps_the_files_and_answers_its_receipt_after_a_takeover_and_a_restart() {
     let vendor = MockVendor::start().await;
@@ -133,7 +127,8 @@ async fn an_edit_restores_the_todos_keeps_the_files_and_answers_its_receipt_afte
     assert!(matches!(edit(&mut second, &stale).await, EditOutcome::Rejected { .. }));
     drop((socket, second));
 
-    // After a restart as well: the receipt is durable.
+    // After a restart as well: the receipt is durable. The backend comes
+    // back at its address, where the device's runner reconnects.
     let address = backend.address();
     backend.close().await;
     let backend = harness.start_at(address).await;
@@ -183,12 +178,10 @@ async fn an_edit_reaches_the_page_and_the_model_only_once_its_transaction_commit
         .expect("the edit reaches its commit");
     // The edit's rows are written and its commit waits. A process that died
     // now would leave the database as a reload reads it here, with the
-    // history before the edit, and the page has learned nothing of the
-    // edit. A frame sent before the commit would be on its way already, so
-    // the socket stays quiet for a fifth of a second.
+    // history before the edit, and the model is not asked. The page hears
+    // of the edit only after the commit, which the agent shows where its
+    // outbox can be read while the save waits (its editing tests).
     assert_eq!(transcript(&backend, &master, FIRST).await.blocks, history);
-    let meanwhile = socket.within(Duration::from_millis(200)).await;
-    assert!(!meanwhile.iter().any(tells_of_an_edit), "{meanwhile:?}");
     assert_eq!(vendor.requests().len(), asked, "the model is not asked before the commit");
 
     // Once the commit completes, the replacement and the result reach the

@@ -29,7 +29,7 @@ use tokio::sync::Notify;
 
 use crate::conversations::{Socket, anthropic_at, create};
 use crate::families::{self, ScriptedKey};
-use crate::support::{Harness, Session, TestBackend, eventually};
+use crate::support::{Harness, PATIENCE, Session, TestBackend, eventually};
 use crate::work::{Driven, say, shell};
 
 /// The conversation ids the scenarios create.
@@ -98,6 +98,8 @@ pub(crate) fn idle_after(window: Duration) -> LifecycleTuning {
     }
 }
 
+// Several seconds: the Cloud boots for the first uses and installs the builtin
+// package, stops after an idle window, and boots again.
 #[tokio::test]
 async fn the_first_uses_of_two_conversations_boot_one_cloud_which_stops_when_idle_and_wakes_for_the_next_operation() {
     let vendor = MockVendor::start().await;
@@ -157,6 +159,7 @@ async fn the_first_uses_of_two_conversations_boot_one_cloud_which_stops_when_idl
     backend.close().await;
 }
 
+// Over a second: the Cloud boots twice, and installs the builtin package.
 #[tokio::test]
 async fn a_cloud_the_manager_stopped_without_a_word_boots_again_for_the_operations_that_need_it() {
     let vendor = MockVendor::start().await;
@@ -186,6 +189,8 @@ async fn a_cloud_the_manager_stopped_without_a_word_boots_again_for_the_operatio
     backend.close().await;
 }
 
+// Several seconds: the Cloud boots three times, for its first work and after
+// two idle stops, and it and a paired device each install the builtin package.
 #[tokio::test]
 async fn a_conversation_that_left_the_cloud_reaches_it_as_an_attached_host_which_its_work_wakes() {
     let vendor = MockVendor::start().await;
@@ -239,6 +244,8 @@ async fn a_conversation_that_left_the_cloud_reaches_it_as_an_attached_host_which
     backend.close().await;
 }
 
+// Several seconds: the Cloud installs the builtin package, and boots again
+// after the reset.
 #[tokio::test]
 async fn a_reset_keeps_the_clouds_files_and_identity_tells_the_model_and_is_the_same_reset_when_asked_again() {
     let vendor = MockVendor::start().await;
@@ -298,6 +305,8 @@ async fn a_reset_keeps_the_clouds_files_and_identity_tells_the_model_and_is_the_
     backend.close().await;
 }
 
+// Several seconds: the Cloud installs the builtin package, and the resumed
+// reset boots it again.
 #[tokio::test]
 async fn a_failed_reset_reports_its_failure_and_the_same_operation_resumes_without_losing_home() {
     let vendor = MockVendor::start().await;
@@ -338,6 +347,8 @@ async fn a_failed_reset_reports_its_failure_and_the_same_operation_resumes_witho
     backend.close().await;
 }
 
+// Several seconds: the Cloud and a paired device each install the builtin
+// package, and the Cloud boots again after the reset and installs it again.
 #[tokio::test]
 async fn a_reset_holds_a_cloud_conversation_until_it_ends_and_leaves_one_that_only_has_the_cloud_attached_running() {
     let vendor = MockVendor::start().await;
@@ -414,6 +425,8 @@ async fn a_cloud_that_keeps_dying_stops_booting_by_itself_until_a_reset_starts_i
     backend.close().await;
 }
 
+// Over a second: the first Cloud idles for a window before the second can
+// start.
 #[tokio::test]
 async fn capacity_counts_the_clouds_of_every_user_and_a_cloud_that_finds_none_fails_to_start() {
     let mut harness = Harness::new();
@@ -441,6 +454,7 @@ async fn capacity_counts_the_clouds_of_every_user_and_a_cloud_that_finds_none_fa
     backend.close().await;
 }
 
+// Several seconds: the boot timeout below passes in real time.
 #[tokio::test]
 async fn a_boot_whose_runner_never_connects_fails_saves_what_it_started_and_says_why() {
     let mut harness = Harness::new();
@@ -502,6 +516,8 @@ async fn the_clouds_device_log_answers_while_it_runs_and_a_stopped_cloud_says_so
     backend.close().await;
 }
 
+// Several seconds: the Cloud boots before and after the backend's restart, and
+// installs the builtin package.
 #[tokio::test]
 async fn the_clouds_files_and_todos_and_the_usage_ledger_survive_a_backend_restart() {
     let vendor = MockVendor::start().await;
@@ -517,7 +533,8 @@ async fn the_clouds_files_and_todos_and_the_usage_ledger_survive_a_backend_resta
     let before = requests(backend.get("/api/usage", Some(&master)).await.json());
 
     // The backend's close saves the Cloud; the next start boots nothing
-    // until a command needs it.
+    // until a command needs it. It starts at the address it had: the Cloud's
+    // runner keeps its state, which names that address as its backend's.
     let address = backend.address();
     backend.close().await;
     let backend = harness.start_at(address).await;
@@ -606,10 +623,15 @@ async fn a_reset_holds_a_conversation_on_a_paired_device_whose_provider_runs_on_
     backend.close().await;
 }
 
+// Several seconds: the Cloud boots, and three idle windows pass in real
+// time: the conversation works past the window its first file read started,
+// so that work that did not count would let the Cloud stop meanwhile, and
+// then rests for one.
 #[tokio::test]
 async fn an_attached_cloud_stays_awake_while_the_conversation_works_on_its_paired_target() {
+    let window = Duration::from_millis(600);
     let mut harness = Harness::new();
-    harness.lifecycle = idle_after(Duration::from_millis(800));
+    harness.lifecycle = idle_after(window);
     harness.cloud.sweep = Duration::from_millis(50);
     let (backend, master) = harness.start_set_up().await;
     let paired = backend.pair(&master, "paired").await;
@@ -621,17 +643,25 @@ async fn an_attached_cloud_stays_awake_while_the_conversation_works_on_its_paire
     crate::work::switch(&backend, &master, FIRST, &paired, paired.runner.home_dir()).await;
 
     // Work on the paired target, with the Cloud attached, keeps it awake
-    // well past its idle window.
+    // past its idle window: it stops a full window after the conversation
+    // rests, and not before.
+    // The last activity ends after its request was sent, so the window is
+    // counted from the sending.
     let working = tokio::time::Instant::now();
-    while working.elapsed() < Duration::from_millis(2_400) {
+    let mut rested = working;
+    while rested - working < window * 2 {
+        rested = tokio::time::Instant::now();
         let listed = backend.get(&listing, Some(&master)).await;
         assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    assert!(harness.manager.running(&device));
-    assert_eq!(harness.manager.count(&format!("hibernate:{device}")), 0);
-    // Once the conversation rests, the Cloud stops.
-    eventually("the idle Cloud stops", || async { !harness.manager.running(&device) }).await;
+    let stopped = harness.manager.arrival(&format!("hibernate:{device}"), PATIENCE).await;
+    assert!(
+        stopped >= rested + window,
+        "the Cloud stopped {:?} after the work began and the work rested after {:?}",
+        stopped.saturating_duration_since(working),
+        rested - working
+    );
     backend.close().await;
 }
 
@@ -668,23 +698,37 @@ async fn a_backend_that_stopped_in_the_middle_of_a_reset_finishes_its_disk_step_
     let operation = recovered.operation.expect("the reset's record");
     assert_eq!(operation.phase, ResetPhase::Failed);
     assert_eq!(operation.error.as_deref(), Some("Reset disks recovered; retry to start Cloud"));
-    let context_after: i64 = harness
-        .control_database()
-        .query_row("SELECT context_version FROM conversations WHERE id = ?1", [FIRST], |row| row.get(0))
-        .unwrap();
-    assert_eq!(context_after, context_before + 1);
+    let context = || -> i64 {
+        harness
+            .control_database()
+            .query_row("SELECT context_version FROM conversations WHERE id = ?1", [FIRST], |row| row.get(0))
+            .unwrap()
+    };
+    assert_eq!(context(), context_before + 1);
     assert_eq!(harness.manager.count(&format!("wake:{device}")), 1);
 
-    // A retry of the same reset starts the Cloud.
+    // A reset recorded as failed is not resumed when the backend starts
+    // again: only a retry runs it.
+    backend.close().await;
+    let backend = harness.start().await;
+    let calls = harness.manager.calls();
+    let started = calls.iter().rposition(|call| call == "reconcile").unwrap();
+    assert!(calls[started + 1..].is_empty(), "{calls:?}");
+
+    // A retry of the same reset starts the Cloud, and its announcement,
+    // made at the recovery, advances the conversation's context no further.
     reset(&backend, &master, RESET).await;
     until_status(&backend, &master, "the retried reset is ready", |status| {
         status.operation.as_ref().is_some_and(|operation| operation.phase == ResetPhase::Ready)
     })
     .await;
     assert_eq!(harness.manager.count(&format!("wake:{device}")), 2);
+    assert_eq!(context(), context_before + 1);
     backend.close().await;
 }
 
+// Several seconds: the Cloud boots and installs the builtin package, and its
+// lifetime cap of two seconds passes in real time.
 #[tokio::test]
 async fn at_its_lifetime_cap_the_cloud_ends_the_jobs_nothing_attends_and_stops() {
     let vendor = MockVendor::start().await;
@@ -710,6 +754,8 @@ async fn at_its_lifetime_cap_the_cloud_ends_the_jobs_nothing_attends_and_stops()
     backend.close().await;
 }
 
+// Several seconds: the Cloud boots and installs the builtin package, and three
+// turns run a shell job each.
 #[tokio::test]
 async fn cloud_projects_share_the_users_one_machine_and_a_deleted_project_keeps_its_files() {
     let vendor = MockVendor::start().await;
