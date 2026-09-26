@@ -12,8 +12,7 @@ use demi_command_service::protocol::{CommandContext, PackageDescriptor};
 use demi_core::Timestamp;
 use demi_gates::GateLease;
 use demi_runner_protocol::wire::{
-    self, FsResult, GitChanges, GitResult, Inbound, LogLine, PipeRef, Readdir, STDIN_CHUNK_BYTES,
-    WireBytes,
+    self, FsResult, GitChanges, GitResult, Inbound, LogLine, PipeRef, STDIN_CHUNK_BYTES, WireBytes,
 };
 use demi_shell::{
     ByteRange, ByteStream, CpOptions, DirEntry, FileContents, FileKind, FileStat, Host, HostError,
@@ -787,14 +786,10 @@ impl HostFs for RemoteHost {
                     id,
                     path: path.into(),
                     cwd,
-                    with_file_types: Some(true),
                 })
                 .await?;
             match listing {
-                // The reply's shape is not tagged, so an empty listing reads
-                // as the names a listing without file types answers.
-                FsResult::Readdir(Readdir::Names(names)) if names.is_empty() => Ok(Vec::new()),
-                FsResult::Readdir(Readdir::Entries(entries)) => Ok(entries
+                FsResult::Readdir(entries) => Ok(entries
                     .into_iter()
                     .map(|entry| DirEntry {
                         kind: kind(

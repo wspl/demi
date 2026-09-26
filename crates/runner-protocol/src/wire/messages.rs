@@ -232,13 +232,12 @@ pub enum Inbound {
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         cwd: Option<String>,
     },
+    /// Lists a directory, each entry with its file type.
     FsReaddir {
         id: String,
         path: String,
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         cwd: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-        with_file_types: Option<bool>,
     },
     FsMkdir {
         id: String,
@@ -720,7 +719,7 @@ pub struct FileStat {
     pub is_fifo: Option<bool>,
 }
 
-/// One entry of a directory listing with file types.
+/// One entry of a directory listing, with its file type.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DirEntry {
@@ -728,14 +727,6 @@ pub struct DirEntry {
     pub is_file: bool,
     pub is_directory: bool,
     pub is_symbolic_link: bool,
-}
-
-/// A directory listing: names, or entries with file types when asked.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum Readdir {
-    Names(Vec<String>),
-    Entries(Vec<DirEntry>),
 }
 
 /// A working tree's changes, as `git status` lists them. The browser
