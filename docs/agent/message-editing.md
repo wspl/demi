@@ -81,7 +81,9 @@ records, and the external effects of tools that already ran stay outside this
 restore.
 
 The `edit_result` of an accepted edit follows the rewrite's `replace` patch
-and comes before any frame of the replacement's turn.
+and comes before any frame of the replacement's turn. Both follow the commit:
+until the transaction has committed, the backend sends a client nothing of the
+edit but the session's phase, and the replacement's inference has not started.
 
 Each accepted operation leaves a receipt in the checkpoint: its operation ID,
 the replacement's turn ID, and a digest of the request. The digest is the
@@ -243,11 +245,30 @@ restart.
 | The process exits after the commit and before publication or provider start | Reload recovers the replacement and an actionable unfinished turn. Retrying the submission confirms acceptance; inference recovery is a separate action. |
 | The process exits after generated output has been checkpointed | Reload keeps that output and uses ordinary recovery of an incomplete turn where needed. |
 
-A crash boundary is observed by ending a separate process that runs a scripted
-session over the backend's real database and blob store, without disposal or a
-final checkpoint, and reopening that database in a fresh process. A graceful
-restart of the full authenticated backend is a different failure boundary and
-is observed separately.
+No process is killed to observe the rows where the process exits. They follow
+from three observations:
+
+- A save is one transaction of the conversation's database, and SQLite leaves
+  a transaction that has not committed as if it had not begun, also when the
+  process dies inside it. A save refused after its block writes and deletions
+  leaves the whole checkpoint as it was, which shows that the save is that one
+  transaction.
+- The backend tells a client nothing of an edit before its transaction commits
+  ([Commit and idempotency](#commit-and-idempotency)). While a test holds the
+  commit after the edit's rows are written, the page has received neither the
+  `edit_result` nor a transcript change, the model has not been asked, and the
+  history a reload reads is the one before the edit; once the commit
+  completes, the replacement and the `edit_result` arrive. A process that
+  exits before the commit therefore leaves no client told of an edit that a
+  reload does not show.
+- After the commit, the operation's receipt answers a repeated request without
+  a second rewrite, also after a restart of the backend. A process that exits
+  after the commit therefore keeps the replacement, and retrying the
+  submission confirms it.
+
+A process that exits after generated output was checkpointed leaves an
+unfinished turn, which restores like any other
+([Dispose and restore](runtime.md#dispose-and-restore)).
 
 ## Protocol and UI cases
 

@@ -251,6 +251,7 @@ impl SessionStore for SqliteSessionStore {
             let completions = update.carried_completions()?;
             let mut update = update;
             media::externalize_update(&mut update, &self.blobs).await?;
+            let commit = self.db.commit_point();
             self.db
                 .call(move |connection| {
                     let transaction = connection.transaction()?;
@@ -261,7 +262,7 @@ impl SessionStore for SqliteSessionStore {
                     }
                     let written = write_checkpoint(&transaction, &node, &update, &completions)?;
                     if written.is_ok() {
-                        transaction.commit()?;
+                        commit.commit(transaction)?;
                     }
                     Ok(written)
                 })

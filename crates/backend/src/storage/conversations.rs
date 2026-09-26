@@ -6,7 +6,7 @@
 //! first. Closing one loses nothing: the next call opens it again. A read
 //! that needs no live session takes a short-lived read-only connection on
 //! the blocking pool instead, which takes no writer and never creates a
-//! file.
+//! file. A test may hold the commits of the checkpoints (`CommitHold`).
 
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use demi_gates::KeyedSerialGate;
 use demi_web_api::ids::ConversationId;
 use hashlink::LruCache;
-use rusqlite::{Connection, OpenFlags};
+use rusqlite::{Connection, OpenFlags, Transaction};
 
 use super::{StorageError, schema, sqlite};
 
@@ -34,6 +34,9 @@ struct Stores {
     /// Opening a database takes its file's turn, so two first calls cannot
     /// both create it and give it its schema.
     opening: KeyedSerialGate<DatabaseFile>,
+    /// The hold a test put on the checkpoints' commits.
+    #[cfg(feature = "testing")]
+    hold: Mutex<Option<Arc<Hold>>>,
 }
 
 struct Writers {
@@ -78,6 +81,8 @@ impl ConversationStores {
                 closed: false,
             }),
             opening: KeyedSerialGate::new(),
+            #[cfg(feature = "testing")]
+            hold: Mutex::new(None),
         })))
     }
 
@@ -125,6 +130,21 @@ impl ConversationStores {
     fn open_writers(&self) -> usize {
         self.0.lock().open.len()
     }
+
+    /// Holds every commit of a checkpoint from now on, until the hold is
+    /// released.
+    #[cfg(feature = "testing")]
+    pub(crate) fn hold_commits(&self) -> CommitHold {
+        let gate = Arc::new(tokio::sync::RwLock::new(()));
+        let closed = gate.clone().try_write_owned().expect("a new gate is open");
+        let (waiting, watched) = tokio::sync::watch::channel(0);
+        let hold = Arc::new(Hold { gate, waiting });
+        *self.0.hold.lock().unwrap_or_else(PoisonError::into_inner) = Some(hold);
+        CommitHold {
+            closed,
+            waiting: watched,
+        }
+    }
 }
 
 impl Stores {
@@ -171,6 +191,14 @@ impl ConversationDb {
         Ok(writer)
     }
 
+    /// Where a save's transaction commits.
+    pub(crate) fn commit_point(&self) -> CommitPoint {
+        CommitPoint {
+            #[cfg(feature = "testing")]
+            hold: self.stores.hold.lock().unwrap_or_else(PoisonError::into_inner).clone(),
+        }
+    }
+
     /// The writer, if it is open, as the most recently used.
     fn open_writer(&self) -> Result<Option<tokio_rusqlite::Connection>, StorageError> {
         let mut writers = self.stores.lock();
@@ -178,6 +206,74 @@ impl ConversationDb {
             return Err(StorageError::Closed);
         }
         Ok(writers.open.get(&self.file).cloned())
+    }
+}
+
+/// Where a save's transaction commits: at once, unless a test holds the
+/// commits there (`CommitHold`).
+pub(crate) struct CommitPoint {
+    #[cfg(feature = "testing")]
+    hold: Option<Arc<Hold>>,
+}
+
+impl CommitPoint {
+    /// Commits `transaction`, on its writer's thread.
+    pub(crate) fn commit(self, transaction: Transaction<'_>) -> rusqlite::Result<()> {
+        #[cfg(feature = "testing")]
+        {
+            if let Some(hold) = self.hold {
+                hold.pass();
+            }
+        }
+        transaction.commit()
+    }
+}
+
+/// A hold on the commits of the conversations' checkpoints, for the
+/// scenarios that stop a save at its commit (`message-editing.md`
+/// § Durability and failure boundaries). From `Backend::hold_commits` until
+/// it is released or dropped, a save has written its rows and waits before
+/// its transaction commits, on its database's writer thread: where a process
+/// that dies inside the save leaves it.
+#[cfg(feature = "testing")]
+pub struct CommitHold {
+    /// Dropping it opens the gate, so a hold a failed test leaves behind
+    /// holds nothing.
+    closed: tokio::sync::OwnedRwLockWriteGuard<()>,
+    waiting: tokio::sync::watch::Receiver<usize>,
+}
+
+#[cfg(feature = "testing")]
+impl CommitHold {
+    /// Waits until `count` commits wait at the hold.
+    pub async fn until_waiting(&self, count: usize) {
+        let mut waiting = self.waiting.clone();
+        waiting
+            .wait_for(|waiting| *waiting >= count)
+            .await
+            .expect("the stores keep the hold while it is held");
+    }
+
+    /// Lets the waiting commits and every later one through.
+    pub fn release(self) {
+        drop(self.closed);
+    }
+}
+
+/// The gate a held commit waits at, and how many wait.
+#[cfg(feature = "testing")]
+struct Hold {
+    gate: Arc<tokio::sync::RwLock<()>>,
+    waiting: tokio::sync::watch::Sender<usize>,
+}
+
+#[cfg(feature = "testing")]
+impl Hold {
+    /// Waits, on the writer's thread, until the hold is released.
+    fn pass(&self) {
+        self.waiting.send_modify(|waiting| *waiting += 1);
+        drop(self.gate.blocking_read());
+        self.waiting.send_modify(|waiting| *waiting -= 1);
     }
 }
 
