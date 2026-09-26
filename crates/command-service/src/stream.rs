@@ -50,6 +50,21 @@ impl ServiceError {
     }
 }
 
+/// Whether a connection ended with `error` because its peer closed the
+/// transport: a write into a closed pipe or socket, a reset, or an end of
+/// input. After an answered shutdown that is how a connection may end, on
+/// either side (`native-runtime.md` § Invoke and retire a service).
+pub(crate) fn peer_closed(error: &h2::Error) -> bool {
+    error.get_io().is_some_and(|io| {
+        matches!(
+            io.kind(),
+            std::io::ErrorKind::BrokenPipe
+                | std::io::ErrorKind::ConnectionReset
+                | std::io::ErrorKind::UnexpectedEof
+        )
+    })
+}
+
 /// Pull-driven input shared by local dispatch and HTTP/2 services.
 pub struct Input(InputSource);
 
