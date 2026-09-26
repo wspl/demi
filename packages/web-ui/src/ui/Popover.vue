@@ -12,7 +12,7 @@ import {
 import type { Placement } from '@floating-ui/vue'
 import { onClickOutside } from '@vueuse/core'
 import type { OverlayStore } from '../overlay/overlayStore'
-import { overlayContainerKey } from '../overlay/overlayContainer'
+import { useOverlayTarget } from '../overlay/overlayContainer'
 import { createOverlayFamily, overlayFamilyKey } from '../overlay/overlayFamily'
 import { useOverlay } from '../composables/useOverlay'
 
@@ -128,8 +128,7 @@ const virtualRef = computed(() => {
 
 // A panel confined to a host container never owns the page, so it is not exclusive, and the
 // container stands in for the viewport: the panel stays inside it the way it stays on screen.
-const container = inject(overlayContainerKey, null)
-const teleportTarget = computed(() => container?.value ?? 'body')
+const { container, to: teleportTarget, ready } = useOverlayTarget()
 const boundary = computed(() => container?.value ?? undefined)
 
 // Flip and size must agree on the edge inset: a smaller flip inset lets a panel that
@@ -211,7 +210,7 @@ const overlayMotion = {
 </script>
 
 <template>
-  <Teleport :to="teleportTarget">
+  <Teleport v-if="ready" :to="teleportTarget">
     <Transition v-bind="overlayMotion" :css="!instant">
       <div
         v-if="isOpen"
