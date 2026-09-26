@@ -47,7 +47,14 @@ backend's scenario suites in [Scenarios](scenarios.md).
 - **Contracts at their boundary.** A wire format that another program or the
   browser reads is pinned where it is encoded or decoded, with the values the
   other side depends on. A format that nothing outside the crate reads is not
-  pinned.
+  pinned. When the other side's types are generated from the same
+  definitions, as the browser's are
+  ([Generated TypeScript](../architecture/contracts.md#generated-typescript)),
+  generation carries the field names and tags, and a test that pins them
+  restates the derive. Pin what generation does not carry: the fixtures both
+  sides decode, the rules the generator translates (strict or tolerant,
+  optional or nullable, bounds), checks that only one side makes, and stored
+  formats.
 
 ## Proof
 
@@ -64,6 +71,11 @@ backend's scenario suites in [Scenarios](scenarios.md).
   for a condition with a deadline that only guards against a hang. A fixed
   window that the event must fall into fails under load and wastes its length
   when the event comes early.
+- A test that shows that something does not happen before a window ends,
+  such as a Cloud that must not stop before its idle window has passed, waits
+  for the event that ends the window (the stop), with a deadline that guards
+  against a hang, and asserts that it came no earlier than the window allows.
+  It does not sleep across the window and then look.
 - Timer logic runs on a paused or injected clock where the code allows it
   ([Tests and time](../architecture/concurrency.md#tests-and-time)).
 - A failure without a related change is a defect in the product or the test.
