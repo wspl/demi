@@ -4,6 +4,9 @@
 // file that was distributed with this source code.
 // spell-checker:disable
 
+// Only the release build's lookup beside the executable asks for a kind.
+#[cfg(not(debug_assertions))]
+use crate::context::FileKindExt as _;
 use crate::context::PathExt as _;
 use crate::error::UError;
 
