@@ -218,7 +218,10 @@ once.
   appends a `resume` block.
 - A switch to another provider builds a new provider runtime. The replaced
   runtime is closed once no run uses it, and so is the runtime of a pending
-  switch that a later switch replaced.
+  switch that a switch to yet another provider replaced. A switch within the
+  pending switch's provider builds nothing and lands on the pending switch's
+  runtime: a user who picks another provider's model and then another model
+  of that provider before sending gets that provider's runtime.
 
 Every block records the model selection that was current when it was created,
 so a switch changes only later blocks.

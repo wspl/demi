@@ -22,7 +22,8 @@ use demi_provider::{
 use serde_json::{Value, json};
 
 use crate::support::{
-    Fixture, Gate, conversation, held, is_idle, is_pending_steers, kinds, open, send, until,
+    Fixture, Gate, conversation, frames_until, held, is_idle, is_pending_steers, kinds, open,
+    send, until,
 };
 
 #[tokio::test(flavor = "local")]
@@ -526,14 +527,18 @@ async fn a_switch_to_another_provider_builds_its_runtime_and_closes_the_old_one_
     client.send(send("m1", "first")).await;
     client.next_until(is_idle).await;
 
-    client
-        .send(ClientFrame::SetProvider {
-            model: model_of("other", "other-model"),
-            apply: None,
-        })
-        .await;
+    // A second switch within the pending switch's provider builds nothing
+    // and keeps that provider's runtime.
+    for model in [
+        model_of("other", "other-model"),
+        model_of("other", "other-model-2"),
+    ] {
+        client
+            .send(ClientFrame::SetProvider { model, apply: None })
+            .await;
+    }
     client.send(send("m2", "second")).await;
-    client.next_until(is_idle).await;
+    frames_until(&mut client, is_idle).await;
 
     let calls: Vec<String> = fixture
         .resolver
@@ -544,9 +549,20 @@ async fn a_switch_to_another_provider_builds_its_runtime_and_closes_the_old_one_
         .collect();
     assert_eq!(calls, ["conversation stub", "conversation other"]);
     assert_eq!((stub.requests().len(), stub.closes()), (1, 1));
-    assert_eq!(other.requests()[0].model_id, "other-model");
+    let served: Vec<String> = other
+        .requests()
+        .iter()
+        .map(|request| request.model_id.clone())
+        .collect();
+    assert_eq!(served, ["other-model-2"]);
     let checkpoint = fixture.store.checkpoint(&conversation()).unwrap();
-    assert_eq!(checkpoint.state.model.provider_id, "other");
+    assert_eq!(
+        (
+            checkpoint.state.model.provider_id.as_str(),
+            checkpoint.state.model.model.id.as_str()
+        ),
+        ("other", "other-model-2")
+    );
 }
 
 #[tokio::test(flavor = "local")]
