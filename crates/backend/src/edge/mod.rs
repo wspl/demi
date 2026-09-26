@@ -60,6 +60,7 @@ use self::error::ApiError;
 pub(crate) use self::install::Site;
 use self::listener::{EdgeListener, Peer};
 use crate::backend::Services;
+use crate::runner::local_store;
 use crate::shard::Shards;
 
 /// The listener and the server over it.
@@ -83,8 +84,9 @@ impl Edge {
     ) -> io::Result<Self> {
         let tcp = TcpListener::bind(address).await?;
         let local_addr = tcp.local_addr()?;
-        // Before the first request: a Cloud's boot names this URL.
-        state.services.cloud.listening(state.site.public_url.as_ref(), local_addr);
+        // Before the first request: a Cloud's boot, an expose's URL and a
+        // development store's downloads name this URL.
+        state.services.public_url.listening(state.site.public_url.as_ref(), local_addr);
         let closing = CancellationToken::new();
         let connections = CancellationToken::new();
         let stop = CancellationToken::new();
@@ -167,6 +169,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/install.sh", get(install::shell))
         .route("/install.ps1", get(install::powershell))
         .route("/runner-artifacts/{release}/{target}/{file}", get(install::artifact))
+        .route(&format!("{}/{{sha256}}", local_store::ROUTE), get(install::native_artifact))
         .route("/api/setup", get(auth::setup_status).post(auth::setup))
         .route("/api/auth/login", post(auth::login))
         .route("/api/runner", get(runners::socket))

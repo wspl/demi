@@ -50,8 +50,26 @@ Every Rust command selects the whole workspace with the runner's test
 fixtures, so they share one build
 ([Validation](docs/delivery/builds-and-releases.md#validation)).
 
-The generated TypeScript is not committed; the frontend scripts that need it
-generate it first. [Web application](docs/product/web-application.md#development-and-checks)
+To run the product locally with the native programs you built, package
+development releases of the targets your Hosts use, name the command releases
+in a `DEMI_NATIVE_CONFIG` whose store is `local`, and start the backend; it
+serves the runners those programs itself:
+
+```sh
+cargo xtask native build --target <triple>...
+cargo xtask native package --package demi-runner --output .cache/releases/runners --target <triple>...
+cargo xtask native package --package demi-commands --output .cache/releases/demi-builtin --target <triple>...
+cargo xtask native package --package demi-claude --output .cache/releases/demi-claude --target <triple>...
+cargo build --workspace --all-targets --features demi-runner/test-fixtures
+DEMI_NATIVE_CONFIG=.cache/releases/native.json DEMI_RUNNER_RELEASE_DIR=.cache/releases/runners \
+  DEMI_INSTANCE_MODE=isolated DEMI_BACKEND_PUBLIC_URL=<URL> DEMI_MACHINES_SOCKET=<socket> \
+  target/debug/demi-backend
+```
+
+[Development backend](docs/backend/backend.md#development-backend) gives each
+step and variable. The generated TypeScript is not committed; the frontend
+scripts that need it generate it first.
+[Web application](docs/product/web-application.md#development-and-checks)
 describes running the product locally, and
 [Builds and releases](docs/delivery/builds-and-releases.md) covers cross builds
 and release packages. [CONTRIBUTING.md](CONTRIBUTING.md) lists the rules a

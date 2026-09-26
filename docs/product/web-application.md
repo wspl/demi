@@ -233,12 +233,12 @@ authorization, native installation, or Cloud recovery.
 ## Development and checks
 
 Start the backend executable, `demi-backend`, which listens on port 3271 by
-default ([Configuration](../backend/backend.md#configuration)), then run the
-root package script `web:dev` for the product at `http://127.0.0.1:18934`. Vite
-forwards `/api` HTTP and WebSocket requests to the backend; set
-`DEMI_BACKEND_URL` when the backend runs at another address. Create the first
-account through the setup API (`POST /api/setup`). The script `web:build`
-writes `packages/web/dist`, which the backend serves when
+default ([Development backend](../backend/backend.md#development-backend) gives
+the whole launch), then run the root package script `web:dev` for the product
+at `http://127.0.0.1:18934`. Vite forwards `/api` HTTP and WebSocket requests
+to the backend; set `DEMI_BACKEND_URL` when the backend runs at another
+address. Create the first account through the setup API (`POST /api/setup`).
+The script `web:build` writes `packages/web/dist`, which the backend serves when
 `DEMI_WEB_DIRECTORY` names it
 ([Serving the browser build](web-api.md#serving-the-browser-build)). The
 script `web:gallery` runs the component catalog independently of credentials

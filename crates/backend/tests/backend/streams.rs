@@ -17,15 +17,15 @@ use tokio_tungstenite::tungstenite::Message;
 use crate::cloud::{idle_after, the_cloud};
 use crate::support::{Harness, Paired, Session, TestBackend, answer, eventually};
 
-const CONVERSATION: &str = "5d4c3b2a-8f3a-4c1e-9d2b-7a1c2e3f4a01";
+pub(crate) const CONVERSATION: &str = "5d4c3b2a-8f3a-4c1e-9d2b-7a1c2e3f4a01";
 /// A conversation that works on the Cloud.
 const ON_CLOUD: &str = "5d4c3b2a-8f3a-4c1e-9d2b-7a1c2e3f4a02";
 
-type Socket = tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+pub(crate) type Socket = tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
 /// A signed-in master whose conversation runs in the home of a paired
 /// device.
-async fn conversation(harness: &Harness) -> (TestBackend, Session, Paired) {
+pub(crate) async fn conversation(harness: &Harness) -> (TestBackend, Session, Paired) {
     let (backend, master) = harness.start_set_up().await;
     let created = backend
         .post("/api/conversations", Some(&master), json!({ "id": CONVERSATION }))
@@ -47,7 +47,7 @@ fn path(conversation: &str, name: &str) -> String {
 
 /// The page's socket on the stream `name` of `conversation`, from the
 /// product's origin.
-async fn socket(backend: &TestBackend, session: &Session, conversation: &str, name: &str) -> Socket {
+pub(crate) async fn socket(backend: &TestBackend, session: &Session, conversation: &str, name: &str) -> Socket {
     let mut request = backend.ws_url(&path(conversation, name)).into_client_request().unwrap();
     let headers = request.headers_mut();
     headers.insert("cookie", session.cookie.parse().unwrap());
@@ -189,7 +189,7 @@ async fn an_archive_ends_the_conversations_open_streams() {
 }
 
 /// Waits until the echo answers, which tells that the stream is open.
-async fn answered(echo: &mut Socket) {
+pub(crate) async fn answered(echo: &mut Socket) {
     echo.send(Message::Binary(b"ping".to_vec().into())).await.unwrap();
     match echo.next().await {
         Some(Ok(Message::Binary(bytes))) => assert_eq!(&bytes[..], b"ping"),
