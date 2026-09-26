@@ -44,8 +44,7 @@ page closes its view while it is hidden, behind another browser tab or in a
 minimized window, and opens a new one when it is shown again
 ([Ending a view](../browser/live-view.md#ending-a-view)). So a page left open
 on a view keeps its conversation, and its Cloud, active only while it is
-visible, when someone may be watching; once it is hidden, the idle window
-starts.
+visible, when someone may be watching.
 
 ## Idle window
 
