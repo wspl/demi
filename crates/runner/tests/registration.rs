@@ -1,6 +1,6 @@
 use demi_command_service::protocol::LocalInvocation;
 use demi_runner::connection::wire::{
-    RunnerInfo, HostIdentity, RetainedOutput, LogLine, WireBytes,
+    RunnerInfo, RunnerPlatform, HostIdentity, RetainedOutput, LogLine, WireBytes,
 };
 use demi_runner::{
     commands::command_client::{Stdio, forward},
@@ -76,7 +76,7 @@ async fn backend_job_invokes_same_binary_alias_and_drain_releases_installation()
             runner: RunnerInfo {
                 native_target: Some(demi_runner::services::target().into()),
                 name: "test".into(),
-                platform: "test".into(),
+                platform: RunnerPlatform::Linux,
                 version: "test".into(),
                 managed: None,
                 identity: HostIdentity {

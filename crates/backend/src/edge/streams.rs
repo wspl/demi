@@ -1,8 +1,7 @@
 //! User streams at the edge (`web-api.md` § User streams): the upgrade of a
 //! declared stream, and the relay of its bytes between the page's socket
 //! and the Host's pipes, taken from the Host only as fast as the page takes
-//! them. `POST /activity` records one user operation on the conversation's
-//! Host.
+//! them.
 
 use axum::extract::ws::rejection::WebSocketUpgradeRejection;
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
@@ -55,23 +54,6 @@ pub(super) async fn open(
         .await??;
     // An upgrade that never completes drops the stream, which ends it.
     Ok(upgrade.on_upgrade(move |socket| relay(socket, stream)))
-}
-
-/// `POST /conversations/:id/activity`: one user operation, admitted on the
-/// conversation's Host and ended at once, which restarts its idle window
-/// (`resource-lifecycle.md` § Activity).
-pub(super) async fn activity(
-    State(state): State<AppState>,
-    AuthUser(user): AuthUser,
-    Path(id): Path<String>,
-) -> Result<StatusCode, ApiError> {
-    let record = owned(&state.services, &user.id, &id).await?;
-    state
-        .shards
-        .of(&user.id)
-        .call(move |shard, cancel| async move { shard.with_host(&record.id, None, &cancel, async |_| ()).await })
-        .await??;
-    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Whether the upgrade comes from a page of the product: the public URL's

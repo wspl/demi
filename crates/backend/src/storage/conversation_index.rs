@@ -783,6 +783,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
+    use demi_runner_protocol::wire::RunnerPlatform;
     use crate::storage::control::testing;
 
     fn conversation(number: u8) -> ConversationId {
@@ -871,7 +872,7 @@ mod tests {
         for (name, token) in [("laptop", "one"), ("laptop", "two"), ("ci", "three")] {
             let hash = crate::auth::sessions::TokenHash::of(token);
             let device = control
-                .create_device(master.clone(), name.into(), "linux".into(), hash)
+                .create_device(master.clone(), name.into(), RunnerPlatform::Linux, hash)
                 .await
                 .unwrap();
             devices.push(device.id);
@@ -926,7 +927,7 @@ mod tests {
         let id = created(control.create_conversation(master.clone(), conversation(1)).await.unwrap()).id;
         let hash = crate::auth::sessions::TokenHash::of("laptop");
         let laptop = control
-            .create_device(master.clone(), "laptop".into(), "linux".into(), hash)
+            .create_device(master.clone(), "laptop".into(), RunnerPlatform::Linux, hash)
             .await
             .unwrap()
             .id;
