@@ -16,15 +16,11 @@ use demi_runner_protocol::release::RunnerRelease;
 use serde::Serialize;
 use tokio_util::sync::CancellationToken;
 
-use super::{Error, Executable};
+use super::{DESCRIPTOR, Error, Executable, MANIFEST};
 
 /// The workspace version, which every crate inherits: the version a command
 /// package, the backend and the machine manager are released as.
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-/// A command package release's record.
-const DESCRIPTOR: &str = "descriptor.json";
-/// A runner release's record, and the pointer beside the releases.
-const MANIFEST: &str = "manifest.json";
 /// A backend or machine manager release's record.
 const RELEASE: &str = "release.json";
 
@@ -232,11 +228,9 @@ async fn runner(output: &Path, built: Built, cancel: &CancellationToken) -> Resu
     Ok(format!("Runner release: {}", directory.display()))
 }
 
-/// A release record's file: indented JSON with a final newline.
+/// A release record's file, as `crate::record` writes it.
 fn record(value: &impl Serialize) -> Result<Vec<u8>, Error> {
-    let mut bytes = serde_json::to_vec_pretty(value).map_err(|error| Error::Record(error.to_string()))?;
-    bytes.push(b'\n');
-    Ok(bytes)
+    crate::record(value).map_err(|error| Error::Record(error.to_string()))
 }
 
 #[cfg(test)]

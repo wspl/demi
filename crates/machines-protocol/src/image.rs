@@ -164,6 +164,11 @@ pub enum ManifestError {
 
 /// Where the runner executable lives in every image.
 pub const RUNNER_PATH: &str = "/usr/bin/demi-runner";
+/// The image's init, which runs the runner and reaps orphaned processes.
+pub const INIT_PATH: &str = "/usr/bin/tini";
+/// Where an image embeds each command package's executable, in a directory
+/// named by the executable's SHA-256.
+pub const ARTIFACTS_PATH: &str = "/opt/demi/artifacts";
 
 impl CloudImageManifest {
     /// Decodes a manifest's bytes and checks it.
@@ -189,7 +194,7 @@ impl CloudImageManifest {
             let Some(artifact) = release.targets.get(target) else {
                 return Err(ManifestError::Release(release.id.clone()));
             };
-            let prefix = format!("/opt/demi/artifacts/{}/", artifact.sha256);
+            let prefix = format!("{ARTIFACTS_PATH}/{}/", artifact.sha256);
             let present = self
                 .executables
                 .iter()
