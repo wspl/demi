@@ -1028,11 +1028,20 @@ impl SessionCore {
 
     // The model selection.
 
-    pub(super) fn record_switch(&mut self, switch: ModelSwitch) -> Result<(), AdmissionError> {
+    /// Records `switch` in place of the pending one (`runtime.md` § Model
+    /// switch). A switch within the pending switch's provider brings no
+    /// runtime and lands on the pending switch's; one that brings its own
+    /// retires the pending switch's, which closes when a switch lands.
+    pub(super) fn record_switch(&mut self, mut switch: ModelSwitch) -> Result<(), AdmissionError> {
         self.refuse_admission()?;
-        if let Some(replaced) = self.switch.replace(switch) {
-            self.retired.extend(replaced.runtime);
+        if let Some(replaced) = self.switch.take() {
+            if switch.runtime.is_none() {
+                switch.runtime = replaced.runtime;
+            } else {
+                self.retired.extend(replaced.runtime);
+            }
         }
+        self.switch = Some(switch);
         Ok(())
     }
 
