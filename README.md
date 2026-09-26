@@ -37,7 +37,6 @@ You need:
 ```sh
 cargo check --workspace --all-targets --features demi-runner/test-fixtures
 cargo test --workspace --features demi-runner/test-fixtures  # the Rust tests
-cargo fmt --all --check
 
 bun install
 bun run contracts       # generate the browser's TypeScript contracts from the Rust types

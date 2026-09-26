@@ -18,7 +18,6 @@ extend Demi.
 ```sh
 cargo check --workspace --all-targets --features demi-runner/test-fixtures
 cargo test --workspace --features demi-runner/test-fixtures  # the Rust tests and the crate boundary check
-cargo fmt --all --check
 
 bun install
 bun run typecheck:web   # type-check web-ui, web-gallery and web
@@ -75,9 +74,8 @@ coding standards.
 - Suites that need a real machine manager, Chrome or the Claude Code CLI run
   only when environment variables supply those resources
   ([Real machine acceptance](docs/delivery/scenarios.md#real-machine-acceptance)).
-- Keep the suite green: before every commit, run the Rust tests and the
-  formatting check, and when a browser package changed,
-  `bun run typecheck:web` and `bun run test`.
+- Keep the suite green: before every commit, run the Rust tests, and when a
+  browser package changed, `bun run typecheck:web` and `bun run test`.
 
 ## Commits
 
