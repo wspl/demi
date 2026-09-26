@@ -452,7 +452,8 @@ without `--profile`, which inherit the parent's coding instructions and its
 ability to edit files.
 
 Omitting `--profile` always selects the unnamed inherit profile: the parent's
-harness prompt and preamble, model, Host, and commands. It exists whether or
+prompt and preamble, model, Host, and commands, which are its profile's when the
+parent was started with one. It exists whether or
 not the harness declares profiles, and it cannot be configured or replaced. A
 given `--profile` must match a declared name; an unknown name fails and lists
 the available ones. A profile's command narrowing applies to the harness
@@ -578,7 +579,9 @@ restores its own: a tree restore, with one rule per node.
 - Saved yield wakeups are armed again, and one already due fires at once, so a
   child waiting on a wakeup keeps waiting instead of closing
   ([Yield wakeups](runtime.md#yield-wakeups)).
-- A child that is quiescent closes with its result.
+- A child that is quiescent closes with its result. Whether it is quiescent is
+  read only once its own live children are back, so a child waiting for its
+  children keeps waiting.
 - A live child that cannot be rebuilt, for example because the harness does
   not declare its profile, is deleted with its subtree.
 
@@ -845,7 +848,8 @@ Persistence:
 
 1. The three commits hold across a restart: a child lost before its first save
    runs its brief; a close whose delivery was not committed is delivered once
-   at restore; a quiescent live child closes at restore.
+   at restore; a quiescent live child closes at restore, and one whose own
+   child is live waits for that child.
 2. The in-memory and the database realizations of the tree store behave alike:
    creation with the queued brief, a save that marks a carried completion
    delivered, close and reopen, deletion with descendants, a later turn that
