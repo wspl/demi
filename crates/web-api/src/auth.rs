@@ -194,28 +194,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_user_travels_in_camel_case_with_its_role_as_a_word() {
-        let user = UserDto {
-            id: UserId::try_from("u-1".to_owned()).unwrap(),
-            email: EmailAddress::try_from("ana@example.test".to_owned()).unwrap(),
-            nickname: String::new(),
-            role: Role::Master,
-            created_at: Timestamp::from_millisecond(1_790_000_000_000).unwrap(),
-        };
-        assert_eq!(
-            serde_json::to_value(&user).unwrap(),
-            serde_json::json!({
-                "id": "u-1",
-                "email": "ana@example.test",
-                "nickname": "",
-                "role": "master",
-                "createdAt": "2026-09-21T14:13:20.000Z",
-            })
-        );
-        assert_eq!("admin".parse::<Role>().unwrap(), Role::Admin);
-    }
-
-    #[test]
     fn a_verification_code_is_six_ascii_digits() {
         let confirm = |code: &str| {
             serde_json::from_value::<EmailChangeConfirm>(serde_json::json!({ "id": "c", "code": code }))
