@@ -46,3 +46,6 @@ Thumbs.db
 
 # A local reference clone, not part of the repository
 packages/just-bash/
+
+# Go bindings generated from the Zod contracts (scripts/generate-go-contracts.ts)
+/internal/contract/*/zz_generated*.go
