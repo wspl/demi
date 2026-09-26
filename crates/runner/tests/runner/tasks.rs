@@ -299,6 +299,11 @@ async fn blocked_or_looping(scope: &demi_runner::shell::scope::Scope, script: &s
 /// About 4 s: each way of blocking needs a job of its own, and each job is a
 /// login shell that reads the machine's profile first (about 0.4 s in the
 /// Linux container, with nvm), so the jobs start together.
+///
+/// The jobs run on a shell runtime of their own, as in the runner, which the
+/// test shuts down without waiting: a unit that ignores cancellation fails
+/// the test when its job does not end, rather than holding the test's
+/// runtime, which would wait for it at shutdown.
 #[cfg(feature = "test-fixtures")]
 #[tokio::test]
 async fn jobs_share_the_runner_process_and_cancellation_is_isolated() {
@@ -307,6 +312,9 @@ async fn jobs_share_the_runner_process_and_cancellation_is_isolated() {
         shell::{ShellRuntime, job::Job, scope::Scope},
     };
     use tokio_util::sync::CancellationToken;
+    // Left undropped when the test fails, since dropping waits for its units.
+    let shell = std::mem::ManuallyDrop::new(ShellRuntime::build().unwrap());
+    let runtime = &ShellRuntime::new(&shell);
     let root = tempfile::tempdir().unwrap();
     let mut sibling = Job::start(
         "printf '%s' $$; read go; printf done".into(),
@@ -314,7 +322,7 @@ async fn jobs_share_the_runner_process_and_cancellation_is_isolated() {
         crate::home(root.path()),
         false,
         Scope::new(CancellationToken::new(), None),
-        &ShellRuntime::current(),
+        runtime,
     )
     .await
     .unwrap();
@@ -352,7 +360,7 @@ async fn jobs_share_the_runner_process_and_cancellation_is_isolated() {
             crate::home(root.path()),
             true,
             scope.clone(),
-            &ShellRuntime::current(),
+            runtime,
         )
         .await
         .unwrap();
@@ -383,6 +391,7 @@ async fn jobs_share_the_runner_process_and_cancellation_is_isolated() {
     assert_eq!(rest, b"done");
     let (exit, _) = sibling.wait().await;
     assert_eq!(exit.code, Some(0), "{:?}", exit.error);
+    std::mem::ManuallyDrop::into_inner(shell).shutdown_background();
 }
 
 #[cfg(unix)]
