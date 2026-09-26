@@ -9,7 +9,7 @@ pub use encoding::{Timestamp, WireBytes};
 pub use messages::{
     ArtifactOwner, ChangeKind, DirEntry, FileStat, GitChange, GitChanges, HelloErrorCode,
     HostIdentity, Inbound, JobArtifactOwner, JobFileChange, LogLine, NetErrorCode, Outbound,
-    OutputStream, PipeRef, Readdir, RetainedOutput, RunnerInfo, RunnerPlatform, ServiceErrorCode,
+    OutputStream, PipeRef, RetainedOutput, RunnerInfo, RunnerPlatform, ServiceErrorCode,
     Signal, SpawnError, SpawnErrorKind, StreamArtifactOwner, VolumeName,
 };
 pub use replies::{FsOk, FsResult, GitOk, GitResult};
@@ -18,7 +18,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 /// The wire's version, which a runner's hello names.
-pub const VERSION: u32 = 19;
+pub const VERSION: u32 = 20;
 /// The largest frame either end sends.
 pub const MAX_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 /// The most output of each stream a job's live view carries.
