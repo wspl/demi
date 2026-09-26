@@ -134,17 +134,17 @@ where
 }
 
 /// Starts `script` as a job in `cwd`, which is also its home, and returns it
-/// once the job has printed `ready` after its profiles, with descriptors to
-/// spare. Nothing tells the test when the job's next command has started and
-/// blocks on its input, so the test gives it a moment.
+/// once the job has printed `ready` after its profiles and its next command
+/// waits for input, with descriptors to spare.
 async fn ready_job(cwd: &Path, script: &str) -> Job {
     std::fs::create_dir_all(cwd).unwrap();
+    let scope = Scope::new(CancellationToken::new(), None);
     let mut job = Job::start(
         script.into(),
         cwd.to_owned(),
         BTreeMap::from([("HOME".to_owned(), cwd.to_string_lossy().into_owned())]),
         false,
-        Scope::new(CancellationToken::new(), None),
+        scope.clone(),
         &demi_runner::shell::ShellRuntime::current(),
     )
     .await
@@ -156,7 +156,13 @@ async fn ready_job(cwd: &Path, script: &str) -> Job {
             printed.extend_from_slice(&chunk.bytes);
         }
     }
-    tokio::time::sleep(Duration::from_millis(200)).await;
+    tokio::time::timeout(Duration::from_secs(30), async {
+        while scope.activity().waiting() == 0 {
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("{script}: the job never waits for its input"));
     job
 }
 
@@ -278,6 +284,10 @@ fn repository(path: &std::path::Path) {
     std::fs::write(path.join("a.txt"), "2\n").unwrap();
 }
 
+/// About 4 s here: thirteen steps each begin by taking every descriptor,
+/// which waits 100 ms for the ones an earlier step closes late, since nothing
+/// marks the last of those; and five of them start a job, a login shell that
+/// reads the machine's profile (about 0.4 s in the Linux container).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn running_out_of_open_files_waits_instead_of_failing() {
     set_soft_limit(1024);
