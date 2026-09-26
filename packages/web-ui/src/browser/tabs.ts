@@ -257,7 +257,9 @@ export class BrowserTabsController {
   /**
    * Nobody can watch a hidden page, and an open view keeps its conversation
    * active, so the view closes while the page is hidden. Shown again, the
-   * page opens a new view on the shown tab.
+   * page opens a new view on the shown tab and reads the tab list, since the
+   * agent may have opened or closed tabs meanwhile (`live-view.md` § A browser
+   * tab in the panel).
    */
   private visibilityChanged(state: DocumentVisibilityState): void {
     if (state !== 'visible') {
@@ -267,6 +269,8 @@ export class BrowserTabsController {
     if (this.shown !== null) {
       this.view().watch(this.shown)
     }
+    // A list that cannot be read is kept in `listError`; refresh never rejects.
+    void this.refresh()
   }
 
   /** The page's one view, opened when there is none. */

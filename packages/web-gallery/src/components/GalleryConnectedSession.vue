@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
-import type { ChatSessionState } from '@demicodes/web-ui/agent/types'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import SidebarAccount from '@demicodes/web-ui/sidebar/SidebarAccount.vue'
 import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
@@ -15,8 +14,9 @@ import { galleryTerminals } from '../fixtures/terminals'
 import { createGalleryFileHosts } from '../fixtures/files'
 import { WORKSPACE_ROOT } from '../fixtures/workspace'
 import GalleryComposer from './GalleryComposer.vue'
-import { showToast } from '@demicodes/web-ui/infra/toast'
+import { productWould } from '../product-would'
 import { demoExposes } from '../fixtures/settings'
+import { useTurnFlow } from '../turn-flow'
 
 const props = withDefaults(defineProps<{ showActivity?: boolean }>(), { showActivity: true })
 // The product asks the backend for a title and hides the button until the
@@ -35,23 +35,16 @@ function updateTitle(): void {
 }
 onBeforeUnmount(() => clearTimeout(retitleTimer))
 
-const session = reactive<ChatSessionState>({
+// The session runs on the gallery's scripted runtime: a message sent here gets a turn, as in the product.
+const flow = useTurnFlow({
   id: 'shared-product-session',
-  cwd: WORKSPACE_ROOT,
   title: 'Shared session',
+  cwd: WORKSPACE_ROOT,
   blocks: transcriptDemoBlocks(),
-  queue: [],
-  pendingSteers: [],
-  phase: 'idle',
-  load: 'ready',
-  lastError: null,
-  pendingAction: null,
-  failures: {},
-  archived: false,
-  scroll: null,
   subagents: props.showActivity ? gallerySubagents() : [],
   terminals: props.showActivity ? galleryTerminals() : [],
 })
+const session = flow.state
 const hosts = createGalleryFileHosts()
 const devices: HostDeviceOption[] = hosts.map((host) => ({
   id: host.id,
@@ -135,22 +128,17 @@ function attach(id: string): void {
 function detach(id: string): void {
   attachedHosts.value = attachedHosts.value.filter((host) => host.id !== id)
 }
-function abortAgents(): void {
-  for (const agent of session.subagents) {
-    if (agent.phase !== 'running') {
-      continue
-    }
-    agent.phase = 'aborted'
-    agent.endedAt = new Date().toISOString()
-  }
-}
 </script>
 <template>
   <div class="h-[36rem] overflow-hidden rounded-xl border border-border">
     <SidebarLayout label="Shared session">
       <template #sidebar>
         <div class="w-48 p-3">
-          <SidebarAccount :account="{ name: '', email: 'new@example.com' }" />
+          <SidebarAccount
+            :account="{ name: '', email: 'new@example.com' }"
+            @open-settings="productWould('Open settings')"
+            @sign-out="productWould('Sign out')"
+          />
         </div>
       </template>
       <ChatSession
@@ -160,7 +148,14 @@ function abortAgents(): void {
         @retitle="updateTitle"
         has-provider
         @save-scroll="(_id, state) => (session.scroll = state)"
-        @abort-subagents="abortAgents"
+        @retry="flow.resume()"
+        @abort-subagents="flow.abortSubagents"
+        @abort-subagent="flow.abortSubagent"
+        @abort-terminal="flow.abortTerminal"
+        @remove-queued="flow.removeQueued"
+        @send-queued="flow.sendQueued"
+        @remove-pending-steer="flow.removePendingSteer"
+        @interrupt-pending-steer="flow.interruptPendingSteer"
       >
         <template #workspace>
           <WorkspaceDirectoryMenu
@@ -184,6 +179,7 @@ function abortAgents(): void {
               @switch-main="switchMain"
               @attach="attach"
               @detach="detach"
+              @connect="productWould('Connect new device')"
             />
           </WorkspaceDirectoryMenu>
         </template>
@@ -191,17 +187,24 @@ function abortAgents(): void {
           <SessionToolsMenu
             :exposes="exposes"
             :pending-ids="exposePending"
-            @open="showToast({ title: `Open ${$event.address} in a work panel browser tab`, tone: 'neutral' })"
+            @open="productWould(`Open ${$event.address} in a work panel browser tab`)"
             @renew="renewExpose"
             @remove="removeExpose"
+            @manage-devices="productWould('Open devices settings')"
           />
         </template>
         <template #composer
           ><GalleryComposer
             placeholder="Ask Demi…"
+            :running="session.phase === 'running'"
+            :compacting="session.phase === 'compacting'"
             :archived="session.archived"
             @restore="session.archived = false"
             :attachments="[{ name: 'ready-example.png', phase: 'ready' }]"
+            @send="flow.turn"
+            @queue="flow.queue"
+            @stop="flow.stop"
+            @compact="flow.compact"
         /></template>
       </ChatSession>
     </SidebarLayout>
