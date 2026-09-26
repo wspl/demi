@@ -2,12 +2,15 @@
 //! The service registry (`native-runtime.md` § Keep a service resident): a
 //! service stays while a lease or a conversation holds it, or while it cannot
 //! say what it holds; a failed release retires it; a service that fails
-//! reports its exit status and the end of its standard error.
+//! reports its exit status and the end of its standard error. A service
+//! starts from the Host image's copy of its executable when that copy
+//! matches (§ Preinstalled executables).
 
 use demi_command_service::protocol::{
     CommandCaller, CommandContext, CommandLocale, Invocation, PackageArtifact, PackageDescriptor,
     Record,
 };
+use demi_runner::host_log::{self, Query};
 use demi_runner::services::{
     ArtifactResolver, ArtifactSource, Resident, RuntimeError, ServiceHandle, ServiceRegistry,
     target,
@@ -25,6 +28,7 @@ use std::{
 };
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
+use tracing_subscriber::{Layer as _, filter::LevelFilter, layer::SubscriberExt as _};
 
 /// Hands out a local copy of the fixture, counting the requests; with `gate`
 /// set, each request waits for it.
@@ -91,7 +95,7 @@ fn digest(descriptor: &PackageDescriptor) -> String {
 }
 
 async fn registry(root: &Path) -> ServiceRegistry {
-    ServiceRegistry::new(root.join("cache"), root.into(), BTreeMap::new())
+    ServiceRegistry::new(root.join("cache"), None, root.into(), BTreeMap::new())
         .await
         .unwrap()
 }
@@ -426,6 +430,121 @@ async fn stopping_all_services_ends_every_one_and_closing_ends_the_registry() {
         registry.close().await;
         let (descriptor, path) = fixture(root.path(), 0).await;
         assert!(services.acquire(&descriptor, local(path), &CancellationToken::new()).await.is_err());
+    })
+    .await
+    .unwrap();
+}
+
+/// Puts `bytes` where a Cloud image rooted at `image` preinstalls the
+/// executable of `descriptor` (`native-runtime.md` § Preinstalled
+/// executables), runnable as the image build leaves it.
+async fn preinstall(image: &Path, descriptor: &PackageDescriptor, bytes: &[u8]) {
+    let directory = image.join(digest(descriptor));
+    tokio::fs::create_dir_all(&directory).await.unwrap();
+    let name = format!("demi-native-fixture{}", std::env::consts::EXE_SUFFIX);
+    let executable = directory.join(name);
+    tokio::fs::write(&executable, bytes).await.unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        let runnable = std::fs::Permissions::from_mode(0o755);
+        tokio::fs::set_permissions(&executable, runnable)
+            .await
+            .unwrap();
+    }
+}
+
+/// A Cloud's first command after a wake or a reset: its image holds the
+/// service's executable, so the service starts from that copy, the backend
+/// is not asked for it, and nothing lands in the cache.
+#[tokio::test]
+async fn a_service_starts_from_the_image_copy_without_a_download() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let root = tempfile::tempdir().unwrap();
+        let (descriptor, path) = fixture(root.path(), 0).await;
+        let image = root.path().join("image");
+        preinstall(&image, &descriptor, &tokio::fs::read(&path).await.unwrap()).await;
+        let cache = root.path().join("cache");
+        let registry = ServiceRegistry::new(
+            cache.clone(),
+            Some(image),
+            root.path().into(),
+            BTreeMap::new(),
+        )
+        .await
+        .unwrap();
+        let resolver = local(path);
+        let _resident = acquire(&registry.handle(), &descriptor, resolver.clone()).await;
+        assert_eq!(resolver.calls.load(Ordering::SeqCst), 0);
+        let mut cached = tokio::fs::read_dir(cache).await.unwrap();
+        assert!(cached.next_entry().await.unwrap().is_none());
+        registry.close().await;
+    })
+    .await
+    .unwrap();
+}
+
+/// Without an image copy that matches, a service starts from a download, as
+/// on a Host without an image. A copy that does not match is not run, and
+/// the Host log says why; an executable the image holds no copy of, as on
+/// every paired device, is downloaded without a word.
+#[tokio::test]
+async fn without_a_matching_image_copy_a_service_starts_from_a_download() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let root = tempfile::tempdir().unwrap();
+        // As `main` makes it, the log is a layer of the subscriber that
+        // takes information and above: here the default on this thread,
+        // where the registry's tasks run.
+        let (log, layer) = host_log::open(root.path().join("log")).await.unwrap();
+        let subscriber = tracing_subscriber::registry().with(layer.with_filter(LevelFilter::INFO));
+        let _default = tracing::subscriber::set_default(subscriber);
+        let (damaged, damaged_path) = fixture(root.path(), 0).await;
+        let (absent, absent_path) = fixture(root.path(), 1).await;
+        let image = root.path().join("image");
+        let size = tokio::fs::metadata(&damaged_path).await.unwrap().len();
+        preinstall(&image, &damaged, &vec![0; size as usize]).await;
+        let registry = ServiceRegistry::new(
+            root.path().join("cache"),
+            Some(image.clone()),
+            root.path().into(),
+            BTreeMap::new(),
+        )
+        .await
+        .unwrap();
+        let services = registry.handle();
+        for (descriptor, path) in [(&damaged, damaged_path), (&absent, absent_path)] {
+            let resolver = local(path);
+            let _resident = acquire(&services, descriptor, resolver.clone()).await;
+            assert_eq!(resolver.calls.load(Ordering::SeqCst), 1);
+        }
+        registry.close().await;
+        let query = Query {
+            since: None,
+            limit: 100,
+            source: None,
+        };
+        let lines = log.reader().read(query).await.unwrap().lines;
+        log.close().await;
+        let damaged_directory = image.join(digest(&damaged));
+        let damaged_directory = damaged_directory.to_string_lossy();
+        let told: Vec<_> = lines
+            .iter()
+            .filter(|line| line.text.contains(&*damaged_directory))
+            .collect();
+        let [line] = told.as_slice() else {
+            panic!("one line names the damaged copy: {lines:?}");
+        };
+        assert_eq!(line.source, "runner");
+        assert!(
+            line.text.contains("does not match its declared SHA-256"),
+            "{}",
+            line.text
+        );
+        let absent_digest = digest(&absent);
+        assert!(
+            !lines.iter().any(|line| line.text.contains(&absent_digest)),
+            "{lines:?}"
+        );
     })
     .await
     .unwrap();

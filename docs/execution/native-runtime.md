@@ -148,10 +148,17 @@ context disposal follow the [runner command lifetime](runner.md#command-lifetime
 ## Install the selected executable
 
 For the patch example, an arm64 Mac selects `aarch64-apple-darwin` from the
-pinned descriptor. The runner reuses a verified cache entry or asks the backend
-where to download that executable. The request names the executable's exact
-digest and target and the live work it serves: the job and the hash of the
-manifest it runs with, or a [service stream](runner.md#service-streams).
+pinned descriptor. The runner then takes the first of these that it has for
+that executable's digest:
+
+1. A verified entry of its own cache.
+2. A verified copy that the Host's image preinstalled
+   ([Preinstalled executables](#preinstalled-executables)); a Mac has none.
+3. A download: the runner asks the backend where to download the executable.
+
+The download request names the executable's exact digest and target and the
+live work it serves: the job and the hash of the manifest it runs with, or a
+[service stream](runner.md#service-streams).
 
 The backend answers only for live work on that connection that the artifact
 belongs to: a job whose pinned manifest has that hash and names a package that
@@ -175,7 +182,7 @@ The runner obtains URLs on demand. URLs never become package identity or permane
 manifest fields. An expired URL can be refreshed for the same digest. Other
 download failures do not count as expiration.
 
-For a cache miss, the runner completes these steps:
+To download, the runner completes these steps:
 
 1. Download to a temporary file, enforcing the declared size.
 2. Verify the size and SHA-256.
@@ -193,6 +200,42 @@ Concurrent callers share one download per digest. Cancelling one caller preserve
 a download still needed by another. If the download fails or is cancelled, the
 runner releases the response and removes the temporary file. The runner never
 executes partial or mismatched files.
+
+### Preinstalled executables
+
+A Cloud's runner keeps its cache with its other state in `/run/demi`, which
+every wake and reset recreates empty
+([Images](../cloud/managed-hosts.md#images)). The Cloud image, though, already
+holds the executable of each command package it was built with
+([Cloud images](../cloud/images.md#root-filesystem-contents)). So the runner
+looks there before it asks the backend: the directory
+`/opt/demi/artifacts/<sha256>`, named by the SHA-256 that the pinned
+descriptor gives the executable, holds that executable as its one file, under
+the name its release gives it. For example, the first `demi file patch` on a
+Cloud after a reset finds `/opt/demi/artifacts/<sha256>/demi-commands`, checks
+it, and starts the service from there, without asking the backend for a
+location or downloading anything.
+
+The copy lies outside the runner's private cache, so the runner checks it as
+it checks a download instead of trusting it as it trusts a cache entry:
+
+- The directory must hold exactly one regular file, with the size and SHA-256
+  of the pinned descriptor. A descriptor does not name the file, so the runner
+  takes the directory's one file.
+- The runner checks a copy once per runner process, the first time it needs
+  it. A copy that matched is used in place, like a cache hit, and is not read
+  again while the process runs.
+- A copy that does not match is not used. The runner writes why to the
+  [Host log](runner.md#host-log) and downloads the executable into its cache;
+  since the cache comes first, later starts use that download. The runner
+  never depends on the copy: the backend serves every selected executable, so
+  a damaged image costs a download, not a command.
+- When the directory does not exist, the runner downloads the executable and
+  logs nothing. That is the case on every paired device and on a Cloud whose
+  image holds other releases: the runner does not ask which kind of Host it
+  runs on, as the browser service does not for the image's
+  [preinstalled Chrome](../browser/browser.md#browser-distribution). A Windows
+  runner does not look, since Cloud images are Linux only.
 
 ## Invoke and retire a service
 
@@ -724,3 +767,4 @@ These outcomes are observed on a paired device and on the Cloud:
 | A resident service exits while calls are running | Each call fails with the service's exit status and the tail of its standard error; the Host log shows the same |
 | A service holding several conversations' browsers shuts down | Every conversation is released within the shutdown deadline |
 | A request for an artifact location names a job that has exited | The request is refused or gets no answer; no location is sent |
+| A Cloud's first native command after a wake or a reset, with an image that embeds the selected release | The service starts from the image's executable: the runner requests no artifact location and downloads nothing |

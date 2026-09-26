@@ -240,13 +240,16 @@ next to the wire's types, so that a command program depends on one crate.
   - `Signal`, and the platform a runner reports in its hello
     (`RunnerPlatform`);
   - the protocol constants: `VERSION`, `MAX_MESSAGE_BYTES`, `JOB_VIEW_BYTES`,
-    `STDIN_CHUNK_BYTES`, `LOG_READ_LINES` and `SERVICE_STDERR_CHARS`.
+    `STDIN_CHUNK_BYTES`, `LOG_READ_LINES` and `SERVICE_STDERR_CHARS`;
+  - where a Cloud image embeds the command package executables that the
+    runner starts in place of downloading them (`image::ARTIFACTS_PATH`).
 - **Conversation scope:** jobs and service streams carry the
   [command context](../execution/native-runtime.md#command-context);
   `conversation_release` is the one generic release message; the wire carries
   no browser policy.
 - **Public boundary:** the items above. The runner and the backend link it; the
-  machine manager uses `ManagedBoot`. Behavior:
+  machine manager uses `ManagedBoot`, and `machines-protocol`'s image manifest
+  check and `xtask`'s image build use `ARTIFACTS_PATH`. Behavior:
   [Runner](../execution/runner.md).
 - **Must not:** contain network IO, a Host implementation, a shell environment,
   the job table, credentials, claim policy, the device registry or conversation
