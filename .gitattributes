@@ -1,12 +1,12 @@
 # Normalize all text files to LF in the repo and on checkout, so line endings stay
-# consistent across platforms (this is a Bun/TypeScript codebase — LF everywhere).
+# consistent across platforms.
 * text=auto eol=lf
 
 # The Bun lockfile is generated: collapse it in diffs and don't attempt to merge it.
 bun.lock linguist-generated=true -diff
 
 # Unified patches preserve upstream context, including its leading diff space.
-packages/machines/runtime/*.patch -whitespace
+crates/machines/runtime/*.patch -whitespace
 
 # Binary assets — never normalize or attempt to diff.
 *.png binary

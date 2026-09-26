@@ -21,8 +21,7 @@ const repositoryRoot = resolve(import.meta.dir, '../../../../..')
 /**
  * A program the tests start, from the directory `DEMI_TEST_PROGRAMS` names.
  * The test script builds the programs first (`bun run test`); a test never
- * builds one. (`@demicodes/host-remote`'s locator reads the same variable;
- * `web` may not depend on it, and it leaves with the TypeScript backend.)
+ * builds one.
  */
 function testProgram(name: string): string {
   const directory = process.env.DEMI_TEST_PROGRAMS

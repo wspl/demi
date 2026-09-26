@@ -1,15 +1,13 @@
-//! Declarations, help and command lines: the cases the TypeScript command
-//! loader shares, how a command line fills each field and is refused, and
-//! the declaration rules' refusals.
+//! Declarations, help and command lines: the recorded cases of
+//! `fixtures/cli.json` (a declaration, its help and command lines with what
+//! each fills), how a command line fills each field and is refused, and the
+//! declaration rules' refusals.
 
 use demi_command_tree::{Node, Parsed};
 use serde_json::{Value, json};
 
 fn fixture() -> Value {
-    serde_json::from_str(include_str!(
-        "../../../packages/command-loader/src/fixtures/cli.json"
-    ))
-    .unwrap()
+    serde_json::from_str(include_str!("fixtures/cli.json")).unwrap()
 }
 
 fn fixture_tree() -> Node {
@@ -44,7 +42,7 @@ fn refusal(tree: &Node, argv: &[&str], stdin: Option<&str>) -> String {
 }
 
 #[test]
-fn help_and_command_lines_match_the_shared_cases() {
+fn help_and_command_lines_match_the_recorded_cases() {
     let fixture = fixture();
     let tree = fixture_tree();
     tree.validate().unwrap();
@@ -76,8 +74,7 @@ fn object(properties: Value, required: &[&str]) -> Value {
         "additionalProperties": false})
 }
 
-/// Commands with fields from every source, after the TypeScript shell's
-/// command tests.
+/// Commands with fields from every source.
 fn filer() -> Node {
     let tree: Node = serde_json::from_value(json!({
         "name": "filer", "summary": "Create, edit, and list files.", "subcommands": [

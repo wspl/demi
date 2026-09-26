@@ -15,20 +15,10 @@
     "verbatimModuleSyntax": true,
     "noEmit": true,
     "paths": {
-      "@demicodes/agent/client": ["./packages/agent/src/client-entry.ts"],
-      "@demicodes/agent/stdio": ["./packages/agent/src/protocol/stdio-transport.ts"],
-      "@demicodes/agent/testing": ["./packages/agent/src/testing.ts"],
-      "@demicodes/provider/credentials-pool": ["./packages/provider/src/credentials-pool.ts"],
-      "@demicodes/provider/testing": ["./packages/provider/src/testing.ts"],
       "@demicodes/runner-protocol/release": ["./packages/runner-protocol/src/release.ts"],
-      "@demicodes/runner-protocol/msgpack": ["./packages/runner-protocol/src/codec.ts"],
-      "@demicodes/host-remote/testing": ["./packages/host-remote/src/testing.ts"],
-      "@demicodes/shell/testing": ["./packages/shell/src/testing.ts"],
-      "@demicodes/backend/testing": ["./packages/backend/src/testing.ts"],
-      "@demicodes/browser-protocol/live": ["./packages/browser-protocol/src/live.ts"],
       "@demicodes/*": ["./packages/*/src/index.ts"]
     }
   },
-  "include": ["packages/*/src", "scripts/typecheck-vue.ts", "scripts/native/**/*.ts"],
+  "include": ["packages/*/src", "scripts/typecheck-vue.ts", "scripts/__tests__", "scripts/native/**/*.ts", "crates/demi-commands/src/browser/capture"],
   "exclude": ["packages/web-ui", "packages/web-gallery", "packages/web"]
 }

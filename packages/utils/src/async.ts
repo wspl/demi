@@ -1,6 +1,3 @@
-/** A no-op function. */
-export function noop(): void {}
-
 /** Orders operations on one resource without blocking unrelated resources. */
 export class SerialQueue {
   private tail: Promise<unknown> = Promise.resolve()
@@ -15,7 +12,9 @@ export class SerialQueue {
     const next = this.tail.then(operation).finally(() => {
       this.pending -= 1
     })
-    this.tail = next.catch(noop)
+    // The caller receives a failure through `next`; the tail only keeps the
+    // order, so the next operation runs after a failed one too.
+    this.tail = next.catch(() => {})
     return next
   }
 
@@ -90,55 +89,4 @@ export async function waitFor(
     }
     await new Promise((resolve) => setTimeout(resolve, intervalMs))
   }
-}
-
-/**
- * Calls `onIdle` once `timeoutMs` pass without a `touch`. The wait starts at
- * construction; `touch` starts it over and `close` ends it until the next
- * `touch`.
- */
-export class IdleTimer {
-  private timer: ReturnType<typeof setTimeout> | null = null
-
-  constructor(
-    private readonly timeoutMs: number,
-    private readonly onIdle: () => void
-  ) {
-    this.touch()
-  }
-
-  touch(): void {
-    this.close()
-    this.timer = setTimeout(this.onIdle, this.timeoutMs)
-  }
-
-  close(): void {
-    if (this.timer !== null)
-      clearTimeout(this.timer)
-    this.timer = null
-  }
-}
-
-/**
- * Rejects with `Error(message)` if `promise` does not settle within `ms`
- * milliseconds.
- */
-export function withTimeout<T>(
-  promise: Promise<T>,
-  ms: number,
-  message = `Timed out after ${ms}ms`
-): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(message)), ms)
-    promise.then(
-      (value) => {
-        clearTimeout(timer)
-        resolve(value)
-      },
-      (error) => {
-        clearTimeout(timer)
-        reject(error)
-      },
-    )
-  })
 }
