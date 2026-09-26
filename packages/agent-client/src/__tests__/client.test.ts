@@ -67,6 +67,15 @@ test('a detached client fails every wait at once and sends nothing', async () =>
   expect(h.closes()).toBe(1)
 })
 
+test('a frame the socket cannot send disconnects the client, and the wait fails with the socket\'s error', async () => {
+  const h = harness()
+  const refusal = new DOMException('Still in CONNECTING state.', 'InvalidStateError')
+  h.refuseSends(refusal)
+  expect(await h.client.submit([{ type: 'text', text: 'hello' }]).catch((error: unknown) => error)).toBe(refusal)
+  expect(h.events).toEqual([{ type: 'disconnected', error: refusal }])
+  expect(h.closes()).toBe(1)
+})
+
 test('an edit waits for its own receipt, even after the replacement appears', async () => {
   const h = harness()
   const request = {

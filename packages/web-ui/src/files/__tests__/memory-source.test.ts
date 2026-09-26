@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test'
+import { expect, jest, test } from 'bun:test'
 import { createMemoryFileSource, dir, file } from '../memory-source'
 import { FileBrowserError } from '../types'
 
@@ -87,17 +87,27 @@ test('remove deletes a file or a directory with what is in it, and a path with n
 })
 
 test('an upload lands as a file, writes over one only when told, and never over a folder', async () => {
-  const s = createMemoryFileSource({
-    platform: 'linux',
-    home: '/w',
-    root: dir({ w: dir({ 'a.txt': file(1, '2026-09-01T10:00:00Z'), docs: dir({}) }) }),
-    uploadRate: 1024 * 1024,
-  })
-  const options = (replace: boolean) => ({ replace, signal: new AbortController().signal, progress: () => {} })
-  await s.upload!('/w/b.txt', new File(['bb'], 'b.txt'), options(false))
-  expect((await s.list('/w')).find((entry) => entry.name === 'b.txt')?.size).toBe(2)
-  await expect(s.upload!('/w/a.txt', new File(['aaa'], 'a.txt'), options(false))).rejects.toMatchObject({ kind: 'exists' })
-  await s.upload!('/w/a.txt', new File(['aaa'], 'a.txt'), options(true))
-  expect((await s.list('/w')).find((entry) => entry.name === 'a.txt')?.size).toBe(3)
-  await expect(s.upload!('/w/docs', new File(['x'], 'docs'), options(true))).rejects.toMatchObject({ kind: 'other' })
+  jest.useFakeTimers()
+  try {
+    const s = createMemoryFileSource({
+      platform: 'linux',
+      home: '/w',
+      root: dir({ w: dir({ 'a.txt': file(1, '2026-09-01T10:00:00Z'), docs: dir({}) }) }),
+      uploadRate: 1024 * 1024,
+    })
+    // At this rate a file of a few bytes moves in one tick of the clock, which passes at once.
+    const upload = (path: string, content: File, replace: boolean) => {
+      const landing = s.upload!(path, content, { replace, signal: new AbortController().signal, progress: () => {} })
+      jest.runAllTimers()
+      return landing
+    }
+    await upload('/w/b.txt', new File(['bb'], 'b.txt'), false)
+    expect((await s.list('/w')).find((entry) => entry.name === 'b.txt')?.size).toBe(2)
+    await expect(upload('/w/a.txt', new File(['aaa'], 'a.txt'), false)).rejects.toMatchObject({ kind: 'exists' })
+    await upload('/w/a.txt', new File(['aaa'], 'a.txt'), true)
+    expect((await s.list('/w')).find((entry) => entry.name === 'a.txt')?.size).toBe(3)
+    await expect(upload('/w/docs', new File(['x'], 'docs'), true)).rejects.toMatchObject({ kind: 'other' })
+  } finally {
+    jest.useRealTimers()
+  }
 })

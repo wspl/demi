@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test'
-import { deferred } from '@demicodes/utils'
+import { deferred, waitFor } from '@demicodes/utils'
 import type { ClientContent } from '@demicodes/protocol'
 import { ConversationRuntime } from '@demicodes/web-ui/agent/conversation-runtime'
 import { toasts } from '@demicodes/web-ui/infra/toast'
@@ -782,7 +782,6 @@ test('a rename shows at once, survives a snapshot read before the write lands, a
   const started = deferred<void>()
   const release = deferred<void>()
   let refuse = false
-  let answered = 0
   const fetch = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
     if (String(input) !== `/api/conversations/${FIRST}` || init?.method !== 'PATCH') {
@@ -790,7 +789,6 @@ test('a rename shows at once, survives a snapshot read before the write lands, a
     }
     started.resolve()
     await release.promise
-    answered += 1
     const current = records.find((item) => item.id === FIRST)!
     const { title } = JSON.parse(String(init.body)) as { title: string }
     if (!refuse) {
@@ -812,19 +810,13 @@ test('a rename shows at once, survives a snapshot read before the write lands, a
   await product.revalidate()
   expect(title()).toBe('Renamed')
   release.resolve()
-  // The write is answered, then the store revalidates and settles the pending title.
-  const settled = async (count: number) => {
-    while (answered < count) {
-      await new Promise((resolve) => setTimeout(resolve, 5))
-    }
-    await new Promise((resolve) => setTimeout(resolve, 30))
-  }
-  await settled(1)
+  // The write is answered, and the store reads the snapshot again, which now holds the new title.
+  await waitFor(() => product.snapshot?.conversations.find((item) => item.id === FIRST)?.title === 'Renamed')
   expect(title()).toBe('Renamed')
 
   refuse = true
   store.rename(FIRST, 'Refused')
   expect(title()).toBe('Refused')
-  await settled(2)
-  expect(title()).toBe('Renamed')
+  // The refused write gives the stored title back.
+  await waitFor(() => title() === 'Renamed', () => `the title is ${title()}`)
 })

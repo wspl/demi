@@ -1,6 +1,6 @@
-import { expect, test } from 'bun:test'
+import { expect, jest, test } from 'bun:test'
 import type { ModelSelection, PendingSteer } from '@demicodes/protocol'
-import { deferred, delay, waitFor } from '@demicodes/utils'
+import { deferred, waitFor } from '@demicodes/utils'
 import { computed } from 'vue'
 import { ConversationRuntime, type RuntimeState } from '../conversation-runtime'
 import { AgentSocketError } from '../../transport/agent-socket'
@@ -23,6 +23,15 @@ function state(): RuntimeState {
     pendingAction: null,
     failures: {},
   }
+}
+
+/**
+ * One turn of the event loop, which lets the promise callbacks that are due
+ * run. Bun's fake clock replaces the timers but not `setImmediate`, so this
+ * works on it too.
+ */
+function turn(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve))
 }
 
 test('the current edit version reacts to connection, snapshots, patches and disconnect', async () => {
@@ -192,11 +201,18 @@ test('server takeover does not start a reconnect fight between views', async () 
     },
   })
   await runtime.connect()
-  h.receive({ type: 'closed' })
-  await delay(1100)
-  expect(connects).toBe(1)
-  expect(runtime.connected).toBe(false)
-  runtime.dispose()
+  jest.useFakeTimers()
+  try {
+    h.receive({ type: 'closed' })
+    // Whatever timer the takeover set fires now, however long its wait: none opens a connection.
+    jest.runAllTimers()
+    await turn()
+    expect(connects).toBe(1)
+    expect(runtime.connected).toBe(false)
+  } finally {
+    jest.useRealTimers()
+    runtime.dispose()
+  }
 })
 
 test('a connection that cannot be made is retried with backoff, never told as a failure', async () => {
@@ -256,12 +272,21 @@ test('disposing during the backoff wait ends the retries', async () => {
     },
     reconnect: { baseMs: 50, maxMs: 50 },
   })
-  const result = runtime.connect().catch((error) => error)
-  await waitFor(() => connects === 1)
-  runtime.dispose()
-  expect(await result).toBeInstanceOf(Error)
-  await delay(120)
-  expect(connects).toBe(1)
+  jest.useFakeTimers()
+  try {
+    const result = runtime.connect().catch((error: unknown) => error)
+    // The first attempt fails, and the backoff wait begins.
+    await turn()
+    expect(connects).toBe(1)
+    runtime.dispose()
+    // Every timer still set fires now: a backoff wait that dispose left running would start another attempt.
+    jest.runAllTimers()
+    expect(await result).toBeInstanceOf(Error)
+    await turn()
+    expect(connects).toBe(1)
+  } finally {
+    jest.useRealTimers()
+  }
 })
 
 test('a resume is pending from the request until the next phase event', async () => {
@@ -271,8 +296,7 @@ test('a resume is pending from the request until the next phase event', async ()
   await runtime.connect()
   const resumed = runtime.resume()
   expect(s.pendingAction).toBe('resume')
-  await delay(0)
-  expect(h.sent.at(-1)?.type).toBe('resume')
+  await waitFor(() => h.sent.at(-1)?.type === 'resume')
   h.receive({ type: 'phase', phase: 'running' })
   expect(s.pendingAction).toBeNull()
   h.receive({ type: 'phase', phase: 'idle' })

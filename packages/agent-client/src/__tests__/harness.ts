@@ -39,8 +39,12 @@ export function harness() {
   let deliver: (frame: unknown) => void = () => {}
   let end: (error: Error) => void = () => {}
   let closes = 0
+  let refusal: Error | null = null
   const transport: AgentClientTransport = {
     send: (frame) => {
+      if (refusal) {
+        throw refusal
+      }
       sent.push(frame)
     },
     onFrame(handler) {
@@ -71,6 +75,10 @@ export function harness() {
     receiveValue: (value: unknown) => deliver(value),
     /** Ends the connection from the server's side. */
     end: (error: Error) => end(error),
+    /** Makes every later send throw `error`, as a socket that cannot send does. */
+    refuseSends: (error: Error) => {
+      refusal = error
+    },
     closes: () => closes,
   }
 }
