@@ -79,8 +79,9 @@ scripts/
 
 The tree names the modules relevant to these boundaries, not every file.
 
-Zod schemas remain authoritative in their owning TypeScript packages. There is no
-mirrored Go protocol package or independently maintained Go schema source.
+A contract has one source ([contract generation](demi-next/native-runtime.md#contract-generation-and-validation)):
+Zod for contracts the frontend or a Rust program is built from, Go for
+contracts spoken only between Go programs. There is no mirrored second schema.
 Generated Go and intermediate schema documents do not belong in source control.
 Test fixtures belong with tests; release descriptors belong with release artifacts.
 General-purpose operations use the standard library or established libraries.
@@ -590,13 +591,13 @@ shell -> toolctx, tools, contract
 runner -> commandservice, shell, contract
 commands -> commandservice, contract
 claude -> commandservice, contract
-machines -> contract
+machines -> none
 provider -> contract
 agent -> provider, shellenv, contract
 codingagent -> agent, shellenv, contract
 hostremote -> contract
 shellenv -> hostremote, contract
-backend -> agent, codingagent, provider, hostremote, shellenv, contract
+backend -> agent, codingagent, provider, hostremote, shellenv, machines, contract
 ```
 
 Zod source consumption during generation is a build dependency on the owning

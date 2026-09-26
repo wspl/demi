@@ -585,9 +585,15 @@ descriptors are not valid publication inputs.
 
 ## Contract generation and validation
 
-Design rules above define the contract. Their executable schemas are maintained
-once in the owning TypeScript packages. Generated Go must enforce the same
-constraints without a second manually maintained definition.
+Design rules above define the contract. Every contract has one source. A
+contract the frontend also speaks keeps its Zod schema, in the frontend's
+libraries, as that source, because the frontend validates with it; a contract
+the Rust runner or native programs are built from keeps its Zod schema while
+they are Rust, since they generate their bindings from it. Go bindings for both
+are generated from the Zod source and enforce the same constraints without a
+second manually maintained definition. A contract spoken only between Go
+programs, such as the machine manager wire, is defined directly in Go, in the
+package that owns it, with validation at the point of entry.
 
 | Schema owner | Go package |
 | --- | --- |
@@ -595,7 +601,6 @@ constraints without a second manually maintained definition.
 | `packages/command-loader/src/manifest/schema.ts` — manifests | `internal/contract/manifest` |
 | `packages/browser-protocol` — browser business schemas | `internal/contract/browser` |
 | `packages/command-protocol/src/index.ts` — native wire and descriptors | `internal/contract/cmdservice` |
-| `packages/machines/src/{protocol,wire}.ts` — machine manager wire | `internal/contract/machineswire` |
 | `packages/agent/src/protocol` — conversation frames, blocks and the shared core types | `internal/contract/agentproto` |
 
 `scripts/generate-go-contracts.ts` (`bun run go:contracts`) transforms the
