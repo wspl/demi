@@ -504,6 +504,12 @@ requests while a job blocks on input or output.
 A cancelled job reports the signal that requested its cancellation, or `SIGKILL`
 when cancellation had no signal request and forcibly terminates external descendants.
 
+A job or raw process ends with its exit code, or else the name of the signal
+that ended it. With neither, the runner says why it has no status: the work
+could not start, or the runner failed it before its end was known, in the
+runner's own words. A failure of the runner's beside a known status goes to
+the Host log.
+
 A cancellation request alone does not establish that execution stopped. If the
 backend cannot confirm remote termination, it reports an unknown outcome.
 Cancellation does not undo completed file changes or other side effects.

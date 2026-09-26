@@ -724,10 +724,10 @@ async fn a_job_the_runner_could_not_run_ends_127_with_the_runners_reason() {
     link.send(Outbound::JobExit {
         job_id,
         exit_code: None,
-        signal: Some("the job was cancelled before it started".into()),
+        signal: None,
         spawn_error: Some(demi_runner_protocol::wire::SpawnError {
             kind: demi_runner_protocol::wire::SpawnErrorKind::Other,
-            detail: None,
+            detail: Some("the job was cancelled before it started".into()),
         }),
         cwd: None,
         output: None,
