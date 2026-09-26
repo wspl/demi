@@ -4,11 +4,13 @@
 //! runtime. A Fork (`conversation-fork.md`) copies a prefix into a new root's
 //! first checkpoint.
 
-use std::rc::Rc;
+use std::{cell::OnceCell, rc::Rc};
 
-use demi_agent_protocol::{ClientContent, EditRequest, TranscriptVersion};
+use demi_agent_protocol::{EditRequest, MediaRef, TranscriptVersion};
 use demi_command_service::protocol::canonical_digest;
-use demi_core::{Block, BlockId, OperationId, UserContentBlock};
+use demi_core::{
+    B64Bytes, BlobRef, Block, BlockId, DocumentSource, MediaSource, OperationId, UserContentBlock,
+};
 use demi_provider::ProviderRuntime;
 use tokio::sync::watch;
 
@@ -31,6 +33,9 @@ pub(crate) enum EditContent {
     /// the session puts in its place (`message-editing.md` § Files the edit
     /// keeps).
     KeptAttachment(String),
+    /// The native media block of this kind the edited message holds whose
+    /// bytes the blob holds, which the session puts in its place.
+    KeptMedia(MediaRef),
 }
 
 /// An edit as the session receives it: the request with its content
@@ -57,6 +62,8 @@ pub(crate) enum EditError {
     Target(#[from] CutError),
     #[error("The edited message holds no attachment at {0}")]
     UnknownAttachment(String),
+    #[error("The edited message holds no {kind} {blob}")]
+    UnknownMedia { kind: &'static str, blob: BlobRef },
     #[error("The edit was stopped before it was accepted")]
     Stopped,
     #[error("The agent session is closed")]
@@ -123,7 +130,7 @@ pub(crate) async fn accepted(mut acceptance: Acceptance) -> Result<EditReceipt, 
 /// The SHA-256 of an edit request's RFC 8785 canonical JSON, as the browser
 /// sent it, before its uploads are resolved (`message-editing.md` § Commit
 /// and idempotency).
-pub(crate) fn edit_digest(request: &EditRequest<ClientContent>) -> String {
+pub(crate) fn edit_digest(request: &EditRequest) -> String {
     canonical_digest(request).expect("an edit request serializes")
 }
 
@@ -215,6 +222,9 @@ impl Candidate {
         let Some(Block::User(target)) = blocks.get(prefix.len()) else {
             unreachable!("the prefix ends before the user block");
         };
+        // The blobs of the target's media, named once, when the edit keeps
+        // a medium.
+        let held = OnceCell::new();
         let content = submission
             .content
             .iter()
@@ -226,6 +236,17 @@ impl Candidate {
                     .find(|kept| matches!(kept, UserContentBlock::Attachment(record) if &record.path == path))
                     .cloned()
                     .ok_or_else(|| EditError::UnknownAttachment(path.clone())),
+                EditContent::KeptMedia(media) => {
+                    let (kind, blob) = named(media);
+                    held.get_or_init(|| held_media(&target.content))
+                        .iter()
+                        .find(|(held_kind, held_blob, _)| *held_kind == kind && held_blob == blob)
+                        .map(|(_, _, block)| (*block).clone())
+                        .ok_or_else(|| EditError::UnknownMedia {
+                            kind,
+                            blob: blob.clone(),
+                        })
+                }
             })
             .collect::<Result<Vec<_>, _>>()?;
         let revision = core
@@ -282,6 +303,39 @@ impl Candidate {
             model,
         })
     }
+}
+
+/// The kind of block a kept medium names, and the blob it names.
+fn named(media: &MediaRef) -> (&'static str, &BlobRef) {
+    match media {
+        MediaRef::Image { r#ref, .. } => ("image", r#ref),
+        MediaRef::Video { r#ref, .. } => ("video", r#ref),
+        MediaRef::Document { r#ref, .. } => ("document", r#ref),
+    }
+}
+
+/// Each native media block of `content` by its kind and the blob that holds
+/// its bytes. A live session holds media with their bytes (`runtime.md`
+/// § Media).
+fn held_media(content: &[UserContentBlock]) -> Vec<(&'static str, BlobRef, &UserContentBlock)> {
+    content
+        .iter()
+        .filter_map(|block| {
+            let (kind, data): (&'static str, &B64Bytes) = match block {
+                UserContentBlock::Image {
+                    source: MediaSource::Binary { data, .. },
+                } => ("image", data),
+                UserContentBlock::Video {
+                    source: MediaSource::Binary { data, .. },
+                } => ("video", data),
+                UserContentBlock::Document {
+                    source: DocumentSource::Binary { data, .. },
+                } => ("document", data),
+                _ => return None,
+            };
+            Some((kind, BlobRef::of(data.as_bytes()), block))
+        })
+        .collect()
 }
 
 /// Why a Fork cannot start where it was asked.

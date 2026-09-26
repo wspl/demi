@@ -18,6 +18,7 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use demi_core::Clock as _;
+use demi_gates::Purpose;
 use demi_provider::testing::MockVendor;
 use demi_web_api::auth::Role;
 use demi_web_api::cloud::ResetPhase;
@@ -32,6 +33,7 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt as _, AsyncReadExt as _, AsyncWrit
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Notify, mpsc};
+use tokio::time::Instant;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
 use tokio_tungstenite::tungstenite::http::HeaderMap;
@@ -41,7 +43,7 @@ use tokio_util::task::AbortOnDropHandle;
 
 use crate::cloud::{cloud_online, idle_after, reset, the_cloud, until_status};
 use crate::conversations::{anthropic_at, create, on_device};
-use crate::support::{Harness, Session, TestBackend, eventually};
+use crate::support::{Harness, PATIENCE, Session, TestBackend, eventually, pattern};
 use crate::work::{Driven, say, shell};
 
 const DOMAIN: &str = "expose.localhost";
@@ -327,6 +329,8 @@ async fn an_expose_answers_anyone_for_an_hour_and_only_its_owner_lists_renews_or
     backend.close().await;
 }
 
+// Over a second: a real device's runner relays the held connections, and it
+// stops and starts again.
 #[tokio::test]
 async fn open_connections_end_with_their_expose_and_an_offline_device_keeps_its_exposes() {
     let harness = Harness::new().with_expose_domain(DOMAIN);
@@ -403,6 +407,7 @@ async fn an_expose_sheds_its_65th_connection_and_a_closed_one_makes_room() {
     backend.close().await;
 }
 
+// Over a second: the relay's idle limit of one second passes in real time.
 #[tokio::test]
 async fn a_relayed_connection_nothing_moves_on_closes_after_the_idle_limit() {
     let mut harness = Harness::new().with_expose_domain(DOMAIN);
@@ -421,6 +426,8 @@ async fn a_relayed_connection_nothing_moves_on_closes_after_the_idle_limit() {
     backend.close().await;
 }
 
+// Several seconds: a real device installs the builtin package, and three turns
+// run `demi host expose`.
 #[tokio::test]
 async fn the_agent_exposes_a_service_and_lists_renews_and_removes_exposes_with_demi_host_expose() {
     let vendor = MockVendor::start().await;
@@ -493,17 +500,24 @@ async fn without_an_expose_domain_exposes_are_unavailable() {
     backend.close().await;
 }
 
+// Several seconds: a Cloud boots and installs the builtin package, checkpoints,
+// and then idles for a window.
 #[tokio::test]
 async fn a_clouds_exposes_outlive_its_checkpoints_and_end_when_it_stops_idle() {
     let vendor = MockVendor::start().await;
+    let window = Duration::from_millis(600);
     let mut harness = Harness::new().with_builtin_package().with_expose_domain(DOMAIN);
-    harness.lifecycle = idle_after(Duration::from_secs(4));
+    harness.lifecycle = idle_after(window);
     harness.cloud.sweep = Duration::from_millis(50);
     harness.cloud.checkpoint_interval = Duration::from_millis(300);
     let (backend, master) = harness.start_set_up().await;
-    let mut fixture = HttpFixture::start(Arc::new(Notify::new())).await;
+    let proceed = Arc::new(Notify::new());
+    let mut fixture = HttpFixture::start(proceed.clone()).await;
     let provider = anthropic_at(&backend, &master, &vendor, "/work").await;
     create(&backend, &master, CONVERSATION).await;
+    // A lease of the conversation's file gate is its work: the Cloud does
+    // not idle before the test has looked, and idles once it ends.
+    let working = backend.file_gate(&master, CONVERSATION).await.enter(Purpose::Demand).await;
     let mut work = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/work").await;
     work.turn(vec![shell("t1", "true", 20_000), say("awake")]).await;
     let device = the_cloud(&harness);
@@ -512,25 +526,35 @@ async fn a_clouds_exposes_outlive_its_checkpoints_and_end_when_it_stops_idle() {
     let mut held = hold(&backend, &host).await;
 
     // A checkpoint keeps the Cloud running, and its expose and the
-    // expose's connection with it.
+    // expose's connection with it: what the service sends on the connection
+    // afterwards still arrives.
     let checkpoint = format!("checkpoint:{device}");
     let before = harness.manager.count(&checkpoint);
     eventually("the Cloud checkpoints", || async { harness.manager.count(&checkpoint) > before }).await;
     assert_eq!(fetch(&backend, &host, "/hello").await, (200, "hello".to_owned()));
-    assert!(held.is_open().await);
+    proceed.notify_one();
+    assert_eq!(held.until("still\n").await, "still\n");
     assert_eq!(list(&backend, &master).await, [exposed.clone()]);
 
-    // Idle, the Cloud stops, and its expose ends with it, before the Cloud
-    // is saved.
+    // Idle, the Cloud stops a window after its work ends, and its expose
+    // ends with it, before the Cloud is saved.
+    let rested = Instant::now();
+    drop(working);
     held.ended().await;
     assert_eq!(fixture.next().await, Seen::Released);
     assert!(list(&backend, &master).await.is_empty());
-    let hibernate = format!("hibernate:{device}");
-    eventually("the idle Cloud is saved", || async { harness.manager.count(&hibernate) == 1 }).await;
+    let stopped = harness.manager.arrival(&format!("hibernate:{device}"), PATIENCE).await;
+    assert!(
+        stopped >= rested + window,
+        "the Cloud stopped {:?} after its work ended",
+        stopped.saturating_duration_since(rested)
+    );
     assert_eq!(fetch(&backend, &host, "/hello").await.0, 404);
     backend.close().await;
 }
 
+// Several seconds: the Cloud boots again after its death and after its reset,
+// and installs the builtin package each time.
 #[tokio::test]
 async fn a_clouds_exposes_end_when_it_dies_resets_or_is_found_stopped_and_before_a_backend_serves() {
     let vendor = MockVendor::start().await;
@@ -654,13 +678,10 @@ struct Held {
 }
 
 impl Held {
-    /// Whether the connection is still open: nothing arrives on it for a
-    /// moment, not even its end.
-    async fn is_open(&mut self) -> bool {
-        let mut byte = [0; 1];
-        tokio::time::timeout(Duration::from_millis(100), self.read.read(&mut byte))
-            .await
-            .is_err()
+    /// The answer in progress, read on until its text ends with `end`.
+    async fn until(&mut self, end: &str) -> String {
+        let read = tokio::time::timeout(STEP, read_until(&mut self.read, end)).await;
+        read.expect("the service's text arrives")
     }
 
     /// Waits until the backend closed the connection, with its answer cut
@@ -676,13 +697,6 @@ impl Held {
 async fn visit(backend: &TestBackend) -> (BufReader<OwnedReadHalf>, OwnedWriteHalf) {
     let (read, write) = TcpStream::connect(backend.address()).await.unwrap().into_split();
     (BufReader::new(read), write)
-}
-
-/// `length` bytes of a pattern that `seed` varies.
-fn pattern(length: usize, seed: u8) -> Vec<u8> {
-    (0..length)
-        .map(|index| u8::try_from(index % 251).unwrap() ^ seed)
-        .collect()
 }
 
 /// An HTTP message's head as its bytes had it: the first line, and each
@@ -892,8 +906,14 @@ async fn serve_http(socket: TcpStream, seen: mpsc::UnboundedSender<Seen>, procee
             write.write_all(head.as_bytes()).await.unwrap();
             write.write_all(chunk("held\n").as_bytes()).await.unwrap();
             let mut byte = [0; 1];
-            // Its end, a failure or a stray byte all end the hold.
-            let _ = read.read(&mut byte).await;
+            // Its end, a failure or a stray byte all end the hold; each
+            // `proceed` sends one more chunk meanwhile.
+            loop {
+                tokio::select! {
+                    _ = read.read(&mut byte) => break,
+                    () = proceed.notified() => write.write_all(chunk("still\n").as_bytes()).await.unwrap(),
+                }
+            }
             seen.send(Seen::Released).unwrap();
         }
         "/refuse" => {

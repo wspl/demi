@@ -7,6 +7,7 @@ use std::{borrow::Cow, fmt, str::FromStr};
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Serialize, Serializer};
 use serde_with::rust::unwrap_or_skip;
+use sha2::{Digest, Sha256};
 
 use crate::B64Bytes;
 
@@ -20,6 +21,11 @@ pub struct BlobRef(String);
 const BLOB_REF_PATTERN: &str = "^[0-9a-f]{64}$";
 
 impl BlobRef {
+    /// The name of the blob that holds `bytes`.
+    pub fn of(bytes: &[u8]) -> Self {
+        Self(format!("{:x}", Sha256::digest(bytes)))
+    }
+
     pub fn as_str(&self) -> &str {
         &self.0
     }

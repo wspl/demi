@@ -3,11 +3,13 @@
 //! Host it used, and a command's handle answers only on the Host that runs
 //! it.
 
+use demi_agent::testing::preview;
 use demi_agent_protocol::{ClientFrame, ServerFrame};
 use demi_provider::testing::{ScriptedRuntime, Turn};
 
-use crate::support::{Fixture, exec, preview, reply, scripts, turn, within};
+use crate::support::{Fixture, exec, reply, scripts, turn, within};
 
+// About two seconds: four messages run a shell job each, on two Hosts.
 #[tokio::test(flavor = "local")]
 async fn a_node_keeps_each_hosts_shell_and_a_handle_answers_only_on_its_host() {
     within(async {

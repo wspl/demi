@@ -5,12 +5,12 @@
 //! compaction are still recalled.
 //!
 //! ```sh
-//! cargo run -p demi-agent --features compaction-fixture --example compaction-fixture -- recall
-//! cargo run -p demi-agent --features compaction-fixture --example compaction-fixture -- switch
+//! target/debug/examples/compaction-fixture recall
+//! target/debug/examples/compaction-fixture switch
 //! ```
 //!
-//! It calls a real model, so no build of the one selection compiles it and
-//! no test runs it.
+//! It calls a real model, so no test runs it; every build of the one
+//! selection compiles it, as it compiles every example.
 
 use std::{io::Read, process::ExitCode, rc::Rc, sync::Arc, time::Duration};
 
@@ -18,7 +18,7 @@ use demi_agent::{
     AgentHarness, AgentServer, AgentTreeStore, CompactionConfig, PromptContext, ProviderResolver,
     RandomIds, ResolveError, ServerConfig, ServerDeps, SessionConfig,
     store::{CheckpointState, CheckpointUpdate, CommandStateSnapshot, NodeRecord},
-    testing::{MemoryTreeStore, TestClient, client_text},
+    testing::{MemoryTreeStore, NoHost, NoShells, TestClient, client_text},
     transcript::estimate::context_tokens,
 };
 use demi_agent_protocol::{ClientFrame, ServerFrame};
@@ -142,13 +142,15 @@ fn deepseek() -> Result<Rc<OpenAiProvider>, String> {
     Ok(Rc::new(OpenAiProvider::new(config, Arc::new(SystemClock))))
 }
 
-/// The fixture's harness: its name, no commands, and the system prompt the
-/// fixture was built with.
+/// The fixture's harness: its name, no commands, no Host, and the system
+/// prompt the fixture was built with.
 struct FixtureHarness {
     name: String,
 }
 
 impl AgentHarness for FixtureHarness {
+    type Host = NoHost;
+
     fn name(&self) -> &str {
         &self.name
     }
@@ -239,6 +241,7 @@ impl Conversation {
                 name: fixture.harness,
             }),
             providers: deepseek,
+            shells: Rc::new(NoShells),
             stores: Rc::new(move |_: &NodeId| store.clone() as Rc<dyn AgentTreeStore>),
             clock: Arc::new(SystemClock),
             ids: Rc::new(RandomIds),

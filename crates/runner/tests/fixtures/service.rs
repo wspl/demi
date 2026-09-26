@@ -8,17 +8,22 @@ use std::{
     pin::Pin,
     sync::{Arc, Mutex},
 };
+use tokio::sync::Notify;
 
 #[derive(Default)]
 struct Fixture {
     conversations: Arc<Mutex<BTreeSet<String>>>,
+    /// Told when a status taken while `stall` is held waits to answer.
+    stalled: Arc<Notify>,
+    /// Lets that status answer, with what it held when it was asked.
+    proceed: Arc<Notify>,
 }
 
 impl Handler for Fixture {
     type Metadata = Invocation;
 
     fn operations(&self) -> Vec<String> {
-        ["where", "echo", "first", "spin", "result", "retain", "crash"]
+        demi_command_service::testing::FIXTURE_OPERATIONS
             .map(String::from)
             .to_vec()
     }
@@ -28,9 +33,13 @@ impl Handler for Fixture {
         mut context: InvocationContext,
     ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
         let conversations = self.conversations.clone();
+        let (stalled, proceed) = (self.stalled.clone(), self.proceed.clone());
         Box::pin(async move {
             let mut exit_code = 0;
             match context.request.operation.as_str() {
+                // Ends once a status waits to answer.
+                "stalled" => stalled.notified().await,
+                "proceed" => proceed.notify_one(),
                 "retain" => {
                     conversations
                         .lock()
@@ -104,26 +113,35 @@ impl Handler for Fixture {
         context: ConversationContext,
     ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
         let conversations = self.conversations.clone();
+        let (stalled, proceed) = (self.stalled.clone(), self.proceed.clone());
         Box::pin(async move {
-            let value = {
+            let (value, stall) = {
                 let mut held = conversations.lock().unwrap();
                 match &context.request {
                     // A service that cannot say what it holds.
                     ConversationRequest::Status {} if held.contains("unanswerable") => {
                         return Err(ServiceError::failed("fixture status unavailable"));
                     }
-                    ConversationRequest::Status {} => {
-                        serde_json::json!({ "conversations": *held })
-                    }
+                    // What it holds is read at once; while it holds `stall`,
+                    // the answer arrives only after `proceed`, as a late one
+                    // does.
+                    ConversationRequest::Status {} => (
+                        serde_json::json!({ "conversations": *held }),
+                        held.contains("stall"),
+                    ),
                     ConversationRequest::Release { conversation } if conversation == "fail" => {
                         return Err(ServiceError::failed("fixture cleanup failed"));
                     }
                     ConversationRequest::Release { conversation } => {
                         held.remove(conversation);
-                        serde_json::json!({})
+                        (serde_json::json!({}), false)
                     }
                 }
             };
+            if stall {
+                stalled.notify_one();
+                proceed.notified().await;
+            }
             context.output.stdout(value.to_string().into()).await?;
             Ok(Completion {
                 exit_code: 0,

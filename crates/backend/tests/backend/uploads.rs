@@ -65,6 +65,7 @@ fn wait_for_go() -> demi_provider::testing::MockResponse {
     tool_use("toolu_wait", "shell_exec", &json!({ "description": "Wait", "script": script, "timeoutMs": 60_000 }))
 }
 
+// Over a second: the uploads reach a real device over four turns.
 #[tokio::test]
 async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page_by_reference() {
     let vendor = MockVendor::start().await;
@@ -214,6 +215,8 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
     backend.close().await;
 }
 
+// About a second: a real device runs the shell job whose picture the frame
+// carries.
 #[tokio::test]
 async fn a_frame_whose_media_cannot_be_stored_reaches_the_page_as_an_error_and_the_turn_goes_on() {
     let vendor = MockVendor::start().await;

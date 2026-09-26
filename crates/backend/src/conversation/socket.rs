@@ -434,9 +434,8 @@ fn to_text(frame: &ServerFrame) -> String {
 }
 
 /// The files of a frame's content: an upload is written to the
-/// conversation's Host and becomes its blocks, a remote file becomes its
-/// reference once its device may be read, and a medium an edit keeps gets its
-/// bytes back from the user's blobs. The uploads are written first, so a
+/// conversation's Host and becomes its blocks, and a remote file becomes its
+/// reference once its device may be read. The uploads are written first, so a
 /// frame whose upload cannot be written grants no remote file.
 struct ConversationFiles {
     /// Weak: the shard owns the agent server that holds this resolver.
@@ -480,13 +479,6 @@ impl ContentResolver for ConversationFiles {
                     FileReference::RemoteFile { device_id, path } => {
                         remote.push(RemoteFile { device: device_id, path });
                         resolved.push(None);
-                    }
-                    FileReference::Media(kept) => {
-                        let blobs = shard.services().blobs.for_user(shard.user());
-                        let part = media::kept_media(kept, &blobs)
-                            .await
-                            .map_err(|error| refused(error.to_string()))?;
-                        resolved.push(Some(vec![part]));
                     }
                 }
             }

@@ -305,19 +305,3 @@ pub fn last_result(request: &InferenceRequest) -> String {
         .collect::<Vec<_>>()
         .join("\n")
 }
-
-/// The value of a result's `name: value` line.
-pub fn field<'a>(result: &'a str, name: &str) -> &'a str {
-    result
-        .lines()
-        .find_map(|line| line.strip_prefix(name)?.strip_prefix(": "))
-        .unwrap_or_else(|| panic!("the result has no {name}:\n{result}"))
-}
-
-/// The output preview of a result, empty when it shows none.
-pub fn preview(result: &str) -> &str {
-    let Some((_, preview)) = result.split_once("\npreview:\n") else {
-        return "";
-    };
-    preview.split("\nnext: ").next().unwrap_or(preview)
-}

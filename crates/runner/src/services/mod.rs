@@ -14,6 +14,8 @@ use tokio_util::sync::CancellationToken;
 
 pub use demi_command_service::protocol::host_target as target;
 pub use registry::{Resident, ServiceHandle, ServiceLease, ServiceRegistry};
+#[cfg(feature = "test-fixtures")]
+pub use registry::Decision;
 
 /// Why a resident service could not be had, or why it ended.
 #[derive(Debug, thiserror::Error)]

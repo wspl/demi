@@ -119,7 +119,9 @@ demi-command-service = { path = "../command-service", features = ["testing"] }
 tokio = { workspace = true, features = ["test-util"] }
 
 [features]
-test-fixtures = []
+# The native fixture service and the test views: the registry's decisions
+# and a job's activity.
+test-fixtures = ["demi-command-service/testing"]
 
 [[bin]]
 name = "demi-native-fixture"

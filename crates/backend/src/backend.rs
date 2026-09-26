@@ -531,6 +531,25 @@ impl Backend {
         self.services.hellos.hold(step)
     }
 
+    /// The file gate of the user's conversation `conversation`: every
+    /// operation on the conversation's Host holds a lease of it, a
+    /// transition reserves it, and a lease the caller takes is activity
+    /// (`sessions-and-targets.md` § Host operations).
+    #[cfg(feature = "testing")]
+    pub async fn file_gate(
+        &self,
+        user: &demi_web_api::ids::UserId,
+        conversation: &demi_web_api::ids::ConversationId,
+    ) -> demi_gates::ActivityGate {
+        let conversation = conversation.clone();
+        self.shards
+            .shards()
+            .of(user)
+            .call(move |shard, _| async move { shard.conversations().slot(&conversation).files.clone() })
+            .await
+            .expect("the user's shard serves while the backend runs")
+    }
+
     /// Shuts the backend down. The listener closes first, so no new work
     /// starts and a new request on an open connection answers 503
     /// `backend_closing`; every step runs even when an earlier one fails, and

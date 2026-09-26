@@ -25,7 +25,7 @@ use reqwest::StatusCode;
 use serde_json::json;
 
 use crate::families::{Directory, LoginScript, QuotaScript, ScriptedSubscription};
-use crate::support::{Harness, Session, TestBackend};
+use crate::support::{Harness, Session, TestBackend, eventually};
 
 pub(crate) struct Scripts {
     pub(crate) login: Arc<LoginScript>,
@@ -429,6 +429,7 @@ async fn a_login_expires_and_its_result_goes_after_the_retention() {
     };
     let harness = Harness::new().with_families(scripts.families).with_logins(timing);
     let (backend, master) = harness.start_set_up().await;
+    let started = tokio::time::Instant::now();
     let id = start_login(
         &backend,
         &master,
@@ -456,10 +457,15 @@ async fn a_login_expires_and_its_result_goes_after_the_retention() {
             .providers
             .is_empty()
     );
-    tokio::time::sleep(timing.retention).await;
-    let gone = backend
-        .get(&format!("/api/providers/subscription-login/{id}"), Some(&master))
-        .await;
+    // The result stays for the retention after the login ended, and then
+    // goes: no earlier than the lifetime and the retention after the start.
+    let path = format!("/api/providers/subscription-login/{id}");
+    eventually("the login's result goes", || async {
+        backend.get(&path, Some(&master)).await.status == StatusCode::NOT_FOUND
+    })
+    .await;
+    assert!(started.elapsed() >= timing.lifetime + timing.retention, "{:?}", started.elapsed());
+    let gone = backend.get(&path, Some(&master)).await;
     assert_eq!(gone.refusal(), (StatusCode::NOT_FOUND, ErrorCode::LoginNotFound));
     backend.close().await;
 }
