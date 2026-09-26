@@ -157,6 +157,9 @@ async fn acquire(services: &ServiceHandle, descriptor: &PackageDescriptor, resol
         .unwrap()
 }
 
+/// About 1.3 s: twice it gives the registry half a second in which the
+/// service must not stop, since the registry keeps a service by doing
+/// nothing that a test could wait for.
 #[tokio::test]
 async fn a_service_without_leases_stays_while_it_holds_a_conversation() {
     tokio::time::timeout(Duration::from_secs(60), async {

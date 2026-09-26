@@ -286,8 +286,10 @@ its own copy of every shared dependency.
 A test that starts another program, such as a runner or `demi-commands`,
 starts the one Cargo built into the target directory the test runs from
 (`command_service::testing::built_program`); it builds nothing itself.
-`cargo test` of the whole selection builds every program first, while one
-test target builds only what it links, so before running one alone that
+`cargo test` of the whole selection builds every program first: Cargo builds
+a package's executables for that package's integration tests, so every crate
+whose program a test starts has an integration test binary. One test target
+builds only what it links, so before running one alone that
 starts another crate's program, build the selection with
 `cargo build --workspace --all-targets --features demi-runner/test-fixtures`.
 The TypeScript tests take the programs from `DEMI_TEST_PROGRAMS`, which

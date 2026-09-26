@@ -115,6 +115,8 @@ features = ["std"]
 
 [dev-dependencies]
 demi-command-service = { path = "../command-service", features = ["testing"] }
+# A paused clock for the local endpoint's client test.
+tokio = { workspace = true, features = ["test-util"] }
 
 [features]
 test-fixtures = []

@@ -100,7 +100,7 @@ async fn conversation_browser_commands_share_state_and_retire() {
                 listener,
                 Router::new().route(
                     "/",
-                    get(|| async { Html(include_str!("browser/fixture.html")) }),
+                    get(|| async { Html(include_str!("fixture.html")) }),
                 ),
             )
             .with_graceful_shutdown(stopped.cancelled_owned())
@@ -413,7 +413,7 @@ async fn resident_executable_runs_all_builtin_file_operations() {
     tokio::time::timeout(Duration::from_secs(15), async {
         let root = tempfile::tempdir().unwrap();
         let cwd = root.path().to_str().unwrap();
-        let service = ServiceProcess::start(env!("CARGO_BIN_EXE_demi-commands"), &["--command-service"])
+        let service = ServiceProcess::start(env!("CARGO_BIN_EXE_demi-commands"), &["--command-service"], &[])
             .await
             .unwrap();
         let pid = service.id().unwrap();

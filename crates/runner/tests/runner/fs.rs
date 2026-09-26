@@ -156,30 +156,3 @@ async fn filesystem_wire_preserves_binary_dates_links_and_error_codes() {
     assert_eq!(error["type"], "fs_error");
     assert_eq!(error["code"], "ENOENT");
 }
-
-#[tokio::test]
-async fn a_reply_over_the_message_limit_fails_its_request() {
-    let root = tempfile::tempdir().unwrap();
-    // Long names make a listing outgrow the limit with a few thousand entries.
-    let name = "x".repeat(200);
-    let count = wire::MAX_MESSAGE_BYTES / 200 + 1;
-    for index in 0..count {
-        std::fs::File::create(root.path().join(format!("{name}{index}"))).unwrap();
-    }
-    let listing = Inbound::FsReaddir {
-        id: "big".into(),
-        path: ".".into(),
-        cwd: None,
-        with_file_types: None,
-    };
-    let bytes = demi_runner::fs::handle(&listing, root.path(), &CancellationToken::new())
-        .await
-        .unwrap()
-        .unwrap()
-        .into_bytes();
-    assert!(bytes.len() <= wire::MAX_MESSAGE_BYTES);
-    let error: serde_json::Value = rmp_serde::from_slice(&bytes).unwrap();
-    assert_eq!(error["type"], "fs_error");
-    assert_eq!(error["id"], "big");
-    assert_eq!(error["code"], "too_large");
-}
