@@ -122,7 +122,8 @@ impl Dispatcher {
                 None
             };
             let parsed = parsed.validate(leaf, body).map_err(ServiceError::failed)?;
-            let mut output = CommandOutput::new(invocation.output, parsed.json);
+            let mut output =
+                CommandOutput::new(invocation.output, leaf.json_output().filter(|_| parsed.json));
             let _hint = rpc::running_hint(
                 &context.connection,
                 &context.job_id,
@@ -191,7 +192,7 @@ impl Dispatcher {
                 )
                 .await?
             };
-            output.finish(code, leaf.json_output()).await?;
+            output.finish(code).await?;
             Ok(completed(code))
         };
         tokio::select! {
@@ -215,7 +216,7 @@ async fn native_exchange(
     sender: demi_command_service::CommandInput,
     response: demi_command_service::CommandOutput,
     input: &mut Input,
-    output: &mut CommandOutput,
+    output: &mut CommandOutput<'_>,
 ) -> Result<u8, Failed> {
     let completion = Exchange::new(sender, response)
         .run(input, output)

@@ -1,4 +1,5 @@
-//! Invocation output with bounded JSON capture when a declaration requests it.
+//! Invocation output with bounded JSON capture when the caller passes `--json`
+//! (`commands.md` § Deliver IO and release an invocation).
 
 use bytes::Bytes;
 use demi_command_service::{Output, OutputSink, ServiceError};
@@ -7,28 +8,38 @@ use demi_command_tree::Schema;
 /// The most JSON output a command may produce.
 const JSON_BYTES: usize = 1024 * 1024;
 
-/// One command's output. Its standard output is captured whole when the
-/// declaration asks for JSON, so it can be checked before the caller sees
-/// it; its standard error passes through.
-pub struct CommandOutput {
+/// One command's output. With `--json` its standard output is captured whole,
+/// so it reaches the caller only as JSON that matches the leaf's output
+/// schema; its standard error passes through.
+pub struct CommandOutput<'a> {
     output: Output,
-    json: Option<Vec<u8>>,
+    json: Option<Capture<'a>>,
 }
 
-impl CommandOutput {
-    pub fn new(output: Output, json: bool) -> Self {
+/// A `--json` command's standard output so far, and the schema it must match.
+struct Capture<'a> {
+    schema: &'a Schema,
+    bytes: Vec<u8>,
+}
+
+impl<'a> CommandOutput<'a> {
+    /// `json` is the leaf's output schema when the caller passed `--json`.
+    pub fn new(output: Output, json: Option<&'a Schema>) -> Self {
         Self {
             output,
-            json: json.then(Vec::new),
+            json: json.map(|schema| Capture {
+                schema,
+                bytes: Vec::new(),
+            }),
         }
     }
 
     pub async fn stdout(&mut self, bytes: Bytes) -> Result<(), ServiceError> {
-        if let Some(buffer) = &mut self.json {
-            if buffer.len() + bytes.len() > JSON_BYTES {
+        if let Some(capture) = &mut self.json {
+            if capture.bytes.len() + bytes.len() > JSON_BYTES {
                 return Err(ServiceError::failed(OutputError::TooLarge));
             }
-            buffer.extend_from_slice(&bytes);
+            capture.bytes.extend_from_slice(&bytes);
             Ok(())
         } else {
             self.output.stdout(bytes).await
@@ -44,23 +55,26 @@ impl CommandOutput {
         self.output.clone()
     }
 
-    pub async fn finish(self, exit_code: u8, schema: Option<&Schema>) -> Result<(), ServiceError> {
+    /// Releases captured output once the command has succeeded; a command
+    /// that failed releases none.
+    pub async fn finish(self, exit_code: u8) -> Result<(), ServiceError> {
         if exit_code != 0 {
             return Ok(());
         }
-        if let Some(bytes) = self.json {
-            let value: serde_json::Value = serde_json::from_slice(&bytes)?;
-            let schema = schema.ok_or_else(|| ServiceError::failed(OutputError::MissingSchema))?;
-            schema
+        if let Some(capture) = self.json {
+            let value: serde_json::Value = serde_json::from_slice(&capture.bytes)
+                .map_err(|error| ServiceError::failed(OutputError::NotJson(error)))?;
+            capture
+                .schema
                 .check(&value)
                 .map_err(|error| ServiceError::failed(OutputError::Invalid(error)))?;
-            self.output.stdout(bytes.into()).await?;
+            self.output.stdout(capture.bytes.into()).await?;
         }
         Ok(())
     }
 }
 
-impl OutputSink for CommandOutput {
+impl OutputSink for CommandOutput<'_> {
     type Error = ServiceError;
 
     async fn stdout(&mut self, bytes: Bytes) -> Result<(), ServiceError> {
@@ -72,13 +86,13 @@ impl OutputSink for CommandOutput {
     }
 }
 
-/// Why a command's JSON output does not reach its caller.
+/// Why a command's `--json` output does not reach its caller.
 #[derive(Debug, thiserror::Error)]
 enum OutputError {
-    #[error("JSON command output exceeds 1 MiB")]
+    #[error("--json output exceeds 1 MiB")]
     TooLarge,
-    #[error("missing JSON output schema")]
-    MissingSchema,
-    #[error("JSON output failed validation: {0}")]
+    #[error("--json output is not JSON: {0}")]
+    NotJson(serde_json::Error),
+    #[error("--json output does not match its schema: {0}")]
     Invalid(String),
 }
