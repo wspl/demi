@@ -136,7 +136,9 @@ pub(super) async fn compact_to_fit(
 /// One pass (`compaction.md` § One pass): the window from the last boundary
 /// to the cut is summarized by a session copy, and a boundary holding the
 /// summary is inserted at the cut with a marker at the end. Returns whether
-/// it compacted anything.
+/// it compacted anything. A summary request that exceeds the context is
+/// asked again for the first half of the window, down to one block after
+/// the previous boundary; when that one exceeds it too, the pass fails.
 pub(super) async fn run_pass(
     s: &Rc<SessionShared>,
     cancel: &TurnCancel,
@@ -163,7 +165,9 @@ pub(super) async fn run_pass(
     let Some((start, mut cut, first)) = window else {
         return Ok(false);
     };
-    while cut > first {
+    // The window always holds `first`, the block after the previous
+    // boundary and its marker: `cut` never falls below `first + 1`.
+    loop {
         let (compacted, compacted_tokens) = s.read(|core| {
             let compacted = core.transcript.blocks()[start..cut].to_vec();
             let tokens = compacted.iter().map(block_tokens).sum::<u64>();
@@ -189,16 +193,17 @@ pub(super) async fn run_pass(
                 return Ok(true);
             }
             Summary::TooLong(report) => {
-                // The summary request itself exceeds the context: the first
-                // half of the window, down to one block.
-                if cut - start <= 1 {
+                // The request itself exceeds the context: the first half of
+                // the window, unless no smaller window is left; then the
+                // overflow fails the pass like any other failure of the
+                // summary request.
+                if cut <= first + 1 {
                     return Err(TurnError::Failed(report));
                 }
-                cut = start + ((cut - start) / 2).max(1);
+                cut = (start + (cut - start) / 2).max(first + 1);
             }
         }
     }
-    Ok(false)
 }
 
 /// What a summary request came back with.
