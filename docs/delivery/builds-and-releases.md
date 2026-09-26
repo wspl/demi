@@ -264,6 +264,8 @@ it against the record.
 
 ## Validation
 
+[Testing](testing.md) says what a test must be; this section says how the tests run.
+
 There is no hosted CI. Developers run the checks on their machines, and
 release acceptance runs the shared Rust suite on each platform that ships a
 feature.
