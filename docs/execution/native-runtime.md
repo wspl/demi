@@ -462,9 +462,16 @@ The caller preserves the chunk boundary across HTTP/2 DATA frames. A short
 live-stdin read does not authorize another read. Receive-window capacity does
 not authorize reading stdin either.
 
-A handler may finish without reading all of its input. The service then ends
-the request with `RST_STREAM(NO_ERROR)`, and a caller's EOF after that is not
-an error.
+A handler may finish without reading all of its input, and a
+[conversation request](#conversation-scoped-state) is answered from its
+metadata alone. Once its response is complete, the service ends such a
+request with `RST_STREAM(NO_ERROR)`, and whatever the caller still sends after
+that, an input chunk or its EOF, is dropped, not an error. A conversation
+request's metadata is its whole body, so the caller sends it together with
+END_STREAM and has nothing left to send when the answer comes. Otherwise a
+loaded caller that ends a release in a second step can find the request
+already reset, and a release the service answered would look failed, which
+retires the service ([Keep a service resident](#keep-a-service-resident)).
 
 ### Response records and completion
 
