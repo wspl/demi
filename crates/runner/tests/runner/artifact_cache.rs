@@ -49,7 +49,7 @@ async fn a_hit_asks_nobody_reads_nothing_and_an_entry_of_another_size_fails() {
         path: source,
         calls: AtomicUsize::new(0),
     };
-    let cache = ArtifactCache::new(root.path().join("cache")).await.unwrap();
+    let cache = ArtifactCache::new(root.path().join("cache"), None).await.unwrap();
     let cancel = CancellationToken::new();
     let path = cache.install(&artifact(bytes), &resolver, &cancel).await.unwrap();
     assert_eq!(tokio::fs::read(&path).await.unwrap(), bytes);
@@ -83,7 +83,7 @@ async fn a_mismatched_download_leaves_no_file_behind() {
         calls: AtomicUsize::new(0),
     };
     let cache_root = root.path().join("cache");
-    let cache = ArtifactCache::new(cache_root.clone()).await.unwrap();
+    let cache = ArtifactCache::new(cache_root.clone(), None).await.unwrap();
     let result = cache
         .install(&artifact(b"small"), &resolver, &CancellationToken::new())
         .await;
@@ -109,7 +109,7 @@ async fn a_cancelled_install_publishes_nothing() {
         calls: AtomicUsize::new(0),
     };
     let cache_root = root.path().join("cache");
-    let cache = ArtifactCache::new(cache_root.clone()).await.unwrap();
+    let cache = ArtifactCache::new(cache_root.clone(), None).await.unwrap();
     let cancel = CancellationToken::new();
     cancel.cancel();
     let result = cache.install(&artifact(b"bytes"), &resolver, &cancel).await;
