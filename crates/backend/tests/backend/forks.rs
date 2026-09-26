@@ -1,8 +1,9 @@
 //! Conversation Fork (`conversation-fork.md` § Backend creation and retries;
 //! `web-api.md` § Conversation creation and Fork): a new conversation with the
-//! source's history through one of its completed assistant texts, created
-//! once per destination id, while the source runs on and after the backend no
-//! longer holds the source. No test calls a real model.
+//! source's history through one of its completed assistant texts, and the
+//! command storage and edits of that history, created once per destination
+//! id, while the source runs on and after the backend no longer holds the
+//! source. No test calls a real model.
 
 use demi_agent::testing::model_of;
 use demi_core::{Block, BlockId, ToolView};
@@ -218,5 +219,61 @@ async fn a_fork_keeps_the_edits_its_history_made_in_a_copy_of_its_own() {
     let copied = backend.get(&edit(SECOND), Some(&master)).await;
     assert_eq!(copied.status, StatusCode::OK, "{}", String::from_utf8_lossy(&copied.body));
     assert_eq!(copied.json::<ChangeSides>(), sides);
+    backend.close().await;
+}
+
+/// The text of the tool result `id` that `request` carries.
+fn tool_result(request: &Value, id: &str) -> String {
+    let result = request["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|message| message["content"].as_array().into_iter().flatten())
+        .find(|block| block["type"] == "tool_result" && block["tool_use_id"] == id)
+        .unwrap_or_else(|| panic!("no result of {id}: {request}"));
+    result["content"][0]["text"].as_str().unwrap().to_owned()
+}
+
+#[tokio::test]
+async fn a_fork_keeps_the_todos_its_history_had() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    let (_paired, _root) = on_device(&harness, &backend, &master, FIRST).await;
+    let mut source = Socket::connect(&backend, &master, FIRST).await;
+    source.open(&model_of(&provider, "claude-opus-4-8")).await;
+    let shell = |id: &str, script: &str| {
+        tool_use(id, "shell_exec", &json!({ "description": id, "script": script, "timeoutMs": 60_000 }))
+    };
+    vendor.respond(shell("toolu_add", "demi todo add \"first task\""));
+    vendor.respond(answer(&["Added."], 1, 1));
+    source.chat("m1", "Plan").await;
+    vendor.respond(shell("toolu_done", "demi todo done T1"));
+    vendor.respond(answer(&["Done."], 1, 1));
+    source.chat("m2", "Finish it").await;
+    let Ok([added, done]) = <[BlockId; 2]>::try_from(texts(&source.live().await)) else {
+        panic!("two answers");
+    };
+
+    // A Fork's todos are the ones its history had, however the source went
+    // on.
+    for (destination, text, status) in [(SECOND, added, "pending"), (THIRD, done, "done")] {
+        let created = backend
+            .post(&format!("/api/conversations/{FIRST}/fork"), Some(&master), fork(destination, &text))
+            .await;
+        assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
+        let forked = created.json::<ForkAnswer>();
+        let mut socket = Socket::connect(&backend, &master, destination).await;
+        socket.open(&forked.model).await;
+        let before = vendor.requests().len();
+        vendor.respond(shell("toolu_list", "demi todo list --json"));
+        vendor.respond(answer(&["Listed."], 1, 1));
+        socket.chat("m3", "What is left?").await;
+        let listed = tool_result(&vendor.requests()[before + 1].json(), "toolu_list");
+        let todos: Value = serde_json::from_str(listed.lines().last().unwrap()).unwrap_or_else(|_| panic!("{listed}"));
+        assert_eq!(todos["todos"][0]["status"], status, "{listed}");
+    }
     backend.close().await;
 }
