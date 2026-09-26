@@ -29,10 +29,17 @@ A paired device stores its device token in private installation state. A managed
 guest receives a token at boot and keeps temporary state. The backend owns device
 claiming and user ownership. The runner opens an outbound WebSocket and sends its
 `hello` first; the backend closes a connection that has sent nothing within 30
-seconds of opening. Both ends decode every MessagePack message into the types of
-the runner wire's contract crate, which they both link, and validate it at
-entry; a message that fails closes the connection, since its sender broke the
-protocol ([Validation at entry](../architecture/contracts.md#validation-at-entry)).
+seconds of opening. The backend looks a hello's token up while it watches the
+connection, and lets a runner that goes away meanwhile go without adopting it.
+It answers a known token with `hello_ok` once it has bound the connection to
+the token's device, which is online from then until the connection ends. A
+hello that meets the backend's shutdown gets no answer: its connection closes,
+as every runner's does at
+[shutdown](../backend/backend.md#startup-and-shutdown). Both ends decode every
+MessagePack message into the types of the runner wire's contract crate, which
+they both link, and validate it at entry; a message that fails closes the
+connection, since its sender broke the protocol
+([Validation at entry](../architecture/contracts.md#validation-at-entry)).
 Integer fields travel as MessagePack integers, and byte fields as MessagePack
 binary.
 

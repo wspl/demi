@@ -479,6 +479,12 @@ impl TestBackend {
         self.backend.hold_commits()
     }
 
+    /// Holds every runner's hello at `step` from now on, until the hold is
+    /// released or dropped.
+    pub fn hold_hellos(&self, step: demi_backend::HelloStep) -> demi_backend::HelloHold {
+        self.backend.hold_hellos(step)
+    }
+
     /// The `ws://` URL of `path`.
     pub fn ws_url(&self, path: &str) -> String {
         format!("ws://{}{path}", self.backend.local_addr())

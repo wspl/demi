@@ -29,6 +29,8 @@ pub use llm::families::{
     AccountBinding, ApiKeyArgs, FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry, ProviderFamily,
     SubscriptionArgs,
 };
+#[cfg(feature = "testing")]
+pub use runner::hold::{HelloHold, HelloStep};
 pub use runner::native::NativeCatalog;
 pub use runner::publication::{PublicationError, publish_native};
 pub use shard::ShardPlacement;

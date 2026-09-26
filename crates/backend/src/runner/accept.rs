@@ -48,7 +48,11 @@ pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: 
         }
         return;
     };
-    let lookup = services.control.device_by_token(TokenHash::of(token.expose()));
+    let lookup = async {
+        #[cfg(feature = "testing")]
+        services.hellos.pass(crate::HelloStep::TokenLookup).await;
+        services.control.device_by_token(TokenHash::of(token.expose())).await
+    };
     let device = tokio::select! {
         device = lookup => device,
         // The runner went away during the lookup: its socket never becomes
