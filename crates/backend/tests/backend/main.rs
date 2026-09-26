@@ -25,6 +25,7 @@ mod settings;
 mod startup;
 mod state;
 mod streams;
+mod subagents;
 mod support;
 mod titles;
 mod uploads;
