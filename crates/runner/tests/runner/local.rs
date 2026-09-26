@@ -144,9 +144,15 @@ async fn a_client_waits_for_a_busy_runner_but_not_for_a_gone_one() {
     );
 
     // Crashed: its socket is left behind, nothing listens and no lock is held.
+    // The socket never listens: a listening one closed again would still
+    // accept in any child another test forks meanwhile, which keeps a copy
+    // of it until it runs its own program.
     let crashed = tempfile::tempdir().unwrap();
     let socket = crashed.path().join("ipc.sock");
-    drop(std::os::unix::net::UnixListener::bind(&socket).unwrap());
+    tokio::net::UnixSocket::new_stream()
+        .unwrap()
+        .bind(&socket)
+        .unwrap();
     std::fs::File::create(crashed.path().join("ipc.alive")).unwrap();
     let gone = tokio::time::timeout(
         Duration::from_secs(1),
