@@ -61,6 +61,11 @@ pub struct Shell<SE: extensions::ShellExtensions = extensions::DefaultShellExten
     #[cfg_attr(feature = "serde", serde(skip))]
     execution_host: Option<Arc<dyn crate::execution_host::ExecutionHost>>,
 
+    /// What the shell's `umask` and `ulimit` set for the processes it starts,
+    /// when an embedding host starts them.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    child_attributes: crate::execution_host::ChildAttributes,
+
     /// Injected error behavior.
     #[cfg_attr(feature = "serde", serde(skip, default = "default_error_formatter"))]
     error_formatter: SE::ErrorFormatter,
@@ -153,6 +158,7 @@ impl<SE: extensions::ShellExtensions> Clone for Shell<SE> {
     fn clone(&self) -> Self {
         Self {
             execution_host: self.execution_host.clone(),
+            child_attributes: self.child_attributes.clone(),
             error_formatter: self.error_formatter.clone(),
             traps: self.traps.clone(),
             open_files: self.open_files.clone(),
@@ -207,6 +213,17 @@ impl<SE: extensions::ShellExtensions> Shell<SE> {
     /// Returns the owner shared by this shell and its subshells.
     pub fn execution_host(&self) -> Option<&Arc<dyn crate::execution_host::ExecutionHost>> {
         self.execution_host.as_ref()
+    }
+
+    /// What the shell's `umask` and `ulimit` set for the processes it starts.
+    pub const fn child_attributes(&self) -> &crate::execution_host::ChildAttributes {
+        &self.child_attributes
+    }
+
+    /// Changes what the shell gives the processes it starts, as its `umask` and
+    /// `ulimit` do.
+    pub const fn child_attributes_mut(&mut self) -> &mut crate::execution_host::ChildAttributes {
+        &mut self.child_attributes
     }
 
     /// Checks cancellation before interpreting more shell work.
