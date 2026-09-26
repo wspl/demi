@@ -2,6 +2,7 @@
 import { Copy, Folder, Pencil, Plus, Settings, Trash2 } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { showToast } from '@demicodes/web-ui/infra/toast'
+import { productWould } from '../product-would'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Toast from '@demicodes/web-ui/ui/Toast.vue'
 import ContextMenu from '@demicodes/web-ui/ui/ContextMenu.vue'
@@ -16,7 +17,7 @@ import MenuGroup from '@demicodes/web-ui/ui/MenuGroup.vue'
 import Switch from '@demicodes/web-ui/ui/Switch.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
-import { ref } from 'vue'
+import { reactive, ref } from 'vue'
 import HostPicker from '@demicodes/web-ui/hosts/HostPicker.vue'
 import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
 import SessionToolsMenu from '@demicodes/web-ui/hosts/SessionToolsMenu.vue'
@@ -69,6 +70,12 @@ function detachHost(id: string) {
   attachedHosts.value = attachedHosts.value.filter(device => device.id !== id)
 }
 
+/** A host's name as the host menu shows it; the Cloud is the one that is no device. */
+function deviceName(id: string): string {
+  return hostDevices.find(device => device.id === id)?.name ?? 'Cloud'
+}
+const statusSelected = ref('mac')
+
 // Session tools: live exposes across hosts (one under a minute). Removing the last one removes the button.
 const sessionExposes = ref<ExposeMenuEntry[]>(demoExposes())
 const sessionExposePending = ref<string[]>([])
@@ -117,7 +124,18 @@ const densitySelected = ref('compact')
 const choiceIconSelected = ref('hairline')
 const choiceIconFocused = ref('carved')
 const filterMenuSelected = ref('opt-4')
+const filterEmptySelected = ref<string | undefined>()
 const virtualMenuSelected = ref('opt-8')
+const columnsEffort = ref('medium')
+const columnsModel = ref('sonnet')
+const columnsLonger = ref(true)
+// The directory each width specimen shows; its menu switches it, as the header's directory menu does.
+const widthDirectories = ['a-rather-long-directory-name', 'demi']
+const widthDirectory = reactive({
+  content: widthDirectories[0]!,
+  shrink: widthDirectories[0]!,
+  fill: widthDirectories[0]!,
+})
 const dropdownChoiceSelected = ref('hairline')
 const dropdownEffortSelected = ref('medium')
 const dropdownInlineSelected = ref('hairline')
@@ -161,22 +179,22 @@ function itemLabel(id: string, list: {
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="hover">
             <Tooltip content="Send the current turn">
-              <Button size="md">Hover me</Button>
+              <Button size="md" @click="productWould('Send the current turn')">Hover me</Button>
             </Tooltip>
           </GallerySpecimen>
           <GallerySpecimen variant="top">
             <Tooltip content="Send the current turn">
-              <Button size="md">Top</Button>
+              <Button size="md" @click="productWould('Send the current turn')">Top</Button>
             </Tooltip>
           </GallerySpecimen>
           <GallerySpecimen variant="bottom">
             <Tooltip content="Model and reasoning" placement="bottom">
-              <Button size="md">Below</Button>
+              <Button size="md" @click="productWould('Open the model and reasoning menu')">Below</Button>
             </Tooltip>
           </GallerySpecimen>
           <GallerySpecimen variant="overlay">
             <Tooltip placement="right">
-              <Button size="md">Rich</Button>
+              <Button size="md" @click="productWould('Compact the conversation')">Rich</Button>
               <template #overlay>
                 <div class="text-[12px] leading-4">
                   <div class="text-fg">34% used <span class="text-fg-subtle">(61.2K / 180K)</span></div>
@@ -187,7 +205,7 @@ function itemLabel(id: string, list: {
           </GallerySpecimen>
           <GallerySpecimen variant="picture">
             <Tooltip placement="right" picture>
-              <Button size="md">Picture</Button>
+              <Button size="md" @click="productWould('Open before.png')">Picture</Button>
               <template #overlay>
                 <img
                   :src="demoImageUrl"
@@ -216,17 +234,20 @@ function itemLabel(id: string, list: {
                 :icon="Pencil"
                 label="Rename"
                 shortcut="↵"
+                @select="productWould('Rename')"
               />
               <MenuItem
                 :icon="Copy"
                 label="Duplicate"
                 shortcut="⌘D"
+                @select="productWould('Duplicate')"
               />
               <MenuDivider />
               <MenuItem
                 label="Delete"
                 :icon="Trash2"
                 is-danger
+                @select="productWould('Delete')"
               />
               <MenuItem label="Disabled" disabled />
               <MenuItem
@@ -372,29 +393,37 @@ function itemLabel(id: string, list: {
           <HostPicker
             :devices="hostDevices"
             :bound-ids="['build']"
-            @select="showToast({ title: `Selected ${$event}`, tone: 'neutral' })"
-            @connect="showToast({ title: 'Connect new device', tone: 'neutral' })"
+            @select="productWould(`Selected ${$event}`)"
+            @connect="productWould('Connect new device')"
           />
         </GallerySpecimen>
         <GallerySpecimen variant="status dots · virtual list without icons">
-          <Menu :items="hostStatusItems" :item-height="28" />
+          <Menu
+            :items="hostStatusItems"
+            :item-height="28"
+            :selected-id="statusSelected"
+            @select="statusSelected = $event"
+          />
         </GallerySpecimen>
         <GallerySpecimen variant="cloud host · no status dot">
           <HostMenu
             :main-host="{ id: 'cloud', name: 'Cloud', kind: 'cloud', online: false }"
             :attached-hosts="[]"
             :devices="hostDevices"
-            @connect="showToast({ title: 'Connect new device', tone: 'neutral' })"
+            @switch-main="productWould(`Move the conversation to ${deviceName($event)}`)"
+            @attach="productWould(`Attach ${deviceName($event)}`)"
+            @detach="productWould(`Detach ${deviceName($event)}`)"
+            @connect="productWould('Connect new device')"
           />
         </GallerySpecimen>
         <GallerySpecimen variant="session tools · live exposes with a countdown; gone with the last one">
           <SessionToolsMenu
             :exposes="sessionExposes"
             :pending-ids="sessionExposePending"
-            @open="showToast({ title: `Open ${$event.address} in a work panel browser tab`, tone: 'neutral' })"
+            @open="productWould(`Open ${$event.address} in a work panel browser tab`)"
             @renew="renewSessionExpose"
             @remove="removeSessionExpose"
-            @manage-devices="showToast({ title: 'Open devices settings', tone: 'neutral' })"
+            @manage-devices="productWould('Open devices settings')"
           />
         </GallerySpecimen>
         <GallerySpecimen variant="host menu · label/value and status">
@@ -405,7 +434,7 @@ function itemLabel(id: string, list: {
             @switch-main="switchMainHost"
             @attach="attachHost"
             @detach="detachHost"
-            @connect="showToast({ title: 'Connect new device', tone: 'neutral' })"
+            @connect="productWould('Connect new device')"
           />
         </GallerySpecimen>
         <div class="specimen-row specimen-row-wide items-start">
@@ -413,24 +442,60 @@ function itemLabel(id: string, list: {
             <Menu iconless>
               <MenuItem
                 label="Reasoning"
-                value="Medium"
-                has-submenu
-              />
+                :value="itemLabel(columnsEffort, effortItems)"
+              >
+                <template #submenu>
+                  <Menu iconless>
+                    <MenuItem
+                      v-for="item in effortItems"
+                      :key="item.id"
+                      :label="item.label"
+                      choice
+                      :is-selected="item.id === columnsEffort"
+                      @select="columnsEffort = item.id"
+                    />
+                  </Menu>
+                </template>
+              </MenuItem>
               <MenuItem
                 label="Model"
-                value="Claude Sonnet 4.5"
-                has-submenu
+                :value="itemLabel(columnsModel, submenuModels)"
+              >
+                <template #submenu>
+                  <Menu iconless>
+                    <MenuItem
+                      v-for="item in submenuModels"
+                      :key="item.id"
+                      :label="item.label"
+                      choice
+                      :is-selected="item.id === columnsModel"
+                      @select="columnsModel = item.id"
+                    />
+                  </Menu>
+                </template>
+              </MenuItem>
+              <MenuItem
+                label="A much longer label"
+                :value="columnsLonger ? 'On' : 'Off'"
+                @select="columnsLonger = !columnsLonger"
               />
-              <MenuItem label="A much longer label" value="On" />
-              <MenuItem label="Provider" value="Anthropic" />
+              <MenuItem
+                label="Provider"
+                value="Anthropic"
+                @select="productWould('Open the provider settings')"
+              />
             </Menu>
           </GallerySpecimen>
           <GallerySpecimen variant="shortcuts · columns">
             <Menu iconless>
-              <MenuItem label="Rename" shortcut="↵" />
-              <MenuItem label="Duplicate conversation" shortcut="⌘D" />
-              <MenuItem label="Pin" shortcut="⌘⇧P" />
-              <MenuItem label="Archive" />
+              <MenuItem label="Rename" shortcut="↵" @select="productWould('Rename')" />
+              <MenuItem
+                label="Duplicate conversation"
+                shortcut="⌘D"
+                @select="productWould('Duplicate conversation')"
+              />
+              <MenuItem label="Pin" shortcut="⌘⇧P" @select="productWould('Pin')" />
+              <MenuItem label="Archive" @select="productWould('Archive')" />
             </Menu>
           </GallerySpecimen>
         </div>
@@ -441,6 +506,7 @@ function itemLabel(id: string, list: {
                 v-for="label in tallActions"
                 :key="label"
                 :label="label"
+                @select="productWould(label)"
               />
             </Menu>
           </GallerySpecimen>
@@ -471,6 +537,8 @@ function itemLabel(id: string, list: {
               empty-text="No items found"
               :items="tallOptions"
               initial-query="zzz"
+              :selected-id="filterEmptySelected"
+              @select="filterEmptySelected = $event"
             />
           </GallerySpecimen>
           <GallerySpecimen variant="empty list">
@@ -530,13 +598,14 @@ function itemLabel(id: string, list: {
               <template #trigger>Menu</template>
               <template #content="{ close }">
                 <Menu @click="close">
-                  <MenuItem label="Rename" shortcut="↵" />
-                  <MenuItem label="Duplicate" shortcut="⌘D" />
+                  <MenuItem label="Rename" shortcut="↵" @select="productWould('Rename')" />
+                  <MenuItem label="Duplicate" shortcut="⌘D" @select="productWould('Duplicate')" />
                   <MenuDivider />
                   <MenuItem
                     label="Delete"
                     :icon="Trash2"
                     is-danger
+                    @select="productWould('Delete')"
                   />
                 </Menu>
               </template>
@@ -587,8 +656,8 @@ function itemLabel(id: string, list: {
               <template #trigger>Menu</template>
               <template #content="{ close }">
                 <Menu iconless @click="close">
-                  <MenuItem label="Rename" shortcut="↵" />
-                  <MenuItem label="Duplicate" shortcut="⌘D" />
+                  <MenuItem label="Rename" shortcut="↵" @select="productWould('Rename')" />
+                  <MenuItem label="Duplicate" shortcut="⌘D" @select="productWould('Duplicate')" />
                 </Menu>
               </template>
             </Dropdown>
@@ -604,11 +673,11 @@ function itemLabel(id: string, list: {
                 />
               </template>
               <template #content="{ close }">
-                <Menu>
+                <Menu @click="close">
                   <MenuItem
                     :icon="Plus"
                     label="Attach files"
-                    @select="close()"
+                    @select="productWould('Attach files')"
                   />
                 </Menu>
               </template>
@@ -664,21 +733,31 @@ function itemLabel(id: string, list: {
               <template #trigger>
                 <template v-if="width === 'fill'">
                   <Folder :size="ICON_PX.in28" class="shrink-0 text-fg-muted" />
-                  <span class="min-w-0 flex-1 truncate">a-rather-long-directory-name</span>
+                  <span class="min-w-0 flex-1 truncate">{{ widthDirectory[width] }}</span>
                 </template>
                 <Button v-else variant="ghost" class="max-w-full">
                   <Folder :size="ICON_PX.in28" />
-                  <span class="truncate">a-rather-long-directory-name</span>
+                  <span class="truncate">{{ widthDirectory[width] }}</span>
                 </Button>
               </template>
               <template #content="{ close }">
                 <Menu @click="close">
-                  <MenuItem :icon="Folder" label="a-rather-long-directory-name" />
-                  <MenuItem :icon="Folder" label="demi" />
+                  <MenuItem
+                    v-for="directory in widthDirectories"
+                    :key="directory"
+                    :icon="Folder"
+                    :label="directory"
+                    @select="widthDirectory[width] = directory"
+                  />
                 </Menu>
               </template>
             </Dropdown>
-            <IconButton :icon="Settings" variant="ghost" aria-label="Settings" />
+            <IconButton
+              :icon="Settings"
+              variant="ghost"
+              aria-label="Settings"
+              @click="productWould('Open settings')"
+            />
           </div>
         </GallerySpecimen>
       </GallerySection>
@@ -698,13 +777,15 @@ function itemLabel(id: string, list: {
                 :icon="Pencil"
                 label="Rename"
                 shortcut="↵"
+                @select="productWould('Rename')"
               />
-              <MenuItem label="New tab" />
+              <MenuItem label="New tab" @select="productWould('New tab')" />
               <MenuDivider />
               <MenuItem
                 :icon="Trash2"
                 label="Close"
                 is-danger
+                @select="productWould('Close')"
               />
             </template>
           </ContextMenu>
