@@ -26,7 +26,8 @@ const INPUT_MAX_CHARS: usize = 4_000;
 
 /// Room for the lowest thinking effort and one line of text: a reasoning
 /// model counts its thinking against the limit, so a limit sized for the line
-/// alone can end before any text.
+/// alone can end before any text. A model whose own output limit is lower
+/// gets that one.
 const OUTPUT_LIMIT: NonZeroU32 = NonZeroU32::new(1_024).expect("the limit is not zero");
 
 /// The whole system prompt of a title request.
@@ -117,6 +118,15 @@ pub fn title_from_response(text: &str) -> Option<String> {
     (!title.is_empty()).then(|| title.to_owned())
 }
 
+/// A title request's output limit: [`OUTPUT_LIMIT`], or `model`'s own when
+/// that is lower.
+fn output_limit(model: &Model) -> NonZeroU32 {
+    match model.output_limit.and_then(NonZeroU32::new) {
+        Some(limit) => limit.min(OUTPUT_LIMIT),
+        None => OUTPUT_LIMIT,
+    }
+}
+
 /// The least thinking `model` offers: its lowest named effort. A budget
 /// model thinks only when asked, so no configuration is its least.
 pub fn lowest_thinking(model: &Model) -> Option<ThinkingConfig> {
@@ -178,7 +188,7 @@ pub async fn request_title<S: AsRef<str>>(
         turn_id: format!("title:{request_id}"),
         request_id,
         model_id: selection.model.id.clone(),
-        output_limit: Some(OUTPUT_LIMIT),
+        output_limit: Some(output_limit(&selection.model)),
         system_prompt: TITLE_INSTRUCTION.to_owned(),
         items: Arc::from([InferenceItem::UserMessage {
             content: vec![UserContentBlock::Text { text: input }],
@@ -309,7 +319,13 @@ mod tests {
         ]);
         let mut runtime = script.clone();
         let mut titles = Vec::new();
-        for messages in [["@src/auth.ts add refresh tokens"], ["again"], ["  "]] {
+        // The title's own limit, unless the model's is lower.
+        for (messages, model_limit) in [
+            (["@src/auth.ts add refresh tokens"], Some(32_000)),
+            (["again"], Some(256)),
+            (["  "], None),
+        ] {
+            selection.model.output_limit = model_limit;
             let title = request_title(
                 &mut runtime,
                 "c1",
@@ -349,5 +365,6 @@ mod tests {
         assert_eq!(request.service_tier_id, None);
         assert_eq!(request.output_limit, Some(OUTPUT_LIMIT));
         assert_eq!(request.turn_id, "title:r1");
+        assert_eq!(requests[1].output_limit, NonZeroU32::new(256));
     }
 }
