@@ -56,13 +56,14 @@ async fn backend_job_invokes_same_binary_alias_and_drain_releases_installation()
         let backend = format!("http://{}", listener.local_addr().unwrap());
         let state_dir = directory.path().join("state");
         let home = directory.path().to_string_lossy().into_owned();
-        // As `main` does: the log is a layer of the process's subscriber.
+        // The log is a layer of the runner's subscriber, as `main` makes it.
+        // Here the subscriber serves the test's thread, which runs the
+        // runner's tasks, and not the other tests of this process.
         let (log, layer) = demi_runner::host_log::open(state_dir.join("log")).await.unwrap();
-        {
+        let _subscriber = {
             use tracing_subscriber::layer::SubscriberExt as _;
-            use tracing_subscriber::util::SubscriberInitExt as _;
-            tracing_subscriber::registry().with(layer).init();
-        }
+            tracing::subscriber::set_default(tracing_subscriber::registry().with(layer))
+        };
         let options = Options {
             backend: backend.parse().unwrap(),
             directory: state_dir.clone(),
