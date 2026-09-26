@@ -94,6 +94,9 @@ async fn an_edit_restores_the_todos_keeps_the_files_and_answers_its_receipt_afte
     socket.chat("m2", "B-removed").await;
     vendor.respond(answer(&["answer-C-removed"], 1, 1));
     socket.chat("m3", "C-removed").await;
+    // The phase turns idle before the save that ends the turn; an edit needs
+    // a settled session, which the tree is once that save has committed.
+    settled(&backend, &master, FIRST).await;
 
     let request = edit_request(&mut socket, "B-removed", "edit-1", "B-edited").await;
     let repeated = ClientFrame::EditAndSend { request: request.clone() };
