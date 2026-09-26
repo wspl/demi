@@ -129,6 +129,19 @@ impl Socket {
         }
     }
 
+    /// The frames that arrive within `during`.
+    pub(crate) async fn within(&mut self, during: Duration) -> Vec<ServerFrame> {
+        let deadline = tokio::time::Instant::now() + during;
+        let mut frames = Vec::new();
+        while let Ok(received) = tokio::time::timeout_at(deadline, self.next()).await {
+            match received {
+                Received::Frame(frame) => frames.push(frame),
+                Received::Closed(code) => panic!("the socket closed with {code:?}"),
+            }
+        }
+        frames
+    }
+
     /// Opens the conversation with `model` and reads the handshake.
     pub(crate) async fn open(&mut self, model: &ModelSelection) -> Vec<ServerFrame> {
         self.send(&ClientFrame::Open { model: model.clone() }).await;
