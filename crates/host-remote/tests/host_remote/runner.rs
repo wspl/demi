@@ -1648,21 +1648,7 @@ async fn a_one_shot_call_learns_its_exit_and_the_host_log_keeps_the_streams_word
             .is_err()
     );
 
-    // A read waits for no queued line: ask until the writer has put the
-    // stream's end in the files.
-    let ended = |page: &LogPage| {
-        page.lines
-            .iter()
-            .any(|line| line.text == "stream:result ended")
-    };
-    let mut page = host.read_log(Some(0), 1000, None).await.unwrap();
-    for _ in 0..500 {
-        if ended(&page) {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
-        page = host.read_log(Some(0), 1000, None).await.unwrap();
-    }
+    let page = log_until(&host, "stream:result ended").await;
     let conversation = Some(user_context().conversation);
     let told: Vec<_> = page
         .lines
@@ -1697,6 +1683,56 @@ async fn a_one_shot_call_learns_its_exit_and_the_host_log_keeps_the_streams_word
                 .is_some_and(|pid| pid.parse::<u32>().is_ok())
     });
     assert!(started, "{told:#?}");
+    fixture.stop().await;
+}
+
+/// The Host log from its start, once it has the line `text`: a read waits
+/// for no queued line, so it asks until the writer has put that line in the
+/// files, and with it every line written before.
+async fn log_until(host: &RemoteHost, text: &str) -> LogPage {
+    let mut page = host.read_log(Some(0), 1000, None).await.unwrap();
+    for _ in 0..500 {
+        if page.lines.iter().any(|line| line.text == text) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        page = host.read_log(Some(0), 1000, None).await.unwrap();
+    }
+    page
+}
+
+/// An open service stream holds its service (`native-runtime.md` § Keep a
+/// service resident): nothing else holds the fixture's service here, and a
+/// call made while the stream is open still reaches it rather than a new one.
+#[tokio::test(flavor = "local")]
+async fn an_open_service_stream_holds_its_service_for_the_calls_beside_it() {
+    let native = NativeFixture::load();
+    let fixture = RunnerFixture::start(FixtureOptions::default()).await;
+    let host = fixture.host();
+    let (input, output, mut stream) = open(&fixture, service(&fixture, &native, "echo", None))
+        .await
+        .unwrap();
+    // Were the stream not holding the service, the registry would stop it
+    // as soon as it had said that it holds no conversation, well within this.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    host.call_service(service(&fixture, &native, "where", None), Bytes::new(), 64 * 1024)
+        .await
+        .unwrap();
+    input.writer().unwrap().end();
+    assert_eq!(collect(output.reader().unwrap()).await.unwrap(), b"");
+    assert_eq!(stream.done().await.unwrap().exit_code, 0);
+    let page = log_until(&host, "stream:where ended").await;
+    let starts = page
+        .lines
+        .iter()
+        .filter(|line| {
+            line.source == "runner"
+                && line
+                    .text
+                    .starts_with("service demicodes.runner-test started ")
+        })
+        .count();
+    assert_eq!(starts, 1, "{:#?}", page.lines);
     fixture.stop().await;
 }
 

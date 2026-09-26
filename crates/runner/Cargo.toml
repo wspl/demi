@@ -43,7 +43,7 @@ notify = "8.2"
 
 ripgrep = "15.2.0"
 jaq = { version = "3.1.1", default-features = false }
-uucore = "0.11"
+uucore = { version = "0.11", features = ["mode"] }
 uu_cat = "0.11"
 
 uu_head = "0.11"
@@ -94,6 +94,10 @@ uu_stat = "0.11"
 # its unoptimized software fallback on supported Unix ARM hosts.
 [target.'cfg(all(unix, target_arch = "aarch64"))'.dependencies]
 sha2 = { version = "0.10", features = ["asm"] }
+
+# The runner's umask, read without changing it (`src/process.rs`).
+[target.'cfg(target_os = "linux")'.dependencies]
+procfs = "0.18"
 
 # The working-tree watch's FSEvents stream (`src/tree_watch.rs`).
 [target.'cfg(target_os = "macos")'.dependencies]
