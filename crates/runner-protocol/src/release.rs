@@ -56,7 +56,7 @@ mod tests {
     use super::*;
 
     /// A release record as `cargo xtask native package` writes it, compacted.
-    const RECORD: &str = r#"{"release":"317dd84e2ce0846a1bea4bc5959959c04af7ba8e4de32b3752fdd6b409f7b1a5","wire":18,"commandProtocol":1,"targets":{"aarch64-apple-darwin":{"sha256":"dbf18cb3af50a3348a834ea9cee7981f7354f84aa89764f4d68812c81ebe045b","size":38772096},"aarch64-unknown-linux-musl":{"sha256":"5d4219232ad6a95b2a0e72097011e91ae3773e8523e8032788904fa0e9164197","size":38710848}}}"#;
+    const RECORD: &str = r#"{"release":"317dd84e2ce0846a1bea4bc5959959c04af7ba8e4de32b3752fdd6b409f7b1a5","wire":19,"commandProtocol":1,"targets":{"aarch64-apple-darwin":{"sha256":"dbf18cb3af50a3348a834ea9cee7981f7354f84aa89764f4d68812c81ebe045b","size":38772096},"aarch64-unknown-linux-musl":{"sha256":"5d4219232ad6a95b2a0e72097011e91ae3773e8523e8032788904fa0e9164197","size":38710848}}}"#;
 
     #[test]
     fn a_release_record_decodes_and_encodes_back_to_the_same_json() {
@@ -69,11 +69,11 @@ mod tests {
     fn a_release_record_is_checked_in_every_field() {
         for (from, to) in [
             (r#""release":"317dd84e"#, r#""release":"317DD84E"#),
-            (r#""wire":18"#, r#""wire":17"#),
+            (r#""wire":19"#, r#""wire":18"#),
             (r#""commandProtocol":1"#, r#""commandProtocol":2"#),
             ("aarch64-apple-darwin", "aarch64-apple-ios"),
             (r#""size":38772096"#, r#""size":0"#),
-            (r#""wire":18"#, r#""wire":18,"channel":"beta""#),
+            (r#""wire":19"#, r#""wire":19,"channel":"beta""#),
         ] {
             let record = RECORD.replacen(from, to, 1);
             assert!(RunnerRelease::decode(record.as_bytes()).is_err(), "{record}");
