@@ -65,7 +65,7 @@ fn wait_for_go() -> demi_provider::testing::MockResponse {
     tool_use("toolu_wait", "shell_exec", &json!({ "description": "Wait", "script": script, "timeoutMs": 60_000 }))
 }
 
-// Over a second: the uploads reach a real device over three turns.
+// Over a second: the uploads reach a real device over four turns.
 #[tokio::test]
 async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page_by_reference() {
     let vendor = MockVendor::start().await;

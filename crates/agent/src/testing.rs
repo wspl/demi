@@ -1,7 +1,8 @@
 //! Test support (feature `testing`): an in-memory tree store with the
 //! contract's semantics, predictable identities, a model selection, provider
-//! runtimes that play scripts, and a client that drives one connection the
-//! way a socket would. No test calls a real model.
+//! runtimes that play scripts, a client that drives one connection the way a
+//! socket would, and readers of a shell tool's result. No test calls a real
+//! model.
 
 use std::{
     cell::{Cell, RefCell},
@@ -131,6 +132,24 @@ pub fn client_text(text: &str) -> Vec<ClientContent> {
     vec![ClientContent::Text {
         text: text.to_owned(),
     }]
+}
+
+/// The value of a shell tool result's `name: value` line, such as its
+/// `commandId` (`runtime.md` § Results and previews).
+pub fn field<'a>(result: &'a str, name: &str) -> &'a str {
+    result
+        .lines()
+        .find_map(|line| line.strip_prefix(name)?.strip_prefix(": "))
+        .unwrap_or_else(|| panic!("the result has no {name}:\n{result}"))
+}
+
+/// The output a shell tool result shows, what the command wrote since the
+/// model's last look; empty when it shows none.
+pub fn preview(result: &str) -> &str {
+    let Some((_, preview)) = result.split_once("\npreview:\n") else {
+        return "";
+    };
+    preview.split("\nnext: ").next().unwrap_or(preview)
 }
 
 /// Makes one provider's runtimes.
