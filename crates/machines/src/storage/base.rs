@@ -18,7 +18,7 @@ use std::{
 use demi_artifact::{Digest, Verifier};
 use demi_machines_protocol::{
     BaseVersion,
-    image::{Architecture, CloudImageManifest, ManifestError, RUNNER_PATH},
+    image::{Architecture, CloudImageManifest, INIT_PATH, ManifestError, RUNNER_PATH},
 };
 use rustix::fs::{Mode, OFlags, ResolveFlags};
 use sha2::Digest as _;
@@ -36,7 +36,7 @@ use crate::{
 const EXTRACTION_DEADLINE: Duration = Duration::from_secs(300);
 
 /// Executables every image must embed besides its command packages.
-const REQUIRED: [&str; 2] = [RUNNER_PATH, "/usr/bin/tini"];
+const REQUIRED: [&str; 2] = [RUNNER_PATH, INIT_PATH];
 
 #[derive(Debug, thiserror::Error)]
 pub enum BaseError {
