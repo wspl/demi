@@ -2,7 +2,14 @@ import { expect, test } from 'bun:test'
 import type { LiveViewerMessage } from '@demicodes/protocol'
 import { deferred } from '@demicodes/utils'
 import { ref } from 'vue'
-import { BrowserTabsController, BrowserTabsError, type BrowserTabData, type BrowserTabInfo, type BrowserTabsApi } from '../tabs'
+import {
+  BrowserTabsController,
+  BrowserTabsError,
+  type BrowserTabData,
+  type BrowserTabInfo,
+  type BrowserTabList,
+  type BrowserTabsApi,
+} from '../tabs'
 
 const AGENT_TAB: BrowserTabInfo = {
   id: 't_agentaaaaaaaaaaaaaaaaa',
@@ -156,4 +163,27 @@ test('a hidden page closes its view, and shown again watches the shown tab on a 
   expect(views[1]!.sent.at(-1)).toEqual({ type: 'watch', tab: USER_TAB.id })
   controller.dispose()
   expect(views[1]!.closed).toBe(true)
+})
+
+test('a page shown again reads the tab list and adds the tabs the agent opened while it was hidden', async () => {
+  const visibility = ref<DocumentVisibilityState>('visible')
+  const answer = deferred<BrowserTabList>()
+  let reads = 0
+  const { controller, panel } = harness(
+    {
+      list: () => {
+        reads += 1
+        return answer.promise
+      },
+    },
+    visibility,
+  )
+  visibility.value = 'hidden'
+  expect(reads).toBe(0)
+  visibility.value = 'visible'
+  expect(reads).toBe(1)
+  answer.resolve({ tabs: [AGENT_TAB] })
+  await answer.promise
+  expect(panel).toEqual([{ url: AGENT_TAB.url, tab: AGENT_TAB.id }])
+  controller.dispose()
 })

@@ -184,7 +184,8 @@ next to the wire's types, so that a command program depends on one crate.
   (`NativeOperation`), and `Node::pin` pins each to the descriptor a manifest
   carries, as a `Binding`); the command input subset and field table (`InputSpec::from_schema` is both the subset
   check and the table argv parsing reads); argv parsing (`Node::select`,
-  `Selected::parse`, `Parsed::finish`); help rendering (`Node::help`,
+  `Selected::parse`, `Parsed::validate`); the argument check both ends run
+  (`Leaf::check_arguments`); help rendering (`Node::help`,
   `HELP_DEFAULTS`); the settings every declaration's JSON Schema is generated
   with (`command_schema_settings`); and bounded capture and validation of
   `--json` output (`JsonCapture`).
@@ -192,7 +193,8 @@ next to the wire's types, so that a command program depends on one crate.
   implementation of argv parsing, help and the input subset: the runner parses
   argv and renders `--help` with it, and the backend renders the model's
   command help and checks registrations with it. Argument validation is
-  `jsonschema` over the declaration's schema at both ends, with one wording.
+  `jsonschema` over the declaration's schema at both ends, through the one
+  check and its one wording.
   Behavior: [Commands](../execution/commands.md).
 - **Must not:** hold handlers or their bindings (`shell` pairs declarations
   with handlers), read stdin, or perform any other IO.
