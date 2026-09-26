@@ -80,14 +80,7 @@ impl ChildProcess {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        let mut command = CommandWrap::from(command);
-        command.wrap(KillOnDrop);
-        if options.process_group {
-            #[cfg(unix)]
-            command.wrap(process_wrap::tokio::ProcessGroup::leader());
-            #[cfg(windows)]
-            command.wrap(process_wrap::tokio::JobObject);
-        }
+        let mut command = wrap(command, options.process_group);
         let mut child = match start(|| command.spawn()).await {
             Ok(child) => child,
             Err(error) => return Err(classify_failure(error, &options).await),
@@ -286,6 +279,60 @@ async fn pump<T: AsyncRead + Unpin>(
             }
         }
     }
+}
+
+/// The soft and hard open-file limits the runner was started with, once it
+/// raised its own; every process it starts gets them back.
+#[cfg(unix)]
+static STARTED_WITH: std::sync::OnceLock<(u64, u64)> = std::sync::OnceLock::new();
+
+/// Raises the runner's own soft limit on open files as far as the system
+/// allows (`runner.md` § Load): to its hard limit, and on macOS to at most
+/// the kernel's per-process maximum. Returns the soft limit before and after.
+#[cfg(unix)]
+pub fn raise_open_file_limit() -> io::Result<(u64, u64)> {
+    let (soft, hard) = rlimit::getrlimit(rlimit::Resource::NOFILE)?;
+    let raised = rlimit::increase_nofile_limit(u64::MAX)?;
+    if raised > soft {
+        STARTED_WITH.get_or_init(|| (soft, hard));
+    }
+    Ok((soft, raised))
+}
+
+/// Gives a process the runner starts the open-file limits the runner was
+/// started with, the ones it would have from a terminal (`runner.md` § Load).
+/// A program that uses `select()`, or that closes every descriptor up to its
+/// limit, misbehaves with the runner's raised one. Each call adds a hook, so
+/// a command needs one call.
+#[cfg(unix)]
+pub(crate) fn inherit_open_file_limit(command: &mut std::process::Command) {
+    use std::os::unix::process::CommandExt;
+    let Some(&(soft, hard)) = STARTED_WITH.get() else {
+        return;
+    };
+    // SAFETY: the hook runs in the child between fork and exec. It makes one
+    // `setrlimit` call, which is async-signal-safe, and allocates nothing
+    // unless that call fails.
+    unsafe {
+        command.pre_exec(move || rlimit::setrlimit(rlimit::Resource::NOFILE, soft, hard));
+    }
+}
+
+/// A command the runner starts: it gets the open-file limit the runner was
+/// started with, is killed when its handle is dropped and, with `group`,
+/// leads a process group of its own (a job object on Windows).
+pub(crate) fn wrap(command: Command, group: bool) -> CommandWrap {
+    let mut command = CommandWrap::from(command);
+    #[cfg(unix)]
+    inherit_open_file_limit(command.command_mut().as_std_mut());
+    command.wrap(KillOnDrop);
+    if group {
+        #[cfg(unix)]
+        command.wrap(process_wrap::tokio::ProcessGroup::leader());
+        #[cfg(windows)]
+        command.wrap(process_wrap::tokio::JobObject);
+    }
+    command
 }
 
 /// Starts a process with `attempt`, which tries to spawn it once. Every process

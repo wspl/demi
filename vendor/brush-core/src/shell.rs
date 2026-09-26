@@ -225,6 +225,34 @@ impl<SE: extensions::ShellExtensions> Shell<SE> {
         }
     }
 
+    /// Attaches the owner's file control to a descriptor this shell made, so
+    /// that every copy of it goes through the owner too.
+    pub(crate) fn scoped(&self, file: openfiles::OpenFile) -> std::io::Result<openfiles::OpenFile> {
+        match &self.execution_host {
+            Some(host) => file.controlled(host.file_control()),
+            None => Ok(file),
+        }
+    }
+
+    /// Creates an unnamed temporary file through the owner.
+    pub(crate) fn temporary_file(&self) -> std::io::Result<std::fs::File> {
+        match &self.execution_host {
+            Some(host) => host.temporary_file(),
+            None => tempfile::tempfile(),
+        }
+    }
+
+    /// Opens the null device through the owner, as any other file.
+    pub(crate) fn open_null(&self) -> std::io::Result<openfiles::OpenFile> {
+        let Some(host) = &self.execution_host else {
+            return openfiles::null().map_err(std::io::Error::other);
+        };
+        let mut options = std::fs::OpenOptions::new();
+        options.read(true).write(true);
+        let file = host.open_file(Path::new(crate::sys::fs::NULL_DEVICE), &options, false)?;
+        openfiles::OpenFile::from(file).controlled(host.file_control())
+    }
+
     /// Keeps an asynchronous interpreter task owned until it returns.
     pub fn execution_guard(&self) -> Option<Box<dyn Send + Sync>> {
         self.execution_host.as_ref().map(|host| host.task_guard())

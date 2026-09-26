@@ -326,17 +326,38 @@ thread, a few at a time, and a request beyond that waits for a slot:
 
 A waiting request still ends when its connection closes.
 
-The runner keeps the open-file limit the system gives it, 256 by default in a
-macOS shell. Every pipe, local command connection and open file holds one
-while it lasts, and a network stream holds three: its socket and two pipes.
-When none is left, whatever needs one waits until another closes, instead of
-failing: pipes, network streams, local command connections, filesystem and
-working-tree requests, file transfers, process and job starts, a job's
-pipelines and redirections, and native service starts. Nothing tells the
-runner when one closes, so it tries again, at most a tenth of a second apart.
-Running out is never an answer either: a working-tree request does not report
-a directory as outside a repository because it could not open the
+Every job, stream and request shares the runner's one table of open files. A
+job's login shell alone can hold about a hundred while it reads a profile that
+loads a version manager such as nvm, and launchd gives a service on macOS a
+limit of 256. So when it starts, the runner raises its own limit as far as the
+system allows: to the hard limit, and on macOS to at most the kernel's limit
+for one process. Every process it starts gets back the limit the runner was
+started with, the one it would have from a terminal, because some programs
+misbehave with a very high one: a program that uses `select()` cannot watch a
+descriptor numbered 1024 or above, and some programs close every descriptor up
+to their limit before they start. Windows has no such limit.
+
+Every pipe, local command connection and open file holds one while it lasts,
+and a network stream holds three: its socket and two pipes. When none is left,
+whatever needs one waits until another closes, instead of failing: pipes,
+network streams, local command connections, filesystem and working-tree
+requests, file transfers, process and job starts, and native service starts.
+Inside a running job, every descriptor its shell makes waits too: pipes and
+redirections, the copies it makes for subshells, pipeline stages, builtins and
+`2>&1`, a here-document's file, a background list's `/dev/null`, and the
+standard streams and descriptors a standard utility or a program it starts
+receives. For example, out of open files, `echo one | cat > piped.txt` waits,
+then writes the file. Nothing tells the runner when one closes, so it tries
+again, at most a tenth of a second apart; a job's wait ends when the job is
+cancelled. Running out is never an answer either: a working-tree request does
+not report a directory as outside a repository because it could not open the
 repository's files.
+
+A standard utility waits too when it opens a file or starts a program. Its
+other file work, such as `ls` reading a directory or `sort` spilling to a
+temporary file, fails as it would on any system out of open files: making
+every utility wait would change most of them, and the raised limit makes
+running out rare.
 
 A process start also waits, for about a second, while its program is busy.
 Linux refuses to run a file that any process holds open for writing, and the
@@ -351,27 +372,6 @@ short; a program still busy after a second is open for writing elsewhere, and
 its start fails. Every process the runner starts waits this way: services, raw
 processes, a job's commands and the programs its utilities start, such as
 `env` and `xargs`.
-
-**Known gap.** Inside a running job, only three of the shell's own needs wait
-today: creating a pipe, opening a file and starting a process, which go
-through the job's hooks. The embedded shell makes other descriptors without
-them:
-
-- It duplicates descriptors (brush's `OpenFile::clone` and `try_clone`) for
-  every subshell, pipeline stage and builtin's standard stream, whenever it
-  copies a command's execution parameters, and for a redirection such as
-  `2>&1`. A copy that finds no descriptor left becomes a stand-in that fails
-  every read and write.
-- A here-document or here-string is written to a temporary file the shell
-  creates itself.
-- A background list's standard input, `/dev/null`, is opened by the shell,
-  and the list keeps the job's input when the open fails.
-- The runner duplicates a descriptor to hand it to a standard utility
-  (`native_file` in its shell module).
-
-None of these waits. For example, out of open files, `echo one | cat >
-piped.txt` exits 1 with `failed to duplicate open file` instead of waiting,
-so a job's pipelines and redirections do not wait yet.
 
 Two refusals remain. A browser command that conflicts with another command on
 the same tab answers `tab_busy`; that is about the page, not load
