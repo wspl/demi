@@ -242,8 +242,8 @@ reset time.
 | Units | `resets_at` is an RFC 3339 time, from the usage endpoint and on the CLI's lines. |
 
 **Open: which of the real CLI's lines carry the windows.** Observation reads
-`rate_limits` objects, as the TypeScript provider did, whose recorded examples
-carry RFC 3339 times. The CLI's current SDK types
+`rate_limits` objects with RFC 3339 times, a shape no transcript of the real
+CLI has shown on a stream-json line. The CLI's current SDK types
 (`@anthropic-ai/claude-agent-sdk`, `sdk.d.ts`) declare no such object on a
 stream-json message. They declare a `rate_limit_event` line instead, whose
 `rate_limit_info` names one window (`rateLimitType`), its `utilization` and a
