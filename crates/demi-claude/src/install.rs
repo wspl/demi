@@ -286,7 +286,7 @@ impl Installer {
         let client = match self.transport {
             Transport::Https => demi_artifact::client(),
             #[cfg(test)]
-            Transport::HttpsOrLoopbackHttp => demi_artifact::testing::loopback_client(),
+            Transport::HttpsOrLoopbackHttp => demi_artifact::client_allowing_http(),
         }
         .map_err(|error| EnsureError::DownloadFailed(error.to_string()))?;
         let declared = Digest {

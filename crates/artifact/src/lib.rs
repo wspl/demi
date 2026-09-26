@@ -30,8 +30,8 @@ pub use reqwest::Client;
 
 #[cfg(feature = "testing")]
 pub mod testing {
-    //! Test support: a fixture HTTP server on `127.0.0.1`, the client that
-    //! downloads from it, and the zip archives it serves.
+    //! Test support: a fixture HTTP server on `127.0.0.1` and the zip
+    //! archives it serves. [`crate::client_allowing_http`] downloads from it.
 
     use std::{
         collections::HashMap,
@@ -40,14 +40,10 @@ pub mod testing {
             Arc,
             atomic::{AtomicUsize, Ordering},
         },
+        time::Duration,
     };
 
     use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
-
-    /// A download client that also allows plain HTTP, for a fixture server.
-    pub fn loopback_client() -> Result<reqwest::Client, crate::Error> {
-        crate::client_allowing_http()
-    }
 
     /// A zip archive of `entries`, each a path and its contents.
     pub fn zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
@@ -69,15 +65,18 @@ pub mod testing {
         /// Whether the answer declares its length; without one, the body
         /// ends when the connection closes.
         pub length: bool,
+        /// How long the server waits after the request before it answers.
+        pub delay: Duration,
     }
 
     impl Answer {
-        /// `200` with `body` and its length.
+        /// `200` with `body` and its length, at once.
         pub fn ok(body: impl Into<Vec<u8>>) -> Self {
             Self {
                 status: 200,
                 body: body.into(),
                 length: true,
+                delay: Duration::ZERO,
             }
         }
     }
@@ -119,10 +118,10 @@ pub mod testing {
                             let path = head.split_whitespace().nth(1).unwrap_or_default();
                             let missing = Answer {
                                 status: 404,
-                                body: Vec::new(),
-                                length: true,
+                                ..Answer::ok(Vec::new())
                             };
                             let answer = answers.get(path).unwrap_or(&missing);
+                            tokio::time::sleep(answer.delay).await;
                             let length = if answer.length {
                                 format!("content-length: {}\r\n", answer.body.len())
                             } else {

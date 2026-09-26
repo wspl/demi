@@ -1,14 +1,10 @@
 use std::{
-    net::SocketAddr,
     path::{Path, PathBuf},
-    sync::{
-        Arc,
-        atomic::{AtomicUsize, Ordering},
-    },
     time::Duration,
 };
 
 use bytes::Bytes;
+use demi_artifact::testing::{Answer, Server};
 use demi_claude_protocol::Installed;
 use demi_command_service::{
     Handler, Input, InvocationContext, Output,
@@ -16,7 +12,6 @@ use demi_command_service::{
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
@@ -31,58 +26,32 @@ const BINARY: &str = if cfg!(windows) {
     "claude"
 };
 
-/// A local HTTP server that answers every request with the same bytes.
-struct Fixture {
-    address: SocketAddr,
-    requests: Arc<AtomicUsize>,
+/// The versions whose executable the download server serves.
+const VERSIONS: [&str; 3] = ["2.1.277", "2.1.278", "2.1.279"];
+
+/// A download server for `BODY` as each of `VERSIONS`, answering each request
+/// after `delay`.
+async fn downloads(delay: Duration) -> Server {
+    Server::start(VERSIONS.map(|version| {
+        let answer = Answer {
+            delay,
+            ..Answer::ok(BODY)
+        };
+        (format!("/{version}/claude"), answer)
+    }))
+    .await
 }
 
-impl Fixture {
-    async fn serve(body: &'static [u8], delay: Duration) -> Self {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let address = listener.local_addr().unwrap();
-        let requests = Arc::new(AtomicUsize::new(0));
-        let counter = requests.clone();
-        tokio::spawn(async move {
-            while let Ok((mut socket, _)) = listener.accept().await {
-                let counter = counter.clone();
-                tokio::spawn(async move {
-                    let mut request = Vec::new();
-                    let mut buffer = [0; 1024];
-                    while !request.windows(4).any(|window| window == b"\r\n\r\n") {
-                        match socket.read(&mut buffer).await {
-                            Ok(count) if count > 0 => request.extend_from_slice(&buffer[..count]),
-                            _ => return,
-                        }
-                    }
-                    counter.fetch_add(1, Ordering::SeqCst);
-                    tokio::time::sleep(delay).await;
-                    let head = format!(
-                        "HTTP/1.1 200 OK\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
-                        body.len()
-                    );
-                    let _closed = socket.write_all(head.as_bytes()).await;
-                    let _closed = socket.write_all(body).await;
-                });
-            }
-        });
-        Self { address, requests }
-    }
-
-    fn requests(&self) -> usize {
-        self.requests.load(Ordering::SeqCst)
-    }
-
-    /// A release record whose entry for this machine points at this server.
-    fn record(&self, version: &str, size: usize, sha256: &str) -> Vec<u8> {
-        record(
-            version,
-            platform::current().unwrap(),
-            &format!("http://{}/{version}/claude", self.address),
-            size,
-            sha256,
-        )
-    }
+/// A release record whose entry for this machine points at `server`'s
+/// download of `version`.
+fn served(server: &Server, version: &str, size: usize, sha256: &str) -> Vec<u8> {
+    record(
+        version,
+        platform::current().unwrap(),
+        &server.url(&format!("/{version}/claude")),
+        size,
+        sha256,
+    )
 }
 
 fn record(version: &str, platform: &str, url: &str, size: usize, sha256: &str) -> Vec<u8> {
@@ -158,11 +127,11 @@ const BODY: &[u8] = b"#!/bin/sh\necho fixture claude\n";
 #[tokio::test]
 async fn ensure_installs_the_executable_and_its_receipt() {
     let machine = Machine::new();
-    let fixture = Fixture::serve(BODY, Duration::ZERO).await;
+    let server = downloads(Duration::ZERO).await;
     let installer = machine.installer();
     let installed = ensure(
         &installer,
-        &fixture.record("2.1.278", BODY.len(), &sha256(BODY)),
+        &served(&server, "2.1.278", BODY.len(), &sha256(BODY)),
     )
     .await
     .unwrap();
@@ -197,8 +166,8 @@ async fn ensure_installs_the_executable_and_its_receipt() {
 #[tokio::test]
 async fn a_second_ensure_does_not_download() {
     let machine = Machine::new();
-    let fixture = Fixture::serve(BODY, Duration::ZERO).await;
-    let record = fixture.record("2.1.278", BODY.len(), &sha256(BODY));
+    let server = downloads(Duration::ZERO).await;
+    let record = served(&server, "2.1.278", BODY.len(), &sha256(BODY));
     let installer = machine.installer();
     let first = ensure(&installer, &record).await.unwrap();
     let second = ensure(&installer, &record).await.unwrap();
@@ -206,28 +175,28 @@ async fn a_second_ensure_does_not_download() {
     let third = ensure(&machine.installer(), &record).await.unwrap();
     assert_eq!(first, second);
     assert_eq!(first, third);
-    assert_eq!(fixture.requests(), 1);
+    assert_eq!(server.requests(), 1);
 }
 
 #[tokio::test]
 async fn a_changed_installation_is_replaced() {
     let machine = Machine::new();
-    let fixture = Fixture::serve(BODY, Duration::ZERO).await;
-    let record = fixture.record("2.1.278", BODY.len(), &sha256(BODY));
+    let server = downloads(Duration::ZERO).await;
+    let record = served(&server, "2.1.278", BODY.len(), &sha256(BODY));
     let installed = ensure(&machine.installer(), &record).await.unwrap();
     let mut changed = BODY.to_vec();
     changed[0] ^= 1;
     std::fs::write(&installed.path, changed).unwrap();
     ensure(&machine.installer(), &record).await.unwrap();
     assert_eq!(std::fs::read(&installed.path).unwrap(), BODY);
-    assert_eq!(fixture.requests(), 2);
+    assert_eq!(server.requests(), 2);
 }
 
 #[tokio::test]
 async fn a_wrong_digest_installs_nothing() {
     let machine = Machine::new();
-    let fixture = Fixture::serve(BODY, Duration::ZERO).await;
-    let record = fixture.record("2.1.278", BODY.len(), &sha256(b"another executable"));
+    let server = downloads(Duration::ZERO).await;
+    let record = served(&server, "2.1.278", BODY.len(), &sha256(b"another executable"));
     let error = ensure(&machine.installer(), &record).await.unwrap_err();
     assert_eq!(error.code().map(|code| code.to_string()).as_deref(), Some("verification_failed"));
     assert!(error.to_string().contains("2.1.278"), "{error}");
@@ -238,9 +207,9 @@ async fn a_wrong_digest_installs_nothing() {
 #[tokio::test]
 async fn a_body_longer_than_its_size_installs_nothing() {
     let machine = Machine::new();
-    let fixture = Fixture::serve(BODY, Duration::ZERO).await;
+    let server = downloads(Duration::ZERO).await;
     let declared = &BODY[..BODY.len() - 1];
-    let record = fixture.record("2.1.278", declared.len(), &sha256(declared));
+    let record = served(&server, "2.1.278", declared.len(), &sha256(declared));
     let error = ensure(&machine.installer(), &record).await.unwrap_err();
     assert_eq!(error.code().map(|code| code.to_string()).as_deref(), Some("verification_failed"));
     assert!(machine.home_directories().is_empty());
@@ -249,8 +218,8 @@ async fn a_body_longer_than_its_size_installs_nothing() {
 #[tokio::test]
 async fn a_body_shorter_than_its_size_installs_nothing() {
     let machine = Machine::new();
-    let fixture = Fixture::serve(BODY, Duration::ZERO).await;
-    let record = fixture.record("2.1.278", BODY.len() + 1, &sha256(BODY));
+    let server = downloads(Duration::ZERO).await;
+    let record = served(&server, "2.1.278", BODY.len() + 1, &sha256(BODY));
     let error = ensure(&machine.installer(), &record).await.unwrap_err();
     assert_eq!(error.code().map(|code| code.to_string()).as_deref(), Some("verification_failed"));
     assert!(machine.home_directories().is_empty());
@@ -259,11 +228,11 @@ async fn a_body_shorter_than_its_size_installs_nothing() {
 #[tokio::test]
 async fn a_record_without_this_platform_is_unsupported() {
     let machine = Machine::new();
-    let fixture = Fixture::serve(BODY, Duration::ZERO).await;
+    let server = downloads(Duration::ZERO).await;
     let record = record(
         "2.1.278",
         "plan9-mips",
-        &format!("http://{}/claude", fixture.address),
+        &server.url("/claude"),
         BODY.len(),
         &sha256(BODY),
     );
@@ -273,23 +242,23 @@ async fn a_record_without_this_platform_is_unsupported() {
         error.to_string().contains(platform::current().unwrap()),
         "{error}"
     );
-    assert_eq!(fixture.requests(), 0);
+    assert_eq!(server.requests(), 0);
 }
 
 #[tokio::test]
 async fn a_new_version_removes_the_old_one() {
     let machine = Machine::new();
-    let fixture = Fixture::serve(BODY, Duration::ZERO).await;
+    let server = downloads(Duration::ZERO).await;
     let installer = machine.installer();
     ensure(
         &installer,
-        &fixture.record("2.1.277", BODY.len(), &sha256(BODY)),
+        &served(&server, "2.1.277", BODY.len(), &sha256(BODY)),
     )
     .await
     .unwrap();
     ensure(
         &installer,
-        &fixture.record("2.1.278", BODY.len(), &sha256(BODY)),
+        &served(&server, "2.1.278", BODY.len(), &sha256(BODY)),
     )
     .await
     .unwrap();
@@ -299,23 +268,23 @@ async fn a_new_version_removes_the_old_one() {
 #[tokio::test]
 async fn a_preinstalled_version_is_used_without_downloading() {
     let machine = Machine::new();
-    let fixture = Fixture::serve(BODY, Duration::ZERO).await;
+    let server = downloads(Duration::ZERO).await;
     preinstall(&machine.image, "2.1.278", BODY);
     let installed = ensure(
         &machine.installer(),
-        &fixture.record("2.1.278", BODY.len(), &sha256(BODY)),
+        &served(&server, "2.1.278", BODY.len(), &sha256(BODY)),
     )
     .await
     .unwrap();
     assert_eq!(installed.path, machine.image.join("2.1.278").join(BINARY));
-    assert_eq!(fixture.requests(), 0);
+    assert_eq!(server.requests(), 0);
     assert!(machine.home_directories().is_empty());
 }
 
 #[tokio::test]
 async fn a_mismatching_preinstalled_version_is_ignored_and_kept() {
     let machine = Machine::new();
-    let fixture = Fixture::serve(BODY, Duration::ZERO).await;
+    let server = downloads(Duration::ZERO).await;
     preinstall(
         &machine.image,
         "2.1.278",
@@ -323,7 +292,7 @@ async fn a_mismatching_preinstalled_version_is_ignored_and_kept() {
     );
     let installed = ensure(
         &machine.installer(),
-        &fixture.record("2.1.278", BODY.len(), &sha256(BODY)),
+        &served(&server, "2.1.278", BODY.len(), &sha256(BODY)),
     )
     .await
     .unwrap();
@@ -337,8 +306,8 @@ async fn a_mismatching_preinstalled_version_is_ignored_and_kept() {
 #[tokio::test(flavor = "multi_thread")]
 async fn concurrent_ensures_download_once() {
     let machine = Machine::new();
-    let fixture = Fixture::serve(BODY, Duration::from_millis(200)).await;
-    let record = fixture.record("2.1.278", BODY.len(), &sha256(BODY));
+    let server = downloads(Duration::from_millis(200)).await;
+    let record = served(&server, "2.1.278", BODY.len(), &sha256(BODY));
     // One installer is two invocations of a service; the other is another process.
     let (service, process) = (machine.installer(), machine.installer());
     let (first, second, third) = tokio::join!(
@@ -348,17 +317,17 @@ async fn concurrent_ensures_download_once() {
     );
     assert_eq!(first.unwrap(), second.unwrap());
     assert_eq!(third.unwrap().version, "2.1.278");
-    assert_eq!(fixture.requests(), 1);
+    assert_eq!(server.requests(), 1);
     assert_eq!(machine.home_directories(), ["2.1.278"]);
 }
 
 #[tokio::test]
 async fn cancellation_stops_a_download_and_installs_nothing() {
     let machine = Machine::new();
-    let fixture = Fixture::serve(BODY, Duration::from_secs(30)).await;
+    let server = downloads(Duration::from_secs(30)).await;
     let installer = machine.installer();
     let release = installer
-        .release(&fixture.record("2.1.278", BODY.len(), &sha256(BODY)))
+        .release(&served(&server, "2.1.278", BODY.len(), &sha256(BODY)))
         .unwrap();
     let cancel = CancellationToken::new();
     let canceller = cancel.clone();
@@ -569,7 +538,7 @@ async fn invoke(service: &DemiClaude, operation: &str, input: Vec<u8>) -> (Value
 #[tokio::test]
 async fn the_service_answers_one_document_for_each_invocation() {
     let machine = Machine::new();
-    let fixture = Fixture::serve(BODY, Duration::ZERO).await;
+    let server = downloads(Duration::ZERO).await;
     let service = DemiClaude::new(machine.installer());
     assert_eq!(service.operations(), ["claude.ensure", "claude.status"]);
     let path = machine.home.join("2.1.278").join(BINARY);
@@ -577,7 +546,7 @@ async fn the_service_answers_one_document_for_each_invocation() {
     let (document, completion) = invoke(
         &service,
         "claude.ensure",
-        fixture.record("2.1.278", BODY.len(), &sha256(BODY)),
+        served(&server, "2.1.278", BODY.len(), &sha256(BODY)),
     )
     .await;
     assert_eq!(
@@ -603,7 +572,7 @@ async fn the_service_answers_one_document_for_each_invocation() {
     let (document, completion) = invoke(
         &service,
         "claude.ensure",
-        fixture.record("2.1.279", BODY.len(), &sha256(b"another executable")),
+        served(&server, "2.1.279", BODY.len(), &sha256(b"another executable")),
     )
     .await;
     let error = completion.error.unwrap();
