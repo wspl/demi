@@ -354,10 +354,9 @@ fn capture_events_decode_and_unknown_events_are_refused() {
 
 #[test]
 fn release_records_and_receipts_are_checked() {
-    let pinned = include_str!("../../demi-commands/src/browser/releases/chrome.json");
-    let release = BrowserRelease::parse(pinned).unwrap();
+    let release = BrowserRelease::pinned().unwrap();
     assert!(release.platforms.iter().any(|platform| platform.target == "aarch64-apple-darwin"));
-    let mut record: Value = serde_json::from_str(pinned).unwrap();
+    let mut record = serde_json::to_value(&release).unwrap();
     record["version"] = json!("153.0.8010");
     assert!(BrowserRelease::parse(&record.to_string()).is_err());
     record["version"] = json!("153.0.8010.36");
