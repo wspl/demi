@@ -209,7 +209,7 @@ pub(crate) fn last_assistant_text(blocks: &[Block], since: usize) -> &str {
 mod tests {
     use demi_core::{
         AbortBlock, ErrorBlock, ResponseBlock, TextBlock, ThinkingBlock, Timestamp, TokenUsage,
-        UserBlock,
+        ToolCallBlock, UserBlock,
     };
 
     use super::*;
@@ -270,6 +270,20 @@ mod tests {
         })
     }
 
+    fn tool_call(status: ToolCallStatus) -> Block {
+        Block::ToolCall(ToolCallBlock {
+            id: id("call"),
+            created_at: Timestamp::UNIX_EPOCH,
+            model: test_model(),
+            tool_use_id: "call-1".into(),
+            tool_name: "note".into(),
+            input: "{}".into(),
+            status,
+            output: Vec::new(),
+            view: None,
+        })
+    }
+
     fn abort() -> Block {
         Block::Abort(AbortBlock {
             id: id("abort"),
@@ -293,6 +307,15 @@ mod tests {
         assert_eq!(point(&[user("u1"), text("posted"), error()]), (2, false));
         assert_eq!(point(&[user("u1"), response(), thinking()]), (2, false));
         assert_eq!(point(&[user("u1"), abort()]), (2, false));
+        // A tool call stops it whatever its status: one still executing
+        // outlived its process, and its effect may have landed.
+        for status in [ToolCallStatus::Completed, ToolCallStatus::Executing] {
+            assert_eq!(
+                point(&[user("u1"), tool_call(status), thinking(), error()]),
+                (2, false),
+                "{status}"
+            );
+        }
         // Only the latest turn is in play.
         assert_eq!(
             point(&[user("u1"), text("answer"), response(), user("u2"), error()]),
