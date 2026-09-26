@@ -123,6 +123,7 @@
       "name": "@demicodes/host-remote",
       "version": "0.20.0",
       "dependencies": {
+        "@demicodes/browser-protocol": "workspace:^",
         "@demicodes/command-loader": "workspace:^",
         "@demicodes/command-protocol": "workspace:^",
         "@demicodes/runner-protocol": "workspace:^",
