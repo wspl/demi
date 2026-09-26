@@ -112,11 +112,33 @@ impl Schema {
         &self.value
     }
 
-    /// The first way `instance` breaks the schema, if any.
+    /// Every way `instance` breaks the schema, in one text. Each failure
+    /// names where it is, such as `"count" is not of type "integer"`, rather
+    /// than repeating the value, which may be a whole stdin body.
     pub fn check(&self, instance: &Value) -> Result<(), String> {
-        self.validator
-            .validate(instance)
-            .map_err(|error| error.to_string())
+        let failures: Vec<String> = self
+            .validator
+            .iter_errors(instance)
+            .map(|error| {
+                let path: Vec<String> = error
+                    .instance_path()
+                    .segments()
+                    .map(|segment| segment.to_string())
+                    .collect();
+                if path.is_empty() {
+                    error.masked().to_string()
+                } else {
+                    error
+                        .masked_with(format!("\"{}\"", path.join(".")))
+                        .to_string()
+                }
+            })
+            .collect();
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(failures.join("; "))
+        }
     }
 }
 

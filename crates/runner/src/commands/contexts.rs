@@ -243,14 +243,9 @@ pub async fn install(
         .await
         .map_err(io::Error::other)?
         .map_err(io::Error::other)?;
-    let builtins = brush_builtins::default_builtins::<
-        brush_core::extensions::DefaultShellExtensions,
-    >(brush_builtins::BuiltinSet::BashMode);
+    let builtins = crate::shell::registrations();
     for name in manifest.roots.keys() {
-        if name == "demi-runner"
-            || crate::shell::utilities::is_utility(name)
-            || builtins.contains_key(name)
-        {
+        if name == "demi-runner" || builtins.contains_key(name) {
             return Err(io::Error::other(format!("reserved root command: {name}")));
         }
     }

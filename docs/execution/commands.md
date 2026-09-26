@@ -125,7 +125,11 @@ Each input field has one source:
 
 Unknown options, unknown fields, missing required values, duplicate scalar
 values, and schema failures reject execution, and one rejection names every
-field that failed. The parser reports a missing option value before it
+field that failed. It names the field rather than repeating its value, which
+may be a whole stdin body: `"count" is not of type "integer"; "path" is a
+required property`. An unknown option's rejection also names the command, such
+as `Unknown option "--bogus" for "demi todo add"`, since a script may run
+several commands. The parser reports a missing option value before it
 consumes the next option. `--name=value` supplies an option value that begins
 with `--`. Without `restField`, a standalone `--` ends option parsing and the
 tokens after it are positionals; with `restField`, they fill that field. A body
@@ -134,8 +138,10 @@ remove it and use stdin. A finite stdin body is at most 1 MiB.
 
 Conversion belongs to the CLI alone. An argv token is text, so the parser turns
 it into the number, boolean, or array element its field declares, each element
-of a repeated option separately, and then validates the whole input at once.
-Arguments that arrive as JSON, such as an `rpc` call's arguments at the backend
+of a repeated option separately, and then validates the whole input at once. A
+token that spells no such value, such as `twelve` for a number, stays text, so
+that validation rejects it together with every other failure. Arguments that
+arrive as JSON, such as an `rpc` call's arguments at the backend
 or the arguments of a one-shot user call, are validated as they arrive: `"7"`
 for a numeric field is a usage error there, not a 7.
 

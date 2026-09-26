@@ -349,10 +349,11 @@ class GalleryBrowser {
 /**
  * The gallery's conversation browser: the tab requests a `browser` tab kind
  * makes and the view it opens, over one tab list, without a Host. Requests
- * take a moment, as a Host does, so the content's waiting shows.
+ * take a moment, as a Host does, so the content's waiting shows. It starts
+ * with the agent's and the user's tab unless a specimen supplies its own list,
+ * such as an empty one for a panel whose strip starts empty.
  */
-export function galleryBrowserTabs(): BrowserTabsApi {
-  const tabs = galleryTabs()
+export function galleryBrowserTabs(tabs: LiveTab[] = galleryTabs()): BrowserTabsApi {
   const views = new Set<GalleryBrowser>()
   // Each request's timer removes itself when it answers; none outlives its 900 ms.
   const timers = new Set<ReturnType<typeof setTimeout>>()

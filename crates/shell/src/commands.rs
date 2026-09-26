@@ -6,7 +6,6 @@
 use std::{collections::HashMap, rc::Rc};
 
 use demi_command_tree::{HELP_DEFAULTS, InputSpec, Leaf, LeafKind, NativeOperation, Node};
-use serde_json::Value;
 
 use crate::{RpcError, RpcHandler, RpcInvocation, RpcPort, reserved::is_reserved};
 
@@ -165,16 +164,8 @@ impl CommandSet {
             .leaf(&invocation.path)
             .zip(self.handlers.get(&invocation.path))
             .ok_or_else(|| RpcError::Usage(format!("\"{named}\" is not an rpc command")))?;
-        let args = Value::Object(invocation.args.clone());
-        match &leaf.input {
-            Some(schema) => schema
-                .check(&args)
-                .map_err(|error| RpcError::Usage(format!("Invalid command arguments: {error}")))?,
-            None if !invocation.args.is_empty() => {
-                return Err(RpcError::Usage(format!("\"{named}\" takes no arguments")));
-            }
-            None => {}
-        }
+        leaf.check_arguments(&invocation.args)
+            .map_err(|error| RpcError::Usage(error.to_string()))?;
         handler.call(invocation, port).await
     }
 

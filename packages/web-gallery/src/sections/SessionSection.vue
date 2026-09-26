@@ -19,7 +19,7 @@ import type { PanelTabKind } from '@demicodes/web-ui/agent/panel-kinds/kind'
 import { pageTabKind } from '@demicodes/web-ui/agent/panel-kinds/page'
 import { exposePageTab } from '@demicodes/web-ui/agent/panel-kinds/page-data'
 import { browserTabKind } from '@demicodes/web-ui/browser/kind'
-import { BrowserTabsController, browserTabDataSchema } from '@demicodes/web-ui/browser/tabs'
+import { BrowserTabsController, browserTabDataSchema, type BrowserTabsApi } from '@demicodes/web-ui/browser/tabs'
 import { callChangeSource, type CallEditSelection, type ChangeMode, type ChangeSources } from '@demicodes/web-ui/files/changes'
 import ChangeView from '@demicodes/web-ui/files/ChangeView.vue'
 import FileView from '@demicodes/web-ui/files/FileView.vue'
@@ -99,7 +99,6 @@ const submissionError = ref<string | null>('Connection closed before confirmatio
 
 const messageEdit = ref<MessageEditState | null>(null)
 const editRevision = ref(0)
-const compacting = ref(false)
 const agents = reactive(gallerySubagents())
 const terminals = reactive(galleryTerminals())
 const finishedOnly = agents.filter((agent) => agent.phase !== 'running')
@@ -131,12 +130,17 @@ const panelActiveConversationId = ref<string | null>('c-login')
 /**
  * One work-panel specimen's state, held by the gallery as the product's store
  * holds it: the fixed views, the selection and tabs, and the `browser` kind
- * over the gallery's own browser.
+ * over the gallery's own browser, or over the one the specimen supplies. The
+ * kind reads that browser's tabs whenever the page is shown again, so a panel
+ * whose strip starts empty supplies a browser without tabs.
  */
-function useWorkTabs(selection: string, path = 'src/auth/cookie.ts') {
+function useWorkTabs(
+  selection: string,
+  { path = 'src/auth/cookie.ts', tabs = galleryBrowserTabs() }: { path?: string; tabs?: BrowserTabsApi } = {},
+) {
   const views = ref(workPanelTabs(path))
   const panel = ref<PanelState>({ ...emptyPanelState(), selection })
-  const browser = new BrowserTabsController(galleryBrowserTabs(), {
+  const browser = new BrowserTabsController(tabs, {
     bound: () => panel.value.tabs.flatMap((tab) => {
       const parsed = tab.kind === 'browser' ? browserTabDataSchema.safeParse(tab.data) : null
       return parsed?.success ? [parsed.data] : []
@@ -252,7 +256,8 @@ function fileViewGoForward() {
   fileViewBack.value = [...fileViewBack.value, fileViewPath.value]
   fileViewPath.value = next
 }
-const panelWork = useWorkTabs('change')
+// The frame's conversation has opened no browser tab yet: its strip starts empty.
+const panelWork = useWorkTabs('change', { tabs: galleryBrowserTabs([]) })
 /** The session's messages reach the gallery workspace: images from its fixtures, files opened in the frame's panel. */
 const sessionFiles: ConversationFiles = {
   imageUrl: (path) => workspace.source.contents.url(path),
@@ -262,7 +267,8 @@ const sessionFiles: ConversationFiles = {
     view.value = 'panel'
   },
 }
-const exhibitWork = useWorkTabs('file')
+// The tabs specimen starts on an empty strip, with the globe-plus add control.
+const exhibitWork = useWorkTabs('file', { tabs: galleryBrowserTabs([]) })
 const editWork = useWorkTabs('change')
 // The gallery's own browser stands behind every specimen's `browser` kind; this one lists its tabs.
 void editWork.browser.refresh()
@@ -298,7 +304,7 @@ const changeStale = useChangeTab('uncommitted', 'src/auth/cookie.ts', {
   uncommitted: createGalleryChangeSet(200, { truncated: true, failure: 'The device is offline.' }),
 })
 // A page opened the way an expose row opens it, with the expose glyph, beside the browser's own tabs.
-const browserWork = useWorkTabs('change', '')
+const browserWork = useWorkTabs('change', { path: '' })
 void browserWork.browser.refresh()
 browserWork.add(pageTabKind.kind, exposePageTab({
   url: `data:text/html,${encodeURIComponent('<body style="font:14px system-ui;padding:24px"><h1>Dev server</h1><p>A page shown in the tab\'s sandboxed frame.</p><a href="https://example.com" target="_blank">A link that opens a popup</a></body>')}`,
@@ -319,9 +325,6 @@ async function closeOnDevice() {
   await browserWork.browser.api.close(tab)
   await browserWork.browser.refresh()
 }
-let nextQueue = 3
-let nextSent = 1
-
 // The Session view is the product's ChatSession over a scripted runtime; Turns and Stream replay one flow each.
 const sessionFlow = useTurnFlow({
   id: 'gallery-session',
@@ -498,60 +501,6 @@ const incomingThinking: HandoffBlock = {
   signature: null,
 }
 
-function takePendingSteer(id: string) {
-  const pending = session.pendingSteers.find((candidate) => candidate.id === id)
-  session.pendingSteers = session.pendingSteers.filter((candidate) => candidate !== pending)
-  return pending
-}
-
-function deletePendingSteer(id: string): void {
-  takePendingSteer(id)
-}
-
-/**
- * As the product delivers a pending steer now: Stop writes the steer into the
- * stopped turn, before its marker, and Continue goes on with it from there.
- */
-function interruptPendingSteer(id: string): void {
-  const pending = takePendingSteer(id)
-  if (!pending) {
-    return
-  }
-  session.blocks = [
-    ...session.blocks,
-    {
-      type: 'steer',
-      id: `steer-sent-${nextSent++}`,
-      turnId: 'turn-gallery',
-      createdAt: new Date().toISOString(),
-      model: demoModel,
-      content: pending.content,
-    },
-  ]
-  sessionFlow.stop()
-  sessionFlow.resume()
-}
-
-function queueDraft(content: UserContentBlock[]): void {
-  session.queue.push({ id: `q${nextQueue++}`, content })
-}
-
-function removeQueued(id: string): void {
-  session.queue = session.queue.filter((entry) => entry.id !== id)
-}
-
-function sendNow(id: string): void {
-  const item = session.queue.find((entry) => entry.id === id)
-  if (!item) {
-    return
-  }
-  session.queue = session.queue.filter((entry) => entry.id !== id)
-  session.pendingSteers = [
-    ...session.pendingSteers,
-    { id: `gallery-${nextSent++}`, content: item.content },
-  ]
-}
-
 async function submitEdit(): Promise<void> {
   await submitMessageEdit({
     get: () => messageEdit.value,
@@ -578,13 +527,6 @@ async function submitEdit(): Promise<void> {
       editRevision.value += 1
     },
   })
-}
-
-function compact(): void {
-  compacting.value = true
-  window.setTimeout(() => {
-    compacting.value = false
-  }, 1200)
 }
 
 
@@ -638,25 +580,6 @@ onBeforeUnmount(() => {
   sessionRestore.stop()
   composerModelRestore.stop()
 })
-function abortAgent(id: string) {
-  const agent = agents.find((entry) => entry.id === id)
-  if (agent && agent.phase === 'running') {
-    agent.phase = 'aborted'
-    agent.endedAt = new Date().toISOString()
-  }
-}
-function abortAgents() {
-  for (const agent of agents) {
-    abortAgent(agent.id)
-  }
-}
-function abortTerminal(id: string) {
-  const terminal = terminals.find((entry) => entry.id === id)
-  if (terminal && terminal.phase === 'running') {
-    terminal.phase = 'exited'
-    terminal.endedAt = new Date().toISOString()
-  }
-}
 </script>
 
 <template>
@@ -1508,8 +1431,8 @@ function abortTerminal(id: string) {
           <SubagentPanel
             v-model:active-id="exhibitAgentId"
             :agents="agents"
-            @abort="abortAgents"
-            @abort-agent="abortAgent"
+            @abort="sessionFlow.abortSubagents"
+            @abort-agent="sessionFlow.abortSubagent"
             :dismiss-outside="false"
           />
         </div>
@@ -1522,7 +1445,7 @@ function abortTerminal(id: string) {
           <TerminalPanel
             v-model:active-id="exhibitTerminalId"
             :terminals="terminals"
-            @abort="abortTerminal"
+            @abort="sessionFlow.abortTerminal"
             :dismiss-outside="false"
           />
         </div>
@@ -1726,21 +1649,23 @@ function abortTerminal(id: string) {
                 @open-aside="panelAsideOpen = true"
                 @retry="sessionFlow.resume()"
                 @rename="session.title = $event"
-                @abort-subagents="abortAgents"
-                @abort-subagent="abortAgent"
-                @abort-terminal="abortTerminal"
-                @remove-queued="removeQueued"
-                @send-queued="sendNow"
-                @remove-pending-steer="deletePendingSteer"
-                @interrupt-pending-steer="interruptPendingSteer"
+                @abort-subagents="sessionFlow.abortSubagents"
+                @abort-subagent="sessionFlow.abortSubagent"
+                @abort-terminal="sessionFlow.abortTerminal"
+                @remove-queued="sessionFlow.removeQueued"
+                @send-queued="sessionFlow.sendQueued"
+                @remove-pending-steer="sessionFlow.removePendingSteer"
+                @interrupt-pending-steer="sessionFlow.interruptPendingSteer"
               >
                 <template #composer>
                   <GalleryComposer
                     placeholder="Ask Demi about the failing login test…"
                     :running="session.phase === 'running'"
+                    :compacting="session.phase === 'compacting'"
                     @send="sessionFlow.turn"
-                    @queue="queueDraft"
+                    @queue="sessionFlow.queue"
                     @stop="sessionFlow.stop"
+                    @compact="sessionFlow.compact"
                   />
                 </template>
               </ChatSession>
@@ -1903,13 +1828,13 @@ function abortTerminal(id: string) {
         @retry="sessionFlow.resume()"
         @rename="session.title = $event"
         @save-scroll="(_id, state) => (session.scroll = state)"
-        @abort-subagents="abortAgents"
-        @abort-subagent="abortAgent"
-        @abort-terminal="abortTerminal"
-        @remove-queued="removeQueued"
-        @send-queued="sendNow"
-        @remove-pending-steer="deletePendingSteer"
-        @interrupt-pending-steer="interruptPendingSteer"
+        @abort-subagents="sessionFlow.abortSubagents"
+        @abort-subagent="sessionFlow.abortSubagent"
+        @abort-terminal="sessionFlow.abortTerminal"
+        @remove-queued="sessionFlow.removeQueued"
+        @send-queued="sessionFlow.sendQueued"
+        @remove-pending-steer="sessionFlow.removePendingSteer"
+        @interrupt-pending-steer="sessionFlow.interruptPendingSteer"
       >
         <template #composer>
           <GalleryComposer
@@ -1917,13 +1842,13 @@ function abortTerminal(id: string) {
             @submit-edit="submitEdit"
             placeholder="Ask Demi about the failing login test…"
             :running="session.phase === 'running'"
-            :compacting="compacting"
+            :compacting="session.phase === 'compacting'"
             :archived="session.archived"
             @restore="session.archived = false"
             @send="sessionFlow.turn"
-            @queue="queueDraft"
+            @queue="sessionFlow.queue"
             @stop="sessionFlow.stop"
-            @compact="compact"
+            @compact="sessionFlow.compact"
           />
         </template>
       </ChatSession>

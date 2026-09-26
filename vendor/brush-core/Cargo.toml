@@ -182,6 +182,9 @@ features = [
     "user",
 ]
 
+[target."cfg(unix)".dependencies.rlimit]
+version = "0.11"
+
 [target."cfg(unix)".dependencies.terminfo]
 version = "0.9.0"
 
@@ -296,4 +299,5 @@ patches = [
     "Every descriptor the shell makes (a pipe, a here-document's temporary file, a background list's null device, which no longer falls back to the job's input) belongs to the job's file control from the start, so each copy of it, for a subshell, a pipeline stage, a builtin's stream or `n>&m`, is made by the control (FileControl::duplicate) and waits out a lack of open files",
     "Subshells, command substitutions, shell functions and compound pipeline stages run on blocking tasks under an execution guard, so they run beside their consumers and the job waits for them",
     "Builtins use uucore::context for their files, streams and environment",
+    "A shell embedded in a host process never changes that process's umask or resource limits: the shell keeps what its `umask` and `ulimit` set (ChildAttributes, which a subshell copies), the host applies them to each process the shell starts (ExecutionHost::spawn), and the shell's redirections create files with the mode its umask allows",
 ]

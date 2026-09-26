@@ -31,6 +31,8 @@ const WAIT_MS = 80
 /** Time the model takes before its first output in a turn. */
 const FIRST_OUTPUT_MS = 1000
 const TOOL_RUN_MS = 1400
+/** Time a compaction the user asked for takes. */
+const COMPACT_MS = 1200
 const FEED_CHARS = 4
 const FEED_MS = 90
 
@@ -93,9 +95,10 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     return new Date().toISOString()
   }
 
+  /** An id no fixture uses: the flow's own id comes first, so `user-1` of a seeded transcript stays unique. */
   function nextId(kind: string): string {
     sequence += 1
-    return `${kind}-${sequence}`
+    return `${state.id}-${kind}-${sequence}`
   }
 
   function replace(id: string, next: Block): void {
@@ -283,13 +286,20 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     thinkThenReply(run, ACK_MS + WAIT_MS, THINK_2)
   }
 
-  /** Abort a running turn: the transcript ends with an abort record to resume from. */
+  /**
+   * Abort a running turn: the transcript ends with an abort record to resume
+   * from. A compaction stops with nothing to resume.
+   */
   function stop(): void {
-    if (state.phase !== 'running') {
+    if (state.phase === 'idle') {
       return
     }
     cancel()
+    const stopped = state.phase
     state.phase = 'idle'
+    if (stopped === 'compacting') {
+      return
+    }
     append({
       type: 'abort',
       id: nextId('abort'),
@@ -297,6 +307,85 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       model: demoModel,
       isResumed: false,
     })
+  }
+
+  /** Compact from the context meter: the conversation compacts for a moment, then is idle. */
+  function compact(): void {
+    if (state.phase !== 'idle') {
+      return
+    }
+    const run = token
+    state.phase = 'compacting'
+    at(run, COMPACT_MS, () => {
+      state.phase = 'idle'
+    })
+  }
+
+  /** A message sent while a turn runs waits in the queue, as the product's does. */
+  function queue(content: UserContentBlock[]): void {
+    state.queue = [...state.queue, { id: nextId('queued'), content }]
+  }
+
+  function removeQueued(id: string): void {
+    state.queue = state.queue.filter((entry) => entry.id !== id)
+  }
+
+  /** Send now: the queued message becomes a steer the running turn takes at its next step. */
+  function sendQueued(id: string): void {
+    const item = state.queue.find((entry) => entry.id === id)
+    if (!item) {
+      return
+    }
+    removeQueued(id)
+    state.pendingSteers = [...state.pendingSteers, { id: nextId('pending'), content: item.content }]
+  }
+
+  function removePendingSteer(id: string): void {
+    state.pendingSteers = state.pendingSteers.filter((entry) => entry.id !== id)
+  }
+
+  /**
+   * As the product delivers a pending steer now: Stop writes the steer into the
+   * stopped turn, before its marker, and Continue goes on with it from there.
+   */
+  function interruptPendingSteer(id: string): void {
+    const pending = state.pendingSteers.find((entry) => entry.id === id)
+    if (!pending) {
+      return
+    }
+    removePendingSteer(id)
+    append({
+      type: 'steer',
+      id: nextId('steer'),
+      turnId: nextId('turn'),
+      createdAt: now(),
+      model: demoModel,
+      content: pending.content,
+    })
+    stop()
+    resume()
+  }
+
+  function abortSubagent(id: string): void {
+    const agent = state.subagents.find((entry) => entry.id === id)
+    if (agent?.phase === 'running') {
+      agent.phase = 'aborted'
+      agent.endedAt = now()
+    }
+  }
+
+  function abortSubagents(): void {
+    for (const agent of state.subagents) {
+      abortSubagent(agent.id)
+    }
+  }
+
+  function abortTerminal(id: string): void {
+    const terminal = state.terminals.find((entry) => entry.id === id)
+    if (terminal?.phase === 'running') {
+      terminal.phase = 'exited'
+      terminal.endedAt = now()
+    }
   }
 
   /** Reset to a fixture and play it. */
@@ -382,5 +471,14 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     turn,
     resume,
     stop,
+    compact,
+    queue,
+    removeQueued,
+    sendQueued,
+    removePendingSteer,
+    interruptPendingSteer,
+    abortSubagent,
+    abortSubagents,
+    abortTerminal,
   }
 }
