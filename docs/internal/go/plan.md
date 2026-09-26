@@ -50,7 +50,7 @@ test.
 - Frontend-facing contracts (web API bodies, conversation frames, live view
   protocol, core types) keep their Zod schemas in the frontend libraries as the
   single source. Go types and validators are generated from them
-  (`xtask contracts`: Zod → JSON Schema → Go). The frontend does not change.
+  (`bun run go:contracts`: Zod → Go, like the existing Zod → Rust generator). The frontend does not change.
 - Internal contracts (runner wire, machines wire, command-service wire,
   manifests) keep Zod as the source while a TypeScript end still speaks them.
   In X1, when both ends are Go, the source moves to Go and the TypeScript
@@ -93,7 +93,7 @@ wave). References are paths in the baseline worktree `/home/user/demi-base`.
 | F2 | AGENTS.md Go section, `.golangci.yml` (errcheck, govet, staticcheck, exhaustive, forbidigo), check script | orchestrator |
 | F3 | Design delta in `docs/`: Go layout and boundaries, runner shell and utility context, contracts, concurrency and ownership, Linux builds | orchestrator |
 | F4a | Cross-lane interfaces: `internal/toolctx`, `internal/commandservice` API | orchestrator |
-| F4b | `xtask contracts`: Zod → JSON Schema → Go for all contract packages | agent in s2 |
+| F4b | `scripts/go-zod.ts` and `scripts/generate-go-contracts.ts` (`bun run go:contracts`): Zod → Go for all contract packages, the counterpart of `scripts/rust-zod.ts` | agent in s2 |
 | F5 | Gate 0 baseline and the ledger: every old test case mapped to a behavior and a WP | orchestrator with Explore agents |
 
 ### Lanes
@@ -330,13 +330,27 @@ is not used), because it starts cold and is deleted afterwards.
 
 ## Status
 
-| WP | Slot | Agent | State | Notes |
-|---|---|---|---|---|
-| F1 | — | orchestrator | in progress | `go/main` pushed at `6e043eb1` |
-| F5 | — | orchestrator | in progress | baseline and serial reruns done (37 reproducible failures); triage next |
+| WP | Slot | State | Notes |
+|---|---|---|---|
+| F1 | — | done | `go/main`, `go/internal`, slots s1–s4 with env.sh, warm node_modules |
+| F2 | — | done | AGENTS.md Go section, `.golangci.yml`, `scripts/go-check.sh` (`e00717bc`) |
+| F3 | — | done | runner, edit tracking, native runtime, commands, package boundaries, native builds (`e00717bc`); docs that only name locations (browser, scenarios, overview, sessions-and-targets, file-previews, live view) are updated when their WP merges |
+| F4a | — | done | `internal/toolctx`, `internal/toolctx/toolctxtest` (`cbcb5d5d`, `6bfdea40`) |
+| F4b | s2 | implementing | |
+| F5 | — | running | triage agent, ledger agent |
+| S1 | s1 | implementing | |
+| T0 | s4 | implementing | |
+| T1a | s3 | implementing | |
 
 ## Working method notes
 
 - 2026-09-26: the baseline suite runs in parallel by default and takes 13 min
   18 s here, most of it the Rust build; reuse the prebuilt old programs through
   the test program variables instead of rebuilding.
+- 2026-09-26: a piped check (`golangci-lint run | tail`) hid a failing exit
+  status and a lint issue reached `go/main` (`cbcb5d5d`, fixed in
+  `6bfdea40`). Checks are never piped without `set -o pipefail`; the agent
+  rules say so.
+- 2026-09-26: the old repository already generates Rust from Zod
+  (`scripts/rust-zod.ts`); Go generation follows that pattern instead of a JSON
+  Schema detour.
