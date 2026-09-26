@@ -67,6 +67,22 @@ debug = "line-tables-only"
 [profile.dev.package."*"]
 debug = false
 
+# The tests wait on these hashes, which unoptimized code makes slow, so these
+# crates alone are optimized in development builds. Measured on 4 x86-64 cores:
+# SHA-256 of the programs a runner installs and verifies at every service
+# start, 55 MB/s unoptimized and 311 MB/s optimized (the 125 MB debug
+# demi-commands: 2.3 s, then 0.4 s).
+[profile.dev.package.sha2]
+opt-level = 3
+
+# Password hashing at every sign-up and sign-in: one argon2id hash took
+# 0.49 s unoptimized, 23 ms optimized with blake2, which it hashes with.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3
+
 [profile.release]
 lto = "thin"
 strip = true
