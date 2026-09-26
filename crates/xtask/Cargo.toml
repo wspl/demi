@@ -8,9 +8,20 @@ publish = false
 
 [dependencies]
 demi-agent-protocol = { path = "../agent-protocol" }
+demi-artifact = { path = "../artifact" }
 demi-builtin-protocol = { path = "../builtin-protocol" }
+demi-claude-protocol = { path = "../claude-protocol" }
+demi-command-service = { path = "../command-service" }
 demi-core = { path = "../core" }
+demi-runner-protocol = { path = "../runner-protocol" }
 demi-web-api = { path = "../web-api" }
+clap = { version = "4", features = ["derive", "env"] }
 schemars.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
