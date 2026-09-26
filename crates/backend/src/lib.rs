@@ -32,6 +32,8 @@ pub use llm::families::{
 pub use runner::native::NativeCatalog;
 pub use runner::publication::{PublicationError, publish_native};
 pub use shard::ShardPlacement;
+#[cfg(feature = "testing")]
+pub use storage::conversations::CommitHold;
 pub use storage::objects::S3ConfigError;
 pub use vault::logins::LoginTiming;
 pub use vault::secret::{InstanceSecret, SecretError};

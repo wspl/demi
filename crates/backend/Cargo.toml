@@ -10,6 +10,11 @@ rust-version.workspace = true
 # No doc examples: rustdoc has nothing to test.
 doctest = false
 
+[features]
+# A hold on the commits of the conversations' checkpoints (`CommitHold`), for
+# the scenarios that stop a save at its commit.
+testing = []
+
 [dependencies]
 demi-agent = { path = "../agent" }
 demi-agent-protocol = { path = "../agent-protocol" }
@@ -91,6 +96,7 @@ uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 demi-agent = { path = "../agent", features = ["testing"] }
+demi-backend = { path = ".", features = ["testing"] }
 demi-command-service = { path = "../command-service", features = ["testing"] }
 demi-host-remote = { path = "../host-remote", features = ["testing"] }
 demi-provider = { path = "../provider", features = ["testing"] }
