@@ -100,8 +100,8 @@ export interface BackendOptions {
   /** How the Claude Code distribution is read; tests answer for the vendor. */
   claudeReleases?: ConstructorParameters<typeof ClaudeReleases>[0]
   /**
-   * Directory produced by scripts/native/release-runner.ts; exposes paired
-   * client/runner downloads.
+   * Directory of runner releases, as `cargo xtask native package --package
+   * demi-runner` writes it; exposes paired client/runner downloads.
    */
   runnerReleaseDir?: string
   /** Optional directory containing a built browser application. */

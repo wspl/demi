@@ -55,7 +55,3 @@ sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 axum = "0.8"
 demi-command-service = { path = "../command-service", features = ["testing"] }
 uuid = { version = "1", features = ["v4"] }
-
-[package.metadata.demi]
-id = "demi.builtin"
-operations = ["file.read", "file.create", "file.edit", "file.patch", "browser.live"]
