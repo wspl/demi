@@ -140,7 +140,7 @@ async fn demi_file_edit_and_patch_change_what_they_name_whole_or_not_at_all() {
             "target\nmiddle\ntarget\nEdited context.txt\ntarget\nmiddle\nchanged\n"
         );
         assert_exit(&results[7], "1");
-        assert_shows(&results[7], &["Invalid command arguments: \"\" is shorter than 1 character"]);
+        assert_shows(&results[7], &["Invalid command arguments: \"old\" is shorter than 1 character"]);
         assert_eq!(preview(&results[8]), "content\n");
 
         assert_eq!(preview(&results[9]), "Created patch.txt\nPatched 1 file(s)\none\nthree\n");
