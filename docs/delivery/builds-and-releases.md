@@ -21,7 +21,7 @@ cargo xtask native build     compiles each executable for its targets
 cargo xtask native package   one release directory per executable
         |
         +-- runner release ---------> backend: installers, runner downloads
-        +-- command packages -------> backend: published to object storage
+        +-- command packages -------> backend: object storage, or its own route in development
         +-- Linux runner, packages -> cargo xtask cloud-image package: Cloud image
         +-- backend ----------------> a Linux server, or a developer's Mac
         +-- machine manager --------> the Cloud host's service
@@ -192,10 +192,12 @@ the same build again succeeds. A failed publication removes its temporary
 files and leaves the top-level pointer as it was.
 
 A release of fewer than all targets is a development release, for a backend
-on the developer's own machine; publication refuses it
+on the developer's own machine; publication to object storage refuses it, and
+the backend's development store loads it
 ([Publish a complete release](../execution/native-runtime.md#publish-a-complete-release)).
 A published version is immutable: publishing different artifacts needs a new
-workspace version.
+workspace version, or, for a development release, removing its directory
+before packaging it again.
 
 The backend loads the deployed command package releases and supplies the
 selected descriptors and artifact locations to runners; publishing writes no
@@ -204,7 +206,10 @@ releases and their object store in `DEMI_NATIVE_CONFIG` and the runner release
 directory in `DEMI_RUNNER_RELEASE_DIR`
 ([Backend deployment configuration](../execution/native-runtime.md#backend-deployment-configuration)).
 The backend publishes command artifacts to object storage before it accepts
-requests, and runners download them from storage through signed HTTPS URLs.
+requests, and runners download them from storage through signed HTTPS URLs. A
+backend on the developer's own machine loads development releases into its
+development store instead and serves their executables itself
+([Development backend](../backend/backend.md#development-backend)).
 
 The Cloud image embeds a Linux runner release and the command package releases.
 `cargo xtask cloud-image package` assembles the image on a Linux builder of the

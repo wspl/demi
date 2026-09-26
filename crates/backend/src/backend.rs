@@ -6,13 +6,15 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::io;
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use tokio_util::task::AbortOnDropHandle;
+use url::Url;
 
 use demi_command_tree::NativeOperation;
+use demi_runner_protocol::values::BackendUrl;
 use demi_web_api::settings::InstanceMode;
 
 use demi_provider::models_dev::ModelsDevClient;
@@ -84,12 +86,53 @@ pub(crate) struct Services {
     /// The machine manager's client, the Cloud capacity across users and
     /// the Cloud's settings.
     pub(crate) cloud: CloudServices,
+    /// Where runners, Cloud guests and expose visitors reach this backend.
+    pub(crate) public_url: PublicUrl,
     /// When a conversation's Host resources are reclaimed.
     pub(crate) lifecycle: LifecycleTuning,
     /// The domain of expose hostnames; without it, exposes are unavailable.
     pub(crate) expose_domain: Option<ExposeDomain>,
     /// How the public relay treats its connections.
     pub(crate) expose_tuning: ExposeTuning,
+}
+
+/// Where runners, Cloud guests and expose visitors reach this backend:
+/// `DEMI_BACKEND_PUBLIC_URL`, or without one (a test's backend) the
+/// listener's own address. The edge sets it once the backend listens,
+/// before it serves; a Cloud's boot, an expose's URL and a development
+/// store's downloads name it. Cloning it shares it.
+#[derive(Clone, Default)]
+pub(crate) struct PublicUrl(Arc<OnceLock<BackendUrl>>);
+
+impl PublicUrl {
+    /// Sets the URL once the backend listens on `address`: `public`, or
+    /// without one the listener's own address.
+    pub(crate) fn listening(&self, public: Option<&Url>, address: SocketAddr) {
+        let url = match public {
+            Some(public) => public.as_str().parse::<BackendUrl>(),
+            None => {
+                // A listener on every address is reached on the loopback one.
+                let ip = match address.ip() {
+                    IpAddr::V4(ip) if ip.is_unspecified() => IpAddr::V4(Ipv4Addr::LOCALHOST),
+                    IpAddr::V6(ip) if ip.is_unspecified() => IpAddr::V6(Ipv6Addr::LOCALHOST),
+                    ip => ip,
+                };
+                format!("http://{}", SocketAddr::new(ip, address.port())).parse::<BackendUrl>()
+            }
+        };
+        match url {
+            // A backend listens once; a second call finds the URL set.
+            Ok(url) => {
+                let _ = self.0.set(url);
+            }
+            Err(error) => tracing::error!("the URL runners connect to is not usable: {error}"),
+        }
+    }
+
+    /// The URL, once the backend listens.
+    pub(crate) fn get(&self) -> Option<&BackendUrl> {
+        self.0.get()
+    }
 }
 
 /// What the provider services start with.
@@ -228,6 +271,7 @@ impl Services {
             user_streams: UserStreams::new(user_streams, &native),
             native,
             cloud,
+            public_url: PublicUrl::default(),
             lifecycle,
             expose_domain,
             expose_tuning,
