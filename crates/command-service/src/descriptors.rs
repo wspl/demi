@@ -58,6 +58,8 @@ impl Backoff {
     /// The pause before the next attempt, for a caller that waits on its own,
     /// such as one on a thread that may block.
     pub fn pause(&mut self) -> Duration {
+        #[cfg(feature = "testing")]
+        crate::testing::count_pause();
         let pause = self.0;
         self.0 = (self.0 * 2).min(Duration::from_millis(100));
         pause

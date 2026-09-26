@@ -8,9 +8,12 @@
 //! started with. One test in its own binary: it changes the process's
 //! open-file limit and holds every remaining descriptor.
 
-use demi_command_service::protocol::{
-    CommandCaller, CommandContext, CommandLocale, LocalInvocation, PackageArtifact,
-    PackageDescriptor,
+use demi_command_service::{
+    protocol::{
+        CommandCaller, CommandContext, CommandLocale, LocalInvocation, PackageArtifact,
+        PackageDescriptor,
+    },
+    testing::pauses,
 };
 use demi_runner::{
     commands::command_client::{RawCommand, Stdio, forward},
@@ -87,21 +90,34 @@ enum Freed {
     All,
 }
 
-/// Starts `operation` with no descriptor left and requires it to wait rather
-/// than finish or fail; then frees descriptors and requires it to finish.
-/// Starting a native service copies and checks a 15 MB executable, and macOS
-/// can take seconds to run one it has not run before, so the wait after
-/// freeing is generous.
+/// Waits until this process has paused for a descriptor since it counted
+/// `before` pauses: `name` then waits instead of failing.
+async fn paused(name: &str, before: u64) {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        while pauses() == before {
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("{name} did not wait with no open file left"));
+}
+
+/// Starts `operation` with no descriptor left and requires it to wait for one
+/// rather than finish or fail; then frees descriptors and requires it to
+/// finish. Starting a native service copies and checks a 15 MB executable,
+/// and macOS can take seconds to run one it has not run before, so the wait
+/// after freeing is generous.
 async fn starved<F>(name: &str, freed: Freed, operation: F)
 where
     F: Future<Output = Result<(), String>> + Send + 'static,
 {
     let mut hog = starve().await;
+    let before = pauses();
     let task = tokio::spawn(operation);
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    paused(name, before).await;
     if task.is_finished() {
         let outcome = task.await.unwrap();
-        panic!("{name} did not wait with no open file left: {outcome:?}");
+        panic!("{name} ended with no open file left: {outcome:?}");
     }
     let keep = match freed {
         Freed::Some => hog.0.len().saturating_sub(128),
@@ -148,16 +164,17 @@ async fn ready_job(cwd: &Path, script: &str) -> Job {
 /// frees every descriptor, and requires it to finish with exit code 0.
 async fn starved_job(name: &str, mut job: Job, input: &'static [u8]) {
     let hog = starve().await;
+    let before = pauses();
     job.input
         .send(ProcessInput::Bytes(bytes::Bytes::from_static(input)))
         .await
         .unwrap();
     job.input.send(ProcessInput::End).await.unwrap();
     let task = tokio::spawn(async move { job.wait().await });
-    tokio::time::sleep(Duration::from_millis(300)).await;
+    paused(name, before).await;
     if task.is_finished() {
         let outcome = task.await.unwrap();
-        panic!("{name} did not wait with no open file left: {outcome:?}");
+        panic!("{name} ended with no open file left: {outcome:?}");
     }
     drop(hog);
     let (exit, _) = tokio::time::timeout(Duration::from_secs(30), task)
@@ -484,11 +501,12 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
         )
         .await;
         let hog = starve().await;
+        let before = pauses();
         job.input
             .send(ProcessInput::Bytes(bytes::Bytes::from_static(b"go\n")))
             .await
             .unwrap();
-        tokio::time::sleep(Duration::from_millis(300)).await;
+        paused("a cancelled job", before).await;
         job.cancel();
         let (exit, _) = tokio::time::timeout(Duration::from_secs(10), job.wait())
             .await

@@ -113,6 +113,9 @@ version = "0.4"
 default-features = false
 features = ["std"]
 
+[dev-dependencies]
+demi-command-service = { path = "../command-service", features = ["testing"] }
+
 [features]
 test-fixtures = []
 
