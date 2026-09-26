@@ -7,13 +7,15 @@ use std::process::ExitCode;
 use clap::Parser as _;
 use demi_backend::{Backend, Config, NativeCatalog, PublicationError, publish_native};
 use tokio_util::sync::CancellationToken;
+use tracing_subscriber::layer::SubscriberExt as _;
+use tracing_subscriber::util::SubscriberInitExt as _;
 
 fn main() -> ExitCode {
     // An unusable value stops here, naming its variable.
     let config = Config::parse();
-    tracing_subscriber::fmt()
-        .with_writer(std::io::stderr)
-        .with_max_level(tracing::Level::INFO)
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
+        .with(config.log.clone())
         .init();
     let runtime = match tokio::runtime::Builder::new_multi_thread().enable_all().build() {
         Ok(runtime) => runtime,

@@ -363,9 +363,10 @@ keeps its last 64 KiB, which become the failure message when the process exits
 with a nonzero status and no result. Each run has a `tracing` span naming the
 provider, the session and the request. The raw stream-json exchange is written
 only to the `tracing` target `demi::provider::claude_code::wire`, at trace
-level, which is off by default. Turned on, it records every line in both
-directions, prompts and tool output included; the line that records a spawn
-leaves out the environment, so the token is never written.
+level, which is off by default and which `DEMI_LOG` turns on
+([Configuration](../backend/backend.md#configuration)). Turned on, it records
+every line in both directions, prompts and tool output included; the line that
+records a spawn leaves out the environment, so the token is never written.
 
 ## What the user sees
 

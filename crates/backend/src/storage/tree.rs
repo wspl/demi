@@ -746,14 +746,17 @@ pub(crate) fn history(connection: &Connection) -> Result<History, StorageError> 
 mod tests {
     use std::num::NonZeroUsize;
 
+    use std::sync::Arc;
+
     use demi_agent::testing::{store_contract, test_model, text};
-    use demi_core::{BlobRef, ResponseBlock, TextBlock, TokenUsage, TurnId, UserBlock};
+    use demi_core::{B64Bytes, BlobRef, MediaSource, ResponseBlock, TextBlock, TokenUsage, TurnId, UserBlock, UserContentBlock};
     use demi_web_api::ids::ConversationId;
 
     use super::*;
     use crate::storage::blobs::BlobStores;
     use crate::storage::conversations::ConversationStores;
     use crate::storage::objects;
+    use crate::storage::objects::fake_s3::FakeS3;
 
     /// The owner of the conversation the tests store.
     const OWNER: &str = "ana";
@@ -896,6 +899,47 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(refused, StoreError::Invalidated);
+        assert_eq!(root.load().await.unwrap().unwrap(), before);
+    }
+
+    /// A message of the user's with a picture of `bytes`.
+    fn picture(block: &str, bytes: &[u8]) -> Block {
+        let mut message = user(block);
+        let Block::User(user) = &mut message else {
+            unreachable!()
+        };
+        user.content.push(UserContentBlock::Image {
+            source: MediaSource::Binary {
+                data: B64Bytes::new(bytes.to_vec()),
+                media_type: "image/png".into(),
+            },
+        });
+        message
+    }
+
+    #[tokio::test(flavor = "local")]
+    async fn a_save_whose_media_cannot_be_stored_leaves_the_checkpoint_and_its_media_readable() {
+        let s3 = FakeS3::start().await;
+        let data = tempfile::tempdir().unwrap();
+        let stores = ConversationStores::open(data.path().join("conversations"), NonZeroUsize::new(4).unwrap())
+            .await
+            .unwrap();
+        let owner = demi_web_api::ids::UserId::try_from(OWNER).unwrap();
+        let blobs = BlobStores::new(Arc::new(s3.client())).for_user(&owner);
+        let tree = SqliteTreeStore::new(stores.db(&conversation()), blobs);
+        tree.create_node(record("root", None, 1), update(vec![(0, picture("u1", &[1, 2, 3]))], 1))
+            .await
+            .unwrap();
+        let root = tree.session_store(&id("root"));
+        let before = root.load().await.unwrap().unwrap();
+        assert_eq!(before.transcript[0], picture("u1", &[1, 2, 3]), "the picture comes back from its blob");
+
+        // The bucket refuses writes: the save that brings a new picture
+        // changes nothing, and the picture already stored still reads.
+        s3.refuse_puts();
+        let save = update(vec![(0, picture("u1", &[1, 2, 3])), (1, picture("u2", &[4, 5, 6]))], 2);
+        let refused = root.save(save, &CommitGuard::default()).await.unwrap_err();
+        assert!(matches!(refused, StoreError::Failed(_)), "{refused:?}");
         assert_eq!(root.load().await.unwrap().unwrap(), before);
     }
 

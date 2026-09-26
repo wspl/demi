@@ -25,6 +25,7 @@ serde_json.workspace = true
 # tests use the shell's in-memory rpc port.
 demi-agent = { path = "../agent", features = ["testing"] }
 demi-agent-protocol = { path = "../agent-protocol" }
+demi-command-service = { path = "../command-service", features = ["testing"] }
 demi-host-remote = { path = "../host-remote", features = ["testing"] }
 demi-provider = { path = "../provider", features = ["testing"] }
 demi-shell = { path = "../shell", features = ["testing"] }
