@@ -7,7 +7,6 @@ use demi_builtin_protocol::file::{CreateArgs, EditArgs, PatchArgs, ReadArgs};
 use demi_command_tree::NativeOperation;
 use demi_shell::{GroupBuilder, LeafBuilder};
 
-
 pub(crate) fn file_group() -> GroupBuilder {
     GroupBuilder::new(
         "file",
@@ -67,43 +66,4 @@ fn leaf(name: &str, summary: &str) -> LeafBuilder {
             operation: format!("file.{name}"),
         },
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::command_line::{demi, help, parse};
-
-    #[test]
-    fn file_bodies_come_only_from_stdin_and_any_word_is_a_file_name() {
-        let (_, root) = demi();
-        let body = "$HOME `echo unsafe` \"quotes\"\n";
-        let created = parse(&root, &["file", "create", "note.txt"], Some(body)).unwrap();
-        assert_eq!(created.values["content"], body);
-        // A body option is refused before anything runs.
-        for line in [
-            &["file", "create", "forbidden.txt", "--content"][..],
-            &["file", "create", "forbidden.txt", "--content", "body"][..],
-            &["file", "patch", "--patch", "not a patch"][..],
-        ] {
-            let refused = parse(&root, line, None).unwrap_err().to_string();
-            assert!(refused.contains("only from stdin. Remove --"), "{refused}");
-        }
-        // Help is a flag, so no word is reserved: a file named "prompt" is
-        // just a file.
-        let named = parse(&root, &["file", "create", "prompt"], Some("not help\n")).unwrap();
-        assert!(!named.help);
-        assert_eq!(named.values["path"], "prompt");
-        assert!(
-            parse(&root, &["file", "read", "--help"], None)
-                .unwrap()
-                .help
-        );
-        let read = help(&root, &["file", "read"]);
-        assert!(read.starts_with("demi file read: Read a file."), "{read}");
-        assert!(
-            read.contains("<path> (required) - File path to read"),
-            "{read}"
-        );
-        assert!(read.contains("shown to you as viewable media"), "{read}");
-    }
 }

@@ -74,11 +74,6 @@ impl Block {
         on_block!(self, block => &block.id)
     }
 
-    /// The model selection that was current when the block was written.
-    pub fn model(&self) -> &ModelSelection {
-        on_block!(self, block => &block.model)
-    }
-
     /// Whether the block is an editable target: only a `user` block is.
     pub fn is_editable(&self) -> bool {
         matches!(self, Block::User(_))

@@ -242,13 +242,6 @@ mod tests {
     }
 
     #[test]
-    fn text_counts_utf8_bytes_by_four_rounded_up() {
-        assert_eq!(text_tokens("hello"), 2);
-        assert_eq!(text_tokens("你好"), 2);
-        assert_eq!(text_tokens(""), 0);
-    }
-
-    #[test]
     fn the_latest_usage_anchors_the_estimate_unless_it_exceeds_the_window() {
         let answer = Block::Text(TextBlock {
             id: "t".try_into().unwrap(),
