@@ -25,6 +25,9 @@ use demi_shell::{PortError, Revision, StorageOp, StorageReply};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
+use demi_agent::{store::media::BlobStore, testing::MemoryBlobs};
+use demi_agent_protocol::MediaRef;
+
 use crate::{
     subagents::{checkpoint, child_record},
     support::{
@@ -393,14 +396,20 @@ async fn an_edit_is_refused_while_work_waits_and_a_failed_save_changes_nothing()
 #[tokio::test(flavor = "local")]
 async fn an_edit_keeps_the_files_its_message_holds_and_refuses_a_path_it_does_not() {
     let script = ScriptedRuntime::new([said("a chart"), said("the same chart")]);
-    let fixture = Fixture::new(&script);
-    let files = TestFiles::new();
+    // The store keeps media in a blob namespace, as the product's does, so
+    // the page names the image the message holds by its blob.
+    let blobs = MemoryBlobs::new();
+    let store = MemoryTreeStore::with_blobs(blobs.clone());
+    let fixture = Fixture::with(&script, store, ServerConfig::default());
+    let files = TestFiles::with_blobs(blobs.clone());
+    let png = B64Bytes::new(vec![0x89, b'P', b'N', b'G']);
     let image = UserContentBlock::Image {
         source: MediaSource::Binary {
-            data: B64Bytes::new(vec![0x89, b'P', b'N', b'G']),
+            data: png.clone(),
             media_type: "image/png".into(),
         },
     };
+    let blob = blobs.put(png).await.unwrap();
     let record = UserContentBlock::Attachment(Attachment {
         name: "chart.png".into(),
         path: "/home/demi/.demi/attachments/conversation/chart.png".into(),
@@ -441,6 +450,12 @@ async fn an_edit_keeps_the_files_its_message_holds_and_refuses_a_path_it_does_no
         ClientContent::Text {
             text: "look again".into(),
         },
+        ClientContent::Media {
+            media: MediaRef::Image {
+                r#ref: blob.clone(),
+                media_type: "image/png".into(),
+            },
+        },
         ClientContent::Attachment {
             path: "/home/demi/.demi/attachments/conversation/chart.png".into(),
         },
@@ -456,22 +471,33 @@ async fn an_edit_keeps_the_files_its_message_holds_and_refuses_a_path_it_does_no
         edit_outcome(&frames),
         EditOutcome::Accepted { .. }
     ));
-    let Some(Block::User(replacement)) = session_of(&fixture)
-        .transcript()
-        .blocks
-        .into_iter()
-        .find(|block| matches!(block, Block::User(_)))
-    else {
-        panic!("the replacement is the first user block")
+    // The replacement keeps the image by its blob and the record as the
+    // edited message held it, and the model reads the image's bytes.
+    let again = UserContentBlock::Text {
+        text: "look again".into(),
+    };
+    let stored = fixture.store.checkpoint(&conversation()).unwrap();
+    let Block::User(replacement) = &stored.transcript[0] else {
+        panic!("{:?}", stored.transcript)
     };
     assert_eq!(
         replacement.content,
         [
-            UserContentBlock::Text {
-                text: "look again".into()
+            again.clone(),
+            UserContentBlock::Image {
+                source: MediaSource::Ref {
+                    r#ref: blob,
+                    media_type: "image/png".into(),
+                },
             },
-            record
+            record.clone()
         ]
+    );
+    assert_eq!(
+        script.requests()[1].items.first(),
+        Some(&InferenceItem::UserMessage {
+            content: vec![again, image, record]
+        })
     );
 }
 

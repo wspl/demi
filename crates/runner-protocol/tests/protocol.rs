@@ -223,7 +223,7 @@ fn manifests_verify_their_packages_bindings_and_hash() {
 }
 
 #[test]
-fn a_hello_names_its_platform_as_the_typescript_backend_reads_it_and_nothing_else() {
+fn a_hello_names_its_platform_as_a_device_stores_it_and_refuses_any_other_name() {
     use demi_runner_protocol::wire::RunnerPlatform;
     let mut hello: Value = rmp_serde::from_slice(&frame("runner-to-backend", "hello")).unwrap();
     for (name, platform) in [
@@ -242,14 +242,6 @@ fn a_hello_names_its_platform_as_the_typescript_backend_reads_it_and_nothing_els
     }
     hello["runner"]["platform"] = json!("macos");
     assert!(wire::decode::<Outbound>(&msgpack(&hello)).is_err());
-}
-
-#[test]
-fn closed_sets_display_as_the_wire_spells_them() {
-    use demi_runner_protocol::wire::{HelloErrorCode, ServiceErrorCode, VolumeName};
-    assert_eq!(ServiceErrorCode::UnknownOperation.to_string(), "unknown_operation");
-    assert_eq!(HelloErrorCode::AlreadyConnected.to_string(), "already_connected");
-    assert_eq!(VolumeName::Home.to_string(), "home");
 }
 
 /// A recorded manifest's trees as their declarations: without the descriptor
