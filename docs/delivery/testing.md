@@ -77,7 +77,11 @@ backend's scenario suites in [Scenarios](scenarios.md).
   against a hang, and asserts that it came no earlier than the window allows.
   It does not sleep across the window and then look.
 - Timer logic runs on a paused or injected clock where the code allows it
-  ([Tests and time](../architecture/concurrency.md#tests-and-time)).
+  ([Tests and time](../architecture/concurrency.md#tests-and-time)). In the
+  browser packages, bun's `jest.useFakeTimers()` is that clock: it moves
+  `setTimeout`, `setInterval`, `Date.now` and `performance.now`, while
+  `setImmediate` stays real, so a test can still let the event loop turn
+  once.
 - A failure without a related change is a defect in the product or the test.
   Find its cause; never rerun to get a pass, and never fix a failure with a
   longer timeout, a retry, a weaker assertion or a broader fake.
