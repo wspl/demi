@@ -69,7 +69,11 @@ convention:
   the text of two times orders as the times do (`core`'s `Timestamp`, whole
   milliseconds of a `jiff::Timestamp`); a finer time is refused.
 - Integers are integer types. An integer the browser reads is bounded to
-  JavaScript's safe integer range.
+  JavaScript's safe integer range in the Rust type as well: a 64-bit field
+  carries garde's `range(max = MAX_SAFE_INTEGER)`, core's constant, so an end
+  that decodes it refuses what the browser cannot hold, and generation fails
+  for a field without the bound. On a type only the backend sends, nothing in
+  Rust checks the attribute: it states the bound the browser's schema checks.
 
 The runner wire has its own field names and MessagePack encoding, fixed by
 `runner-protocol` and its corpus; its optional and nullable fields follow the
@@ -179,8 +183,8 @@ Zod source and z.infer types
   extended with the tag; string enums and literals; arrays and records;
   optional fields (`.optional()`, which refuses `null`) and nullable ones
   (`.nullable()`, which must be present); string lengths and patterns;
-  integer and number bounds, an integer also bounded by its type and by
-  JavaScript's safe range; base64 bytes (`z.base64()`); times as core's
+  integer and number bounds, an integer's within JavaScript's safe range;
+  base64 bytes (`z.base64()`); times as core's
   `Timestamp` writes them (`z.iso.datetime({ precision: 3 })`: UTC with three
   fractional digits, the contract's one spelling); email addresses and URLs;
   JSON values (`z.json()`); flattened plain structs (merged properties); one
