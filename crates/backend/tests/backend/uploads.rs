@@ -18,7 +18,7 @@ use reqwest::{Method, StatusCode};
 use serde_json::json;
 use sha2::{Digest as _, Sha256};
 
-use crate::conversations::{FIRST, Socket, anthropic, answer, create, on_device, send, settled, tool_use, transcript};
+use crate::conversations::{FIRST, Socket, anthropic, answer, create, on_device, send, tool_use, transcript};
 use crate::support::{Answer, Harness, Session, TestBackend, answer as read};
 
 /// A PNG image's first bytes, from which the backend reads its type.
@@ -128,7 +128,6 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
     // them from its blobs.
     let frames = serde_json::to_string(&turn).unwrap();
     assert!(!frames.contains(&base64) && frames.contains(&sha256), "{frames}");
-    settled(&backend, &master, FIRST).await;
     let blocks = transcript(&backend, &master, FIRST).await.blocks;
     let Some(Block::User(user)) = blocks.first() else {
         panic!("{blocks:?}");

@@ -87,8 +87,9 @@ pub(crate) struct SessionCore {
 pub(super) enum Activity {
     Idle,
     Running(ActionRun),
-    /// The action ended and its checkpoint is being saved; clients see the
-    /// session idle.
+    /// The action ended and its closing save is in progress. The save
+    /// records the session idle, while clients see it running until that
+    /// save has committed (`runtime.md` § A turn).
     Finishing,
     /// Dispose is complete but for the final save; `interrupted` when it
     /// stopped a running turn, whose final checkpoint says `running`.
@@ -1327,7 +1328,7 @@ impl SessionCore {
 
     pub(super) fn checkpoint_state(&self) -> CheckpointState {
         CheckpointState {
-            phase: self.phase(),
+            phase: self.recorded_phase(),
             queue: self.queued_messages(),
             agent_inputs: self.inputs.agent_inputs(),
             wakeups: self.checkpoint_wakeups(),
@@ -1359,15 +1360,28 @@ impl SessionCore {
 
     // What clients see, derived from the one status.
 
+    /// The phase clients see. An action is running until its closing save
+    /// has committed, and the next waiting action starts without the session
+    /// going idle between them, so a client that sees `idle` can edit at once
+    /// (`runtime.md` § A turn).
     pub(super) fn phase(&self) -> SessionPhase {
         match &self.activity {
-            Activity::Idle | Activity::Finishing => SessionPhase::Idle,
             Activity::Running(run) if run.stage == TurnStage::Compacting => {
                 SessionPhase::Compacting
             }
-            Activity::Running(_) => SessionPhase::Running,
+            Activity::Running(_) | Activity::Finishing => SessionPhase::Running,
             Activity::Closed { interrupted: true } => SessionPhase::Running,
-            Activity::Closed { interrupted: false } => SessionPhase::Idle,
+            Activity::Idle | Activity::Closed { interrupted: false } => SessionPhase::Idle,
+        }
+    }
+
+    /// The phase a checkpoint records. The closing save of an action records
+    /// the session idle, so a checkpoint that says an action was running is
+    /// one the process died in (`runtime.md` § Saving).
+    fn recorded_phase(&self) -> SessionPhase {
+        match &self.activity {
+            Activity::Finishing => SessionPhase::Idle,
+            _ => self.phase(),
         }
     }
 

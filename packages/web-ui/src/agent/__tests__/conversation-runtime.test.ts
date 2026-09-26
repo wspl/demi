@@ -154,6 +154,32 @@ test('a pending steer delivered now stops the turn, which writes it, and continu
   }
 })
 
+test('a queued message sent now steers the running turn, and runs next without an error when the ending turn refuses the steer', async () => {
+  const h = clientHarness()
+  const current = state()
+  const runtime = new ConversationRuntime({ state: current, prepareModel: async () => model, connect: async () => h.client })
+  try {
+    await runtime.connect()
+    h.receive({ type: 'queue', queue: [{ id: 'queued', content: [{ type: 'text', text: 'next' }] }] })
+    // Idle: the message moves to the front and runs next.
+    await runtime.sendQueuedNow('queued')
+    expect(h.sent.at(-1)).toEqual({ type: 'send_queued_message', messageId: 'queued' })
+    // Running, but ending: the turn refuses the steer and keeps the message queued.
+    h.receive({ type: 'phase', phase: 'running' })
+    const sending = runtime.sendQueuedNow('queued')
+    await waitFor(() => h.sent.at(-1)?.type === 'steer_queued_message')
+    const steer = h.sent.at(-1)
+    if (steer?.type !== 'steer_queued_message') {
+      throw new Error('a steer was expected')
+    }
+    h.receive({ type: 'steer_result', steerId: steer.steerId, outcome: { status: 'rejected', reason: 'The running turn is finishing' } })
+    await sending
+    expect(h.sent.at(-1)).toEqual({ type: 'send_queued_message', messageId: 'queued' })
+  } finally {
+    runtime.dispose()
+  }
+})
+
 test('server takeover does not start a reconnect fight between views', async () => {
   const h = clientHarness()
   let connects = 0
