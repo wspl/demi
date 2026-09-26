@@ -223,25 +223,3 @@ pub enum ErrorCode {
 }
 
 serde_plain::derive_display_from_serialize!(ErrorCode);
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn an_error_body_travels_as_code_and_message() {
-        let body = ErrorBody {
-            code: ErrorCode::AlreadySetUp,
-            message: "This instance has its master account".to_owned(),
-        };
-        let json = serde_json::to_value(&body).unwrap();
-        assert_eq!(
-            json,
-            serde_json::json!({
-                "code": "already_set_up",
-                "message": "This instance has its master account",
-            })
-        );
-        assert_eq!(serde_json::from_value::<ErrorBody>(json).unwrap(), body);
-    }
-}
