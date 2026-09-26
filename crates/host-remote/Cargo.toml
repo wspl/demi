@@ -17,7 +17,7 @@ demi-core = { path = "../core" }
 demi-gates = { path = "../gates" }
 demi-runner-protocol = { path = "../runner-protocol" }
 demi-shell = { path = "../shell" }
-futures-util.workspace = true
+futures-util = { workspace = true, features = ["sink"] }
 garde.workspace = true
 serde.workspace = true
 serde_json.workspace = true

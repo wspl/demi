@@ -1,6 +1,5 @@
 import type { ExposeMenuEntry } from '@demicodes/web-ui/hosts/types'
-import type { DeviceDto } from '../api/generated/web-api'
-import type { Expose } from '../api/unported'
+import type { DeviceDto, ExposeDto } from '../api/generated/web-api'
 
 /**
  * The snapshot's exposes as the session tools menu lists them: the host name
@@ -8,7 +7,7 @@ import type { Expose } from '../api/unported'
  * the snapshot no longer knows keeps its id so the row stays removable.
  */
 export function sessionToolsExposes(
-  exposes: readonly Expose[],
+  exposes: readonly ExposeDto[],
   devices: readonly DeviceDto[],
 ): ExposeMenuEntry[] {
   return exposes.map((expose) => {

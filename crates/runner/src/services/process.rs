@@ -10,7 +10,7 @@ use demi_command_service::{
     Client, ServiceError,
     protocol::{PackageDescriptor, ServiceInfo},
 };
-use process_wrap::tokio::{ChildWrapper, CommandWrap, KillOnDrop};
+use process_wrap::tokio::ChildWrapper;
 use tokio::{
     io::AsyncReadExt,
     process::{ChildStderr, Command},
@@ -72,17 +72,13 @@ impl ResidentService {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        let mut command = CommandWrap::from(command);
-        command.wrap(KillOnDrop);
-        #[cfg(unix)]
-        command.wrap(process_wrap::tokio::ProcessGroup::leader());
-        #[cfg(windows)]
-        command.wrap(process_wrap::tokio::JobObject);
-        // Out of open files, the service waits for one (`runner.md` § Load).
-        let mut child = demi_command_service::descriptors::retry(&stop, || {
-            std::future::ready(command.spawn())
-        })
-        .await?;
+        let mut command = crate::process::wrap(command, true);
+        // A start that waits (`crate::process::start`) ends with `stop`.
+        let mut child = tokio::select! {
+            biased;
+            _ = stop.cancelled() => return Err(RuntimeError::Cancelled),
+            child = crate::process::start(|| command.spawn()) => child?,
+        };
         let pid = child.id().expect("a new process has an ID");
         let input = child.stdin().take().expect("piped stdin");
         let output = child.stdout().take().expect("piped stdout");
