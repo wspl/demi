@@ -59,8 +59,8 @@ providers or machine implementations above it.
   its graph line change in the same change.
 - Production code never depends upward, and neither do tests: a test reaches a
   fake through the `testing` feature of the crate that owns what it fakes
-  ([Module layout](#module-layout)), and no crate has a dev-dependency on a
-  crate that depends on it.
+  ([Module layout](#module-layout)), and no crate has a dev-dependency on
+  another crate that depends on it.
 - A crate's public items are the ones its entry names; everything else is
   `pub(crate)` or private. A TypeScript package exposes only what its entry
   names as its public boundary.
@@ -766,10 +766,10 @@ coding-agent -> agent, builtin-protocol, command-tree, core, shell
 host-remote -> command-service, command-tree, core, gates, runner-protocol, shell
 backend -> agent, agent-protocol, artifact, builtin-protocol, claude-protocol, coding-agent, command-service, command-tree, core, gates, host-remote, machines-protocol, provider, provider-anthropic-api, provider-claude-code, provider-codex, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shell, web-api
 machines -> artifact, machines-protocol, runner-protocol
-runner -> artifact, command-service, command-tree, gates, runner-protocol
+runner -> artifact, command-service, command-tree, runner-protocol
 demi-commands -> artifact, builtin-protocol, command-service, gates
 demi-claude -> artifact, claude-protocol, command-service
-xtask -> agent-protocol, artifact, builtin-protocol, claude-protocol, command-service, command-tree, core, machines-protocol, runner-protocol, web-api
+xtask -> agent-protocol, artifact, builtin-protocol, claude-protocol, command-service, core, runner-protocol, web-api
 ```
 
 ### TypeScript packages
@@ -850,11 +850,12 @@ the workspace's `cargo metadata`, and fails unless:
 - every workspace member has exactly one line, named by its directory, and
   every line names a member;
 - each crate's first-party normal and build dependencies equal its line;
-- no crate has a first-party dev-dependency on a crate that depends on it,
-  directly or through other crates;
+- no crate has a first-party dev-dependency on another crate that depends on
+  it, directly or through other crates; a crate's dev-dependency on itself,
+  through which its own tests turn on its `testing` feature, is allowed;
 - the graph is acyclic.
 
-The Rust tests run it.
+It is a test of `xtask`, and the Rust tests run it.
 
 The package check reads the `text` block under
 [TypeScript packages](#typescript-packages-1) and the npm workspace, and fails
