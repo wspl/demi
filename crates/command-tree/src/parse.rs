@@ -72,6 +72,8 @@ impl Selected<'_> {
             return Ok(result);
         };
         let properties = leaf.properties();
+        // The command's name in refusals, since a script may run several.
+        let command = self.path.join(" ");
         let mut index = self.argument_index;
         let mut positional = 0;
         let mut options_ended = false;
@@ -95,8 +97,7 @@ impl Selected<'_> {
             if !options_ended && token == "--json" {
                 if leaf.json_output().is_none() {
                     return Err(UsageError(format!(
-                        "Command \"{}\" does not define JSON output",
-                        self.path.join(" ")
+                        "Command \"{command}\" does not define JSON output"
                     )));
                 }
                 result.json = true;
@@ -108,20 +109,29 @@ impl Selected<'_> {
                     .map_or((option, None), |(name, value)| (name, Some(value)));
                 let schema = properties
                     .and_then(|properties| properties.get(field))
-                    .ok_or_else(|| UsageError(format!("Unknown option \"--{field}\"")))?;
+                    .ok_or_else(|| {
+                        UsageError(format!("Unknown option \"--{field}\" for \"{command}\""))
+                    })?;
                 if leaf.stdin_field.as_deref() == Some(field) {
                     return Err(UsageError(format!(
-                        "\"{}\" reads {field} only from stdin. Remove --{field} and use a quoted heredoc, pipe, or input redirection.",
-                        self.path.join(" ")
+                        "\"{command}\" reads {field} only from stdin. Remove --{field} and use a quoted heredoc, pipe, or input redirection."
                     )));
                 }
-                if leaf.rest_field.as_deref() == Some(field)
-                    || leaf
-                        .positionals
-                        .as_ref()
-                        .is_some_and(|fields| fields.iter().any(|candidate| candidate == field))
+                let source = if leaf.rest_field.as_deref() == Some(field) {
+                    Some("passed after --")
+                } else if leaf
+                    .positionals
+                    .as_ref()
+                    .is_some_and(|fields| fields.iter().any(|candidate| candidate == field))
                 {
-                    return Err(UsageError(format!("\"{field}\" is not an option")));
+                    Some("a positional argument")
+                } else {
+                    None
+                };
+                if let Some(source) = source {
+                    return Err(UsageError(format!(
+                        "\"{field}\" is {source} for \"{command}\"; --{field} is not an option"
+                    )));
                 }
                 let value = if let Some(value) = inline {
                     Value::String(value.into())
@@ -163,7 +173,9 @@ impl Selected<'_> {
 }
 
 impl Parsed {
-    /// Adds the explicitly consumed body, applies declared defaults and validates.
+    /// Adds the body read from stdin, turns argv text into the values the
+    /// fields declare, and checks the whole input. A missing value stays
+    /// missing: validation never fills one in.
     pub fn validate(mut self, leaf: &Leaf, stdin: Option<String>) -> Result<Self, Error> {
         if self.help {
             return Ok(self);
@@ -181,20 +193,28 @@ impl Parsed {
             ));
         }
         if let Some(properties) = leaf.properties() {
-            for (field, schema) in properties {
-                if let Some(value) = self.values.remove(field) {
-                    self.values.insert(field.clone(), coerce(value, schema)?);
-                } else if let Some(default) = schema.get("default") {
-                    self.values.insert(field.clone(), default.clone());
+            for (field, value) in self.values.iter_mut() {
+                if let Some(schema) = properties.get(field) {
+                    *value = argv_value(value.take(), schema);
                 }
             }
         }
-        if let Some(schema) = &leaf.input {
-            schema
-                .check(&Value::Object(self.values.clone()))
-                .map_err(|error| UsageError(format!("Invalid command arguments: {error}")))?;
-        }
+        leaf.check_arguments(&self.values)?;
         Ok(self)
+    }
+}
+
+impl<B> Leaf<B> {
+    /// Checks a command's arguments against its input, as the runner does
+    /// after parsing argv and the backend does with an `rpc` call's
+    /// arguments: one refusal names every field that fails.
+    pub fn check_arguments(&self, arguments: &Map<String, Value>) -> Result<(), UsageError> {
+        match &self.input {
+            Some(schema) => schema.check(&Value::Object(arguments.clone())),
+            None if arguments.is_empty() => Ok(()),
+            None => Err("the command takes no arguments".to_owned()),
+        }
+        .map_err(|failures| UsageError(format!("Invalid command arguments: {failures}")))
     }
 }
 
@@ -224,34 +244,35 @@ fn set_value(
     Ok(())
 }
 
-fn coerce(value: Value, schema: &Value) -> Result<Value, Error> {
-    if schema_type(schema) == Some("array") {
-        return Ok(match value {
-            Value::Array(_) => value,
-            _ => Value::Array(vec![value]),
-        });
-    }
-    if let Value::String(text) = &value {
-        match schema_type(schema) {
-            Some("number" | "integer") if !text.trim().is_empty() => {
-                let number = text
-                    .trim()
-                    .parse::<f64>()
-                    .ok()
-                    .and_then(|value| {
-                        if value.fract() == 0.0 && value.abs() <= 9_007_199_254_740_991.0 {
-                            Some(Number::from(value as i64))
-                        } else {
-                            Number::from_f64(value)
-                        }
-                    })
-                    .ok_or_else(|| UsageError(format!("Invalid numeric argument: {text}")))?;
-                return Ok(Value::Number(number));
-            }
-            Some("boolean") if text == "true" => return Ok(Value::Bool(true)),
-            Some("boolean") if text == "false" => return Ok(Value::Bool(false)),
-            _ => {}
+/// The value an argv token stands for under its field's schema, since argv
+/// carries only text: a number, a boolean, or an array whose elements each
+/// convert by the items' schema. A token that spells no such value stays
+/// text, so the check names its field with every other failure.
+fn argv_value(value: Value, schema: &Value) -> Value {
+    match (schema_type(schema), value) {
+        (Some("array"), Value::Array(items)) => Value::Array(
+            items
+                .into_iter()
+                .map(|item| argv_value(item, &schema["items"]))
+                .collect(),
+        ),
+        (Some("array"), item) => Value::Array(vec![argv_value(item, &schema["items"])]),
+        (Some("number" | "integer"), Value::String(text)) => {
+            number(&text).map_or(Value::String(text), Value::Number)
         }
+        (Some("boolean"), Value::String(text)) if text == "true" => Value::Bool(true),
+        (Some("boolean"), Value::String(text)) if text == "false" => Value::Bool(false),
+        (_, value) => value,
     }
-    Ok(value)
+}
+
+/// The finite number `text` spells: an integer when it is one JavaScript
+/// holds exactly, so an integer field receives `2` rather than `2.0`.
+fn number(text: &str) -> Option<Number> {
+    let value: f64 = text.trim().parse().ok()?;
+    if value.fract() == 0.0 && value.abs() <= 9_007_199_254_740_991.0 {
+        Some(Number::from(value as i64))
+    } else {
+        Number::from_f64(value)
+    }
 }
