@@ -3,11 +3,11 @@
 //! declared from the `builtin-protocol` types, so the command line, the
 //! runner's check and the operation read one definition.
 
+use demi_builtin_protocol::PACKAGE;
 use demi_builtin_protocol::browser::*;
 use demi_command_tree::NativeOperation;
 use demi_shell::{GroupBuilder, LeafBuilder};
 
-use crate::BUILTIN_PACKAGE;
 
 /// The group's summary.
 const SUMMARY: &str = "Operate the conversation’s persistent browser tabs on the Host running this shell. Use inspect to obtain node references; never guess them.";
@@ -122,7 +122,7 @@ fn leaf<I: BrowserInput + schemars::JsonSchema, R: schemars::JsonSchema>(
 ) -> LeafBuilder {
     let command = name.rsplit('.').next().expect("a split yields a part");
     let operation = NativeOperation {
-        package: BUILTIN_PACKAGE.into(),
+        package: PACKAGE.into(),
         operation: format!("{PREFIX}{name}"),
     };
     let mut leaf = LeafBuilder::native(command, summary, operation)

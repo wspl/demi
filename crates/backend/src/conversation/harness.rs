@@ -8,8 +8,8 @@
 use std::rc::{Rc, Weak};
 
 use demi_agent::PromptContext;
-use demi_builtin_protocol::{browser, file};
-use demi_coding_agent::{BUILTIN_PACKAGE, CodingHarness, DemiOptions, HostResolver};
+use demi_builtin_protocol::{PACKAGE as BUILTIN_PACKAGE, browser, file};
+use demi_coding_agent::{CodingHarness, DemiOptions, HostResolver};
 use demi_host_remote::RemoteHost;
 use demi_shell::HostError;
 

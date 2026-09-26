@@ -13,9 +13,6 @@ mod todo;
 pub use demi::{DemiOptions, demi_root};
 pub use harness::{CodingHarness, HostResolver};
 
-/// The native package the `file` and `browser` commands run in.
-pub use demi_builtin_protocol::PACKAGE as BUILTIN_PACKAGE;
-
 #[cfg(test)]
 mod command_line {
     //! A job's command line as the runner reads it: the `demi` root pinned
