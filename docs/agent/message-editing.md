@@ -54,6 +54,15 @@ record for that path. A path that no attachment record of the target message
 holds rejects the edit without mutation, so an edit cannot take over a file
 that another message received.
 
+The model receives a kept medium's bytes, not its reference. Before the
+session sees the edit, the backend loads each `media` reference's bytes from
+the caller's blob namespace, as it resolves an upload's, through the agent's
+one mapping between inline bytes and references
+([Media](runtime.md#media)): the chart's reference becomes its image block
+with the bytes, which the store saves by reference again. A reference whose
+blob is gone becomes the text `[missing image blob <ref>]`, as it does when a
+session is loaded.
+
 ### Admission
 
 The agent server coordinates admission with the node's children. Editing

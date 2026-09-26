@@ -3,12 +3,13 @@
 //! answer says what the backend read from them, and a message or a steer
 //! that names the upload writes the file to the conversation's Host, gives
 //! the model the file's native medium and record, and shows the page the
-//! medium by reference. A frame whose media cannot be stored reaches the
-//! page as an error, and the frames after it still arrive. No test calls a
-//! real model.
+//! medium by reference. An edit that keeps the medium names it by that
+//! reference, and the model reads its bytes again. A frame whose media
+//! cannot be stored reaches the page as an error, and the frames after it
+//! still arrive. No test calls a real model.
 
 use demi_agent::testing::model_of;
-use demi_agent_protocol::{ClientContent, ClientFrame, ServerFrame, SteerOutcome};
+use demi_agent_protocol::{ClientContent, ClientFrame, EditOutcome, EditRequest, MediaRef, ServerFrame, SteerOutcome};
 use demi_core::{Block, BlockId, FileExtension, MediaSource, SessionPhase, TurnId, UserContentBlock};
 use demi_provider::testing::MockVendor;
 use demi_web_api::attachments::{ATTACHMENT_MAX_BYTES, AttachmentAnswer, AttachmentDto};
@@ -174,6 +175,42 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
     let continued = vendor.requests()[3].json()["messages"].to_string();
     assert!(continued.contains("And this one") && continued.contains(&base64), "{continued}");
     assert!(continued.contains(&format!("{directory}/shot-3.png")), "{continued}");
+
+    // An edit of the first message keeps its image by the reference the
+    // page shows, and the model reads the image's bytes again.
+    let UserContentBlock::Image { source: MediaSource::Ref { r#ref, media_type } } = &user.content[1] else {
+        unreachable!()
+    };
+    socket.send(&ClientFrame::SyncTranscript {}).await;
+    let synced = socket.until(|frame| matches!(frame, ServerFrame::TranscriptReset { .. })).await;
+    let Some(ServerFrame::TranscriptReset { version, .. }) = synced.into_iter().last() else {
+        unreachable!()
+    };
+    let keep = EditRequest {
+        operation_id: "keep-1".try_into().unwrap(),
+        target_block_id: user.id.clone(),
+        version,
+        content: vec![
+            ClientContent::Text { text: "Look again".into() },
+            ClientContent::Media {
+                media: MediaRef::Image {
+                    r#ref: r#ref.clone(),
+                    media_type: media_type.clone(),
+                },
+            },
+        ],
+    };
+    vendor.respond(answer(&["The same shot."], 1, 1));
+    socket.send(&ClientFrame::EditAndSend { request: keep }).await;
+    let edited = socket.until_idle().await;
+    assert!(
+        edited.iter().any(|frame| matches!(frame, ServerFrame::EditResult { outcome: EditOutcome::Accepted { .. }, .. })),
+        "{edited:?}"
+    );
+    let requests = vendor.requests();
+    assert_eq!(requests.len(), 5, "the replacement asks the model: {edited:?}");
+    let kept = requests[4].json()["messages"].to_string();
+    assert!(kept.contains("Look again") && kept.contains(&base64), "{kept}");
     backend.close().await;
 }
 
