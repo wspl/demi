@@ -67,12 +67,19 @@ impl ServiceProcess {
     }
 
     /// Asks the service to shut down, and waits for its connection to end and
-    /// its process to exit.
+    /// its process to exit. A service that answered may exit before this
+    /// side's closing frames reach it, so a connection that ends because the
+    /// service closed its side is not a failure (`native-runtime.md`
+    /// § Invoke and retire a service).
     pub async fn shutdown(mut self) -> Result<ExitStatus, ServiceError> {
         self.client.shutdown().await?;
         let status = self.child.wait().await?;
         drop(self.client);
-        self.connection.await??;
+        if let Err(error) = self.connection.await?
+            && !crate::stream::peer_closed(&error)
+        {
+            return Err(error.into());
+        }
         Ok(status)
     }
 }
