@@ -348,10 +348,22 @@ For example, the page lists the conversation browser's tabs with a one-shot
 connection starts the `demi.builtin` service; the next ones find it running,
 whether or not a job has run.
 
-When the last lease ends, the registry asks the service for its
+When the last lease ends, and after each conversation release ends, the
+registry asks a service without leases for its
 [conversation status](#conversation-scoped-state). A service that still holds a
-conversation stays resident; one that holds none is shut down. A status check
-that fails, or does not answer within 5 seconds, keeps the service and writes
+conversation stays resident; one that holds none is shut down.
+
+An answer counts only when no lease came or went and no release ended while it
+was on its way; otherwise the registry asks again. The service answers from
+what it holds at the moment it is asked, so an answer can still name a
+conversation whose release ended before the answer arrived. For example, the
+backend releases two conversations at once. The check that follows the first
+release is answered while the second release is still running, and names the
+second conversation. Trusted, that answer would keep a service that holds
+nothing; instead the registry asks again once the second release has ended,
+and stops the service.
+
+A status check that fails, or does not answer within 5 seconds, keeps the service and writes
 the failure to the [Host log](runner.md#host-log): a service that cannot say
 what it holds is not a service that holds nothing, and shutting it down would
 end every conversation it serves. For example, when the connection switches to

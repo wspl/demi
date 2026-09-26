@@ -9,12 +9,14 @@
 
 use std::time::Duration;
 
+use demi_gates::Purpose;
 use demi_web_api::error::ErrorCode;
 use reqwest::StatusCode;
 use serde_json::{Value, json};
+use tokio::time::Instant;
 
 use crate::cloud::{idle_after, the_cloud};
-use crate::support::{Harness, Session, TestBackend, eventually};
+use crate::support::{Harness, PATIENCE, Session, TestBackend};
 
 /// A tab id the browser never gave out.
 const ABSENT: &str = "t_nosuchtabnosuchtabnosu";
@@ -30,6 +32,8 @@ fn tabs(id: &str) -> String {
     format!("/api/conversations/{id}/browser/tabs")
 }
 
+// Over a second: a real device installs the builtin package, whose browser
+// service answers the routes.
 #[tokio::test]
 async fn the_tab_routes_run_the_browsers_operations_as_the_user_on_the_conversations_host() {
     let harness = Harness::new().with_builtin_package();
@@ -109,12 +113,15 @@ async fn a_stopped_cloud_is_not_woken_to_list_close_or_move_its_tabs() {
     backend.close().await;
 }
 
+// Several seconds: the Cloud boots, the tab close installs the builtin
+// package on its runner, and the Cloud then idles for a window.
 #[tokio::test]
 async fn listing_a_running_clouds_tabs_does_not_keep_it_awake() {
-    let mut harness = Harness::new().with_builtin_package();
-    // Longer than the time between two listings, so that listings counted
+    // Far longer than the time between two listings, so that listings counted
     // as activity would keep the Cloud up.
-    harness.lifecycle = idle_after(Duration::from_secs(4));
+    let window = Duration::from_millis(800);
+    let mut harness = Harness::new().with_builtin_package();
+    harness.lifecycle = idle_after(window);
     harness.cloud.sweep = Duration::from_millis(50);
     let (backend, master) = harness.start_set_up().await;
     let id = conversation(&backend, &master).await;
@@ -122,20 +129,40 @@ async fn listing_a_running_clouds_tabs_does_not_keep_it_awake() {
     let listed = backend.get(&format!("/api/conversations/{id}/fs"), Some(&master)).await;
     assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
     let device = the_cloud(&harness);
+    // Closing a tab starts the browser's service, which the Cloud's runner
+    // installs first. The close restarts the window as it is admitted and is
+    // no activity after that, so a lease of the conversation's file gate,
+    // which is its work, keeps the Cloud up meanwhile.
+    let working = backend.file_gate(&master, &id).await.enter(Purpose::Demand).await;
+    let closed = backend.delete(&format!("{}/{ABSENT}", tabs(&id)), &master).await;
+    assert_eq!(closed.status, StatusCode::NO_CONTENT, "{}", String::from_utf8_lossy(&closed.body));
+    let rested = Instant::now();
+    drop(working);
     // The page lists the tabs again and again, and the Cloud idles and
-    // stops all the same. A listing the stop overtakes finds the runner
-    // gone.
-    eventually("the Cloud whose tabs are listed stops", || async {
-        let listed = backend.get(&tabs(&id), Some(&master)).await;
-        let answered = match listed.status {
-            StatusCode::OK => true,
-            StatusCode::CONFLICT => listed.refusal().1 == ErrorCode::DeviceOffline,
-            _ => false,
-        };
-        assert!(answered, "{}", String::from_utf8_lossy(&listed.body));
-        !harness.manager.running(&device)
-    })
-    .await;
+    // stops all the same, a window after the last activity. A listing the
+    // stop overtakes finds the runner gone.
+    let listing = async {
+        loop {
+            let listed = backend.get(&tabs(&id), Some(&master)).await;
+            let answered = match listed.status {
+                StatusCode::OK => true,
+                StatusCode::CONFLICT => listed.refusal().1 == ErrorCode::DeviceOffline,
+                _ => false,
+            };
+            assert!(answered, "{}", String::from_utf8_lossy(&listed.body));
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    };
+    let hibernate = format!("hibernate:{device}");
+    let stopped = tokio::select! {
+        stopped = harness.manager.arrival(&hibernate, PATIENCE) => stopped,
+        _ = listing => unreachable!("the page lists until the Cloud stops"),
+    };
+    assert!(
+        stopped >= rested + window,
+        "the Cloud stopped {:?} after the last activity",
+        stopped.saturating_duration_since(rested)
+    );
     backend.close().await;
 }
 

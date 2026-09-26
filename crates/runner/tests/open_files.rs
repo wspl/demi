@@ -339,7 +339,6 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
                 id: "r".into(),
                 path: ".".into(),
                 cwd: None,
-                with_file_types: Some(true),
             })
             .map_err(|error| error.to_string())?;
             let value = reply_for(&replies, "id", "r").await;
@@ -538,7 +537,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
             id: "fixture".into(),
             version: "1.0.0".into(),
             protocol_version: 1,
-            operations: ["where", "echo", "first", "spin", "result", "retain", "crash"]
+            operations: demi_command_service::testing::FIXTURE_OPERATIONS
                 .map(String::from)
                 .to_vec(),
             targets: BTreeMap::from([(

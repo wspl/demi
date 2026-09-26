@@ -300,7 +300,9 @@ next to the wire's types, so that a command program depends on one crate.
   (demand and maintenance leases, reservations and its `GateState` snapshot),
   `ActivityHub`, `SerialGate` and `KeyedSerialGate`.
 - **Public boundary:** the types above. Their semantics are in
-  [Locks](concurrency.md#locks).
+  [Locks](concurrency.md#locks). Its `testing` feature adds
+  `ActivityGate::waiting`, how many entrants wait behind a reservation, so a
+  test waits for an operation to be held instead of for time.
 - **Must not:** know users, conversations, devices or any other domain.
 
 #### `artifact`
@@ -461,10 +463,11 @@ Each crate implements the provider contract for one vendor family.
   that every realization passes (`store_contract`), predictable identities
   (`SequentialIds`), provider runtimes that play scripts
   (`ScriptedProviders`), a Host type for agents without shell tools
-  (`NoHost`, `NoShells`) and a test client that drives a connection
-  (`TestClient`). A product supplies
-  the harness, the providers, a shell environment per Host and a tree store;
-  the agent never knows which shell engine runs. Behavior:
+  (`NoHost`, `NoShells`), a test client that drives a connection
+  (`TestClient`, and `waiting_frames` for what an outbox holds) and the
+  readers of a shell tool's result text (`field`, `preview`). A product
+  supplies the harness, the providers, a shell environment per Host and a
+  tree store; the agent never knows which shell engine runs. Behavior:
   [Agent runtime](../agent/runtime.md), [Subagents](../agent/subagents.md)
   and [Compaction](../agent/compaction.md).
 - **Rules:** the node assembly is the one place that creates a node's session;
@@ -475,9 +478,8 @@ Each crate implements the provider contract for one vendor family.
   interfaces; own a shell interpreter; own a socket. The backend owns the
   conversation socket and hands the agent decoded frames. The compaction
   fixture's harness, a program run by hand against a real model, is an example
-  whose dev-dependencies include the OpenAI-compatible provider; the
-  `compaction-fixture` feature builds it, and no build of the one selection
-  enables that.
+  whose dev-dependencies include the OpenAI-compatible provider; every build of
+  the one selection compiles it, and no test runs it.
 
 #### `coding-agent`
 
@@ -549,7 +551,10 @@ Each crate implements the provider contract for one vendor family.
   declarations. Its `testing` feature adds `Backend::hold_commits`, which
   holds the commits of the conversations' checkpoints (`CommitHold`) for the
   scenarios that stop a save at its commit
-  ([Message editing](../agent/message-editing.md#durability-and-failure-boundaries)).
+  ([Message editing](../agent/message-editing.md#durability-and-failure-boundaries)),
+  and `Backend::file_gate`, a conversation's file gate, whose lease is the
+  conversation's work to the idle rules and whose waiting entrants show an
+  operation a transition holds.
   For suites that start the executable, the example program
   `scripted_machines` runs the scripted machine manager of its scenarios
   ([Browser-contract suite](../delivery/scenarios.md#browser-contract-suite)).

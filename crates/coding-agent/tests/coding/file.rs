@@ -3,9 +3,10 @@
 //! whose `file` commands run in the `demi.builtin` package the workspace
 //! built.
 
+use demi_agent::testing::{field, preview};
 use demi_provider::testing::ScriptedRuntime;
 
-use crate::support::{Fixture, field, preview, scripts, turn, within};
+use crate::support::{Fixture, scripts, turn, within};
 
 /// The results of running `scripts` in one message, with `prepare` run on
 /// the workspace first; the fixture stays for the test's own checks.
@@ -39,6 +40,8 @@ const PNG: [u8; 11] = [
     0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe,
 ];
 
+// Several seconds: nine scripts run a shell job each, and the first
+// `demi file` starts the `demi.builtin` service.
 #[tokio::test(flavor = "local")]
 async fn demi_file_reads_and_creates_files_in_and_beyond_the_workspace() {
     within(async {
@@ -99,62 +102,71 @@ async fn demi_file_reads_and_creates_files_in_and_beyond_the_workspace() {
     .await;
 }
 
+// Several seconds: eleven scripts run a shell job each, and the first
+// `demi file` starts the `demi.builtin` service. The files the edits and the
+// failed patch start from are written by the test, and it reads what they
+// leave itself, so every job runs a command under test.
 #[tokio::test(flavor = "local")]
 async fn demi_file_edit_and_patch_change_what_they_name_whole_or_not_at_all() {
     within(async {
         let (fixture, results) = run(
             &[
                 // Edits replace one exact match.
-                "demi file create file.txt <<'EOF'\none\ntwo\ntwo\nEOF",
                 "demi file edit file.txt --old two --new changed",
                 "demi file edit file.txt --old two --new changed --occurrence 2 && cat file.txt",
-                "demi file create context.txt <<'EOF'\ntarget\nmiddle\ntarget\nEOF",
                 "demi file edit context.txt --old target --new changed --context 2",
                 "cat context.txt && demi file edit context.txt --old target --new changed --context 3 && cat context.txt",
-                "demi file create empty-old.txt <<'EOF'\ncontent\nEOF",
                 "demi file edit empty-old.txt --old \"\" --new changed",
-                "cat empty-old.txt",
                 // Patches apply whole unified diffs.
                 "demi file create patch.txt <<'EOF'\none\ntwo\nEOF\ndemi file patch <<'PATCH' && cat patch.txt\n--- a/patch.txt\n+++ b/patch.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+three\nPATCH",
                 "demi file create timed.txt <<'EOF'\nold\nEOF\ndemi file patch <<'PATCH' && cat timed.txt\n--- a/timed.txt 2026-06-17 00:00:00.000000000 +0800\n+++ b/timed.txt 2026-06-17 00:00:01.000000000 +0800\n@@ -1 +1 @@\n-old\n+new\nPATCH",
                 "demi file create existing.txt <<'EOF'\none\nEOF\ndemi file patch <<'PATCH' && cat existing.txt nested/new.txt\n--- a/existing.txt\n+++ b/existing.txt\n@@ -1 +1 @@\n-one\n+changed\n--- /dev/null\n+++ b/nested/new.txt\n@@ -0,0 +1,2 @@\n+new\n+file\nPATCH",
                 "demi file create doomed.txt <<'EOF'\nremove\nEOF\ndemi file patch <<'PATCH' && test ! -e doomed.txt && echo gone\n--- a/doomed.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-remove\nPATCH",
-                "demi file create first.txt <<'EOF'\nfirst\nEOF\ndemi file create second.txt <<'EOF'\nsecond\nEOF",
                 "demi file patch <<'PATCH'\n--- a/first.txt\n+++ b/first.txt\n@@ -1 +1 @@\n-first\n+changed\n--- a/second.txt\n+++ b/second.txt\n@@ -1 +1 @@\n-wrong\n+changed\nPATCH",
-                "cat first.txt",
                 "demi file create inside.txt <<'EOF'\ninside\nEOF\noutside=\"$(cd .. && pwd)/outside.txt\"\ndemi file patch <<PATCH && cat inside.txt\n--- a/inside.txt\n+++ b/inside.txt\n@@ -1 +1 @@\n-inside\n+changed\n--- /dev/null\n+++ $outside\n@@ -0,0 +1 @@\n+outside\nPATCH",
             ],
-            |_| {},
+            |workspace| {
+                for (name, content) in [
+                    ("file.txt", "one\ntwo\ntwo\n"),
+                    ("context.txt", "target\nmiddle\ntarget\n"),
+                    ("empty-old.txt", "content\n"),
+                    ("first.txt", "first\n"),
+                    ("second.txt", "second\n"),
+                ] {
+                    std::fs::write(format!("{workspace}/{name}"), content).unwrap();
+                }
+            },
         )
         .await;
-        assert_exit(&results[1], "1");
-        assert_shows(&results[1], &["Multiple matches in file.txt; specify --occurrence or --context"]);
-        assert_eq!(preview(&results[2]), "Edited file.txt\none\ntwo\nchanged\n");
-        assert_exit(&results[4], "1");
+        let read = |name: &str| std::fs::read_to_string(format!("{}/{name}", fixture.workspace)).unwrap();
+        assert_exit(&results[0], "1");
+        assert_shows(&results[0], &["Multiple matches in file.txt; specify --occurrence or --context"]);
+        assert_eq!(preview(&results[1]), "Edited file.txt\none\ntwo\nchanged\n");
+        assert_exit(&results[2], "1");
         assert_shows(
-            &results[4],
+            &results[2],
             &["Context line 2 is ambiguous", "occurrence 1 at line 1", "occurrence 2 at line 3"],
         );
         assert_eq!(
-            preview(&results[5]),
+            preview(&results[3]),
             "target\nmiddle\ntarget\nEdited context.txt\ntarget\nmiddle\nchanged\n"
         );
-        assert_exit(&results[7], "1");
-        assert_shows(&results[7], &["Invalid command arguments: \"old\" is shorter than 1 character"]);
-        assert_eq!(preview(&results[8]), "content\n");
+        assert_exit(&results[4], "1");
+        assert_shows(&results[4], &["Invalid command arguments: \"old\" is shorter than 1 character"]);
+        assert_eq!(read("empty-old.txt"), "content\n");
 
-        assert_eq!(preview(&results[9]), "Created patch.txt\nPatched 1 file(s)\none\nthree\n");
-        assert_eq!(preview(&results[10]), "Created timed.txt\nPatched 1 file(s)\nnew\n");
+        assert_eq!(preview(&results[5]), "Created patch.txt\nPatched 1 file(s)\none\nthree\n");
+        assert_eq!(preview(&results[6]), "Created timed.txt\nPatched 1 file(s)\nnew\n");
         assert_eq!(
-            preview(&results[11]),
+            preview(&results[7]),
             "Created existing.txt\nPatched 2 file(s)\nchanged\nnew\nfile\n"
         );
-        assert_eq!(preview(&results[12]), "Created doomed.txt\nPatched 1 file(s)\ngone\n");
+        assert_eq!(preview(&results[8]), "Created doomed.txt\nPatched 1 file(s)\ngone\n");
         // One file that does not apply leaves every file as it was.
-        assert_exit(&results[14], "1");
-        assert_shows(&results[14], &["Patch does not apply to second.txt"]);
-        assert_eq!(preview(&results[15]), "first\n");
-        assert_eq!(preview(&results[16]), "Created inside.txt\nPatched 2 file(s)\nchanged\n");
+        assert_exit(&results[9], "1");
+        assert_shows(&results[9], &["Patch does not apply to second.txt"]);
+        assert_eq!(read("first.txt"), "first\n");
+        assert_eq!(preview(&results[10]), "Created inside.txt\nPatched 2 file(s)\nchanged\n");
         assert_eq!(
             std::fs::read_to_string(format!("{}/outside.txt", fixture.runner.home())).unwrap(),
             "outside\n"

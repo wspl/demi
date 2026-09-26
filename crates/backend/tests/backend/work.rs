@@ -12,7 +12,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use demi_agent::testing::model_of;
+use demi_agent::testing::{field, model_of, preview};
 use demi_core::{Block, EditedFile, ToolView};
 use demi_provider::testing::{MockResponse, MockVendor};
 use reqwest::StatusCode;
@@ -25,6 +25,13 @@ use crate::support::{Harness, Paired, Session, TestBackend};
 const FIRST: &str = "1e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a01";
 const SECOND: &str = "2e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a02";
 const FORKED: &str = "3e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a03";
+
+/// What opens each context block the model reads once the conversation's
+/// execution context changed.
+const CONTEXT: &str = "[Execution context ";
+
+/// The line that opens a context block's announcement of a target switch.
+const SWITCHED: &str = "[Execution target switched]";
 
 /// The model's shell call `id` running `script`, watched for at most
 /// `timeout_ms`.
@@ -173,6 +180,8 @@ impl Turn {
     }
 }
 
+// Several seconds: a real device installs the builtin package, and four turns
+// run a shell job each.
 #[tokio::test]
 async fn the_model_creates_reads_edits_and_lists_its_files_where_the_conversation_works() {
     let vendor = MockVendor::start().await;
@@ -190,6 +199,10 @@ async fn the_model_creates_reads_edits_and_lists_its_files_where_the_conversatio
     assert!(created.received[0].contains("exitCode: 0"), "{}", created.received[0]);
     assert!(created.received[0].contains("Created notes.md"), "{}", created.received[0]);
     assert_eq!(std::fs::read_to_string(home.join("src/notes.md")).unwrap(), "alpha\nbeta\ngamma\n");
+    // The model is offered the `demi.builtin` package's commands beside the
+    // backend's own.
+    let system = created.requests[0]["system"].to_string();
+    assert!(system.contains("demi file create") && system.contains("demi host"), "{system}");
 
     // The shell keeps its directory between turns.
     let script = "pwd && demi file read notes.md | grep -n a | sort -r";
@@ -207,6 +220,8 @@ async fn the_model_creates_reads_edits_and_lists_its_files_where_the_conversatio
     backend.close().await;
 }
 
+// Several seconds: the switch goes between two real devices, which each install
+// the builtin package, and five shell jobs run on them.
 #[tokio::test]
 async fn a_switch_moves_the_work_and_the_departed_device_keeps_its_files_within_reach() {
     let vendor = MockVendor::start().await;
@@ -235,8 +250,11 @@ async fn a_switch_moves_the_work_and_the_departed_device_keeps_its_files_within_
         ])
         .await;
     let context = moved.first_request();
+    let told = context.matches(CONTEXT).count();
+    let switches = context.matches(SWITCHED).count();
     assert!(context.contains("[Execution target switched]"), "{context}");
     assert!(context.contains("Previous target: the machine \\\"alpha\\\""), "{context}");
+    assert!(context.contains("stays attached as \\\"alpha\\\""), "{context}");
     assert!(moved.received[0].contains("No such file or directory"), "{}", moved.received[0]);
     assert!(moved.received[0].contains("exit=1"), "{}", moved.received[0]);
     assert!(moved.received[1].contains("Created notes.md"), "{}", moved.received[1]);
@@ -245,6 +263,18 @@ async fn a_switch_moves_the_work_and_the_departed_device_keeps_its_files_within_
     assert!(edited.received[0].contains("alpha\ndelta\ngamma"), "{}", edited.received[0]);
     assert_eq!(std::fs::read_to_string(on_beta.join("notes.md")).unwrap(), "alpha\ndelta\ngamma\n");
     assert_eq!(std::fs::read_to_string(on_alpha.join("notes.md")).unwrap(), "alpha\nbeta\ngamma\n");
+    // The model was told of the switch once: the history holds it, and the
+    // next turn is told nothing new.
+    assert_eq!(edited.first_request().matches(CONTEXT).count(), told, "{}", edited.first_request());
+
+    // A change of the attached hosts alone is news of its own.
+    let path = format!("/api/conversations/{FIRST}/hosts/{}", alpha.id());
+    let renamed = backend.patch(&path, &master, json!({ "name": "first" })).await;
+    assert_eq!(renamed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&renamed.body));
+    let noted = work.turn(vec![say("noted")]).await.first_request();
+    assert!(noted.contains("[Attached hosts changed]"), "{noted}");
+    assert!(noted.contains("\\\"first\\\" (online, shells start in"), "{noted}");
+    assert_eq!(noted.matches(SWITCHED).count(), switches, "{noted}");
 
     // Back on the first device: the one left is attached under its name,
     // and `demi host shell --host` reaches it.
@@ -256,6 +286,8 @@ async fn a_switch_moves_the_work_and_the_departed_device_keeps_its_files_within_
     backend.close().await;
 }
 
+// Several seconds: a real device installs the builtin package, and two
+// conversations run two turns each on it at once.
 #[tokio::test]
 async fn two_conversations_on_one_device_keep_their_directories_shells_and_todos_apart() {
     let vendor = MockVendor::start().await;
@@ -300,6 +332,8 @@ async fn two_conversations_on_one_device_keep_their_directories_shells_and_todos
     backend.close().await;
 }
 
+// Several seconds: a real device installs the builtin package, loses its runner
+// in the middle of a job, and starts it again.
 #[tokio::test]
 async fn a_runner_lost_in_the_middle_of_a_command_ends_it_and_the_returned_runner_serves_the_next_turn() {
     let vendor = MockVendor::start().await;
@@ -352,6 +386,8 @@ async fn kept_files(backend: &TestBackend, master: &Session, id: &str) -> Vec<(S
         .collect()
 }
 
+// Several seconds: a real device installs the builtin package and runs the
+// commands whose edits are kept, and its runner stops.
 #[tokio::test]
 async fn a_commands_edits_are_kept_as_its_call_history_and_outlive_its_runner() {
     let vendor = MockVendor::start().await;
@@ -427,6 +463,8 @@ async fn a_commands_edits_are_kept_as_its_call_history_and_outlive_its_runner() 
     backend.close().await;
 }
 
+// Several seconds: a real device installs the builtin package, and its runner
+// comes back after the backend's restart to run the next job.
 #[tokio::test]
 async fn after_a_backend_restart_the_runner_comes_back_and_the_conversation_goes_on_there() {
     let vendor = MockVendor::start().await;
@@ -448,6 +486,7 @@ async fn after_a_backend_restart_the_runner_comes_back_and_the_conversation_goes
     let started = home.join("started");
     work.start(vec![shell("t2", "touch started; sleep 20", 30_000)]).await;
     until_exists(&started).await;
+    // The backend comes back at its address, where the runner reconnects.
     let address = backend.address();
     backend.close().await;
     let backend = harness.start_at(address).await;
@@ -475,14 +514,6 @@ async fn after_a_backend_restart_the_runner_comes_back_and_the_conversation_goes
     backend.close().await;
 }
 
-/// The value of `name` in a shell tool's result, such as its `commandId`.
-fn field<'a>(result: &'a str, name: &str) -> &'a str {
-    result
-        .lines()
-        .find_map(|line| line.strip_prefix(&format!("{name}: ")))
-        .unwrap_or_else(|| panic!("no {name} in {result}"))
-}
-
 /// A conversation that worked on `alpha` and then moved to `beta`, which
 /// left `alpha` attached.
 async fn moved_from_alpha_to_beta(
@@ -499,6 +530,8 @@ async fn moved_from_alpha_to_beta(
     (on_alpha, on_beta)
 }
 
+// Several seconds: two real devices each install the builtin package, and `demi
+// host shell` runs jobs on both.
 #[tokio::test]
 async fn demi_host_shell_carries_bytes_both_ways_through_pipes_and_keeps_the_far_hosts_directory() {
     let vendor = MockVendor::start().await;
@@ -550,6 +583,8 @@ async fn demi_host_shell_carries_bytes_both_ways_through_pipes_and_keeps_the_far
     backend.close().await;
 }
 
+// Several seconds: two real devices each install the builtin package, and the
+// far job runs through `demi host shell`.
 #[tokio::test]
 async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_and_is_stopped_with_it() {
     let vendor = MockVendor::start().await;
@@ -571,21 +606,27 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
     assert!(result.starts_with("status: running"), "{result}");
     let command = field(result, "commandId").to_owned();
     // The far job's error output reaches the model while the job runs: the
-    // model reads the command's output until `ready` is there. The far
-    // job's start (a login shell on alpha) may outlast the window above.
-    let mut output = result.clone();
+    // model reads the command's output, each read showing what came since
+    // the one before, until `ready` is there. The far job's start (a login
+    // shell on alpha) may outlast the window above, and its shell's printf
+    // writes a byte at a time, so `ready` may come split between reads.
+    let mut output = preview(result).to_owned();
     let deadline = tokio::time::Instant::now() + crate::support::PATIENCE;
     let mut reads = 0;
     while !output.contains("ready") {
-        assert!(tokio::time::Instant::now() < deadline, "the far job's ready never came: {output}");
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert!(tokio::time::Instant::now() < deadline, "the far job's ready never came: {output:?}");
+        // Each read is a turn of two requests, and the backend starts at most
+        // 120 a minute (`usage-and-quota.md` § Rate limit): 400 ms apart, the
+        // reads of the whole wait make at most 100.
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
         reads += 1;
         let status = json!({ "commandId": command });
         let read = work
             .turn(vec![tool_use(&format!("s{reads}"), "shell_status", &status), say("still waiting")])
             .await;
-        assert!(read.received[0].starts_with("status: running"), "{}", read.received[0]);
-        output.push_str(&read.received[0]);
+        let result = read.received.first().expect("the read reaches the model");
+        assert!(result.starts_with("status: running"), "{result}");
+        output.push_str(preview(result));
     }
 
     let write = json!({ "commandId": command, "stdin": "hello\n" });

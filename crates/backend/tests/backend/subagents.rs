@@ -198,6 +198,8 @@ async fn tree(scripts: &Arc<Scripts>) -> (Harness, TestBackend, Session, ModelSe
 /// The shell that waits until the file `go` appears where it works.
 const WAIT: &str = "until [ -f go ]; do sleep 0.05; done";
 
+// Several seconds: a parent and its child run five shell jobs on a real device,
+// the child's across its parent's turns.
 #[tokio::test]
 async fn a_child_works_in_its_parents_files_keeps_its_own_todos_and_runs_on_after_its_spawn() {
     let scripts = Arc::new(Scripts::default());
@@ -252,6 +254,8 @@ async fn a_child_works_in_its_parents_files_keeps_its_own_todos_and_runs_on_afte
     backend.close().await;
 }
 
+// Over two seconds: the parent's and the child's shell jobs run on a real
+// device, the child's until the Fork is taken.
 #[tokio::test]
 async fn a_fork_taken_while_a_child_runs_leaves_the_child_with_its_source() {
     let scripts = Arc::new(Scripts::default());
