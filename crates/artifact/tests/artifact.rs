@@ -1,12 +1,12 @@
-//! Verified downloads and copies, digests, publication, the install lock,
-//! receipts and zip extraction.
+//! Verified downloads and copies, digests, publication, release publication,
+//! the install lock, receipts and zip extraction.
 
 use std::{io::Write as _, path::Path, time::Duration};
 
 use demi_artifact::{
-    Digest, Error, InstallLock, Mode, Permissions, Publication, Staged, Verifier, copy, digest,
-    download, extract_zip, publish, publish_bytes, publish_directory, receipt,
-    testing::loopback_client,
+    Digest, Error, InstallLock, Mode, Permissions, Publication, ReleaseFile, ReleaseRecord, Staged,
+    Verifier, copy, digest, download, extract_zip, publish, publish_bytes, publish_directory,
+    publish_release, receipt, testing::loopback_client,
 };
 use sha2::{Digest as _, Sha256};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -231,6 +231,67 @@ async fn a_staged_directory_replaces_the_installed_one() {
     assert!(!staged.exists());
     assert!(!installed.join("old").exists());
     assert_eq!(std::fs::read(installed.join("new")).unwrap(), b"new");
+}
+
+#[tokio::test]
+async fn a_release_is_published_whole_once_and_refused_over_other_contents() {
+    let root = tempfile::tempdir().unwrap();
+    let sources = root.path().join("sources");
+    std::fs::create_dir(&sources).unwrap();
+    std::fs::write(sources.join("tool"), b"tool v1").unwrap();
+    std::fs::write(sources.join("data"), b"data").unwrap();
+    let file = |name: &str, path: &str, bytes: &[u8], executable: bool| ReleaseFile {
+        source: sources.join(name),
+        path: path.into(),
+        digest: declared(bytes),
+        executable,
+    };
+    let files = [
+        file("tool", "x86_64-unknown-linux-musl/tool", b"tool v1", true),
+        file("data", "data", b"data", false),
+    ];
+    let record = ReleaseRecord {
+        name: "descriptor.json",
+        bytes: b"{\"version\":\"1\"}\n",
+    };
+    let releases = root.path().join("releases");
+    let directory = releases.join("tool-1");
+    let cancel = CancellationToken::new();
+    publish_release(&directory, record, &files, &cancel).await.unwrap();
+    assert_eq!(std::fs::read(directory.join("descriptor.json")).unwrap(), record.bytes);
+    assert_eq!(std::fs::read(directory.join("x86_64-unknown-linux-musl/tool")).unwrap(), b"tool v1");
+    assert_eq!(std::fs::read(directory.join("data")).unwrap(), b"data");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |path: &Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o111;
+        assert_eq!(mode(&directory.join("x86_64-unknown-linux-musl/tool")), 0o111);
+        assert_eq!(mode(&directory.join("data")), 0);
+    }
+    // The same release again is the one in place.
+    publish_release(&directory, record, &files, &cancel).await.unwrap();
+    // Another record under the same name is refused, and so is a file that
+    // changed in place; nothing in place changes.
+    let other = ReleaseRecord {
+        name: "descriptor.json",
+        bytes: b"{\"version\":\"2\"}\n",
+    };
+    let refused = publish_release(&directory, other, &files, &cancel).await;
+    assert!(matches!(&refused, Err(Error::Conflict(path)) if path.ends_with("descriptor.json")), "{refused:?}");
+    std::fs::write(directory.join("data"), b"corrupt").unwrap();
+    let refused = publish_release(&directory, record, &files, &cancel).await;
+    assert!(matches!(&refused, Err(Error::Conflict(path)) if path.ends_with("data")), "{refused:?}");
+    assert_eq!(std::fs::read(directory.join("descriptor.json")).unwrap(), record.bytes);
+    // A source that is not what its release declares publishes nothing.
+    std::fs::write(sources.join("tool"), b"tool v2").unwrap();
+    let changed = publish_release(&releases.join("tool-2"), record, &files, &cancel).await;
+    assert!(matches!(changed, Err(Error::Digest)), "{changed:?}");
+    // No stage is left beside the releases, whatever happened.
+    let names: Vec<String> = std::fs::read_dir(&releases)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names, ["tool-1"]);
 }
 
 #[tokio::test]
