@@ -1,6 +1,8 @@
 //! Test support (feature `testing`): a scripted runtime for the tests of what
 //! sits above providers, a scripted vendor server for the tests of providers,
-//! event builders and a fixed clock. No test calls a real model.
+//! waits for a run's events that fail instead of hanging, the check of an
+//! API-key entry's built-in catalog, event builders and a fixed clock. No test
+//! calls a real model.
 
 use std::{
     cell::RefCell,
@@ -17,9 +19,9 @@ use axum::{
     extract::{Request, State},
     response::Response,
 };
-use demi_core::{Clock, Timestamp, TokenUsage, UserContentBlock};
+use demi_core::{AuthState, Clock, RuntimeState, Timestamp, TokenUsage, UserContentBlock};
 use futures_util::{
-    StreamExt,
+    Stream, StreamExt,
     future::LocalBoxFuture,
     stream::{self, BoxStream, LocalBoxStream},
 };
@@ -28,8 +30,8 @@ use tokio::sync::Notify;
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
 use crate::{
-    InferenceItem, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun, ProviderRuntime,
-    ToolCall,
+    InferenceItem, InferenceRequest, Provider, ProviderEvent, ProviderFailure, ProviderRun,
+    ProviderRuntime, ToolCall,
 };
 
 /// Builders of the events a scripted run yields.
@@ -185,6 +187,36 @@ impl ProviderRuntime for ScriptedRuntime {
         self.script.borrow_mut().closes += 1;
         Box::pin(async {})
     }
+}
+
+/// How long a provider test waits for what it awaits before it fails. It
+/// only guards against a hang (`testing.md` § Time and stability): every wait
+/// of these tests ends far sooner, on a paused clock too, where the longest
+/// is the Claude Code runtime's five seconds before it kills a process.
+const HANG_GUARD: Duration = Duration::from_secs(10);
+
+/// Awaits `future`, and fails the test when it has not completed within the
+/// hang guard; `what` names what the test waits for.
+pub async fn guarded<T>(what: &str, future: impl Future<Output = T>) -> T {
+    let Ok(value) = tokio::time::timeout(HANG_GUARD, future).await else {
+        panic!("{what} did not come within {HANG_GUARD:?}");
+    };
+    value
+}
+
+/// The run's next event, or `None` once it has ended.
+pub async fn next_event(run: &mut ProviderRun<'_>) -> Option<ProviderEvent> {
+    guarded("the run's next event or its end", run.next()).await
+}
+
+/// Every event of `run`, once it has ended.
+pub async fn all_events(run: impl Stream<Item = ProviderEvent>) -> Vec<ProviderEvent> {
+    guarded("the run's end", run.collect()).await
+}
+
+/// Runs `request` on `runtime` and returns every event of the run.
+pub async fn run(runtime: &mut dyn ProviderRuntime, request: InferenceRequest) -> Vec<ProviderEvent> {
+    all_events(runtime.run(request)).await
 }
 
 /// A wall clock that always reads the same moment.
@@ -421,6 +453,31 @@ impl MockVendor {
     fn lock(&self) -> std::sync::MutexGuard<'_, VendorScript> {
         self.state.script.lock().expect("the vendor script is not poisoned")
     }
+}
+
+/// Asserts what the backend's catalog reads of an API-key entry's provider
+/// (`models.md` § Directories): the entry starts no process, is
+/// authenticated by its key and ready, and its models are the directory
+/// built into the provider, never fetched and not stale, with its default
+/// among them. Reading none of it sends `vendor` a request.
+pub async fn assert_built_in_catalog(provider: &dyn Provider, vendor: &MockVendor) {
+    assert!(!provider.capabilities().process_host, "an API-key entry starts no process");
+    let auth = provider.auth_status().await;
+    assert!(matches!(auth, AuthState::Authenticated { .. }), "{auth:?}");
+    let runtime = provider.runtime_state();
+    assert!(matches!(runtime, RuntimeState::Ready { .. }), "{runtime:?}");
+    let list = provider.list_models().await.expect("a built-in directory is always read");
+    assert_eq!(
+        (list.source_fetched_at, list.stale),
+        (Timestamp::UNIX_EPOCH, false),
+        "a built-in directory is never fetched"
+    );
+    let default = list.default_model_id.as_deref().expect("the directory names its default");
+    assert!(
+        list.models.iter().any(|model| model.id == default),
+        "the default {default} is one of the directory's models"
+    );
+    assert!(vendor.requests().is_empty(), "reading the status and the models makes no request");
 }
 
 async fn answer(State(state): State<Arc<VendorState>>, request: Request) -> Response {

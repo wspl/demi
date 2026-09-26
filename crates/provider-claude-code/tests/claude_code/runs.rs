@@ -428,7 +428,7 @@ async fn a_cancelled_run_closes_its_process_and_ends_without_an_event() {
         ..request_without_tools(vec![user("hi")])
     };
     let mut run = runtime.run(cancelled);
-    let (first, cli) = tokio::join!(futures_util::StreamExt::next(&mut run), async {
+    let (first, cli) = tokio::join!(next_event(&mut run), async {
         let mut cli = starts.next().await;
         cli.read().await;
         cli.text("partial");
@@ -436,7 +436,7 @@ async fn a_cancelled_run_closes_its_process_and_ends_without_an_event() {
     });
     assert_eq!(first, Some(text("partial")));
     cancel.cancel();
-    assert_eq!(futures_util::StreamExt::next(&mut run).await, None);
+    assert_eq!(next_event(&mut run).await, None);
     drop(run);
     assert_eq!(cli.signals(), [Signal::Terminate]);
     assert!(!cli.dropped());
@@ -468,7 +468,7 @@ async fn dropping_a_run_or_a_runtime_kills_the_process_without_waiting() {
     let mut runtime = runtime_of(&provider, &placement);
     {
         let mut run = runtime.run(request_without_tools(vec![user("hi")]));
-        let (first, mut cli) = tokio::join!(futures_util::StreamExt::next(&mut run), async {
+        let (first, mut cli) = tokio::join!(next_event(&mut run), async {
             let mut cli = starts.next().await;
             cli.read().await;
             cli.text("first");

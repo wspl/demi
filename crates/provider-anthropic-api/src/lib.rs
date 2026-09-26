@@ -26,10 +26,6 @@ use reqwest::{Url, header::HeaderValue};
 /// The configuration of an `anthropic` entry, as the backend decoded it.
 #[derive(Debug, Clone)]
 pub struct AnthropicConfig {
-    /// The entry's id.
-    pub id: String,
-    /// The entry's label.
-    pub display_name: String,
     pub api_key: Secret,
     /// The Messages API base with its version prefix, such as
     /// `https://api.anthropic.com/v1`; `None` for that default. The provider
@@ -49,8 +45,6 @@ pub struct AnthropicProvider {
 
 /// What the provider and all its runtimes share.
 struct Shared {
-    id: String,
-    display_name: String,
     api_key: HeaderValue,
     messages_url: Url,
     clock: Arc<dyn Clock>,
@@ -63,8 +57,6 @@ impl AnthropicProvider {
         });
         Self {
             shared: Arc::new(Shared {
-                id: config.id,
-                display_name: config.display_name,
                 api_key: config.api_key.header_value(),
                 messages_url: endpoint_url(&base, "/messages"),
                 clock,
@@ -74,14 +66,6 @@ impl AnthropicProvider {
 }
 
 impl Provider for AnthropicProvider {
-    fn id(&self) -> &str {
-        &self.shared.id
-    }
-
-    fn display_name(&self) -> &str {
-        &self.shared.display_name
-    }
-
     fn capabilities(&self) -> Capabilities {
         Capabilities::default()
     }

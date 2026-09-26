@@ -20,7 +20,7 @@ use crate::NOW;
 
 /// A provider built to log in: no account yet, over a staged pool.
 fn staged(vendor: &MockVendor, pool: &MemoryCredentialPool) -> CodexProvider {
-    let mut config = CodexConfig::new("codex", "Codex", None);
+    let mut config = CodexConfig::new(None);
     config.auth_url = vendor.url("").parse().unwrap();
     let clock = Arc::new(FixedClock(NOW.parse().unwrap()));
     // No idle-connection timer, so a paused clock only moves at the login's

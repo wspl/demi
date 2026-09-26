@@ -68,26 +68,16 @@ impl ProviderFamily for Titling {
             return Err(FamilyError::WrongCredential);
         };
         Ok(Arc::new(TitlingProvider {
-            id: args.entry_id,
             script: self.0.clone(),
         }))
     }
 }
 
 struct TitlingProvider {
-    id: String,
     script: Arc<Script>,
 }
 
 impl Provider for TitlingProvider {
-    fn id(&self) -> &str {
-        &self.id
-    }
-
-    fn display_name(&self) -> &str {
-        "Titling"
-    }
-
     fn capabilities(&self) -> Capabilities {
         Capabilities::default()
     }

@@ -668,7 +668,6 @@ impl ProviderFamily for Keyed {
             return Err(FamilyError::WrongCredential);
         };
         Ok(Arc::new(KeyedProvider {
-            id: args.entry_id,
             key: key.api_key.expose().to_owned(),
             runs: self.0.clone(),
         }))
@@ -676,20 +675,11 @@ impl ProviderFamily for Keyed {
 }
 
 struct KeyedProvider {
-    id: String,
     key: String,
     runs: Arc<Runs>,
 }
 
 impl Provider for KeyedProvider {
-    fn id(&self) -> &str {
-        &self.id
-    }
-
-    fn display_name(&self) -> &str {
-        "Keyed"
-    }
-
     fn capabilities(&self) -> Capabilities {
         Capabilities::default()
     }

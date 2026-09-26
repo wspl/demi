@@ -33,10 +33,6 @@ const SIGNATURE_TAG: &str = "google:";
 /// The configuration of a `google` entry, as the backend decoded it.
 #[derive(Debug, Clone)]
 pub struct GoogleConfig {
-    /// The entry's id.
-    pub id: String,
-    /// The entry's label.
-    pub display_name: String,
     pub api_key: Secret,
     /// The API's base with its version, such as
     /// `https://generativelanguage.googleapis.com/v1beta`; `None` for that
@@ -56,8 +52,6 @@ pub struct GoogleProvider {
 
 /// What the provider and all its runtimes share.
 struct Shared {
-    id: String,
-    display_name: String,
     api_key: HeaderValue,
     base_url: Url,
     clock: Arc<dyn Clock>,
@@ -85,8 +79,6 @@ impl GoogleProvider {
         });
         Self {
             shared: Arc::new(Shared {
-                id: config.id,
-                display_name: config.display_name,
                 api_key: config.api_key.header_value(),
                 base_url,
                 clock,
@@ -96,14 +88,6 @@ impl GoogleProvider {
 }
 
 impl Provider for GoogleProvider {
-    fn id(&self) -> &str {
-        &self.shared.id
-    }
-
-    fn display_name(&self) -> &str {
-        &self.shared.display_name
-    }
-
     fn capabilities(&self) -> Capabilities {
         Capabilities::default()
     }
