@@ -69,9 +69,9 @@ debug = false
 
 # The tests wait on these hashes, which unoptimized code makes slow, so these
 # crates alone are optimized in development builds. Measured on 4 x86-64 cores:
-# SHA-256 of the programs a runner installs and verifies at every service
-# start, 55 MB/s unoptimized and 311 MB/s optimized (the 125 MB debug
-# demi-commands: 2.3 s, then 0.4 s).
+# SHA-256 of the built programs, which a test harness hashes to publish them as
+# packages and a runner hashes to verify a download, 55 MB/s unoptimized and
+# 311 MB/s optimized (the 125 MB debug demi-commands: 2.3 s, then 0.4 s).
 [profile.dev.package.sha2]
 opt-level = 3
 
