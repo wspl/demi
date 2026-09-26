@@ -1,0 +1,216 @@
+[
+  {
+    "name": "rename-file",
+    "core": true,
+    "argv": [
+      "src.txt",
+      "dst.txt"
+    ],
+    "tree": {
+      "files": {
+        "src.txt": "Y29udGVudAo="
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "dst.txt": "Y29udGVudAo="
+        },
+        "modes": {
+          "dst.txt": 420
+        },
+        "owners": {
+          "dst.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "move-into-directory",
+    "core": true,
+    "argv": [
+      "src.txt",
+      "dest-dir/"
+    ],
+    "tree": {
+      "files": {
+        "src.txt": "Y29udGVudAo="
+      },
+      "dirs": [
+        "dest-dir"
+      ]
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "dest-dir/src.txt": "Y29udGVudAo="
+        },
+        "modes": {
+          "dest-dir": 493,
+          "dest-dir/src.txt": 420
+        },
+        "owners": {
+          "dest-dir": [
+            0,
+            0
+          ],
+          "dest-dir/src.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "move-directory",
+    "core": true,
+    "argv": [
+      "srcdir",
+      "destdir"
+    ],
+    "tree": {
+      "files": {
+        "srcdir/a.txt": "YQo="
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "destdir/a.txt": "YQo="
+        },
+        "modes": {
+          "destdir": 493,
+          "destdir/a.txt": 420
+        },
+        "owners": {
+          "destdir": [
+            0,
+            0
+          ],
+          "destdir/a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "overwrites-by-default",
+    "core": true,
+    "argv": [
+      "src.txt",
+      "dst.txt"
+    ],
+    "tree": {
+      "files": {
+        "dst.txt": "b2xkCg==",
+        "src.txt": "Y29udGVudAo="
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "dst.txt": "Y29udGVudAo="
+        },
+        "modes": {
+          "dst.txt": 420
+        },
+        "owners": {
+          "dst.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "no-clobber-skips-existing",
+    "core": true,
+    "argv": [
+      "-n",
+      "src.txt",
+      "dst.txt"
+    ],
+    "tree": {
+      "files": {
+        "dst.txt": "b2xkCg==",
+        "src.txt": "Y29udGVudAo="
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": true,
+      "tree": {
+        "files": {
+          "dst.txt": "b2xkCg==",
+          "src.txt": "Y29udGVudAo="
+        },
+        "modes": {
+          "dst.txt": 420,
+          "src.txt": 420
+        },
+        "owners": {
+          "dst.txt": [
+            0,
+            0
+          ],
+          "src.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "missing-source-error",
+    "core": true,
+    "argv": [
+      "missing.txt",
+      "dst.txt"
+    ],
+    "tree": {
+      "files": {
+        "src.txt": "Y29udGVudAo="
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": true,
+      "tree": {
+        "files": {
+          "src.txt": "Y29udGVudAo="
+        },
+        "modes": {
+          "src.txt": 420
+        },
+        "owners": {
+          "src.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  }
+]

@@ -1,0 +1,116 @@
+[
+  {
+    "name": "translate-set",
+    "core": true,
+    "argv": [
+      "abc",
+      "xyz"
+    ],
+    "stdin": "YWFiYmNjCg==",
+    "tree": {},
+    "want": {
+      "stdout": "eHh5eXp6Cg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "to-upper-classes",
+    "core": true,
+    "argv": [
+      "[:lower:]",
+      "[:upper:]"
+    ],
+    "stdin": "SGVsbG8gV29ybGQK",
+    "tree": {},
+    "want": {
+      "stdout": "SEVMTE8gV09STEQK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "delete-set",
+    "core": true,
+    "argv": [
+      "-d",
+      "aeiou"
+    ],
+    "stdin": "aGVsbG8gd29ybGQK",
+    "tree": {},
+    "want": {
+      "stdout": "aGxsIHdybGQK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "squeeze-repeats",
+    "core": true,
+    "argv": [
+      "-s",
+      "l"
+    ],
+    "stdin": "aGVsbGxsbwo=",
+    "tree": {},
+    "want": {
+      "stdout": "aGVsbwo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "complement-delete",
+    "core": false,
+    "argv": [
+      "-c",
+      "-d",
+      "a-z\n"
+    ],
+    "stdin": "SGVsbG8sIFdvcmxkISAxMjMK",
+    "tree": {},
+    "want": {
+      "stdout": "ZWxsb29ybGQK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "truncate-set1",
+    "core": false,
+    "argv": [
+      "-t",
+      "abc",
+      "xy"
+    ],
+    "stdin": "YWJjYWJjCg==",
+    "tree": {},
+    "want": {
+      "stdout": "eHljeHljCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "delete-and-squeeze",
+    "core": false,
+    "argv": [
+      "-ds",
+      "aeiou"
+    ],
+    "stdin": "YWFiYmNjZGRlZWZmZ2cK",
+    "tree": {},
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": true,
+      "tree": {}
+    }
+  }
+]

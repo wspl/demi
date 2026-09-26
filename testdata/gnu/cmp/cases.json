@@ -1,0 +1,320 @@
+[
+  {
+    "name": "identical-files-exit-zero",
+    "core": true,
+    "argv": [
+      "a.bin",
+      "b.bin"
+    ],
+    "tree": {
+      "files": {
+        "a.bin": "YWJjZGVm",
+        "b.bin": "YWJjZGVm"
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.bin": "YWJjZGVm",
+          "b.bin": "YWJjZGVm"
+        },
+        "modes": {
+          "a.bin": 420,
+          "b.bin": 420
+        },
+        "owners": {
+          "a.bin": [
+            0,
+            0
+          ],
+          "b.bin": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "first-difference-reported",
+    "core": true,
+    "argv": [
+      "a.bin",
+      "b.bin"
+    ],
+    "tree": {
+      "files": {
+        "a.bin": "YWJjWGVm",
+        "b.bin": "YWJjZGVm"
+      }
+    },
+    "want": {
+      "stdout": "YS5iaW4gYi5iaW4gZGlmZmVyOiBjaGFyIDQsIGxpbmUgMQo=",
+      "exitCode": 1,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.bin": "YWJjWGVm",
+          "b.bin": "YWJjZGVm"
+        },
+        "modes": {
+          "a.bin": 420,
+          "b.bin": 420
+        },
+        "owners": {
+          "a.bin": [
+            0,
+            0
+          ],
+          "b.bin": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "silent-exit-code-only",
+    "core": true,
+    "argv": [
+      "-s",
+      "a.bin",
+      "b.bin"
+    ],
+    "tree": {
+      "files": {
+        "a.bin": "YWJjWGVm",
+        "b.bin": "YWJjZGVm"
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.bin": "YWJjWGVm",
+          "b.bin": "YWJjZGVm"
+        },
+        "modes": {
+          "a.bin": 420,
+          "b.bin": 420
+        },
+        "owners": {
+          "a.bin": [
+            0,
+            0
+          ],
+          "b.bin": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "list-all-differences",
+    "core": true,
+    "argv": [
+      "-l",
+      "a.bin",
+      "b.bin"
+    ],
+    "tree": {
+      "files": {
+        "a.bin": "YWJjWGVm",
+        "b.bin": "YWJjZGVm"
+      }
+    },
+    "want": {
+      "stdout": "NCAxMzAgMTQ0Cg==",
+      "exitCode": 1,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.bin": "YWJjWGVm",
+          "b.bin": "YWJjZGVm"
+        },
+        "modes": {
+          "a.bin": 420,
+          "b.bin": 420
+        },
+        "owners": {
+          "a.bin": [
+            0,
+            0
+          ],
+          "b.bin": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "shorter-file-reported",
+    "core": true,
+    "argv": [
+      "a.bin",
+      "b.bin"
+    ],
+    "tree": {
+      "files": {
+        "a.bin": "YWJj",
+        "b.bin": "YWJjZGVm"
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": true,
+      "tree": {
+        "files": {
+          "a.bin": "YWJj",
+          "b.bin": "YWJjZGVm"
+        },
+        "modes": {
+          "a.bin": 420,
+          "b.bin": 420
+        },
+        "owners": {
+          "a.bin": [
+            0,
+            0
+          ],
+          "b.bin": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "missing-file-errors",
+    "core": true,
+    "argv": [
+      "missing.bin",
+      "b.bin"
+    ],
+    "tree": {
+      "files": {
+        "a.bin": "YWJjWGVm",
+        "b.bin": "YWJjZGVm"
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 2,
+      "stderrNonEmpty": true,
+      "tree": {
+        "files": {
+          "a.bin": "YWJjWGVm",
+          "b.bin": "YWJjZGVm"
+        },
+        "modes": {
+          "a.bin": 420,
+          "b.bin": 420
+        },
+        "owners": {
+          "a.bin": [
+            0,
+            0
+          ],
+          "b.bin": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "skip-first-bytes",
+    "core": false,
+    "argv": [
+      "-i",
+      "3",
+      "a.bin",
+      "b.bin"
+    ],
+    "tree": {
+      "files": {
+        "a.bin": "YWJjWGVm",
+        "b.bin": "YWJjZGVm"
+      }
+    },
+    "want": {
+      "stdout": "YS5iaW4gYi5iaW4gZGlmZmVyOiBjaGFyIDEsIGxpbmUgMQo=",
+      "exitCode": 1,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.bin": "YWJjWGVm",
+          "b.bin": "YWJjZGVm"
+        },
+        "modes": {
+          "a.bin": 420,
+          "b.bin": 420
+        },
+        "owners": {
+          "a.bin": [
+            0,
+            0
+          ],
+          "b.bin": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "limit-bytes-compared",
+    "core": false,
+    "argv": [
+      "-n",
+      "3",
+      "a.bin",
+      "b.bin"
+    ],
+    "tree": {
+      "files": {
+        "a.bin": "YWJjWGVm",
+        "b.bin": "YWJjZGVm"
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.bin": "YWJjWGVm",
+          "b.bin": "YWJjZGVm"
+        },
+        "modes": {
+          "a.bin": 420,
+          "b.bin": 420
+        },
+        "owners": {
+          "a.bin": [
+            0,
+            0
+          ],
+          "b.bin": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  }
+]

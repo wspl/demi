@@ -1,0 +1,176 @@
+[
+  {
+    "name": "remove-file",
+    "core": true,
+    "argv": [
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQo="
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "missing-file-errors",
+    "core": true,
+    "argv": [
+      "missing.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQo="
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": true,
+      "tree": {
+        "files": {
+          "a.txt": "YQo="
+        },
+        "modes": {
+          "a.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "force-ignores-missing",
+    "core": true,
+    "argv": [
+      "-f",
+      "missing.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQo="
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQo="
+        },
+        "modes": {
+          "a.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "directory-without-r-errors",
+    "core": true,
+    "argv": [
+      "sub"
+    ],
+    "tree": {
+      "files": {
+        "sub/a.txt": "YQo="
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": true,
+      "tree": {
+        "files": {
+          "sub/a.txt": "YQo="
+        },
+        "modes": {
+          "sub": 493,
+          "sub/a.txt": 420
+        },
+        "owners": {
+          "sub": [
+            0,
+            0
+          ],
+          "sub/a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "recursive-removes-directory",
+    "core": true,
+    "argv": [
+      "-r",
+      "sub"
+    ],
+    "tree": {
+      "files": {
+        "sub/a.txt": "YQo="
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "recursive-force-combined",
+    "core": true,
+    "argv": [
+      "-rf",
+      "sub"
+    ],
+    "tree": {
+      "files": {
+        "sub/a.txt": "YQo="
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "multiple-operands",
+    "core": false,
+    "argv": [
+      "a.txt",
+      "missing.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQo="
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": true,
+      "tree": {}
+    }
+  }
+]

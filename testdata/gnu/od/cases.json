@@ -1,0 +1,217 @@
+[
+  {
+    "name": "hex-bytes-no-address",
+    "core": true,
+    "argv": [
+      "-An",
+      "-tx1",
+      "a.bin"
+    ],
+    "tree": {
+      "files": {
+        "a.bin": "aGVsbG8AAQJ3b3JsZA=="
+      }
+    },
+    "want": {
+      "stdout": "IDY4IDY1IDZjIDZjIDZmIDAwIDAxIDAyIDc3IDZmIDcyIDZjIDY0Cg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.bin": "aGVsbG8AAQJ3b3JsZA=="
+        },
+        "modes": {
+          "a.bin": 420
+        },
+        "owners": {
+          "a.bin": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "printable-characters",
+    "core": true,
+    "argv": [
+      "-c",
+      "a.bin"
+    ],
+    "tree": {
+      "files": {
+        "a.bin": "aGVsbG8AAQJ3b3JsZA=="
+      }
+    },
+    "want": {
+      "stdout": "MDAwMDAwMCAgIGggICBlICAgbCAgIGwgICBvICBcMCAwMDEgMDAyICAgdyAgIG8gICByICAgbCAgIGQKMDAwMDAxNQo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.bin": "aGVsbG8AAQJ3b3JsZA=="
+        },
+        "modes": {
+          "a.bin": 420
+        },
+        "owners": {
+          "a.bin": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "octal-default",
+    "core": true,
+    "argv": [
+      "a.bin"
+    ],
+    "tree": {
+      "files": {
+        "a.bin": "aGVsbG8AAQJ3b3JsZA=="
+      }
+    },
+    "want": {
+      "stdout": "MDAwMDAwMCAwNjI1NTAgMDY2MTU0IDAwMDE1NyAwMDEwMDEgMDY3NTY3IDA2NjE2MiAwMDAxNDQKMDAwMDAxNQo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.bin": "aGVsbG8AAQJ3b3JsZA=="
+        },
+        "modes": {
+          "a.bin": 420
+        },
+        "owners": {
+          "a.bin": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "skip-bytes",
+    "core": true,
+    "argv": [
+      "-j",
+      "5",
+      "-An",
+      "-tx1",
+      "a.bin"
+    ],
+    "tree": {
+      "files": {
+        "a.bin": "aGVsbG8AAQJ3b3JsZA=="
+      }
+    },
+    "want": {
+      "stdout": "IDAwIDAxIDAyIDc3IDZmIDcyIDZjIDY0Cg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.bin": "aGVsbG8AAQJ3b3JsZA=="
+        },
+        "modes": {
+          "a.bin": 420
+        },
+        "owners": {
+          "a.bin": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "limit-bytes",
+    "core": true,
+    "argv": [
+      "-N",
+      "3",
+      "-An",
+      "-tx1",
+      "a.bin"
+    ],
+    "tree": {
+      "files": {
+        "a.bin": "aGVsbG8AAQJ3b3JsZA=="
+      }
+    },
+    "want": {
+      "stdout": "IDY4IDY1IDZjCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.bin": "aGVsbG8AAQJ3b3JsZA=="
+        },
+        "modes": {
+          "a.bin": 420
+        },
+        "owners": {
+          "a.bin": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "stdin",
+    "core": true,
+    "argv": [
+      "-An",
+      "-tx1"
+    ],
+    "stdin": "aGk=",
+    "tree": {},
+    "want": {
+      "stdout": "IDY4IDY5Cg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "decimal-bytes",
+    "core": false,
+    "argv": [
+      "-An",
+      "-tu1",
+      "a.bin"
+    ],
+    "tree": {
+      "files": {
+        "a.bin": "aGVsbG8AAQJ3b3JsZA=="
+      }
+    },
+    "want": {
+      "stdout": "IDEwNCAxMDEgMTA4IDEwOCAxMTEgICAwICAgMSAgIDIgMTE5IDExMSAxMTQgMTA4IDEwMAo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.bin": "aGVsbG8AAQJ3b3JsZA=="
+        },
+        "modes": {
+          "a.bin": 420
+        },
+        "owners": {
+          "a.bin": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  }
+]

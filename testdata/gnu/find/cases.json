@@ -1,0 +1,967 @@
+[
+  {
+    "name": "list-all",
+    "core": true,
+    "argv": [
+      "."
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQo=",
+        "sub/b.txt": "Ygo=",
+        "sub/deep/c.c": "Ywo="
+      },
+      "dirs": [
+        "empty-dir"
+      ]
+    },
+    "want": {
+      "stdout": "LgouL2VtcHR5LWRpcgouL3N1YgouL3N1Yi9iLnR4dAouL3N1Yi9kZWVwCi4vc3ViL2RlZXAvYy5jCi4vYS50eHQK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQo=",
+          "sub/b.txt": "Ygo=",
+          "sub/deep/c.c": "Ywo="
+        },
+        "dirs": [
+          "empty-dir"
+        ],
+        "modes": {
+          "a.txt": 420,
+          "empty-dir": 493,
+          "sub": 493,
+          "sub/b.txt": 420,
+          "sub/deep": 493,
+          "sub/deep/c.c": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "empty-dir": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/b.txt": [
+            0,
+            0
+          ],
+          "sub/deep": [
+            0,
+            0
+          ],
+          "sub/deep/c.c": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "name-glob",
+    "core": true,
+    "argv": [
+      ".",
+      "-name",
+      "*.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQo=",
+        "sub/b.txt": "Ygo=",
+        "sub/deep/c.c": "Ywo="
+      },
+      "dirs": [
+        "empty-dir"
+      ]
+    },
+    "want": {
+      "stdout": "Li9zdWIvYi50eHQKLi9hLnR4dAo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQo=",
+          "sub/b.txt": "Ygo=",
+          "sub/deep/c.c": "Ywo="
+        },
+        "dirs": [
+          "empty-dir"
+        ],
+        "modes": {
+          "a.txt": 420,
+          "empty-dir": 493,
+          "sub": 493,
+          "sub/b.txt": 420,
+          "sub/deep": 493,
+          "sub/deep/c.c": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "empty-dir": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/b.txt": [
+            0,
+            0
+          ],
+          "sub/deep": [
+            0,
+            0
+          ],
+          "sub/deep/c.c": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "iname-case-insensitive",
+    "core": true,
+    "argv": [
+      ".",
+      "-iname",
+      "A.TXT"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQo=",
+        "sub/b.txt": "Ygo=",
+        "sub/deep/c.c": "Ywo="
+      },
+      "dirs": [
+        "empty-dir"
+      ]
+    },
+    "want": {
+      "stdout": "Li9hLnR4dAo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQo=",
+          "sub/b.txt": "Ygo=",
+          "sub/deep/c.c": "Ywo="
+        },
+        "dirs": [
+          "empty-dir"
+        ],
+        "modes": {
+          "a.txt": 420,
+          "empty-dir": 493,
+          "sub": 493,
+          "sub/b.txt": 420,
+          "sub/deep": 493,
+          "sub/deep/c.c": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "empty-dir": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/b.txt": [
+            0,
+            0
+          ],
+          "sub/deep": [
+            0,
+            0
+          ],
+          "sub/deep/c.c": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "type-file",
+    "core": true,
+    "argv": [
+      ".",
+      "-type",
+      "f"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQo=",
+        "sub/b.txt": "Ygo=",
+        "sub/deep/c.c": "Ywo="
+      },
+      "dirs": [
+        "empty-dir"
+      ]
+    },
+    "want": {
+      "stdout": "Li9zdWIvYi50eHQKLi9zdWIvZGVlcC9jLmMKLi9hLnR4dAo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQo=",
+          "sub/b.txt": "Ygo=",
+          "sub/deep/c.c": "Ywo="
+        },
+        "dirs": [
+          "empty-dir"
+        ],
+        "modes": {
+          "a.txt": 420,
+          "empty-dir": 493,
+          "sub": 493,
+          "sub/b.txt": 420,
+          "sub/deep": 493,
+          "sub/deep/c.c": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "empty-dir": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/b.txt": [
+            0,
+            0
+          ],
+          "sub/deep": [
+            0,
+            0
+          ],
+          "sub/deep/c.c": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "type-dir",
+    "core": true,
+    "argv": [
+      ".",
+      "-type",
+      "d"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQo=",
+        "sub/b.txt": "Ygo=",
+        "sub/deep/c.c": "Ywo="
+      },
+      "dirs": [
+        "empty-dir"
+      ]
+    },
+    "want": {
+      "stdout": "LgouL2VtcHR5LWRpcgouL3N1YgouL3N1Yi9kZWVwCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQo=",
+          "sub/b.txt": "Ygo=",
+          "sub/deep/c.c": "Ywo="
+        },
+        "dirs": [
+          "empty-dir"
+        ],
+        "modes": {
+          "a.txt": 420,
+          "empty-dir": 493,
+          "sub": 493,
+          "sub/b.txt": 420,
+          "sub/deep": 493,
+          "sub/deep/c.c": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "empty-dir": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/b.txt": [
+            0,
+            0
+          ],
+          "sub/deep": [
+            0,
+            0
+          ],
+          "sub/deep/c.c": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "maxdepth",
+    "core": true,
+    "argv": [
+      ".",
+      "-maxdepth",
+      "1"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQo=",
+        "sub/b.txt": "Ygo=",
+        "sub/deep/c.c": "Ywo="
+      },
+      "dirs": [
+        "empty-dir"
+      ]
+    },
+    "want": {
+      "stdout": "LgouL2VtcHR5LWRpcgouL3N1YgouL2EudHh0Cg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQo=",
+          "sub/b.txt": "Ygo=",
+          "sub/deep/c.c": "Ywo="
+        },
+        "dirs": [
+          "empty-dir"
+        ],
+        "modes": {
+          "a.txt": 420,
+          "empty-dir": 493,
+          "sub": 493,
+          "sub/b.txt": 420,
+          "sub/deep": 493,
+          "sub/deep/c.c": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "empty-dir": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/b.txt": [
+            0,
+            0
+          ],
+          "sub/deep": [
+            0,
+            0
+          ],
+          "sub/deep/c.c": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "mindepth",
+    "core": true,
+    "argv": [
+      ".",
+      "-mindepth",
+      "2"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQo=",
+        "sub/b.txt": "Ygo=",
+        "sub/deep/c.c": "Ywo="
+      },
+      "dirs": [
+        "empty-dir"
+      ]
+    },
+    "want": {
+      "stdout": "Li9zdWIvYi50eHQKLi9zdWIvZGVlcAouL3N1Yi9kZWVwL2MuYwo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQo=",
+          "sub/b.txt": "Ygo=",
+          "sub/deep/c.c": "Ywo="
+        },
+        "dirs": [
+          "empty-dir"
+        ],
+        "modes": {
+          "a.txt": 420,
+          "empty-dir": 493,
+          "sub": 493,
+          "sub/b.txt": 420,
+          "sub/deep": 493,
+          "sub/deep/c.c": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "empty-dir": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/b.txt": [
+            0,
+            0
+          ],
+          "sub/deep": [
+            0,
+            0
+          ],
+          "sub/deep/c.c": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "empty-directories",
+    "core": true,
+    "argv": [
+      ".",
+      "-type",
+      "d",
+      "-empty"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQo=",
+        "sub/b.txt": "Ygo=",
+        "sub/deep/c.c": "Ywo="
+      },
+      "dirs": [
+        "empty-dir"
+      ]
+    },
+    "want": {
+      "stdout": "Li9lbXB0eS1kaXIK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQo=",
+          "sub/b.txt": "Ygo=",
+          "sub/deep/c.c": "Ywo="
+        },
+        "dirs": [
+          "empty-dir"
+        ],
+        "modes": {
+          "a.txt": 420,
+          "empty-dir": 493,
+          "sub": 493,
+          "sub/b.txt": 420,
+          "sub/deep": 493,
+          "sub/deep/c.c": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "empty-dir": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/b.txt": [
+            0,
+            0
+          ],
+          "sub/deep": [
+            0,
+            0
+          ],
+          "sub/deep/c.c": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "print0-then-count",
+    "core": true,
+    "argv": [
+      ".",
+      "-name",
+      "*.txt",
+      "-print0"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQo=",
+        "sub/b.txt": "Ygo=",
+        "sub/deep/c.c": "Ywo="
+      },
+      "dirs": [
+        "empty-dir"
+      ]
+    },
+    "want": {
+      "stdout": "Li9zdWIvYi50eHQALi9hLnR4dAA=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQo=",
+          "sub/b.txt": "Ygo=",
+          "sub/deep/c.c": "Ywo="
+        },
+        "dirs": [
+          "empty-dir"
+        ],
+        "modes": {
+          "a.txt": 420,
+          "empty-dir": 493,
+          "sub": 493,
+          "sub/b.txt": 420,
+          "sub/deep": 493,
+          "sub/deep/c.c": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "empty-dir": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/b.txt": [
+            0,
+            0
+          ],
+          "sub/deep": [
+            0,
+            0
+          ],
+          "sub/deep/c.c": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "nonexistent-root",
+    "core": true,
+    "argv": [
+      "missing-dir"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQo=",
+        "sub/b.txt": "Ygo=",
+        "sub/deep/c.c": "Ywo="
+      },
+      "dirs": [
+        "empty-dir"
+      ]
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": true,
+      "tree": {
+        "files": {
+          "a.txt": "YQo=",
+          "sub/b.txt": "Ygo=",
+          "sub/deep/c.c": "Ywo="
+        },
+        "dirs": [
+          "empty-dir"
+        ],
+        "modes": {
+          "a.txt": 420,
+          "empty-dir": 493,
+          "sub": 493,
+          "sub/b.txt": 420,
+          "sub/deep": 493,
+          "sub/deep/c.c": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "empty-dir": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/b.txt": [
+            0,
+            0
+          ],
+          "sub/deep": [
+            0,
+            0
+          ],
+          "sub/deep/c.c": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "exec-echo-per-file",
+    "core": false,
+    "argv": [
+      ".",
+      "-name",
+      "*.txt",
+      "-exec",
+      "echo",
+      "found",
+      "{}",
+      ";"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQo=",
+        "sub/b.txt": "Ygo=",
+        "sub/deep/c.c": "Ywo="
+      },
+      "dirs": [
+        "empty-dir"
+      ]
+    },
+    "want": {
+      "stdout": "Zm91bmQgLi9zdWIvYi50eHQKZm91bmQgLi9hLnR4dAo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQo=",
+          "sub/b.txt": "Ygo=",
+          "sub/deep/c.c": "Ywo="
+        },
+        "dirs": [
+          "empty-dir"
+        ],
+        "modes": {
+          "a.txt": 420,
+          "empty-dir": 493,
+          "sub": 493,
+          "sub/b.txt": 420,
+          "sub/deep": 493,
+          "sub/deep/c.c": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "empty-dir": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/b.txt": [
+            0,
+            0
+          ],
+          "sub/deep": [
+            0,
+            0
+          ],
+          "sub/deep/c.c": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "exec-plus-batches",
+    "core": false,
+    "argv": [
+      ".",
+      "-name",
+      "*.txt",
+      "-exec",
+      "cat",
+      "{}",
+      "+"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQo=",
+        "sub/b.txt": "Ygo=",
+        "sub/deep/c.c": "Ywo="
+      },
+      "dirs": [
+        "empty-dir"
+      ]
+    },
+    "want": {
+      "stdout": "YgphCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQo=",
+          "sub/b.txt": "Ygo=",
+          "sub/deep/c.c": "Ywo="
+        },
+        "dirs": [
+          "empty-dir"
+        ],
+        "modes": {
+          "a.txt": 420,
+          "empty-dir": 493,
+          "sub": 493,
+          "sub/b.txt": 420,
+          "sub/deep": 493,
+          "sub/deep/c.c": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "empty-dir": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/b.txt": [
+            0,
+            0
+          ],
+          "sub/deep": [
+            0,
+            0
+          ],
+          "sub/deep/c.c": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "not-name",
+    "core": false,
+    "argv": [
+      ".",
+      "-not",
+      "-name",
+      "*.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQo=",
+        "sub/b.txt": "Ygo=",
+        "sub/deep/c.c": "Ywo="
+      },
+      "dirs": [
+        "empty-dir"
+      ]
+    },
+    "want": {
+      "stdout": "LgouL2VtcHR5LWRpcgouL3N1YgouL3N1Yi9kZWVwCi4vc3ViL2RlZXAvYy5jCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQo=",
+          "sub/b.txt": "Ygo=",
+          "sub/deep/c.c": "Ywo="
+        },
+        "dirs": [
+          "empty-dir"
+        ],
+        "modes": {
+          "a.txt": 420,
+          "empty-dir": 493,
+          "sub": 493,
+          "sub/b.txt": 420,
+          "sub/deep": 493,
+          "sub/deep/c.c": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "empty-dir": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/b.txt": [
+            0,
+            0
+          ],
+          "sub/deep": [
+            0,
+            0
+          ],
+          "sub/deep/c.c": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "or-name",
+    "core": false,
+    "argv": [
+      ".",
+      "(",
+      "-name",
+      "*.txt",
+      "-o",
+      "-name",
+      "*.c",
+      ")"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQo=",
+        "sub/b.txt": "Ygo=",
+        "sub/deep/c.c": "Ywo="
+      },
+      "dirs": [
+        "empty-dir"
+      ]
+    },
+    "want": {
+      "stdout": "Li9zdWIvYi50eHQKLi9zdWIvZGVlcC9jLmMKLi9hLnR4dAo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQo=",
+          "sub/b.txt": "Ygo=",
+          "sub/deep/c.c": "Ywo="
+        },
+        "dirs": [
+          "empty-dir"
+        ],
+        "modes": {
+          "a.txt": 420,
+          "empty-dir": 493,
+          "sub": 493,
+          "sub/b.txt": 420,
+          "sub/deep": 493,
+          "sub/deep/c.c": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "empty-dir": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/b.txt": [
+            0,
+            0
+          ],
+          "sub/deep": [
+            0,
+            0
+          ],
+          "sub/deep/c.c": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  }
+]

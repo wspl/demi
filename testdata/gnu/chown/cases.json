@@ -1,0 +1,200 @@
+[
+  {
+    "name": "numeric-owner-and-group",
+    "core": true,
+    "argv": [
+      "0:0",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQo="
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQo="
+        },
+        "modes": {
+          "a.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "owner-only",
+    "core": true,
+    "argv": [
+      "0",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQo="
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQo="
+        },
+        "modes": {
+          "a.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "group-only",
+    "core": true,
+    "argv": [
+      ":0",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQo="
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQo="
+        },
+        "modes": {
+          "a.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "missing-file-errors",
+    "core": true,
+    "argv": [
+      "0:0",
+      "missing.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQo="
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": true,
+      "tree": {
+        "files": {
+          "a.txt": "YQo="
+        },
+        "modes": {
+          "a.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "recursive",
+    "core": false,
+    "argv": [
+      "-R",
+      "0:0",
+      "sub"
+    ],
+    "tree": {
+      "files": {
+        "sub/a.txt": "YQo="
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "sub/a.txt": "YQo="
+        },
+        "modes": {
+          "sub": 493,
+          "sub/a.txt": 420
+        },
+        "owners": {
+          "sub": [
+            0,
+            0
+          ],
+          "sub/a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "unknown-user-errors",
+    "core": false,
+    "argv": [
+      "no-such-user-xyz",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQo="
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": true,
+      "tree": {
+        "files": {
+          "a.txt": "YQo="
+        },
+        "modes": {
+          "a.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  }
+]

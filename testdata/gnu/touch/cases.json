@@ -1,0 +1,229 @@
+[
+  {
+    "name": "creates-new-empty-file",
+    "core": true,
+    "argv": [
+      "new.txt"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "new.txt": ""
+        },
+        "modes": {
+          "new.txt": 420
+        },
+        "owners": {
+          "new.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "leaves-existing-content-unchanged",
+    "core": true,
+    "argv": [
+      "existing.txt"
+    ],
+    "tree": {
+      "files": {
+        "existing.txt": "Y29udGVudAo="
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "existing.txt": "Y29udGVudAo="
+        },
+        "modes": {
+          "existing.txt": 420
+        },
+        "owners": {
+          "existing.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "explicit-timestamp",
+    "core": true,
+    "argv": [
+      "-t",
+      "202401020304.05",
+      "stamped.txt"
+    ],
+    "tree": {},
+    "checkTimes": [
+      "stamped.txt"
+    ],
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "stamped.txt": ""
+        },
+        "modes": {
+          "stamped.txt": 420
+        },
+        "owners": {
+          "stamped.txt": [
+            0,
+            0
+          ]
+        },
+        "times": {
+          "stamped.txt": 1704164645
+        }
+      }
+    }
+  },
+  {
+    "name": "no-create-on-missing",
+    "core": true,
+    "argv": [
+      "-c",
+      "missing.txt"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "reference-file",
+    "core": true,
+    "argv": [
+      "-r",
+      "ref.txt",
+      "copy-time.txt"
+    ],
+    "tree": {
+      "files": {
+        "ref.txt": "cgo="
+      },
+      "times": {
+        "ref.txt": 1700000000
+      }
+    },
+    "checkTimes": [
+      "copy-time.txt"
+    ],
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "copy-time.txt": "",
+          "ref.txt": "cgo="
+        },
+        "modes": {
+          "copy-time.txt": 420,
+          "ref.txt": 420
+        },
+        "owners": {
+          "copy-time.txt": [
+            0,
+            0
+          ],
+          "ref.txt": [
+            0,
+            0
+          ]
+        },
+        "times": {
+          "copy-time.txt": 1700000000
+        }
+      }
+    }
+  },
+  {
+    "name": "mtime-only",
+    "core": false,
+    "argv": [
+      "-m",
+      "-t",
+      "202401020304.05",
+      "mtime-only.txt"
+    ],
+    "tree": {},
+    "checkTimes": [
+      "mtime-only.txt"
+    ],
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "mtime-only.txt": ""
+        },
+        "modes": {
+          "mtime-only.txt": 420
+        },
+        "owners": {
+          "mtime-only.txt": [
+            0,
+            0
+          ]
+        },
+        "times": {
+          "mtime-only.txt": 1704164645
+        }
+      }
+    }
+  },
+  {
+    "name": "date-string",
+    "core": false,
+    "argv": [
+      "-d",
+      "2024-01-02 03:04:05",
+      "dated.txt"
+    ],
+    "tree": {},
+    "checkTimes": [
+      "dated.txt"
+    ],
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "dated.txt": ""
+        },
+        "modes": {
+          "dated.txt": 420
+        },
+        "owners": {
+          "dated.txt": [
+            0,
+            0
+          ]
+        },
+        "times": {
+          "dated.txt": 1704164645
+        }
+      }
+    }
+  }
+]

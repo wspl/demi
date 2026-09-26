@@ -1,0 +1,138 @@
+[
+  {
+    "name": "default-adjacent-dedup",
+    "core": true,
+    "argv": null,
+    "stdin": "YQphCmIKYgpiCmMK",
+    "tree": {},
+    "want": {
+      "stdout": "YQpiCmMK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "count",
+    "core": true,
+    "argv": [
+      "-c"
+    ],
+    "stdin": "YQphCmIKYgpiCmMK",
+    "tree": {},
+    "want": {
+      "stdout": "ICAgICAgMiBhCiAgICAgIDMgYgogICAgICAxIGMK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "only-duplicated",
+    "core": true,
+    "argv": [
+      "-d"
+    ],
+    "stdin": "YQphCmIKYgpiCmMK",
+    "tree": {},
+    "want": {
+      "stdout": "YQpiCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "only-unique",
+    "core": true,
+    "argv": [
+      "-u"
+    ],
+    "stdin": "YQphCmIKYgpiCmMK",
+    "tree": {},
+    "want": {
+      "stdout": "Ywo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "ignore-case",
+    "core": true,
+    "argv": [
+      "-i"
+    ],
+    "stdin": "QQphCkIK",
+    "tree": {},
+    "want": {
+      "stdout": "QQpCCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "file-argument",
+    "core": true,
+    "argv": [
+      "in.txt"
+    ],
+    "tree": {
+      "files": {
+        "in.txt": "YQphCmIKYgpiCmMK"
+      }
+    },
+    "want": {
+      "stdout": "YQpiCmMK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "in.txt": "YQphCmIKYgpiCmMK"
+        },
+        "modes": {
+          "in.txt": 420
+        },
+        "owners": {
+          "in.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "skip-fields",
+    "core": false,
+    "argv": [
+      "-f",
+      "1"
+    ],
+    "stdin": "eCBhCnkgYQp6IGIK",
+    "tree": {},
+    "want": {
+      "stdout": "eCBhCnogYgo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "skip-chars",
+    "core": false,
+    "argv": [
+      "-s",
+      "2"
+    ],
+    "stdin": "eGFhCnlhYQp6YmIK",
+    "tree": {},
+    "want": {
+      "stdout": "eGFhCnpiYgo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  }
+]

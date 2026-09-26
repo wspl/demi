@@ -1,0 +1,193 @@
+[
+  {
+    "name": "create-directory",
+    "core": true,
+    "argv": [
+      "newdir"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "dirs": [
+          "newdir"
+        ],
+        "modes": {
+          "newdir": 493
+        },
+        "owners": {
+          "newdir": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "already-exists-errors",
+    "core": true,
+    "argv": [
+      "already"
+    ],
+    "tree": {
+      "dirs": [
+        "already"
+      ]
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": true,
+      "tree": {
+        "dirs": [
+          "already"
+        ],
+        "modes": {
+          "already": 493
+        },
+        "owners": {
+          "already": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "parents-flag-creates-chain",
+    "core": true,
+    "argv": [
+      "-p",
+      "a/b/c"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "dirs": [
+          "a/b/c"
+        ],
+        "modes": {
+          "a": 493,
+          "a/b": 493,
+          "a/b/c": 493
+        },
+        "owners": {
+          "a": [
+            0,
+            0
+          ],
+          "a/b": [
+            0,
+            0
+          ],
+          "a/b/c": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "parents-flag-ok-if-exists",
+    "core": true,
+    "argv": [
+      "-p",
+      "already"
+    ],
+    "tree": {
+      "dirs": [
+        "already"
+      ]
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "dirs": [
+          "already"
+        ],
+        "modes": {
+          "already": 493
+        },
+        "owners": {
+          "already": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "multiple-operands",
+    "core": true,
+    "argv": [
+      "one",
+      "two"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "dirs": [
+          "one",
+          "two"
+        ],
+        "modes": {
+          "one": 493,
+          "two": 493
+        },
+        "owners": {
+          "one": [
+            0,
+            0
+          ],
+          "two": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "mode-flag",
+    "core": false,
+    "argv": [
+      "-m",
+      "700",
+      "restricted"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "dirs": [
+          "restricted"
+        ],
+        "modes": {
+          "restricted": 448
+        },
+        "owners": {
+          "restricted": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  }
+]

@@ -1,0 +1,364 @@
+[
+  {
+    "name": "default-lines-words-bytes",
+    "core": true,
+    "argv": [
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "b25lIHR3bwp0aHJlZQo=",
+        "b.txt": "Zm91cgo="
+      }
+    },
+    "want": {
+      "stdout": "IDIgIDMgMTQgYS50eHQK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "b25lIHR3bwp0aHJlZQo=",
+          "b.txt": "Zm91cgo="
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "dash-l",
+    "core": true,
+    "argv": [
+      "-l",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "b25lIHR3bwp0aHJlZQo=",
+        "b.txt": "Zm91cgo="
+      }
+    },
+    "want": {
+      "stdout": "MiBhLnR4dAo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "b25lIHR3bwp0aHJlZQo=",
+          "b.txt": "Zm91cgo="
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "dash-w",
+    "core": true,
+    "argv": [
+      "-w",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "b25lIHR3bwp0aHJlZQo=",
+        "b.txt": "Zm91cgo="
+      }
+    },
+    "want": {
+      "stdout": "MyBhLnR4dAo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "b25lIHR3bwp0aHJlZQo=",
+          "b.txt": "Zm91cgo="
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "dash-c-bytes",
+    "core": true,
+    "argv": [
+      "-c",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "b25lIHR3bwp0aHJlZQo=",
+        "b.txt": "Zm91cgo="
+      }
+    },
+    "want": {
+      "stdout": "MTQgYS50eHQK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "b25lIHR3bwp0aHJlZQo=",
+          "b.txt": "Zm91cgo="
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "stdin",
+    "core": true,
+    "argv": null,
+    "stdin": "b25lIHR3bwp0aHJlZQo=",
+    "tree": {},
+    "want": {
+      "stdout": "ICAgICAgMiAgICAgICAzICAgICAgMTQK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "multiple-files-total",
+    "core": true,
+    "argv": [
+      "a.txt",
+      "b.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "b25lIHR3bwp0aHJlZQo=",
+        "b.txt": "Zm91cgo="
+      }
+    },
+    "want": {
+      "stdout": "IDIgIDMgMTQgYS50eHQKIDEgIDEgIDUgYi50eHQKIDMgIDQgMTkgdG90YWwK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "b25lIHR3bwp0aHJlZQo=",
+          "b.txt": "Zm91cgo="
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "missing-file",
+    "core": true,
+    "argv": [
+      "missing.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "b25lIHR3bwp0aHJlZQo=",
+        "b.txt": "Zm91cgo="
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": true,
+      "tree": {
+        "files": {
+          "a.txt": "b25lIHR3bwp0aHJlZQo=",
+          "b.txt": "Zm91cgo="
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "dash-m-chars",
+    "core": false,
+    "argv": [
+      "-m",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "b25lIHR3bwp0aHJlZQo=",
+        "b.txt": "Zm91cgo="
+      }
+    },
+    "want": {
+      "stdout": "MTQgYS50eHQK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "b25lIHR3bwp0aHJlZQo=",
+          "b.txt": "Zm91cgo="
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "dash-capital-l-longest-line",
+    "core": false,
+    "argv": [
+      "-L",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "b25lIHR3bwp0aHJlZQo=",
+        "b.txt": "Zm91cgo="
+      }
+    },
+    "want": {
+      "stdout": "NyBhLnR4dAo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "b25lIHR3bwp0aHJlZQo=",
+          "b.txt": "Zm91cgo="
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "combined-l-w",
+    "core": false,
+    "argv": [
+      "-lw",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "b25lIHR3bwp0aHJlZQo=",
+        "b.txt": "Zm91cgo="
+      }
+    },
+    "want": {
+      "stdout": "IDIgIDMgYS50eHQK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "b25lIHR3bwp0aHJlZQo=",
+          "b.txt": "Zm91cgo="
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  }
+]

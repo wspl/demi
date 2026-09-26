@@ -1,0 +1,254 @@
+[
+  {
+    "name": "size-and-type",
+    "core": true,
+    "argv": [
+      "-c",
+      "%s %F",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "aGVsbG8K"
+      }
+    },
+    "want": {
+      "stdout": "NiByZWd1bGFyIGZpbGUK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "aGVsbG8K"
+        },
+        "modes": {
+          "a.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "octal-permissions",
+    "core": true,
+    "argv": [
+      "-c",
+      "%a",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "aGVsbG8K"
+      }
+    },
+    "want": {
+      "stdout": "NjQ0Cg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "aGVsbG8K"
+        },
+        "modes": {
+          "a.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "numeric-owner",
+    "core": true,
+    "argv": [
+      "-c",
+      "%u:%g",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "aGVsbG8K"
+      }
+    },
+    "want": {
+      "stdout": "MDowCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "aGVsbG8K"
+        },
+        "modes": {
+          "a.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "missing-file-errors",
+    "core": true,
+    "argv": [
+      "missing.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "aGVsbG8K"
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": true,
+      "tree": {
+        "files": {
+          "a.txt": "aGVsbG8K"
+        },
+        "modes": {
+          "a.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "filename-format",
+    "core": true,
+    "argv": [
+      "-c",
+      "%n",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "aGVsbG8K"
+      }
+    },
+    "want": {
+      "stdout": "YS50eHQK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "aGVsbG8K"
+        },
+        "modes": {
+          "a.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "dereference-symlink",
+    "core": false,
+    "argv": [
+      "-L",
+      "-c",
+      "%s %F",
+      "link.txt"
+    ],
+    "tree": {
+      "files": {
+        "target.txt": "dAo="
+      },
+      "symlinks": {
+        "link.txt": "target.txt"
+      }
+    },
+    "want": {
+      "stdout": "MiByZWd1bGFyIGZpbGUK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "target.txt": "dAo="
+        },
+        "symlinks": {
+          "link.txt": "target.txt"
+        },
+        "modes": {
+          "link.txt": 511,
+          "target.txt": 420
+        },
+        "owners": {
+          "link.txt": [
+            0,
+            0
+          ],
+          "target.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "symlink-itself",
+    "core": false,
+    "argv": [
+      "-c",
+      "%F",
+      "link.txt"
+    ],
+    "tree": {
+      "files": {
+        "target.txt": "dAo="
+      },
+      "symlinks": {
+        "link.txt": "target.txt"
+      }
+    },
+    "want": {
+      "stdout": "c3ltYm9saWMgbGluawo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "target.txt": "dAo="
+        },
+        "symlinks": {
+          "link.txt": "target.txt"
+        },
+        "modes": {
+          "link.txt": 511,
+          "target.txt": 420
+        },
+        "owners": {
+          "link.txt": [
+            0,
+            0
+          ],
+          "target.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  }
+]

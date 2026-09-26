@@ -1,0 +1,251 @@
+[
+  {
+    "name": "identity",
+    "core": true,
+    "argv": [
+      "."
+    ],
+    "stdin": "eyJuYW1lIjoiZGVtaSIsInRhZ3MiOlsiZ28iLCJydXN0Il0sImNvdW50IjoyLCJuZXN0ZWQiOnsiYSI6MSwiYiI6Mn19Cg==",
+    "tree": {},
+    "want": {
+      "stdout": "ewogICJuYW1lIjogImRlbWkiLAogICJ0YWdzIjogWwogICAgImdvIiwKICAgICJydXN0IgogIF0sCiAgImNvdW50IjogMiwKICAibmVzdGVkIjogewogICAgImEiOiAxLAogICAgImIiOiAyCiAgfQp9Cg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "field-access",
+    "core": true,
+    "argv": [
+      ".name"
+    ],
+    "stdin": "eyJuYW1lIjoiZGVtaSIsInRhZ3MiOlsiZ28iLCJydXN0Il0sImNvdW50IjoyLCJuZXN0ZWQiOnsiYSI6MSwiYiI6Mn19Cg==",
+    "tree": {},
+    "want": {
+      "stdout": "ImRlbWkiCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "raw-output",
+    "core": true,
+    "argv": [
+      "-r",
+      ".name"
+    ],
+    "stdin": "eyJuYW1lIjoiZGVtaSIsInRhZ3MiOlsiZ28iLCJydXN0Il0sImNvdW50IjoyLCJuZXN0ZWQiOnsiYSI6MSwiYiI6Mn19Cg==",
+    "tree": {},
+    "want": {
+      "stdout": "ZGVtaQo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "compact-output",
+    "core": true,
+    "argv": [
+      "-c",
+      "."
+    ],
+    "stdin": "eyJuYW1lIjoiZGVtaSIsInRhZ3MiOlsiZ28iLCJydXN0Il0sImNvdW50IjoyLCJuZXN0ZWQiOnsiYSI6MSwiYiI6Mn19Cg==",
+    "tree": {},
+    "want": {
+      "stdout": "eyJuYW1lIjoiZGVtaSIsInRhZ3MiOlsiZ28iLCJydXN0Il0sImNvdW50IjoyLCJuZXN0ZWQiOnsiYSI6MSwiYiI6Mn19Cg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "array-index",
+    "core": true,
+    "argv": [
+      ".tags[0]"
+    ],
+    "stdin": "eyJuYW1lIjoiZGVtaSIsInRhZ3MiOlsiZ28iLCJydXN0Il0sImNvdW50IjoyLCJuZXN0ZWQiOnsiYSI6MSwiYiI6Mn19Cg==",
+    "tree": {},
+    "want": {
+      "stdout": "ImdvIgo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "array-length",
+    "core": true,
+    "argv": [
+      "length"
+    ],
+    "stdin": "WzEsMiwzLDQsNV0K",
+    "tree": {},
+    "want": {
+      "stdout": "NQo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "map-expression",
+    "core": true,
+    "argv": [
+      "map(. * 2)"
+    ],
+    "stdin": "WzEsMiwzLDQsNV0K",
+    "tree": {},
+    "want": {
+      "stdout": "WwogIDIsCiAgNCwKICA2LAogIDgsCiAgMTAKXQo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "select-filter",
+    "core": true,
+    "argv": [
+      "map(select(. \u003e 2))"
+    ],
+    "stdin": "WzEsMiwzLDQsNV0K",
+    "tree": {},
+    "want": {
+      "stdout": "WwogIDMsCiAgNCwKICA1Cl0K",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "keys",
+    "core": true,
+    "argv": [
+      "-c",
+      "keys"
+    ],
+    "stdin": "eyJuYW1lIjoiZGVtaSIsInRhZ3MiOlsiZ28iLCJydXN0Il0sImNvdW50IjoyLCJuZXN0ZWQiOnsiYSI6MSwiYiI6Mn19Cg==",
+    "tree": {},
+    "want": {
+      "stdout": "WyJjb3VudCIsIm5hbWUiLCJuZXN0ZWQiLCJ0YWdzIl0K",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "null-input-with-arg",
+    "core": true,
+    "argv": [
+      "-n",
+      "--arg",
+      "x",
+      "hi",
+      "$x"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "ImhpIgo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "slurp-lines-to-array",
+    "core": true,
+    "argv": [
+      "-c",
+      "-s",
+      "."
+    ],
+    "stdin": "eyJuIjoxfQp7Im4iOjJ9Cg==",
+    "tree": {},
+    "want": {
+      "stdout": "W3sibiI6MX0seyJuIjoyfV0K",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "invalid-json-error",
+    "core": true,
+    "argv": [
+      "."
+    ],
+    "stdin": "bm90IGpzb24K",
+    "tree": {},
+    "want": {
+      "stdout": "",
+      "exitCode": 5,
+      "stderrNonEmpty": true,
+      "tree": {}
+    }
+  },
+  {
+    "name": "nested-field",
+    "core": false,
+    "argv": [
+      ".nested.a"
+    ],
+    "stdin": "eyJuYW1lIjoiZGVtaSIsInRhZ3MiOlsiZ28iLCJydXN0Il0sImNvdW50IjoyLCJuZXN0ZWQiOnsiYSI6MSwiYiI6Mn19Cg==",
+    "tree": {},
+    "want": {
+      "stdout": "MQo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "add",
+    "core": false,
+    "argv": [
+      "add"
+    ],
+    "stdin": "WzEsMiwzLDQsNV0K",
+    "tree": {},
+    "want": {
+      "stdout": "MTUK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "sort-by",
+    "core": false,
+    "argv": [
+      "-c",
+      "sort_by(-.)"
+    ],
+    "stdin": "WzEsMiwzLDQsNV0K",
+    "tree": {},
+    "want": {
+      "stdout": "WzUsNCwzLDIsMV0K",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "tostring-then-fromjson",
+    "core": false,
+    "argv": [
+      "tostring"
+    ],
+    "stdin": "WzEsMiwzLDQsNV0K",
+    "tree": {},
+    "want": {
+      "stdout": "IlsxLDIsMyw0LDVdIgo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  }
+]

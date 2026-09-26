@@ -1,0 +1,367 @@
+[
+  {
+    "name": "default-lexical",
+    "core": true,
+    "argv": [
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YmFuYW5hCmFwcGxlCmNoZXJyeQphcHBsZQo="
+      }
+    },
+    "want": {
+      "stdout": "YXBwbGUKYXBwbGUKYmFuYW5hCmNoZXJyeQo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YmFuYW5hCmFwcGxlCmNoZXJyeQphcHBsZQo="
+        },
+        "modes": {
+          "a.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "reverse",
+    "core": true,
+    "argv": [
+      "-r",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YmFuYW5hCmFwcGxlCmNoZXJyeQphcHBsZQo="
+      }
+    },
+    "want": {
+      "stdout": "Y2hlcnJ5CmJhbmFuYQphcHBsZQphcHBsZQo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YmFuYW5hCmFwcGxlCmNoZXJyeQphcHBsZQo="
+        },
+        "modes": {
+          "a.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "unique",
+    "core": true,
+    "argv": [
+      "-u",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YmFuYW5hCmFwcGxlCmNoZXJyeQphcHBsZQo="
+      }
+    },
+    "want": {
+      "stdout": "YXBwbGUKYmFuYW5hCmNoZXJyeQo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YmFuYW5hCmFwcGxlCmNoZXJyeQphcHBsZQo="
+        },
+        "modes": {
+          "a.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "numeric",
+    "core": true,
+    "argv": [
+      "-n",
+      "nums.txt"
+    ],
+    "tree": {
+      "files": {
+        "nums.txt": "MTAKMgozMwo0Cg=="
+      }
+    },
+    "want": {
+      "stdout": "Mgo0CjEwCjMzCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "nums.txt": "MTAKMgozMwo0Cg=="
+        },
+        "modes": {
+          "nums.txt": 420
+        },
+        "owners": {
+          "nums.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "field-key",
+    "core": true,
+    "argv": [
+      "-t",
+      ":",
+      "-k",
+      "2,2n",
+      "fields.txt"
+    ],
+    "tree": {
+      "files": {
+        "fields.txt": "YjoyCmE6MTAKYzoxCg=="
+      }
+    },
+    "want": {
+      "stdout": "YzoxCmI6MgphOjEwCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "fields.txt": "YjoyCmE6MTAKYzoxCg=="
+        },
+        "modes": {
+          "fields.txt": 420
+        },
+        "owners": {
+          "fields.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "stdin",
+    "core": true,
+    "argv": null,
+    "stdin": "YmFuYW5hCmFwcGxlCg==",
+    "tree": {},
+    "want": {
+      "stdout": "YXBwbGUKYmFuYW5hCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "check-sorted-succeeds",
+    "core": true,
+    "argv": [
+      "-c",
+      "sorted.txt"
+    ],
+    "tree": {
+      "files": {
+        "sorted.txt": "YQpiCmMK"
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "sorted.txt": "YQpiCmMK"
+        },
+        "modes": {
+          "sorted.txt": 420
+        },
+        "owners": {
+          "sorted.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "check-unsorted-fails",
+    "core": true,
+    "argv": [
+      "-c",
+      "unsorted.txt"
+    ],
+    "tree": {
+      "files": {
+        "unsorted.txt": "YgphCmMK"
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": true,
+      "tree": {
+        "files": {
+          "unsorted.txt": "YgphCmMK"
+        },
+        "modes": {
+          "unsorted.txt": 420
+        },
+        "owners": {
+          "unsorted.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "fold-case",
+    "core": false,
+    "argv": [
+      "-f",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YmFuYW5hCmFwcGxlCmNoZXJyeQphcHBsZQo="
+      }
+    },
+    "want": {
+      "stdout": "YXBwbGUKYXBwbGUKYmFuYW5hCmNoZXJyeQo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YmFuYW5hCmFwcGxlCmNoZXJyeQphcHBsZQo="
+        },
+        "modes": {
+          "a.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "human-numeric",
+    "core": false,
+    "argv": [
+      "-h"
+    ],
+    "stdin": "MTBLCjJLCjFNCg==",
+    "tree": {},
+    "want": {
+      "stdout": "MksKMTBLCjFNCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "merge-two-files",
+    "core": false,
+    "argv": [
+      "-m",
+      "a.txt",
+      "sorted.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YmFuYW5hCmFwcGxlCmNoZXJyeQphcHBsZQo=",
+        "sorted.txt": "YQpiCmMK"
+      }
+    },
+    "want": {
+      "stdout": "YQpiCmJhbmFuYQphcHBsZQpjCmNoZXJyeQphcHBsZQo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YmFuYW5hCmFwcGxlCmNoZXJyeQphcHBsZQo=",
+          "sorted.txt": "YQpiCmMK"
+        },
+        "modes": {
+          "a.txt": 420,
+          "sorted.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "sorted.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "output-to-file",
+    "core": false,
+    "argv": [
+      "-o",
+      "out.txt",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YmFuYW5hCmFwcGxlCmNoZXJyeQphcHBsZQo="
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YmFuYW5hCmFwcGxlCmNoZXJyeQphcHBsZQo=",
+          "out.txt": "YXBwbGUKYXBwbGUKYmFuYW5hCmNoZXJyeQo="
+        },
+        "modes": {
+          "a.txt": 420,
+          "out.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "out.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  }
+]

@@ -1,0 +1,125 @@
+[
+  {
+    "name": "reverses-line-order",
+    "core": true,
+    "argv": [
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "b25lCnR3bwp0aHJlZQo="
+      }
+    },
+    "want": {
+      "stdout": "dGhyZWUKdHdvCm9uZQo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "b25lCnR3bwp0aHJlZQo="
+        },
+        "modes": {
+          "a.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "stdin",
+    "core": true,
+    "argv": null,
+    "stdin": "b25lCnR3bwp0aHJlZQo=",
+    "tree": {},
+    "want": {
+      "stdout": "dGhyZWUKdHdvCm9uZQo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "multiple-files",
+    "core": true,
+    "argv": [
+      "a.txt",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "b25lCnR3bwp0aHJlZQo="
+      }
+    },
+    "want": {
+      "stdout": "dGhyZWUKdHdvCm9uZQp0aHJlZQp0d28Kb25lCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "b25lCnR3bwp0aHJlZQo="
+        },
+        "modes": {
+          "a.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "missing-file-errors",
+    "core": true,
+    "argv": [
+      "missing.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "b25lCnR3bwp0aHJlZQo="
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": true,
+      "tree": {
+        "files": {
+          "a.txt": "b25lCnR3bwp0aHJlZQo="
+        },
+        "modes": {
+          "a.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "custom-separator",
+    "core": false,
+    "argv": [
+      "-s",
+      ","
+    ],
+    "stdin": "b25lLHR3byx0aHJlZQ==",
+    "tree": {},
+    "want": {
+      "stdout": "dGhyZWV0d28sb25lLA==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  }
+]

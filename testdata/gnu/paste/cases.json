@@ -1,0 +1,193 @@
+[
+  {
+    "name": "two-files-tab-joined",
+    "core": true,
+    "argv": [
+      "a.txt",
+      "b.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "MQoyCjMK",
+        "b.txt": "eAp5CnoK"
+      }
+    },
+    "want": {
+      "stdout": "MQl4CjIJeQozCXoK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "MQoyCjMK",
+          "b.txt": "eAp5CnoK"
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "custom-delimiter",
+    "core": true,
+    "argv": [
+      "-d",
+      ",",
+      "a.txt",
+      "b.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "MQoyCjMK",
+        "b.txt": "eAp5CnoK"
+      }
+    },
+    "want": {
+      "stdout": "MSx4CjIseQozLHoK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "MQoyCjMK",
+          "b.txt": "eAp5CnoK"
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "serial-single-file",
+    "core": true,
+    "argv": [
+      "-s",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "MQoyCjMK",
+        "b.txt": "eAp5CnoK"
+      }
+    },
+    "want": {
+      "stdout": "MQkyCTMK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "MQoyCjMK",
+          "b.txt": "eAp5CnoK"
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "stdin-with-dash",
+    "core": true,
+    "argv": [
+      "-",
+      "b.txt"
+    ],
+    "stdin": "MQoyCjMK",
+    "tree": {
+      "files": {
+        "b.txt": "eAp5CnoK"
+      }
+    },
+    "want": {
+      "stdout": "MQl4CjIJeQozCXoK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "b.txt": "eAp5CnoK"
+        },
+        "modes": {
+          "b.txt": 420
+        },
+        "owners": {
+          "b.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "mismatched-line-counts",
+    "core": false,
+    "argv": [
+      "a.txt",
+      "short.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "MQoyCjMK",
+        "short.txt": "eAo="
+      }
+    },
+    "want": {
+      "stdout": "MQl4CjIJCjMJCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "MQoyCjMK",
+          "short.txt": "eAo="
+        },
+        "modes": {
+          "a.txt": 420,
+          "short.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "short.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  }
+]

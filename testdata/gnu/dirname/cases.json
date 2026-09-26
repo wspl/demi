@@ -1,0 +1,59 @@
+[
+  {
+    "name": "simple-path",
+    "core": true,
+    "argv": [
+      "/a/b/c.txt"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "L2EvYgo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "no-directory-component",
+    "core": true,
+    "argv": [
+      "c.txt"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "Lgo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "root",
+    "core": true,
+    "argv": [
+      "/"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "Lwo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "multiple-operands",
+    "core": false,
+    "argv": [
+      "/a/b.txt",
+      "/c/d.txt"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "L2EKL2MK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  }
+]

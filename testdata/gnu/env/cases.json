@@ -1,0 +1,84 @@
+[
+  {
+    "name": "prints-environment",
+    "core": true,
+    "argv": null,
+    "tree": {},
+    "env": {
+      "HOME": "/home/fixture"
+    },
+    "want": {
+      "stdout": "SE9NRT0vaG9tZS9maXh0dXJlCkxBTkc9QwpMQ19BTEw9QwpQQVRIPS91c3IvbG9jYWwvZ28xLjI0LjcvYmluOi9yb290Ly5sb2NhbC9iaW46L3Jvb3QvLmNhcmdvL2JpbjovdXNyL2xvY2FsL2dvL2Jpbjovb3B0L25vZGUyMi9iaW46L29wdC9tYXZlbi9iaW46L29wdC9ncmFkbGUvYmluOi9vcHQvcmJlbnYvYmluOi9yb290Ly5idW4vYmluOi91c3IvbG9jYWwvc2JpbjovdXNyL2xvY2FsL2JpbjovdXNyL3NiaW46L3Vzci9iaW46L3NiaW46L2JpbgpUWj1VVEMK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "sets-a-variable-for-the-command",
+    "core": true,
+    "argv": [
+      "FOO=bar",
+      "env"
+    ],
+    "tree": {},
+    "env": {
+      "HOME": "/home/fixture"
+    },
+    "want": {
+      "stdout": "SE9NRT0vaG9tZS9maXh0dXJlCkxBTkc9QwpMQ19BTEw9QwpQQVRIPS91c3IvbG9jYWwvZ28xLjI0LjcvYmluOi9yb290Ly5sb2NhbC9iaW46L3Jvb3QvLmNhcmdvL2JpbjovdXNyL2xvY2FsL2dvL2Jpbjovb3B0L25vZGUyMi9iaW46L29wdC9tYXZlbi9iaW46L29wdC9ncmFkbGUvYmluOi9vcHQvcmJlbnYvYmluOi9yb290Ly5idW4vYmluOi91c3IvbG9jYWwvc2JpbjovdXNyL2xvY2FsL2JpbjovdXNyL3NiaW46L3Vzci9iaW46L3NiaW46L2JpbgpUWj1VVEMKRk9PPWJhcgo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "dash-i-clears-inherited-environment",
+    "core": true,
+    "argv": [
+      "-i",
+      "FOO=bar",
+      "env"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "Rk9PPWJhcgo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "dash-u-unsets-a-variable",
+    "core": true,
+    "argv": [
+      "-u",
+      "HOME",
+      "env"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "TEFORz1DCkxDX0FMTD1DClBBVEg9L3Vzci9sb2NhbC9nbzEuMjQuNy9iaW46L3Jvb3QvLmxvY2FsL2Jpbjovcm9vdC8uY2FyZ28vYmluOi91c3IvbG9jYWwvZ28vYmluOi9vcHQvbm9kZTIyL2Jpbjovb3B0L21hdmVuL2Jpbjovb3B0L2dyYWRsZS9iaW46L29wdC9yYmVudi9iaW46L3Jvb3QvLmJ1bi9iaW46L3Vzci9sb2NhbC9zYmluOi91c3IvbG9jYWwvYmluOi91c3Ivc2JpbjovdXNyL2Jpbjovc2JpbjovYmluClRaPVVUQwo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "null-separated-output",
+    "core": false,
+    "argv": [
+      "-0"
+    ],
+    "tree": {},
+    "env": {
+      "HOME": "/home/fixture"
+    },
+    "want": {
+      "stdout": "SE9NRT0vaG9tZS9maXh0dXJlAExBTkc9QwBMQ19BTEw9QwBQQVRIPS91c3IvbG9jYWwvZ28xLjI0LjcvYmluOi9yb290Ly5sb2NhbC9iaW46L3Jvb3QvLmNhcmdvL2JpbjovdXNyL2xvY2FsL2dvL2Jpbjovb3B0L25vZGUyMi9iaW46L29wdC9tYXZlbi9iaW46L29wdC9ncmFkbGUvYmluOi9vcHQvcmJlbnYvYmluOi9yb290Ly5idW4vYmluOi91c3IvbG9jYWwvc2JpbjovdXNyL2xvY2FsL2JpbjovdXNyL3NiaW46L3Vzci9iaW46L3NiaW46L2JpbgBUWj1VVEMA",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  }
+]

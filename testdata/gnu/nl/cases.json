@@ -1,0 +1,210 @@
+[
+  {
+    "name": "default-skips-blank-lines",
+    "core": true,
+    "argv": [
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "b25lCgp0d28KdGhyZWUK"
+      }
+    },
+    "want": {
+      "stdout": "ICAgICAxCW9uZQogICAgICAgCiAgICAgMgl0d28KICAgICAzCXRocmVlCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "b25lCgp0d28KdGhyZWUK"
+        },
+        "modes": {
+          "a.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "number-all-lines",
+    "core": true,
+    "argv": [
+      "-ba",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "b25lCgp0d28KdGhyZWUK"
+      }
+    },
+    "want": {
+      "stdout": "ICAgICAxCW9uZQogICAgIDIJCiAgICAgMwl0d28KICAgICA0CXRocmVlCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "b25lCgp0d28KdGhyZWUK"
+        },
+        "modes": {
+          "a.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "custom-separator",
+    "core": true,
+    "argv": [
+      "-s",
+      ": ",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "b25lCgp0d28KdGhyZWUK"
+      }
+    },
+    "want": {
+      "stdout": "ICAgICAxOiBvbmUKICAgICAgICAKICAgICAyOiB0d28KICAgICAzOiB0aHJlZQo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "b25lCgp0d28KdGhyZWUK"
+        },
+        "modes": {
+          "a.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "custom-width",
+    "core": true,
+    "argv": [
+      "-w",
+      "3",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "b25lCgp0d28KdGhyZWUK"
+      }
+    },
+    "want": {
+      "stdout": "ICAxCW9uZQogICAgCiAgMgl0d28KICAzCXRocmVlCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "b25lCgp0d28KdGhyZWUK"
+        },
+        "modes": {
+          "a.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "stdin",
+    "core": true,
+    "argv": null,
+    "stdin": "YQpiCg==",
+    "tree": {},
+    "want": {
+      "stdout": "ICAgICAxCWEKICAgICAyCWIK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "right-justified-no-leading-zeros",
+    "core": false,
+    "argv": [
+      "-n",
+      "rn",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "b25lCgp0d28KdGhyZWUK"
+      }
+    },
+    "want": {
+      "stdout": "ICAgICAxCW9uZQogICAgICAgCiAgICAgMgl0d28KICAgICAzCXRocmVlCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "b25lCgp0d28KdGhyZWUK"
+        },
+        "modes": {
+          "a.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "right-justified-leading-zeros",
+    "core": false,
+    "argv": [
+      "-n",
+      "rz",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "b25lCgp0d28KdGhyZWUK"
+      }
+    },
+    "want": {
+      "stdout": "MDAwMDAxCW9uZQogICAgICAgCjAwMDAwMgl0d28KMDAwMDAzCXRocmVlCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "b25lCgp0d28KdGhyZWUK"
+        },
+        "modes": {
+          "a.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  }
+]

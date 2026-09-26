@@ -1,0 +1,909 @@
+[
+  {
+    "name": "plain-match",
+    "core": true,
+    "argv": [
+      "apple",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+        "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+        "nomatch.txt": "eHl6Cg==",
+        "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+      }
+    },
+    "want": {
+      "stdout": "YXBwbGUKY2hlcnJ5IGFwcGxlCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+          "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+          "nomatch.txt": "eHl6Cg==",
+          "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "nomatch.txt": 420,
+          "sub": 493,
+          "sub/c.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "nomatch.txt": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/c.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "no-match-exit-1",
+    "core": true,
+    "argv": [
+      "zzz",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+        "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+        "nomatch.txt": "eHl6Cg==",
+        "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+          "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+          "nomatch.txt": "eHl6Cg==",
+          "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "nomatch.txt": 420,
+          "sub": 493,
+          "sub/c.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "nomatch.txt": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/c.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "ignore-case",
+    "core": true,
+    "argv": [
+      "-i",
+      "banana",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+        "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+        "nomatch.txt": "eHl6Cg==",
+        "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+      }
+    },
+    "want": {
+      "stdout": "QmFuYW5hCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+          "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+          "nomatch.txt": "eHl6Cg==",
+          "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "nomatch.txt": 420,
+          "sub": 493,
+          "sub/c.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "nomatch.txt": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/c.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "line-numbers",
+    "core": true,
+    "argv": [
+      "-n",
+      "apple",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+        "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+        "nomatch.txt": "eHl6Cg==",
+        "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+      }
+    },
+    "want": {
+      "stdout": "MTphcHBsZQozOmNoZXJyeSBhcHBsZQo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+          "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+          "nomatch.txt": "eHl6Cg==",
+          "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "nomatch.txt": 420,
+          "sub": 493,
+          "sub/c.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "nomatch.txt": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/c.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "invert-match",
+    "core": true,
+    "argv": [
+      "-v",
+      "apple",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+        "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+        "nomatch.txt": "eHl6Cg==",
+        "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+      }
+    },
+    "want": {
+      "stdout": "QmFuYW5hCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+          "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+          "nomatch.txt": "eHl6Cg==",
+          "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "nomatch.txt": 420,
+          "sub": 493,
+          "sub/c.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "nomatch.txt": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/c.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "count",
+    "core": true,
+    "argv": [
+      "-c",
+      "apple",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+        "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+        "nomatch.txt": "eHl6Cg==",
+        "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+      }
+    },
+    "want": {
+      "stdout": "Mgo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+          "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+          "nomatch.txt": "eHl6Cg==",
+          "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "nomatch.txt": 420,
+          "sub": 493,
+          "sub/c.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "nomatch.txt": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/c.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "files-with-matches",
+    "core": true,
+    "argv": [
+      "--sort",
+      "path",
+      "-l",
+      "apple",
+      "a.txt",
+      "b.txt",
+      "nomatch.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+        "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+        "nomatch.txt": "eHl6Cg==",
+        "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+      }
+    },
+    "want": {
+      "stdout": "YS50eHQKYi50eHQK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+          "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+          "nomatch.txt": "eHl6Cg==",
+          "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "nomatch.txt": 420,
+          "sub": 493,
+          "sub/c.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "nomatch.txt": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/c.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "recursive-by-default",
+    "core": true,
+    "argv": [
+      "--sort",
+      "path",
+      "apple",
+      "."
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+        "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+        "nomatch.txt": "eHl6Cg==",
+        "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+      }
+    },
+    "want": {
+      "stdout": "Li9hLnR4dDphcHBsZQouL2EudHh0OmNoZXJyeSBhcHBsZQouL2IudHh0OmFwcGxlIHBpZQouL3N1Yi9jLnR4dDpuZXN0ZWQgYXBwbGUK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+          "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+          "nomatch.txt": "eHl6Cg==",
+          "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "nomatch.txt": 420,
+          "sub": 493,
+          "sub/c.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "nomatch.txt": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/c.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "stdin",
+    "core": true,
+    "argv": [
+      "apple"
+    ],
+    "stdin": "YXBwbGUKYmFuYW5hCg==",
+    "tree": {},
+    "want": {
+      "stdout": "YXBwbGUK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "fixed-strings",
+    "core": true,
+    "argv": [
+      "-F",
+      "apple",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+        "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+        "nomatch.txt": "eHl6Cg==",
+        "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+      }
+    },
+    "want": {
+      "stdout": "YXBwbGUKY2hlcnJ5IGFwcGxlCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+          "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+          "nomatch.txt": "eHl6Cg==",
+          "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "nomatch.txt": 420,
+          "sub": 493,
+          "sub/c.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "nomatch.txt": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/c.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "missing-file-error",
+    "core": true,
+    "argv": [
+      "apple",
+      "missing.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+        "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+        "nomatch.txt": "eHl6Cg==",
+        "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 2,
+      "stderrNonEmpty": true,
+      "tree": {
+        "files": {
+          "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+          "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+          "nomatch.txt": "eHl6Cg==",
+          "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "nomatch.txt": 420,
+          "sub": 493,
+          "sub/c.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "nomatch.txt": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/c.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "word-match",
+    "core": false,
+    "argv": [
+      "-w",
+      "apple",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+        "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+        "nomatch.txt": "eHl6Cg==",
+        "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+      }
+    },
+    "want": {
+      "stdout": "YXBwbGUKY2hlcnJ5IGFwcGxlCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+          "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+          "nomatch.txt": "eHl6Cg==",
+          "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "nomatch.txt": 420,
+          "sub": 493,
+          "sub/c.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "nomatch.txt": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/c.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "line-match",
+    "core": false,
+    "argv": [
+      "-x",
+      "apple",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+        "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+        "nomatch.txt": "eHl6Cg==",
+        "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+      }
+    },
+    "want": {
+      "stdout": "YXBwbGUK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+          "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+          "nomatch.txt": "eHl6Cg==",
+          "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "nomatch.txt": 420,
+          "sub": 493,
+          "sub/c.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "nomatch.txt": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/c.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "only-matching",
+    "core": false,
+    "argv": [
+      "-o",
+      "apple",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+        "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+        "nomatch.txt": "eHl6Cg==",
+        "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+      }
+    },
+    "want": {
+      "stdout": "YXBwbGUKYXBwbGUK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+          "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+          "nomatch.txt": "eHl6Cg==",
+          "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "nomatch.txt": 420,
+          "sub": 493,
+          "sub/c.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "nomatch.txt": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/c.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "context",
+    "core": false,
+    "argv": [
+      "-C",
+      "1",
+      "apple",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+        "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+        "nomatch.txt": "eHl6Cg==",
+        "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+      }
+    },
+    "want": {
+      "stdout": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+          "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+          "nomatch.txt": "eHl6Cg==",
+          "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "nomatch.txt": 420,
+          "sub": 493,
+          "sub/c.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "nomatch.txt": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/c.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "glob-restrict",
+    "core": false,
+    "argv": [
+      "--sort",
+      "path",
+      "-g",
+      "*.txt",
+      "--",
+      "apple",
+      "."
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+        "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+        "nomatch.txt": "eHl6Cg==",
+        "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+      }
+    },
+    "want": {
+      "stdout": "Li9hLnR4dDphcHBsZQouL2EudHh0OmNoZXJyeSBhcHBsZQouL2IudHh0OmFwcGxlIHBpZQouL3N1Yi9jLnR4dDpuZXN0ZWQgYXBwbGUK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YXBwbGUKQmFuYW5hCmNoZXJyeSBhcHBsZQo=",
+          "b.txt": "ZGF0ZQphcHBsZSBwaWUK",
+          "nomatch.txt": "eHl6Cg==",
+          "sub/c.txt": "bmVzdGVkIGFwcGxlCg=="
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "nomatch.txt": 420,
+          "sub": 493,
+          "sub/c.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "nomatch.txt": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/c.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  }
+]

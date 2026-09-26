@@ -1,0 +1,242 @@
+[
+  {
+    "name": "resolves-relative-path",
+    "core": true,
+    "argv": [
+      "--relative-to=.",
+      "dir/target.txt"
+    ],
+    "tree": {
+      "files": {
+        "dir/target.txt": "dAo="
+      },
+      "symlinks": {
+        "link.txt": "dir/target.txt"
+      }
+    },
+    "want": {
+      "stdout": "ZGlyL3RhcmdldC50eHQK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "dir/target.txt": "dAo="
+        },
+        "symlinks": {
+          "link.txt": "dir/target.txt"
+        },
+        "modes": {
+          "dir": 493,
+          "dir/target.txt": 420,
+          "link.txt": 511
+        },
+        "owners": {
+          "dir": [
+            0,
+            0
+          ],
+          "dir/target.txt": [
+            0,
+            0
+          ],
+          "link.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "resolves-through-symlink",
+    "core": true,
+    "argv": [
+      "--relative-to=.",
+      "link.txt"
+    ],
+    "tree": {
+      "files": {
+        "dir/target.txt": "dAo="
+      },
+      "symlinks": {
+        "link.txt": "dir/target.txt"
+      }
+    },
+    "want": {
+      "stdout": "ZGlyL3RhcmdldC50eHQK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "dir/target.txt": "dAo="
+        },
+        "symlinks": {
+          "link.txt": "dir/target.txt"
+        },
+        "modes": {
+          "dir": 493,
+          "dir/target.txt": 420,
+          "link.txt": 511
+        },
+        "owners": {
+          "dir": [
+            0,
+            0
+          ],
+          "dir/target.txt": [
+            0,
+            0
+          ],
+          "link.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "dot-is-working-directory",
+    "core": true,
+    "argv": [
+      "--relative-to=.",
+      "."
+    ],
+    "tree": {
+      "files": {
+        "dir/target.txt": "dAo="
+      },
+      "symlinks": {
+        "link.txt": "dir/target.txt"
+      }
+    },
+    "want": {
+      "stdout": "Lgo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "dir/target.txt": "dAo="
+        },
+        "symlinks": {
+          "link.txt": "dir/target.txt"
+        },
+        "modes": {
+          "dir": 493,
+          "dir/target.txt": 420,
+          "link.txt": 511
+        },
+        "owners": {
+          "dir": [
+            0,
+            0
+          ],
+          "dir/target.txt": [
+            0,
+            0
+          ],
+          "link.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "missing-path-with-existing-only-errors",
+    "core": true,
+    "argv": [
+      "-e",
+      "missing.txt"
+    ],
+    "tree": {
+      "files": {
+        "dir/target.txt": "dAo="
+      },
+      "symlinks": {
+        "link.txt": "dir/target.txt"
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": true,
+      "tree": {
+        "files": {
+          "dir/target.txt": "dAo="
+        },
+        "symlinks": {
+          "link.txt": "dir/target.txt"
+        },
+        "modes": {
+          "dir": 493,
+          "dir/target.txt": 420,
+          "link.txt": 511
+        },
+        "owners": {
+          "dir": [
+            0,
+            0
+          ],
+          "dir/target.txt": [
+            0,
+            0
+          ],
+          "link.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "relative-to-subdirectory",
+    "core": false,
+    "argv": [
+      "--relative-to=dir",
+      "dir/target.txt"
+    ],
+    "tree": {
+      "files": {
+        "dir/target.txt": "dAo="
+      },
+      "symlinks": {
+        "link.txt": "dir/target.txt"
+      }
+    },
+    "want": {
+      "stdout": "dGFyZ2V0LnR4dAo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "dir/target.txt": "dAo="
+        },
+        "symlinks": {
+          "link.txt": "dir/target.txt"
+        },
+        "modes": {
+          "dir": 493,
+          "dir/target.txt": 420,
+          "link.txt": 511
+        },
+        "owners": {
+          "dir": [
+            0,
+            0
+          ],
+          "dir/target.txt": [
+            0,
+            0
+          ],
+          "link.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  }
+]

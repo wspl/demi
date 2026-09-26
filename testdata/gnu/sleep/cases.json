@@ -1,0 +1,71 @@
+[
+  {
+    "name": "zero-seconds",
+    "core": true,
+    "argv": [
+      "0"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "fractional-zero",
+    "core": true,
+    "argv": [
+      "0.0"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "multiple-operands-sum",
+    "core": true,
+    "argv": [
+      "0",
+      "0"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "invalid-duration-errors",
+    "core": true,
+    "argv": [
+      "not-a-number"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": true,
+      "tree": {}
+    }
+  },
+  {
+    "name": "missing-operand-errors",
+    "core": true,
+    "argv": null,
+    "tree": {},
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": true,
+      "tree": {}
+    }
+  }
+]

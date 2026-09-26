@@ -1,0 +1,119 @@
+[
+  {
+    "name": "epoch-to-iso-date",
+    "core": true,
+    "argv": [
+      "-u",
+      "-d",
+      "@0",
+      "+%Y-%m-%d"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "MTk3MC0wMS0wMQo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "epoch-seconds-round-trip",
+    "core": true,
+    "argv": [
+      "-u",
+      "-d",
+      "@1700000000",
+      "+%s"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "MTcwMDAwMDAwMAo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "day-of-week-name",
+    "core": true,
+    "argv": [
+      "-u",
+      "-d",
+      "2024-01-02",
+      "+%A"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "VHVlc2RheQo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "iso-8601",
+    "core": true,
+    "argv": [
+      "-u",
+      "-d",
+      "@0",
+      "--iso-8601=seconds"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "MTk3MC0wMS0wMVQwMDowMDowMCswMDowMAo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "rfc-3339",
+    "core": true,
+    "argv": [
+      "-u",
+      "-d",
+      "@0",
+      "--rfc-3339=seconds"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "MTk3MC0wMS0wMSAwMDowMDowMCswMDowMAo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "invalid-date-errors",
+    "core": true,
+    "argv": [
+      "-d",
+      "not a date"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": true,
+      "tree": {}
+    }
+  },
+  {
+    "name": "custom-format-fields",
+    "core": false,
+    "argv": [
+      "-u",
+      "-d",
+      "2024-06-15",
+      "+%j day of %Y"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "MTY3IGRheSBvZiAyMDI0Cg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  }
+]

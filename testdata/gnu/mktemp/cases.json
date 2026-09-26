@@ -1,0 +1,46 @@
+[
+  {
+    "name": "template-without-x-errors",
+    "core": true,
+    "argv": [
+      "notemplate"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": true,
+      "tree": {}
+    }
+  },
+  {
+    "name": "dry-run-flag-usage-error-on-bad-template",
+    "core": true,
+    "argv": [
+      "-u",
+      "notemplate"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": true,
+      "tree": {}
+    }
+  },
+  {
+    "name": "directory-flag-usage-error-on-bad-template",
+    "core": false,
+    "argv": [
+      "-d",
+      "notemplate"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": true,
+      "tree": {}
+    }
+  }
+]

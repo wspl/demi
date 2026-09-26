@@ -1,0 +1,89 @@
+[
+  {
+    "name": "remove-empty-directory",
+    "core": true,
+    "argv": [
+      "empty"
+    ],
+    "tree": {
+      "dirs": [
+        "empty"
+      ]
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "non-empty-directory-errors",
+    "core": true,
+    "argv": [
+      "full"
+    ],
+    "tree": {
+      "files": {
+        "full/a.txt": "YQo="
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": true,
+      "tree": {
+        "files": {
+          "full/a.txt": "YQo="
+        },
+        "modes": {
+          "full": 493,
+          "full/a.txt": 420
+        },
+        "owners": {
+          "full": [
+            0,
+            0
+          ],
+          "full/a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "missing-directory-errors",
+    "core": true,
+    "argv": [
+      "missing"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": true,
+      "tree": {}
+    }
+  },
+  {
+    "name": "parents-removes-chain",
+    "core": false,
+    "argv": [
+      "-p",
+      "a/b/c"
+    ],
+    "tree": {
+      "dirs": [
+        "a/b/c"
+      ]
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  }
+]

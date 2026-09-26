@@ -1,0 +1,497 @@
+[
+  {
+    "name": "one-file",
+    "core": true,
+    "argv": [
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "b25lCnR3bwo=",
+        "b.txt": "dGhyZWUK",
+        "empty": ""
+      }
+    },
+    "want": {
+      "stdout": "b25lCnR3bwo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "b25lCnR3bwo=",
+          "b.txt": "dGhyZWUK",
+          "empty": ""
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "empty": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "empty": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "two-files",
+    "core": true,
+    "argv": [
+      "a.txt",
+      "b.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "b25lCnR3bwo=",
+        "b.txt": "dGhyZWUK",
+        "empty": ""
+      }
+    },
+    "want": {
+      "stdout": "b25lCnR3bwp0aHJlZQo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "b25lCnR3bwo=",
+          "b.txt": "dGhyZWUK",
+          "empty": ""
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "empty": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "empty": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "dash-reads-stdin",
+    "core": true,
+    "argv": [
+      "a.txt",
+      "-",
+      "b.txt"
+    ],
+    "stdin": "U1RESU4K",
+    "tree": {
+      "files": {
+        "a.txt": "b25lCnR3bwo=",
+        "b.txt": "dGhyZWUK",
+        "empty": ""
+      }
+    },
+    "want": {
+      "stdout": "b25lCnR3bwpTVERJTgp0aHJlZQo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "b25lCnR3bwo=",
+          "b.txt": "dGhyZWUK",
+          "empty": ""
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "empty": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "empty": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "number-all-lines",
+    "core": true,
+    "argv": [
+      "-n",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "b25lCnR3bwo=",
+        "b.txt": "dGhyZWUK",
+        "empty": ""
+      }
+    },
+    "want": {
+      "stdout": "ICAgICAxCW9uZQogICAgIDIJdHdvCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "b25lCnR3bwo=",
+          "b.txt": "dGhyZWUK",
+          "empty": ""
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "empty": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "empty": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "number-nonblank",
+    "core": true,
+    "argv": [
+      "-b",
+      "blanks.txt"
+    ],
+    "tree": {
+      "files": {
+        "blanks.txt": "YQoKCmIKCgoKYwo="
+      }
+    },
+    "want": {
+      "stdout": "ICAgICAxCWEKCgogICAgIDIJYgoKCgogICAgIDMJYwo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "blanks.txt": "YQoKCmIKCgoKYwo="
+        },
+        "modes": {
+          "blanks.txt": 420
+        },
+        "owners": {
+          "blanks.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "squeeze-blank",
+    "core": true,
+    "argv": [
+      "-s",
+      "blanks.txt"
+    ],
+    "tree": {
+      "files": {
+        "blanks.txt": "YQoKCmIKCgoKYwo="
+      }
+    },
+    "want": {
+      "stdout": "YQoKYgoKYwo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "blanks.txt": "YQoKCmIKCgoKYwo="
+        },
+        "modes": {
+          "blanks.txt": 420
+        },
+        "owners": {
+          "blanks.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "missing-file",
+    "core": true,
+    "argv": [
+      "missing.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "b25lCnR3bwo=",
+        "b.txt": "dGhyZWUK",
+        "empty": ""
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": true,
+      "tree": {
+        "files": {
+          "a.txt": "b25lCnR3bwo=",
+          "b.txt": "dGhyZWUK",
+          "empty": ""
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "empty": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "empty": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "show-ends",
+    "core": false,
+    "argv": [
+      "-E",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "b25lCnR3bwo=",
+        "b.txt": "dGhyZWUK",
+        "empty": ""
+      }
+    },
+    "want": {
+      "stdout": "b25lJAp0d28kCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "b25lCnR3bwo=",
+          "b.txt": "dGhyZWUK",
+          "empty": ""
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "empty": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "empty": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "show-tabs",
+    "core": false,
+    "argv": [
+      "-T",
+      "tabs.txt"
+    ],
+    "tree": {
+      "files": {
+        "tabs.txt": "YQliCm5vLW5ld2xpbmUtYXQtZW5k"
+      }
+    },
+    "want": {
+      "stdout": "YV5JYgpuby1uZXdsaW5lLWF0LWVuZA==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "tabs.txt": "YQliCm5vLW5ld2xpbmUtYXQtZW5k"
+        },
+        "modes": {
+          "tabs.txt": 420
+        },
+        "owners": {
+          "tabs.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "show-all",
+    "core": false,
+    "argv": [
+      "-A",
+      "tabs.txt"
+    ],
+    "tree": {
+      "files": {
+        "tabs.txt": "YQliCm5vLW5ld2xpbmUtYXQtZW5k"
+      }
+    },
+    "want": {
+      "stdout": "YV5JYiQKbm8tbmV3bGluZS1hdC1lbmQ=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "tabs.txt": "YQliCm5vLW5ld2xpbmUtYXQtZW5k"
+        },
+        "modes": {
+          "tabs.txt": 420
+        },
+        "owners": {
+          "tabs.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "empty-file",
+    "core": false,
+    "argv": [
+      "empty"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "b25lCnR3bwo=",
+        "b.txt": "dGhyZWUK",
+        "empty": ""
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "b25lCnR3bwo=",
+          "b.txt": "dGhyZWUK",
+          "empty": ""
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "empty": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "empty": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "double-dash",
+    "core": false,
+    "argv": [
+      "--",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "b25lCnR3bwo=",
+        "b.txt": "dGhyZWUK",
+        "empty": ""
+      }
+    },
+    "want": {
+      "stdout": "b25lCnR3bwo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "b25lCnR3bwo=",
+          "b.txt": "dGhyZWUK",
+          "empty": ""
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "empty": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "empty": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  }
+]

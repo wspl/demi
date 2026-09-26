@@ -1,0 +1,32 @@
+[
+  {
+    "name": "missing-path-errors",
+    "core": true,
+    "argv": [
+      "/does/not/exist"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": true,
+      "tree": {}
+    }
+  },
+  {
+    "name": "type-filter-with-no-match",
+    "core": false,
+    "argv": [
+      "-t",
+      "no-such-fs-type",
+      "."
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": true,
+      "tree": {}
+    }
+  }
+]

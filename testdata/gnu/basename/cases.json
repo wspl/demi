@@ -1,0 +1,76 @@
+[
+  {
+    "name": "simple-path",
+    "core": true,
+    "argv": [
+      "/a/b/c.txt"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "Yy50eHQK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "trailing-slash",
+    "core": true,
+    "argv": [
+      "/a/b/"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "Ygo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "strip-suffix",
+    "core": true,
+    "argv": [
+      "-s",
+      ".txt",
+      "/a/b/c.txt"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "Ywo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "no-directory-component",
+    "core": true,
+    "argv": [
+      "c.txt"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "Yy50eHQK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "multiple-with-dash-a",
+    "core": false,
+    "argv": [
+      "-a",
+      "/a/b.txt",
+      "/c/d.txt"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "Yi50eHQKZC50eHQK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  }
+]

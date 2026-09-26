@@ -1,0 +1,172 @@
+[
+  {
+    "name": "copies-stdin-to-file-and-stdout",
+    "core": true,
+    "argv": [
+      "out.txt"
+    ],
+    "stdin": "aGVsbG8K",
+    "tree": {},
+    "want": {
+      "stdout": "aGVsbG8K",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "out.txt": "aGVsbG8K"
+        },
+        "modes": {
+          "out.txt": 420
+        },
+        "owners": {
+          "out.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "two-files",
+    "core": true,
+    "argv": [
+      "a.txt",
+      "b.txt"
+    ],
+    "stdin": "aGVsbG8K",
+    "tree": {},
+    "want": {
+      "stdout": "aGVsbG8K",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "aGVsbG8K",
+          "b.txt": "aGVsbG8K"
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "append",
+    "core": true,
+    "argv": [
+      "-a",
+      "existing.txt"
+    ],
+    "stdin": "bmV3Cg==",
+    "tree": {
+      "files": {
+        "existing.txt": "b2xkCg=="
+      }
+    },
+    "want": {
+      "stdout": "bmV3Cg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "existing.txt": "b2xkCm5ldwo="
+        },
+        "modes": {
+          "existing.txt": 420
+        },
+        "owners": {
+          "existing.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "truncates-by-default",
+    "core": true,
+    "argv": [
+      "existing.txt"
+    ],
+    "stdin": "bmV3Cg==",
+    "tree": {
+      "files": {
+        "existing.txt": "b2xkCg=="
+      }
+    },
+    "want": {
+      "stdout": "bmV3Cg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "existing.txt": "bmV3Cg=="
+        },
+        "modes": {
+          "existing.txt": 420
+        },
+        "owners": {
+          "existing.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "dash-i-ignore-interrupts",
+    "core": false,
+    "argv": [
+      "-i",
+      "out.txt"
+    ],
+    "stdin": "eAo=",
+    "tree": {},
+    "want": {
+      "stdout": "eAo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "out.txt": "eAo="
+        },
+        "modes": {
+          "out.txt": 420
+        },
+        "owners": {
+          "out.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "no-file-operand",
+    "core": false,
+    "argv": null,
+    "stdin": "anVzdC1zdGRvdXQK",
+    "tree": {},
+    "want": {
+      "stdout": "anVzdC1zdGRvdXQK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  }
+]

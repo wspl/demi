@@ -1,0 +1,153 @@
+[
+  {
+    "name": "default-echo",
+    "core": true,
+    "argv": null,
+    "stdin": "YSBiIGMK",
+    "tree": {},
+    "want": {
+      "stdout": "YSBiIGMK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "dash-n-one-per-invocation",
+    "core": true,
+    "argv": [
+      "-n",
+      "1",
+      "echo"
+    ],
+    "stdin": "YSBiIGMK",
+    "tree": {},
+    "want": {
+      "stdout": "YQpiCmMK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "explicit-command",
+    "core": true,
+    "argv": [
+      "cat"
+    ],
+    "stdin": "YS50eHQKYi50eHQK",
+    "tree": {
+      "files": {
+        "a.txt": "YQo=",
+        "b.txt": "Ygo="
+      }
+    },
+    "want": {
+      "stdout": "YQpiCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQo=",
+          "b.txt": "Ygo="
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "dash-capital-i-placeholder",
+    "core": true,
+    "argv": [
+      "-I",
+      "{}",
+      "echo",
+      "got",
+      "{}"
+    ],
+    "stdin": "eAp5Cg==",
+    "tree": {},
+    "want": {
+      "stdout": "Z290IHgKZ290IHkK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "dash-zero-null-delimited",
+    "core": true,
+    "argv": [
+      "-0",
+      "echo"
+    ],
+    "stdin": "YQBiAA==",
+    "tree": {},
+    "want": {
+      "stdout": "YSBiCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "no-input-no-run",
+    "core": true,
+    "argv": [
+      "echo",
+      "fallback"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "ZmFsbGJhY2sK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "dash-capital-l-lines-per-invocation",
+    "core": false,
+    "argv": [
+      "-L",
+      "2",
+      "echo"
+    ],
+    "stdin": "YQpiCmMKZAo=",
+    "tree": {},
+    "want": {
+      "stdout": "YSBiCmMgZAo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "exit-nonzero-on-command-failure",
+    "core": false,
+    "argv": [
+      "false"
+    ],
+    "stdin": "eAo=",
+    "tree": {},
+    "want": {
+      "stdout": "",
+      "exitCode": 123,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  }
+]

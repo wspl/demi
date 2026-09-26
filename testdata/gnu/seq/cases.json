@@ -1,0 +1,128 @@
+[
+  {
+    "name": "last-only",
+    "core": true,
+    "argv": [
+      "5"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "MQoyCjMKNAo1Cg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "first-and-last",
+    "core": true,
+    "argv": [
+      "2",
+      "6"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "MgozCjQKNQo2Cg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "first-increment-last",
+    "core": true,
+    "argv": [
+      "2",
+      "2",
+      "10"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "Mgo0CjYKOAoxMAo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "empty-range",
+    "core": true,
+    "argv": [
+      "5",
+      "1"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "negative-increment",
+    "core": true,
+    "argv": [
+      "5",
+      "-1",
+      "1"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "NQo0CjMKMgoxCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "custom-separator",
+    "core": true,
+    "argv": [
+      "-s",
+      ",",
+      "1",
+      "3"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "MSwyLDMK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "format-string",
+    "core": false,
+    "argv": [
+      "-f",
+      "%03g",
+      "1",
+      "3"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "MDAxCjAwMgowMDMK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "equal-width",
+    "core": false,
+    "argv": [
+      "-w",
+      "8",
+      "10"
+    ],
+    "tree": {},
+    "want": {
+      "stdout": "MDgKMDkKMTAK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  }
+]

@@ -1,0 +1,885 @@
+[
+  {
+    "name": "default-listing",
+    "core": true,
+    "argv": [
+      "."
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQ==",
+        "b.txt": "YmI=",
+        "sub/c.txt": "Y2Nj"
+      },
+      "dirs": [
+        "empty-dir"
+      ],
+      "symlinks": {
+        "link.txt": "a.txt"
+      }
+    },
+    "want": {
+      "stdout": "YS50eHQKYi50eHQKZW1wdHktZGlyCmxpbmsudHh0CnN1Ygo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQ==",
+          "b.txt": "YmI=",
+          "sub/c.txt": "Y2Nj"
+        },
+        "dirs": [
+          "empty-dir"
+        ],
+        "symlinks": {
+          "link.txt": "a.txt"
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "empty-dir": 493,
+          "link.txt": 511,
+          "sub": 493,
+          "sub/c.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "empty-dir": [
+            0,
+            0
+          ],
+          "link.txt": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/c.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "one-per-line",
+    "core": true,
+    "argv": [
+      "-1",
+      "."
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQ==",
+        "b.txt": "YmI=",
+        "sub/c.txt": "Y2Nj"
+      },
+      "dirs": [
+        "empty-dir"
+      ],
+      "symlinks": {
+        "link.txt": "a.txt"
+      }
+    },
+    "want": {
+      "stdout": "YS50eHQKYi50eHQKZW1wdHktZGlyCmxpbmsudHh0CnN1Ygo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQ==",
+          "b.txt": "YmI=",
+          "sub/c.txt": "Y2Nj"
+        },
+        "dirs": [
+          "empty-dir"
+        ],
+        "symlinks": {
+          "link.txt": "a.txt"
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "empty-dir": 493,
+          "link.txt": 511,
+          "sub": 493,
+          "sub/c.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "empty-dir": [
+            0,
+            0
+          ],
+          "link.txt": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/c.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "almost-all-includes-dotfiles",
+    "core": true,
+    "argv": [
+      "-A",
+      "."
+    ],
+    "tree": {
+      "files": {
+        ".hidden": "aA==",
+        "visible": "dg=="
+      }
+    },
+    "want": {
+      "stdout": "LmhpZGRlbgp2aXNpYmxlCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          ".hidden": "aA==",
+          "visible": "dg=="
+        },
+        "modes": {
+          ".hidden": 420,
+          "visible": 420
+        },
+        "owners": {
+          ".hidden": [
+            0,
+            0
+          ],
+          "visible": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "all-includes-dot-and-dotdot",
+    "core": true,
+    "argv": [
+      "-a",
+      "."
+    ],
+    "tree": {
+      "files": {
+        ".hidden": "aA==",
+        "visible": "dg=="
+      }
+    },
+    "want": {
+      "stdout": "LgouLgouaGlkZGVuCnZpc2libGUK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          ".hidden": "aA==",
+          "visible": "dg=="
+        },
+        "modes": {
+          ".hidden": 420,
+          "visible": 420
+        },
+        "owners": {
+          ".hidden": [
+            0,
+            0
+          ],
+          "visible": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "recursive",
+    "core": true,
+    "argv": [
+      "-R",
+      "."
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQ==",
+        "b.txt": "YmI=",
+        "sub/c.txt": "Y2Nj"
+      },
+      "dirs": [
+        "empty-dir"
+      ],
+      "symlinks": {
+        "link.txt": "a.txt"
+      }
+    },
+    "want": {
+      "stdout": "LjoKYS50eHQKYi50eHQKZW1wdHktZGlyCmxpbmsudHh0CnN1YgoKLi9lbXB0eS1kaXI6CgouL3N1YjoKYy50eHQK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQ==",
+          "b.txt": "YmI=",
+          "sub/c.txt": "Y2Nj"
+        },
+        "dirs": [
+          "empty-dir"
+        ],
+        "symlinks": {
+          "link.txt": "a.txt"
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "empty-dir": 493,
+          "link.txt": 511,
+          "sub": 493,
+          "sub/c.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "empty-dir": [
+            0,
+            0
+          ],
+          "link.txt": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/c.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "classify",
+    "core": true,
+    "argv": [
+      "-F",
+      "."
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQ==",
+        "b.txt": "YmI=",
+        "sub/c.txt": "Y2Nj"
+      },
+      "dirs": [
+        "empty-dir"
+      ],
+      "symlinks": {
+        "link.txt": "a.txt"
+      }
+    },
+    "want": {
+      "stdout": "YS50eHQKYi50eHQKZW1wdHktZGlyLwpsaW5rLnR4dEAKc3ViLwo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQ==",
+          "b.txt": "YmI=",
+          "sub/c.txt": "Y2Nj"
+        },
+        "dirs": [
+          "empty-dir"
+        ],
+        "symlinks": {
+          "link.txt": "a.txt"
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "empty-dir": 493,
+          "link.txt": 511,
+          "sub": 493,
+          "sub/c.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "empty-dir": [
+            0,
+            0
+          ],
+          "link.txt": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/c.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "directory-itself",
+    "core": true,
+    "argv": [
+      "-d",
+      "sub"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQ==",
+        "b.txt": "YmI=",
+        "sub/c.txt": "Y2Nj"
+      },
+      "dirs": [
+        "empty-dir"
+      ],
+      "symlinks": {
+        "link.txt": "a.txt"
+      }
+    },
+    "want": {
+      "stdout": "c3ViCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQ==",
+          "b.txt": "YmI=",
+          "sub/c.txt": "Y2Nj"
+        },
+        "dirs": [
+          "empty-dir"
+        ],
+        "symlinks": {
+          "link.txt": "a.txt"
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "empty-dir": 493,
+          "link.txt": 511,
+          "sub": 493,
+          "sub/c.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "empty-dir": [
+            0,
+            0
+          ],
+          "link.txt": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/c.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "multiple-args",
+    "core": true,
+    "argv": [
+      "a.txt",
+      "sub"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQ==",
+        "b.txt": "YmI=",
+        "sub/c.txt": "Y2Nj"
+      },
+      "dirs": [
+        "empty-dir"
+      ],
+      "symlinks": {
+        "link.txt": "a.txt"
+      }
+    },
+    "want": {
+      "stdout": "YS50eHQKCnN1YjoKYy50eHQK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQ==",
+          "b.txt": "YmI=",
+          "sub/c.txt": "Y2Nj"
+        },
+        "dirs": [
+          "empty-dir"
+        ],
+        "symlinks": {
+          "link.txt": "a.txt"
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "empty-dir": 493,
+          "link.txt": 511,
+          "sub": 493,
+          "sub/c.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "empty-dir": [
+            0,
+            0
+          ],
+          "link.txt": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/c.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "missing-path",
+    "core": true,
+    "argv": [
+      "missing"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQ==",
+        "b.txt": "YmI=",
+        "sub/c.txt": "Y2Nj"
+      },
+      "dirs": [
+        "empty-dir"
+      ],
+      "symlinks": {
+        "link.txt": "a.txt"
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 2,
+      "stderrNonEmpty": true,
+      "tree": {
+        "files": {
+          "a.txt": "YQ==",
+          "b.txt": "YmI=",
+          "sub/c.txt": "Y2Nj"
+        },
+        "dirs": [
+          "empty-dir"
+        ],
+        "symlinks": {
+          "link.txt": "a.txt"
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "empty-dir": 493,
+          "link.txt": 511,
+          "sub": 493,
+          "sub/c.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "empty-dir": [
+            0,
+            0
+          ],
+          "link.txt": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/c.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "sort-by-size",
+    "core": false,
+    "argv": [
+      "-S",
+      "-1",
+      "."
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQ==",
+        "b.txt": "YmI=",
+        "sub/c.txt": "Y2Nj"
+      },
+      "dirs": [
+        "empty-dir"
+      ],
+      "symlinks": {
+        "link.txt": "a.txt"
+      }
+    },
+    "want": {
+      "stdout": "ZW1wdHktZGlyCnN1YgpsaW5rLnR4dApiLnR4dAphLnR4dAo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQ==",
+          "b.txt": "YmI=",
+          "sub/c.txt": "Y2Nj"
+        },
+        "dirs": [
+          "empty-dir"
+        ],
+        "symlinks": {
+          "link.txt": "a.txt"
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "empty-dir": 493,
+          "link.txt": 511,
+          "sub": 493,
+          "sub/c.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "empty-dir": [
+            0,
+            0
+          ],
+          "link.txt": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/c.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "reverse",
+    "core": false,
+    "argv": [
+      "-r",
+      "-1",
+      "."
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQ==",
+        "b.txt": "YmI=",
+        "sub/c.txt": "Y2Nj"
+      },
+      "dirs": [
+        "empty-dir"
+      ],
+      "symlinks": {
+        "link.txt": "a.txt"
+      }
+    },
+    "want": {
+      "stdout": "c3ViCmxpbmsudHh0CmVtcHR5LWRpcgpiLnR4dAphLnR4dAo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQ==",
+          "b.txt": "YmI=",
+          "sub/c.txt": "Y2Nj"
+        },
+        "dirs": [
+          "empty-dir"
+        ],
+        "symlinks": {
+          "link.txt": "a.txt"
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "empty-dir": 493,
+          "link.txt": 511,
+          "sub": 493,
+          "sub/c.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "empty-dir": [
+            0,
+            0
+          ],
+          "link.txt": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/c.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "sort-by-extension",
+    "core": false,
+    "argv": [
+      "-X",
+      "-1",
+      "."
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQ==",
+        "b.txt": "YmI=",
+        "sub/c.txt": "Y2Nj"
+      },
+      "dirs": [
+        "empty-dir"
+      ],
+      "symlinks": {
+        "link.txt": "a.txt"
+      }
+    },
+    "want": {
+      "stdout": "ZW1wdHktZGlyCnN1YgphLnR4dApiLnR4dApsaW5rLnR4dAo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQ==",
+          "b.txt": "YmI=",
+          "sub/c.txt": "Y2Nj"
+        },
+        "dirs": [
+          "empty-dir"
+        ],
+        "symlinks": {
+          "link.txt": "a.txt"
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "empty-dir": 493,
+          "link.txt": 511,
+          "sub": 493,
+          "sub/c.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "empty-dir": [
+            0,
+            0
+          ],
+          "link.txt": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/c.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "color-never-explicit",
+    "core": false,
+    "argv": [
+      "--color=never",
+      "-1",
+      "."
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQ==",
+        "b.txt": "YmI=",
+        "sub/c.txt": "Y2Nj"
+      },
+      "dirs": [
+        "empty-dir"
+      ],
+      "symlinks": {
+        "link.txt": "a.txt"
+      }
+    },
+    "want": {
+      "stdout": "YS50eHQKYi50eHQKZW1wdHktZGlyCmxpbmsudHh0CnN1Ygo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQ==",
+          "b.txt": "YmI=",
+          "sub/c.txt": "Y2Nj"
+        },
+        "dirs": [
+          "empty-dir"
+        ],
+        "symlinks": {
+          "link.txt": "a.txt"
+        },
+        "modes": {
+          "a.txt": 420,
+          "b.txt": 420,
+          "empty-dir": 493,
+          "link.txt": 511,
+          "sub": 493,
+          "sub/c.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ],
+          "empty-dir": [
+            0,
+            0
+          ],
+          "link.txt": [
+            0,
+            0
+          ],
+          "sub": [
+            0,
+            0
+          ],
+          "sub/c.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  }
+]

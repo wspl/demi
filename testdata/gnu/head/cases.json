@@ -1,0 +1,410 @@
+[
+  {
+    "name": "default-ten-lines",
+    "core": true,
+    "argv": [
+      "twenty.txt"
+    ],
+    "tree": {
+      "files": {
+        "short.txt": "YQpiCg==",
+        "twenty.txt": "bGluZTEKbGluZTIKbGluZTMKbGluZTQKbGluZTUKbGluZTYKbGluZTcKbGluZTgKbGluZTkKbGluZTEwCmxpbmUxMQpsaW5lMTIKbGluZTEzCmxpbmUxNApsaW5lMTUKbGluZTE2CmxpbmUxNwpsaW5lMTgKbGluZTE5CmxpbmUyMAo="
+      }
+    },
+    "want": {
+      "stdout": "bGluZTEKbGluZTIKbGluZTMKbGluZTQKbGluZTUKbGluZTYKbGluZTcKbGluZTgKbGluZTkKbGluZTEwCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "short.txt": "YQpiCg==",
+          "twenty.txt": "bGluZTEKbGluZTIKbGluZTMKbGluZTQKbGluZTUKbGluZTYKbGluZTcKbGluZTgKbGluZTkKbGluZTEwCmxpbmUxMQpsaW5lMTIKbGluZTEzCmxpbmUxNApsaW5lMTUKbGluZTE2CmxpbmUxNwpsaW5lMTgKbGluZTE5CmxpbmUyMAo="
+        },
+        "modes": {
+          "short.txt": 420,
+          "twenty.txt": 420
+        },
+        "owners": {
+          "short.txt": [
+            0,
+            0
+          ],
+          "twenty.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "dash-n-count",
+    "core": true,
+    "argv": [
+      "-n",
+      "3",
+      "twenty.txt"
+    ],
+    "tree": {
+      "files": {
+        "short.txt": "YQpiCg==",
+        "twenty.txt": "bGluZTEKbGluZTIKbGluZTMKbGluZTQKbGluZTUKbGluZTYKbGluZTcKbGluZTgKbGluZTkKbGluZTEwCmxpbmUxMQpsaW5lMTIKbGluZTEzCmxpbmUxNApsaW5lMTUKbGluZTE2CmxpbmUxNwpsaW5lMTgKbGluZTE5CmxpbmUyMAo="
+      }
+    },
+    "want": {
+      "stdout": "bGluZTEKbGluZTIKbGluZTMK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "short.txt": "YQpiCg==",
+          "twenty.txt": "bGluZTEKbGluZTIKbGluZTMKbGluZTQKbGluZTUKbGluZTYKbGluZTcKbGluZTgKbGluZTkKbGluZTEwCmxpbmUxMQpsaW5lMTIKbGluZTEzCmxpbmUxNApsaW5lMTUKbGluZTE2CmxpbmUxNwpsaW5lMTgKbGluZTE5CmxpbmUyMAo="
+        },
+        "modes": {
+          "short.txt": 420,
+          "twenty.txt": 420
+        },
+        "owners": {
+          "short.txt": [
+            0,
+            0
+          ],
+          "twenty.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "dash-n-space-count",
+    "core": true,
+    "argv": [
+      "-3",
+      "twenty.txt"
+    ],
+    "tree": {
+      "files": {
+        "short.txt": "YQpiCg==",
+        "twenty.txt": "bGluZTEKbGluZTIKbGluZTMKbGluZTQKbGluZTUKbGluZTYKbGluZTcKbGluZTgKbGluZTkKbGluZTEwCmxpbmUxMQpsaW5lMTIKbGluZTEzCmxpbmUxNApsaW5lMTUKbGluZTE2CmxpbmUxNwpsaW5lMTgKbGluZTE5CmxpbmUyMAo="
+      }
+    },
+    "want": {
+      "stdout": "bGluZTEKbGluZTIKbGluZTMK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "short.txt": "YQpiCg==",
+          "twenty.txt": "bGluZTEKbGluZTIKbGluZTMKbGluZTQKbGluZTUKbGluZTYKbGluZTcKbGluZTgKbGluZTkKbGluZTEwCmxpbmUxMQpsaW5lMTIKbGluZTEzCmxpbmUxNApsaW5lMTUKbGluZTE2CmxpbmUxNwpsaW5lMTgKbGluZTE5CmxpbmUyMAo="
+        },
+        "modes": {
+          "short.txt": 420,
+          "twenty.txt": 420
+        },
+        "owners": {
+          "short.txt": [
+            0,
+            0
+          ],
+          "twenty.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "dash-c-count",
+    "core": true,
+    "argv": [
+      "-c",
+      "7",
+      "twenty.txt"
+    ],
+    "tree": {
+      "files": {
+        "short.txt": "YQpiCg==",
+        "twenty.txt": "bGluZTEKbGluZTIKbGluZTMKbGluZTQKbGluZTUKbGluZTYKbGluZTcKbGluZTgKbGluZTkKbGluZTEwCmxpbmUxMQpsaW5lMTIKbGluZTEzCmxpbmUxNApsaW5lMTUKbGluZTE2CmxpbmUxNwpsaW5lMTgKbGluZTE5CmxpbmUyMAo="
+      }
+    },
+    "want": {
+      "stdout": "bGluZTEKbA==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "short.txt": "YQpiCg==",
+          "twenty.txt": "bGluZTEKbGluZTIKbGluZTMKbGluZTQKbGluZTUKbGluZTYKbGluZTcKbGluZTgKbGluZTkKbGluZTEwCmxpbmUxMQpsaW5lMTIKbGluZTEzCmxpbmUxNApsaW5lMTUKbGluZTE2CmxpbmUxNwpsaW5lMTgKbGluZTE5CmxpbmUyMAo="
+        },
+        "modes": {
+          "short.txt": 420,
+          "twenty.txt": 420
+        },
+        "owners": {
+          "short.txt": [
+            0,
+            0
+          ],
+          "twenty.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "stdin",
+    "core": true,
+    "argv": null,
+    "stdin": "eAp5CnoK",
+    "tree": {},
+    "want": {
+      "stdout": "eAp5CnoK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {}
+    }
+  },
+  {
+    "name": "two-files-headers",
+    "core": true,
+    "argv": [
+      "-n",
+      "1",
+      "twenty.txt",
+      "short.txt"
+    ],
+    "tree": {
+      "files": {
+        "short.txt": "YQpiCg==",
+        "twenty.txt": "bGluZTEKbGluZTIKbGluZTMKbGluZTQKbGluZTUKbGluZTYKbGluZTcKbGluZTgKbGluZTkKbGluZTEwCmxpbmUxMQpsaW5lMTIKbGluZTEzCmxpbmUxNApsaW5lMTUKbGluZTE2CmxpbmUxNwpsaW5lMTgKbGluZTE5CmxpbmUyMAo="
+      }
+    },
+    "want": {
+      "stdout": "PT0+IHR3ZW50eS50eHQgPD09CmxpbmUxCgo9PT4gc2hvcnQudHh0IDw9PQphCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "short.txt": "YQpiCg==",
+          "twenty.txt": "bGluZTEKbGluZTIKbGluZTMKbGluZTQKbGluZTUKbGluZTYKbGluZTcKbGluZTgKbGluZTkKbGluZTEwCmxpbmUxMQpsaW5lMTIKbGluZTEzCmxpbmUxNApsaW5lMTUKbGluZTE2CmxpbmUxNwpsaW5lMTgKbGluZTE5CmxpbmUyMAo="
+        },
+        "modes": {
+          "short.txt": 420,
+          "twenty.txt": 420
+        },
+        "owners": {
+          "short.txt": [
+            0,
+            0
+          ],
+          "twenty.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "missing-file",
+    "core": true,
+    "argv": [
+      "missing.txt"
+    ],
+    "tree": {
+      "files": {
+        "short.txt": "YQpiCg==",
+        "twenty.txt": "bGluZTEKbGluZTIKbGluZTMKbGluZTQKbGluZTUKbGluZTYKbGluZTcKbGluZTgKbGluZTkKbGluZTEwCmxpbmUxMQpsaW5lMTIKbGluZTEzCmxpbmUxNApsaW5lMTUKbGluZTE2CmxpbmUxNwpsaW5lMTgKbGluZTE5CmxpbmUyMAo="
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": true,
+      "tree": {
+        "files": {
+          "short.txt": "YQpiCg==",
+          "twenty.txt": "bGluZTEKbGluZTIKbGluZTMKbGluZTQKbGluZTUKbGluZTYKbGluZTcKbGluZTgKbGluZTkKbGluZTEwCmxpbmUxMQpsaW5lMTIKbGluZTEzCmxpbmUxNApsaW5lMTUKbGluZTE2CmxpbmUxNwpsaW5lMTgKbGluZTE5CmxpbmUyMAo="
+        },
+        "modes": {
+          "short.txt": 420,
+          "twenty.txt": 420
+        },
+        "owners": {
+          "short.txt": [
+            0,
+            0
+          ],
+          "twenty.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "negative-n-all-but-last",
+    "core": false,
+    "argv": [
+      "-n",
+      "-5",
+      "twenty.txt"
+    ],
+    "tree": {
+      "files": {
+        "short.txt": "YQpiCg==",
+        "twenty.txt": "bGluZTEKbGluZTIKbGluZTMKbGluZTQKbGluZTUKbGluZTYKbGluZTcKbGluZTgKbGluZTkKbGluZTEwCmxpbmUxMQpsaW5lMTIKbGluZTEzCmxpbmUxNApsaW5lMTUKbGluZTE2CmxpbmUxNwpsaW5lMTgKbGluZTE5CmxpbmUyMAo="
+      }
+    },
+    "want": {
+      "stdout": "bGluZTEKbGluZTIKbGluZTMKbGluZTQKbGluZTUKbGluZTYKbGluZTcKbGluZTgKbGluZTkKbGluZTEwCmxpbmUxMQpsaW5lMTIKbGluZTEzCmxpbmUxNApsaW5lMTUK",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "short.txt": "YQpiCg==",
+          "twenty.txt": "bGluZTEKbGluZTIKbGluZTMKbGluZTQKbGluZTUKbGluZTYKbGluZTcKbGluZTgKbGluZTkKbGluZTEwCmxpbmUxMQpsaW5lMTIKbGluZTEzCmxpbmUxNApsaW5lMTUKbGluZTE2CmxpbmUxNwpsaW5lMTgKbGluZTE5CmxpbmUyMAo="
+        },
+        "modes": {
+          "short.txt": 420,
+          "twenty.txt": 420
+        },
+        "owners": {
+          "short.txt": [
+            0,
+            0
+          ],
+          "twenty.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "negative-c-all-but-last",
+    "core": false,
+    "argv": [
+      "-c",
+      "-5",
+      "twenty.txt"
+    ],
+    "tree": {
+      "files": {
+        "short.txt": "YQpiCg==",
+        "twenty.txt": "bGluZTEKbGluZTIKbGluZTMKbGluZTQKbGluZTUKbGluZTYKbGluZTcKbGluZTgKbGluZTkKbGluZTEwCmxpbmUxMQpsaW5lMTIKbGluZTEzCmxpbmUxNApsaW5lMTUKbGluZTE2CmxpbmUxNwpsaW5lMTgKbGluZTE5CmxpbmUyMAo="
+      }
+    },
+    "want": {
+      "stdout": "bGluZTEKbGluZTIKbGluZTMKbGluZTQKbGluZTUKbGluZTYKbGluZTcKbGluZTgKbGluZTkKbGluZTEwCmxpbmUxMQpsaW5lMTIKbGluZTEzCmxpbmUxNApsaW5lMTUKbGluZTE2CmxpbmUxNwpsaW5lMTgKbGluZTE5Cmxp",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "short.txt": "YQpiCg==",
+          "twenty.txt": "bGluZTEKbGluZTIKbGluZTMKbGluZTQKbGluZTUKbGluZTYKbGluZTcKbGluZTgKbGluZTkKbGluZTEwCmxpbmUxMQpsaW5lMTIKbGluZTEzCmxpbmUxNApsaW5lMTUKbGluZTE2CmxpbmUxNwpsaW5lMTgKbGluZTE5CmxpbmUyMAo="
+        },
+        "modes": {
+          "short.txt": 420,
+          "twenty.txt": 420
+        },
+        "owners": {
+          "short.txt": [
+            0,
+            0
+          ],
+          "twenty.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "quiet-with-two-files",
+    "core": false,
+    "argv": [
+      "-q",
+      "twenty.txt",
+      "short.txt"
+    ],
+    "tree": {
+      "files": {
+        "short.txt": "YQpiCg==",
+        "twenty.txt": "bGluZTEKbGluZTIKbGluZTMKbGluZTQKbGluZTUKbGluZTYKbGluZTcKbGluZTgKbGluZTkKbGluZTEwCmxpbmUxMQpsaW5lMTIKbGluZTEzCmxpbmUxNApsaW5lMTUKbGluZTE2CmxpbmUxNwpsaW5lMTgKbGluZTE5CmxpbmUyMAo="
+      }
+    },
+    "want": {
+      "stdout": "bGluZTEKbGluZTIKbGluZTMKbGluZTQKbGluZTUKbGluZTYKbGluZTcKbGluZTgKbGluZTkKbGluZTEwCmEKYgo=",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "short.txt": "YQpiCg==",
+          "twenty.txt": "bGluZTEKbGluZTIKbGluZTMKbGluZTQKbGluZTUKbGluZTYKbGluZTcKbGluZTgKbGluZTkKbGluZTEwCmxpbmUxMQpsaW5lMTIKbGluZTEzCmxpbmUxNApsaW5lMTUKbGluZTE2CmxpbmUxNwpsaW5lMTgKbGluZTE5CmxpbmUyMAo="
+        },
+        "modes": {
+          "short.txt": 420,
+          "twenty.txt": 420
+        },
+        "owners": {
+          "short.txt": [
+            0,
+            0
+          ],
+          "twenty.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "verbose-single-file",
+    "core": false,
+    "argv": [
+      "-v",
+      "short.txt"
+    ],
+    "tree": {
+      "files": {
+        "short.txt": "YQpiCg==",
+        "twenty.txt": "bGluZTEKbGluZTIKbGluZTMKbGluZTQKbGluZTUKbGluZTYKbGluZTcKbGluZTgKbGluZTkKbGluZTEwCmxpbmUxMQpsaW5lMTIKbGluZTEzCmxpbmUxNApsaW5lMTUKbGluZTE2CmxpbmUxNwpsaW5lMTgKbGluZTE5CmxpbmUyMAo="
+      }
+    },
+    "want": {
+      "stdout": "PT0+IHNob3J0LnR4dCA8PT0KYQpiCg==",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "short.txt": "YQpiCg==",
+          "twenty.txt": "bGluZTEKbGluZTIKbGluZTMKbGluZTQKbGluZTUKbGluZTYKbGluZTcKbGluZTgKbGluZTkKbGluZTEwCmxpbmUxMQpsaW5lMTIKbGluZTEzCmxpbmUxNApsaW5lMTUKbGluZTE2CmxpbmUxNwpsaW5lMTgKbGluZTE5CmxpbmUyMAo="
+        },
+        "modes": {
+          "short.txt": 420,
+          "twenty.txt": 420
+        },
+        "owners": {
+          "short.txt": [
+            0,
+            0
+          ],
+          "twenty.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  }
+]

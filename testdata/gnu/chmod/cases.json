@@ -1,0 +1,261 @@
+[
+  {
+    "name": "octal-mode",
+    "core": true,
+    "argv": [
+      "600",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQo="
+      },
+      "modes": {
+        "a.txt": 420
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQo="
+        },
+        "modes": {
+          "a.txt": 384
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "symbolic-add-execute",
+    "core": true,
+    "argv": [
+      "u+x",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQo="
+      },
+      "modes": {
+        "a.txt": 420
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQo="
+        },
+        "modes": {
+          "a.txt": 484
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "symbolic-remove-write-for-others",
+    "core": true,
+    "argv": [
+      "o-w",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQo="
+      },
+      "modes": {
+        "a.txt": 420
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQo="
+        },
+        "modes": {
+          "a.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "recursive",
+    "core": true,
+    "argv": [
+      "-R",
+      "700",
+      "sub"
+    ],
+    "tree": {
+      "files": {
+        "sub/a.txt": "YQo="
+      },
+      "modes": {
+        "sub": 493,
+        "sub/a.txt": 420
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "sub/a.txt": "YQo="
+        },
+        "modes": {
+          "sub": 448,
+          "sub/a.txt": 448
+        },
+        "owners": {
+          "sub": [
+            0,
+            0
+          ],
+          "sub/a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "missing-file-errors",
+    "core": true,
+    "argv": [
+      "600",
+      "missing.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQo="
+      },
+      "modes": {
+        "a.txt": 420
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 1,
+      "stderrNonEmpty": true,
+      "tree": {
+        "files": {
+          "a.txt": "YQo="
+        },
+        "modes": {
+          "a.txt": 420
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "symbolic-assign-all",
+    "core": false,
+    "argv": [
+      "a=r",
+      "a.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQo="
+      },
+      "modes": {
+        "a.txt": 420
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQo="
+        },
+        "modes": {
+          "a.txt": 292
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "reference-file",
+    "core": false,
+    "argv": [
+      "--reference=a.txt",
+      "b.txt"
+    ],
+    "tree": {
+      "files": {
+        "a.txt": "YQo=",
+        "b.txt": "Ygo="
+      },
+      "modes": {
+        "a.txt": 384
+      }
+    },
+    "want": {
+      "stdout": "",
+      "exitCode": 0,
+      "stderrNonEmpty": false,
+      "tree": {
+        "files": {
+          "a.txt": "YQo=",
+          "b.txt": "Ygo="
+        },
+        "modes": {
+          "a.txt": 384,
+          "b.txt": 384
+        },
+        "owners": {
+          "a.txt": [
+            0,
+            0
+          ],
+          "b.txt": [
+            0,
+            0
+          ]
+        }
+      }
+    }
+  }
+]
