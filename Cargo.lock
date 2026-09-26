@@ -1429,6 +1429,7 @@ dependencies = [
  "demi-provider",
  "demi-shell",
  "futures-util",
+ "rustix",
  "schemars",
  "serde",
  "serde_json",

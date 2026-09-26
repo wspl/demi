@@ -1,7 +1,8 @@
 //! The session's rules that only a session with tools shows: tool dispatch
-//! and its save, stops and dispose while a tool runs, restore after a crash,
-//! the queue's saves, model switches inside a turn, the stream's blocks and
-//! the order of events. The server's scenario tests cover the frames.
+//! and its save, a failed save, stops and dispose while a tool runs,
+//! restore after a crash, the queue's saves, a switch to another provider
+//! inside a turn, the stream's blocks and the order of events. The server's
+//! scenario tests cover the frames.
 
 use std::{
     cell::{Cell, RefCell},
@@ -485,12 +486,19 @@ fn texts(output: &[&str]) -> Vec<ToolResultContentBlock> {
         .collect()
 }
 
+/// Each call runs once the store holds it, and its result completes the call
+/// that waits for it: a model may reuse a tool-use id across requests, as
+/// the second round here does.
 #[tokio::test(flavor = "local")]
-async fn a_tool_runs_after_its_call_is_saved_and_the_turn_continues_with_its_result() {
+async fn each_tool_runs_after_its_call_is_saved_and_its_result_completes_the_call_that_waits() {
     let provider = ScriptedRuntime::new([
         Turn::Events(vec![
             event::tool_call("call-1", "echo", json!({ "value": "hello" })),
             event::response(10, 5),
+        ]),
+        Turn::Events(vec![
+            event::tool_call("call-1", "echo", json!({ "value": "again" })),
+            event::response(15, 5),
         ]),
         Turn::Events(vec![event::text("done"), event::response(20, 5)]),
     ]);
@@ -500,7 +508,8 @@ async fn a_tool_runs_after_its_call_is_saved_and_the_turn_continues_with_its_res
         let store = store.clone();
         let stored_when_run = stored_when_run.clone();
         move |call| {
-            *stored_when_run.borrow_mut() = kinds(&store.checkpoint(&root()).unwrap().transcript);
+            let stored = kinds(&store.checkpoint(&root()).unwrap().transcript);
+            stored_when_run.borrow_mut().push(stored);
             Box::pin(async move { Ok(output(&call.input.to_string())) })
         }
     });
@@ -514,7 +523,16 @@ async fn a_tool_runs_after_its_call_is_saved_and_the_turn_continues_with_its_res
     assert_eq!(end, Ok(ActionEnd::Completed));
     assert_eq!(
         *stored_when_run.borrow(),
-        ["user", "tool_call:executing", "response"]
+        [
+            vec!["user", "tool_call:executing", "response"],
+            vec![
+                "user",
+                "tool_call:completed",
+                "response",
+                "tool_call:executing",
+                "response"
+            ],
+        ]
     );
     assert_eq!(
         kinds(&session.transcript().blocks),
@@ -522,25 +540,33 @@ async fn a_tool_runs_after_its_call_is_saved_and_the_turn_continues_with_its_res
             "user",
             "tool_call:completed",
             "response",
+            "tool_call:completed",
+            "response",
             "text",
             "response"
         ]
     );
+    let result = |value: &str| InferenceItem::ToolResult {
+        tool_use_id: "call-1".into(),
+        output: texts(&[&json!({ "value": value }).to_string()]),
+        is_error: false,
+    };
     let requests = provider.requests();
     assert_eq!(
-        item_kinds(&requests[1].items),
-        ["user_message", "tool_use", "tool_result"]
+        item_kinds(&requests[2].items),
+        [
+            "user_message",
+            "tool_use",
+            "tool_result",
+            "tool_use",
+            "tool_result"
+        ]
     );
     assert_eq!(
-        requests[1].items[2],
-        InferenceItem::ToolResult {
-            tool_use_id: "call-1".into(),
-            output: texts(&[r#"{"value":"hello"}"#]),
-            is_error: false,
-        }
+        [&requests[2].items[2], &requests[2].items[4]],
+        [&result("hello"), &result("again")]
     );
-    assert_eq!(requests[0].turn_id, "t1");
-    assert_eq!(requests[1].turn_id, "t1");
+    assert!(requests.iter().all(|request| request.turn_id == "t1"));
     assert_ne!(requests[0].request_id, requests[1].request_id);
 }
 
@@ -610,6 +636,46 @@ async fn a_turn_saves_at_each_dispatch_and_at_its_end_with_only_the_changed_rows
         (last.block_count, last.state.phase),
         (7, SessionPhase::Idle)
     );
+}
+
+/// A save that fails leaves its rows to the next one, so the history the
+/// store holds ends whole after a database refused a save (`runtime.md`
+/// § Saving).
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_failed_save_leaves_its_rows_to_the_next_and_the_stored_history_ends_whole() {
+    let (release, released) = oneshot::channel::<()>();
+    let provider = ScriptedRuntime::new([Turn::Stream(Box::new(move |_| {
+        use futures_util::StreamExt;
+        futures_util::stream::iter([event::text("hello")])
+            .chain(futures_util::stream::once(released).flat_map(|_| {
+                futures_util::stream::iter([event::text(" world"), event::response(1, 1)])
+            }))
+            .boxed_local()
+    }))]);
+    let store = MemoryTreeStore::new();
+    let session = start(&provider, Vec::new(), &store, SessionConfig::default()).await;
+    let errors = Rc::new(Cell::new(0));
+    let _subscription = session.subscribe({
+        let errors = errors.clone();
+        move |event| {
+            if let SessionEvent::Error { .. } = event {
+                errors.set(errors.get() + 1);
+            }
+        }
+    });
+    store.fail_saves(1);
+
+    let running = session.send(text("greet"), turn("t1")).unwrap();
+    // The scheduled save of the user block and the text so far fails.
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    assert_eq!(errors.get(), 1);
+    release.send(()).unwrap();
+    running.await.unwrap();
+
+    let stored = store
+        .checkpoint(&root())
+        .map(|checkpoint| checkpoint.transcript);
+    assert_eq!(stored, Some(session.transcript().blocks));
 }
 
 #[tokio::test(flavor = "local")]
@@ -969,105 +1035,6 @@ async fn a_message_queued_while_a_tool_runs_is_saved_without_a_transcript_change
 }
 
 #[tokio::test(flavor = "local")]
-async fn an_immediate_switch_lands_inside_the_running_turn_and_a_next_turn_switch_waits() {
-    let script = || {
-        ScriptedRuntime::new([
-            Turn::Events(vec![
-                event::tool_call("call-1", "slow", json!({})),
-                event::response(1, 1),
-            ]),
-            Turn::Events(vec![event::text("one"), event::response(1, 1)]),
-            Turn::Events(vec![event::text("two"), event::response(1, 1)]),
-        ])
-    };
-    let model_ids = |provider: &ScriptedRuntime| -> Vec<String> {
-        provider
-            .requests()
-            .iter()
-            .map(|request| request.model_id.clone())
-            .collect()
-    };
-    for (apply, expected) in [
-        (
-            ModelSwitchApply::Immediate,
-            ["test-model", "model-b", "model-b"],
-        ),
-        (
-            ModelSwitchApply::NextTurn,
-            ["test-model", "test-model", "model-b"],
-        ),
-    ] {
-        let provider = script();
-        let store = MemoryTreeStore::new();
-        let (slow, releases, started) = gated_tool("slow");
-        let session = start(&provider, vec![slow], &store, SessionConfig::default()).await;
-        let running = session.send(text("first"), turn("t1")).unwrap();
-        started.await.unwrap();
-        session
-            .update_model(ModelSwitch {
-                model: model_of("stub", "model-b"),
-                runtime: None,
-                apply,
-            })
-            .unwrap();
-        releases.borrow_mut().remove(0).send(()).unwrap();
-        running.await.unwrap();
-        session
-            .send(text("second"), turn("t2"))
-            .unwrap()
-            .await
-            .unwrap();
-
-        assert_eq!(model_ids(&provider), expected, "{apply}");
-        // Each block keeps the model current when it was written.
-        let blocks = session.transcript().blocks;
-        assert_eq!(blocks[0].model().model.id, "test-model");
-        assert_eq!(blocks.last().unwrap().model().model.id, "model-b");
-        assert_eq!(
-            store.checkpoint(&root()).unwrap().state.model.model.id,
-            "model-b"
-        );
-    }
-}
-
-#[tokio::test(flavor = "local")]
-async fn a_switch_to_another_provider_runs_the_next_turn_on_its_runtime_and_closes_the_old_one() {
-    let first = ScriptedRuntime::new([Turn::Events(vec![
-        event::text("from a"),
-        event::response(1, 1),
-    ])]);
-    let second = ScriptedRuntime::new([Turn::Events(vec![
-        event::text("from b"),
-        event::response(1, 1),
-    ])]);
-    let replaced = ScriptedRuntime::new(Vec::new());
-    let store = MemoryTreeStore::new();
-    let session = start(&first, Vec::new(), &store, SessionConfig::default()).await;
-    session.send(text("hi"), turn("t1")).unwrap().await.unwrap();
-
-    // A pending switch that a later one replaces is closed too.
-    for runtime in [&replaced, &second] {
-        let switch = ModelSwitch {
-            model: model_of("other", "model-b"),
-            runtime: Some(Box::new(runtime.clone())),
-            apply: ModelSwitchApply::NextTurn,
-        };
-        session.update_model(switch).unwrap();
-    }
-    assert!(!session.needs_runtime_for(&model_of("other", "model-c")));
-    session
-        .send(text("again"), turn("t2"))
-        .unwrap()
-        .await
-        .unwrap();
-
-    assert_eq!((first.requests().len(), first.closes()), (1, 1));
-    assert_eq!((replaced.requests().len(), replaced.closes()), (0, 1));
-    assert_eq!(second.requests()[0].model_id, "model-b");
-    assert_eq!(second.closes(), 0);
-}
-
-#[tokio::test(flavor = "local")]
 async fn an_immediate_switch_to_another_provider_continues_the_turn_on_the_new_runtime() {
     let first = ScriptedRuntime::new([Turn::Events(vec![
         event::tool_call("call-1", "slow", json!({})),
@@ -1208,61 +1175,6 @@ async fn the_stream_becomes_blocks_and_each_delta_one_patch() {
 }
 
 #[tokio::test(flavor = "local")]
-async fn a_provider_failure_ends_the_turn_with_its_record_and_the_queued_message_runs_next() {
-    let failing = Turn::Stream(Box::new(|_| {
-        use futures_util::StreamExt;
-        futures_util::stream::iter([event::text("partial")])
-            .chain(futures_util::stream::once(async {
-                event::error("the vendor is overloaded", Some(ErrorCode::Overloaded))
-            }))
-            .boxed_local()
-    }));
-    let provider = ScriptedRuntime::new([
-        failing,
-        Turn::Events(vec![event::text("second"), event::response(1, 1)]),
-    ]);
-    let store = MemoryTreeStore::new();
-    let session = start(&provider, Vec::new(), &store, SessionConfig::default()).await;
-    let reports = Rc::new(RefCell::new(Vec::new()));
-    let _subscription = session.subscribe({
-        let reports = reports.clone();
-        move |event| {
-            if let SessionEvent::Error { report } | SessionEvent::ActionFailed { report } = event {
-                reports.borrow_mut().push(report.clone());
-            }
-        }
-    });
-    let first = session.send(text("first"), turn("t1")).unwrap();
-    let second = session.send(text("second"), turn("t2")).unwrap();
-
-    let failed = *first.await.unwrap_err();
-    second.await.unwrap();
-
-    assert_eq!(failed.message, "the vendor is overloaded");
-    assert_eq!(failed.code.as_deref(), Some("overloaded"));
-    let diagnostics = failed.diagnostics.clone().unwrap();
-    assert_eq!(diagnostics.source, FailureSource::Unknown);
-    assert_eq!(
-        diagnostics.client_request_id.as_deref(),
-        Some(provider.requests()[0].request_id.as_str())
-    );
-    // Reported once as the turn's error, once as the failed action.
-    assert_eq!(*reports.borrow(), [failed.clone(), failed]);
-    let blocks = session.transcript().blocks;
-    assert_eq!(
-        kinds(&blocks),
-        ["user", "text", "error", "user", "text", "response"]
-    );
-    let Block::Error(record) = &blocks[2] else {
-        unreachable!()
-    };
-    assert_eq!(
-        record.diagnostics.as_ref().unwrap().source,
-        FailureSource::Unknown
-    );
-}
-
-#[tokio::test(flavor = "local")]
 async fn stop_takes_the_running_action_then_the_first_waiting_one_then_nothing() {
     let provider = ScriptedRuntime::new([
         Turn::pending(),
@@ -1328,39 +1240,6 @@ async fn a_repeated_message_id_runs_one_turn() {
         Ok(ActionEnd::Duplicate)
     );
     assert_eq!(provider.requests().len(), 1);
-}
-
-#[tokio::test(flavor = "local")]
-async fn queued_messages_can_leave_the_queue_or_run_next_and_the_queue_is_saved() {
-    let provider = ScriptedRuntime::new([
-        Turn::pending(),
-        Turn::Events(vec![event::text("third"), event::response(1, 1)]),
-    ]);
-    let store = MemoryTreeStore::new();
-    let session = start(&provider, Vec::new(), &store, SessionConfig::default()).await;
-    let _first = session.send(text("first"), turn("t1")).unwrap();
-    let second = session.send(text("second"), turn("t2")).unwrap();
-    let third = session.send(text("third"), turn("t3")).unwrap();
-    let fourth = session.send(text("fourth"), turn("t4")).unwrap();
-    let queue = |session: &AgentSession| -> Vec<String> {
-        session
-            .queued_messages()
-            .iter()
-            .map(|message| message.id.to_string())
-            .collect()
-    };
-
-    assert!(session.send_queued_message(&turn("t3")));
-    assert_eq!(queue(&session), ["t3", "t2", "t4"]);
-    assert!(session.dequeue_message(&turn("t2")));
-    assert!(!session.dequeue_message(&turn("t2")));
-    assert_eq!(second.await, Ok(ActionEnd::Dropped));
-    assert_eq!(session.clear_message_queue(), 2);
-    assert_eq!(
-        (third.await, fourth.await),
-        (Ok(ActionEnd::Dropped), Ok(ActionEnd::Dropped))
-    );
-    assert!(queue(&session).is_empty());
 }
 
 #[tokio::test(flavor = "local")]

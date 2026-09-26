@@ -18,13 +18,15 @@ a block that does not decode stops it.
 
 `main.rs` opens the fixture as a conversation of an agent server over an
 in-memory tree store and talks to the real DeepSeek V4 Flash through the
-OpenAI-compatible provider. It is a program to run by hand: no build of the
-one selection compiles it, and no test runs it.
+OpenAI-compatible provider. It is a program to run by hand, and no test runs
+it. It is the agent crate's example, so every build and test of the one
+selection compiles it (`cargo test` builds every example), which keeps it in
+step with the agent's API, and puts it in `target/debug/examples`:
 
 ```sh
 export DEEPSEEK_API_KEY=...
-cargo run -p demi-agent --features compaction-fixture --example compaction-fixture -- recall
-cargo run -p demi-agent --features compaction-fixture --example compaction-fixture -- switch
+target/debug/examples/compaction-fixture recall
+target/debug/examples/compaction-fixture switch
 ```
 
 | Mode | What it checks |
