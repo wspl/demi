@@ -119,7 +119,8 @@ work panel tab state        browser kind                         backend / Host
   cannot.
 
 A page has at most one view per conversation, open only while a `browser` tab
-is the panel's selection. Selecting another `browser` tab keeps the view and
+is the panel's selection and the page is visible
+([Ending a view](#ending-a-view)). Selecting another `browser` tab keeps the view and
 sends `watch`; the module then releases what the viewer held on the old tab,
 starts a new stream generation and sends the new tab's dialog, controls and
 cursor, and the page discards frames of older generations. A view carries one
@@ -229,10 +230,18 @@ backend memory instead of dropping stale ones on the Host.
 | Event | Result |
 | --- | --- |
 | The page closes, hides the view, or loses its connection | The invocation is cancelled; the keys and buttons this viewer holds are released; capture of a tab nobody watches stops |
+| The page's document is hidden: another browser tab is in front, or the window is minimized | The page closes the view, with the result above; once the page is visible again, it opens a new view on the tab it shows |
 | The browser environment ends: last tab closed, conversation release, Chrome crash, Cloud stop | The module tells the page that the browser ended, and the stream ends |
 | Archive, target or directory change, detach | The backend ends the stream, as it ends file transfers |
 | The Host becomes unreachable | The stream ends; the page reconnects when the conversation's host access admits it again |
 | The module sends a frame the protocol refuses | The page reports it and ends the view; the next view opens as after any other end |
+
+The page's visibility, as the browser reports it (the Page Visibility API's
+`visibilityState`), is the one sign of whether someone can watch the view.
+Nobody can watch a hidden page, and an open view keeps its conversation, and
+with it a Cloud, [active](../execution/resource-lifecycle.md#activity), so a
+hidden page holds no view. A visible page keeps its view however long nobody
+touches it: someone may be watching the agent work.
 
 ## Pictures
 
@@ -307,7 +316,7 @@ Lima's `vz` VMs do not pass SME through.
 - The page acknowledges each frame it shows. The module adapts from
   end-to-end acknowledgement delay: queueing delay is the main signal. Under
   congestion it lowers the bit rate, then the frame rate, then the resolution.
-  A hidden page, a blocked page and a stall are pauses, not congestion. There
+  A blocked page and a stall are pauses, not congestion. There
   is no fixed bit rate ceiling and no Cloud-specific limit.
 - Watching costs Host CPU. A small Host shares its CPU between Chrome,
   software compositing, H.264 encoding and the agent's commands, so a watched

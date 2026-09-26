@@ -2,9 +2,11 @@
  * The `browser` tab kind's own side of the work panel
  * (`live-view.md` § A browser tab in the panel): what a tab saves, the
  * requests that list, open, close and navigate the conversation browser's
- * tabs, and the one view a page keeps while a `browser` tab is shown.
+ * tabs, and the one view a page keeps while a `browser` tab is shown and the
+ * page is visible.
  */
-import { nextTick, shallowRef, type ShallowRef } from 'vue'
+import { useDocumentVisibility } from '@vueuse/core'
+import { nextTick, shallowRef, watch, type Ref, type ShallowRef, type WatchHandle } from 'vue'
 import { z } from 'zod'
 import type { BrowserCreatedBy } from '@demicodes/protocol'
 import { viewerClipboard } from './clipboard'
@@ -70,9 +72,13 @@ export interface BrowserPanelTabs {
 /** Answers that will not change by asking again. */
 const FINAL_CODES = new Set(['conversation_not_found', 'conversation_archived'])
 
+/** Whether the page is visible: one listener, for the page's lifetime, that every controller shares. */
+const pageVisibility = useDocumentVisibility()
+
 /**
  * One conversation's browser, for one page: the last tab list it read, and
- * the view, open only while a `browser` tab's content is shown.
+ * the view, open only while a `browser` tab's content is shown and the page
+ * is visible (`live-view.md` § Ending a view).
  */
 export class BrowserTabsController {
   /** The last list read; null before the first answer. */
@@ -90,14 +96,20 @@ export class BrowserTabsController {
   private readonly opening = new Map<string, Promise<BrowserTabInfo>>()
   /** Browser tabs whose panel tab the user closed, until the browser has closed them too. */
   private readonly leaving = new Set<string>()
-  private readonly showing = new Set<string>()
+  /** The browser tab whose content is shown, which the view watches while the page is visible. */
+  private shown: string | null = null
   private closing: ReturnType<typeof setTimeout> | null = null
+  private readonly stopVisibility: WatchHandle
   private disposed = false
 
   constructor(
     readonly api: BrowserTabsApi,
     private readonly panel: BrowserPanelTabs,
-  ) {}
+    /** The page's visibility; the document's own unless a test supplies one. */
+    private readonly visibility: Readonly<Ref<DocumentVisibilityState>> = pageVisibility,
+  ) {
+    this.stopVisibility = watch(visibility, (state) => this.visibilityChanged(state), { flush: 'sync' })
+  }
 
   /**
    * Reads the browser's tabs and adds those no panel tab is bound to. Nothing
@@ -206,44 +218,73 @@ export class BrowserTabsController {
     }
   }
 
-  /** A shown content watches its tab on the page's one view, opening the view when there is none. */
-  show(tab: string): LiveSession {
-    this.showing.add(tab)
+  /**
+   * A shown content watches its tab on the page's one view, opening the view
+   * when there is none. A hidden page opens none until it is shown.
+   */
+  show(tab: string): void {
+    this.shown = tab
     if (this.closing !== null) {
       clearTimeout(this.closing)
       this.closing = null
     }
-    let session = this.session.value
-    if (!session) {
-      session = new LiveSession({
-        open: this.api.stream,
-        platform: viewerPlatform(navigator),
-        onClipboard: (text) => viewerClipboard.receive(text),
-        onTabs: (tabs) => this.adopt({ tabs }),
-        onEnded: () => void this.refresh(),
-      })
-      this.session.value = session
-      session.start()
+    if (this.visibility.value === 'visible') {
+      this.view().watch(tab)
     }
-    session.watch(tab)
-    return session
   }
 
   /**
    * A content that stops showing. Selecting another `browser` tab shows it in
-   * the same flush, so the view closes only when none followed.
+   * the same flush, before or after this, so the view closes only when none
+   * followed.
    */
   hide(tab: string): void {
-    this.showing.delete(tab)
-    if (this.showing.size > 0 || this.closing !== null) {
+    if (this.shown !== tab) {
+      return
+    }
+    this.shown = null
+    if (this.closing !== null) {
       return
     }
     this.closing = setTimeout(() => {
       this.closing = null
-      if (this.showing.size === 0) {
+      if (this.shown === null) {
         this.closeView()
       }
     }, 0)
+  }
+
+  /**
+   * Nobody can watch a hidden page, and an open view keeps its conversation
+   * active, so the view closes while the page is hidden. Shown again, the
+   * page opens a new view on the shown tab.
+   */
+  private visibilityChanged(state: DocumentVisibilityState): void {
+    if (state !== 'visible') {
+      this.closeView()
+      return
+    }
+    if (this.shown !== null) {
+      this.view().watch(this.shown)
+    }
+  }
+
+  /** The page's one view, opened when there is none. */
+  private view(): LiveSession {
+    const open = this.session.value
+    if (open) {
+      return open
+    }
+    const session = new LiveSession({
+      open: this.api.stream,
+      platform: viewerPlatform(navigator),
+      onClipboard: (text) => viewerClipboard.receive(text),
+      onTabs: (tabs) => this.adopt({ tabs }),
+      onEnded: () => void this.refresh(),
+    })
+    this.session.value = session
+    session.start()
+    return session
   }
 
   private closeView(): void {
@@ -253,11 +294,12 @@ export class BrowserTabsController {
 
   dispose(): void {
     this.disposed = true
+    this.stopVisibility()
     if (this.closing !== null) {
       clearTimeout(this.closing)
       this.closing = null
     }
-    this.showing.clear()
+    this.shown = null
     this.closeView()
   }
 }
