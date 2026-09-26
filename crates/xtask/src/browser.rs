@@ -203,8 +203,7 @@ async fn prepare(
         version: version.to_owned(),
         platforms,
     };
-    let mut record = serde_json::to_vec_pretty(&release).map_err(|error| Error::Record(error.to_string()))?;
-    record.push(b'\n');
+    let record = crate::record(&release).map_err(|error| Error::Record(error.to_string()))?;
     // The record is checked the way its reader decodes it.
     let text = std::str::from_utf8(&record).map_err(|error| Error::Record(error.to_string()))?;
     BrowserRelease::parse(text).map_err(|error| Error::Record(error.to_string()))?;
