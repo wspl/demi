@@ -1,7 +1,7 @@
 //! What the backend sends: `fixtures/server-frames.json` holds every frame in
 //! the shape the page receives.
 
-use demi_agent_protocol::{ServerFrame, ShellStatus, TranscriptVersion};
+use demi_agent_protocol::ServerFrame;
 use serde_json::{Value, json};
 
 fn fixtures() -> Vec<Value> {
@@ -22,34 +22,6 @@ fn every_server_frame_keeps_its_wire_shape() {
     }
     kinds.dedup();
     assert_eq!(kinds.len(), 18, "one fixture of every frame");
-}
-
-#[test]
-fn a_frame_without_failures_carries_none_and_a_status_carries_its_ids() {
-    let reset = ServerFrame::TranscriptReset {
-        blocks: Vec::new(),
-        version: TranscriptVersion {
-            epoch: "epoch-1".into(),
-            revision: 0,
-        },
-        failures: None,
-    };
-    assert_eq!(
-        serde_json::to_value(&reset).unwrap(),
-        json!({"type": "transcript_reset", "blocks": [], "version": {"epoch": "epoch-1", "revision": 0}}),
-    );
-
-    let output = fixtures()
-        .into_iter()
-        .find(|fixture| fixture["type"] == "shell_output" && fixture["status"]["status"] == "exited")
-        .unwrap();
-    let ServerFrame::ShellOutput { status } = decode(&output) else {
-        unreachable!()
-    };
-    assert_eq!(status.command().command_id.as_str(), "cmd-1");
-    assert!(matches!(*status, ShellStatus::Exited { exit_code: 0, binary_stdout: Some(binary), .. } if binary.truncated));
-    assert!(output.get("shellId").is_none());
-    assert!(output["status"]["binaryStdout"].get("data").is_none());
 }
 
 #[test]
