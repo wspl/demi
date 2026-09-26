@@ -10,6 +10,8 @@ pub(crate) mod codes;
 pub(crate) mod command_context;
 pub(crate) mod devices;
 pub(crate) mod files;
+#[cfg(feature = "testing")]
+pub(crate) mod hold;
 pub(crate) mod host_commands;
 pub(crate) mod install;
 pub(crate) mod local_store;

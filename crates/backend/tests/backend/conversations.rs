@@ -204,7 +204,7 @@ impl Socket {
     }
 
     /// The close code, skipping the frames before it.
-    async fn closed(&mut self) -> Option<u16> {
+    pub(crate) async fn closed(&mut self) -> Option<u16> {
         loop {
             if let Received::Closed(code) = self.next().await {
                 return code;
