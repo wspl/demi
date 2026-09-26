@@ -15,7 +15,10 @@ use crate::{
     services::ServiceRegistry,
     state::{ActiveRunner, RunnerConfig, RunnerState},
 };
-use demi_runner_protocol::values::{BackendUrl, DeviceToken};
+use demi_runner_protocol::{
+    image::ARTIFACTS_PATH,
+    values::{BackendUrl, DeviceToken},
+};
 use std::{collections::BTreeMap, io, path::PathBuf, sync::Arc, time::Duration};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
@@ -62,8 +65,13 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<()> {
     // Every pipe request reads the token; only a claim changes it.
     let token = watch::Sender::new(token);
     tracing::info!("runner {} started", options.runner.version);
+    // A Cloud image preinstalls the command executables there. The runner
+    // looks on every Host, and a paired device has nothing there; Cloud
+    // images are Linux only, so a Windows runner does not look.
+    let image = cfg!(unix).then(|| PathBuf::from(ARTIFACTS_PATH));
     let registry = ServiceRegistry::new(
         state.root.join("artifacts"),
+        image,
         options.cwd.clone(),
         options.env.clone(),
     )
