@@ -268,7 +268,7 @@ service's standard error enters the same way, one event per line as it arrives.
 
 | Source | Lines |
 | --- | --- |
-| `runner` | Connecting and losing the backend, starting and stopping services, opening, refusing and ending streams, failed Host operations, guest boot |
+| `runner` | Connecting and losing the backend, starting and stopping services, a [preinstalled executable](native-runtime.md#preinstalled-executables) it does not use and why, opening, refusing and ending streams, failed Host operations, guest boot |
 | `service:<package>` | Every line a resident service writes to its standard error, as it arrives |
 | `stream:<operation>` | The standard error of a [service stream](#service-streams)'s invocation, for example `stream:browser.live` |
 
