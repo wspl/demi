@@ -31,9 +31,10 @@ func TestRunnerSuppliesTheInvocation(t *testing.T) {
 		if err != nil {
 			return 1
 		}
-		defer file.Close()
 		value, _ := inv.Env.Get("VALUE")
-		if _, err := file.Write([]byte(value)); err != nil {
+		_, err = file.Write([]byte(value))
+		closeErr := file.Close()
+		if err != nil || closeErr != nil {
 			return 1
 		}
 		code, err := inv.Run(inv.Context, toolctx.Command{Args: []string{"upper", "!"}, Stdout: inv.Stdout})
