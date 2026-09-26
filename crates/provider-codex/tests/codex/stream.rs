@@ -6,10 +6,9 @@ use std::time::Duration;
 use demi_core::{FailureSource, ProviderErrorDiagnostics, Timestamp, TokenUsage};
 use demi_provider::{
     ErrorCode, HttpFailureRecord, ProviderEvent, ProviderFailure, ToolCall,
-    testing::{MockResponse, MockVendor, inference_request},
+    testing::{MockResponse, MockVendor, inference_request, next_event},
 };
 use demi_provider_codex::{CodexConfig, CodexProvider, TransportMode, read_codex_failure};
-use futures_util::StreamExt;
 use serde_json::json;
 
 use crate::{NOW, RESPONSES, fresh_token, pool_with, provider, run, runtime_of, secret, stream};
@@ -159,7 +158,7 @@ async fn response_headers_that_do_not_arrive_in_time_fail_the_run_as_overloaded(
     let vendor = MockVendor::start().await;
     vendor.respond_at(RESPONSES, MockResponse::silent());
     let pool = pool_with(secret(&fresh_token(), "refresh-1", NOW)).await;
-    let mut config = CodexConfig::new("codex", "Codex", Some(crate::ACCOUNT.into()));
+    let mut config = CodexConfig::new(Some(crate::ACCOUNT.into()));
     config.backend_url = vendor.url("/backend-api").parse().unwrap();
     config.auth_url = vendor.url("").parse().unwrap();
     config.transport = TransportMode::Sse;
@@ -202,11 +201,11 @@ async fn cancelling_mid_stream_stops_the_download() {
     let cancel = request.cancel.clone();
     let mut events = runtime.run(request);
     assert_eq!(
-        events.next().await,
+        next_event(&mut events).await,
         Some(ProviderEvent::TextDelta("hel".into()))
     );
     cancel.cancel();
-    assert_eq!(events.next().await, None);
+    assert_eq!(next_event(&mut events).await, None);
     vendor.disconnected().await;
 }
 

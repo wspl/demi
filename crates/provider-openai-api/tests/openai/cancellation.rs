@@ -4,10 +4,9 @@
 use demi_core::WireApi;
 use demi_provider::{
     ProviderEvent,
-    testing::{MockResponse, MockVendor, inference_request},
+    testing::{MockResponse, MockVendor, inference_request, next_event},
 };
 use demi_provider_openai_api::VendorPolicy;
-use futures_util::StreamExt;
 
 use crate::{run, runtime};
 
@@ -47,11 +46,11 @@ async fn cancelling_mid_stream_ends_the_run_without_an_event_and_drops_the_conne
         let cancel = request.cancel.clone();
         let mut events = runtime.run(request);
         assert_eq!(
-            events.next().await,
+            next_event(&mut events).await,
             Some(ProviderEvent::TextDelta("hel".into()))
         );
         cancel.cancel();
-        assert_eq!(events.next().await, None);
+        assert_eq!(next_event(&mut events).await, None);
         vendor.disconnected().await;
     }
 }

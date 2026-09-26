@@ -3,9 +3,8 @@
 
 use demi_provider::{
     ProviderEvent,
-    testing::{MockResponse, MockVendor, inference_request},
+    testing::{MockResponse, MockVendor, inference_request, next_event},
 };
-use futures_util::StreamExt;
 
 use crate::{run, runtime};
 
@@ -35,9 +34,9 @@ async fn cancelling_mid_stream_ends_the_run_without_an_event_and_drops_the_conne
     let request = inference_request();
     let cancel = request.cancel.clone();
     let mut events = runtime.run(request);
-    assert_eq!(events.next().await, Some(ProviderEvent::TextDelta("hel".into())));
+    assert_eq!(next_event(&mut events).await, Some(ProviderEvent::TextDelta("hel".into())));
     cancel.cancel();
-    assert_eq!(events.next().await, None);
+    assert_eq!(next_event(&mut events).await, None);
     vendor.disconnected().await;
 }
 
@@ -47,7 +46,7 @@ async fn dropping_the_run_mid_stream_drops_the_connection() {
     vendor.respond(open_stream());
     let mut runtime = runtime(&vendor);
     let mut events = runtime.run(inference_request());
-    assert_eq!(events.next().await, Some(ProviderEvent::TextDelta("hel".into())));
+    assert_eq!(next_event(&mut events).await, Some(ProviderEvent::TextDelta("hel".into())));
     drop(events);
     vendor.disconnected().await;
 }

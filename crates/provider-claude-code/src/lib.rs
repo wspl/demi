@@ -49,9 +49,9 @@ const FAMILY: &str = "Claude Code";
 /// The configuration of a `claude-code` entry's provider for one account.
 #[derive(Debug, Clone)]
 pub struct ClaudeCodeConfig {
-    /// The entry's id.
+    /// The entry's id, which names the entry in the logs of its runs.
     pub id: String,
-    /// The entry's label.
+    /// The entry's label, which names the provider in its refusals.
     pub display_name: String,
     /// The account the provider stands for; `None` only for a provider built
     /// to add the entry's first account.
@@ -137,14 +137,6 @@ impl ClaudeCodeProvider {
 }
 
 impl Provider for ClaudeCodeProvider {
-    fn id(&self) -> &str {
-        &self.shared.id
-    }
-
-    fn display_name(&self) -> &str {
-        &self.shared.display_name
-    }
-
     fn capabilities(&self) -> Capabilities {
         Capabilities { process_host: true }
     }

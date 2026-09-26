@@ -12,11 +12,11 @@ mod stream;
 use std::sync::Arc;
 
 use demi_provider::{
-    InferenceRequest, Provider, ProviderEvent, ProviderRuntime, RuntimeEnv, Secret,
+    Provider, ProviderRuntime, RuntimeEnv, Secret,
     testing::{FixedClock, MockResponse, MockVendor},
 };
 use demi_provider_anthropic_api::{AnthropicConfig, AnthropicProvider};
-use futures_util::StreamExt;
+pub(crate) use demi_provider::testing::run;
 
 /// When the scripted vendor answers.
 pub(crate) const NOW: &str = "2026-09-18T14:00:00.000Z";
@@ -24,8 +24,6 @@ pub(crate) const NOW: &str = "2026-09-18T14:00:00.000Z";
 /// A provider whose endpoint is `base` on the scripted vendor.
 pub(crate) fn provider_at(vendor: &MockVendor, base: &str) -> AnthropicProvider {
     let config = AnthropicConfig {
-        id: "anthropic-work".into(),
-        display_name: "Work".into(),
         api_key: Secret::try_from("sk-ant-test".to_owned()).unwrap(),
         base_url: Some(vendor.url(base).parse().unwrap()),
     };
@@ -39,10 +37,6 @@ pub(crate) fn runtime(vendor: &MockVendor) -> Box<dyn ProviderRuntime> {
             http: reqwest::Client::new(),
         })
         .unwrap()
-}
-
-pub(crate) async fn run(runtime: &mut dyn ProviderRuntime, request: InferenceRequest) -> Vec<ProviderEvent> {
-    runtime.run(request).collect().await
 }
 
 /// A recorded event stream: each payload as the vendor frames it, with its

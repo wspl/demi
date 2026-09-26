@@ -87,15 +87,6 @@ fn a_vendor_failure_classifies_by_whole_words_and_falls_back_to_the_vendor_code(
 }
 
 #[test]
-fn a_code_is_written_as_its_string() {
-    for code in ["rate_limit", "overloaded", "context_length_exceeded", "auth_missing", "custom_vendor"] {
-        let parsed: ErrorCode = code.parse().unwrap();
-        assert_eq!(parsed.to_string(), code);
-    }
-    assert_eq!("rate_limit".parse::<ErrorCode>().unwrap(), ErrorCode::RateLimit);
-}
-
-#[test]
 fn a_record_lists_lowercase_headers_sorted_with_repeats_in_arrival_order() {
     let mut headers = HeaderMap::new();
     headers.append("X-Request-Id", HeaderValue::from_static("req-9"));

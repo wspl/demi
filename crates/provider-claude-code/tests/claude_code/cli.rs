@@ -13,9 +13,10 @@ use demi_core::{Clock, StreamKind, UserContentBlock};
 use demi_provider::credentials::{AddAccount, MemoryCredentialPool};
 use demi_provider::models_dev::ModelsDevClient;
 use demi_provider::quota::MemorySnapshots;
-use demi_provider::testing::{FixedClock, inference_request};
+pub use demi_provider::testing::{all_events, next_event};
+use demi_provider::testing::{FixedClock, guarded, inference_request};
 use demi_provider::{
-    InferenceItem, InferenceRequest, Provider, ProviderEvent, ProviderRuntime, Secret,
+    InferenceItem, InferenceRequest, Provider, ProviderRuntime, Secret,
     ToolDefinition,
 };
 use demi_provider_claude_code::{
@@ -26,7 +27,7 @@ use demi_shell::{
 };
 use futures_channel::mpsc;
 use futures_util::future::LocalBoxFuture;
-use futures_util::{Stream, StreamExt as _};
+use futures_util::StreamExt as _;
 use serde_json::{Value, json};
 use tokio::sync::watch;
 
@@ -158,11 +159,6 @@ pub fn tool_result(id: &str, text: &str) -> InferenceItem {
     }
 }
 
-/// Every event of a run.
-pub async fn all_events(run: impl Stream<Item = ProviderEvent>) -> Vec<ProviderEvent> {
-    run.collect().await
-}
-
 /// A runtime of `provider` over `placement`.
 pub fn runtime_of(
     provider: &ClaudeCodeProvider,
@@ -208,8 +204,7 @@ pub struct Starts(mpsc::UnboundedReceiver<Cli>);
 impl Starts {
     /// The next process started.
     pub async fn next(&mut self) -> Cli {
-        self.0
-            .next()
+        guarded("the next process start", self.0.next())
             .await
             .expect("the placement lives while the test does")
     }
@@ -353,8 +348,7 @@ pub struct Cli {
 impl Cli {
     /// The next line the provider writes.
     pub async fn read(&mut self) -> Value {
-        self.inputs
-            .next()
+        guarded("the provider's next line", self.inputs.next())
             .await
             .expect("the process's input stays open while the test reads it")
     }

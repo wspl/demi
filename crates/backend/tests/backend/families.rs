@@ -104,8 +104,6 @@ impl ProviderFamily for ScriptedKey {
             return Err(FamilyError::WrongCredential);
         };
         Ok(Arc::new(Scripted {
-            id: args.entry_id,
-            label: args.label,
             directory: self.directory.clone(),
             accounts: None,
             quota: None,
@@ -197,8 +195,6 @@ impl ProviderFamily for ScriptedSubscription {
             )
         });
         Ok(Arc::new(Scripted {
-            id: args.entry_id,
-            label: args.label,
             directory: self.directory.clone(),
             accounts: Some(Box::new(accounts)),
             quota,
@@ -291,8 +287,6 @@ impl QuotaSource for Probe {
 
 /// A scripted family's provider.
 struct Scripted {
-    id: String,
-    label: String,
     directory: Arc<Directory>,
     accounts: Option<Box<dyn SubscriptionAccounts>>,
     quota: Option<ProviderQuota>,
@@ -301,14 +295,6 @@ struct Scripted {
 }
 
 impl Provider for Scripted {
-    fn id(&self) -> &str {
-        &self.id
-    }
-
-    fn display_name(&self) -> &str {
-        &self.label
-    }
-
     fn capabilities(&self) -> Capabilities {
         Capabilities {
             process_host: self.process_host,
