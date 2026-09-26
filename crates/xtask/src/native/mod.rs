@@ -12,6 +12,10 @@ use demi_command_service::protocol::TARGETS;
 /// Where the builds go and the packaging reads them, unless `--artifacts`
 /// names another Cargo target directory.
 const ARTIFACTS: &str = ".cache/native-target";
+/// A command package release's record.
+pub const DESCRIPTOR: &str = "descriptor.json";
+/// A runner release's record, and the pointer beside the releases.
+pub const MANIFEST: &str = "manifest.json";
 
 #[derive(clap::Subcommand)]
 pub enum Command {
