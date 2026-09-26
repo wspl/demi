@@ -500,7 +500,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
     // A resident native service.
     {
         let cache = root_path.join("native");
-        let services = ServiceRegistry::new(cache.join("cache"), root_path.clone(), BTreeMap::new())
+        let services = ServiceRegistry::new(cache.join("cache"), None, root_path.clone(), BTreeMap::new())
             .await
             .unwrap();
         let bytes = std::fs::read(env!("CARGO_BIN_EXE_demi-native-fixture")).unwrap();
