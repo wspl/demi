@@ -13,6 +13,10 @@ pub trait FileControl: Send + Sync {
     fn read(&self, file: &File, buffer: &mut [u8]) -> io::Result<usize>;
     /// Write without outliving the owning execution.
     fn write(&self, file: &File, buffer: &[u8]) -> io::Result<usize>;
+    /// Duplicate a descriptor; the embedding owner decides how to meet a lack of descriptors.
+    fn duplicate(&self, file: &File) -> io::Result<File> {
+        file.try_clone()
+    }
 }
 
 /// Ownership hooks shared by a shell and every cloned subshell.
@@ -37,6 +41,11 @@ pub trait ExecutionHost: Any + Send + Sync {
     /// Create a pipe; the embedding owner decides how to meet a lack of descriptors.
     fn pipe(&self) -> io::Result<(std::io::PipeReader, std::io::PipeWriter)> {
         std::io::pipe()
+    }
+    /// Create an unnamed temporary file, such as a here-document's; the embedding owner decides
+    /// how to meet a lack of descriptors.
+    fn temporary_file(&self) -> io::Result<File> {
+        tempfile::tempfile()
     }
     /// Resolve shell-specific path conventions against an explicit cwd.
     fn resolve_path(&self, path: &std::path::Path, cwd: &std::path::Path) -> std::path::PathBuf;

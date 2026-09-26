@@ -1,11 +1,16 @@
-//! The edge's own listener: shutdown can stop accepting connections while
-//! the open ones go on serving, and close those later, which axum's own
-//! graceful shutdown, closing connections as it stops accepting, cannot.
-//! Each connection also has a control a request can close it through, and
-//! an idle deadline a file transfer arms (`sessions-and-targets.md` § Host
-//! operations): a connection on which no byte moves for the deadline is
-//! closed, whoever stopped moving them.
+//! The edge's own listener and connections: shutdown can stop accepting
+//! connections while the open ones go on serving, and close those later,
+//! which axum's own graceful shutdown, closing connections as it stops
+//! accepting, cannot. Each connection also has a control a request can
+//! close it through, and an idle deadline a file transfer arms
+//! (`sessions-and-targets.md` § Host operations): a connection on which no
+//! byte moves for the deadline is closed, whoever stopped moving them. The
+//! edge serves its connections itself, with hyper's HTTP/1 server keeping
+//! each header name's case, which axum's `serve` cannot: the expose relay
+//! passes names on as the visitor wrote them (`expose.md` § The public
+//! relay).
 
+use std::convert::Infallible;
 use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
@@ -15,13 +20,17 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::task::{Context, Poll};
 use std::time::Duration;
 
-use axum::extract::connect_info::Connected;
-use axum::serve::IncomingStream;
+use axum::http::Request;
+use axum::response::Response;
+use hyper::body::Incoming;
+use hyper::server::conn::http1;
+use hyper::service::service_fn;
+use hyper_util::rt::TokioIo;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::Instant;
 use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
-use tokio_util::task::AbortOnDropHandle;
+use tokio_util::task::{AbortOnDropHandle, TaskTracker};
 
 pub(super) struct EdgeListener {
     /// Dropped, which closes the socket, once shutdown starts.
@@ -38,12 +47,9 @@ impl EdgeListener {
             connections,
         }
     }
-}
 
-impl axum::serve::Listener for EdgeListener {
-    type Io = ConnectionIo;
-    type Addr = SocketAddr;
-
+    /// The next connection, until shutdown starts; then the socket closes
+    /// and this never resolves.
     async fn accept(&mut self) -> (ConnectionIo, SocketAddr) {
         if let Some(tcp) = self.tcp.as_mut() {
             tokio::select! {
@@ -64,11 +70,65 @@ impl axum::serve::Listener for EdgeListener {
         }
         std::future::pending().await
     }
+}
 
-    fn local_addr(&self) -> io::Result<SocketAddr> {
-        match &self.tcp {
-            Some(tcp) => tcp.local_addr(),
-            None => Err(io::Error::new(io::ErrorKind::NotConnected, "the listener is closed")),
+/// Serves each connection `listener` accepts, answering each request with
+/// `respond`, until `stop` is cancelled: then no connection is accepted,
+/// the open ones finish the requests they serve, and this resolves once
+/// they closed. A connection's upgraded stream, such as a WebSocket, lives
+/// on without it.
+pub(super) async fn serve<R, F>(mut listener: EdgeListener, stop: CancellationToken, respond: R)
+where
+    R: Fn(Peer, Request<Incoming>) -> F + Clone + Send + 'static,
+    F: Future<Output = Response> + Send + 'static,
+{
+    let connections = TaskTracker::new();
+    loop {
+        let (io, addr) = tokio::select! {
+            () = stop.cancelled() => break,
+            accepted = listener.accept() => accepted,
+        };
+        let peer = Peer {
+            addr,
+            control: io.control.clone(),
+        };
+        let respond = respond.clone();
+        let service = service_fn(move |request| {
+            let answer = respond(peer.clone(), request);
+            async move { Ok::<_, Infallible>(answer.await) }
+        });
+        connections.spawn(serve_connection(io, service, stop.clone()));
+    }
+    drop(listener);
+    connections.close();
+    connections.wait().await;
+}
+
+/// Serves one connection until it closes; once `stop` is cancelled it
+/// closes after the request it serves.
+async fn serve_connection<S>(io: ConnectionIo, service: S, stop: CancellationToken)
+where
+    S: hyper::service::Service<Request<Incoming>, Response = Response, Error = Infallible>,
+{
+    let mut builder = http1::Builder::new();
+    builder.preserve_header_case(true);
+    let connection = builder.serve_connection(TokioIo::new(io), service).with_upgrades();
+    let mut connection = std::pin::pin!(connection);
+    let mut stopping = false;
+    loop {
+        tokio::select! {
+            served = connection.as_mut() => {
+                // A peer that went away or broke the protocol ends its own
+                // connection; nobody waits to hear why.
+                if let Err(error) = served {
+                    tracing::trace!(error = &error as &dyn std::error::Error, "a connection ended");
+                }
+                return;
+            }
+            () = stop.cancelled(), if !stopping => {
+                stopping = true;
+                connection.as_mut().graceful_shutdown();
+            }
         }
     }
 }
@@ -111,18 +171,8 @@ impl ConnectionIo {
 /// A connection as a request sees it: where it comes from, and its control.
 #[derive(Clone)]
 pub(crate) struct Peer {
-    #[expect(dead_code, reason = "the expose relay forwards the visitor's address")]
     pub(crate) addr: SocketAddr,
     pub(crate) control: ConnectionControl,
-}
-
-impl Connected<IncomingStream<'_, EdgeListener>> for Peer {
-    fn connect_info(stream: IncomingStream<'_, EdgeListener>) -> Self {
-        Self {
-            addr: *stream.remote_addr(),
-            control: stream.io().control.clone(),
-        }
-    }
 }
 
 /// Closes a connection from the request it serves: at once, or once no

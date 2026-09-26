@@ -13,6 +13,7 @@ import {
   conversationUpdateSchema,
   devicesSchema,
   modelCatalogSchema,
+  productStateSchema,
   providerAnswerSchema,
   transcriptSchema,
   type Claim,
@@ -21,7 +22,6 @@ import {
   type CreateProvider,
   type SetupRequest,
 } from '../../api/generated/web-api'
-import { productStateSchema } from '../../api/unported'
 import { useSession } from '../../auth/session'
 import { openBrowser, startBackend, startRunner, temporaryRoot, type Backend, type Runner } from './harness'
 import { startScriptedAnthropic, type ScriptedAnthropic } from './scripted-anthropic'

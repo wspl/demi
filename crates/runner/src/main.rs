@@ -257,6 +257,15 @@ async fn runner(cli: Cli, shell: demi_runner::shell::ShellRuntime) -> io::Result
         .with(layer.with_filter(LevelFilter::INFO))
         .with(host_log::Console.with_filter(LevelFilter::WARN))
         .init();
+    // Every job and stream shares this process's open files (`runner.md`
+    // § Load); without the raise the runner still works, waiting sooner.
+    #[cfg(unix)]
+    match demi_runner::process::raise_open_file_limit() {
+        Ok((started, raised)) => {
+            tracing::info!("open-file limit {raised} (started with {started})")
+        }
+        Err(error) => tracing::warn!("the open-file limit could not be raised: {error}"),
+    }
     let options = Options {
         backend,
         log: log.reader(),

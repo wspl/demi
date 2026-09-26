@@ -16,6 +16,8 @@ mod conversations;
 mod cookies;
 mod devices;
 mod error;
+mod expose;
+mod exposes;
 mod files;
 mod gate;
 mod hosts;
@@ -42,14 +44,16 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::Router;
-use axum::extract::{DefaultBodyLimit, FromRef, OriginalUri, Request, State};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, FromRef, OriginalUri, Request, State};
 use axum::http::Method;
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post, put};
+use hyper::body::Incoming;
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
+use tower::ServiceExt as _;
 use tower_http::trace::TraceLayer;
 
 use self::error::ApiError;
@@ -68,7 +72,7 @@ pub(crate) struct Edge {
     connections: CancellationToken,
     /// Cancelled to end the server once its connections are gone.
     stop: CancellationToken,
-    serving: JoinHandle<io::Result<()>>,
+    serving: JoinHandle<()>,
 }
 
 impl Edge {
@@ -85,12 +89,10 @@ impl Edge {
         let connections = CancellationToken::new();
         let stop = CancellationToken::new();
         let listener = EdgeListener::new(tcp, closing.clone(), connections.clone());
-        let app = router(state, closing.clone(), web_directory);
-        let serving = tokio::spawn(
-            axum::serve(listener, app.into_make_service_with_connect_info::<Peer>())
-                .with_graceful_shutdown(stop.clone().cancelled_owned())
-                .into_future(),
-        );
+        let app = router(state.clone(), closing.clone(), web_directory);
+        let serving = tokio::spawn(listener::serve(listener, stop.clone(), move |peer, request| {
+            respond(app.clone(), state.clone(), peer, request)
+        }));
         Ok(Self {
             local_addr,
             closing,
@@ -116,7 +118,20 @@ impl Edge {
         self.closing.cancel();
         self.connections.cancel();
         self.stop.cancel();
-        self.serving.await.map_err(io::Error::other)?
+        self.serving.await.map_err(io::Error::other)
+    }
+}
+
+/// Answers one request: an expose hostname's with the public relay, before
+/// any route sees it, and every other with the routes.
+async fn respond(app: Router, state: AppState, peer: Peer, mut request: Request<Incoming>) -> Response {
+    if let Some(label) = expose::expose_label(&state, &request) {
+        return expose::relay(state, peer, label, request).await;
+    }
+    request.extensions_mut().insert(ConnectInfo(peer));
+    match app.oneshot(request).await {
+        Ok(response) => response,
+        Err(never) => match never {},
     }
 }
 
@@ -219,6 +234,9 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/workspaces/{id}", patch(workspaces::rename).delete(workspaces::delete))
         .route("/cloud", get(cloud::status))
         .route("/cloud/reset", post(cloud::reset))
+        .route("/exposes", get(exposes::list).post(exposes::create))
+        .route("/exposes/{id}", delete(exposes::remove))
+        .route("/exposes/{id}/renew", post(exposes::renew))
         .route("/devices", get(devices::list))
         .route("/devices/claim", post(devices::claim))
         .route("/devices/{id}", delete(devices::revoke))
@@ -279,7 +297,6 @@ mod tests {
     use axum::body::Body;
     use axum::http::StatusCode;
     use demi_web_api::error::ErrorCode;
-    use tower::ServiceExt as _;
 
     use super::*;
     use crate::shard::{ShardPlacement, ShardPool};
