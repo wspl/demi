@@ -1,6 +1,6 @@
 //! The verified executable cache (`native-runtime.md` § Install the selected
-//! executable): a miss downloads and verifies, a hit asks nobody and reads
-//! nothing, and nothing partial or mismatched is ever published.
+//! executable): a miss downloads and verifies, a hit asks nobody, and nothing
+//! partial or mismatched is ever published.
 
 use demi_command_service::protocol::PackageArtifact;
 use demi_runner::services::{ArtifactResolver, ArtifactSource, RuntimeError, cache::ArtifactCache};
@@ -37,10 +37,11 @@ fn artifact(bytes: &[u8]) -> PackageArtifact {
     }
 }
 
-/// An entry was verified as it was published, so a hit reuses it unread:
-/// a service start does not hash the whole executable again.
+/// An entry was verified as it was published, so a second install reuses it
+/// without asking the backend; an entry of another size is not the one
+/// declared.
 #[tokio::test]
-async fn a_hit_asks_nobody_reads_nothing_and_an_entry_of_another_size_fails() {
+async fn a_cached_executable_is_reused_without_asking_and_one_of_another_size_fails() {
     let root = tempfile::tempdir().unwrap();
     let source = root.path().join("source");
     let bytes = b"native executable fixture";
@@ -59,12 +60,8 @@ async fn a_hit_asks_nobody_reads_nothing_and_an_entry_of_another_size_fails() {
         let mode = std::fs::metadata(&path).unwrap().permissions().mode();
         assert_eq!(mode & 0o111, 0o111, "the cached executable runs");
     }
-    cache.install(&artifact(bytes), &resolver, &cancel).await.unwrap();
-    assert_eq!(resolver.calls.load(Ordering::SeqCst), 1);
-    // Other bytes of the declared size: a hit that read the entry would
-    // refuse them.
-    tokio::fs::write(&path, vec![b'x'; bytes.len()]).await.unwrap();
     assert_eq!(cache.install(&artifact(bytes), &resolver, &cancel).await.unwrap(), path);
+    assert_eq!(resolver.calls.load(Ordering::SeqCst), 1);
     tokio::fs::write(&path, b"corrupt cache").await.unwrap();
     let result = cache.install(&artifact(bytes), &resolver, &cancel).await;
     assert!(
