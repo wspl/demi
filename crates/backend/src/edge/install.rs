@@ -38,6 +38,11 @@ pub(crate) struct Site {
 
 const UNCONFIGURED: &str = "Runner releases are not configured on this backend.\n";
 
+/// How much of a runner executable one read sends. `ReaderStream` reads 4 KiB
+/// by default, which cut a runner of many megabytes into tens of thousands of
+/// chunks.
+const ARTIFACT_READ: usize = 256 * 1024;
+
 pub(super) async fn shell(State(state): State<AppState>, https: Https, headers: HeaderMap) -> Result<Response, ApiError> {
     installer(&state, https, &headers, shell_script, "text/x-shellscript; charset=utf-8").await
 }
@@ -123,7 +128,7 @@ pub(super) async fn artifact(
         (CACHE_CONTROL, HeaderValue::from_static("public, max-age=31536000, immutable")),
         (CONTENT_LENGTH, HeaderValue::from(size)),
     ];
-    Ok((headers, Body::from_stream(ReaderStream::new(opened))).into_response())
+    Ok((headers, Body::from_stream(ReaderStream::with_capacity(opened, ARTIFACT_READ))).into_response())
 }
 
 /// The release record at `path`, when there is one; a record that does not
