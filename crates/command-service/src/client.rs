@@ -76,9 +76,13 @@ impl Client {
     ) -> Result<(CommandInput, CommandOutput), ServiceError> {
         let mut sender = self.sender.clone().ready().await?;
         let (response, mut input) = sender.send_request(request(Method::POST, path), false)?;
-        send_bytes(&mut input, metadata).await?;
         if path == CONVERSATION_PATH {
-            input.send_data(Bytes::new(), true)?;
+            // The metadata is the whole request, so it leaves with its end:
+            // nothing is left to send once the service can answer it
+            // (`native-runtime.md` § Request body and input demand).
+            input.send_data(metadata, true)?;
+        } else {
+            send_bytes(&mut input, metadata).await?;
         }
         let response = response.await?;
         if !response.status().is_success() {
@@ -120,28 +124,32 @@ pub struct CommandInput {
 
 impl CommandInput {
     pub async fn write(&mut self, bytes: Bytes) -> Result<(), ServiceError> {
-        send_bytes(&mut self.stream, crate::protocol::encode_input(bytes)?).await
+        let sent = send_bytes(&mut self.stream, crate::protocol::encode_input(bytes)?).await;
+        self.unless_answered(sent)
     }
-    /// A service that finished without reading all input resets the request
-    /// with NO_ERROR; ending input after that is not a failure
-    /// (`native-runtime.md` § Request body and input demand).
     pub fn end(&mut self) -> Result<(), ServiceError> {
-        match self.stream.send_data(Bytes::new(), true) {
-            Ok(()) => Ok(()),
-            Err(error) => {
-                // h2 has no synchronous query for a reset the peer already
-                // sent; polling once with a waker that never wakes reads it
-                // without waiting.
-                let mut context = std::task::Context::from_waker(std::task::Waker::noop());
-                match self.stream.poll_reset(&mut context) {
-                    std::task::Poll::Ready(Ok(h2::Reason::NO_ERROR)) => Ok(()),
-                    _ => Err(error.into()),
-                }
-            }
-        }
+        let sent = self.stream.send_data(Bytes::new(), true);
+        self.unless_answered(sent.map_err(ServiceError::from))
     }
     pub fn cancel(&mut self) {
         self.stream.send_reset(h2::Reason::CANCEL);
+    }
+
+    /// A service that finished without reading all input resets the request
+    /// with NO_ERROR once its response is complete; input sent after that,
+    /// a chunk or its end, is dropped, not a failure (`native-runtime.md`
+    /// § Request body and input demand).
+    fn unless_answered(&mut self, sent: Result<(), ServiceError>) -> Result<(), ServiceError> {
+        let Err(error) = sent else {
+            return Ok(());
+        };
+        // h2 has no synchronous query for a reset the peer already sent;
+        // polling once with a waker that never wakes reads it without waiting.
+        let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+        match self.stream.poll_reset(&mut context) {
+            std::task::Poll::Ready(Ok(h2::Reason::NO_ERROR)) => Ok(()),
+            _ => Err(error),
+        }
     }
 }
 
