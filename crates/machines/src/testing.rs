@@ -85,7 +85,7 @@ impl CloudImage {
             "releases": [],
             "runner": {
                 "release": "f".repeat(64),
-                "wire": 18,
+                "wire": demi_runner_protocol::wire::VERSION,
                 "commandProtocol": 1,
                 "targets": { architecture.target(): runner },
             },
