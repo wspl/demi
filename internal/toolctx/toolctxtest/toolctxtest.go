@@ -57,10 +57,17 @@ type Runner struct {
 	Utilities map[string]toolctx.Utility
 }
 
-// Run runs utility with args (args[0] is its name) and stdin.
+// Run runs utility with args (args[0] is its name) and stdin, which reaches
+// the utility as a pipe.
 func (r *Runner) Run(ctx context.Context, utility toolctx.Utility, args []string, stdin string) Result {
+	return r.RunInput(ctx, utility, args, strings.NewReader(stdin), toolctx.StdinPipe)
+}
+
+// RunInput runs utility with an explicit standard input and its kind.
+func (r *Runner) RunInput(ctx context.Context, utility toolctx.Utility, args []string, stdin io.Reader, kind toolctx.StdinKind) Result {
 	var stdout, stderr bytes.Buffer
-	inv := r.invocation(ctx, r.Dir, r.Env, strings.NewReader(stdin), &stdout, &stderr)
+	inv := r.invocation(ctx, r.Dir, r.Env, stdin, &stdout, &stderr)
+	inv.StdinKind = kind
 	code := utility(inv, args)
 	return Result{Code: code, Stdout: stdout.String(), Stderr: stderr.String()}
 }
@@ -97,10 +104,14 @@ func (r *Runner) run(ctx context.Context, cmd toolctx.Command) (int, error) {
 		env = cmd.Env
 	}
 	stdin := cmd.Stdin
+	kind := toolctx.StdinPipe
 	if stdin == nil {
 		stdin = strings.NewReader("")
+		kind = toolctx.StdinNone
 	}
-	return utility(r.invocation(ctx, dir, env, stdin, cmd.Stdout, cmd.Stderr), cmd.Args), nil
+	inv := r.invocation(ctx, dir, env, stdin, cmd.Stdout, cmd.Stderr)
+	inv.StdinKind = kind
+	return utility(inv, cmd.Args), nil
 }
 
 // Files implements toolctx.Files on the real filesystem, resolving relative

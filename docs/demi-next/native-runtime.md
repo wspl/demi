@@ -595,6 +595,8 @@ constraints without a second manually maintained definition.
 | `packages/command-loader/src/manifest/schema.ts` — manifests | `internal/contract/manifest` |
 | `packages/browser-protocol` — browser business schemas | `internal/contract/browser` |
 | `packages/command-protocol/src/index.ts` — native wire and descriptors | `internal/contract/cmdservice` |
+| `packages/machines/src/{protocol,wire}.ts` — machine manager wire | `internal/contract/machineswire` |
+| `packages/agent/src/protocol` — conversation frames, blocks and the shared core types | `internal/contract/agentproto` |
 
 `scripts/generate-go-contracts.ts` (`bun run go:contracts`) transforms the
 schemas into Go types with boundary validation:
@@ -613,6 +615,17 @@ string and array constraints, record keys, required/optional/null values, and
 operation uniqueness. Decoding and validation happen in one step, so no caller
 holds an unvalidated value. Unsupported Zod constructs or refinements fail
 generation.
+
+A check that a schema expresses as code (a `.refine` callback or `z.custom`)
+has no generic translation. Such a schema carries a stable name in its Zod
+metadata (`.meta({ check: '<name>' })`), and the contract package implements
+that check by hand in `checks.go` as a Go function of the same name; generation
+fails for a code check without a name, and a named check without its function
+does not compile. The recorded conformance corpus, judged by Zod, proves that
+each hand-written check accepts exactly what the TypeScript check accepts. The
+types in `@demicodes/core` are plain TypeScript interfaces, not schemas; their
+Go types are the ones generated from the agent protocol, which validates them
+at the wire.
 
 Generated types alone do not establish validation. Fixed contract validation must
 not round-trip values through JSON or a separately generated JSON Schema.

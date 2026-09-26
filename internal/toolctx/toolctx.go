@@ -46,6 +46,8 @@ type Invocation struct {
 	Stdin  io.Reader
 	Stdout io.Writer
 	Stderr io.Writer
+	// StdinKind says what Stdin is connected to.
+	StdinKind StdinKind
 	// Umask applies to every file and directory the utility creates.
 	Umask fs.FileMode
 	// Files is the only way a utility reaches the filesystem.
@@ -54,6 +56,20 @@ type Invocation struct {
 	// do: a declared root, another utility or an external program.
 	Run func(ctx context.Context, cmd Command) (int, error)
 }
+
+// StdinKind says what a utility's standard input is connected to. Some
+// utilities decide on it: rg searches the working directory when there is no
+// input and searches its input otherwise.
+type StdinKind int
+
+const (
+	// StdinNone: no input; reads see end of file at once, as from /dev/null.
+	StdinNone StdinKind = iota
+	// StdinPipe: a pipe from another command or from the caller's live input.
+	StdinPipe
+	// StdinFile: a regular file, as with `< file`.
+	StdinFile
+)
 
 // Command is a command that a utility runs through its job.
 type Command struct {

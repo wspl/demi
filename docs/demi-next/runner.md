@@ -320,7 +320,12 @@ dispositions or process exit, so concurrent jobs cannot see each other. Each
 interpreter unit (the job's script, every pipeline stage, subshell, background
 list and process substitution) and each utility runs on its own goroutine.
 Pipeline stages between in-process commands are connected by in-memory pipes;
-an OS pipe is used only where an external program takes part.
+an OS pipe is used only where an external program takes part. A utility also
+learns what its standard input is: nothing (reads end at once, as from
+`/dev/null`), a pipe, or a regular file; `rg` searches the working directory
+when there is no input. Utilities that walk directories (`find`, `grep -r`,
+`rg`, `du`) visit entries in name order: the order GNU tools print follows the
+filesystem and is unspecified.
 
 The diagram shows ownership, not execution order. Cancelling job A releases its
 work while preserving the runner and job B.
