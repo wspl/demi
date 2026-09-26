@@ -161,9 +161,15 @@ one that repeats an id still in flight, is refused. When the job exits or the
 stream ends, its outstanding requests are cancelled and get no answer. The
 backend validates the location its resolver returns before sending it.
 
-The location is an HTTPS URL: the backend signs a GET URL valid for five
-minutes, so private storage needs no change to its bucket policy. The runner
-downloads directly from storage. Credentials remain in the backend.
+The location is an HTTP or HTTPS URL without credentials. With object
+storage, the backend signs an HTTPS GET URL valid for five minutes, so private
+storage needs no change to its bucket policy; the runner downloads directly
+from storage, and credentials remain in the backend. A development store
+answers with a URL on the backend itself
+([Backend deployment configuration](#backend-deployment-configuration)). The
+scheme cannot change what runs: the runner checks the download against the
+size and SHA-256 of the pinned descriptor, which it received over its
+authenticated connection to the backend.
 
 The runner obtains URLs on demand. URLs never become package identity or permanent
 manifest fields. An expired URL can be refreshed for the same digest. Other
