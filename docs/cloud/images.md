@@ -60,14 +60,19 @@ stages:
    release. It installs the runner and its `demi` alias from the verified
    runner release, the command packages from their verified releases, Chrome,
    and uv. It reads the package inventory from the tree's dpkg database without
-   running a program of the image. It writes the archive with GNU tar, which
-   keeps numeric ownership, ACLs, and extended attributes; validates and writes
-   the manifest; publishes the release directory atomically; and prints the
+   running a program of the image: the packages dpkg records as installed,
+   with their versions. A package whose installation did not finish fails the
+   build; one removed with only its configuration left is not installed. The
+   manifest's Ubuntu release is the tree's own, `VERSION_ID` in its os-release
+   file. The command writes the archive with GNU tar, which keeps numeric
+   ownership, ACLs, and extended attributes; validates and writes the
+   manifest; publishes the release directory atomically; and prints the
    `baseVersion`.
 
 On the builder, the script runs a Linux build of `xtask` that the developer's
 machine cross-compiles for the builder's architecture with its own cross tools,
 as it does the runner ([Builds and releases](../delivery/builds-and-releases.md)).
+The image has the architecture that build runs on.
 
 ## Root filesystem contents
 
@@ -83,7 +88,11 @@ by the same installer that paired devices use, in the `artifact` crate, so one
 implementation downloads, verifies, and unpacks it everywhere. uv is checked
 against a digest pinned in the repository: a digest fetched from the same
 release as uv would prove only that the download arrived intact, not that it is
-the file that was reviewed.
+the file that was reviewed. `packages/guest-image/rootfs/uv.json` pins its
+version and, for each architecture, the archive's URL, size, and SHA-256.
+Artifact downloads follow no redirect, and uv's GitHub release URLs redirect
+to short-lived storage URLs, so the pin names the same files on Astral's
+release host, `releases.astral.sh`, which serves them directly.
 
 The image supplies `demi` UID/GID 1000, passwordless sudo, a minimal init
 (`tini`), and `/usr/bin/demi-runner`, with the `demi` command alias expected by

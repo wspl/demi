@@ -3,6 +3,7 @@
 //! workspace and runs `target/debug/xtask contracts`.
 
 mod browser;
+mod cloud_image;
 mod contracts;
 mod native;
 
@@ -28,6 +29,9 @@ enum Command {
     Native(native::Command),
     /// Pins a Chrome for Testing version: writes its release record.
     BrowserRelease(browser::Options),
+    /// Completes a Cloud image release on its Linux builder.
+    #[command(subcommand)]
+    CloudImage(cloud_image::Command),
 }
 
 /// The repository's root directory.
@@ -37,6 +41,13 @@ fn repository() -> PathBuf {
         .nth(2)
         .expect("xtask sits two directories below the repository's root")
         .to_owned()
+}
+
+/// A release record's file: indented JSON with a final newline.
+fn record(value: &impl serde::Serialize) -> serde_json::Result<Vec<u8>> {
+    let mut bytes = serde_json::to_vec_pretty(value)?;
+    bytes.push(b'\n');
+    Ok(bytes)
 }
 
 /// Runs `work` on a runtime of this thread with a token that an interrupt
@@ -87,6 +98,13 @@ fn main() -> ExitCode {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {
                 eprintln!("xtask browser-release: {error}");
+                ExitCode::FAILURE
+            }
+        },
+        Command::CloudImage(command) => match cloud_image::run(command) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("xtask cloud-image: {error}");
                 ExitCode::FAILURE
             }
         },
