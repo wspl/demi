@@ -204,16 +204,28 @@ impl Clock for TokioClock {
     }
 }
 
-/// Uploads a test gave the blocks they resolve to; every other file
-/// reference is refused, as a backend refuses one it does not hold.
+/// Uploads a test gave the blocks they resolve to, and the media an edit
+/// keeps, loaded from the blob namespace the test gave, as a backend loads
+/// them from the caller's; every other file reference is refused, as a
+/// backend refuses one it does not hold.
 #[derive(Debug, Default)]
 pub struct TestFiles {
     uploads: RefCell<BTreeMap<String, Vec<UserContentBlock>>>,
+    blobs: Option<Rc<MemoryBlobs>>,
 }
 
 impl TestFiles {
     pub fn new() -> Rc<Self> {
         Rc::new(Self::default())
+    }
+
+    /// Files whose kept media are loaded from `blobs`, the namespace the
+    /// test's store keeps media in.
+    pub fn with_blobs(blobs: Rc<MemoryBlobs>) -> Rc<Self> {
+        Rc::new(Self {
+            blobs: Some(blobs),
+            ..Self::default()
+        })
     }
 
     /// The upload `reference` resolves to `blocks`.
@@ -229,25 +241,34 @@ impl ContentResolver for TestFiles {
         &'a self,
         files: Vec<FileReference>,
     ) -> LocalBoxFuture<'a, Result<Vec<Vec<UserContentBlock>>, ContentError>> {
+        let refused = |message: String| ContentError {
+            message,
+            code: Some("frame_delivery_failed".to_owned()),
+        };
         Box::pin(async move {
-            files
-                .into_iter()
-                .map(|file| match file {
-                    FileReference::Upload { r#ref, .. } => self
-                        .uploads
-                        .borrow()
-                        .get(&r#ref)
-                        .cloned()
-                        .ok_or(ContentError {
-                            message: format!("upload {ref} is not available"),
-                            code: Some("frame_delivery_failed".to_owned()),
-                        }),
-                    FileReference::RemoteFile { device_id, .. } => Err(ContentError {
-                        message: format!("device {device_id} is not paired"),
-                        code: Some("frame_delivery_failed".to_owned()),
-                    }),
-                })
-                .collect()
+            let mut resolved = Vec::with_capacity(files.len());
+            for file in files {
+                let blocks = match file {
+                    FileReference::Upload { r#ref, .. } => {
+                        let uploaded = self.uploads.borrow().get(&r#ref).cloned();
+                        uploaded.ok_or_else(|| refused(format!("upload {ref} is not available")))?
+                    }
+                    FileReference::RemoteFile { device_id, .. } => {
+                        return Err(refused(format!("device {device_id} is not paired")));
+                    }
+                    FileReference::Media(kept) => {
+                        let Some(blobs) = &self.blobs else {
+                            return Err(refused("no blob namespace holds kept media".to_owned()));
+                        };
+                        let part = media::kept_media(kept, &**blobs)
+                            .await
+                            .map_err(|error| refused(error.to_string()))?;
+                        vec![part]
+                    }
+                };
+                resolved.push(blocks);
+            }
+            Ok(resolved)
         })
     }
 }
