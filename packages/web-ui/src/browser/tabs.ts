@@ -57,8 +57,6 @@ export interface BrowserTabsApi {
   navigate(tab: string, url: string): Promise<void>
   history(tab: string, action: 'back' | 'forward' | 'reload'): Promise<void>
   stream: OpenLiveStream
-  /** A user operation, which the product reports as conversation activity. */
-  onOperation?: () => void
 }
 
 /** The panel's tab state, as far as a kind may touch it. */
@@ -221,7 +219,6 @@ export class BrowserTabsController {
         open: this.api.stream,
         platform: viewerPlatform(navigator),
         onClipboard: (text) => viewerClipboard.receive(text),
-        onOperation: this.api.onOperation,
         onTabs: (tabs) => this.adopt({ tabs }),
         onEnded: () => void this.refresh(),
       })
