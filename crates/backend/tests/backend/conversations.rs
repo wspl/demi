@@ -117,7 +117,7 @@ impl Socket {
     }
 
     /// The frames up to and including the first `done` accepts.
-    async fn until(&mut self, done: impl Fn(&ServerFrame) -> bool) -> Vec<ServerFrame> {
+    pub(crate) async fn until(&mut self, done: impl Fn(&ServerFrame) -> bool) -> Vec<ServerFrame> {
         let mut frames = Vec::new();
         loop {
             let frame = self.frame().await;
