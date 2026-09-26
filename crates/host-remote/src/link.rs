@@ -1183,7 +1183,6 @@ pub(crate) fn process_end(
         return ProcessEnd::Exited(code);
     }
     if let Some(error) = spawn_error {
-        // A task the runner could not run at all says why in `signal`.
         return ProcessEnd::NotStarted(SpawnError {
             kind: match error.kind {
                 wire::SpawnErrorKind::ExecutableNotFound => SpawnErrorKind::ExecutableNotFound,
@@ -1192,7 +1191,7 @@ pub(crate) fn process_end(
                 wire::SpawnErrorKind::IsDirectory => SpawnErrorKind::IsDirectory,
                 wire::SpawnErrorKind::Other => SpawnErrorKind::Other,
             },
-            detail: error.detail.or(signal),
+            detail: error.detail,
         });
     }
     match signal {
