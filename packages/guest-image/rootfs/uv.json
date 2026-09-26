@@ -1,0 +1,21 @@
+{
+  "version": "0.12.13",
+  "amd64": {
+    "url": "https://releases.astral.sh/github/uv/releases/download/0.12.13/uv-x86_64-unknown-linux-gnu.tar.gz",
+    "size": 19391575,
+    "sha256": "745765a3b6e360ad76743599ae5c42e9278c7edf8bbff9fc76d05bf2623a04dd",
+    "executables": [
+      "uv-x86_64-unknown-linux-gnu/uv",
+      "uv-x86_64-unknown-linux-gnu/uvx"
+    ]
+  },
+  "arm64": {
+    "url": "https://releases.astral.sh/github/uv/releases/download/0.12.13/uv-aarch64-unknown-linux-gnu.tar.gz",
+    "size": 18581057,
+    "sha256": "2eaa5d94f5db7b3a1a092156b9420459e42ab0217d917fe74a876309cef9b5e9",
+    "executables": [
+      "uv-aarch64-unknown-linux-gnu/uv",
+      "uv-aarch64-unknown-linux-gnu/uvx"
+    ]
+  }
+}
