@@ -71,7 +71,10 @@ filesystem isolation. Its reset clears runner state while retaining home; a
 successful scripted reset does not demonstrate replacement of system
 packages.
 
-Restart tests reuse the data directory and a fixed backend port. Runner
+Restart tests reuse the data directory. A backend restart whose runners come
+back listens at the address it had, since a runner keeps its backend's URL;
+one that needs only the same public URL configures that URL and listens on a
+port of its own, because another test may take a released port. Runner
 restarts reuse device identity and persistent directories. Multi-user scenarios
 must use separate authenticated sessions; the world's default helper uses one
 session and must not be mistaken for an isolation test by itself.
@@ -84,6 +87,14 @@ runner and fire every timer early
 tests on a paused clock pin the exact boundaries of timer rules. A scenario
 that needs wall time to pass, such as an expose's expiry, sets an injected
 clock instead of waiting.
+
+A scenario never fits a step into such a window. One that looks at a running
+Cloud holds its conversation's file gate while it looks (`file_gate` of the
+backend's `testing` feature): a lease of that gate is the conversation's work,
+so the Cloud idles only after the lease ends, and a lower bound on the stop
+counts from there. One that shows an operation a transition holds waits until
+the operation waits at that gate (`ActivityGate::waiting`, from `demi-gates`'
+`testing` feature), and fails if the operation finishes first.
 
 ## Required scenario coverage
 

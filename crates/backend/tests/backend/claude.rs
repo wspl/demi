@@ -114,6 +114,8 @@ async fn saved(backend: &TestBackend, session: &Session) -> Vec<Block> {
     transcript(backend, session, CONVERSATION).await.blocks
 }
 
+// Over a second: the Cloud boots and installs the `demi.claude` package, which
+// installs the CLI and runs it.
 #[tokio::test]
 async fn a_conversation_on_a_paired_device_infers_through_the_clouds_cli_with_the_active_accounts_token() {
     let distribution = MockVendor::start().await;

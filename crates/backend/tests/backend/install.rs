@@ -20,21 +20,21 @@ fn sha(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
 
-/// A runner release directory whose releases all carry this build's runner.
+/// A runner release directory whose releases all carry `program`.
 struct Releases {
     directory: tempfile::TempDir,
-    runner: Vec<u8>,
-    /// The runner's size and digest, which every release names.
+    program: PathBuf,
+    /// The program's size and digest, which every release names.
     artifact: Value,
 }
 
 impl Releases {
-    fn new() -> Self {
-        let runner = std::fs::read(runner_binary()).unwrap();
-        let artifact = json!({ "sha256": sha(&runner), "size": runner.len() });
+    fn new(program: PathBuf) -> Self {
+        let bytes = std::fs::read(&program).unwrap();
+        let artifact = json!({ "sha256": sha(&bytes), "size": bytes.len() });
         Self {
             directory: tempfile::Builder::new().prefix("demi-releases-").tempdir().unwrap(),
-            runner,
+            program,
             artifact,
         }
     }
@@ -44,12 +44,13 @@ impl Releases {
     }
 
     /// Publishes a release named by `name`'s digest, which the top-level
-    /// manifest names from now on.
+    /// manifest names from now on. The release links the program rather
+    /// than copying it.
     fn publish(&self, name: &str) -> String {
         let release = sha(name.as_bytes());
         let executable = self.directory.path().join(&release).join(host_target()).join("demi-runner");
         std::fs::create_dir_all(executable.parent().unwrap()).unwrap();
-        std::fs::write(&executable, &self.runner).unwrap();
+        std::os::unix::fs::symlink(&self.program, &executable).unwrap();
         // Test-only: every target names this machine's runner.
         let targets: serde_json::Map<String, Value> = TARGETS
             .iter()
@@ -138,9 +139,12 @@ fn succeeded(output: &Output) -> String {
     String::from_utf8_lossy(&output.stdout).into_owned()
 }
 
+// Several seconds: the installer runs for real, and each of its three installs
+// downloads this build's runner (170 MB) from its backend, verifies it and
+// starts it; the upgrade drains one.
 #[tokio::test]
 async fn an_installer_keeps_each_backend_apart_reuses_a_release_and_upgrades_only_its_own_runner() {
-    let releases = Releases::new();
+    let releases = Releases::new(runner_binary());
     let initial = releases.publish("initial");
     let a = Harness::new().with_runner_releases(releases.path()).start().await;
     let b = Harness::new().with_runner_releases(releases.path()).start().await;
@@ -213,8 +217,11 @@ async fn without_runner_releases_the_installers_say_so_and_no_artifact_is_served
     .unwrap();
     assert_eq!(artifact.status(), StatusCode::NOT_FOUND);
 
-    // With them, only a release's own executable is served, by its name.
-    let releases = Releases::new();
+    // With them, only a release's own executable is served, by its name. No
+    // installer runs here, so a stand-in carries each release.
+    let stand_in = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(stand_in.path(), "a stand-in for the runner").unwrap();
+    let releases = Releases::new(stand_in.path().to_owned());
     let release = releases.publish("initial");
     let served = Harness::new().with_runner_releases(releases.path()).start().await;
     let script = reqwest::get(format!("{}/install.sh", served.url)).await.unwrap();
@@ -235,7 +242,7 @@ async fn without_runner_releases_the_installers_say_so_and_no_artifact_is_served
         .await
         .unwrap();
     assert_eq!(executable.status(), StatusCode::OK);
-    assert_eq!(executable.bytes().await.unwrap().len(), releases.runner.len());
+    assert_eq!(json!(executable.bytes().await.unwrap().len()), releases.artifact["size"]);
     backend.close().await;
     served.close().await;
 }

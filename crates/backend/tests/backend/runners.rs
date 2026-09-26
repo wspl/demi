@@ -10,7 +10,9 @@ use demi_agent_protocol::ClientFrame;
 use demi_backend::HelloStep;
 use demi_host_remote::testing::{RunnerProcess, RunnerProcessOptions};
 use demi_runner_protocol::values::DeviceToken;
-use demi_runner_protocol::wire::{self, HelloErrorCode, HostIdentity, Inbound, Outbound, RunnerInfo, RunnerPlatform};
+use demi_runner_protocol::wire::{
+    self, ArtifactOwner, HelloErrorCode, HostIdentity, Inbound, Outbound, RunnerInfo, RunnerPlatform, StreamArtifactOwner,
+};
 use demi_web_api::devices::{ClaimedDevice, DeviceKind, DeviceLog};
 use demi_web_api::error::ErrorCode;
 use demi_web_api::files::Directory;
@@ -76,6 +78,7 @@ async fn a_claimed_runner_reconnects_with_its_token_until_its_device_is_revoked(
     backend.close().await;
 }
 
+// Over a second: a pairing code's lifetime of one second passes in real time.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_waiting_runners_code_changes_while_it_waits_and_claims_are_limited() {
     let mut harness = Harness::new();
@@ -248,10 +251,24 @@ async fn hellos_with_one_token_at_once_bind_one_socket_and_a_repeated_hello_chan
     );
     assert!(backend.online(&master, laptop.id()).await);
     // A second hello on the bound socket is no new registration: the
-    // backend answers nothing, and the socket stays the device's.
+    // backend answers nothing, and the socket stays the device's. The backend
+    // handles a runner's messages in order, so the refusal of a request sent
+    // after the hello is the first answer that arrives.
     bound.send(&message).await;
     bound.send(&Outbound::Pong { jobs: 0 }).await;
-    assert!(tokio::time::timeout(Duration::from_millis(300), bound.next()).await.is_err());
+    let after = Outbound::ArtifactResolve {
+        id: "after-hello".into(),
+        owner: ArtifactOwner::Stream(StreamArtifactOwner {
+            stream_id: "none".into(),
+        }),
+        sha256: "0".repeat(64),
+        target: demi_command_service::protocol::host_target().into(),
+    };
+    bound.send(&after).await;
+    match bound.next().await {
+        Some(Inbound::ArtifactLocation { id, error: Some(_), .. }) if id == "after-hello" => {}
+        answer => panic!("expected the refusal of the later request first, got {answer:?}"),
+    }
     assert!(backend.online(&master, laptop.id()).await);
     drop(bound);
     backend.until_online(&master, laptop.id(), false).await;
@@ -449,6 +466,7 @@ async fn after_a_backend_restart_the_devices_are_kept_and_their_runners_come_bac
     backend.close().await;
 
     // The session and the devices are records: both outlive the process.
+    // The backend comes back at its address, where the runners reconnect.
     let backend = harness.start_at(address).await;
     for device in [&laptop, &desktop] {
         backend.until_online(&master, device.id(), true).await;

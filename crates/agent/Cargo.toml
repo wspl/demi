@@ -14,10 +14,6 @@ doctest = false
 # test client that drives a connection (`agent::testing`), for the tests of
 # the agent and of what sits above it.
 testing = ["demi-provider/testing"]
-# Builds the compaction fixture's harness (`fixtures/compaction/README.md`),
-# which calls a real model: no build of the one selection enables it. Its
-# provider is a dev-dependency, so the library never links one.
-compaction-fixture = []
 
 [dependencies]
 bytes.workspace = true
@@ -49,7 +45,10 @@ uuid = { version = "1", features = ["v4"] }
 demi-agent = { path = ".", features = ["testing"] }
 demi-provider = { path = "../provider", features = ["testing"] }
 tokio = { workspace = true, features = ["test-util"] }
-# The compaction fixture's harness talks to a real model.
+# The compaction fixture's harness (`fixtures/compaction/README.md`) talks
+# to a real model. It is an example, so every build of the one selection
+# compiles it and no test runs it; its provider is a dev-dependency, so the
+# library never links one.
 demi-provider-openai-api = { path = "../provider-openai-api" }
 flate2 = "1"
 reqwest = { version = "0.12", default-features = false }
@@ -57,4 +56,3 @@ reqwest = { version = "0.12", default-features = false }
 [[example]]
 name = "compaction-fixture"
 path = "fixtures/compaction/main.rs"
-required-features = ["compaction-fixture"]

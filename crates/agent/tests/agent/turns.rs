@@ -19,10 +19,12 @@ use demi_provider::{
     ErrorCode, InferenceItem, ProviderEvent,
     testing::{ScriptedRuntime, Turn, event},
 };
+use futures_util::StreamExt;
 use serde_json::{Value, json};
 
 use crate::support::{
-    Fixture, Gate, conversation, held, is_idle, is_pending_steers, kinds, open, send, until,
+    Fixture, Gate, conversation, frames_until, held, is_idle, is_pending_steers, kinds, open, send,
+    session_of, until,
 };
 
 #[tokio::test(flavor = "local")]
@@ -131,48 +133,74 @@ async fn a_message_runs_to_its_response_and_its_patches_rebuild_the_transcript()
     assert_ne!(version.epoch, live.version.epoch);
 }
 
+/// A failed run ends its turn with an `error` frame, which the page shows
+/// with its code, and an `error` block; what the vendor streamed before the
+/// failure stays, and the queued message runs next. The code is spelled as
+/// the product spells it: one of Demi's codes, or the vendor's own.
 #[tokio::test(flavor = "local")]
-async fn a_provider_failure_is_reported_once_and_recorded_with_its_diagnostics() {
-    let script = ScriptedRuntime::new([Turn::Events(vec![event::error(
-        "auth failed",
-        Some(ErrorCode::AuthExpired),
-    )])]);
-    let fixture = Fixture::new(&script);
-    let mut client = fixture.opened().await;
+async fn a_provider_failure_reaches_the_page_once_with_its_code_and_the_queued_message_runs_next() {
+    for (code, spelled) in [
+        (ErrorCode::AuthExpired, "auth_expired"),
+        (ErrorCode::AuthMissing, "auth_missing"),
+        (
+            ErrorCode::Vendor("invalid_request_error".into()),
+            "invalid_request_error",
+        ),
+    ] {
+        let failing = Turn::Stream(Box::new(move |_| {
+            futures_util::stream::iter([
+                event::text("partial"),
+                event::error("the vendor refused", Some(code.clone())),
+            ])
+            .boxed_local()
+        }));
+        let script = ScriptedRuntime::new([
+            failing,
+            Turn::Events(vec![event::text("second"), event::response(1, 1)]),
+        ]);
+        let fixture = Fixture::new(&script);
+        let mut client = fixture.opened().await;
 
-    client.send(send("m1", "hi")).await;
-    let frames = client.next_until(is_idle).await;
+        client.send(send("m1", "first")).await;
+        client.send(send("m2", "second")).await;
+        until(|| script.requests().len() == 2).await;
+        session_of(&fixture).settled().await;
+        let frames = client.received();
 
-    let errors: Vec<&ServerFrame> = frames
-        .iter()
-        .filter(|frame| matches!(frame, ServerFrame::Error { .. }))
-        .collect();
-    assert_eq!(errors.len(), 1, "{frames:?}");
-    let ServerFrame::Error {
-        message,
-        code,
-        diagnostics,
-    } = errors[0]
-    else {
-        unreachable!()
-    };
-    assert_eq!(
-        (message.as_str(), code.as_deref()),
-        ("auth failed", Some("auth_expired"))
-    );
-    let diagnostics = diagnostics.as_ref().unwrap();
-    assert_eq!(diagnostics.source, FailureSource::Unknown);
-    assert_eq!(
-        diagnostics.client_request_id.as_deref(),
-        Some(script.requests()[0].request_id.as_str())
-    );
-    let checkpoint = fixture.store.checkpoint(&conversation()).unwrap();
-    assert_eq!(kinds(&checkpoint.transcript), ["user", "error"]);
-    let Block::Error(record) = &checkpoint.transcript[1] else {
-        unreachable!()
-    };
-    assert_eq!(record.code.as_deref(), Some("auth_expired"));
-    assert_eq!(checkpoint.state.phase, SessionPhase::Idle);
+        let errors: Vec<&ServerFrame> = frames
+            .iter()
+            .filter(|frame| matches!(frame, ServerFrame::Error { .. }))
+            .collect();
+        assert_eq!(errors.len(), 1, "{spelled}: {frames:?}");
+        let ServerFrame::Error {
+            message,
+            code,
+            diagnostics,
+        } = errors[0]
+        else {
+            unreachable!()
+        };
+        assert_eq!(
+            (message.as_str(), code.as_deref()),
+            ("the vendor refused", Some(spelled))
+        );
+        let diagnostics = diagnostics.as_ref().unwrap();
+        assert_eq!(diagnostics.source, FailureSource::Unknown);
+        assert_eq!(
+            diagnostics.client_request_id.as_deref(),
+            Some(script.requests()[0].request_id.as_str())
+        );
+        let checkpoint = fixture.store.checkpoint(&conversation()).unwrap();
+        assert_eq!(
+            kinds(&checkpoint.transcript),
+            ["user", "text", "error", "user", "text", "response"]
+        );
+        let Block::Error(record) = &checkpoint.transcript[2] else {
+            unreachable!()
+        };
+        assert_eq!(record.code.as_deref(), Some(spelled));
+        assert_eq!(checkpoint.state.phase, SessionPhase::Idle);
+    }
 }
 
 #[tokio::test(flavor = "local")]
@@ -507,33 +535,73 @@ async fn an_immediate_switch_lands_inside_the_running_turn_and_a_next_turn_switc
         assert_eq!(models, expected, "{apply:?}");
         // The same provider serves both models: nothing was resolved again.
         assert_eq!(fixture.resolver.calls.borrow().len(), 1);
+        // Each block keeps, as the page reads it, the model current when it
+        // was written; the checkpoint keeps the new one.
+        let blocks = session_of(&fixture).transcript().blocks;
+        let written: Vec<(String, String)> = kinds(&blocks)
+            .into_iter()
+            .zip(&blocks)
+            .map(|(kind, block)| {
+                let model = serde_json::to_value(block).unwrap()["model"]["model"]["id"].clone();
+                (kind, model.as_str().unwrap().to_owned())
+            })
+            .collect();
+        let landed = if apply.is_some() {
+            "model-b"
+        } else {
+            "test-model"
+        };
+        let expected_blocks = [
+            ("user", "test-model"),
+            ("tool_call:error", "test-model"),
+            ("response", "test-model"),
+            ("text", landed),
+            ("response", landed),
+            ("user", "model-b"),
+            ("text", "model-b"),
+            ("response", "model-b"),
+        ]
+        .map(|(kind, model)| (kind.to_owned(), model.to_owned()));
+        assert_eq!(written, expected_blocks, "{apply:?}");
+        let checkpoint = fixture.store.checkpoint(&conversation()).unwrap();
+        assert_eq!(checkpoint.state.model.model.id, "model-b");
     }
 }
 
+/// A switch to another provider builds that provider's runtime, which serves
+/// from the next turn on; the old runtime is closed then, and so is the
+/// runtime of a pending switch that a switch to yet another provider
+/// replaced. A switch within the pending switch's provider builds nothing
+/// and keeps its runtime.
 #[tokio::test(flavor = "local")]
 async fn a_switch_to_another_provider_builds_its_runtime_and_closes_the_old_one_at_the_next_turn() {
     let stub = ScriptedRuntime::new([Turn::Events(vec![
         event::text("from stub"),
         event::response(1, 1),
     ])]);
+    let replaced = ScriptedRuntime::new(Vec::new());
     let other = ScriptedRuntime::new([Turn::Events(vec![
         event::text("from other"),
         event::response(1, 1),
     ])]);
     let fixture = Fixture::new(&stub);
+    fixture.resolver.provide("replaced", &replaced);
     fixture.resolver.provide("other", &other);
     let mut client = fixture.opened().await;
     client.send(send("m1", "first")).await;
-    client.next_until(is_idle).await;
+    frames_until(&mut client, is_idle).await;
 
-    client
-        .send(ClientFrame::SetProvider {
-            model: model_of("other", "other-model"),
-            apply: None,
-        })
-        .await;
+    for model in [
+        model_of("replaced", "replaced-model"),
+        model_of("other", "other-model"),
+        model_of("other", "other-model-2"),
+    ] {
+        client
+            .send(ClientFrame::SetProvider { model, apply: None })
+            .await;
+    }
     client.send(send("m2", "second")).await;
-    client.next_until(is_idle).await;
+    frames_until(&mut client, is_idle).await;
 
     let calls: Vec<String> = fixture
         .resolver
@@ -542,11 +610,33 @@ async fn a_switch_to_another_provider_builds_its_runtime_and_closes_the_old_one_
         .iter()
         .map(|(root, provider)| format!("{root} {provider}"))
         .collect();
-    assert_eq!(calls, ["conversation stub", "conversation other"]);
+    assert_eq!(
+        calls,
+        [
+            "conversation stub",
+            "conversation replaced",
+            "conversation other"
+        ]
+    );
     assert_eq!((stub.requests().len(), stub.closes()), (1, 1));
-    assert_eq!(other.requests()[0].model_id, "other-model");
+    assert_eq!((replaced.requests().len(), replaced.closes()), (0, 1));
+    let served: Vec<String> = other
+        .requests()
+        .iter()
+        .map(|request| request.model_id.clone())
+        .collect();
+    assert_eq!(
+        (served, other.closes()),
+        (vec!["other-model-2".to_owned()], 0)
+    );
     let checkpoint = fixture.store.checkpoint(&conversation()).unwrap();
-    assert_eq!(checkpoint.state.model.provider_id, "other");
+    assert_eq!(
+        (
+            checkpoint.state.model.provider_id.as_str(),
+            checkpoint.state.model.model.id.as_str()
+        ),
+        ("other", "other-model-2")
+    );
 }
 
 #[tokio::test(flavor = "local")]

@@ -12,8 +12,8 @@ use demi_command_service::protocol::{
 };
 use demi_runner::host_log::{self, Query};
 use demi_runner::services::{
-    ArtifactResolver, ArtifactSource, Resident, RuntimeError, ServiceHandle, ServiceRegistry,
-    target,
+    ArtifactResolver, ArtifactSource, Decision, Resident, RuntimeError, ServiceHandle,
+    ServiceRegistry, target,
 };
 use futures_util::future::BoxFuture;
 use sha2::{Digest, Sha256};
@@ -26,7 +26,7 @@ use std::{
     },
     time::Duration,
 };
-use tokio::sync::Notify;
+use tokio::sync::{Notify, broadcast};
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::{Layer as _, filter::LevelFilter, layer::SubscriberExt as _};
 
@@ -68,7 +68,7 @@ async fn fixture(root: &Path, variant: usize) -> (PackageDescriptor, PathBuf) {
         id: format!("fixture-{variant}"),
         version: "1.0.0".into(),
         protocol_version: 1,
-        operations: ["where", "echo", "first", "spin", "result", "retain", "crash"]
+        operations: demi_command_service::testing::FIXTURE_OPERATIONS
             .map(String::from)
             .to_vec(),
         targets: BTreeMap::from([(
@@ -144,10 +144,14 @@ async fn stopped(resident: &Resident) {
     .expect("the service stops");
 }
 
-/// Gives the registry time to decide, then checks the service still answers.
-async fn stays(resident: &Resident) {
-    tokio::time::sleep(Duration::from_millis(500)).await;
-    assert!(resident.client().info().await.is_ok(), "the service stays");
+/// The registry's next decision about the service of `digest`.
+async fn decided(decisions: &mut broadcast::Receiver<(String, Decision)>, digest: &str) -> Decision {
+    loop {
+        let (about, decision) = decisions.recv().await.expect("the registry decides");
+        if about == digest {
+            return decision;
+        }
+    }
 }
 
 async fn acquire(services: &ServiceHandle, descriptor: &PackageDescriptor, resolver: Arc<Local>) -> Resident {
@@ -157,29 +161,36 @@ async fn acquire(services: &ServiceHandle, descriptor: &PackageDescriptor, resol
         .unwrap()
 }
 
-/// About 1.3 s: twice it gives the registry half a second in which the
-/// service must not stop, since the registry keeps a service by doing
-/// nothing that a test could wait for.
 #[tokio::test]
 async fn a_service_without_leases_stays_while_it_holds_a_conversation() {
     tokio::time::timeout(Duration::from_secs(60), async {
         let root = tempfile::tempdir().unwrap();
         let registry = registry(root.path()).await;
+        let mut decisions = registry.decisions();
         let services = registry.handle();
         let (descriptor, path) = fixture(root.path(), 0).await;
-        let lease = services.lease(digest(&descriptor)).await;
+        let digest = digest(&descriptor);
+        let lease = services.lease(digest.clone()).await;
         let resident = acquire(&services, &descriptor, local(path)).await;
+        assert_eq!(decided(&mut decisions, &digest).await, Decision::Leased);
         for conversation in ["one", "two"] {
             assert_eq!(call(&resident, "retain", conversation).await, 0);
         }
-        // Its last lease ends; it still holds two conversations.
+        // Its last lease ends; it still holds two conversations, and after
+        // each release one or more.
         drop(lease);
-        stays(&resident).await;
-        services.release_conversation("unknown").await.unwrap();
-        services.release_conversation("one").await.unwrap();
-        stays(&resident).await;
+        for release in [None, Some("unknown"), Some("one")] {
+            if let Some(conversation) = release {
+                services.release_conversation(conversation).await.unwrap();
+            }
+            assert_eq!(decided(&mut decisions, &digest).await, Decision::Asks);
+            assert_eq!(decided(&mut decisions, &digest).await, Decision::Holds);
+        }
+        assert!(resident.client().info().await.is_ok(), "the service stays");
         // The last conversation goes, and nothing holds the service.
         services.release_conversation("two").await.unwrap();
+        assert_eq!(decided(&mut decisions, &digest).await, Decision::Asks);
+        assert_eq!(decided(&mut decisions, &digest).await, Decision::Stops);
         stopped(&resident).await;
         // Releasing again starts nothing and is harmless.
         services.release_conversation("two").await.unwrap();
@@ -196,10 +207,15 @@ async fn a_lease_keeps_a_service_that_holds_nothing() {
         let registry = registry(root.path()).await;
         let services = registry.handle();
         let (descriptor, path) = fixture(root.path(), 0).await;
+        let digest = digest(&descriptor);
         let resolver = local(path);
-        let lease = services.lease(digest(&descriptor)).await;
+        let mut decisions = registry.decisions();
+        let lease = services.lease(digest.clone()).await;
         let resident = acquire(&services, &descriptor, resolver.clone()).await;
-        stays(&resident).await;
+        // The start's own lease ended; the test's keeps the service, which
+        // holds nothing, without asking it.
+        assert_eq!(decided(&mut decisions, &digest).await, Decision::Leased);
+        assert!(resident.client().info().await.is_ok(), "the service stays");
         // A second caller reaches the same process.
         let again = acquire(&services, &descriptor, resolver.clone()).await;
         assert_eq!(call(&again, "retain", "shared").await, 0);
@@ -224,12 +240,53 @@ async fn a_service_that_cannot_say_what_it_holds_stays() {
         let registry = registry(root.path()).await;
         let services = registry.handle();
         let (descriptor, path) = fixture(root.path(), 0).await;
-        let lease = services.lease(digest(&descriptor)).await;
+        let digest = digest(&descriptor);
+        let mut decisions = registry.decisions();
+        let lease = services.lease(digest.clone()).await;
         let resident = acquire(&services, &descriptor, local(path)).await;
+        assert_eq!(decided(&mut decisions, &digest).await, Decision::Leased);
         assert_eq!(call(&resident, "retain", "unanswerable").await, 0);
         drop(lease);
-        stays(&resident).await;
+        assert_eq!(decided(&mut decisions, &digest).await, Decision::Asks);
+        assert_eq!(decided(&mut decisions, &digest).await, Decision::Unanswered);
+        assert!(resident.client().info().await.is_ok(), "the service stays");
         services.release_conversation("unanswerable").await.unwrap();
+        assert_eq!(decided(&mut decisions, &digest).await, Decision::Asks);
+        assert_eq!(decided(&mut decisions, &digest).await, Decision::Stops);
+        stopped(&resident).await;
+        registry.close().await;
+    })
+    .await
+    .unwrap();
+}
+
+/// A release that ends while the service's answer to what it holds is on its
+/// way makes that answer stale, so the registry asks again, and the service,
+/// which now holds nothing, stops (`native-runtime.md` § Keep a service
+/// resident).
+#[tokio::test]
+async fn an_answer_from_before_a_release_is_asked_again() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let root = tempfile::tempdir().unwrap();
+        let registry = registry(root.path()).await;
+        let mut decisions = registry.decisions();
+        let services = registry.handle();
+        let (descriptor, path) = fixture(root.path(), 0).await;
+        let digest = digest(&descriptor);
+        let lease = services.lease(digest.clone()).await;
+        let resident = acquire(&services, &descriptor, local(path)).await;
+        assert_eq!(decided(&mut decisions, &digest).await, Decision::Leased);
+        // While it holds `stall`, the fixture reads what it holds at once and
+        // answers only when told to.
+        assert_eq!(call(&resident, "retain", "stall").await, 0);
+        drop(lease);
+        assert_eq!(decided(&mut decisions, &digest).await, Decision::Asks);
+        assert_eq!(call(&resident, "stalled", "test").await, 0);
+        // The release ends while the answer, which still names `stall`, waits.
+        services.release_conversation("stall").await.unwrap();
+        assert_eq!(call(&resident, "proceed", "test").await, 0);
+        assert_eq!(decided(&mut decisions, &digest).await, Decision::Asks);
+        assert_eq!(decided(&mut decisions, &digest).await, Decision::Stops);
         stopped(&resident).await;
         registry.close().await;
     })
