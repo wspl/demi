@@ -40,16 +40,16 @@ struct Pipes {
 }
 
 impl Pipes {
-    /// Out of open files, this waits for one on a shell thread
-    /// (`runner.md` § Load).
-    async fn open(shell: &ShellRuntime) -> io::Result<Self> {
+    /// Out of open files, this waits for one on a shell thread until the
+    /// job is cancelled (`runner.md` § Load).
+    async fn open(shell: &ShellRuntime, scope: &Scope) -> io::Result<Self> {
+        let scope = scope.clone();
         shell
-            .spawn_blocking(|| {
-                let (stdin, input_writer) = pipe()?;
-                let (output_reader, stdout) = pipe()?;
-                let (error_reader, stderr) = pipe()?;
-                let input_reference =
-                    demi_command_service::descriptors::retry_blocking(|| stdin.try_clone())?;
+            .spawn_blocking(move || {
+                let (stdin, input_writer) = scope.descriptors(pipe)?;
+                let (output_reader, stdout) = scope.descriptors(pipe)?;
+                let (error_reader, stderr) = scope.descriptors(pipe)?;
+                let input_reference = scope.duplicate(&stdin)?;
                 Ok(Self {
                     stdin,
                     input_writer,
@@ -82,7 +82,7 @@ impl Job {
             error_reader,
             stderr,
             input_reference,
-        } = Pipes::open(shell).await?;
+        } = Pipes::open(shell, &scope).await?;
         env.remove(crate::stdio::LIVE_INPUT_ENV);
         if live {
             env.insert(
@@ -389,9 +389,10 @@ fn pump(
     }
 }
 
+/// A pipe as two files; a caller waits out a lack of open files with
+/// `Scope::descriptors`.
 pub(super) fn pipe() -> io::Result<(File, File)> {
-    // Out of open files, the job waits for one (`runner.md` § Load).
-    let (reader, writer) = demi_command_service::descriptors::retry_blocking(std::io::pipe)?;
+    let (reader, writer) = std::io::pipe()?;
     #[cfg(unix)]
     {
         use std::os::fd::OwnedFd;
