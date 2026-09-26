@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test'
+import { expect, jest, test } from 'bun:test'
 import { deferred, type Deferred } from '@demicodes/utils'
 import { FileUploads, clashPlacement, type UploadItem } from '../file-uploads'
 import { FileBrowserError, type FileUploadOptions } from '../types'
@@ -115,16 +115,19 @@ test('a failure stays listed with its reason until retried or cleared', async ()
   expect(uploads.items).toEqual([])
 })
 
-test('an upload on its way tells its pace once it has moved for a moment', async () => {
-  const source = fakeSource()
-  const uploads = new FileUploads(source)
-  uploads.add('/w', added(bytes('a', 10_000)))
-  await new Promise((resolve) => setTimeout(resolve, 600))
-  source.calls[0]!.options.progress(3_000)
-  const state = uploads.items[0]!.state
-  // About 3,000 bytes in 0.6 seconds, however late the timer fired.
-  expect(state.phase === 'uploading' ? state.rate : undefined).toBeGreaterThan(1_500)
-  expect(state.phase === 'uploading' ? state.rate : undefined).toBeLessThan(6_000)
+test('an upload on its way tells its pace once it has moved for a moment', () => {
+  jest.useFakeTimers()
+  try {
+    const source = fakeSource()
+    const uploads = new FileUploads(source)
+    uploads.add('/w', added(bytes('a', 10_000)))
+    jest.advanceTimersByTime(600)
+    source.calls[0]!.options.progress(3_000)
+    // 3,000 bytes in 0.6 seconds.
+    expect(uploads.items[0]!.state).toEqual({ phase: 'uploading', sent: 3_000, rate: 5_000 })
+  } finally {
+    jest.useRealTimers()
+  }
 })
 
 test('a folder makes itself and the folders in it, then sends its files, counting its bytes across them', async () => {

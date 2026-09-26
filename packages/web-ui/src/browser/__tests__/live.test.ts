@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test'
+import { expect, jest, test } from 'bun:test'
 import type { LiveControl, LiveModuleMessage, LiveTab, LiveViewerMessage } from '@demicodes/protocol'
 import { LiveFrameReader, encodeFile, encodeMessage, type LiveFrame } from '../frames'
 import { keyMessage, localKey, modifiers, pointerMessage, viewerPlatform, wheelMessage } from '../input'
@@ -305,59 +305,79 @@ test('the view ends with the reason the module or the backend gave', () => {
   expect(view.pictures.at(-1)).toEqual(['stop', 0, 0] as never)
 })
 
-test('a view that ends opens again, watching what the viewer watched', async () => {
-  const view = session({ reconnect: () => 0 })
-  view.live.panel({ width: 800, height: 600 }, 2, { width: 1440, height: 900 })
-  view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
-  view.close('host_unreachable')
-  expect(view.live.state).toMatchObject({ connection: 'opening', running: false })
-  expect(view.live.state.tabs).toHaveLength(0)
-  await Bun.sleep(5)
-  const opened = view.sent.slice(-3)
-  expect(opened).toEqual([
-    { type: 'hello', platform: 'mac' },
-    { type: 'panel', width: 800, height: 600, devicePixelRatio: 2, screenWidth: 1440, screenHeight: 900 },
-    { type: 'watch', tab: TAB.id },
-  ])
-  // The page stops asking once the view itself is closed.
-  view.live.close()
-  view.close('closed')
-  await Bun.sleep(5)
-  expect(view.sent.at(-1)).toEqual({ type: 'watch', tab: TAB.id })
-  expect(view.live.state.connection).toBe('ended')
+test('a view that ends opens again, watching what the viewer watched', () => {
+  jest.useFakeTimers()
+  try {
+    const view = session({ reconnect: () => 0 })
+    view.live.panel({ width: 800, height: 600 }, 2, { width: 1440, height: 900 })
+    view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
+    view.close('host_unreachable')
+    expect(view.live.state).toMatchObject({ connection: 'opening', running: false })
+    expect(view.live.state.tabs).toHaveLength(0)
+    jest.runAllTimers()
+    const opened = view.sent.slice(-3)
+    expect(opened).toEqual([
+      { type: 'hello', platform: 'mac' },
+      { type: 'panel', width: 800, height: 600, devicePixelRatio: 2, screenWidth: 1440, screenHeight: 900 },
+      { type: 'watch', tab: TAB.id },
+    ])
+    // The page stops asking once the view itself is closed.
+    view.live.close()
+    view.close('closed')
+    jest.runAllTimers()
+    expect(view.sent.at(-1)).toEqual({ type: 'watch', tab: TAB.id })
+    expect(view.live.state.connection).toBe('ended')
+  } finally {
+    jest.useRealTimers()
+  }
 })
 
-test('a frame the protocol refuses ends the view, and the next view opens', async () => {
-  const ended: string[] = []
-  const view = session({ reconnect: () => 0, onEnded: (reason) => ended.push(reason) })
-  view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
-  view.receive(rawFrame(1, new TextEncoder().encode('{"type":"state","running":"yes"}')))
-  expect(ended).toEqual([REFUSED_FRAME])
-  expect(view.live.state).toMatchObject({ connection: 'opening', running: false, ended: REFUSED_FRAME })
-  await Bun.sleep(5)
-  expect(view.sent.filter((message) => message.type === 'hello')).toHaveLength(2)
-  view.live.close()
+test('a frame the protocol refuses ends the view, and the next view opens', () => {
+  jest.useFakeTimers()
+  try {
+    const ended: string[] = []
+    const view = session({ reconnect: () => 0, onEnded: (reason) => ended.push(reason) })
+    view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
+    view.receive(rawFrame(1, new TextEncoder().encode('{"type":"state","running":"yes"}')))
+    expect(ended).toEqual([REFUSED_FRAME])
+    expect(view.live.state).toMatchObject({ connection: 'opening', running: false, ended: REFUSED_FRAME })
+    jest.runAllTimers()
+    expect(view.sent.filter((message) => message.type === 'hello')).toHaveLength(2)
+    view.live.close()
+  } finally {
+    jest.useRealTimers()
+  }
 })
 
-test('a view that opens again reads its stream from the first byte', async () => {
-  const view = session({ reconnect: () => 0 })
-  const state = moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id })
-  // The stream ends inside a frame; the next stream's first frame is whole.
-  view.receive(state.subarray(0, 7))
-  view.close('host_unreachable')
-  await Bun.sleep(5)
-  view.receive(state)
-  expect(view.live.state).toMatchObject({ connection: 'live', running: true, watched: TAB.id })
-  view.live.close()
+test('a view that opens again reads its stream from the first byte', () => {
+  jest.useFakeTimers()
+  try {
+    const view = session({ reconnect: () => 0 })
+    const state = moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id })
+    // The stream ends inside a frame; the next stream's first frame is whole.
+    view.receive(state.subarray(0, 7))
+    view.close('host_unreachable')
+    jest.runAllTimers()
+    view.receive(state)
+    expect(view.live.state).toMatchObject({ connection: 'live', running: true, watched: TAB.id })
+    view.live.close()
+  } finally {
+    jest.useRealTimers()
+  }
 })
 
-test('a view the module ended and the socket then closed opens again once', async () => {
-  const view = session({ reconnect: () => 0 })
-  view.receive(moduleFrame({ type: 'ended', reason: 'browser_ended' }))
-  view.close('closed')
-  await Bun.sleep(5)
-  expect(view.sent.filter((message) => message.type === 'hello')).toHaveLength(2)
-  view.live.close()
+test('a view the module ended and the socket then closed opens again once', () => {
+  jest.useFakeTimers()
+  try {
+    const view = session({ reconnect: () => 0 })
+    view.receive(moduleFrame({ type: 'ended', reason: 'browser_ended' }))
+    view.close('closed')
+    jest.runAllTimers()
+    expect(view.sent.filter((message) => message.type === 'hello')).toHaveLength(2)
+    view.live.close()
+  } finally {
+    jest.useRealTimers()
+  }
 })
 
 test('a picture ends the notice that capture failed, and no other', () => {
