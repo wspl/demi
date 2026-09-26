@@ -1,11 +1,13 @@
 //! The product's `demi host` group (`sessions-and-targets.md` § Attached
 //! hosts, `commands.md` § Demi command inputs): `list` names the Hosts the
-//! calling conversation reaches, `current` its main Host, and `shell
-//! --host` runs a script on one of them as one job there. That job carries
-//! its invoking job's command context, command storage and commands, and
-//! its standard input and output are the calling command's: the relayed
-//! pipes' far ends become the job's device, so the bytes flow between the
-//! two devices through the backend's pipes, never through a runner socket.
+//! calling conversation reaches, `current` its main Host, `shell --host`
+//! runs a script on one of them as one job there, and `expose` gives a
+//! service on one of them a public URL (`expose.md` § Commands). A `shell`
+//! job carries its invoking job's command context, command storage and
+//! commands, and its standard input and output are the calling command's:
+//! the relayed pipes' far ends become the job's device, so the bytes flow
+//! between the two devices through the backend's pipes, never through a
+//! runner socket.
 
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -24,13 +26,15 @@ use tokio_util::sync::CancellationToken;
 
 use crate::conversation::host_access::{HostRole, ReachableHost};
 use crate::conversation::target::ExecutionTarget;
+use crate::expose::expose_group;
 use crate::shard::Shard;
 
 /// How long a stopped `shell` waits for the far job's end after asking it
 /// to terminate, before it kills it.
 const ABORT_GRACE: Duration = Duration::from_secs(5);
 
-const SUMMARY: &str = "The hosts this conversation reaches: list them, show the main one, run a command on another.";
+const SUMMARY: &str =
+    "The hosts this conversation reaches: list them, show the main one, run a command on another, expose a service.";
 
 const LIST_SUMMARY: &str = "Hosts this conversation can reach with `demi host shell --host`: name, id, online, the directory shells start in; the main one marked.";
 
@@ -38,10 +42,10 @@ const CURRENT_SUMMARY: &str = "The main host: where shell_exec runs.";
 
 const SHELL_SUMMARY: &str = "Run a shell string in another host's bash: `demi host shell --host <name|id> <script>`. The script starts where the last shell on that host ended (its home before one ran) with this command's stdin and stdout, byte-faithfully and streaming, so archives pipe cleanly both ways (`demi host shell --host ci \"tar c -C /work .\" | tar x`, `tar c . | demi host shell --host ci \"tar x -C /work\"`). stderr and the exit code pass through.";
 
-/// The input of `demi host list` and `current`, which take none.
+/// The input of a leaf that takes none, such as `demi host list`.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-struct NoArgs {}
+pub(crate) struct NoArgs {}
 
 /// The input of `demi host shell`.
 #[derive(Deserialize, JsonSchema)]
@@ -67,6 +71,7 @@ pub(crate) fn host_group(shard: Weak<Shard>) -> GroupBuilder {
                 .input::<NoArgs>()
                 .bind(TypedRpc::new(verb(shard.clone(), current))),
         )
+        .group(expose_group(&shard))
         .leaf(
             LeafBuilder::rpc("shell", SHELL_SUMMARY)
                 .input::<ShellArgs>()
@@ -77,7 +82,7 @@ pub(crate) fn host_group(shard: Weak<Shard>) -> GroupBuilder {
 }
 
 /// A handler over the live shard; a call after the shard closed fails.
-fn verb<A, F, Fut>(shard: Weak<Shard>, run: F) -> impl Fn(Call<A>, RpcPort) -> LocalBoxFuture<'static, Result<u8, RpcError>>
+pub(crate) fn verb<A, F, Fut>(shard: Weak<Shard>, run: F) -> impl Fn(Call<A>, RpcPort) -> LocalBoxFuture<'static, Result<u8, RpcError>>
 where
     A: 'static,
     F: Fn(Rc<Shard>, Call<A>, RpcPort) -> Fut + Clone + 'static,
@@ -94,13 +99,13 @@ where
 }
 
 /// The conversation the invoking job belongs to.
-fn conversation_of(invocation: &RpcInvocation) -> Result<ConversationId, RpcError> {
+pub(crate) fn conversation_of(invocation: &RpcInvocation) -> Result<ConversationId, RpcError> {
     ConversationId::try_from(invocation.context.conversation.as_str())
         .map_err(|_| RpcError::Failed("this session has no conversation".into()))
 }
 
 /// The Hosts the calling conversation reaches.
-async fn reachable(shard: &Shard, conversation: &ConversationId) -> Result<Vec<ReachableHost>, RpcError> {
+pub(crate) async fn reachable(shard: &Shard, conversation: &ConversationId) -> Result<Vec<ReachableHost>, RpcError> {
     let record = shard
         .owned_conversation(conversation)
         .await
@@ -113,6 +118,15 @@ async fn reachable(shard: &Shard, conversation: &ConversationId) -> Result<Vec<R
         .reachable_hosts(&record, &target)
         .await
         .map_err(|error| RpcError::Failed(error.to_string()))
+}
+
+/// The Host of `hosts` that `wanted` names: its name, or else its device's
+/// id.
+pub(crate) fn named_host<'a>(hosts: &'a [ReachableHost], wanted: &str) -> Option<&'a ReachableHost> {
+    hosts
+        .iter()
+        .find(|host| host.name == wanted)
+        .or_else(|| hosts.iter().find(|host| host.device.as_str() == wanted))
 }
 
 fn online(shard: &Shard, host: &ReachableHost) -> &'static str {
@@ -200,11 +214,7 @@ async fn shell(shard: Rc<Shard>, call: Call<ShellArgs>, port: RpcPort) -> Result
     }
     let conversation = conversation_of(&invocation)?;
     let hosts = reachable(&shard, &conversation).await?;
-    let host = hosts
-        .iter()
-        .find(|host| host.name == wanted)
-        .or_else(|| hosts.iter().find(|host| host.device.as_str() == wanted));
-    let Some(host) = host else {
+    let Some(host) = named_host(&hosts, &wanted) else {
         port.stderr(format!(
             "host shell: host {wanted} is not reachable from this conversation (see `demi host list`)\n"
         ))

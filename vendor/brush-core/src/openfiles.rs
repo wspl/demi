@@ -103,7 +103,9 @@ pub fn null() -> Result<OpenFile, error::Error> {
 impl Clone for OpenFile {
     fn clone(&self) -> Self {
         // If we fail to clone the open file for any reason, we return a special file
-        // that discards all I/O. This allows us to avoid fatally erroring out.
+        // that discards all I/O. This allows us to avoid fatally erroring out. A
+        // controlled file's owner waits out a lack of descriptors first, so this
+        // happens only when the owner gives up, such as for a cancelled execution.
         self.try_clone().unwrap_or_else(|_err| {
             ioutils::FailingReaderWriter::new("failed to duplicate open file").into()
         })
@@ -125,6 +127,13 @@ impl std::fmt::Display for OpenFile {
 }
 
 impl OpenFile {
+    /// Convert a Unix descriptor into its owned file; only the process's own standard
+    /// streams are duplicated.
+    #[cfg(unix)]
+    pub fn into_file(self) -> std::io::Result<std::fs::File> {
+        Ok(self.try_clone_to_owned().map_err(std::io::Error::other)?.into())
+    }
+
     /// Convert a Windows descriptor into its owned file handle.
     #[cfg(windows)]
     pub fn into_file(self) -> std::io::Result<std::fs::File> {
@@ -149,7 +158,7 @@ impl OpenFile {
             Self::Stderr(_) => std::io::stderr().into(),
             Self::File(f) => f.try_clone()?.into(),
             Self::Controlled { file, control } => Self::Controlled {
-                file: file.try_clone()?,
+                file: control.duplicate(file)?,
                 control: control.clone(),
             },
             Self::PipeReader(f) => f.try_clone()?.into(),

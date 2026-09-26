@@ -15,58 +15,80 @@ pub fn exit(code: i32) -> ! {
 }
 
 #[derive(Debug)]
-pub struct Command(process_wrap::std::CommandWrap);
+pub struct Command {
+    inner: process_wrap::std::CommandWrap,
+    /// The standard streams the caller chose; the child gets the
+    /// invocation's own for the others when it starts.
+    chosen: Chosen,
+}
+
+/// Which standard streams a caller set.
+#[derive(Debug, Default)]
+struct Chosen {
+    stdin: bool,
+    stdout: bool,
+    stderr: bool,
+}
+
 impl Command {
     pub fn current_dir(&mut self, path: impl AsRef<std::path::Path>) -> &mut Self {
-        self.0.command_mut().current_dir(super::resolve(path));
+        self.inner.command_mut().current_dir(super::resolve(path));
         self
     }
     pub fn arg(&mut self, arg: impl AsRef<OsStr>) -> &mut Self {
-        self.0.command_mut().arg(arg);
+        self.inner.command_mut().arg(arg);
         self
     }
     pub fn args(&mut self, args: impl IntoIterator<Item = impl AsRef<OsStr>>) -> &mut Self {
-        self.0.command_mut().args(args);
+        self.inner.command_mut().args(args);
         self
     }
     pub fn stdin(&mut self, input: impl Into<Stdio>) -> &mut Self {
-        self.0.command_mut().stdin(input);
+        self.inner.command_mut().stdin(input);
+        self.chosen.stdin = true;
         self
     }
     pub fn stdout(&mut self, output: impl Into<Stdio>) -> &mut Self {
-        self.0.command_mut().stdout(output);
+        self.inner.command_mut().stdout(output);
+        self.chosen.stdout = true;
         self
     }
     pub fn stderr(&mut self, output: impl Into<Stdio>) -> &mut Self {
-        self.0.command_mut().stderr(output);
+        self.inner.command_mut().stderr(output);
+        self.chosen.stderr = true;
         self
     }
     pub fn env(&mut self, key: impl AsRef<OsStr>, value: impl AsRef<OsStr>) -> &mut Self {
-        self.0.command_mut().env(key, value);
+        self.inner.command_mut().env(key, value);
         self
     }
     pub fn envs(
         &mut self,
         values: impl IntoIterator<Item = (impl AsRef<OsStr>, impl AsRef<OsStr>)>,
     ) -> &mut Self {
-        self.0.command_mut().envs(values);
+        self.inner.command_mut().envs(values);
         self
     }
     pub fn env_remove(&mut self, key: impl AsRef<OsStr>) -> &mut Self {
-        self.0.command_mut().env_remove(key);
+        self.inner.command_mut().env_remove(key);
         self
     }
     pub fn env_clear(&mut self) -> &mut Self {
-        self.0.command_mut().env_clear();
+        self.inner.command_mut().env_clear();
         self
     }
     pub fn spawn(&mut self) -> std::io::Result<Child> {
         super::check_cancelled();
-        let mut inner = self.0.spawn()?;
+        self.inherit()?;
+        let control = super::control();
+        let mut inner = match &control {
+            Some(control) => control.spawn(&mut self.inner)?,
+            None => self.inner.spawn()?,
+        };
         let stdin = inner.stdin().take().map(child_file);
         let stdout = inner.stdout().take().map(child_file);
         let stderr = inner.stderr().take().map(child_file);
-        let guard = super::control().map(|control| control.task_guard());
+        let guard = control.map(|control| control.task_guard());
         Ok(Child {
             inner,
             stdin,
@@ -93,62 +115,64 @@ impl Command {
             command
                 .current_dir(&context.cwd)
                 .env_clear()
-                .envs(&context.env)
-                .stdin(
-                    context
-                        .stdin
-                        .try_clone()
-                        .expect("duplicate invocation stdin"),
-                )
-                .stdout(
-                    context
-                        .stdout
-                        .try_clone()
-                        .expect("duplicate invocation stdout"),
-                )
-                .stderr(
-                    context
-                        .stderr
-                        .try_clone()
-                        .expect("duplicate invocation stderr"),
-                );
-            #[cfg(unix)]
-            {
-                use command_fds::{CommandFdExt, FdMapping};
-                use std::os::fd::AsFd;
-                let mappings = context
-                    .descriptors
-                    .iter()
-                    .map(|(fd, file)| FdMapping {
-                        child_fd: *fd,
-                        parent_fd: file
-                            .as_fd()
-                            .try_clone_to_owned()
-                            .expect("duplicate invocation descriptor"),
-                    })
-                    .collect();
-                command
-                    .fd_mappings(mappings)
-                    .expect("valid invocation descriptors");
-            }
+                .envs(&context.env);
         });
         let mut command = process_wrap::std::CommandWrap::from(command);
         #[cfg(unix)]
         command.wrap(process_wrap::std::ProcessGroup::leader());
         #[cfg(windows)]
         command.wrap(process_wrap::std::JobObject);
-        Self(command)
+        Self {
+            inner: command,
+            chosen: Chosen::default(),
+        }
+    }
+
+    /// Gives the child the invocation's standard streams the caller did not
+    /// choose, and its other descriptors, each duplicated through the
+    /// embedding owner, which may wait out a lack of open files.
+    fn inherit(&mut self) -> std::io::Result<()> {
+        let context = super::snapshot();
+        let command = self.inner.command_mut();
+        if !self.chosen.stdin {
+            command.stdin(super::duplicate(&context.stdin)?);
+        }
+        if !self.chosen.stdout {
+            command.stdout(super::duplicate(&context.stdout)?);
+        }
+        if !self.chosen.stderr {
+            command.stderr(super::duplicate(&context.stderr)?);
+        }
+        #[cfg(unix)]
+        {
+            use command_fds::{CommandFdExt, FdMapping};
+            let mappings = context
+                .descriptors
+                .iter()
+                .map(|(fd, file)| {
+                    Ok(FdMapping {
+                        child_fd: *fd,
+                        parent_fd: super::duplicate(file)?.into(),
+                    })
+                })
+                .collect::<std::io::Result<_>>()?;
+            // The invocation's descriptor numbers are distinct.
+            command
+                .fd_mappings(mappings)
+                .expect("valid invocation descriptors");
+        }
+        Ok(())
     }
 }
 impl Deref for Command {
     type Target = std::process::Command;
     fn deref(&self) -> &Self::Target {
-        self.0.command()
+        self.inner.command()
     }
 }
 impl DerefMut for Command {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.0.command_mut()
+        self.inner.command_mut()
     }
 }
 

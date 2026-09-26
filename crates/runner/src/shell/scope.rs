@@ -14,7 +14,6 @@ use brush_core::{
     execution_host::{ExecutionHost, FileControl},
     processes::ChildProcess,
 };
-use process_wrap::tokio::{CommandWrap, KillOnDrop};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::commands::{contexts::ExecutionContext, dispatch::Dispatcher};
@@ -33,10 +32,11 @@ struct Interrupt {
 
 #[cfg(unix)]
 impl Interrupt {
-    /// Made on a shell thread, inside the shell runtime; out of open files
-    /// it waits for one (`runner.md` § Load).
-    fn new(cancellation: &CancellationToken) -> io::Result<Self> {
-        let (reader, writer) = demi_command_service::descriptors::retry_blocking(std::io::pipe)?;
+    /// Made on a shell thread, inside the shell runtime, from a new pipe.
+    fn new(
+        cancellation: &CancellationToken,
+        (reader, writer): (std::io::PipeReader, std::io::PipeWriter),
+    ) -> io::Result<Self> {
         let cancelled = cancellation.clone();
         let closer = tokio::runtime::Handle::try_current()
             .map_err(io::Error::other)?
@@ -96,6 +96,21 @@ impl Scope {
         }
     }
 
+    /// Runs `make`, which makes descriptors; out of open files it tries
+    /// again until one closes or the job ends (`runner.md` § Load). It runs
+    /// on a shell thread, which may block.
+    pub(crate) fn descriptors<T>(&self, mut make: impl FnMut() -> io::Result<T>) -> io::Result<T> {
+        demi_command_service::descriptors::retry_blocking(|| {
+            self.check()?;
+            make()
+        })
+    }
+
+    /// A copy of `file`'s descriptor, made as `descriptors` makes one.
+    pub(crate) fn duplicate(&self, file: &File) -> io::Result<File> {
+        self.descriptors(|| file.try_clone())
+    }
+
     pub async fn finish(&self) {
         self.tasks.close();
         self.tasks.wait().await;
@@ -117,7 +132,10 @@ impl Scope {
         if let Some(interrupt) = &*slot {
             return Ok(interrupt.clone());
         }
-        let interrupt = Arc::new(Interrupt::new(&self.cancellation)?);
+        let interrupt = Arc::new(Interrupt::new(
+            &self.cancellation,
+            self.descriptors(std::io::pipe)?,
+        )?);
         *slot = Some(interrupt.clone());
         Ok(interrupt)
     }
@@ -163,9 +181,7 @@ impl Scope {
         writing: bool,
     ) -> io::Result<File> {
         self.check()?;
-        // Out of open files, a redirection or utility waits for one
-        // (`runner.md` § Load).
-        let open = || demi_command_service::descriptors::retry_blocking(|| options.open(path));
+        let open = || self.descriptors(|| options.open(path));
         let file = match (&self.edits, writing) {
             (Some(edits), true) => edits.record(path, open)?,
             _ => open()?,
@@ -345,6 +361,9 @@ impl Scope {
 }
 
 impl FileControl for Scope {
+    fn duplicate(&self, file: &File) -> io::Result<File> {
+        self.duplicate(file)
+    }
     fn read(&self, file: &File, buffer: &mut [u8]) -> io::Result<usize> {
         self.read(file, buffer)
     }
@@ -371,7 +390,7 @@ impl ExecutionHost for Scope {
         if self.file_path(&file).is_none() {
             return Ok((file, None));
         }
-        let (reader, writer) = super::job::pipe()?;
+        let (reader, writer) = self.descriptors(super::job::pipe)?;
         let scope = self.clone();
         let completion = self.tasks.spawn_blocking(move || -> io::Result<()> {
             let mut buffer = vec![0; 64 * 1024];
@@ -413,27 +432,27 @@ impl ExecutionHost for Scope {
         resolve_path(path, cwd)
     }
 
-    /// Out of open files, a pipe waits for one (`runner.md` § Load).
     fn pipe(&self) -> io::Result<(std::io::PipeReader, std::io::PipeWriter)> {
-        demi_command_service::descriptors::retry_blocking(std::io::pipe)
+        self.descriptors(std::io::pipe)
+    }
+
+    fn temporary_file(&self) -> io::Result<File> {
+        self.descriptors(tempfile::tempfile)
     }
 
     fn spawn(&self, mut command: Command) -> io::Result<ChildProcess> {
-        self.check()?;
         if let Some(context) = &self.commands {
             command.env(
                 crate::commands::command_client::CONTEXT_ENV,
                 &context.execution.id,
             );
         }
-        let mut command = CommandWrap::from(tokio::process::Command::from(command));
-        command.wrap(KillOnDrop);
-        #[cfg(unix)]
-        command.wrap(process_wrap::tokio::ProcessGroup::leader());
-        #[cfg(windows)]
-        command.wrap(process_wrap::tokio::JobObject);
-        // Out of open files, the external command waits for one (`runner.md` § Load).
-        let mut child = demi_command_service::descriptors::retry_blocking(|| command.spawn())?;
+        let mut command = crate::process::wrap(tokio::process::Command::from(command), true);
+        // A start that waits (`crate::process::start`) ends with the job.
+        let mut child = crate::process::start_blocking(|| {
+            self.check()?;
+            command.spawn()
+        })?;
         let pid = child.id().expect("new child has a PID") as i32;
         let cancellation = self.cancellation.clone();
         let (result, receiver) = tokio::sync::oneshot::channel();
@@ -505,6 +524,9 @@ impl uucore::context::Control for Scope {
     fn check(&self) -> io::Result<()> {
         self.check()
     }
+    fn duplicate(&self, file: &File) -> io::Result<File> {
+        self.duplicate(file)
+    }
     fn read(&self, file: &File, bytes: &mut [u8]) -> io::Result<usize> {
         self.read(file, bytes)
     }
@@ -519,6 +541,19 @@ impl uucore::context::Control for Scope {
     }
     fn task_guard(&self) -> Box<dyn Send + Sync> {
         Box::new(self.tasks.token())
+    }
+    /// A utility's child program, such as `env`'s or `xargs`'s, starts as
+    /// the job's own commands do.
+    fn spawn(
+        &self,
+        command: &mut process_wrap::std::CommandWrap,
+    ) -> io::Result<Box<dyn process_wrap::std::ChildWrapper>> {
+        #[cfg(unix)]
+        crate::process::inherit_open_file_limit(command.command_mut());
+        crate::process::start_blocking(|| {
+            self.check()?;
+            command.spawn()
+        })
     }
 }
 

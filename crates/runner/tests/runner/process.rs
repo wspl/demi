@@ -3,6 +3,7 @@
 use bytes::Bytes;
 use demi_runner::connection::wire::SpawnErrorKind;
 use demi_runner::process::{ChildProcess, OutputStream, ProcessInput, SpawnOptions};
+use futures_util::FutureExt;
 use std::{collections::BTreeMap, time::Duration};
 
 fn options(command: &str, args: &[&str]) -> SpawnOptions {
@@ -99,4 +100,39 @@ async fn spawn_failure_distinguishes_missing_cwd_from_missing_executable() {
     request.cwd = std::env::temp_dir().join("definitely-not-a-demi-test-cwd");
     let failure = ChildProcess::spawn(request).await.err().unwrap();
     assert_eq!(failure.kind, SpawnErrorKind::CwdUnusable);
+}
+
+/// A program still open for writing starts once it is closed, instead of
+/// failing with "Text file busy" (`runner.md` § Load). The runner causes that
+/// state itself: a child that another of its threads forks holds a file the
+/// runner has just written, such as a service executable, open for writing
+/// until the child runs its own program. Linux refuses to run such a file;
+/// whether macOS does is not known, so the test runs on Linux.
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn a_program_still_open_for_writing_starts_once_it_is_closed() {
+    use std::{io::Write, os::unix::fs::OpenOptionsExt};
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let directory = tempfile::tempdir().unwrap();
+        let program = directory.path().join("program");
+        let mut writing = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o755)
+            .open(&program)
+            .unwrap();
+        writing.write_all(b"#!/bin/sh\necho started\n").unwrap();
+        let start = ChildProcess::spawn(options(program.to_str().unwrap(), &[]));
+        tokio::pin!(start);
+        // The first attempt runs now and finds the program busy.
+        assert!((&mut start).now_or_never().is_none(), "the start waits");
+        drop(writing);
+        let mut child = start.await.unwrap();
+        let chunk = child.output.recv().await.unwrap();
+        assert!(matches!(chunk.stream, OutputStream::Stdout));
+        assert_eq!(chunk.bytes.as_ref(), b"started\n");
+        assert_eq!(child.wait().await.code, Some(0));
+    })
+    .await
+    .unwrap();
 }

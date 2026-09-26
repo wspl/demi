@@ -15,8 +15,8 @@ An agent starts a development server on Cloud and runs:
 
 ```text
 $ demi host expose add 127.0.0.1:5173
-Exposed 127.0.0.1:5173 on cloud as https://k7x2m9qw4p3s6t8v0w2y4z6a8b.expose.demi.example/
-Expires in 60 minutes (expose k7x2m9qw4p3s6t8v0w2y4z6a8b).
+Exposed 127.0.0.1:5173 on cloud as https://k7x2maqw4p3s6tavaw2y4z6aab.expose.demi.example/
+Expires in 60 minutes (expose k7x2maqw4p3s6tavaw2y4z6aab).
 ```
 
 The agent puts the URL in its reply. The user opens it in their own browser,
@@ -57,11 +57,12 @@ An expose belongs to a user and a device, not to a conversation. It records:
 
 The public hostname is `<id>.<expose domain>`. The expose domain is instance
 configuration ([deployment](#deployment)); when none is configured the
-feature is unavailable, `add` says so, and the product shows no expose
-controls. The URL the commands and the API print takes its scheme and
-port from the backend's configured public URL, the one runners connect
-to: behind a reverse proxy on the default port the URL has no port, and a
-local backend on `3271` prints `http://<id>.expose.localhost:3271/`.
+feature is unavailable: `add` says so, there is no expose to list, renew or
+remove, and the product shows no expose controls. The URL the commands and
+the API print takes its scheme and port from the backend's configured public
+URL, the one runners connect to: behind a reverse proxy on the default port
+the URL has no port, and a local backend on `3271` prints
+`http://<id>.expose.localhost:3271/`.
 
 A conversation names the device when it creates the expose: the conversation's
 main Host, or an attached Host through `--host`. After that the conversation
@@ -82,12 +83,17 @@ The record is destroyed by exactly these events:
 | --- | --- |
 | `expiresAt` passes | Destroyed. A request that arrives after it is refused as unknown. |
 | `demi host expose remove <id>`, or the product's remove | Destroyed at once. |
-| The Cloud device leaves the running state: idle stop, lifetime cap, reset, backend shutdown | Every expose on that device is destroyed with the machine. |
+| The Cloud device leaves the running state: idle stop, lifetime cap, reset, runtime loss, backend shutdown | Every expose on that device is destroyed with the machine. A checkpoint keeps the machine running, and its exposes with it. |
 | The paired device is revoked | Every expose on it is destroyed with its attachments. |
 
 A paired device that is offline keeps its exposes until they expire: the
 runner may reconnect within the hour. Requests answer `device_offline`
-meanwhile.
+meanwhile. A Cloud whose runner went away while no one reported its sandbox
+stopped is treated alike: the next operation that needs the Cloud finds out,
+and a sandbox found stopped boots again without its exposes. A backend that
+stops without stopping its Cloud, as a crash does, leaves the Cloud to the
+machine manager, which stops it; the next backend destroys that Cloud's
+exposes before it serves.
 
 Expose traffic is retention, not activity, in the sense of
 [Conversation idle and Host resource release](resource-lifecycle.md): a
@@ -145,18 +151,36 @@ steps 4 and 5 and holds the lease until the exchange, or the copy after an
 upgrade, ends. Destroying the expose ends the lease, and the edge closes the
 visitor's connection at once.
 
-The relay rewrites `Host` to the expose's `address`, adds
-`X-Forwarded-For`, `X-Forwarded-Host` (the expose hostname) and
-`X-Forwarded-Proto`, and removes hop-by-hop headers, except that an upgrade
-request keeps the `Upgrade` and `Connection` headers its handshake needs.
-Every other request asks the service to close its connection after the answer
-(`Connection: close`), so each visitor request is its own network stream.
-Header names keep the case they arrived with, in both directions, and a
-repeated header such as `Set-Cookie` keeps its separate lines. The relay
-changes nothing else: no caching, no compression, no HTML rewriting, no
-injected scripts. A service that builds absolute URLs from `Host` therefore
-builds them with its local address; one that honors the forwarded headers
-builds public ones.
+The relay rewrites `Host` to the expose's `address`, appends the visitor's
+address to `X-Forwarded-For`, sets `X-Forwarded-Host` to the `Host` the
+visitor sent and `X-Forwarded-Proto` to the scheme the visitor used, as the
+session cookie's HTTPS detection sees it, and removes the headers that
+concern one connection only: `Connection`, `Keep-Alive`, `Proxy-Connection`,
+`Proxy-Authenticate`, `Proxy-Authorization`, `TE`, `Trailer`,
+`Transfer-Encoding`, `Upgrade`, and the names a `Connection` header lists. An
+upgrade request and its `101` answer keep the `Upgrade` and `Connection`
+headers the handshake needs. Every other request asks the service to close
+its connection after the answer (`Connection: close`), so each visitor
+request is its own network stream. The relay changes nothing else: no
+caching, no compression, no HTML rewriting, no injected scripts. A service
+that builds absolute URLs from `Host` therefore builds them with its local
+address; one that honors the forwarded headers builds public ones.
+
+Header lines keep their name's case in both directions, and the lines of a
+repeated header, such as two `Set-Cookie`, stay separate and in their order.
+Three things differ from the bytes as sent, none of which HTTP gives a
+meaning:
+
+- The lines of one name are written together, where the name first
+  appeared: a visitor's `A: 1`, `B: 2`, `A: 3` reaches the service as
+  `A: 1`, `A: 3`, `B: 2`.
+- A header the relay writes takes the case of the message's own line of that
+  name, and is lowercase when the message had none: `Connection: close` after
+  a visitor's `Connection: keep-alive`, `x-forwarded-for` otherwise.
+- Each side's framing is the relay's own: a length the sender stated stays,
+  a chunked body is chunked again, possibly at other boundaries, and an
+  answer without a `Date` gets one, as HTTP requires of a server that
+  forwards it.
 
 Limits, defined once here:
 
@@ -210,9 +234,9 @@ Removed expose k7x2…; its URL no longer works.
 
 | Leaf | Input | Behavior |
 | --- | --- | --- |
-| `add <address> [--host <name\|id>]` | `address` is `host:port` or a port; `--host` names a main or attached Host as `demi host list` shows it | Creates the record for that device. The device must be connected: an expose for a stopped Cloud would already be destroyed. Prints the URL, the device, and the expiry. |
+| `add <address> [--host <name\|id>]` | `address` is `host:port` or a port; `--host` names a main or attached Host as `demi host list` shows it | Creates the record for that device. The device must be connected, and a Cloud running: an expose for a stopped Cloud would already be destroyed. Prints the URL, the device, and the expiry, `--json` available. |
 | `list` | none | Every expose of the user across devices, soonest expiry first, `--json` available. A Cloud that has stopped has none. |
-| `renew <id>` | an expose id | Sets the expiry to one hour from now. |
+| `renew <id>` | an expose id | Sets the expiry to one hour from now, `--json` available. |
 | `remove <id>` | an expose id | Destroys it. |
 
 An id that is not the user's, or that has expired, answers `expose_not_found`
@@ -249,9 +273,9 @@ snapshot, the host names and the request handlers.
 example `expose.demi.example`. The deployment provides a wildcard DNS record
 for `*.<domain>` pointing at the reverse proxy, a wildcard certificate, and a
 proxy rule that forwards every `*.<domain>` request to the backend with the
-`Host` header preserved and WebSocket upgrades allowed. The backend derives
-the scheme of the URLs it prints from the same forwarded-protocol handling
-its session cookie uses.
+`Host` header preserved and WebSocket upgrades allowed. The URLs the backend
+prints take their scheme and port from its public URL,
+`DEMI_BACKEND_PUBLIC_URL` ([The expose record](#the-expose-record)).
 
 For local development, Chrome and Firefox resolve `*.expose.localhost` to the
 loopback address without DNS; Safari does not. The backend's public URL
@@ -289,12 +313,13 @@ The backend forwards with the HTTP/1 client of hyper, the HTTP library its own
 server runs on, instead of reading and re-framing the exchange itself. One
 implementation of HTTP framing then serves both the product routes and the
 relay, so lengths, chunked bodies and upgrades are handled in one place. The
-client keeps header case, so a service receives each request as the visitor
-sent it. Forwarding an upgrade before answering the visitor lets the visitor
-see the service's real answer, a 101 with the service's headers or its
-refusal. After the upgrade no HTTP is left to interpret, so the relay copies
-bytes, and a WebSocket's messages, extensions and close codes pass through
-unchanged.
+server and the client both keep header case, so a service receives each
+request as the visitor sent it, except that hyper's header map writes a
+repeated name's lines together. Forwarding an upgrade before answering the
+visitor lets the visitor see the service's real answer, a 101 with the
+service's headers or its refusal. After the upgrade no HTTP is left to
+interpret, so the relay copies bytes, and a WebSocket's messages, extensions
+and close codes pass through unchanged.
 
 There is no protection on the URL because the feature exists to hand a link
 to someone; the one-hour lifetime and the random id bound the exposure, and
@@ -311,16 +336,18 @@ the WebSocket check is not required, a WebSocket client is. Never a real
 model.
 
 1. `add` on a paired device and on Cloud prints a URL; `curl` of it returns
-   the fixture service's response with `Host` rewritten and the forwarded
-   headers present; the fixture records what it received. Header names
-   arrive in the case the client sent them, and two `Set-Cookie` headers in a
-   response reach the client as two.
-2. An 8 MiB request body and an 8 MiB response body arrive byte-equal with
-   the relay's memory bounded; a server-sent-event stream reaches the client
-   as events are emitted.
-3. A WebSocket echo through the relay carries text and binary both ways and
-   propagates close codes in both directions; a service that refuses the
-   upgrade reaches the client with its own status and body.
+   the fixture service's response with `Host` rewritten, the forwarded
+   headers present and the connection-level headers gone; the fixture records
+   what it received. Header names arrive in the case the client sent them,
+   both ways, and two `Set-Cookie` headers in a response reach the client as
+   two, in their order.
+2. An 8 MiB request body and an 8 MiB response body, both chunked, arrive
+   byte-equal with the relay's memory bounded; a server-sent-event stream
+   reaches the client as events are emitted, and the service sees its
+   connection's input end only after the stream ended.
+3. A WebSocket echo through the relay carries text, binary and pings both
+   ways and propagates close codes in both directions; a service that
+   refuses the upgrade reaches the client with its own status and body.
 4. Expiry: with an injected clock, a request one second after `expiresAt`
    answers 404 and the record is gone; `renew` before expiry extends it.
 5. Cloud stop destroys the exposes on that device; a paired device going

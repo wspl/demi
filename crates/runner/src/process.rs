@@ -3,9 +3,11 @@ use std::{
     io,
     path::PathBuf,
     process::{ExitStatus, Stdio},
+    time::Duration,
 };
 
 use bytes::Bytes;
+use demi_command_service::descriptors::{self, Backoff};
 use process_wrap::tokio::{ChildWrapper, CommandWrap, KillOnDrop};
 use futures_util::StreamExt;
 use tokio::{
@@ -78,24 +80,10 @@ impl ChildProcess {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        let mut command = CommandWrap::from(command);
-        command.wrap(KillOnDrop);
-        if options.process_group {
-            #[cfg(unix)]
-            command.wrap(process_wrap::tokio::ProcessGroup::leader());
-            #[cfg(windows)]
-            command.wrap(process_wrap::tokio::JobObject);
-        }
-        // Out of open files, the process waits for one (`runner.md` § Load).
-        let mut backoff = demi_command_service::descriptors::Backoff::default();
-        let mut child = loop {
-            match command.spawn() {
-                Ok(child) => break child,
-                Err(error) if demi_command_service::descriptors::exhausted(&error) => {
-                    backoff.wait().await
-                }
-                Err(error) => return Err(classify_failure(error, &options).await),
-            }
+        let mut command = wrap(command, options.process_group);
+        let mut child = match start(|| command.spawn()).await {
+            Ok(child) => child,
+            Err(error) => return Err(classify_failure(error, &options).await),
         };
         let pid = child.id().expect("newly spawned process has an ID");
         let mut stdin = child.stdin().take().expect("piped stdin");
@@ -290,6 +278,138 @@ async fn pump<T: AsyncRead + Unpin>(
                 }
             }
         }
+    }
+}
+
+/// The soft and hard open-file limits the runner was started with, once it
+/// raised its own; every process it starts gets them back.
+#[cfg(unix)]
+static STARTED_WITH: std::sync::OnceLock<(u64, u64)> = std::sync::OnceLock::new();
+
+/// Raises the runner's own soft limit on open files as far as the system
+/// allows (`runner.md` § Load): to its hard limit, and on macOS to at most
+/// the kernel's per-process maximum. Returns the soft limit before and after.
+#[cfg(unix)]
+pub fn raise_open_file_limit() -> io::Result<(u64, u64)> {
+    let (soft, hard) = rlimit::getrlimit(rlimit::Resource::NOFILE)?;
+    let raised = rlimit::increase_nofile_limit(u64::MAX)?;
+    if raised > soft {
+        STARTED_WITH.get_or_init(|| (soft, hard));
+    }
+    Ok((soft, raised))
+}
+
+/// Gives a process the runner starts the open-file limits the runner was
+/// started with, the ones it would have from a terminal (`runner.md` § Load).
+/// A program that uses `select()`, or that closes every descriptor up to its
+/// limit, misbehaves with the runner's raised one. Each call adds a hook, so
+/// a command needs one call.
+#[cfg(unix)]
+pub(crate) fn inherit_open_file_limit(command: &mut std::process::Command) {
+    use std::os::unix::process::CommandExt;
+    let Some(&(soft, hard)) = STARTED_WITH.get() else {
+        return;
+    };
+    // SAFETY: the hook runs in the child between fork and exec. It makes one
+    // `setrlimit` call, which is async-signal-safe, and allocates nothing
+    // unless that call fails.
+    unsafe {
+        command.pre_exec(move || rlimit::setrlimit(rlimit::Resource::NOFILE, soft, hard));
+    }
+}
+
+/// A command the runner starts: it gets the open-file limit the runner was
+/// started with, is killed when its handle is dropped and, with `group`,
+/// leads a process group of its own (a job object on Windows).
+pub(crate) fn wrap(command: Command, group: bool) -> CommandWrap {
+    let mut command = CommandWrap::from(command);
+    #[cfg(unix)]
+    inherit_open_file_limit(command.command_mut().as_std_mut());
+    command.wrap(KillOnDrop);
+    if group {
+        #[cfg(unix)]
+        command.wrap(process_wrap::tokio::ProcessGroup::leader());
+        #[cfg(windows)]
+        command.wrap(process_wrap::tokio::JobObject);
+    }
+    command
+}
+
+/// Starts a process with `attempt`, which tries to spawn it once. Every process
+/// the runner starts, a service, a raw process, a job's external command or a
+/// utility's child program, starts this way, so none fails for a condition
+/// that passes (`runner.md` § Load; `StartRetry` says which).
+pub(crate) async fn start<T>(mut attempt: impl FnMut() -> io::Result<T>) -> io::Result<T> {
+    let mut retry = StartRetry::default();
+    loop {
+        let error = match attempt() {
+            Ok(started) => return Ok(started),
+            Err(error) => error,
+        };
+        let Some(pause) = retry.pause(&error) else {
+            return Err(error);
+        };
+        tokio::time::sleep(pause).await;
+    }
+}
+
+/// `start` on a thread that may block, such as the shell's hooks.
+pub(crate) fn start_blocking<T>(mut attempt: impl FnMut() -> io::Result<T>) -> io::Result<T> {
+    let mut retry = StartRetry::default();
+    loop {
+        let error = match attempt() {
+            Ok(started) => return Ok(started),
+            Err(error) => error,
+        };
+        let Some(pause) = retry.pause(&error) else {
+            return Err(error);
+        };
+        std::thread::sleep(pause);
+    }
+}
+
+/// How long a start waits, in all, for its program to stop being busy.
+const BUSY_WAIT: Duration = Duration::from_secs(1);
+
+/// When a failed process start is tried again.
+///
+/// - Out of open files, always: another descriptor will close
+///   (`demi_command_service::descriptors`).
+/// - While its program is busy (`ETXTBSY`), for at most `BUSY_WAIT`. Linux
+///   refuses to run a file that any process holds open for writing, and the
+///   runner causes that itself. It writes files that it then runs, such as a
+///   service executable it has just copied into its cache or a script a job
+///   has just written, while other threads start processes. Starting a
+///   process forks the runner, and the child holds a copy of every descriptor
+///   the runner had open, the one writing that file too, until it runs its
+///   own program. Close-on-exec closes the copy only then, and Linux has no
+///   close-on-fork, so nothing the writer does can prevent the copy. A start
+///   of the file in that moment fails although the runner has closed it. The
+///   failure is inherent to fork and exec from threads on Linux, and it is
+///   bounded: every child the runner forks runs its program at once (std's
+///   and process-wrap's spawns; nothing in the runner forks otherwise), so the
+///   copy lasts from a fork to its exec. A program still busy after
+///   `BUSY_WAIT` is open for writing elsewhere, and the start fails with it.
+#[derive(Default)]
+struct StartRetry {
+    backoff: Backoff,
+    /// The pauses taken so far for a busy program.
+    busy: Duration,
+}
+
+impl StartRetry {
+    /// The pause before the next attempt, or `None` when `error` ends the
+    /// start.
+    fn pause(&mut self, error: &io::Error) -> Option<Duration> {
+        if descriptors::exhausted(error) {
+            return Some(self.backoff.pause());
+        }
+        if error.kind() != io::ErrorKind::ExecutableFileBusy || self.busy >= BUSY_WAIT {
+            return None;
+        }
+        let pause = self.backoff.pause();
+        self.busy += pause;
+        Some(pause)
     }
 }
 

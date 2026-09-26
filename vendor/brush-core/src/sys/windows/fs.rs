@@ -137,12 +137,15 @@ pub fn split_paths<T: AsRef<OsStr> + ?Sized>(s: &T) -> std::env::SplitPaths<'_> 
     std::env::split_paths(s)
 }
 
+/// The path of the device that discards all I/O.
+pub const NULL_DEVICE: &str = "NUL";
+
 /// Opens a null file that will discard all I/O.
 pub fn open_null_file() -> Result<std::fs::File, error::Error> {
     let f = std::fs::File::options()
         .read(true)
         .write(true)
-        .open("NUL")?;
+        .open(NULL_DEVICE)?;
     Ok(f)
 }
 
