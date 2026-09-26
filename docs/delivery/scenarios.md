@@ -35,8 +35,8 @@ external services it registers a scripted model as a provider family, serves
 a scripted machine manager on a Unix socket, and serves local fixtures in
 place of models.dev and the Claude Code release distribution. It pairs real
 runner processes, records every runner wire frame in both directions, and owns
-cleanup. The runners are the real runner executable, which `cargo xtask test`
-builds before the tests start
+cleanup. The runners are the real runner executable, which the test starts
+from the target directory it runs from
 ([Validation](builds-and-releases.md#validation)). The fakes come from the
 test-support features of the crates that own what they fake
 ([Crates and packages](../architecture/crates-and-packages.md)); the scripted
