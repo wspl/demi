@@ -55,14 +55,16 @@ impl Default for Backoff {
 }
 
 impl Backoff {
-    fn next(&mut self) -> Duration {
+    /// The pause before the next attempt, for a caller that waits on its own,
+    /// such as one on a thread that may block.
+    pub fn pause(&mut self) -> Duration {
         let pause = self.0;
         self.0 = (self.0 * 2).min(Duration::from_millis(100));
         pause
     }
 
     pub async fn wait(&mut self) {
-        tokio::time::sleep(self.next()).await;
+        tokio::time::sleep(self.pause()).await;
     }
 }
 
@@ -95,7 +97,7 @@ pub fn retry_blocking<T>(mut attempt: impl FnMut() -> io::Result<T>) -> io::Resu
     let mut backoff = Backoff::default();
     loop {
         match attempt() {
-            Err(error) if exhausted(&error) => std::thread::sleep(backoff.next()),
+            Err(error) if exhausted(&error) => std::thread::sleep(backoff.pause()),
             result => return result,
         }
     }
