@@ -419,7 +419,6 @@ impl ExecutionHost for Scope {
     }
 
     fn spawn(&self, mut command: Command) -> io::Result<ChildProcess> {
-        self.check()?;
         if let Some(context) = &self.commands {
             command.env(
                 crate::commands::command_client::CONTEXT_ENV,
@@ -432,8 +431,11 @@ impl ExecutionHost for Scope {
         command.wrap(process_wrap::tokio::ProcessGroup::leader());
         #[cfg(windows)]
         command.wrap(process_wrap::tokio::JobObject);
-        // Out of open files, the external command waits for one (`runner.md` § Load).
-        let mut child = demi_command_service::descriptors::retry_blocking(|| command.spawn())?;
+        // A start that waits (`crate::process::start`) ends with the job.
+        let mut child = crate::process::start_blocking(|| {
+            self.check()?;
+            command.spawn()
+        })?;
         let pid = child.id().expect("new child has a PID") as i32;
         let cancellation = self.cancellation.clone();
         let (result, receiver) = tokio::sync::oneshot::channel();
@@ -519,6 +521,17 @@ impl uucore::context::Control for Scope {
     }
     fn task_guard(&self) -> Box<dyn Send + Sync> {
         Box::new(self.tasks.token())
+    }
+    /// A utility's child program, such as `env`'s or `xargs`'s, starts as
+    /// the job's own commands do.
+    fn spawn(
+        &self,
+        command: &mut process_wrap::std::CommandWrap,
+    ) -> io::Result<Box<dyn process_wrap::std::ChildWrapper>> {
+        crate::process::start_blocking(|| {
+            self.check()?;
+            command.spawn()
+        })
     }
 }
 
