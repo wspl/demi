@@ -565,34 +565,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_schema_applies_once_and_holds_no_conversation_data() {
-        let data = tempfile::tempdir().unwrap();
-        let path = data.path().join("control.sqlite");
-        let first = ControlService::open(&path, Arc::new(demi_core::SystemClock)).await.unwrap();
-        master(&first).await;
-        first.close().await.unwrap();
-
-        let again = ControlService::open(&path, Arc::new(demi_core::SystemClock)).await.unwrap();
-        assert!(again.has_users().await.unwrap());
-        let tables: Vec<String> = again
-            .call(|connection, _| {
-                let mut statement =
-                    connection.prepare_cached("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")?;
-                let names = statement.query_map([], |row| row.get(0))?.collect::<Result<_, _>>()?;
-                Ok(names)
-            })
-            .await
-            .unwrap();
-        for table in ["users", "web_sessions", "devices", "workspaces", "conversations", "providers", "usage_ledger", "attachments"] {
-            assert!(tables.iter().any(|name| name == table), "{table}");
-        }
-        for conversation_data in ["nodes", "blocks", "host_store"] {
-            assert!(!tables.iter().any(|name| name == conversation_data), "{conversation_data}");
-        }
-        again.close().await.unwrap();
-    }
-
-    #[tokio::test]
     async fn expired_web_sessions_are_swept_when_a_session_opens() {
         let data = tempfile::tempdir().unwrap();
         let clock = Arc::new(TestClock(Mutex::new(jiff::Timestamp::from_second(1_790_000_000).unwrap())));

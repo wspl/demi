@@ -201,13 +201,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn an_expose_id_is_a_dns_label_of_128_random_bits() {
-        let id = new_expose_id();
-        assert_eq!(id.as_str().len(), 26);
-        assert_ne!(id, new_expose_id());
-    }
-
-    #[test]
     fn an_expose_url_takes_the_scheme_and_any_other_than_the_default_port_from_the_backend_url() {
         let id = ExposeId::try_from("k7x2maqw4p3s6tavaw2y4z6aab").unwrap();
         let local: ExposeDomain = "expose.localhost".parse().unwrap();

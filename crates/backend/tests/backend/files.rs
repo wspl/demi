@@ -18,7 +18,7 @@ use futures_util::{StreamExt as _, stream};
 use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};
 
-use crate::support::{Answer, Harness, Paired, Session, TestBackend, answer, eventually};
+use crate::support::{Answer, Harness, Paired, Session, TestBackend, answer, eventually, pattern};
 
 const CONVERSATION: &str = "5a1d0c3e-8f3a-4c1e-9d2b-7a1c2e3f4a01";
 
@@ -116,14 +116,12 @@ fn git(directory: &Path, arguments: &[&str]) {
 }
 
 /// Bytes that differ at every position, so a misplaced range shows.
-fn pattern(size: usize) -> Vec<u8> {
-    (0..size).map(|index| ((index * 31 + (index >> 8)) % 251) as u8).collect()
-}
-
 fn header<'a>(answer: &'a Answer, name: &str) -> Option<&'a str> {
     answer.headers.get(name).map(|value| value.to_str().unwrap())
 }
 
+// Several seconds: a listing over the runner's message limit needs about 21,000
+// files in one directory.
 #[tokio::test]
 async fn the_working_tree_lists_its_changes_and_reads_one_file_and_an_offline_device_says_so() {
     let mut device = OnDevice::start().await;
@@ -220,7 +218,7 @@ async fn the_raw_routes_stream_a_file_by_range_under_inert_headers_and_the_commi
         let pairs: Vec<(&str, &str)> = pairs.iter().map(|(name, value)| (*name, value.as_str())).collect();
         format!("/fs/raw?{}", query(&pairs))
     };
-    let image = pattern(300_000);
+    let image = pattern(300_000, 0);
     std::fs::write(device.root.join("logo.svg"), &image).unwrap();
 
     let whole = device.get(&raw("logo.svg", &[])).await;
@@ -259,7 +257,7 @@ async fn the_raw_routes_stream_a_file_by_range_under_inert_headers_and_the_commi
     let unchanged = device.call(Method::GET, &raw("logo.svg", &[]), &[("if-none-match", &etag)], None).await;
     assert_eq!(unchanged.status, StatusCode::NOT_MODIFIED);
     assert_eq!(device.get(&raw("logo.svg", &[("version", &etag)])).await.status, StatusCode::OK);
-    std::fs::write(device.root.join("logo.svg"), pattern(10)).unwrap();
+    std::fs::write(device.root.join("logo.svg"), pattern(10, 0)).unwrap();
     let changed = device.get(&raw("logo.svg", &[("version", &etag)])).await;
     assert_eq!(changed.refusal(), (StatusCode::PRECONDITION_FAILED, ErrorCode::FileChanged));
 
@@ -278,7 +276,7 @@ async fn the_raw_routes_stream_a_file_by_range_under_inert_headers_and_the_commi
 
     // Far past the runner's message limit, whole and in order; streamed,
     // the answer has no length, which a HEAD reports.
-    let video = pattern(3 * MAX_MESSAGE_BYTES + 5);
+    let video = pattern(3 * MAX_MESSAGE_BYTES + 5, 0);
     std::fs::write(device.root.join("demo.mp4"), &video).unwrap();
     let streamed = device.get(&raw("demo.mp4", &[])).await;
     assert_eq!(header(&streamed, "content-type"), Some("video/mp4"));
@@ -288,11 +286,11 @@ async fn the_raw_routes_stream_a_file_by_range_under_inert_headers_and_the_commi
 
     // The committed side of a change comes from git, by range as well.
     git(&device.root, &["init", "-q", "-b", "main"]);
-    let committed = pattern(5_000);
+    let committed = pattern(5_000, 0);
     std::fs::write(device.root.join("chart.png"), &committed).unwrap();
     git(&device.root, &["add", "chart.png"]);
     git(&device.root, &["commit", "-q", "-m", "chart"]);
-    std::fs::write(device.root.join("chart.png"), pattern(7)).unwrap();
+    std::fs::write(device.root.join("chart.png"), pattern(7, 0)).unwrap();
     let before = device.get("/changes/raw?path=chart.png").await;
     assert_eq!(before.status, StatusCode::OK);
     assert_eq!(header(&before, "content-type"), Some("image/png"));
@@ -311,7 +309,7 @@ async fn the_raw_routes_stream_a_file_by_range_under_inert_headers_and_the_commi
     assert_eq!(escaping.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidQuery));
 
     // Git's copy is read whole, so one over the runner's 8 MiB is refused.
-    std::fs::write(device.root.join("poster.png"), pattern(8 * 1024 * 1024 + 1)).unwrap();
+    std::fs::write(device.root.join("poster.png"), pattern(8 * 1024 * 1024 + 1, 0)).unwrap();
     git(&device.root, &["add", "poster.png"]);
     git(&device.root, &["commit", "-q", "-m", "poster"]);
     let oversized = device.get("/changes/raw?path=poster.png").await;
@@ -356,7 +354,7 @@ async fn an_upload_streams_into_place_whole_and_asks_before_it_writes_over_a_fil
 
     // Far past the JSON body limit and the runner's message limit, streamed
     // through the runner a chunk at a time.
-    let block = Bytes::from(pattern(1024 * 1024));
+    let block = Bytes::from(pattern(1024 * 1024, 0));
     let chunks = 3 * MAX_MESSAGE_BYTES / block.len() + 1;
     let body = stream::iter((0..chunks).map({
         let block = block.clone();
@@ -483,7 +481,7 @@ async fn the_host_access_reaches_only_the_callers_conversation_and_the_hosts_bou
 #[tokio::test]
 async fn a_shutdown_ends_an_open_download_instead_of_waiting_for_it() {
     let device = OnDevice::start().await;
-    std::fs::write(device.root.join("long.mp4"), pattern(64 * 1024 * 1024)).unwrap();
+    std::fs::write(device.root.join("long.mp4"), pattern(64 * 1024 * 1024, 0)).unwrap();
     let route = format!(
         "/api/conversations/{CONVERSATION}/fs/raw?{}",
         query(&[("path", &device.path("long.mp4"))])

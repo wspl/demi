@@ -11,11 +11,12 @@ use demi_web_api::error::ErrorCode;
 use futures_util::{SinkExt as _, StreamExt as _};
 use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};
+use tokio::time::Instant;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest as _;
 use tokio_tungstenite::tungstenite::Message;
 
 use crate::cloud::{idle_after, the_cloud};
-use crate::support::{Harness, Paired, Session, TestBackend, answer, eventually};
+use crate::support::{Harness, PATIENCE, Paired, Session, TestBackend, answer, pattern};
 
 pub(crate) const CONVERSATION: &str = "5d4c3b2a-8f3a-4c1e-9d2b-7a1c2e3f4a01";
 /// A conversation that works on the Cloud.
@@ -115,7 +116,7 @@ async fn a_page_opens_a_user_stream_on_the_conversations_host_with_the_users_con
     // Bytes go both ways as they are, in order, whatever the message
     // boundaries; the page closing its socket ends the stream.
     let mut echo = socket(&backend, &master, CONVERSATION, "echo").await;
-    let payload: Vec<u8> = (0..3 * 1024 * 1024).map(|index: usize| (index * 7 % 256) as u8).collect();
+    let payload = pattern(3 * 1024 * 1024, 0);
     let (mut to_backend, mut from_backend) = echo.split();
     let sending = async {
         for chunk in payload.chunks(100_000) {
@@ -197,10 +198,15 @@ pub(crate) async fn answered(echo: &mut Socket) {
     }
 }
 
+// Several seconds: the Cloud boots, and three idle windows pass in real
+// time: the stream stays open past the window a file read started, so that a
+// stream that did not count would let the Cloud stop while it is open, and
+// the Cloud idles for one after the close.
 #[tokio::test]
 async fn an_open_stream_keeps_the_cloud_it_watches_awake_until_it_closes() {
+    let window = Duration::from_millis(400);
     let mut harness = Harness::new().with_native_fixture();
-    harness.lifecycle = idle_after(Duration::from_millis(400));
+    harness.lifecycle = idle_after(window);
     harness.cloud.sweep = Duration::from_millis(50);
     let (backend, master) = harness.start_set_up().await;
     let created = backend.post("/api/conversations", Some(&master), json!({ "id": ON_CLOUD })).await;
@@ -212,12 +218,16 @@ async fn an_open_stream_keeps_the_cloud_it_watches_awake_until_it_closes() {
     let mut echo = socket(&backend, &master, ON_CLOUD, "echo").await;
     answered(&mut echo).await;
 
-    // Watched for three idle windows, the Cloud stays up.
-    tokio::time::sleep(Duration::from_millis(1_200)).await;
-    assert!(harness.manager.running(&device));
-    assert_eq!(harness.manager.count(&format!("hibernate:{device}")), 0);
-    // Once the page closes the stream, the Cloud idles and stops.
+    // Watched for two idle windows, the Cloud stays up: it stops a full
+    // window after the page closes the stream, and not before.
+    tokio::time::sleep(window * 2).await;
+    let closed = Instant::now();
     echo.close(None).await.unwrap();
-    eventually("the idle Cloud stops", || async { !harness.manager.running(&device) }).await;
+    let stopped = harness.manager.arrival(&format!("hibernate:{device}"), PATIENCE).await;
+    assert!(
+        stopped >= closed + window,
+        "the Cloud stopped {:?} after the stream closed",
+        stopped.saturating_duration_since(closed)
+    );
     backend.close().await;
 }

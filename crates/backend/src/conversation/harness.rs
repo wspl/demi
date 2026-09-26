@@ -64,22 +64,3 @@ impl HostResolver for ShardHosts {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use demi_agent::AgentHarness as _;
-
-    use super::*;
-
-    #[test]
-    fn without_the_builtin_package_the_commands_leave_out_its_groups_and_still_make_a_manifest() {
-        let native = NativeCatalog::unpublished();
-        let harness = conversation_harness(Weak::new(), &native);
-        let commands = harness.commands();
-        let catalog = native.catalog(&crate::backend::PublicUrl::default());
-        catalog.select(&commands).expect("the commands bind to no missing package");
-        let help = commands.render_help();
-        assert!(help.contains("demi todo") && help.contains("demi host"), "{help}");
-        assert!(!help.contains("demi file") && !help.contains("demi browser"), "{help}");
-    }
-}

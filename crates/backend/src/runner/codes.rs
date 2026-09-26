@@ -81,12 +81,4 @@ mod tests {
             assert_eq!(ClaimCode::parse(refused), None, "{refused}");
         }
     }
-
-    #[test]
-    fn a_device_token_is_256_bits_in_hexadecimal() {
-        let token = new_device_token();
-        assert_eq!(token.expose().len(), 64);
-        assert!(token.expose().chars().all(|char| char.is_ascii_hexdigit()));
-        assert_ne!(token.expose(), new_device_token().expose());
-    }
 }

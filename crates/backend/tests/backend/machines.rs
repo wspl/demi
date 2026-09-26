@@ -20,7 +20,8 @@ use demi_machines_protocol::{
 };
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::{Notify, Semaphore, broadcast, mpsc};
+use tokio::sync::{Notify, Semaphore, broadcast, mpsc, watch};
+use tokio::time::Instant;
 use tokio_util::task::AbortOnDropHandle;
 
 /// The base every device boots from.
@@ -52,7 +53,8 @@ struct Guest {
 
 #[derive(Default)]
 struct State {
-    calls: Vec<String>,
+    /// Every call, in arrival order, with when it arrived.
+    calls: Vec<(String, Instant)>,
     guests: HashMap<String, Guest>,
     /// One operation at a time per device.
     workers: HashMap<String, Arc<Semaphore>>,
@@ -62,11 +64,19 @@ struct State {
 struct Shared {
     state: Mutex<State>,
     deaths: broadcast::Sender<String>,
+    /// Told of each call as it arrives, for a test that waits for one.
+    arrived: watch::Sender<()>,
 }
 
 impl Shared {
     fn lock(&self) -> MutexGuard<'_, State> {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Records `call` as it arrives.
+    fn record(&self, call: String) {
+        self.lock().calls.push((call, Instant::now()));
+        self.arrived.send_replace(());
     }
 
     fn worker(&self, device: &str) -> Arc<Semaphore> {
@@ -95,6 +105,7 @@ impl ScriptedManager {
         let shared = Arc::new(Shared {
             state: Mutex::new(State::default()),
             deaths,
+            arrived: watch::Sender::new(()),
         });
         let server = tokio::spawn(serve(listener, shared.clone()));
         Self {
@@ -111,7 +122,28 @@ impl ScriptedManager {
 
     /// Every call so far, such as `wake:<device>`, in arrival order.
     pub fn calls(&self) -> Vec<String> {
-        self.shared.lock().calls.clone()
+        self.shared.lock().calls.iter().map(|(call, _)| call.clone()).collect()
+    }
+
+    /// When `call` first arrived, once it has, such as the
+    /// `hibernate:<device>` that stops a Cloud. Waiting longer than
+    /// `patience` fails the test as hung.
+    pub async fn arrival(&self, call: &str, patience: std::time::Duration) -> Instant {
+        let mut arrived = self.shared.arrived.subscribe();
+        let first = async {
+            loop {
+                let found = self.shared.lock().calls.iter().find(|(name, _)| name == call).map(|(_, at)| *at);
+                if let Some(at) = found {
+                    return at;
+                }
+                // The manager keeps the sender while it lives.
+                arrived.changed().await.unwrap();
+            }
+        };
+        match tokio::time::timeout(patience, first).await {
+            Ok(at) => at,
+            Err(_) => panic!("the manager never received {call}: {:?}", self.calls()),
+        }
     }
 
     /// How many calls so far are `call`.
@@ -244,7 +276,7 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
     let json = |value: serde_json::Value| Ok(value);
     match call {
         MachineCall::Reconcile(_) => {
-            shared.lock().calls.push("reconcile".into());
+            shared.record("reconcile".into());
             let devices: Vec<String> = shared.lock().guests.keys().cloned().collect();
             for device in devices {
                 let worker = shared.worker(&device);
@@ -274,7 +306,7 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
             let device = params.device_id;
             let worker = shared.worker(&device);
             let _turn = worker.acquire().await.unwrap();
-            shared.lock().calls.push(format!("wake:{device}"));
+            shared.record(format!("wake:{device}"));
             let (silent, taken) = {
                 let mut state = shared.lock();
                 let silent = state.script.silent_wake;
@@ -317,7 +349,7 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
             let device = params.device_id;
             let worker = shared.worker(&device);
             let _turn = worker.acquire().await.unwrap();
-            shared.lock().calls.push(format!("hibernate:{device}"));
+            shared.record(format!("hibernate:{device}"));
             if let Some(message) = shared.lock().script.fail_hibernate.take() {
                 return Err(message);
             }
@@ -328,17 +360,14 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
             let device = params.device_id;
             let worker = shared.worker(&device);
             let _turn = worker.acquire().await.unwrap();
-            shared.lock().calls.push(format!("checkpoint:{device}"));
+            shared.record(format!("checkpoint:{device}"));
             json(serde_json::Value::Null)
         }
         MachineCall::GrowVolume(params) => {
             let device = params.device_id;
             let worker = shared.worker(&device);
             let _turn = worker.acquire().await.unwrap();
-            shared
-                .lock()
-                .calls
-                .push(format!("grow:{device}:{}:{}", params.volume, params.bytes));
+            shared.record(format!("grow:{device}:{}:{}", params.volume, params.bytes));
             let mut state = shared.lock();
             let guest = state.guests.get_mut(&device).ok_or("the device has no storage")?;
             if params.bytes.get() > guest.image.bytes(params.volume).get() {
@@ -350,10 +379,7 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
             let device = params.device_id;
             let worker = shared.worker(&device);
             let _turn = worker.acquire().await.unwrap();
-            shared
-                .lock()
-                .calls
-                .push(format!("reset:{device}:{}:{}", params.operation_id, params.base_version));
+            shared.record(format!("reset:{device}:{}:{}", params.operation_id, params.base_version));
             let hold = shared.lock().script.hold_reset.clone();
             if let Some((rebuilding, proceed)) = hold {
                 rebuilding.notify_one();
