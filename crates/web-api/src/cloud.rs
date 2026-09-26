@@ -1,6 +1,6 @@
 //! The user's Cloud: its status and its reset (`web-api.md` § Cloud).
 
-use demi_core::Nullable;
+use demi_core::{MAX_SAFE_INTEGER, Nullable};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -63,7 +63,9 @@ pub struct CloudDevice {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CloudVolumes {
+    #[garde(range(max = MAX_SAFE_INTEGER))]
     pub system_bytes: u64,
+    #[garde(range(max = MAX_SAFE_INTEGER))]
     pub home_bytes: u64,
 }
 

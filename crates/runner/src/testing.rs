@@ -242,7 +242,7 @@ impl Host {
             runner: wire::RunnerInfo {
                 native_target: Some(crate::services::target().into()),
                 name: "test".into(),
-                platform: "test".into(),
+                platform: wire::RunnerPlatform::Linux,
                 version: "test".into(),
                 managed: None,
                 identity: wire::HostIdentity {

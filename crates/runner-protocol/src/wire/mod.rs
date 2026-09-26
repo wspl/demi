@@ -9,8 +9,8 @@ pub use encoding::{Timestamp, WireBytes};
 pub use messages::{
     ArtifactOwner, ChangeKind, DirEntry, FileStat, GitChange, GitChanges, HelloErrorCode,
     HostIdentity, Inbound, JobArtifactOwner, JobFileChange, LogLine, NetErrorCode, Outbound,
-    OutputStream, PipeRef, Readdir, RetainedOutput, RunnerInfo, ServiceErrorCode, Signal,
-    SpawnError, SpawnErrorKind, StreamArtifactOwner, VolumeName,
+    OutputStream, PipeRef, Readdir, RetainedOutput, RunnerInfo, RunnerPlatform, ServiceErrorCode,
+    Signal, SpawnError, SpawnErrorKind, StreamArtifactOwner, VolumeName,
 };
 pub use replies::{FsOk, FsResult, GitOk, GitResult};
 
