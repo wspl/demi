@@ -43,8 +43,6 @@ pub enum Error {
     Build { target: &'static str, status: std::process::ExitStatus },
     #[error("no build of {} for {target} at {}: run cargo xtask native build first", executable.name(), path.display())]
     NotBuilt { executable: Executable, target: &'static str, path: PathBuf },
-    #[error("{} is not packaged by cargo xtask native package", .0.name())]
-    NoRelease(Executable),
     #[error("the release record is invalid: {0}")]
     Record(String),
     #[error(transparent)]

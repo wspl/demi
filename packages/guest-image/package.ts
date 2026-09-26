@@ -49,7 +49,7 @@ const packages = inventory.split('\n').map(line => {
   const [name, version] = z.tuple([z.string().min(1), z.string().min(1)]).parse(line.split('\t'))
   return { name, version }
 })
-const browser = browserReleaseSchema.parse(JSON.parse(await readFile(new URL('../../crates/demi-commands/src/browser/releases/chrome.json', import.meta.url), 'utf8')))
+const browser = browserReleaseSchema.parse(JSON.parse(await readFile(new URL('../../crates/builtin-protocol/src/release/chrome.json', import.meta.url), 'utf8')))
 const browserKey = options.arch === 'aarch64' ? 'aarch64-unknown-linux-musl' : 'x86_64-unknown-linux-musl'
 const browserArchive = browser.platforms.find(platform => platform.target === browserKey)
 if (!browserArchive) throw new Error('Missing Cloud browser target')

@@ -10,7 +10,7 @@ import {
 } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { createId, errorCode } from '@demicodes/utils'
+import { createId } from '@demicodes/utils'
 import { requireTool } from './gvisor/image-tools'
 import {
   imageStateSchema,
@@ -90,7 +90,7 @@ export class DirMachineImageStore implements MachineImageStore {
       )
       return imageStateSchema.parse(JSON.parse(manifest))
     } catch (error) {
-      if (errorCode(error) === 'ENOENT') {
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
         return null
       }
       throw error

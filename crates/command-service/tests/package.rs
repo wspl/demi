@@ -1,11 +1,9 @@
 use demi_command_service::protocol::PackageDescriptor;
 
 #[test]
-fn validates_and_hashes_typescript_package_fixture() {
-    let fixture: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../packages/command-protocol/tests/fixtures/package.json"
-    ))
-    .unwrap();
+fn a_descriptor_validates_and_hashes_to_its_recorded_digest() {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/package.json")).unwrap();
     let descriptor = PackageDescriptor::parse(fixture["descriptor"].clone()).unwrap();
     assert_eq!(
         descriptor.digest().unwrap(),
@@ -28,10 +26,8 @@ fn validates_and_hashes_typescript_package_fixture() {
 
 #[test]
 fn package_decoding_enforces_value_constraints() {
-    let fixture: serde_json::Value = serde_json::from_str(include_str!(
-        "../../../packages/command-protocol/tests/fixtures/package.json"
-    ))
-    .unwrap();
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/package.json")).unwrap();
     for (pointer, replacement) in [
         ("/id", serde_json::json!("Invalid package")),
         ("/version", serde_json::json!("")),

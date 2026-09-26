@@ -11,7 +11,7 @@ use demi_builtin_protocol::{
     capture::{CaptureEvent, FrameHeader},
     file::FileOperation,
     live::{FileHeader, LiveModuleMessage, LiveViewerMessage, VideoHeader},
-    release::{BrowserInstallation, BrowserRelease},
+    release::BrowserRelease,
 };
 use serde_json::{Value, json};
 
@@ -353,11 +353,10 @@ fn capture_events_decode_and_unknown_events_are_refused() {
 }
 
 #[test]
-fn release_records_and_receipts_are_checked() {
-    let pinned = include_str!("../../demi-commands/src/browser/releases/chrome.json");
-    let release = BrowserRelease::parse(pinned).unwrap();
+fn release_records_are_checked() {
+    let release = BrowserRelease::pinned().unwrap();
     assert!(release.platforms.iter().any(|platform| platform.target == "aarch64-apple-darwin"));
-    let mut record: Value = serde_json::from_str(pinned).unwrap();
+    let mut record = serde_json::to_value(&release).unwrap();
     record["version"] = json!("153.0.8010");
     assert!(BrowserRelease::parse(&record.to_string()).is_err());
     record["version"] = json!("153.0.8010.36");
@@ -366,10 +365,6 @@ fn release_records_and_receipts_are_checked() {
     record["platforms"][0]["sha256"] = json!("f".repeat(64));
     record["platforms"][0]["url"] = json!("not a url");
     assert!(BrowserRelease::parse(&record.to_string()).is_err());
-    let digest = "a".repeat(64);
-    let receipt = json!({"archiveHash": digest, "executableHash": digest}).to_string();
-    assert!(BrowserInstallation::parse(receipt.as_bytes()).is_ok());
-    assert!(BrowserInstallation::parse(br#"{"archiveHash": "x", "executableHash": "y"}"#).is_err());
 }
 
 #[test]
