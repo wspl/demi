@@ -27,6 +27,11 @@ pub trait Control: Send + Sync {
     fn sleep(&self, duration: std::time::Duration) -> std::io::Result<()>;
     fn resolve(&self, path: &Path, cwd: &Path) -> PathBuf;
     fn task_guard(&self) -> Box<dyn Send + Sync>;
+    /// Duplicates a descriptor. The embedding owner may wait out a lack of
+    /// open files.
+    fn duplicate(&self, file: &File) -> std::io::Result<File> {
+        file.try_clone()
+    }
     /// Starts a child program. The embedding owner may wait out what keeps
     /// it from starting for a while, such as a lack of open files.
     fn spawn(
@@ -48,6 +53,15 @@ pub fn control() -> Option<Arc<dyn Control>> {
             .as_ref()
             .and_then(|context| context.control.clone())
     })
+}
+
+/// Duplicates `file` through the embedding owner, which may wait out a lack
+/// of open files.
+pub fn duplicate(file: &File) -> std::io::Result<File> {
+    match control() {
+        Some(control) => control.duplicate(file),
+        None => file.try_clone(),
+    }
 }
 
 pub fn check_cancelled() {

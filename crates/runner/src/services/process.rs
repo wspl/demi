@@ -10,7 +10,7 @@ use demi_command_service::{
     Client, ServiceError,
     protocol::{PackageDescriptor, ServiceInfo},
 };
-use process_wrap::tokio::{ChildWrapper, CommandWrap, KillOnDrop};
+use process_wrap::tokio::ChildWrapper;
 use tokio::{
     io::AsyncReadExt,
     process::{ChildStderr, Command},
@@ -72,12 +72,7 @@ impl ResidentService {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        let mut command = CommandWrap::from(command);
-        command.wrap(KillOnDrop);
-        #[cfg(unix)]
-        command.wrap(process_wrap::tokio::ProcessGroup::leader());
-        #[cfg(windows)]
-        command.wrap(process_wrap::tokio::JobObject);
+        let mut command = crate::process::wrap(command, true);
         // A start that waits (`crate::process::start`) ends with `stop`.
         let mut child = tokio::select! {
             biased;

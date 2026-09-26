@@ -7,7 +7,8 @@ pub mod scope;
 pub mod utilities;
 
 use brush_core::{
-    CommandArg, ExecutionContext, ExecutionResult, Shell, SourceInfo, builtins, openfiles::OpenFile,
+    CommandArg, ExecutionContext, ExecutionResult, Shell, SourceInfo, builtins,
+    execution_host::FileControl, openfiles::OpenFile,
 };
 use std::{
     collections::{BTreeMap, HashMap},
@@ -79,10 +80,13 @@ pub async fn execute(
     script: &str,
     options: ShellOptions,
 ) -> Result<ShellResult, brush_core::Error> {
+    // Every copy the shell makes of these goes through the job's scope, which
+    // waits out a lack of open files (`runner.md` § Load).
+    let control: Arc<dyn FileControl> = Arc::new(options.scope.clone());
     let fds = HashMap::from([
-        (0, OpenFile::File(options.stdin)),
-        (1, OpenFile::File(options.stdout)),
-        (2, OpenFile::File(options.stderr)),
+        (0, OpenFile::Controlled { file: options.stdin, control: control.clone() }),
+        (1, OpenFile::Controlled { file: options.stdout, control: control.clone() }),
+        (2, OpenFile::Controlled { file: options.stderr, control }),
     ]);
     let mut registrations = brush_builtins::default_builtins(brush_builtins::BuiltinSet::BashMode);
     for &(name, _) in crate::shell::utilities::UTILITIES {
@@ -249,13 +253,8 @@ fn invocation_file(
     native_file(file)
 }
 
+/// The native file of a descriptor the shell has already copied for the
+/// utility, so no second copy is made.
 fn native_file(file: OpenFile) -> Result<File, brush_core::Error> {
-    #[cfg(unix)]
-    {
-        Ok(File::from(file.try_borrow_as_fd()?.try_clone_to_owned()?))
-    }
-    #[cfg(windows)]
-    {
-        Ok(file.into_file()?)
-    }
+    Ok(file.into_file()?)
 }

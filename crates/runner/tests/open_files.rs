@@ -1,10 +1,12 @@
 #![cfg(all(unix, feature = "test-fixtures"))]
 //! With no open file left, each of these waits until one closes, then
 //! finishes (`runner.md` § Load): pipes, filesystem and working-tree
-//! requests, file transfers, network streams, process and job starts, native
-//! service starts and local command connections. One test in its own binary:
-//! it lowers the process's open-file limit and holds every remaining
-//! descriptor.
+//! requests, file transfers, network streams, process and job starts, a
+//! running job's pipelines, redirections and utilities, native service starts
+//! and local command connections; a cancelled job stops waiting. Last, the
+//! runner raises its open-file limit, and what it starts gets the one it was
+//! started with. One test in its own binary: it changes the process's
+//! open-file limit and holds every remaining descriptor.
 
 use demi_command_service::protocol::{
     CommandCaller, CommandContext, CommandLocale, LocalInvocation, PackageArtifact,
@@ -15,7 +17,7 @@ use demi_runner::{
     connection::wire::{Inbound, PipeRef},
     host::HostServer,
     pipes::PipeClient,
-    process::{ChildProcess, SpawnOptions},
+    process::{ChildProcess, OutputStream, ProcessInput, SpawnOptions},
     services::{ArtifactResolver, ArtifactSource, RuntimeError, ServiceRegistry, target},
     shell::{job::Job, scope::Scope},
     testing::Dispatch,
@@ -26,7 +28,7 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
     future::Future,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::Command,
     sync::{
         Arc,
@@ -55,6 +57,14 @@ impl Hog {
             }
         }
     }
+}
+
+/// Every descriptor left, including any an earlier step closes late.
+async fn starve() -> Hog {
+    let mut hog = Hog::fill();
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    hog.0.extend(Hog::fill().0);
+    hog
 }
 
 fn set_soft_limit(value: u64) {
@@ -86,10 +96,7 @@ async fn starved<F>(name: &str, freed: Freed, operation: F)
 where
     F: Future<Output = Result<(), String>> + Send + 'static,
 {
-    let mut hog = Hog::fill();
-    // Take any descriptor an earlier step closes late, too.
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    hog.0.extend(Hog::fill().0);
+    let mut hog = starve().await;
     let task = tokio::spawn(operation);
     tokio::time::sleep(Duration::from_millis(300)).await;
     if task.is_finished() {
@@ -108,6 +115,56 @@ where
     if let Err(error) = outcome {
         panic!("{name} failed: {error}");
     }
+}
+
+/// Starts `script` as a job in `cwd`, which is also its home, and returns it
+/// once the job has printed `ready` after its profiles, with descriptors to
+/// spare. Nothing tells the test when the job's next command has started and
+/// blocks on its input, so the test gives it a moment.
+async fn ready_job(cwd: &Path, script: &str) -> Job {
+    std::fs::create_dir_all(cwd).unwrap();
+    let mut job = Job::start(
+        script.into(),
+        cwd.to_owned(),
+        BTreeMap::from([("HOME".to_owned(), cwd.to_string_lossy().into_owned())]),
+        false,
+        Scope::new(CancellationToken::new(), None),
+        &demi_runner::shell::ShellRuntime::current(),
+    )
+    .await
+    .unwrap();
+    let mut printed = Vec::new();
+    while !printed.ends_with(b"ready") {
+        let chunk = job.output.recv().await.expect("the job prints ready");
+        if matches!(chunk.stream, OutputStream::Stdout) {
+            printed.extend_from_slice(&chunk.bytes);
+        }
+    }
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    job
+}
+
+/// Sends `input` to a job that has no descriptor left, requires it to wait,
+/// frees every descriptor, and requires it to finish with exit code 0.
+async fn starved_job(name: &str, mut job: Job, input: &'static [u8]) {
+    let hog = starve().await;
+    job.input
+        .send(ProcessInput::Bytes(bytes::Bytes::from_static(input)))
+        .await
+        .unwrap();
+    job.input.send(ProcessInput::End).await.unwrap();
+    let task = tokio::spawn(async move { job.wait().await });
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    if task.is_finished() {
+        let outcome = task.await.unwrap();
+        panic!("{name} did not wait with no open file left: {outcome:?}");
+    }
+    drop(hog);
+    let (exit, _) = tokio::time::timeout(Duration::from_secs(30), task)
+        .await
+        .unwrap_or_else(|_| panic!("{name} still waits after files were freed"))
+        .unwrap();
+    assert_eq!(exit.code, Some(0), "{name}: {exit:?}");
 }
 
 /// A backend that answers pipe downloads with one chunk and holds them open,
@@ -395,6 +452,50 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
         })
         .await;
     }
+    {
+        // A running job's pipeline, here-document and copied descriptor wait
+        // too: today's failure was `echo one` exiting 1 with "failed to
+        // duplicate open file".
+        let cwd = root_path.join("running");
+        let job = ready_job(
+            &cwd,
+            "printf ready; read go; echo one | cat > piped.txt; cat <<EOF 2>&1 > here.txt\ntwo\nEOF\n",
+        )
+        .await;
+        starved_job("a running job", job, b"go\n").await;
+        assert_eq!(std::fs::read_to_string(cwd.join("piped.txt")).unwrap(), "one\n");
+        assert_eq!(std::fs::read_to_string(cwd.join("here.txt")).unwrap(), "two\n");
+    }
+    {
+        // A utility's child program waits too: `xargs` has its descriptors
+        // and reads its input when every descriptor is taken, then starts
+        // `printf` for what it read.
+        let cwd = root_path.join("utility");
+        let job = ready_job(&cwd, "printf ready; xargs /usr/bin/printf > child.txt").await;
+        starved_job("a utility's child program", job, b"three\n").await;
+        assert_eq!(std::fs::read_to_string(cwd.join("child.txt")).unwrap(), "three");
+    }
+    {
+        // A job that waits for descriptors ends when it is cancelled, with
+        // none freed.
+        let mut job = ready_job(
+            &root_path.join("cancelled"),
+            "printf ready; read go; echo one | cat > piped.txt",
+        )
+        .await;
+        let hog = starve().await;
+        job.input
+            .send(ProcessInput::Bytes(bytes::Bytes::from_static(b"go\n")))
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        job.cancel();
+        let (exit, _) = tokio::time::timeout(Duration::from_secs(10), job.wait())
+            .await
+            .expect("a cancelled job stops waiting for descriptors");
+        assert_eq!(exit.signal.as_deref(), Some("SIGKILL"), "{exit:?}");
+        drop(hog);
+    }
 
     // A resident native service.
     {
@@ -505,6 +606,46 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
     }
     cancel.cancel();
     dispatch.close().await;
+
+    // Last, since it raises this process's limit: the runner raises its own
+    // open-file limit, and a raw process, a job's command and a utility's
+    // child program get the one the runner was started with.
+    let (started, raised) = demi_runner::process::raise_open_file_limit().unwrap();
+    assert_eq!(started, 1024);
+    assert!(raised > started, "the test needs a hard limit above 1024");
+    let mut child = ChildProcess::spawn(SpawnOptions {
+        command: "/bin/sh".into(),
+        args: vec!["-c".into(), "ulimit -n".into()],
+        cwd: root_path.clone(),
+        env: BTreeMap::new(),
+        process_group: true,
+    })
+    .await
+    .unwrap();
+    let chunk = child.output.recv().await.unwrap();
+    assert_eq!(chunk.bytes.as_ref(), b"1024\n");
+    child.wait().await;
+    let cwd = root_path.join("limits");
+    std::fs::create_dir_all(&cwd).unwrap();
+    let mut job = Job::start(
+        "/bin/sh -c 'ulimit -n'; env /bin/sh -c 'ulimit -n'".into(),
+        cwd.clone(),
+        BTreeMap::from([("HOME".to_owned(), cwd.to_string_lossy().into_owned())]),
+        false,
+        Scope::new(CancellationToken::new(), None),
+        &demi_runner::shell::ShellRuntime::current(),
+    )
+    .await
+    .unwrap();
+    let mut printed = Vec::new();
+    while let Some(chunk) = job.output.recv().await {
+        if matches!(chunk.stream, OutputStream::Stdout) {
+            printed.extend_from_slice(&chunk.bytes);
+        }
+    }
+    let (exit, _) = job.wait().await;
+    assert_eq!(exit.code, Some(0), "{exit:?}");
+    assert_eq!(String::from_utf8(printed).unwrap(), "1024\n1024\n");
 }
 
 fn command_context() -> CommandContext {

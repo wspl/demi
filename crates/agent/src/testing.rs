@@ -270,10 +270,12 @@ struct Stored {
     saves: Vec<(NodeId, CheckpointUpdate)>,
     created: u64,
     failing_saves: usize,
-    hold: Option<Rc<Hold>>,
+    save_hold: Option<Rc<Hold>>,
+    /// The holds on reads of a node's children, by the node.
+    children_holds: BTreeMap<NodeId, Rc<Hold>>,
 }
 
-/// Saves waiting until a test lets them commit.
+/// Calls waiting until a test lets them through.
 #[derive(Debug, Default)]
 struct Hold {
     waiting: Cell<usize>,
@@ -281,18 +283,35 @@ struct Hold {
     released: tokio::sync::Notify,
 }
 
-/// A hold on a [`MemoryTreeStore`]'s saves: each waits until
-/// [`release`](Self::release), as a save behind a slow database would.
-#[derive(Debug)]
-pub struct SaveGate(Rc<Hold>);
+impl Hold {
+    /// Waits until the hold is released.
+    async fn pass(&self) {
+        self.waiting.set(self.waiting.get() + 1);
+        while !self.open.get() {
+            let released = self.released.notified();
+            tokio::pin!(released);
+            released.as_mut().enable();
+            if self.open.get() {
+                break;
+            }
+            released.await;
+        }
+        self.waiting.set(self.waiting.get() - 1);
+    }
+}
 
-impl SaveGate {
-    /// How many saves wait.
+/// A hold on some of a [`MemoryTreeStore`]'s calls: each waits until
+/// [`release`](Self::release), as a call behind a slow database would.
+#[derive(Debug)]
+pub struct StoreGate(Rc<Hold>);
+
+impl StoreGate {
+    /// How many calls wait.
     pub fn waiting(&self) -> usize {
         self.0.waiting.get()
     }
 
-    /// Lets the waiting saves and every later one commit.
+    /// Lets the waiting calls and every later one through.
     pub fn release(&self) {
         self.0.open.set(true);
         self.0.released.notify_waiters();
@@ -356,10 +375,21 @@ impl MemoryTreeStore {
     }
 
     /// Holds every save from now on until the gate is released.
-    pub fn hold_saves(&self) -> SaveGate {
+    pub fn hold_saves(&self) -> StoreGate {
         let hold = Rc::new(Hold::default());
-        self.stored.borrow_mut().hold = Some(hold.clone());
-        SaveGate(hold)
+        self.stored.borrow_mut().save_hold = Some(hold.clone());
+        StoreGate(hold)
+    }
+
+    /// Holds every read of `parent`'s children from now on until the gate
+    /// is released.
+    pub fn hold_children_of(&self, parent: &NodeId) -> StoreGate {
+        let hold = Rc::new(Hold::default());
+        self.stored
+            .borrow_mut()
+            .children_holds
+            .insert(parent.clone(), hold.clone());
+        StoreGate(hold)
     }
 }
 
@@ -454,19 +484,9 @@ impl SessionStore for MemorySessionStore {
     ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
         Box::pin(async move {
             let update = externalized(update, self.blobs.as_deref()).await?;
-            let hold = self.stored.borrow().hold.clone();
+            let hold = self.stored.borrow().save_hold.clone();
             if let Some(hold) = hold {
-                hold.waiting.set(hold.waiting.get() + 1);
-                while !hold.open.get() {
-                    let released = hold.released.notified();
-                    tokio::pin!(released);
-                    released.as_mut().enable();
-                    if hold.open.get() {
-                        break;
-                    }
-                    released.await;
-                }
-                hold.waiting.set(hold.waiting.get() - 1);
+                hold.pass().await;
             }
             guard.check()?;
             let mut stored = self.stored.borrow_mut();
@@ -505,6 +525,10 @@ impl AgentTreeStore for MemoryTreeStore {
         parent: &'a NodeId,
     ) -> LocalBoxFuture<'a, Result<Vec<NodeRecord>, StoreError>> {
         Box::pin(async move {
+            let hold = self.stored.borrow().children_holds.get(parent).cloned();
+            if let Some(hold) = hold {
+                hold.pass().await;
+            }
             let stored = self.stored.borrow();
             let mut children: Vec<&StoredNode> = stored
                 .nodes

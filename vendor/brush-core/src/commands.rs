@@ -269,11 +269,12 @@ fn forward_external_outputs(
         // Descriptor duplication retains its control. One pipe preserves the
         // order of stdout/stderr writes when the shell uses `2>&1`.
         let file = if let Some((_, writer)) = forwarded.iter().find(|(previous, _)| std::sync::Arc::ptr_eq(previous, &control)) {
-            writer.try_clone()?
+            control.duplicate(writer)?
         } else {
             let (writer, completion) = host.external_output(file)?;
             if let Some(completion) = completion {
-                forwarded.push((control, writer.try_clone()?));
+                let copy = control.duplicate(&writer)?;
+                forwarded.push((control, copy));
                 outputs.push(completion);
             }
             writer
@@ -834,7 +835,7 @@ pub(crate) async fn invoke_command_in_subshell_and_get_output(
 
     // Set up pipe so we can read the output.
     let (reader, writer) = shell.pipe()?;
-    params.set_fd(OpenFiles::STDOUT_FD, writer.into());
+    params.set_fd(OpenFiles::STDOUT_FD, shell.scoped(writer.into())?);
 
     let mut async_reader = sys::async_pipe::AsyncPipeReader::new(reader)?;
 
