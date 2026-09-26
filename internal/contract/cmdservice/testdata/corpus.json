@@ -1159,8 +1159,8 @@
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "sample 0",
-   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}",
-   "output": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}"
+   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991}}}",
+   "output": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991}}}"
   },
   {
    "root": "PackageDescriptor",
@@ -1173,7 +1173,7 @@
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "root: unknown key",
-   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}},\"zzUnknown\":1}",
+   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991}},\"zzUnknown\":1}",
    "output": null
   },
   {
@@ -1187,105 +1187,105 @@
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "root: keys reordered",
-   "input": "{\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}},\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"protocolVersion\":1,\"version\":\"text\",\"id\":\"demi.commands\"}",
-   "output": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}"
+   "input": "{\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991}},\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"protocolVersion\":1,\"version\":\"text\",\"id\":\"demi.commands\"}",
+   "output": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991}}}"
   },
   {
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "root: missing id",
-   "input": "{\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}",
+   "input": "{\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991}}}",
    "output": null
   },
   {
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "id: not a string",
-   "input": "{\"id\":42,\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}",
+   "input": "{\"id\":42,\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991}}}",
    "output": null
   },
   {
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "id: breaks its pattern",
-   "input": "{\"id\":\"bad value!\\u0000\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}",
+   "input": "{\"id\":\"bad value!\\u0000\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991}}}",
    "output": null
   },
   {
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "root: missing version",
-   "input": "{\"id\":\"demi.commands\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}",
+   "input": "{\"id\":\"demi.commands\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991}}}",
    "output": null
   },
   {
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "version: not a string",
-   "input": "{\"id\":\"demi.commands\",\"version\":42,\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}",
+   "input": "{\"id\":\"demi.commands\",\"version\":42,\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991}}}",
    "output": null
   },
   {
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "version: too short",
-   "input": "{\"id\":\"demi.commands\",\"version\":\"\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}",
+   "input": "{\"id\":\"demi.commands\",\"version\":\"\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991}}}",
    "output": null
   },
   {
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "root: missing protocolVersion",
-   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}",
+   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991}}}",
    "output": null
   },
   {
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "protocolVersion: other literal",
-   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":424242,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}",
+   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":424242,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991}}}",
    "output": null
   },
   {
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "root: missing operations",
-   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}",
+   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991}}}",
    "output": null
   },
   {
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "operations: not an array",
-   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":{\"0\":\"text\"},\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}",
+   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":{\"0\":\"text\"},\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991}}}",
    "output": null
   },
   {
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "operations: too few items",
-   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}",
+   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991}}}",
    "output": null
   },
   {
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "operations: repeated item",
-   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"text\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}",
+   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"text\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991}}}",
    "output": null
   },
   {
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "operations.0: not a string",
-   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[42,\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}",
+   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[42,\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991}}}",
    "output": null
   },
   {
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "operations.0: too short",
-   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}",
+   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991}}}",
    "output": null
   },
   {
@@ -1299,7 +1299,7 @@
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "targets: key breaks its schema",
-   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"bad key!\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991}}}",
+   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"bad key!\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991}}}",
    "output": null
   },
   {
@@ -1313,84 +1313,84 @@
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "targets.aarch64-apple-darwin: unknown key",
-   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991,\"zzUnknown\":1},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}",
+   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991,\"zzUnknown\":1},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991,\"zzUnknown\":1}}}",
    "output": null
   },
   {
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "targets.aarch64-apple-darwin: not an object",
-   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":\"text\",\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}",
+   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":\"text\",\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991}}}",
    "output": null
   },
   {
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "targets.aarch64-apple-darwin: keys reordered",
-   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"size\":9007199254740991,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}",
-   "output": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}"
+   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"size\":9007199254740991,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991}}}",
+   "output": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991}}}"
   },
   {
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "targets.aarch64-apple-darwin: missing sha256",
-   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}",
+   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"size\":9007199254740991},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"size\":9007199254740991}}}",
    "output": null
   },
   {
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "targets.aarch64-apple-darwin.sha256: not a string",
-   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":42,\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}",
+   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":42,\"size\":9007199254740991},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":42,\"size\":9007199254740991}}}",
    "output": null
   },
   {
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "targets.aarch64-apple-darwin.sha256: breaks its pattern",
-   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"bad value!\\u0000\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}",
+   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"bad value!\\u0000\",\"size\":9007199254740991},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"bad value!\\u0000\",\"size\":9007199254740991}}}",
    "output": null
   },
   {
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "targets.aarch64-apple-darwin: missing size",
-   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}",
+   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}}",
    "output": null
   },
   {
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "targets.aarch64-apple-darwin.size: not a number",
-   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":\"1\"},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}",
+   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":\"1\"},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":\"1\"}}}",
    "output": null
   },
   {
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "targets.aarch64-apple-darwin.size: not an integer",
-   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":1.5},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}",
+   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":1.5},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":1.5}}}",
    "output": null
   },
   {
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "targets.aarch64-apple-darwin.size: unsafe integer",
-   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740992},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}",
+   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740992},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740992}}}",
    "output": null
   },
   {
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "targets.aarch64-apple-darwin.size: below the minimum",
-   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":0},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}",
+   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":0},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":0}}}",
    "output": null
   },
   {
    "root": "PackageDescriptor",
    "codec": "json",
    "name": "targets.aarch64-apple-darwin.size: above the maximum",
-   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740992},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}",
+   "input": "{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740992},\"x86_64-apple-darwin\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-unknown-linux-musl\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"x86_64-pc-windows-msvc\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740992}}}",
    "output": null
   },
   {
@@ -2258,8 +2258,8 @@
    "root": "Invocation",
    "codec": "json",
    "name": "sample 0",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"agent\",\"node\":\"text\"},\"locale\":{\"timeZone\":\"text\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"}}",
-   "output": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"agent\",\"node\":\"text\"},\"locale\":{\"timeZone\":\"text\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"}}"
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"agent\",\"node\":\"text\"},\"locale\":{\"timeZone\":\"text\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"}}",
+   "output": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"agent\",\"node\":\"text\"},\"locale\":{\"timeZone\":\"text\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"}}"
   },
   {
    "root": "Invocation",
@@ -2272,14 +2272,14 @@
    "root": "Invocation",
    "codec": "json",
    "name": "sample 2",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
-   "output": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}"
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "output": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}"
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "root: unknown key",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false,\"zzUnknown\":1}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false,\"zzUnknown\":1}",
    "output": null
   },
   {
@@ -2293,420 +2293,420 @@
    "root": "Invocation",
    "codec": "json",
    "name": "root: keys reordered",
-   "input": "{\"json\":false,\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"cwd\":\"/home/demi/work\",\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"invocationId\":\"text\",\"operation\":\"text\"}",
-   "output": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}"
+   "input": "{\"json\":false,\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"cwd\":\"/home/demi/work\",\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"invocationId\":\"text\",\"operation\":\"text\"}",
+   "output": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}"
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "root: missing operation",
-   "input": "{\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "operation: not a string",
-   "input": "{\"operation\":42,\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":42,\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "operation: too short",
-   "input": "{\"operation\":\"\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "root: missing invocationId",
-   "input": "{\"operation\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "invocationId: not a string",
-   "input": "{\"operation\":\"text\",\"invocationId\":42,\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":42,\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "invocationId: too short",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "root: missing context",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context: unknown key",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]},\"zzUnknown\":1},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]},\"zzUnknown\":1},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context: not an object",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":\"text\",\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":\"text\",\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context: keys reordered",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]},\"caller\":{\"kind\":\"user\"},\"conversation\":\"text\"},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
-   "output": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}"
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]},\"caller\":{\"kind\":\"user\"},\"conversation\":\"text\"},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "output": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}"
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context: missing conversation",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context.conversation: not a string",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":42,\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":42,\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context.conversation: too short",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context: missing caller",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context.caller: no union option",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":12345,\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":12345,\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context.caller: unknown key",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\",\"zzUnknown\":1},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\",\"zzUnknown\":1},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context.caller: not an object",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":\"text\",\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":\"text\",\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context.caller: keys reordered",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
-   "output": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}"
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "output": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}"
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context.caller: missing kind",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context.caller.kind: other literal",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"bogus-literal\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"bogus-literal\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context: missing locale",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context.locale: unknown key",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"],\"zzUnknown\":1}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"],\"zzUnknown\":1}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context.locale: not an object",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":\"text\"},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":\"text\"},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context.locale: keys reordered",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"],\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
-   "output": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}"
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"],\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "output": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}"
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context.locale: missing timeZone",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context.locale.timeZone: not a string",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":42,\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":42,\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context.locale.timeZone: too short",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context.locale.timeZone: too long",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context.locale.timeZone: too many code points",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context.locale: missing languages",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context.locale.languages: not an array",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":{\"0\":\"text\"}}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":{\"0\":\"text\"}}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context.locale.languages: too few items",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context.locale.languages: too many items",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context.locale.languages.0: not a string",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[42,\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[42,\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context.locale.languages.0: too short",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context.locale.languages.0: too long",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "context.locale.languages.0: too many code points",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "root: missing args",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "args: not an object",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":[],\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":[],\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "root: missing cwd",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "cwd: not a string",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":42,\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":42,\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "cwd: too short",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "cwd: breaks its pattern",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"bad value!\\u0000\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"bad value!\\u0000\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "root: missing env",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "env: key breaks its schema",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\",\"bad key!\":\"/home/demi/work\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
-   "output": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\",\"bad key!\":\"/home/demi/work\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}"
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\",\"bad key!\":\"/home/demi/work\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "output": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\",\"bad key!\":\"/home/demi/work\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}"
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "env: not an object",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":[],\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":[],\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
-   "name": "env.LANG: not a string",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":42,\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "name": "env.PATH: not a string",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":42,\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
-   "name": "env.LANG: breaks its pattern",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"bad value!\\u0000\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "name": "env.PATH: breaks its pattern",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"bad value!\\u0000\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "root: null optional edits",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":null,\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":null,\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "edits: unknown key",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\",\"zzUnknown\":1},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\",\"zzUnknown\":1},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "edits: not an object",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":\"text\",\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":\"text\",\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "edits: keys reordered",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"lock\":\"dir with spaces/ü\",\"directory\":\"dir with spaces/ü\"},\"json\":false}",
-   "output": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}"
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"lock\":\"dir with spaces/ü\",\"directory\":\"dir with spaces/ü\"},\"json\":false}",
+   "output": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":false}"
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "edits: missing directory",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "edits.directory: not a string",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":42,\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":42,\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "edits.directory: too short",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "edits.directory: breaks its pattern",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"bad value!\\u0000\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"bad value!\\u0000\",\"lock\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "edits: missing lock",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\"},\"json\":false}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\"},\"json\":false}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "root: null optional json",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":null}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":null}",
    "output": null
   },
   {
    "root": "Invocation",
    "codec": "json",
    "name": "json: not a boolean",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":\"true\"}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"context\":{\"conversation\":\"text\",\"caller\":{\"kind\":\"user\"},\"locale\":{\"timeZone\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\",\"languages\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}},\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"edits\":{\"directory\":\"dir with spaces/ü\",\"lock\":\"dir with spaces/ü\"},\"json\":\"true\"}",
    "output": null
   },
   {
@@ -2769,8 +2769,8 @@
    "root": "LocalInvocation",
    "codec": "json",
    "name": "sample 0",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"}}",
-   "output": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"}}"
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"}}",
+   "output": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"}}"
   },
   {
    "root": "LocalInvocation",
@@ -2783,7 +2783,7 @@
    "root": "LocalInvocation",
    "codec": "json",
    "name": "root: unknown key",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"zzUnknown\":1}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"zzUnknown\":1}",
    "output": null
   },
   {
@@ -2797,126 +2797,126 @@
    "root": "LocalInvocation",
    "codec": "json",
    "name": "root: keys reordered",
-   "input": "{\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"},\"cwd\":\"/home/demi/work\",\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"invocationId\":\"text\",\"operation\":\"text\"}",
-   "output": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"}}"
+   "input": "{\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"},\"cwd\":\"/home/demi/work\",\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"invocationId\":\"text\",\"operation\":\"text\"}",
+   "output": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"}}"
   },
   {
    "root": "LocalInvocation",
    "codec": "json",
    "name": "root: missing operation",
-   "input": "{\"invocationId\":\"text\",\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"}}",
+   "input": "{\"invocationId\":\"text\",\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"}}",
    "output": null
   },
   {
    "root": "LocalInvocation",
    "codec": "json",
    "name": "operation: not a string",
-   "input": "{\"operation\":42,\"invocationId\":\"text\",\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"}}",
+   "input": "{\"operation\":42,\"invocationId\":\"text\",\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"}}",
    "output": null
   },
   {
    "root": "LocalInvocation",
    "codec": "json",
    "name": "operation: too short",
-   "input": "{\"operation\":\"\",\"invocationId\":\"text\",\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"}}",
+   "input": "{\"operation\":\"\",\"invocationId\":\"text\",\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"}}",
    "output": null
   },
   {
    "root": "LocalInvocation",
    "codec": "json",
    "name": "root: missing invocationId",
-   "input": "{\"operation\":\"text\",\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"}}",
+   "input": "{\"operation\":\"text\",\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"}}",
    "output": null
   },
   {
    "root": "LocalInvocation",
    "codec": "json",
    "name": "invocationId: not a string",
-   "input": "{\"operation\":\"text\",\"invocationId\":42,\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"}}",
+   "input": "{\"operation\":\"text\",\"invocationId\":42,\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"}}",
    "output": null
   },
   {
    "root": "LocalInvocation",
    "codec": "json",
    "name": "invocationId: too short",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"\",\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"}}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"\",\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"}}",
    "output": null
   },
   {
    "root": "LocalInvocation",
    "codec": "json",
    "name": "root: missing args",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"}}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"}}",
    "output": null
   },
   {
    "root": "LocalInvocation",
    "codec": "json",
    "name": "args: not an object",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":[],\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"}}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":[],\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"}}",
    "output": null
   },
   {
    "root": "LocalInvocation",
    "codec": "json",
    "name": "root: missing cwd",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"}}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"}}",
    "output": null
   },
   {
    "root": "LocalInvocation",
    "codec": "json",
    "name": "cwd: not a string",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":42,\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"}}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":42,\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"}}",
    "output": null
   },
   {
    "root": "LocalInvocation",
    "codec": "json",
    "name": "cwd: too short",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"}}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"}}",
    "output": null
   },
   {
    "root": "LocalInvocation",
    "codec": "json",
    "name": "cwd: breaks its pattern",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"bad value!\\u0000\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\"}}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"bad value!\\u0000\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\"}}",
    "output": null
   },
   {
    "root": "LocalInvocation",
    "codec": "json",
    "name": "root: missing env",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\"}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\"}",
    "output": null
   },
   {
    "root": "LocalInvocation",
    "codec": "json",
    "name": "env: key breaks its schema",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\",\"bad key!\":\"/home/demi/work\"}}",
-   "output": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"/home/demi/work\",\"PATH\":\"dir with spaces/ü\",\"bad key!\":\"/home/demi/work\"}}"
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\",\"bad key!\":\"/home/demi/work\"}}",
+   "output": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"/home/demi/work\",\"LANG\":\"dir with spaces/ü\",\"bad key!\":\"/home/demi/work\"}}"
   },
   {
    "root": "LocalInvocation",
    "codec": "json",
    "name": "env: not an object",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":[]}",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":[]}",
    "output": null
   },
   {
    "root": "LocalInvocation",
    "codec": "json",
-   "name": "env.LANG: not a string",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":42,\"PATH\":\"dir with spaces/ü\"}}",
+   "name": "env.PATH: not a string",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":42,\"LANG\":\"dir with spaces/ü\"}}",
    "output": null
   },
   {
    "root": "LocalInvocation",
    "codec": "json",
-   "name": "env.LANG: breaks its pattern",
-   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"cwd\":\"/home/demi/work\",\"env\":{\"LANG\":\"bad value!\\u0000\",\"PATH\":\"dir with spaces/ü\"}}",
+   "name": "env.PATH: breaks its pattern",
+   "input": "{\"operation\":\"text\",\"invocationId\":\"text\",\"args\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"cwd\":\"/home/demi/work\",\"env\":{\"PATH\":\"bad value!\\u0000\",\"LANG\":\"dir with spaces/ü\"}}",
    "output": null
   }
  ]

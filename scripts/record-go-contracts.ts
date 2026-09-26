@@ -41,7 +41,7 @@ const PATTERN_SAMPLES: Record<string, string[]> = {
   '^(?:[MTADRC][ MTDAR]| [MTDAR]|\\?\\?|DD|AU|UD|UA|DU|AA|UU)$': ['M ', ' M', '??', 'UU'],
   '^[^\\0]*$': ['/home/demi/work', 'dir with spaces/ü'],
   '^[^\\0=]+$': ['PATH', 'LANG'],
-  '^[A-Za-z0-9][A-Za-z0-9_-]*$': ['files', 'git-show', 'x_1'],
+  '^[A-Za-z0-9][A-Za-z0-9_-]*$': ['git-show', 'files', 'x_1'],
   '^t_[A-Za-z0-9_-]{22}$': ['t_abcdefghijklmnopqrstuv', 't_ABCDEFGHIJKLMNOPQRS_-9'],
   '^e_[A-Za-z0-9_-]{22}$': ['e_abcdefghijklmnopqrstuv', 'e_0123456789012345678901'],
   '^\\d+\\.\\d+\\.\\d+\\.\\d+$': ['131.0.6778.85'],
@@ -140,7 +140,7 @@ function samples(schema: Schema, depth = 0): unknown[] {
     case 'boolean': return [true, false]
     case 'custom': return [new Uint8Array([1, 2, 3]), new Uint8Array(0), new Uint8Array(300).map((_, index) => index % 256)]
     case 'date': return [new Date(1_700_000_000_123), new Date(0), new Date(-1_500), new Date(2 ** 34 * 1000 + 5)]
-    case 'unknown': return [null, { a: [1, 'x', true, null, 1.5], b: { c: -3 } }]
+    case 'unknown': return [null, { b: { c: -3, 7: 'seven' }, a: [1, 'x', true, null, 1.5] }]
     case 'null': return [null]
     case 'literal': return [...def.values]
     case 'enum': return Object.values(def.entries)
@@ -200,7 +200,7 @@ function keySamples(key: Schema): string[] {
     return Object.values(def.entries).map(String)
   const checks = checksOf(key)
   if (checks.length === 0)
-    return ['alpha', 'beta', 'gamma']
+    return ['gamma', 'alpha', '10', 'beta', '2']
   return stringSamples(key)
 }
 
@@ -213,7 +213,8 @@ function recordSamples(def: z.core.$ZodRecordDef, depth: number): unknown[] {
       throw new TooDeep()
     return [{}]
   }
-  const used = (full ? keys : keys.slice(0, Math.max(1, Math.min(keys.length, values.length)))).sort()
+  // Keys go in as they come, unsorted; JavaScript moves array-index keys first.
+  const used = keys
   const record = Object.fromEntries(used.map((key, index) => [key, values[index % values.length]]))
   return full ? [record] : [record, {}]
 }

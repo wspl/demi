@@ -1,6 +1,7 @@
 package zodrt
 
 import (
+	"maps"
 	"math"
 	"slices"
 	"strings"
@@ -109,24 +110,25 @@ func Array[T any](item Parser[T]) Parser[[]T] {
 	}
 }
 
-// Record accepts an object whose keys and values the parsers accept.
-func Record[K ~string, V any](key Parser[K], item Parser[V]) Parser[map[K]V] {
-	return func(value any) (map[K]V, error) {
-		entries, err := objectEntries(value)
+// ParseRecord accepts an object whose keys and values the parsers accept,
+// keeping its key order.
+func ParseRecord[K ~string, V any](key Parser[K], item Parser[V]) Parser[Record[K, V]] {
+	return func(value any) (Record[K, V], error) {
+		fields, err := orderedFields(value)
 		if err != nil {
-			return nil, err
+			return Record[K, V]{}, err
 		}
-		out := make(map[K]V, len(entries))
-		for name, entry := range entries {
-			parsedKey, err := key(name)
+		var out Record[K, V]
+		for _, field := range fields {
+			parsedKey, err := key(field.Key)
 			if err != nil {
-				return nil, At(name, Invalid("invalid key: %s", err))
+				return Record[K, V]{}, At(field.Key, Invalid("invalid key: %s", err))
 			}
-			parsed, err := item(entry)
+			parsed, err := item(field.Value)
 			if err != nil {
-				return nil, At(name, err)
+				return Record[K, V]{}, At(field.Key, err)
 			}
-			out[parsedKey] = parsed
+			out.Set(parsedKey, parsed)
 		}
 		return out, nil
 	}
@@ -283,6 +285,22 @@ func objectEntries(value any) (map[string]any, error) {
 		out := make(map[string]any, len(entries))
 		for _, field := range entries {
 			out[field.Key] = field.Value
+		}
+		return out, nil
+	}
+	return nil, Invalid("expected object, received %s", describe(value))
+}
+
+// orderedFields is an object's fields in order; a Go map, which has none,
+// yields its keys sorted.
+func orderedFields(value any) (Object, error) {
+	switch entries := value.(type) {
+	case Object:
+		return entries, nil
+	case map[string]any:
+		out := make(Object, 0, len(entries))
+		for _, key := range slices.Sorted(maps.Keys(entries)) {
+			out = append(out, Field{Key: key, Value: entries[key]})
 		}
 		return out, nil
 	}

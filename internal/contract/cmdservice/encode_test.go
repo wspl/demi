@@ -1,6 +1,10 @@
 package cmdservice
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/wspl/demi/internal/contract/zodrt"
+)
 
 func validContext() CommandContext {
 	return CommandContext{
@@ -15,7 +19,6 @@ func TestEncodersRefuseInvalidValues(t *testing.T) {
 		ID:         "demi.commands",
 		Version:    "1.0.0",
 		Operations: []string{"read", "read"},
-		Targets:    map[NativeTarget]NativeArtifact{},
 	}
 	if _, err := EncodePackageDescriptorJSON(descriptor); err == nil {
 		t.Error("repeated operations encoded")
@@ -24,18 +27,20 @@ func TestEncodersRefuseInvalidValues(t *testing.T) {
 	if _, err := EncodePackageDescriptorJSON(descriptor); err != nil {
 		t.Errorf("a valid descriptor: %v", err)
 	}
+	var env zodrt.Record[string, string]
+	env.Set("A=B", "c")
 	invocation := Invocation{
 		Operation:    "read",
 		InvocationID: "i1",
 		Context:      validContext(),
-		Args:         map[string]any{},
 		Cwd:          "/work",
-		Env:          map[string]string{"A=B": "c"},
+		Env:          env,
 	}
 	if _, err := EncodeInvocationJSON(invocation); err == nil {
 		t.Error("an environment name with = encoded")
 	}
-	invocation.Env = map[string]string{"A": "c"}
+	invocation.Env = zodrt.Record[string, string]{}
+	invocation.Env.Set("A", "c")
 	invocation.Context.Caller = nil
 	if _, err := EncodeInvocationJSON(invocation); err == nil {
 		t.Error("a context without a caller encoded")

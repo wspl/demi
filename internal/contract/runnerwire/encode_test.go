@@ -1,7 +1,9 @@
 package runnerwire
 
 import (
+	"bytes"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/wspl/demi/internal/contract/cmdservice"
@@ -77,5 +79,21 @@ func TestFramesStayWithinTheLimit(t *testing.T) {
 	}
 	if _, err := DecodeBackendMessageFrame(make([]byte, MaxMessageBytes+1)); err == nil {
 		t.Error("an oversized frame decoded")
+	}
+}
+
+// A frame of arrays nested four million deep fits within MaxMessageBytes; it
+// is refused, not walked.
+func TestFramesRefuseDeepNesting(t *testing.T) {
+	frame := append(bytes.Repeat([]byte{0x91}, MaxMessageBytes-1), 0xc0)
+	if _, err := DecodeBackendMessageFrame(frame); err == nil {
+		t.Error("a deep backend frame decoded")
+	}
+	if _, err := DecodeRunnerMessageFrame(frame); err == nil {
+		t.Error("a deep runner frame decoded")
+	}
+	text := []byte(strings.Repeat("[", 1<<20) + strings.Repeat("]", 1<<20))
+	if _, err := DecodeBackendMessageJSON(text); err == nil {
+		t.Error("a deep JSON message decoded")
 	}
 }

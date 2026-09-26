@@ -64,6 +64,8 @@ export interface GoForeign {
 type Kind = 'struct' | 'union' | 'enum'
 
 interface Options {
+  /** The import path of internal/contract/zodrt. */
+  runtime: string
   /** The custom schema that stands for binary data (a Uint8Array). */
   bytes?: Schema
   /** Whether `z.date()` may appear; only codecs that carry dates allow it. */
@@ -211,10 +213,16 @@ export class GoZodTypes {
   private readonly markers = new Map<string, string[]>()
   private readonly patterns = new Map<string, string>()
   private readonly prefixes = new Map<Schema, string>()
-  /** The import paths of the foreign types the generated code uses. */
+  /** The import paths the generated code uses. */
   readonly imports = new Set<string>()
 
-  constructor(private readonly options: Options = {}) {}
+  constructor(private readonly options: Options) {}
+
+  /** Adds a declaration, which uses the runtime. */
+  private declare(declaration: string): void {
+    this.imports.add(this.options.runtime)
+    this.declarations.push(declaration)
+  }
 
   /** Names a schema before it is first met, so it is declared under that name. */
   name(schema: Schema, name: string): this {
@@ -250,6 +258,7 @@ export class GoZodTypes {
       case 'date':
         if (!this.options.dates)
           throw new Error('No native date representation configured')
+        this.imports.add('time')
         return 'time.Time'
       case 'unknown': return 'any'
       case 'null': return 'zodrt.Null'
@@ -263,7 +272,7 @@ export class GoZodTypes {
         const key = this.type(def.keyType, `${name}Key`, true)
         if (key !== 'string' && this.kindOf(def.keyType) !== 'enum')
           throw new Error(`Unsupported record key type ${key}`)
-        return `map[${key}]${this.type(recordValue(def), `${name}Value`, true)}`
+        return `zodrt.Record[${key}, ${this.type(recordValue(def), `${name}Value`, true)}]`
       }
       case 'lazy': {
         this.names.set(schema, this.preset.get(schema) ?? name)
@@ -331,7 +340,7 @@ export class GoZodTypes {
       }[this.literalType(schema)]!
       case 'nullable': return `zodrt.NullableOf(${this.parser(def.innerType, indirect)})`
       case 'array': return `zodrt.Array(${this.parser(def.element, true)})`
-      case 'record': return `zodrt.Record(${this.parser(def.keyType, true)}, ${this.parser(recordValue(def), true)})`
+      case 'record': return `zodrt.ParseRecord(${this.parser(def.keyType, true)}, ${this.parser(recordValue(def), true)})`
       default: throw new Error(`No parser for an unnamed ${def.type}`)
     }
   }
@@ -379,13 +388,13 @@ export class GoZodTypes {
           const key = this.type(def.keyType, 'Key', true)
           const body = [
             keys ? this.each('', 'key', key, keys, 'zodrt.At(string(key), zodrt.Invalid("invalid key: %s", err))') : '',
-            values ? this.each('', `${value}[key]`, this.type(recordValue(def), 'Value', true), values, 'zodrt.At(string(key), err)') : '',
+            values ? this.each('', 'item', this.type(recordValue(def), 'Value', true), values, 'zodrt.At(string(key), err)') : '',
           ].filter(Boolean).join('\n')
-          lines.push(`for _, key := range slices.Sorted(maps.Keys(${value})) {\n${body}\n}`)
+          lines.push(`for key, ${values ? 'item' : '_'} := range ${value}.All() {\n${body}\n}`)
         }
         // A partial record names any of its keys; a full one names each.
         if (this.kindOf(def.keyType) === 'enum' && !(def as { partial?: boolean }).partial)
-          require(`len(${value}) == ${Object.keys((defOf(def.keyType) as z.core.$ZodEnumDef).entries).length}`, 'missing record key')
+          require(`${value}.Len() == ${Object.keys((defOf(def.keyType) as z.core.$ZodEnumDef).entries).length}`, 'missing record key')
         break
       }
       case 'number':
@@ -397,6 +406,11 @@ export class GoZodTypes {
         if ('format' in def && def.format !== undefined) {
           if (def.format !== 'url')
             throw new Error(`Unsupported string format ${def.format}`)
+          // z.url() options (hostname, protocol, normalize) restrict what
+          // CheckURL accepts; none is supported.
+          const options = Object.keys(def).filter(key => !['type', 'format', 'check', 'abort', 'checks'].includes(key))
+          if (options.length > 0)
+            throw new Error(`Unsupported z.url() options: ${options.join(', ')}`)
           lines.push(`if err := zodrt.CheckURL(${value}); err != nil {\nreturn err\n}`)
         }
         break
@@ -428,11 +442,9 @@ export class GoZodTypes {
           break
         }
         case 'min_length':
-        case 'max_length':
-        case 'length_equals': {
+        case 'max_length': {
           const length = def.type === 'string' ? `zodrt.Length(${value})` : `len(${value})`
-          const [operator, bound] = constraint.check === 'min_length' ? ['>=', constraint.minimum]
-            : constraint.check === 'max_length' ? ['<=', constraint.maximum] : ['==', constraint.length]
+          const [operator, bound] = constraint.check === 'min_length' ? ['>=', constraint.minimum] : ['<=', constraint.maximum]
           require(`${length} ${operator} ${bound}`, 'invalid length')
           break
         }
@@ -445,6 +457,7 @@ export class GoZodTypes {
           if (!name) {
             name = `pattern${this.patterns.size}`
             this.patterns.set(source, name)
+            this.imports.add('regexp')
           }
           require(`${name}.MatchString(${value})`, 'invalid string format')
           break
@@ -491,7 +504,7 @@ export class GoZodTypes {
     const consts = values.map(value => `${name}${goName(value as string)}`)
     if (new Set(consts).size !== consts.length)
       throw new Error(`Enum ${name} has colliding constant names`)
-    this.declarations.push(`type ${name} string
+    this.declare(`type ${name} string
 
 const (
 ${values.map((value, index) => `${consts[index]} ${name} = ${goString(value as string)}`).join('\n')}
@@ -550,7 +563,7 @@ return string(x)
       const inner = optional ? (defOf(child) as z.core.$ZodOptionalDef).innerType : child
       const type = this.type(inner, `${name}${field}`)
       const description = z.globalRegistry.get(child)?.description ?? z.globalRegistry.get(inner)?.description
-      members.push(`${description ? `// ${description}\n` : ''}${field} ${optional ? `zodrt.Optional[${type}]` : type}`)
+      members.push(`${description ? `${description.split('\n').map(line => `// ${line}`.trimEnd()).join('\n')}\n` : ''}${field} ${optional ? `zodrt.Optional[${type}]` : type}`)
       const parser = this.parser(inner)
       parses.push(`if out.${field}, err = zodrt.${optional ? 'OptionalField' : 'Required'}(fields, ${goString(key)}, ${parser}); err != nil {\nreturn ${name}{}, err\n}`)
       const access = optional ? `x.${field}.Value` : `x.${field}`
@@ -565,7 +578,7 @@ return string(x)
     this.active.delete(schema)
     const hasFields = entries.some(([, child]) => constantValue(child) === undefined)
     const fieldsVar = hasFields || parses.length > 0 ? 'fields' : '_'
-    this.declarations.push(`type ${name} struct {
+    this.declare(`type ${name} struct {
 ${members.join('\n')}
 }
 
@@ -639,7 +652,7 @@ return nil, zodrt.At(${goString(discriminator)}, zodrt.Invalid("invalid discrimi
     } else {
       body = `return zodrt.FirstOf(value, ${tries.join(', ')})`
     }
-    this.declarations.push(`// ${name} is one of: ${variants.join(', ')}.
+    this.declare(`// ${name} is one of: ${variants.join(', ')}.
 type ${name} interface {
 is${name}()
 Validate() error
@@ -680,7 +693,7 @@ ${adapters.join('\n\n')}`)
     this.taken.set(name, schema)
     const inner = this.type(schema, `${name}Value`, true)
     const check = this.validate(schema, 'v', true)
-    this.declarations.push(`type ${name} ${inner}
+    this.declare(`type ${name} ${inner}
 
 func parse${name}(value any) (${name}, error) {
 inner, err := ${this.parser(schema, true)}(value)

@@ -41,6 +41,7 @@ type Schema = z.core.$ZodType
 type Codec = 'json' | 'msgpack'
 
 const MODULE = 'github.com/wspl/demi/internal/contract'
+const RUNTIME = `${MODULE}/zodrt`
 
 export interface GoContractRoot {
   name: string
@@ -56,7 +57,7 @@ export interface GoContractPackage {
   roots: GoContractRoot[]
   /** The generated Go after the package clause and imports. */
   body: string
-  /** The other contract packages the body uses. */
+  /** The import paths the body uses. */
   imports: string[]
 }
 
@@ -104,10 +105,15 @@ function rootCode(generator: GoZodTypes, roots: GoContractRoot[]): string {
   return roots.map(root => generator.root(root.schema, root.name, root.codecs)).join('\n\n')
 }
 
-function assemble(name: string, sources: string[], portableJson: boolean, roots: GoContractRoot[], generator: GoZodTypes, extra: string): GoContractPackage {
+/**
+ * A package from its generator and the extra code the package adds, which
+ * uses the imports `extraImports` names.
+ */
+function assemble(name: string, sources: string[], portableJson: boolean, roots: GoContractRoot[], generator: GoZodTypes, extra: string, extraImports: string[] = []): GoContractPackage {
   const code = rootCode(generator, roots)
   const body = [generator.finish(), code, extra].filter(Boolean).join('\n\n')
-  return { name, sources, portableJson, roots, body, imports: [...generator.imports].sort() }
+  const imports = [...new Set([...generator.imports, ...extraImports])].sort()
+  return { name, sources, portableJson, roots, body, imports }
 }
 
 /** The named types of cmdservice, which runnerwire and manifest share. */
@@ -123,7 +129,7 @@ const cmdserviceNames: [string, Schema][] = [
 ]
 
 function cmdservice(): GoContractPackage {
-  const generator = new GoZodTypes()
+  const generator = new GoZodTypes({ runtime: RUNTIME })
   generator
     .name(artifactLocationSchema.options[0], 'ArtifactURL')
     .name(artifactLocationSchema.options[1], 'ArtifactPath')
@@ -137,7 +143,7 @@ function cmdservice(): GoContractPackage {
 }
 
 function runnerwire(): GoContractPackage {
-  const generator = new GoZodTypes({ bytes: bytesSchema, dates: true, portableJson: true, foreign: foreign('cmdservice', cmdserviceNames) })
+  const generator = new GoZodTypes({ runtime: RUNTIME, bytes: bytesSchema, dates: true, portableJson: true, foreign: foreign('cmdservice', cmdserviceNames) })
   const hello = optionTagged(runnerToBackendMessageSchema, 'type', 'hello')
   const runnerInfo = hello.shape.runner as z.ZodObject
   const jobExit = optionTagged(runnerToBackendMessageSchema, 'type', 'job_exit')
@@ -239,11 +245,11 @@ ${frames}`
   return assemble('runnerwire', [
     'packages/runner-protocol/src/schemas.ts', 'packages/runner-protocol/src/messages.ts',
     'packages/runner-protocol/src/managed-boot.ts',
-  ], true, roots, generator, extra)
+  ], true, roots, generator, extra, ['fmt'])
 }
 
 function manifest(): GoContractPackage {
-  const generator = new GoZodTypes({ foreign: foreign('cmdservice', cmdserviceNames) })
+  const generator = new GoZodTypes({ runtime: RUNTIME, foreign: foreign('cmdservice', cmdserviceNames) })
   const node = resolveLazy(manifestNodeSchema) as z.ZodUnion<[z.ZodObject, typeof manifestLeafSchema]>
   const [rpcLeaf, nativeLeaf] = manifestLeafSchema.options
   generator
@@ -264,7 +270,7 @@ function manifest(): GoContractPackage {
 }
 
 function browser(): GoContractPackage {
-  const generator = new GoZodTypes()
+  const generator = new GoZodTypes({ runtime: RUNTIME })
   const operations = Object.entries(browserOperations)
   const kind = (operation: string): string => goName(operation)
   const inputShape = (operation: keyof typeof browserOperations): Record<string, Schema> => browserOperations[operation].input.shape
@@ -408,11 +414,11 @@ return nil, zodrt.Invalid("unknown browser operation %q", operation)
 func Operations() []string {
 return []string{${operations.map(([operation]) => goString(`browser.${operation}`)).join(', ')}}
 }`
-  return assemble('browser', ['packages/browser-protocol/src/index.ts', 'packages/browser-protocol/src/live.ts'], false, allRoots, generator, extra)
+  return assemble('browser', ['packages/browser-protocol/src/index.ts', 'packages/browser-protocol/src/live.ts'], false, allRoots, generator, extra, ['time', RUNTIME])
 }
 
 function machineswire(): GoContractPackage {
-  const generator = new GoZodTypes({ foreign: foreign('runnerwire', [['ManagedBoot', managedBootSchema]]) })
+  const generator = new GoZodTypes({ runtime: RUNTIME, foreign: foreign('runnerwire', [['ManagedBoot', managedBootSchema]]) })
   generator
     .name(imageStateSchema, 'MachineImageState')
     .name(runtimeStateSchema, 'MachineRuntimeState')
@@ -438,15 +444,11 @@ export function goContractPackages(): GoContractPackage[] {
   return [cmdservice(), runnerwire(), manifest(), browser(), machineswire()]
 }
 
-const STANDARD_IMPORTS = ['fmt', 'maps', 'regexp', 'slices', 'time']
-
 function goFile(contract: GoContractPackage): string {
-  const imports = [
-    ...STANDARD_IMPORTS.filter(name => new RegExp(`\\b${name}\\.`).test(contract.body)),
-    '',
-    `${MODULE}/zodrt`,
-    ...contract.imports,
-  ]
+  // Standard library paths have no dot in their first element.
+  const standard = contract.imports.filter(path => !path.split('/')[0]!.includes('.'))
+  const modules = contract.imports.filter(path => !standard.includes(path))
+  const imports = [...standard, ...(standard.length > 0 && modules.length > 0 ? [''] : []), ...modules]
   return `// Code generated by scripts/generate-go-contracts.ts from ${contract.sources.join(', ')}. DO NOT EDIT.
 
 package ${contract.name}

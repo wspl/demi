@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"math"
+	"strings"
 	"testing"
 	"time"
 )
@@ -27,6 +28,7 @@ func TestEncodeJSONMatchesJavaScript(t *testing.T) {
 		{int64(-42), `-42`},
 		{Object{{Key: "b", Value: nil}, {Key: "a", Value: []any{true, false}}}, `{"b":null,"a":[true,false]}`},
 		{map[string]any{"b": 1.0, "a": 2.0}, `{"a":2,"b":1}`},
+		{Object{{Key: "b", Value: 1.0}, {Key: "10", Value: 2.0}, {Key: "a", Value: 3.0}, {Key: "2", Value: 4.0}, {Key: "01", Value: 5.0}}, `{"2":4,"10":2,"b":1,"a":3,"01":5}`},
 	}
 	for _, test := range cases {
 		got, err := EncodeJSON(test.value, false)
@@ -63,8 +65,8 @@ func TestPortableJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fields := decoded.(map[string]any)
-	if !bytes.Equal(fields["data"].([]byte), []byte{1, 2, 3}) || !fields["at"].(time.Time).Equal(instant) {
+	fields := decoded.(Object)
+	if !bytes.Equal(fields[0].Value.([]byte), []byte{1, 2, 3}) || !fields[1].Value.(time.Time).Equal(instant) {
 		t.Fatalf("revived %#v", decoded)
 	}
 	extended := time.Date(-271821, time.April, 20, 0, 0, 0, 0, time.UTC)
@@ -100,6 +102,7 @@ func TestEncodeMsgpackMatchesJavaScript(t *testing.T) {
 		{time.Unix(1, 0), "d6ff00000001"},
 		{time.UnixMilli(1_700_000_000_123), "d7ff1d5353006553f100"},
 		{time.UnixMilli(-1_500), "c70cff1dcd6500fffffffffffffffe"},
+		{time.Unix(1, 999_999), "d6ff00000001"},
 		{Object{{Key: "b", Value: nil}, {Key: "a", Value: true}}, "82a162c0a161c3"},
 	}
 	for _, test := range cases {
@@ -176,5 +179,78 @@ func TestFieldsAndNumbers(t *testing.T) {
 	}
 	if err := At("a", AtIndex(2, Invalid("bad"))); err.Error() != "a.2: bad" {
 		t.Errorf("path %q", err)
+	}
+}
+
+// A key repeated in the text keeps its first position and takes its last
+// value, as JSON.parse and @msgpack/msgpack leave it.
+func TestDecodersKeepKeyOrder(t *testing.T) {
+	want := Object{{Key: "b", Value: 3.0}, {Key: "a", Value: 2.0}}
+	fromJSON, err := DecodeJSON([]byte(`{"b":1,"a":2,"b":3}`), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fromMsgpack, err := DecodeMsgpack([]byte{0x83, 0xa1, 'b', 0x01, 0xa1, 'a', 0x02, 0xa1, 'b', 0x03})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, got := range []any{fromJSON, fromMsgpack} {
+		fields := got.(Object)
+		if len(fields) != 2 || fields[0] != want[0] || fields[1] != want[1] {
+			t.Errorf("decoded %#v", got)
+		}
+	}
+}
+
+// Nesting beyond MaxDepth is refused before it is walked; a frame of nested
+// arrays would otherwise exhaust the stack.
+func TestDecodersRefuseDeepNesting(t *testing.T) {
+	deep := func(open, close string, depth int) []byte {
+		return []byte(strings.Repeat(open, depth) + "0" + strings.Repeat(close, depth))
+	}
+	if _, err := DecodeJSON(deep("[", "]", MaxDepth), false); err != nil {
+		t.Errorf("JSON at the limit: %v", err)
+	}
+	if _, err := DecodeJSON(deep("[", "]", MaxDepth+1), false); err == nil {
+		t.Error("JSON beyond the limit decoded")
+	}
+	if _, err := DecodeJSON(deep(`{"a":`, "}", MaxDepth+1), false); err == nil {
+		t.Error("JSON objects beyond the limit decoded")
+	}
+	atLimit := append(bytes.Repeat([]byte{0x91}, MaxDepth), 0xc0)
+	if _, err := DecodeMsgpack(atLimit); err != nil {
+		t.Errorf("MessagePack at the limit: %v", err)
+	}
+	// Four million nested arrays, within a runner frame.
+	huge := append(bytes.Repeat([]byte{0x91}, 4<<20-1), 0xc0)
+	if _, err := DecodeMsgpack(huge); err == nil {
+		t.Error("MessagePack beyond the limit decoded")
+	}
+	maps := append(bytes.Repeat([]byte{0x81, 0xa1, 'a'}, MaxDepth+1), 0xc0)
+	if _, err := DecodeMsgpack(maps); err == nil {
+		t.Error("MessagePack maps beyond the limit decoded")
+	}
+}
+
+// TypeScript never writes these; a decoder refuses them instead of repairing
+// them.
+func TestDecodersRefuseMalformedText(t *testing.T) {
+	for _, text := range []string{`"\ud800"`, `"\udc00"`, `"\ud800\u0041"`, "\"\xff\""} {
+		if _, err := DecodeJSON([]byte(text), false); err == nil {
+			t.Errorf("JSON %s decoded", text)
+		}
+	}
+	if _, err := DecodeJSON([]byte(`"\ud83d\ude00 \\ud800"`), false); err != nil {
+		t.Errorf("a surrogate pair and an escaped backslash: %v", err)
+	}
+	for _, frame := range [][]byte{
+		{0xa1, 0xff},
+		{0x81, 0xa1, 0xff, 0xc0},
+		{0x81, 0x01, 0xc0},
+		{0x81, 0xc4, 0x01, 'a', 0xc0},
+	} {
+		if _, err := DecodeMsgpack(frame); err == nil {
+			t.Errorf("MessagePack %x decoded", frame)
+		}
 	}
 }

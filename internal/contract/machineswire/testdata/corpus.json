@@ -1047,8 +1047,8 @@
    "root": "MachineResponse",
    "codec": "json",
    "name": "sample 1",
-   "input": "{\"type\":\"ok\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}",
-   "output": "{\"type\":\"ok\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}"
+   "input": "{\"type\":\"ok\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}",
+   "output": "{\"type\":\"ok\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}"
   },
   {
    "root": "MachineResponse",
@@ -1083,6 +1083,69 @@
    "codec": "json",
    "name": "root: no union option",
    "input": "12345",
+   "output": null
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "root: unknown key",
+   "input": "{\"type\":\"ok\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"zzUnknown\":1}",
+   "output": "{\"type\":\"ok\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}"
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "root: not an object",
+   "input": "\"text\"",
+   "output": null
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "root: keys reordered",
+   "input": "{\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"type\":\"ok\"}",
+   "output": "{\"type\":\"ok\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}"
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "root: missing type",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}",
+   "output": null
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "type: other literal",
+   "input": "{\"type\":\"bogus-literal\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}",
+   "output": null
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "root: missing id",
+   "input": "{\"type\":\"ok\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}",
+   "output": null
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "id: not a string",
+   "input": "{\"type\":\"ok\",\"id\":42,\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}",
+   "output": null
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "id: too short",
+   "input": "{\"type\":\"ok\",\"id\":\"\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}",
+   "output": null
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "root: missing result",
+   "input": "{\"type\":\"ok\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
    "output": null
   },
   {
@@ -1130,20 +1193,6 @@
   {
    "root": "MachineResponse",
    "codec": "json",
-   "name": "id: not a string",
-   "input": "{\"type\":\"error\",\"id\":42,\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
-   "output": null
-  },
-  {
-   "root": "MachineResponse",
-   "codec": "json",
-   "name": "id: too short",
-   "input": "{\"type\":\"error\",\"id\":\"\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
-   "output": null
-  },
-  {
-   "root": "MachineResponse",
-   "codec": "json",
    "name": "root: missing message",
    "input": "{\"type\":\"error\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
    "output": null
@@ -1153,55 +1202,6 @@
    "codec": "json",
    "name": "message: not a string",
    "input": "{\"type\":\"error\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"message\":42}",
-   "output": null
-  },
-  {
-   "root": "MachineResponse",
-   "codec": "json",
-   "name": "root: unknown key",
-   "input": "{\"type\":\"ok\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"zzUnknown\":1}",
-   "output": "{\"type\":\"ok\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}"
-  },
-  {
-   "root": "MachineResponse",
-   "codec": "json",
-   "name": "root: not an object",
-   "input": "\"text\"",
-   "output": null
-  },
-  {
-   "root": "MachineResponse",
-   "codec": "json",
-   "name": "root: keys reordered",
-   "input": "{\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"type\":\"ok\"}",
-   "output": "{\"type\":\"ok\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}"
-  },
-  {
-   "root": "MachineResponse",
-   "codec": "json",
-   "name": "root: missing type",
-   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}",
-   "output": null
-  },
-  {
-   "root": "MachineResponse",
-   "codec": "json",
-   "name": "type: other literal",
-   "input": "{\"type\":\"bogus-literal\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}",
-   "output": null
-  },
-  {
-   "root": "MachineResponse",
-   "codec": "json",
-   "name": "root: missing id",
-   "input": "{\"type\":\"ok\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}",
-   "output": null
-  },
-  {
-   "root": "MachineResponse",
-   "codec": "json",
-   "name": "root: missing result",
-   "input": "{\"type\":\"ok\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
    "output": null
   },
   {

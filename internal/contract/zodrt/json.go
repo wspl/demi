@@ -4,14 +4,17 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"math/big"
 	"regexp"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
+	"unicode/utf16"
+	"unicode/utf8"
 )
 
 // The markers of `stringifyPortableJson` in @demicodes/utils, which carries
@@ -22,18 +25,123 @@ const (
 	dateMarker   = "__demiDate"
 )
 
-// DecodeJSON decodes JSON text into a tree, as `JSON.parse` does. A portable
-// document also revives the marked bytes, big integers and dates of
-// `parsePortableJson`.
+// DecodeJSON decodes JSON text into a tree, as `JSON.parse` does: an object
+// becomes an Object in text order, a repeated key keeping its first position
+// and its last value. It rejects what TypeScript never writes: text that is
+// not UTF-8, an escaped lone surrogate, and nesting deeper than MaxDepth.
+//
+// A portable document also revives the marked bytes, big integers and dates
+// of `parsePortableJson`, in the canonical forms `stringifyPortableJson`
+// writes and no others: standard padded base64 and `toISOString`'s date.
+// JavaScript's `new Date` reads many more date forms, differently per
+// engine, and no Demi end writes them.
 func DecodeJSON(data []byte, portable bool) (any, error) {
-	var value any
-	if err := json.Unmarshal(data, &value); err != nil {
+	if !utf8.Valid(data) {
+		return nil, fmt.Errorf("malformed JSON: not UTF-8")
+	}
+	if err := checkSurrogates(data); err != nil {
 		return nil, fmt.Errorf("malformed JSON: %w", err)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	value, err := decodeJSONValue(decoder, 0)
+	if err != nil {
+		return nil, fmt.Errorf("malformed JSON: %w", err)
+	}
+	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("malformed JSON: data after the value")
 	}
 	if !portable {
 		return value, nil
 	}
 	return revive(value)
+}
+
+// decodeJSONValue builds the tree from encoding/json's tokens, which keep the
+// order of an object's keys that decoding into a map loses.
+func decodeJSONValue(decoder *json.Decoder, depth int) (any, error) {
+	token, err := decoder.Token()
+	if err != nil {
+		return nil, err
+	}
+	delimiter, ok := token.(json.Delim)
+	if !ok {
+		return token, nil
+	}
+	if depth >= MaxDepth {
+		return nil, fmt.Errorf("nesting deeper than %d levels", MaxDepth)
+	}
+	if delimiter == '[' {
+		items := []any{}
+		for decoder.More() {
+			item, err := decodeJSONValue(decoder, depth+1)
+			if err != nil {
+				return nil, err
+			}
+			items = append(items, item)
+		}
+		_, err := decoder.Token()
+		return items, err
+	}
+	fields := Object{}
+	positions := map[string]int{}
+	for decoder.More() {
+		token, err := decoder.Token()
+		if err != nil {
+			return nil, err
+		}
+		// Inside an object the decoder yields keys as strings.
+		key, _ := token.(string)
+		value, err := decodeJSONValue(decoder, depth+1)
+		if err != nil {
+			return nil, err
+		}
+		fields = setField(fields, positions, key, value)
+	}
+	_, err = decoder.Token()
+	return fields, err
+}
+
+// checkSurrogates rejects a \u escape of a lone UTF-16 surrogate, which
+// encoding/json would silently replace with U+FFFD. A backslash occurs only
+// inside strings, so the escapes can be read without tracking strings.
+func checkSurrogates(data []byte) error {
+	for index := 0; index < len(data); index++ {
+		if data[index] != '\\' {
+			continue
+		}
+		index++
+		if index >= len(data) || data[index] != 'u' {
+			continue
+		}
+		unit, ok := hexUnit(data, index+1)
+		if !ok {
+			continue
+		}
+		index += 4
+		switch {
+		case utf16.IsSurrogate(rune(unit)) && unit >= 0xdc00:
+			return fmt.Errorf("a lone surrogate")
+		case utf16.IsSurrogate(rune(unit)):
+			low, ok := uint16(0), false
+			if index+2 < len(data) && data[index+1] == '\\' && data[index+2] == 'u' {
+				low, ok = hexUnit(data, index+3)
+			}
+			if !ok || low < 0xdc00 || low > 0xdfff {
+				return fmt.Errorf("a lone surrogate")
+			}
+			index += 6
+		}
+	}
+	return nil
+}
+
+// hexUnit reads the four hex digits of a \u escape.
+func hexUnit(data []byte, start int) (uint16, bool) {
+	if start+4 > len(data) {
+		return 0, false
+	}
+	unit, err := strconv.ParseUint(string(data[start:start+4]), 16, 16)
+	return uint16(unit), err == nil
 }
 
 // revive replaces portable markers bottom-up, as a JSON.parse reviver does.
@@ -48,31 +156,35 @@ func revive(value any) (any, error) {
 			node[index] = revived
 		}
 		return node, nil
-	case map[string]any:
-		for key, item := range node {
-			revived, err := revive(item)
+	case Object:
+		for index, field := range node {
+			revived, err := revive(field.Value)
 			if err != nil {
 				return nil, err
 			}
-			node[key] = revived
+			node[index].Value = revived
 		}
 		return reviveMarker(node)
 	}
 	return value, nil
 }
 
-func reviveMarker(node map[string]any) (any, error) {
-	if node[bytesMarker] == true {
-		if text, ok := node["base64"].(string); ok {
-			data, err := base64.StdEncoding.DecodeString(strings.Join(strings.Fields(text), ""))
+func reviveMarker(node Object) (any, error) {
+	fields, err := objectEntries(node)
+	if err != nil {
+		return nil, err
+	}
+	if fields[bytesMarker] == true {
+		if text, ok := fields["base64"].(string); ok {
+			data, err := base64.StdEncoding.DecodeString(text)
 			if err != nil {
 				return nil, fmt.Errorf("malformed portable bytes: %w", err)
 			}
 			return data, nil
 		}
 	}
-	if node[bigIntMarker] == true {
-		if text, ok := node["value"].(string); ok {
+	if fields[bigIntMarker] == true {
+		if text, ok := fields["value"].(string); ok {
 			number, ok := new(big.Int).SetString(text, 10)
 			if !ok {
 				return nil, fmt.Errorf("malformed portable big integer %q", text)
@@ -80,8 +192,8 @@ func reviveMarker(node map[string]any) (any, error) {
 			return number, nil
 		}
 	}
-	if node[dateMarker] == true {
-		if text, ok := node["iso"].(string); ok {
+	if fields[dateMarker] == true {
+		if text, ok := fields["iso"].(string); ok {
 			return parseISOString(text)
 		}
 	}
@@ -140,7 +252,7 @@ func writeJSON(out *bytes.Buffer, value any, portable bool) error {
 		out.WriteByte(']')
 	case Object:
 		out.WriteByte('{')
-		for index, field := range node {
+		for index, field := range jsPropertyOrder(node) {
 			if index > 0 {
 				out.WriteByte(',')
 			}

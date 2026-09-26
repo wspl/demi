@@ -11,8 +11,8 @@
    "root": "BrowserFailure",
    "codec": "json",
    "name": "sample 1",
-   "input": "{\"code\":\"tab_not_found\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}}",
-   "output": "{\"code\":\"tab_not_found\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}}"
+   "input": "{\"code\":\"tab_not_found\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}}",
+   "output": "{\"code\":\"tab_not_found\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}}"
   },
   {
    "root": "BrowserFailure",
@@ -32,8 +32,8 @@
    "root": "BrowserFailure",
    "codec": "json",
    "name": "sample 4",
-   "input": "{\"code\":\"stale_cursor\",\"message\":\"text\",\"details\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}}",
-   "output": "{\"code\":\"stale_cursor\",\"message\":\"text\",\"details\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}}"
+   "input": "{\"code\":\"stale_cursor\",\"message\":\"text\",\"details\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}}",
+   "output": "{\"code\":\"stale_cursor\",\"message\":\"text\",\"details\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}}"
   },
   {
    "root": "BrowserFailure",
@@ -53,8 +53,8 @@
    "root": "BrowserFailure",
    "codec": "json",
    "name": "sample 7",
-   "input": "{\"code\":\"target_not_found\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}}",
-   "output": "{\"code\":\"target_not_found\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}}"
+   "input": "{\"code\":\"target_not_found\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}}",
+   "output": "{\"code\":\"target_not_found\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}}"
   },
   {
    "root": "BrowserFailure",
@@ -74,8 +74,8 @@
    "root": "BrowserFailure",
    "codec": "json",
    "name": "sample 10",
-   "input": "{\"code\":\"timeout\",\"message\":\"text\",\"details\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}}",
-   "output": "{\"code\":\"timeout\",\"message\":\"text\",\"details\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}}"
+   "input": "{\"code\":\"timeout\",\"message\":\"text\",\"details\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}}",
+   "output": "{\"code\":\"timeout\",\"message\":\"text\",\"details\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}}"
   },
   {
    "root": "BrowserFailure",
@@ -95,8 +95,8 @@
    "root": "BrowserFailure",
    "codec": "json",
    "name": "sample 13",
-   "input": "{\"code\":\"invalid_dialog_action\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}}",
-   "output": "{\"code\":\"invalid_dialog_action\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}}"
+   "input": "{\"code\":\"invalid_dialog_action\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}}",
+   "output": "{\"code\":\"invalid_dialog_action\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}}"
   },
   {
    "root": "BrowserFailure",
@@ -116,8 +116,8 @@
    "root": "BrowserFailure",
    "codec": "json",
    "name": "sample 16",
-   "input": "{\"code\":\"protected_value\",\"message\":\"text\",\"details\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}}",
-   "output": "{\"code\":\"protected_value\",\"message\":\"text\",\"details\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}}"
+   "input": "{\"code\":\"protected_value\",\"message\":\"text\",\"details\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}}",
+   "output": "{\"code\":\"protected_value\",\"message\":\"text\",\"details\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}}"
   },
   {
    "root": "BrowserFailure",
@@ -137,8 +137,8 @@
    "root": "BrowserFailure",
    "codec": "json",
    "name": "sample 19",
-   "input": "{\"code\":\"unsupported_capability\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}}",
-   "output": "{\"code\":\"unsupported_capability\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}}"
+   "input": "{\"code\":\"unsupported_capability\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}}",
+   "output": "{\"code\":\"unsupported_capability\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}}"
   },
   {
    "root": "BrowserFailure",
@@ -158,8 +158,8 @@
    "root": "BrowserFailure",
    "codec": "json",
    "name": "sample 22",
-   "input": "{\"code\":\"io_error\",\"message\":\"text\",\"details\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}}",
-   "output": "{\"code\":\"io_error\",\"message\":\"text\",\"details\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}}"
+   "input": "{\"code\":\"io_error\",\"message\":\"text\",\"details\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}}",
+   "output": "{\"code\":\"io_error\",\"message\":\"text\",\"details\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}}"
   },
   {
    "root": "BrowserFailure",
@@ -179,8 +179,8 @@
    "root": "BrowserFailure",
    "codec": "json",
    "name": "sample 25",
-   "input": "{\"code\":\"driver_error\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}}",
-   "output": "{\"code\":\"driver_error\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}}"
+   "input": "{\"code\":\"driver_error\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}}",
+   "output": "{\"code\":\"driver_error\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}}"
   },
   {
    "root": "BrowserFailure",
@@ -200,8 +200,8 @@
    "root": "BrowserFailure",
    "codec": "json",
    "name": "sample 28",
-   "input": "{\"code\":\"cancelled\",\"message\":\"text\",\"details\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}}",
-   "output": "{\"code\":\"cancelled\",\"message\":\"text\",\"details\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}}"
+   "input": "{\"code\":\"cancelled\",\"message\":\"text\",\"details\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}}",
+   "output": "{\"code\":\"cancelled\",\"message\":\"text\",\"details\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}}"
   },
   {
    "root": "BrowserFailure",
@@ -214,7 +214,7 @@
    "root": "BrowserFailure",
    "codec": "json",
    "name": "root: unknown key",
-   "input": "{\"code\":\"unsupported_capability\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"zzUnknown\":1}",
+   "input": "{\"code\":\"unsupported_capability\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"zzUnknown\":1}",
    "output": null
   },
   {
@@ -228,42 +228,42 @@
    "root": "BrowserFailure",
    "codec": "json",
    "name": "root: keys reordered",
-   "input": "{\"details\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}},\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"code\":\"unsupported_capability\"}",
-   "output": "{\"code\":\"unsupported_capability\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}}"
+   "input": "{\"details\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}},\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"code\":\"unsupported_capability\"}",
+   "output": "{\"code\":\"unsupported_capability\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}}"
   },
   {
    "root": "BrowserFailure",
    "codec": "json",
    "name": "root: missing code",
-   "input": "{\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}}",
+   "input": "{\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}}",
    "output": null
   },
   {
    "root": "BrowserFailure",
    "codec": "json",
    "name": "code: not a member",
-   "input": "{\"code\":\"bogus-member\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}}",
+   "input": "{\"code\":\"bogus-member\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}}",
    "output": null
   },
   {
    "root": "BrowserFailure",
    "codec": "json",
    "name": "code: enum of wrong type",
-   "input": "{\"code\":7,\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}}",
+   "input": "{\"code\":7,\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"details\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}}",
    "output": null
   },
   {
    "root": "BrowserFailure",
    "codec": "json",
    "name": "root: missing message",
-   "input": "{\"code\":\"unsupported_capability\",\"details\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}}",
+   "input": "{\"code\":\"unsupported_capability\",\"details\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}}",
    "output": null
   },
   {
    "root": "BrowserFailure",
    "codec": "json",
    "name": "message: not a string",
-   "input": "{\"code\":\"unsupported_capability\",\"message\":42,\"details\":{\"alpha\":null,\"beta\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}}",
+   "input": "{\"code\":\"unsupported_capability\",\"message\":42,\"details\":{\"2\":null,\"10\":null,\"gamma\":null,\"alpha\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"beta\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}}",
    "output": null
   },
   {
@@ -17945,15 +17945,15 @@
    "root": "ReadResult",
    "codec": "json",
    "name": "sample 1",
-   "input": "{\"value\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}",
-   "output": "{\"value\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}"
+   "input": "{\"value\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}",
+   "output": "{\"value\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}"
   },
   {
    "root": "ReadResult",
    "codec": "json",
    "name": "sample 2",
-   "input": "{\"values\":[null,{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}],\"truncated\":true}",
-   "output": "{\"values\":[null,{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}],\"truncated\":true}"
+   "input": "{\"values\":[null,{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}],\"truncated\":true}",
+   "output": "{\"values\":[null,{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}],\"truncated\":true}"
   },
   {
    "root": "ReadResult",
@@ -17973,7 +17973,7 @@
    "root": "ReadResult",
    "codec": "json",
    "name": "root: unknown key",
-   "input": "{\"values\":[null,{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}],\"truncated\":true,\"zzUnknown\":1}",
+   "input": "{\"values\":[null,{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}],\"truncated\":true,\"zzUnknown\":1}",
    "output": null
   },
   {
@@ -17987,8 +17987,8 @@
    "root": "ReadResult",
    "codec": "json",
    "name": "root: keys reordered",
-   "input": "{\"truncated\":true,\"values\":[null,{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}]}",
-   "output": "{\"values\":[null,{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}],\"truncated\":true}"
+   "input": "{\"truncated\":true,\"values\":[null,{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}]}",
+   "output": "{\"values\":[null,{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}],\"truncated\":true}"
   },
   {
    "root": "ReadResult",
@@ -18008,21 +18008,21 @@
    "root": "ReadResult",
    "codec": "json",
    "name": "root: missing truncated",
-   "input": "{\"values\":[null,{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}]}",
+   "input": "{\"values\":[null,{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}]}",
    "output": null
   },
   {
    "root": "ReadResult",
    "codec": "json",
    "name": "truncated: not a boolean",
-   "input": "{\"values\":[null,{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}],\"truncated\":\"true\"}",
+   "input": "{\"values\":[null,{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}],\"truncated\":\"true\"}",
    "output": null
   },
   {
    "root": "ReadResult",
    "codec": "json",
    "name": "root: unknown key",
-   "input": "{\"value\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"zzUnknown\":1}",
+   "input": "{\"value\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"zzUnknown\":1}",
    "output": null
   },
   {
@@ -18036,8 +18036,8 @@
    "root": "ReadResult",
    "codec": "json",
    "name": "root: keys reordered",
-   "input": "{\"value\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}",
-   "output": "{\"value\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}"
+   "input": "{\"value\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}",
+   "output": "{\"value\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}"
   },
   {
    "root": "ReadResult",
@@ -18680,8 +18680,8 @@
    "root": "ActionResult",
    "codec": "json",
    "name": "sample 1",
-   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\",\"message\":\"text\"}}",
-   "output": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\",\"message\":\"text\"}}"
+   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\",\"message\":\"text\"}}",
+   "output": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\",\"message\":\"text\"}}"
   },
   {
    "root": "ActionResult",
@@ -18694,8 +18694,8 @@
    "root": "ActionResult",
    "codec": "json",
    "name": "sample 3",
-   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"dialog\":{\"type\":\"prompt\",\"message\":\"text\"}}",
-   "output": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"dialog\":{\"type\":\"prompt\",\"message\":\"text\"}}"
+   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"dialog\":{\"type\":\"prompt\",\"message\":\"text\"}}",
+   "output": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"dialog\":{\"type\":\"prompt\",\"message\":\"text\"}}"
   },
   {
    "root": "ActionResult",
@@ -18708,7 +18708,7 @@
    "root": "ActionResult",
    "codec": "json",
    "name": "root: unknown key",
-   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\",\"message\":\"text\"},\"zzUnknown\":1}",
+   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\",\"message\":\"text\"},\"zzUnknown\":1}",
    "output": null
   },
   {
@@ -18722,35 +18722,35 @@
    "root": "ActionResult",
    "codec": "json",
    "name": "root: keys reordered",
-   "input": "{\"dialog\":{\"type\":\"alert\",\"message\":\"text\"},\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"url\":\"text\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"text\",\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
-   "output": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\",\"message\":\"text\"}}"
+   "input": "{\"dialog\":{\"type\":\"alert\",\"message\":\"text\"},\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"url\":\"text\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"text\",\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
+   "output": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\",\"message\":\"text\"}}"
   },
   {
    "root": "ActionResult",
    "codec": "json",
    "name": "root: missing operation",
-   "input": "{\"target\":\"text\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\",\"message\":\"text\"}}",
+   "input": "{\"target\":\"text\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\",\"message\":\"text\"}}",
    "output": null
   },
   {
    "root": "ActionResult",
    "codec": "json",
    "name": "operation: not a string",
-   "input": "{\"operation\":42,\"target\":\"text\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\",\"message\":\"text\"}}",
+   "input": "{\"operation\":42,\"target\":\"text\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\",\"message\":\"text\"}}",
    "output": null
   },
   {
    "root": "ActionResult",
    "codec": "json",
    "name": "root: null optional target",
-   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":null,\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\",\"message\":\"text\"}}",
+   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":null,\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\",\"message\":\"text\"}}",
    "output": null
   },
   {
    "root": "ActionResult",
    "codec": "json",
    "name": "target: not a string",
-   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":42,\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\",\"message\":\"text\"}}",
+   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":42,\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\",\"message\":\"text\"}}",
    "output": null
   },
   {
@@ -18764,98 +18764,98 @@
    "root": "ActionResult",
    "codec": "json",
    "name": "root: null optional url",
-   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"url\":null,\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\",\"message\":\"text\"}}",
+   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"url\":null,\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\",\"message\":\"text\"}}",
    "output": null
   },
   {
    "root": "ActionResult",
    "codec": "json",
    "name": "url: not a string",
-   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"url\":42,\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\",\"message\":\"text\"}}",
+   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"url\":42,\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\",\"message\":\"text\"}}",
    "output": null
   },
   {
    "root": "ActionResult",
    "codec": "json",
    "name": "root: null optional openedTabs",
-   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"url\":\"text\",\"openedTabs\":null,\"dialog\":{\"type\":\"alert\",\"message\":\"text\"}}",
+   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"url\":\"text\",\"openedTabs\":null,\"dialog\":{\"type\":\"alert\",\"message\":\"text\"}}",
    "output": null
   },
   {
    "root": "ActionResult",
    "codec": "json",
    "name": "openedTabs: not an array",
-   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"url\":\"text\",\"openedTabs\":{\"0\":\"text\"},\"dialog\":{\"type\":\"alert\",\"message\":\"text\"}}",
+   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"url\":\"text\",\"openedTabs\":{\"0\":\"text\"},\"dialog\":{\"type\":\"alert\",\"message\":\"text\"}}",
    "output": null
   },
   {
    "root": "ActionResult",
    "codec": "json",
    "name": "openedTabs.0: not a string",
-   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"url\":\"text\",\"openedTabs\":[42,\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\",\"message\":\"text\"}}",
+   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"url\":\"text\",\"openedTabs\":[42,\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\",\"message\":\"text\"}}",
    "output": null
   },
   {
    "root": "ActionResult",
    "codec": "json",
    "name": "root: null optional dialog",
-   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":null}",
+   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":null}",
    "output": null
   },
   {
    "root": "ActionResult",
    "codec": "json",
    "name": "dialog: unknown key",
-   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\",\"message\":\"text\",\"zzUnknown\":1}}",
+   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\",\"message\":\"text\",\"zzUnknown\":1}}",
    "output": null
   },
   {
    "root": "ActionResult",
    "codec": "json",
    "name": "dialog: not an object",
-   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":\"text\"}",
+   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":\"text\"}",
    "output": null
   },
   {
    "root": "ActionResult",
    "codec": "json",
    "name": "dialog: keys reordered",
-   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"message\":\"text\",\"type\":\"alert\"}}",
-   "output": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\",\"message\":\"text\"}}"
+   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"message\":\"text\",\"type\":\"alert\"}}",
+   "output": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\",\"message\":\"text\"}}"
   },
   {
    "root": "ActionResult",
    "codec": "json",
    "name": "dialog: missing type",
-   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"message\":\"text\"}}",
+   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"message\":\"text\"}}",
    "output": null
   },
   {
    "root": "ActionResult",
    "codec": "json",
    "name": "dialog.type: not a member",
-   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"bogus-member\",\"message\":\"text\"}}",
+   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"bogus-member\",\"message\":\"text\"}}",
    "output": null
   },
   {
    "root": "ActionResult",
    "codec": "json",
    "name": "dialog.type: enum of wrong type",
-   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":7,\"message\":\"text\"}}",
+   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":7,\"message\":\"text\"}}",
    "output": null
   },
   {
    "root": "ActionResult",
    "codec": "json",
    "name": "dialog: missing message",
-   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\"}}",
+   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\"}}",
    "output": null
   },
   {
    "root": "ActionResult",
    "codec": "json",
    "name": "dialog.message: not a string",
-   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\",\"message\":42}}",
+   "input": "{\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"target\":\"text\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"url\":\"text\",\"openedTabs\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"dialog\":{\"type\":\"alert\",\"message\":42}}",
    "output": null
   },
   {
@@ -19499,14 +19499,14 @@
    "root": "EvalResult",
    "codec": "json",
    "name": "sample 1",
-   "input": "{\"value\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}",
-   "output": "{\"value\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}"
+   "input": "{\"value\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}",
+   "output": "{\"value\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}"
   },
   {
    "root": "EvalResult",
    "codec": "json",
    "name": "root: unknown key",
-   "input": "{\"value\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"zzUnknown\":1}",
+   "input": "{\"value\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"zzUnknown\":1}",
    "output": null
   },
   {
@@ -19520,8 +19520,8 @@
    "root": "EvalResult",
    "codec": "json",
    "name": "root: keys reordered",
-   "input": "{\"value\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}",
-   "output": "{\"value\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}"
+   "input": "{\"value\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}",
+   "output": "{\"value\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}"
   },
   {
    "root": "EvalResult",
@@ -20493,14 +20493,14 @@
    "root": "CdpSendResult",
    "codec": "json",
    "name": "sample 1",
-   "input": "{\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}",
-   "output": "{\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}"
+   "input": "{\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}",
+   "output": "{\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}"
   },
   {
    "root": "CdpSendResult",
    "codec": "json",
    "name": "root: unknown key",
-   "input": "{\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"zzUnknown\":1}",
+   "input": "{\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"zzUnknown\":1}",
    "output": null
   },
   {
@@ -20514,21 +20514,21 @@
    "root": "CdpSendResult",
    "codec": "json",
    "name": "root: keys reordered",
-   "input": "{\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
-   "output": "{\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}"
+   "input": "{\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
+   "output": "{\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}"
   },
   {
    "root": "CdpSendResult",
    "codec": "json",
    "name": "root: missing method",
-   "input": "{\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}",
+   "input": "{\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}",
    "output": null
   },
   {
    "root": "CdpSendResult",
    "codec": "json",
    "name": "method: not a string",
-   "input": "{\"method\":42,\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}",
+   "input": "{\"method\":42,\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}",
    "output": null
   },
   {
@@ -20542,8 +20542,8 @@
    "root": "CdpEventsResult",
    "codec": "json",
    "name": "sample 0",
-   "input": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}",
-   "output": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}"
+   "input": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}",
+   "output": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}"
   },
   {
    "root": "CdpEventsResult",
@@ -20556,7 +20556,7 @@
    "root": "CdpEventsResult",
    "codec": "json",
    "name": "root: unknown key",
-   "input": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true,\"zzUnknown\":1}",
+   "input": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true,\"zzUnknown\":1}",
    "output": null
   },
   {
@@ -20570,8 +20570,8 @@
    "root": "CdpEventsResult",
    "codec": "json",
    "name": "root: keys reordered",
-   "input": "{\"truncated\":true,\"hasMore\":true,\"cursor\":\"text\",\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}]}",
-   "output": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}"
+   "input": "{\"truncated\":true,\"hasMore\":true,\"cursor\":\"text\",\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}]}",
+   "output": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}"
   },
   {
    "root": "CdpEventsResult",
@@ -20591,133 +20591,133 @@
    "root": "CdpEventsResult",
    "codec": "json",
    "name": "events.0: unknown key",
-   "input": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null,\"target\":\"text\",\"zzUnknown\":1},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}",
+   "input": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null,\"target\":\"text\",\"zzUnknown\":1},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}",
    "output": null
   },
   {
    "root": "CdpEventsResult",
    "codec": "json",
    "name": "events.0: not an object",
-   "input": "{\"events\":[\"text\",{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}",
+   "input": "{\"events\":[\"text\",{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}",
    "output": null
   },
   {
    "root": "CdpEventsResult",
    "codec": "json",
    "name": "events.0: keys reordered",
-   "input": "{\"events\":[{\"target\":\"text\",\"params\":null,\"method\":\"text\",\"sequence\":0},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}",
-   "output": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}"
+   "input": "{\"events\":[{\"target\":\"text\",\"params\":null,\"method\":\"text\",\"sequence\":0},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}",
+   "output": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}"
   },
   {
    "root": "CdpEventsResult",
    "codec": "json",
    "name": "events.0: missing sequence",
-   "input": "{\"events\":[{\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}",
+   "input": "{\"events\":[{\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}",
    "output": null
   },
   {
    "root": "CdpEventsResult",
    "codec": "json",
    "name": "events.0.sequence: not a number",
-   "input": "{\"events\":[{\"sequence\":\"1\",\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}",
+   "input": "{\"events\":[{\"sequence\":\"1\",\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}",
    "output": null
   },
   {
    "root": "CdpEventsResult",
    "codec": "json",
    "name": "events.0.sequence: not an integer",
-   "input": "{\"events\":[{\"sequence\":1.5,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}",
+   "input": "{\"events\":[{\"sequence\":1.5,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}",
    "output": null
   },
   {
    "root": "CdpEventsResult",
    "codec": "json",
    "name": "events.0.sequence: unsafe integer",
-   "input": "{\"events\":[{\"sequence\":9007199254740992,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}",
+   "input": "{\"events\":[{\"sequence\":9007199254740992,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}",
    "output": null
   },
   {
    "root": "CdpEventsResult",
    "codec": "json",
    "name": "events.0.sequence: below the minimum",
-   "input": "{\"events\":[{\"sequence\":-1,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}",
+   "input": "{\"events\":[{\"sequence\":-1,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}",
    "output": null
   },
   {
    "root": "CdpEventsResult",
    "codec": "json",
    "name": "events.0: missing method",
-   "input": "{\"events\":[{\"sequence\":0,\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}",
+   "input": "{\"events\":[{\"sequence\":0,\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}",
    "output": null
   },
   {
    "root": "CdpEventsResult",
    "codec": "json",
    "name": "events.0.method: not a string",
-   "input": "{\"events\":[{\"sequence\":0,\"method\":42,\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}",
+   "input": "{\"events\":[{\"sequence\":0,\"method\":42,\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}",
    "output": null
   },
   {
    "root": "CdpEventsResult",
    "codec": "json",
    "name": "events.0: missing params",
-   "input": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}",
+   "input": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}",
    "output": null
   },
   {
    "root": "CdpEventsResult",
    "codec": "json",
    "name": "events.0: missing target",
-   "input": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}",
+   "input": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}",
    "output": null
   },
   {
    "root": "CdpEventsResult",
    "codec": "json",
    "name": "events.0.target: not a string",
-   "input": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null,\"target\":42},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}",
+   "input": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null,\"target\":42},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":true}",
    "output": null
   },
   {
    "root": "CdpEventsResult",
    "codec": "json",
    "name": "root: missing cursor",
-   "input": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"hasMore\":true,\"truncated\":true}",
+   "input": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"hasMore\":true,\"truncated\":true}",
    "output": null
   },
   {
    "root": "CdpEventsResult",
    "codec": "json",
    "name": "cursor: not a string",
-   "input": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":42,\"hasMore\":true,\"truncated\":true}",
+   "input": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":42,\"hasMore\":true,\"truncated\":true}",
    "output": null
   },
   {
    "root": "CdpEventsResult",
    "codec": "json",
    "name": "root: missing hasMore",
-   "input": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"truncated\":true}",
+   "input": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"truncated\":true}",
    "output": null
   },
   {
    "root": "CdpEventsResult",
    "codec": "json",
    "name": "hasMore: not a boolean",
-   "input": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":\"true\",\"truncated\":true}",
+   "input": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":\"true\",\"truncated\":true}",
    "output": null
   },
   {
    "root": "CdpEventsResult",
    "codec": "json",
    "name": "root: missing truncated",
-   "input": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true}",
+   "input": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true}",
    "output": null
   },
   {
    "root": "CdpEventsResult",
    "codec": "json",
    "name": "truncated: not a boolean",
-   "input": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":\"true\"}",
+   "input": "{\"events\":[{\"sequence\":0,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":1,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},{\"sequence\":127,\"method\":\"text\",\"params\":null,\"target\":\"text\"},{\"sequence\":200,\"method\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"target\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}],\"cursor\":\"text\",\"hasMore\":true,\"truncated\":\"true\"}",
    "output": null
   },
   {
@@ -21466,8 +21466,8 @@
    "root": "CapabilitiesResult",
    "codec": "json",
    "name": "sample 0",
-   "input": "{\"capabilities\":[{\"id\":\"text\",\"available\":true},{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"available\":false,\"reason\":\"text\",\"schema\":null},{\"id\":\"text\",\"available\":true,\"reason\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"schema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}]}",
-   "output": "{\"capabilities\":[{\"id\":\"text\",\"available\":true},{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"available\":false,\"reason\":\"text\",\"schema\":null},{\"id\":\"text\",\"available\":true,\"reason\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"schema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}]}"
+   "input": "{\"capabilities\":[{\"id\":\"text\",\"available\":true},{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"available\":false,\"reason\":\"text\",\"schema\":null},{\"id\":\"text\",\"available\":true,\"reason\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"schema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}]}",
+   "output": "{\"capabilities\":[{\"id\":\"text\",\"available\":true},{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"available\":false,\"reason\":\"text\",\"schema\":null},{\"id\":\"text\",\"available\":true,\"reason\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"schema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}]}"
   },
   {
    "root": "CapabilitiesResult",
@@ -21480,7 +21480,7 @@
    "root": "CapabilitiesResult",
    "codec": "json",
    "name": "root: unknown key",
-   "input": "{\"capabilities\":[{\"id\":\"text\",\"available\":true},{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"available\":false,\"reason\":\"text\",\"schema\":null},{\"id\":\"text\",\"available\":true,\"reason\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"schema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}],\"zzUnknown\":1}",
+   "input": "{\"capabilities\":[{\"id\":\"text\",\"available\":true},{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"available\":false,\"reason\":\"text\",\"schema\":null},{\"id\":\"text\",\"available\":true,\"reason\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"schema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}],\"zzUnknown\":1}",
    "output": null
   },
   {
@@ -21494,8 +21494,8 @@
    "root": "CapabilitiesResult",
    "codec": "json",
    "name": "root: keys reordered",
-   "input": "{\"capabilities\":[{\"id\":\"text\",\"available\":true},{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"available\":false,\"reason\":\"text\",\"schema\":null},{\"id\":\"text\",\"available\":true,\"reason\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"schema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}]}",
-   "output": "{\"capabilities\":[{\"id\":\"text\",\"available\":true},{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"available\":false,\"reason\":\"text\",\"schema\":null},{\"id\":\"text\",\"available\":true,\"reason\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"schema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}]}"
+   "input": "{\"capabilities\":[{\"id\":\"text\",\"available\":true},{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"available\":false,\"reason\":\"text\",\"schema\":null},{\"id\":\"text\",\"available\":true,\"reason\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"schema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}]}",
+   "output": "{\"capabilities\":[{\"id\":\"text\",\"available\":true},{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"available\":false,\"reason\":\"text\",\"schema\":null},{\"id\":\"text\",\"available\":true,\"reason\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"schema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}]}"
   },
   {
    "root": "CapabilitiesResult",
@@ -21515,57 +21515,57 @@
    "root": "CapabilitiesResult",
    "codec": "json",
    "name": "capabilities.0: unknown key",
-   "input": "{\"capabilities\":[{\"id\":\"text\",\"available\":true,\"zzUnknown\":1},{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"available\":false,\"reason\":\"text\",\"schema\":null},{\"id\":\"text\",\"available\":true,\"reason\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"schema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}]}",
+   "input": "{\"capabilities\":[{\"id\":\"text\",\"available\":true,\"zzUnknown\":1},{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"available\":false,\"reason\":\"text\",\"schema\":null},{\"id\":\"text\",\"available\":true,\"reason\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"schema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}]}",
    "output": null
   },
   {
    "root": "CapabilitiesResult",
    "codec": "json",
    "name": "capabilities.0: not an object",
-   "input": "{\"capabilities\":[\"text\",{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"available\":false,\"reason\":\"text\",\"schema\":null},{\"id\":\"text\",\"available\":true,\"reason\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"schema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}]}",
+   "input": "{\"capabilities\":[\"text\",{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"available\":false,\"reason\":\"text\",\"schema\":null},{\"id\":\"text\",\"available\":true,\"reason\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"schema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}]}",
    "output": null
   },
   {
    "root": "CapabilitiesResult",
    "codec": "json",
    "name": "capabilities.0: keys reordered",
-   "input": "{\"capabilities\":[{\"available\":true,\"id\":\"text\"},{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"available\":false,\"reason\":\"text\",\"schema\":null},{\"id\":\"text\",\"available\":true,\"reason\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"schema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}]}",
-   "output": "{\"capabilities\":[{\"id\":\"text\",\"available\":true},{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"available\":false,\"reason\":\"text\",\"schema\":null},{\"id\":\"text\",\"available\":true,\"reason\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"schema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}]}"
+   "input": "{\"capabilities\":[{\"available\":true,\"id\":\"text\"},{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"available\":false,\"reason\":\"text\",\"schema\":null},{\"id\":\"text\",\"available\":true,\"reason\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"schema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}]}",
+   "output": "{\"capabilities\":[{\"id\":\"text\",\"available\":true},{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"available\":false,\"reason\":\"text\",\"schema\":null},{\"id\":\"text\",\"available\":true,\"reason\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"schema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}]}"
   },
   {
    "root": "CapabilitiesResult",
    "codec": "json",
    "name": "capabilities.0: missing id",
-   "input": "{\"capabilities\":[{\"available\":true},{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"available\":false,\"reason\":\"text\",\"schema\":null},{\"id\":\"text\",\"available\":true,\"reason\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"schema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}]}",
+   "input": "{\"capabilities\":[{\"available\":true},{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"available\":false,\"reason\":\"text\",\"schema\":null},{\"id\":\"text\",\"available\":true,\"reason\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"schema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}]}",
    "output": null
   },
   {
    "root": "CapabilitiesResult",
    "codec": "json",
    "name": "capabilities.0.id: not a string",
-   "input": "{\"capabilities\":[{\"id\":42,\"available\":true},{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"available\":false,\"reason\":\"text\",\"schema\":null},{\"id\":\"text\",\"available\":true,\"reason\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"schema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}]}",
+   "input": "{\"capabilities\":[{\"id\":42,\"available\":true},{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"available\":false,\"reason\":\"text\",\"schema\":null},{\"id\":\"text\",\"available\":true,\"reason\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"schema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}]}",
    "output": null
   },
   {
    "root": "CapabilitiesResult",
    "codec": "json",
    "name": "capabilities.0: missing available",
-   "input": "{\"capabilities\":[{\"id\":\"text\"},{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"available\":false,\"reason\":\"text\",\"schema\":null},{\"id\":\"text\",\"available\":true,\"reason\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"schema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}]}",
+   "input": "{\"capabilities\":[{\"id\":\"text\"},{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"available\":false,\"reason\":\"text\",\"schema\":null},{\"id\":\"text\",\"available\":true,\"reason\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"schema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}]}",
    "output": null
   },
   {
    "root": "CapabilitiesResult",
    "codec": "json",
    "name": "capabilities.0.available: not a boolean",
-   "input": "{\"capabilities\":[{\"id\":\"text\",\"available\":\"true\"},{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"available\":false,\"reason\":\"text\",\"schema\":null},{\"id\":\"text\",\"available\":true,\"reason\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"schema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}]}",
+   "input": "{\"capabilities\":[{\"id\":\"text\",\"available\":\"true\"},{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"available\":false,\"reason\":\"text\",\"schema\":null},{\"id\":\"text\",\"available\":true,\"reason\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"schema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}]}",
    "output": null
   },
   {
    "root": "WebmcpListResult",
    "codec": "json",
    "name": "sample 0",
-   "input": "{\"tools\":\"text\",\"entries\":[{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}],\"truncated\":true}",
-   "output": "{\"tools\":\"text\",\"entries\":[{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}],\"truncated\":true}"
+   "input": "{\"tools\":\"text\",\"entries\":[{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}],\"truncated\":true}",
+   "output": "{\"tools\":\"text\",\"entries\":[{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}],\"truncated\":true}"
   },
   {
    "root": "WebmcpListResult",
@@ -21578,7 +21578,7 @@
    "root": "WebmcpListResult",
    "codec": "json",
    "name": "root: unknown key",
-   "input": "{\"tools\":\"text\",\"entries\":[{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}],\"truncated\":true,\"zzUnknown\":1}",
+   "input": "{\"tools\":\"text\",\"entries\":[{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}],\"truncated\":true,\"zzUnknown\":1}",
    "output": null
   },
   {
@@ -21592,21 +21592,21 @@
    "root": "WebmcpListResult",
    "codec": "json",
    "name": "root: keys reordered",
-   "input": "{\"truncated\":true,\"entries\":[{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}],\"tools\":\"text\"}",
-   "output": "{\"tools\":\"text\",\"entries\":[{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}],\"truncated\":true}"
+   "input": "{\"truncated\":true,\"entries\":[{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}],\"tools\":\"text\"}",
+   "output": "{\"tools\":\"text\",\"entries\":[{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}],\"truncated\":true}"
   },
   {
    "root": "WebmcpListResult",
    "codec": "json",
    "name": "root: missing tools",
-   "input": "{\"entries\":[{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}],\"truncated\":true}",
+   "input": "{\"entries\":[{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}],\"truncated\":true}",
    "output": null
   },
   {
    "root": "WebmcpListResult",
    "codec": "json",
    "name": "tools: not a string",
-   "input": "{\"tools\":42,\"entries\":[{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}],\"truncated\":true}",
+   "input": "{\"tools\":42,\"entries\":[{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}],\"truncated\":true}",
    "output": null
   },
   {
@@ -21627,70 +21627,70 @@
    "root": "WebmcpListResult",
    "codec": "json",
    "name": "entries.0: unknown key",
-   "input": "{\"tools\":\"text\",\"entries\":[{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"zzUnknown\":1},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}],\"truncated\":true}",
+   "input": "{\"tools\":\"text\",\"entries\":[{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"zzUnknown\":1},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}],\"truncated\":true}",
    "output": null
   },
   {
    "root": "WebmcpListResult",
    "codec": "json",
    "name": "entries.0: not an object",
-   "input": "{\"tools\":\"text\",\"entries\":[\"text\",{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}],\"truncated\":true}",
+   "input": "{\"tools\":\"text\",\"entries\":[\"text\",{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}],\"truncated\":true}",
    "output": null
   },
   {
    "root": "WebmcpListResult",
    "codec": "json",
    "name": "entries.0: keys reordered",
-   "input": "{\"tools\":\"text\",\"entries\":[{\"inputSchema\":null,\"description\":\"text\",\"name\":\"text\"},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}],\"truncated\":true}",
-   "output": "{\"tools\":\"text\",\"entries\":[{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}],\"truncated\":true}"
+   "input": "{\"tools\":\"text\",\"entries\":[{\"inputSchema\":null,\"description\":\"text\",\"name\":\"text\"},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}],\"truncated\":true}",
+   "output": "{\"tools\":\"text\",\"entries\":[{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}],\"truncated\":true}"
   },
   {
    "root": "WebmcpListResult",
    "codec": "json",
    "name": "entries.0: missing name",
-   "input": "{\"tools\":\"text\",\"entries\":[{\"description\":\"text\",\"inputSchema\":null},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}],\"truncated\":true}",
+   "input": "{\"tools\":\"text\",\"entries\":[{\"description\":\"text\",\"inputSchema\":null},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}],\"truncated\":true}",
    "output": null
   },
   {
    "root": "WebmcpListResult",
    "codec": "json",
    "name": "entries.0.name: not a string",
-   "input": "{\"tools\":\"text\",\"entries\":[{\"name\":42,\"description\":\"text\",\"inputSchema\":null},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}],\"truncated\":true}",
+   "input": "{\"tools\":\"text\",\"entries\":[{\"name\":42,\"description\":\"text\",\"inputSchema\":null},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}],\"truncated\":true}",
    "output": null
   },
   {
    "root": "WebmcpListResult",
    "codec": "json",
    "name": "entries.0: missing description",
-   "input": "{\"tools\":\"text\",\"entries\":[{\"name\":\"text\",\"inputSchema\":null},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}],\"truncated\":true}",
+   "input": "{\"tools\":\"text\",\"entries\":[{\"name\":\"text\",\"inputSchema\":null},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}],\"truncated\":true}",
    "output": null
   },
   {
    "root": "WebmcpListResult",
    "codec": "json",
    "name": "entries.0.description: not a string",
-   "input": "{\"tools\":\"text\",\"entries\":[{\"name\":\"text\",\"description\":42,\"inputSchema\":null},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}],\"truncated\":true}",
+   "input": "{\"tools\":\"text\",\"entries\":[{\"name\":\"text\",\"description\":42,\"inputSchema\":null},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}],\"truncated\":true}",
    "output": null
   },
   {
    "root": "WebmcpListResult",
    "codec": "json",
    "name": "entries.0: missing inputSchema",
-   "input": "{\"tools\":\"text\",\"entries\":[{\"name\":\"text\",\"description\":\"text\"},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}],\"truncated\":true}",
+   "input": "{\"tools\":\"text\",\"entries\":[{\"name\":\"text\",\"description\":\"text\"},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}],\"truncated\":true}",
    "output": null
   },
   {
    "root": "WebmcpListResult",
    "codec": "json",
    "name": "root: missing truncated",
-   "input": "{\"tools\":\"text\",\"entries\":[{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}]}",
+   "input": "{\"tools\":\"text\",\"entries\":[{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}]}",
    "output": null
   },
   {
    "root": "WebmcpListResult",
    "codec": "json",
    "name": "truncated: not a boolean",
-   "input": "{\"tools\":\"text\",\"entries\":[{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}],\"truncated\":\"true\"}",
+   "input": "{\"tools\":\"text\",\"entries\":[{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null},{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"description\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"inputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"outputSchema\":null},{\"name\":\"text\",\"description\":\"text\",\"inputSchema\":null,\"outputSchema\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}],\"truncated\":\"true\"}",
    "output": null
   },
   {
@@ -21704,14 +21704,14 @@
    "root": "WebmcpCallResult",
    "codec": "json",
    "name": "sample 1",
-   "input": "{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}",
-   "output": "{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}"
+   "input": "{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}",
+   "output": "{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}"
   },
   {
    "root": "WebmcpCallResult",
    "codec": "json",
    "name": "root: unknown key",
-   "input": "{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"zzUnknown\":1}",
+   "input": "{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"zzUnknown\":1}",
    "output": null
   },
   {
@@ -21725,21 +21725,21 @@
    "root": "WebmcpCallResult",
    "codec": "json",
    "name": "root: keys reordered",
-   "input": "{\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
-   "output": "{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}"
+   "input": "{\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]},\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
+   "output": "{\"name\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}"
   },
   {
    "root": "WebmcpCallResult",
    "codec": "json",
    "name": "root: missing name",
-   "input": "{\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}",
+   "input": "{\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}",
    "output": null
   },
   {
    "root": "WebmcpCallResult",
    "codec": "json",
    "name": "name: not a string",
-   "input": "{\"name\":42,\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}",
+   "input": "{\"name\":42,\"result\":{\"b\":{\"7\":\"seven\",\"c\":-3},\"a\":[1,\"x\",true,null,1.5]}}",
    "output": null
   },
   {
