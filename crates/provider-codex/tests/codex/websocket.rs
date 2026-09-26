@@ -8,10 +8,9 @@ use demi_provider::{
     ErrorCode, Provider, ProviderEvent,
     credentials::MemoryCredentialPool,
     quota::MemorySnapshots,
-    testing::{FixedClock, MockResponse, MockVendor, inference_request},
+    testing::{FixedClock, MockResponse, MockVendor, inference_request, next_event},
 };
 use demi_provider_codex::{CodexConfig, CodexProvider, TransportMode};
-use futures_util::StreamExt;
 use serde_json::{Value, json};
 
 use crate::{
@@ -37,7 +36,7 @@ fn provider(
     transport: TransportMode,
     idle: Option<Duration>,
 ) -> CodexProvider {
-    let mut config = CodexConfig::new("codex", "Codex", Some(crate::ACCOUNT.into()));
+    let mut config = CodexConfig::new(Some(crate::ACCOUNT.into()));
     config.backend_url = socket.backend_url().parse().unwrap();
     config.auth_url = vendor.url("").parse().unwrap();
     config.transport = transport;
@@ -294,10 +293,10 @@ async fn cancelling_closes_the_socket_as_aborted_and_ends_the_run_without_an_eve
     let cancel = request.cancel.clone();
     let mut events = runtime.run(request);
     assert_eq!(
-        events.next().await,
+        next_event(&mut events).await,
         Some(ProviderEvent::TextDelta("hel".into()))
     );
     cancel.cancel();
-    assert_eq!(events.next().await, None);
+    assert_eq!(next_event(&mut events).await, None);
     assert_eq!(socket.close_reason(0).await.as_deref(), Some("aborted"));
 }

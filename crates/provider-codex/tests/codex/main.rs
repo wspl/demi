@@ -15,14 +15,14 @@ mod websocket;
 use std::{sync::Arc, time::Duration};
 
 use demi_provider::{
-    InferenceRequest, Provider, ProviderEvent, ProviderRuntime, RuntimeEnv,
+    Provider, ProviderRuntime, RuntimeEnv,
     credentials::{AccountMeta, CredentialPool, MemoryCredentialPool},
     quota::MemorySnapshots,
     testing::{FixedClock, MockResponse, MockVendor, jwt, sse_body},
 };
 use demi_provider_codex::{CodexConfig, CodexProvider, TransportMode};
-use futures_util::StreamExt;
 use serde_json::{Value, json};
+pub(crate) use demi_provider::testing::run;
 
 /// When the scripted vendor answers.
 pub(crate) const NOW: &str = "2026-09-18T14:00:00.000Z";
@@ -82,7 +82,7 @@ pub(crate) fn provider(
     pool: &MemoryCredentialPool,
     transport: TransportMode,
 ) -> CodexProvider {
-    let mut config = CodexConfig::new("codex", "Codex", Some(ACCOUNT.into()));
+    let mut config = CodexConfig::new(Some(ACCOUNT.into()));
     config.backend_url = vendor.url("/backend-api").parse().unwrap();
     config.auth_url = vendor.url("").parse().unwrap();
     config.transport = transport;
@@ -104,13 +104,6 @@ pub(crate) fn runtime_of(provider: &CodexProvider) -> Box<dyn ProviderRuntime> {
             http: reqwest::Client::new(),
         })
         .unwrap()
-}
-
-pub(crate) async fn run(
-    runtime: &mut dyn ProviderRuntime,
-    request: InferenceRequest,
-) -> Vec<ProviderEvent> {
-    runtime.run(request).collect().await
 }
 
 /// A Responses stream of `events`.

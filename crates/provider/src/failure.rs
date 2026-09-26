@@ -2,14 +2,7 @@
 //! agent's retry policy reads, the vendor's record that the user and support
 //! read, and the wait the vendor asked for.
 
-use std::{
-    convert::Infallible,
-    error::Error as _,
-    fmt,
-    str::FromStr,
-    sync::LazyLock,
-    time::Duration,
-};
+use std::{convert::Infallible, error::Error as _, str::FromStr, sync::LazyLock, time::Duration};
 
 use demi_core::{FailureSource, ProviderErrorDiagnostics, ProviderFailureFacts, Timestamp};
 use regex::Regex;
@@ -213,12 +206,6 @@ impl ErrorCode {
             let Ok(code) = code?.parse();
             Some(code)
         })
-    }
-}
-
-impl fmt::Display for ErrorCode {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(self.as_str())
     }
 }
 
