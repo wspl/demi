@@ -42,10 +42,6 @@ const LABEL: &str = "Grok Build";
 /// The configuration of a `grok-build` entry's provider for one account.
 #[derive(Debug, Clone)]
 pub struct GrokConfig {
-    /// The entry's id.
-    pub id: String,
-    /// The entry's label.
-    pub display_name: String,
     /// The account the provider stands for; `None` only for a provider built
     /// to log in, which has no account yet.
     pub account: Option<String>,
@@ -61,14 +57,8 @@ impl GrokConfig {
     pub const ISSUER_URL: &str = "https://auth.x.ai";
 
     /// The product's configuration of an entry's provider for `account`.
-    pub fn new(
-        id: impl Into<String>,
-        display_name: impl Into<String>,
-        account: Option<String>,
-    ) -> Self {
+    pub fn new(account: Option<String>) -> Self {
         Self {
-            id: id.into(),
-            display_name: display_name.into(),
             account,
             proxy_url: Url::parse(Self::PROXY_URL).expect("the proxy URL parses"),
             issuer_url: Url::parse(Self::ISSUER_URL).expect("the issuer URL parses"),
@@ -84,8 +74,6 @@ pub struct GrokProvider {
 
 /// What the provider and all its runtimes share.
 struct Shared {
-    id: String,
-    display_name: String,
     chat_url: Url,
     models_url: Url,
     auth: Arc<GrokAuth>,
@@ -126,8 +114,6 @@ impl GrokProvider {
         };
         Self {
             shared: Arc::new(Shared {
-                id: config.id,
-                display_name: config.display_name,
                 chat_url: endpoint_url(&config.proxy_url, "/chat/completions"),
                 models_url: endpoint_url(&config.proxy_url, "/models"),
                 auth,
@@ -141,14 +127,6 @@ impl GrokProvider {
 }
 
 impl Provider for GrokProvider {
-    fn id(&self) -> &str {
-        &self.shared.id
-    }
-
-    fn display_name(&self) -> &str {
-        &self.shared.display_name
-    }
-
     fn capabilities(&self) -> Capabilities {
         Capabilities::default()
     }

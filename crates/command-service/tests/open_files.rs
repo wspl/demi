@@ -3,9 +3,15 @@
 //! the edit out (`runner.md` § Load). Its own binary: it lowers the process's
 //! open-file limit and holds every remaining descriptor.
 
-use std::{fs, path::Path, time::Duration};
+use std::{
+    fs,
+    path::Path,
+    time::{Duration, Instant},
+};
 
-use demi_command_service::{descriptors, edits::Recorder, protocol::EditContext};
+use demi_command_service::{
+    descriptors, edits::Recorder, protocol::EditContext, testing::pauses,
+};
 
 /// Every descriptor the process has left, held open.
 struct Hog(Vec<fs::File>);
@@ -49,6 +55,7 @@ fn recording_an_edit_waits_for_an_open_file() {
     fs::write(&path, "before").unwrap();
     let recorder = recorder(root.path());
     let mut hog = Hog::fill();
+    let before = pauses();
     let writer = std::thread::spawn({
         let path = path.clone();
         move || {
@@ -60,10 +67,18 @@ fn recording_an_edit_waits_for_an_open_file() {
             (recorder, written)
         }
     });
-    std::thread::sleep(Duration::from_millis(300));
+    // The recorder pauses for a descriptor rather than finish or fail.
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while pauses() == before {
+        assert!(
+            Instant::now() < deadline,
+            "recording did not wait with no open file left"
+        );
+        std::thread::sleep(Duration::from_millis(1));
+    }
     assert!(
         !writer.is_finished(),
-        "recording did not wait with no open file left"
+        "recording ended with no open file left"
     );
     let keep = hog.0.len().saturating_sub(64);
     hog.0.truncate(keep);

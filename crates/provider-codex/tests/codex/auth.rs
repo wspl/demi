@@ -280,7 +280,7 @@ async fn the_status_names_the_account_and_an_unreadable_or_absent_one_is_reporte
     );
 
     // A provider built to log in has no account yet.
-    let mut config = demi_provider_codex::CodexConfig::new("codex", "Codex", None);
+    let mut config = demi_provider_codex::CodexConfig::new(None);
     config.backend_url = vendor.url("/backend-api").parse().unwrap();
     let clock = std::sync::Arc::new(demi_provider::testing::FixedClock(NOW.parse().unwrap()));
     let snapshots = std::sync::Arc::new(demi_provider::quota::MemorySnapshots::new());

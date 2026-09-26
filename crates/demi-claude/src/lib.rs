@@ -29,14 +29,6 @@ pub struct DemiClaude {
     installer: Arc<Installer>,
 }
 
-impl DemiClaude {
-    pub fn new(installer: Installer) -> Self {
-        Self {
-            installer: Arc::new(installer),
-        }
-    }
-}
-
 impl Handler for DemiClaude {
     type Metadata = Invocation;
 

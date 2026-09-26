@@ -42,8 +42,6 @@ account, and it is used from any thread.
 ```rust
 /// One provider entry, shared by every user and request of the entry.
 pub trait Provider: Send + Sync + 'static {
-    fn id(&self) -> &str;
-    fn display_name(&self) -> &str;
     fn capabilities(&self) -> Capabilities;              // { process_host: bool }
     fn auth_status(&self) -> BoxFuture<'_, AuthState>;
     fn runtime_state(&self) -> RuntimeState;
@@ -58,20 +56,18 @@ pub trait Provider: Send + Sync + 'static {
 
 pub struct RuntimeEnv {
     pub http: reqwest::Client,                       // the shard's client
-    pub process_host: Option<Rc<dyn ProcessHost>>,   // required iff capabilities().process_host
 }
 ```
 
 | Method | What your provider does |
 |---|---|
-| `id`, `display_name` | Returns the entry's identity as the backend configured it |
-| `capabilities` | Sets `process_host` only when the runtime starts a process on a Host; the backend then places that process and passes its interface in `RuntimeEnv` |
+| `capabilities` | Sets `process_host` only when the runtime starts a process on a Host; the backend then builds the runtime over a placement that starts the process ([How a runtime gets its process](../providers/claude-code.md#how-a-runtime-gets-its-process)) |
 | `auth_status`, `runtime_state` | Says whether the credential is present and usable, and whether the provider can run. Reading either never makes an inference request |
 | `list_models` | Reads the vendor's model directory on each call and keeps no cache: the backend's [catalog cache](../providers/models.md#catalog-cache) is the only one |
 | `read_failure` | Reads your vendor's own fields out of a stored failure record ([Report failures](#report-failures)) |
 | `quota` | Returns your quota when the vendor reports one ([Optional: quota](#optional-quota)) |
 | `accounts` | Returns the account operations of a subscription family ([Credentials](#credentials)) |
-| `runtime` | Builds a runtime for one session, on the calling thread, with the client and process interface in `env` |
+| `runtime` | Builds a runtime for one session, on the calling thread, with the shard's client in `env`; a provider whose runtime starts a process refuses, since only the backend chooses the machine |
 
 Keep what runtimes share (configuration, authentication, quota, the catalog
 client) in one `Arc` that the provider and all its runtimes hold.

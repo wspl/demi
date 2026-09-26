@@ -28,6 +28,24 @@ fn invoke(root: &Path, name: &'static str, args: &[&str]) -> (i32, String, Strin
     )
 }
 
+/// A failed `cat` leaves the next invocation on the same thread its own exit
+/// status: uucore keeps the status per thread, and a job's utility threads
+/// are reused.
+#[test]
+fn uutils_cwd_and_exit_state_are_per_invocation() {
+    let first = tempfile::tempdir().unwrap();
+    let second = tempfile::tempdir().unwrap();
+    std::fs::write(first.path().join("file"), "one").unwrap();
+    std::fs::write(second.path().join("file"), "two").unwrap();
+    assert_eq!(invoke(first.path(), "cat", &["file"]).1, "one");
+    assert_eq!(invoke(second.path(), "cat", &["file"]).1, "two");
+    let failure = invoke(first.path(), "cat", &["missing"]);
+    assert_eq!(failure.0, 1);
+    assert!(failure.2.starts_with("cat:"));
+    assert_eq!(invoke(second.path(), "cat", &["file"]).0, 0);
+    assert_eq!(invoke(second.path(), "cat", &["--help"]).0, 0);
+}
+
 #[test]
 fn every_utility_routes_help_to_the_invocation_stream() {
     let root = tempfile::tempdir().unwrap();
