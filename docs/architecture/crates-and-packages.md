@@ -139,10 +139,10 @@ next to the wire's types, so that a command program depends on one crate.
   `SubagentJob` and `ShellStatus`; and the decode function of client frames
   (`decode_client_frame`), which tells a message that is not JSON from an
   invalid frame.
-- **Public boundary:** the types above. `ClientFrame` is generic over its
-  content, so the backend hands the agent the frame with the content it
-  resolved (`ClientFrame::map_content`). The protocol's behavior is in
-  [Frame protocol](../agent/runtime.md#frame-protocol).
+- **Public boundary:** the types above. The agent resolves the files a
+  frame's content refers to through the backend (`agent`'s
+  `ContentResolver`) before the session sees the content. The protocol's
+  behavior is in [Frame protocol](../agent/runtime.md#frame-protocol).
 - **Must not:** hold session logic or a transport, or carry file bytes inside a
   frame.
 
