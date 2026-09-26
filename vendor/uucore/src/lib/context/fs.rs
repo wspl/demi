@@ -94,8 +94,10 @@ impl Seek for &File {
     }
 }
 
+/// The options, what they write (a bit each for write, append, truncate,
+/// create and create_new), and whether the utility gave a mode.
 #[derive(Clone, Debug)]
-pub struct OpenOptions(std::fs::OpenOptions, u8);
+pub struct OpenOptions(std::fs::OpenOptions, u8, bool);
 impl Default for OpenOptions {
     fn default() -> Self {
         Self::new()
@@ -103,7 +105,7 @@ impl Default for OpenOptions {
 }
 impl OpenOptions {
     pub fn new() -> Self {
-        Self(std::fs::OpenOptions::new(), 0)
+        Self(std::fs::OpenOptions::new(), 0, false)
     }
     pub fn read(&mut self, enabled: bool) -> &mut Self {
         self.0.read(enabled);
@@ -140,14 +142,28 @@ impl OpenOptions {
             return super::duplicate(&file).map(File);
         }
         let path = super::resolve(path);
+        #[allow(unused_mut, reason = "only Unix has a umask")]
+        let mut options = self.0.clone();
+        #[cfg(unix)]
+        if !self.2
+            && let Some(mode) = super::creation_mode(0o666)
+        {
+            std::os::unix::fs::OpenOptionsExt::mode(&mut options, mode);
+        }
         match super::control() {
-            Some(control) => control.open(&path, &self.0, self.1 != 0).map(File),
-            None => self.0.open(path).map(File),
+            Some(control) => control.open(&path, &options, self.1 != 0).map(File),
+            None => options.open(path).map(File),
         }
     }
 }
 
-pub struct DirBuilder(std::fs::DirBuilder);
+/// A directory builder: whether it creates parents, and the mode the utility
+/// gave, if any.
+pub struct DirBuilder {
+    recursive: bool,
+    #[cfg_attr(not(unix), allow(dead_code, reason = "only Unix has modes"))]
+    mode: Option<u32>,
+}
 impl Default for DirBuilder {
     fn default() -> Self {
         Self::new()
@@ -155,14 +171,23 @@ impl Default for DirBuilder {
 }
 impl DirBuilder {
     pub fn new() -> Self {
-        Self(std::fs::DirBuilder::new())
+        Self {
+            recursive: false,
+            mode: None,
+        }
     }
     pub fn recursive(&mut self, enabled: bool) -> &mut Self {
-        self.0.recursive(enabled);
+        self.recursive = enabled;
         self
     }
     pub fn create(&self, path: impl AsRef<Path>) -> io::Result<()> {
-        self.0.create(super::resolve(path))
+        let mut builder = std::fs::DirBuilder::new();
+        builder.recursive(self.recursive);
+        #[cfg(unix)]
+        if let Some(mode) = self.mode.or_else(|| super::creation_mode(0o777)) {
+            std::os::unix::fs::DirBuilderExt::mode(&mut builder, mode);
+        }
+        builder.create(super::resolve(path))
     }
 }
 
@@ -198,13 +223,19 @@ pub fn canonicalize(path: impl AsRef<Path>) -> io::Result<PathBuf> {
 pub fn write(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> io::Result<()> {
     let path = super::resolve(path);
     let _edit = super::edit(&path);
-    std::fs::write(path, bytes)
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    if let Some(mode) = super::creation_mode(0o666) {
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, mode);
+    }
+    options.open(path)?.write_all(bytes.as_ref())
 }
 pub fn create_dir(path: impl AsRef<Path>) -> io::Result<()> {
-    std::fs::create_dir(super::resolve(path))
+    DirBuilder::new().create(path)
 }
 pub fn create_dir_all(path: impl AsRef<Path>) -> io::Result<()> {
-    std::fs::create_dir_all(super::resolve(path))
+    DirBuilder::new().recursive(true).create(path)
 }
 pub fn remove_file(path: impl AsRef<Path>) -> io::Result<()> {
     std::fs::remove_file(super::resolve(path))
@@ -269,6 +300,7 @@ mod unix {
     impl OpenOptionsExt for OpenOptions {
         fn mode(&mut self, mode: u32) -> &mut Self {
             self.0.mode(mode);
+            self.2 = true;
             self
         }
         fn custom_flags(&mut self, flags: i32) -> &mut Self {
@@ -278,7 +310,7 @@ mod unix {
     }
     impl DirBuilderExt for DirBuilder {
         fn mode(&mut self, mode: u32) -> &mut Self {
-            self.0.mode(mode);
+            self.mode = Some(mode);
             self
         }
     }

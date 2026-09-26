@@ -212,7 +212,15 @@ impl<SE: crate::extensions::ShellExtensions> crate::Shell<SE> {
         }
 
         if let Some(host) = self.execution_host() {
-            let file = host.open_file(&path_to_open, options, writing)?;
+            #[allow(unused_mut, reason = "only Unix has a umask")]
+            let mut options = options.clone();
+            // A file the shell creates gets the mode its own umask allows; the
+            // host process's umask still applies beneath it.
+            #[cfg(unix)]
+            if writing && let Some(umask) = self.child_attributes().umask {
+                std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o666 & !umask);
+            }
+            let file = host.open_file(&path_to_open, &options, writing)?;
             return openfiles::OpenFile::from(file).controlled(host.file_control());
         }
         Ok(options.open(path_to_open)?.into())
