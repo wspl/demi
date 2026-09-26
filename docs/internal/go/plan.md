@@ -338,7 +338,7 @@ is not used), because it starts cold and is deleted afterwards.
 | F4a | — | done | `internal/toolctx`, `internal/toolctx/toolctxtest` (`cbcb5d5d`, `6bfdea40`) |
 | F4b | s2 | verifying | 5 of 7 packages generated, 6,855 corpus cases; core/agentproto split into F4c (design `6eb8299c`); `-mod=mod` needed while vendor/ holds Rust (`763449da`) |
 | F4c | s2 | next | agent protocol contracts, same agent as F4b |
-| F5 | — | running | ledger done (`ledger.md`: ~373 behaviors, 242 old test files; A1–A3 split, pipes.rs → S2, utilities_* → S1 accepted); triage running |
+| F5 | — | done | triage: 37 failures → 11 causes; 22 environment (stripped native binary now used), 6 product (ledger L1–L10), 8 test-side, 1 unresolved (C4); ledger done (`ledger.md`: ~373 behaviors, 242 old test files; A1–A3 split, pipes.rs → S2, utilities_* → S1 accepted); triage running |
 | S1 | s1 | implementing | |
 | T0 | s4 | verifying | 41 utilities, 334 cases, recorder reproducible; Check to take the full registry (decided) |
 | T1a | s3 | implementing | |

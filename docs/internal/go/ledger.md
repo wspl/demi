@@ -827,3 +827,27 @@ Every other TS test file under `packages/backend`, `packages/agent`,
 `packages/host-remote`, `packages/machines`, `packages/provider*`, and
 `packages/shell`, and every Rust test file under `crates/`, is assigned
 above.
+
+## Required Linux behaviors from the baseline triage (F5)
+
+The old product fails these on Linux here; the Go line must pass them. Causes
+C1–C11 are in the triage report summarized in plan.md § Gate 0.
+
+| # | Behavior | WP | Cause |
+|---|---|---|---|
+| L1 | A failed pipe ends its HTTP response abnormally: never the final chunk; the connection is reset or closed. `sendFile` reports the stream's own failure even when the runner answers. | H1 | C3 |
+| L2 | A file written from a pipe is renamed into place only after a correctly ended body; a cut connection or truncated chunked body is a failure and leaves the destination unchanged. | S2 | C3 |
+| L3 | A service invocation whose input ends by failure is cancelled, and its output pipe fails. | S3 | C3 |
+| L4 | A browser upload (`PUT /fs/raw`) cut short never commits. | E2 | C3 |
+| L5 | A download cut by archiving the conversation reaches the client as an error, never as a normal end, and stops the runner's upload. | E2, H1 | C4 (cause unconfirmed) |
+| L6 | `wc -c FILE` equals the byte count for every size, including multiples of the page size; the total line reads `total`. | T1a (corpus: T0) | C6 |
+| L7 | An over-limit body gets 413 `too_large` before it is read, and the connection is then closed or drained, so the next request works. | E2 | C9 |
+| L8 | An expose relays WebSocket close code and reason both ways (test with a client that sends reasons). | E4 | C7 |
+| L9 | A visitor disconnect releases its expose connection slot (test by really closing the client connection). | E4 | C8 |
+| L10 | A peer reset of a network stream reports `ok: false`, a clean end `ok: true` (test with a real reset, SO_LINGER 0). | S2 | C5 |
+
+Environment factors for acceptance runs here: the container's `/etc/profile.d`
+adds ~350 ms to every login shell (C2); the Claude Code CLI refuses
+`--dangerously-skip-permissions` as root, so that test runs as a non-root user
+(C10); native test binaries are stripped (C1). Proposal for S3/H2: compile a
+manifest's schemas once per manifest hash (C11).
