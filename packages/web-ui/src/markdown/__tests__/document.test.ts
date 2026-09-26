@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { frontMatterAsCode, imageTarget, linkTarget, type DocumentPlace } from '../document'
+import { DOCUMENT_RENDER_BYTES, frontMatterAsCode, imageTarget, linkTarget, renderable, type DocumentPlace } from '../document'
 
 // Where a Markdown file's links and images lead (`file-previews.md`
 // § Markdown). The rendering itself runs in a browser and is checked there.
@@ -39,4 +39,12 @@ test('leading front matter becomes a YAML code block, fenced past its own backti
   // Only at the very start; a rule later on is a rule.
   expect(frontMatterAsCode('# Title\n---\nx: 1\n---\n')).toBe('# Title\n---\nx: 1\n---\n')
   expect(frontMatterAsCode('---\nunclosed: true\n')).toBe('---\nunclosed: true\n')
+})
+
+test('a file over 2 MiB shows only its source, and the limit counts its UTF-8 bytes', () => {
+  expect(renderable('a'.repeat(DOCUMENT_RENDER_BYTES))).toBe(true)
+  expect(renderable('a'.repeat(DOCUMENT_RENDER_BYTES + 1))).toBe(false)
+  // '安' is three UTF-8 bytes, so the limit falls at a third as many characters.
+  expect(renderable('安'.repeat(Math.floor(DOCUMENT_RENDER_BYTES / 3)))).toBe(true)
+  expect(renderable('安'.repeat(Math.floor(DOCUMENT_RENDER_BYTES / 3) + 1))).toBe(false)
 })

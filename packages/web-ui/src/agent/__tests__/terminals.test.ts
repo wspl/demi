@@ -1,7 +1,6 @@
 import { expect, test } from 'bun:test'
 import {
   firstRunningTerminalId,
-  runningChipLabel,
   runningTerminals,
   terminalPanelTabs,
   terminalStatus,
@@ -77,10 +76,4 @@ test('a running inspect lists every running job; an exited inspect is that job o
   expect(terminalPanelTabs(terminals, 'done').map((item) => item.id)).toEqual([
     'done',
   ])
-})
-
-test('the dock chip names the running count', () => {
-  expect(runningChipLabel(0)).toBe('0 Running')
-  expect(runningChipLabel(1)).toBe('1 Running')
-  expect(runningChipLabel(3)).toBe('3 Running')
 })
