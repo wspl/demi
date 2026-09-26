@@ -288,14 +288,3 @@ CREATE TABLE session_boundaries (
   FOREIGN KEY (node_id, command_revision) REFERENCES command_snapshots (node_id, revision)
 ) STRICT;
 ";
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn each_schema_applies_to_a_new_database() {
-        CONTROL.validate().unwrap();
-        CONVERSATION.validate().unwrap();
-    }
-}

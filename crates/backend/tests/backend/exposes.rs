@@ -32,6 +32,7 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt as _, AsyncReadExt as _, AsyncWrit
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{Notify, mpsc};
+use tokio::time::Instant;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
 use tokio_tungstenite::tungstenite::http::HeaderMap;
@@ -41,7 +42,7 @@ use tokio_util::task::AbortOnDropHandle;
 
 use crate::cloud::{cloud_online, idle_after, reset, the_cloud, until_status};
 use crate::conversations::{anthropic_at, create, on_device};
-use crate::support::{Harness, Session, TestBackend, eventually};
+use crate::support::{Harness, PATIENCE, Session, TestBackend, eventually, pattern};
 use crate::work::{Driven, say, shell};
 
 const DOMAIN: &str = "expose.localhost";
@@ -327,6 +328,8 @@ async fn an_expose_answers_anyone_for_an_hour_and_only_its_owner_lists_renews_or
     backend.close().await;
 }
 
+// Over a second: a real device's runner relays the held connections, and it
+// stops and starts again.
 #[tokio::test]
 async fn open_connections_end_with_their_expose_and_an_offline_device_keeps_its_exposes() {
     let harness = Harness::new().with_expose_domain(DOMAIN);
@@ -403,6 +406,7 @@ async fn an_expose_sheds_its_65th_connection_and_a_closed_one_makes_room() {
     backend.close().await;
 }
 
+// Over a second: the relay's idle limit of one second passes in real time.
 #[tokio::test]
 async fn a_relayed_connection_nothing_moves_on_closes_after_the_idle_limit() {
     let mut harness = Harness::new().with_expose_domain(DOMAIN);
@@ -421,6 +425,8 @@ async fn a_relayed_connection_nothing_moves_on_closes_after_the_idle_limit() {
     backend.close().await;
 }
 
+// Several seconds: a real device installs the builtin package, and three turns
+// run `demi host expose`.
 #[tokio::test]
 async fn the_agent_exposes_a_service_and_lists_renews_and_removes_exposes_with_demi_host_expose() {
     let vendor = MockVendor::start().await;
@@ -493,11 +499,14 @@ async fn without_an_expose_domain_exposes_are_unavailable() {
     backend.close().await;
 }
 
+// Several seconds: a Cloud boots and installs the builtin package, checkpoints,
+// and then idles for a window.
 #[tokio::test]
 async fn a_clouds_exposes_outlive_its_checkpoints_and_end_when_it_stops_idle() {
     let vendor = MockVendor::start().await;
+    let window = Duration::from_millis(600);
     let mut harness = Harness::new().with_builtin_package().with_expose_domain(DOMAIN);
-    harness.lifecycle = idle_after(Duration::from_secs(4));
+    harness.lifecycle = idle_after(window);
     harness.cloud.sweep = Duration::from_millis(50);
     harness.cloud.checkpoint_interval = Duration::from_millis(300);
     let (backend, master) = harness.start_set_up().await;
@@ -512,25 +521,47 @@ async fn a_clouds_exposes_outlive_its_checkpoints_and_end_when_it_stops_idle() {
     let mut held = hold(&backend, &host).await;
 
     // A checkpoint keeps the Cloud running, and its expose and the
-    // expose's connection with it.
+    // expose's connection with it. File reads keep the conversation active
+    // meanwhile, so that the Cloud does not idle before the test has looked.
     let checkpoint = format!("checkpoint:{device}");
     let before = harness.manager.count(&checkpoint);
-    eventually("the Cloud checkpoints", || async { harness.manager.count(&checkpoint) > before }).await;
-    assert_eq!(fetch(&backend, &host, "/hello").await, (200, "hello".to_owned()));
-    assert!(held.is_open().await);
-    assert_eq!(list(&backend, &master).await, [exposed.clone()]);
+    let rested = std::cell::Cell::new(Instant::now());
+    let checked = async {
+        eventually("the Cloud checkpoints", || async { harness.manager.count(&checkpoint) > before }).await;
+        assert_eq!(fetch(&backend, &host, "/hello").await, (200, "hello".to_owned()));
+        assert!(held.is_open().await);
+        assert_eq!(list(&backend, &master).await, [exposed.clone()]);
+    };
+    let active = async {
+        loop {
+            rested.set(Instant::now());
+            let read = backend.get(&format!("/api/conversations/{CONVERSATION}/fs"), Some(&master)).await;
+            assert_eq!(read.status, StatusCode::OK, "{}", String::from_utf8_lossy(&read.body));
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    };
+    tokio::select! {
+        () = checked => {}
+        _ = active => unreachable!("the reads go on until the test has looked"),
+    }
 
-    // Idle, the Cloud stops, and its expose ends with it, before the Cloud
-    // is saved.
+    // Idle, the Cloud stops a window after the last read, and its expose
+    // ends with it, before the Cloud is saved.
     held.ended().await;
     assert_eq!(fixture.next().await, Seen::Released);
     assert!(list(&backend, &master).await.is_empty());
-    let hibernate = format!("hibernate:{device}");
-    eventually("the idle Cloud is saved", || async { harness.manager.count(&hibernate) == 1 }).await;
+    let stopped = harness.manager.arrival(&format!("hibernate:{device}"), PATIENCE).await;
+    assert!(
+        stopped >= rested.get() + window,
+        "the Cloud stopped {:?} after the last read",
+        stopped.saturating_duration_since(rested.get())
+    );
     assert_eq!(fetch(&backend, &host, "/hello").await.0, 404);
     backend.close().await;
 }
 
+// Several seconds: the Cloud boots again after its death and after its reset,
+// and installs the builtin package each time.
 #[tokio::test]
 async fn a_clouds_exposes_end_when_it_dies_resets_or_is_found_stopped_and_before_a_backend_serves() {
     let vendor = MockVendor::start().await;
@@ -676,13 +707,6 @@ impl Held {
 async fn visit(backend: &TestBackend) -> (BufReader<OwnedReadHalf>, OwnedWriteHalf) {
     let (read, write) = TcpStream::connect(backend.address()).await.unwrap().into_split();
     (BufReader::new(read), write)
-}
-
-/// `length` bytes of a pattern that `seed` varies.
-fn pattern(length: usize, seed: u8) -> Vec<u8> {
-    (0..length)
-        .map(|index| u8::try_from(index % 251).unwrap() ^ seed)
-        .collect()
 }
 
 /// An HTTP message's head as its bytes had it: the first line, and each

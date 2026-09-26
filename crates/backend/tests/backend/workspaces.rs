@@ -138,7 +138,7 @@ async fn the_sidebar_keeps_the_users_order_within_each_partition_through_patches
     assert_eq!(conversation_order(&backend, &master).await, [b.clone(), a.clone(), c.clone()]);
     assert_eq!(reorder(&backend, &master, "conversation", &a, Some(&b)).await, StatusCode::CONFLICT);
     // So is a workspace, and an archived row is in none.
-    let laptop = backend.pair(&master, "laptop").await;
+    let mut laptop = backend.pair(&master, "laptop").await;
     let home = laptop.runner.home_dir().to_str().unwrap().to_owned();
     let notes = create_workspace(
         &backend,
@@ -173,10 +173,12 @@ async fn the_sidebar_keeps_the_users_order_within_each_partition_through_patches
     assert_eq!(reorder(&backend, &master, "workspace", &site, Some(&notes)).await, StatusCode::NO_CONTENT);
     assert_eq!(workspace_names(&backend, &master).await, ["site", "notes"]);
 
-    // The order is a record: it outlives the process.
-    let address = backend.address();
+    // The order is a record: it outlives the process. The backend comes back
+    // on a port of its own; the laptop's runner stops first, since it would
+    // keep calling the old address, which another test may take meanwhile.
+    laptop.runner.stop().await;
     backend.close().await;
-    let backend = harness.start_at(address).await;
+    let backend = harness.start().await;
     let unarchived: Value = backend.get("/api/conversations?archived=false", Some(&master)).await.json();
     let order: Vec<&str> = unarchived["conversations"]
         .as_array()

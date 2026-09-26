@@ -6,7 +6,7 @@
 use demi_agent::{
     AgentTreeStore, ForkError, ServerConfig,
     store::{ClosePhase, NodeClose},
-    testing::{MemoryTreeStore, TestClient, TestFiles, client_text, test_model},
+    testing::{MemoryTreeStore, TestClient, TestFiles, client_text, test_model, waiting_frames},
     transcript::CutError,
 };
 use demi_agent_protocol::{
@@ -75,6 +75,17 @@ fn edit_outcome(frames: &[ServerFrame]) -> EditOutcome {
             _ => None,
         })
         .unwrap_or_else(|| panic!("no edit_result in {frames:#?}"))
+}
+
+/// Whether a frame tells the page of an edit: its result, or a change of the
+/// transcript.
+fn tells_of_an_edit(frame: &ServerFrame) -> bool {
+    matches!(
+        frame,
+        ServerFrame::EditResult { .. }
+            | ServerFrame::TranscriptPatch { .. }
+            | ServerFrame::TranscriptReset { .. }
+    )
 }
 
 fn rejected(reason: &str) -> EditOutcome {
@@ -269,6 +280,47 @@ async fn an_edit_replaces_its_message_and_what_follows_once_and_infers_on_a_fres
     assert_eq!(
         edit_outcome(&reopened.received()),
         EditOutcome::Accepted { turn_id }
+    );
+}
+
+#[tokio::test(flavor = "local")]
+async fn the_page_hears_of_an_edit_only_once_its_save_commits() {
+    let script = ScriptedRuntime::new([said("answer A"), said("answer A2")]);
+    let fixture = Fixture::new(&script);
+    let mut client = fixture.opened().await;
+    client.send(send("m1", "A")).await;
+    frames_until(&mut client, is_idle).await;
+    let target = user_block(&fixture, "m1");
+    let version = session_of(&fixture).transcript().version;
+
+    // While the edit's save waits, the outbox, which the page reads in
+    // order, holds nothing of the edit.
+    let gate = fixture.store.hold_saves();
+    {
+        let (connection, outbox) = client.split();
+        let editing = connection.handle(edit("op1", &target, &version, client_text("A2")));
+        tokio::pin!(editing);
+        while gate.waiting() == 0 {
+            assert!(futures_util::poll!(editing.as_mut()).is_pending());
+            tokio::task::yield_now().await;
+        }
+        let meanwhile = waiting_frames(outbox);
+        assert!(!meanwhile.iter().any(tells_of_an_edit), "{meanwhile:#?}");
+        gate.release();
+        editing.await;
+    }
+    // Once it commits, the result and the replacement follow.
+    let answered = frames_until(&mut client, is_idle).await;
+    assert!(
+        matches!(edit_outcome(&answered), EditOutcome::Accepted { .. }),
+        "{answered:#?}"
+    );
+    assert!(
+        answered.iter().any(|frame| matches!(
+            frame,
+            ServerFrame::TranscriptPatch { .. } | ServerFrame::TranscriptReset { .. }
+        )),
+        "{answered:#?}"
     );
 }
 

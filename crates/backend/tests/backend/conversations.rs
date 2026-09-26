@@ -41,7 +41,7 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest as _;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 use tokio_tungstenite::tungstenite::{self, Message};
 
-use crate::support::{Harness, MASTER_EMAIL, Paired, Session, TestBackend};
+use crate::support::{Harness, MASTER_EMAIL, PATIENCE, Paired, Session, TestBackend};
 
 /// The conversation ids the tests create.
 pub(crate) const FIRST: &str = "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b";
@@ -127,19 +127,6 @@ impl Socket {
                 return frames;
             }
         }
-    }
-
-    /// The frames that arrive within `during`.
-    pub(crate) async fn within(&mut self, during: Duration) -> Vec<ServerFrame> {
-        let deadline = tokio::time::Instant::now() + during;
-        let mut frames = Vec::new();
-        while let Ok(received) = tokio::time::timeout_at(deadline, self.next()).await {
-            match received {
-                Received::Frame(frame) => frames.push(frame),
-                Received::Closed(code) => panic!("the socket closed with {code:?}"),
-            }
-        }
-        frames
     }
 
     /// Opens the conversation with `model` and reads the handshake.
@@ -440,6 +427,10 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     let system = body["system"].to_string();
     assert!(system.contains("You are a coding agent. Use shell session tools"), "{system}");
     assert!(system.contains("demi host"), "the backend's group is among the commands: {system}");
+    // Without the `demi.builtin` package the backend's own groups are
+    // offered, and none of the package's.
+    assert!(system.contains("demi todo"), "{system}");
+    assert!(!system.contains("demi file") && !system.contains("demi browser"), "{system}");
     assert_eq!(body["model"], "claude-opus-4-8");
     assert!(body["messages"][0].to_string().contains("Say hello"), "{body}");
 
@@ -517,11 +508,13 @@ async fn a_client_that_falls_behind_is_closed_as_lagging_and_a_reopen_adopts_the
 
     let mut again = Socket::connect(&backend, &master, FIRST).await;
     again.open(&model).await;
+    let deadline = tokio::time::Instant::now() + PATIENCE;
     let blocks = loop {
         let blocks = again.live().await;
         if blocks.iter().any(|block| matches!(block, Block::Response(_))) {
             break blocks;
         }
+        assert!(tokio::time::Instant::now() < deadline, "the adopted turn never ended: {blocks:?}");
         tokio::time::sleep(Duration::from_millis(20)).await;
     };
     assert!(last_text(&blocks).ends_with("199 "), "the turn ran to its end");
@@ -932,6 +925,7 @@ async fn the_page_receives_what_the_provider_reads_from_an_error_blocks_record()
     backend.close().await;
 }
 
+// About a second: the tool call boots the Cloud to run its shell job.
 #[tokio::test]
 async fn a_deepseek_tool_continuation_sends_the_reasoning_back_to_the_compatible_endpoint() {
     let vendor = MockVendor::start().await;
