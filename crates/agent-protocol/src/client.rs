@@ -1,8 +1,7 @@
 //! What the browser sends (`runtime.md` § Client frames).
 
 use demi_core::{
-    BlobRef, BlockId, CommandId, DocumentSource, MediaSource, ModelSelection, NodeId,
-    OperationId, TurnId, UserContentBlock, is_blank,
+    BlobRef, BlockId, CommandId, ModelSelection, NodeId, OperationId, TurnId, is_blank,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -323,31 +322,6 @@ pub enum MediaRef {
         #[garde(length(chars, min = 1))]
         file_name: String,
     },
-}
-
-/// The content part the media is in the transcript: its block by reference.
-impl From<MediaRef> for UserContentBlock {
-    fn from(media: MediaRef) -> Self {
-        match media {
-            MediaRef::Image { r#ref, media_type } => UserContentBlock::Image {
-                source: MediaSource::Ref { r#ref, media_type },
-            },
-            MediaRef::Video { r#ref, media_type } => UserContentBlock::Video {
-                source: MediaSource::Ref { r#ref, media_type },
-            },
-            MediaRef::Document {
-                r#ref,
-                media_type,
-                file_name,
-            } => UserContentBlock::Document {
-                source: DocumentSource::Ref {
-                    r#ref,
-                    media_type,
-                    file_name,
-                },
-            },
-        }
-    }
 }
 
 /// When a model switch lands (`runtime.md` § Model switch).
