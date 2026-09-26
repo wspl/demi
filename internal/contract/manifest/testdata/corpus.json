@@ -1,0 +1,865 @@
+{
+ "cases": [
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "sample 0",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}"
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "sample 1",
+   "input": "{\"hash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"roots\":{},\"packages\":{}}",
+   "output": "{\"hash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"roots\":{},\"packages\":{}}"
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "sample 2",
+   "input": "{\"hash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": "{\"hash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}"
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "root: unknown key",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}},\"zzUnknown\":1}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "root: not an object",
+   "input": "\"text\"",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "root: keys reordered",
+   "input": "{\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}},\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}",
+   "output": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}"
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "root: missing hash",
+   "input": "{\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "hash: not a string",
+   "input": "{\"hash\":42,\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "hash: breaks its pattern",
+   "input": "{\"hash\":\"bad value!\\u0000\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "root: missing roots",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "roots: key breaks its schema",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"bad key!\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "roots: not an object",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":[],\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "roots.files: unknown key",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"},\"zzUnknown\":1},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "roots.files: not an object",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":\"text\",\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "roots.files: keys reordered",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}"
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "roots.files: missing tree",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "roots.files.tree: no union option",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":12345},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "roots.files.tree: unknown key",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\",\"zzUnknown\":1}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "roots.files.tree: not an object",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":\"text\"},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "roots.files.tree: keys reordered",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"kind\":\"rpc\",\"summary\":\"text\",\"name\":\"files\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}"
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "roots.files.tree: missing name",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "roots.files.tree.name: not a string",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":42,\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "roots.files.tree.name: breaks its pattern",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"bad value!\\u0000\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "roots.files.tree: missing summary",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "roots.files.tree.summary: not a string",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":42,\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "roots.files.tree: missing kind",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "roots.files.tree.kind: other literal",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"bogus-literal\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "root: missing packages",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages: key breaks its schema",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}},\"bad key!\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages: not an object",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":[]}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef: unknown key",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}},\"zzUnknown\":1},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef: not an object",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":\"text\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef: keys reordered",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}},\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"protocolVersion\":1,\"version\":\"text\",\"id\":\"demi.commands\"},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}"
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef: missing id",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.id: not a string",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":42,\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.id: breaks its pattern",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"bad value!\\u0000\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef: missing version",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.version: not a string",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":42,\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.version: too short",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef: missing protocolVersion",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.protocolVersion: other literal",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":424242,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef: missing operations",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.operations: not an array",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":{\"0\":\"text\"},\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.operations: too few items",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.operations: repeated item",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"text\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.operations.0: not a string",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[42,\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[42,\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.operations.0: too short",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef: missing targets",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"]},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.targets: key breaks its schema",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000},\"bad key!\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.targets: not an object",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":[]},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.targets.aarch64-apple-darwin: unknown key",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991,\"zzUnknown\":1},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.targets.aarch64-apple-darwin: not an object",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":\"text\",\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.targets.aarch64-apple-darwin: keys reordered",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"size\":9007199254740991,\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}"
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.targets.aarch64-apple-darwin: missing sha256",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"size\":9007199254740991},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.targets.aarch64-apple-darwin: missing size",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.targets.aarch64-apple-darwin.size: not a number",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":\"1\"},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.targets.aarch64-apple-darwin.size: not an integer",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":1.5},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.targets.aarch64-apple-darwin.size: unsafe integer",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740992},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.targets.aarch64-apple-darwin.size: below the minimum",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":0},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Manifest",
+   "codec": "json",
+   "name": "packages.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.targets.aarch64-apple-darwin.size: above the maximum",
+   "input": "{\"hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"roots\":{\"files\":{\"tree\":{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}},\"git-show\":{\"tree\":{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"kind\":\"rpc\"}},\"x_1\":{\"tree\":{\"name\":\"x_1\",\"summary\":\"text\",\"kind\":\"rpc\"}}},\"packages\":{\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\":{\"id\":\"demi.commands\",\"version\":\"text\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{\"aarch64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":9007199254740992},\"aarch64-pc-windows-msvc\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":1},\"aarch64-unknown-linux-musl\":{\"sha256\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"size\":127},\"x86_64-apple-darwin\":{\"sha256\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"size\":200},\"x86_64-unknown-linux-musl\":{\"sha256\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"size\":70000}}},\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\":{\"id\":\"demi-claude.v2\",\"version\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"protocolVersion\":1,\"operations\":[\"text\",\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"],\"targets\":{}}}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "sample 0",
+   "input": "{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}",
+   "output": "{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"rpc\"}"
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "sample 1",
+   "input": "{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"successOutput\":\"text\",\"failureOutput\":\"text\",\"runningHint\":\"text\",\"input\":{},\"positionals\":[],\"stdinField\":\"files\",\"restField\":\"files\",\"output\":{},\"kind\":\"rpc\"}",
+   "output": "{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"successOutput\":\"text\",\"failureOutput\":\"text\",\"runningHint\":\"text\",\"input\":{},\"positionals\":[],\"stdinField\":\"files\",\"restField\":\"files\",\"output\":{},\"kind\":\"rpc\"}"
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "sample 2",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"rpc\"}",
+   "output": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"rpc\"}"
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "sample 3",
+   "input": "{\"name\":\"files\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"input\":{},\"positionals\":[],\"stdinField\":\"x_1\",\"restField\":\"x_1\",\"output\":{},\"kind\":\"rpc\"}",
+   "output": "{\"name\":\"files\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"input\":{},\"positionals\":[],\"stdinField\":\"x_1\",\"restField\":\"x_1\",\"output\":{},\"kind\":\"rpc\"}"
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "sample 4",
+   "input": "{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"native\",\"binding\":{\"package\":\"demi.commands\",\"operation\":\"text\",\"descriptorHash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}",
+   "output": "{\"name\":\"files\",\"summary\":\"text\",\"kind\":\"native\",\"binding\":{\"package\":\"demi.commands\",\"operation\":\"text\",\"descriptorHash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}"
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "sample 5",
+   "input": "{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"successOutput\":\"text\",\"failureOutput\":\"text\",\"runningHint\":\"text\",\"input\":{},\"positionals\":[],\"stdinField\":\"files\",\"restField\":\"files\",\"output\":{},\"kind\":\"native\",\"binding\":{\"package\":\"demi-claude.v2\",\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"descriptorHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}}",
+   "output": "{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"successOutput\":\"text\",\"failureOutput\":\"text\",\"runningHint\":\"text\",\"input\":{},\"positionals\":[],\"stdinField\":\"files\",\"restField\":\"files\",\"output\":{},\"kind\":\"native\",\"binding\":{\"package\":\"demi-claude.v2\",\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"descriptorHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}}"
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "sample 6",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"native\",\"binding\":{\"package\":\"demi.commands\",\"operation\":\"text\",\"descriptorHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}}",
+   "output": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"native\",\"binding\":{\"package\":\"demi.commands\",\"operation\":\"text\",\"descriptorHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}}"
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "sample 7",
+   "input": "{\"name\":\"files\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"input\":{},\"positionals\":[],\"stdinField\":\"x_1\",\"restField\":\"x_1\",\"output\":{},\"kind\":\"native\",\"binding\":{\"package\":\"demi.commands\",\"operation\":\"text\",\"descriptorHash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}",
+   "output": "{\"name\":\"files\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"input\":{},\"positionals\":[],\"stdinField\":\"x_1\",\"restField\":\"x_1\",\"output\":{},\"kind\":\"native\",\"binding\":{\"package\":\"demi.commands\",\"operation\":\"text\",\"descriptorHash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}"
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: no union option",
+   "input": "12345",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: unknown key",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"native\",\"binding\":{\"package\":\"demi.commands\",\"operation\":\"text\",\"descriptorHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"},\"zzUnknown\":1}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: not an object",
+   "input": "\"text\"",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: keys reordered",
+   "input": "{\"binding\":{\"package\":\"demi.commands\",\"operation\":\"text\",\"descriptorHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"},\"kind\":\"native\",\"restField\":\"git-show\",\"stdinField\":\"git-show\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"summary\":\"text\",\"name\":\"x_1\"}",
+   "output": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"native\",\"binding\":{\"package\":\"demi.commands\",\"operation\":\"text\",\"descriptorHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}}"
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: missing name",
+   "input": "{\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"native\",\"binding\":{\"package\":\"demi.commands\",\"operation\":\"text\",\"descriptorHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "name: not a string",
+   "input": "{\"name\":42,\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"native\",\"binding\":{\"package\":\"demi.commands\",\"operation\":\"text\",\"descriptorHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "name: breaks its pattern",
+   "input": "{\"name\":\"bad value!\\u0000\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"native\",\"binding\":{\"package\":\"demi.commands\",\"operation\":\"text\",\"descriptorHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: missing summary",
+   "input": "{\"name\":\"x_1\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"native\",\"binding\":{\"package\":\"demi.commands\",\"operation\":\"text\",\"descriptorHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "summary: not a string",
+   "input": "{\"name\":\"x_1\",\"summary\":42,\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"native\",\"binding\":{\"package\":\"demi.commands\",\"operation\":\"text\",\"descriptorHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: null optional successOutput",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":null,\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"native\",\"binding\":{\"package\":\"demi.commands\",\"operation\":\"text\",\"descriptorHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "successOutput: not a string",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":42,\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"native\",\"binding\":{\"package\":\"demi.commands\",\"operation\":\"text\",\"descriptorHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: null optional failureOutput",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":null,\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"native\",\"binding\":{\"package\":\"demi.commands\",\"operation\":\"text\",\"descriptorHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "failureOutput: not a string",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":42,\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"native\",\"binding\":{\"package\":\"demi.commands\",\"operation\":\"text\",\"descriptorHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: null optional runningHint",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":null,\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"native\",\"binding\":{\"package\":\"demi.commands\",\"operation\":\"text\",\"descriptorHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "runningHint: not a string",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":42,\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"native\",\"binding\":{\"package\":\"demi.commands\",\"operation\":\"text\",\"descriptorHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: null optional stdinField",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":null,\"restField\":\"git-show\",\"kind\":\"native\",\"binding\":{\"package\":\"demi.commands\",\"operation\":\"text\",\"descriptorHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: null optional restField",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":null,\"kind\":\"native\",\"binding\":{\"package\":\"demi.commands\",\"operation\":\"text\",\"descriptorHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: missing kind",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"binding\":{\"package\":\"demi.commands\",\"operation\":\"text\",\"descriptorHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "kind: other literal",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"bogus-literal\",\"binding\":{\"package\":\"demi.commands\",\"operation\":\"text\",\"descriptorHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: missing binding",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"native\"}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "binding: unknown key",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"native\",\"binding\":{\"package\":\"demi.commands\",\"operation\":\"text\",\"descriptorHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"zzUnknown\":1}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "binding: not an object",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"native\",\"binding\":\"text\"}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "binding: keys reordered",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"native\",\"binding\":{\"descriptorHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"operation\":\"text\",\"package\":\"demi.commands\"}}",
+   "output": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"native\",\"binding\":{\"package\":\"demi.commands\",\"operation\":\"text\",\"descriptorHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}}"
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "binding: missing package",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"native\",\"binding\":{\"operation\":\"text\",\"descriptorHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "binding.package: not a string",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"native\",\"binding\":{\"package\":42,\"operation\":\"text\",\"descriptorHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "binding.package: breaks its pattern",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"native\",\"binding\":{\"package\":\"bad value!\\u0000\",\"operation\":\"text\",\"descriptorHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "binding: missing operation",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"native\",\"binding\":{\"package\":\"demi.commands\",\"descriptorHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "binding.operation: not a string",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"native\",\"binding\":{\"package\":\"demi.commands\",\"operation\":42,\"descriptorHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "binding.operation: too short",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"native\",\"binding\":{\"package\":\"demi.commands\",\"operation\":\"\",\"descriptorHash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "binding: missing descriptorHash",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"native\",\"binding\":{\"package\":\"demi.commands\",\"operation\":\"text\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "binding.descriptorHash: not a string",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"native\",\"binding\":{\"package\":\"demi.commands\",\"operation\":\"text\",\"descriptorHash\":42}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "binding.descriptorHash: breaks its pattern",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"native\",\"binding\":{\"package\":\"demi.commands\",\"operation\":\"text\",\"descriptorHash\":\"bad value!\\u0000\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: null optional input",
+   "input": "{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"successOutput\":\"text\",\"failureOutput\":\"text\",\"runningHint\":\"text\",\"input\":null,\"positionals\":[],\"stdinField\":\"files\",\"restField\":\"files\",\"output\":{},\"kind\":\"native\",\"binding\":{\"package\":\"demi-claude.v2\",\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"descriptorHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "input: not an object",
+   "input": "{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"successOutput\":\"text\",\"failureOutput\":\"text\",\"runningHint\":\"text\",\"input\":[],\"positionals\":[],\"stdinField\":\"files\",\"restField\":\"files\",\"output\":{},\"kind\":\"native\",\"binding\":{\"package\":\"demi-claude.v2\",\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"descriptorHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: null optional positionals",
+   "input": "{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"successOutput\":\"text\",\"failureOutput\":\"text\",\"runningHint\":\"text\",\"input\":{},\"positionals\":null,\"stdinField\":\"files\",\"restField\":\"files\",\"output\":{},\"kind\":\"native\",\"binding\":{\"package\":\"demi-claude.v2\",\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"descriptorHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "positionals: not an array",
+   "input": "{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"successOutput\":\"text\",\"failureOutput\":\"text\",\"runningHint\":\"text\",\"input\":{},\"positionals\":{},\"stdinField\":\"files\",\"restField\":\"files\",\"output\":{},\"kind\":\"native\",\"binding\":{\"package\":\"demi-claude.v2\",\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"descriptorHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: null optional output",
+   "input": "{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"successOutput\":\"text\",\"failureOutput\":\"text\",\"runningHint\":\"text\",\"input\":{},\"positionals\":[],\"stdinField\":\"files\",\"restField\":\"files\",\"output\":null,\"kind\":\"native\",\"binding\":{\"package\":\"demi-claude.v2\",\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"descriptorHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "output: unknown key",
+   "input": "{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"successOutput\":\"text\",\"failureOutput\":\"text\",\"runningHint\":\"text\",\"input\":{},\"positionals\":[],\"stdinField\":\"files\",\"restField\":\"files\",\"output\":{\"zzUnknown\":1},\"kind\":\"native\",\"binding\":{\"package\":\"demi-claude.v2\",\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"descriptorHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "output: not an object",
+   "input": "{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"successOutput\":\"text\",\"failureOutput\":\"text\",\"runningHint\":\"text\",\"input\":{},\"positionals\":[],\"stdinField\":\"files\",\"restField\":\"files\",\"output\":\"text\",\"kind\":\"native\",\"binding\":{\"package\":\"demi-claude.v2\",\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"descriptorHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "output: keys reordered",
+   "input": "{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"successOutput\":\"text\",\"failureOutput\":\"text\",\"runningHint\":\"text\",\"input\":{},\"positionals\":[],\"stdinField\":\"files\",\"restField\":\"files\",\"output\":{},\"kind\":\"native\",\"binding\":{\"package\":\"demi-claude.v2\",\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"descriptorHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}}",
+   "output": "{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"successOutput\":\"text\",\"failureOutput\":\"text\",\"runningHint\":\"text\",\"input\":{},\"positionals\":[],\"stdinField\":\"files\",\"restField\":\"files\",\"output\":{},\"kind\":\"native\",\"binding\":{\"package\":\"demi-claude.v2\",\"operation\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"descriptorHash\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}}"
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: unknown key",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"rpc\",\"zzUnknown\":1}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: not an object",
+   "input": "\"text\"",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: keys reordered",
+   "input": "{\"kind\":\"rpc\",\"restField\":\"git-show\",\"stdinField\":\"git-show\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"summary\":\"text\",\"name\":\"x_1\"}",
+   "output": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"rpc\"}"
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: missing name",
+   "input": "{\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"rpc\"}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: missing summary",
+   "input": "{\"name\":\"x_1\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"rpc\"}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: null optional successOutput",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":null,\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"rpc\"}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: null optional failureOutput",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":null,\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"rpc\"}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: null optional runningHint",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":null,\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"rpc\"}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: null optional stdinField",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":null,\"restField\":\"git-show\",\"kind\":\"rpc\"}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: null optional restField",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":null,\"kind\":\"rpc\"}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: missing kind",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\"}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "kind: other literal",
+   "input": "{\"name\":\"x_1\",\"summary\":\"text\",\"successOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"failureOutput\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"runningHint\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"stdinField\":\"git-show\",\"restField\":\"git-show\",\"kind\":\"bogus-literal\"}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: null optional input",
+   "input": "{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"successOutput\":\"text\",\"failureOutput\":\"text\",\"runningHint\":\"text\",\"input\":null,\"positionals\":[],\"stdinField\":\"files\",\"restField\":\"files\",\"output\":{},\"kind\":\"rpc\"}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: null optional positionals",
+   "input": "{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"successOutput\":\"text\",\"failureOutput\":\"text\",\"runningHint\":\"text\",\"input\":{},\"positionals\":null,\"stdinField\":\"files\",\"restField\":\"files\",\"output\":{},\"kind\":\"rpc\"}",
+   "output": null
+  },
+  {
+   "root": "Node",
+   "codec": "json",
+   "name": "root: null optional output",
+   "input": "{\"name\":\"git-show\",\"summary\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"successOutput\":\"text\",\"failureOutput\":\"text\",\"runningHint\":\"text\",\"input\":{},\"positionals\":[],\"stdinField\":\"files\",\"restField\":\"files\",\"output\":null,\"kind\":\"rpc\"}",
+   "output": null
+  }
+ ]
+}

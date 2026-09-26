@@ -1,0 +1,1264 @@
+{
+ "cases": [
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "sample 0",
+   "input": "{\"id\":\"text\",\"op\":\"reconcile\",\"params\":{}}",
+   "output": "{\"id\":\"text\",\"op\":\"reconcile\",\"params\":{}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "sample 1",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reconcile\",\"params\":{}}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reconcile\",\"params\":{}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "sample 2",
+   "input": "{\"id\":\"text\",\"op\":\"current_base_version\",\"params\":{}}",
+   "output": "{\"id\":\"text\",\"op\":\"current_base_version\",\"params\":{}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "sample 3",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"current_base_version\",\"params\":{}}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"current_base_version\",\"params\":{}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "sample 4",
+   "input": "{\"id\":\"text\",\"op\":\"image_state\",\"params\":{\"deviceId\":\"text\"}}",
+   "output": "{\"id\":\"text\",\"op\":\"image_state\",\"params\":{\"deviceId\":\"text\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "sample 5",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"image_state\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"image_state\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "sample 6",
+   "input": "{\"id\":\"text\",\"op\":\"runtime_state\",\"params\":{\"deviceId\":\"text\"}}",
+   "output": "{\"id\":\"text\",\"op\":\"runtime_state\",\"params\":{\"deviceId\":\"text\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "sample 7",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"runtime_state\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"runtime_state\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "sample 8",
+   "input": "{\"id\":\"text\",\"op\":\"wake\",\"params\":{\"deviceId\":\"text\",\"boot\":{\"backendUrl\":\"https://demi.example/api\",\"deviceToken\":\"token-123\"}}}",
+   "output": "{\"id\":\"text\",\"op\":\"wake\",\"params\":{\"deviceId\":\"text\",\"boot\":{\"backendUrl\":\"https://demi.example/api\",\"deviceToken\":\"token-123\"}}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "sample 9",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"wake\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"boot\":{\"backendUrl\":\"http://localhost:3271\",\"deviceToken\":\"déjà-vu\"}}}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"wake\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"boot\":{\"backendUrl\":\"http://localhost:3271\",\"deviceToken\":\"déjà-vu\"}}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "sample 10",
+   "input": "{\"id\":\"text\",\"op\":\"hibernate\",\"params\":{\"deviceId\":\"text\"}}",
+   "output": "{\"id\":\"text\",\"op\":\"hibernate\",\"params\":{\"deviceId\":\"text\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "sample 11",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"hibernate\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"hibernate\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "sample 12",
+   "input": "{\"id\":\"text\",\"op\":\"checkpoint\",\"params\":{\"deviceId\":\"text\"}}",
+   "output": "{\"id\":\"text\",\"op\":\"checkpoint\",\"params\":{\"deviceId\":\"text\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "sample 13",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"checkpoint\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"checkpoint\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "sample 14",
+   "input": "{\"id\":\"text\",\"op\":\"grow_volume\",\"params\":{\"deviceId\":\"text\",\"volume\":\"system\",\"bytes\":1}}",
+   "output": "{\"id\":\"text\",\"op\":\"grow_volume\",\"params\":{\"deviceId\":\"text\",\"volume\":\"system\",\"bytes\":1}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "sample 15",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"grow_volume\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"volume\":\"home\",\"bytes\":127}}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"grow_volume\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"volume\":\"home\",\"bytes\":127}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "sample 16",
+   "input": "{\"id\":\"text\",\"op\":\"grow_volume\",\"params\":{\"deviceId\":\"text\",\"volume\":\"system\",\"bytes\":200}}",
+   "output": "{\"id\":\"text\",\"op\":\"grow_volume\",\"params\":{\"deviceId\":\"text\",\"volume\":\"system\",\"bytes\":200}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "sample 17",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"grow_volume\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"volume\":\"home\",\"bytes\":70000}}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"grow_volume\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"volume\":\"home\",\"bytes\":70000}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "sample 18",
+   "input": "{\"id\":\"text\",\"op\":\"reset\",\"params\":{\"deviceId\":\"text\",\"operationId\":\"text\",\"baseVersion\":\"text\"}}",
+   "output": "{\"id\":\"text\",\"op\":\"reset\",\"params\":{\"deviceId\":\"text\",\"operationId\":\"text\",\"baseVersion\":\"text\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "sample 19",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reset\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"operationId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"baseVersion\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reset\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"operationId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"baseVersion\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: no union option",
+   "input": "12345",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: unknown key",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reset\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"operationId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"baseVersion\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},\"zzUnknown\":1}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reset\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"operationId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"baseVersion\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: not an object",
+   "input": "\"text\"",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: keys reordered",
+   "input": "{\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"operationId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"baseVersion\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},\"op\":\"reset\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reset\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"operationId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"baseVersion\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: missing id",
+   "input": "{\"op\":\"reset\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"operationId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"baseVersion\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "id: not a string",
+   "input": "{\"id\":42,\"op\":\"reset\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"operationId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"baseVersion\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "id: too short",
+   "input": "{\"id\":\"\",\"op\":\"reset\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"operationId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"baseVersion\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: missing op",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"operationId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"baseVersion\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "op: other literal",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"bogus-literal\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"operationId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"baseVersion\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: missing params",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reset\"}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: unknown key",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reset\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"operationId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"baseVersion\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"zzUnknown\":1}}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reset\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"operationId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"baseVersion\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: not an object",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reset\",\"params\":\"text\"}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: keys reordered",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reset\",\"params\":{\"baseVersion\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"operationId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reset\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"operationId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"baseVersion\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: missing deviceId",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reset\",\"params\":{\"operationId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"baseVersion\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params.deviceId: not a string",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reset\",\"params\":{\"deviceId\":42,\"operationId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"baseVersion\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params.deviceId: too short",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reset\",\"params\":{\"deviceId\":\"\",\"operationId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"baseVersion\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: missing operationId",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reset\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"baseVersion\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params.operationId: not a string",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reset\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"operationId\":42,\"baseVersion\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params.operationId: too short",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reset\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"operationId\":\"\",\"baseVersion\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: missing baseVersion",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reset\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"operationId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params.baseVersion: not a string",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reset\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"operationId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"baseVersion\":42}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params.baseVersion: too short",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reset\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"operationId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"baseVersion\":\"\"}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: unknown key",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"wake\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"boot\":{\"backendUrl\":\"http://localhost:3271\",\"deviceToken\":\"déjà-vu\"}},\"zzUnknown\":1}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"wake\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"boot\":{\"backendUrl\":\"http://localhost:3271\",\"deviceToken\":\"déjà-vu\"}}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: not an object",
+   "input": "\"text\"",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: keys reordered",
+   "input": "{\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"boot\":{\"backendUrl\":\"http://localhost:3271\",\"deviceToken\":\"déjà-vu\"}},\"op\":\"wake\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"wake\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"boot\":{\"backendUrl\":\"http://localhost:3271\",\"deviceToken\":\"déjà-vu\"}}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: missing id",
+   "input": "{\"op\":\"wake\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"boot\":{\"backendUrl\":\"http://localhost:3271\",\"deviceToken\":\"déjà-vu\"}}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: missing op",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"boot\":{\"backendUrl\":\"http://localhost:3271\",\"deviceToken\":\"déjà-vu\"}}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "op: other literal",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"bogus-literal\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"boot\":{\"backendUrl\":\"http://localhost:3271\",\"deviceToken\":\"déjà-vu\"}}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: missing params",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"wake\"}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: unknown key",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"wake\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"boot\":{\"backendUrl\":\"http://localhost:3271\",\"deviceToken\":\"déjà-vu\"},\"zzUnknown\":1}}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"wake\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"boot\":{\"backendUrl\":\"http://localhost:3271\",\"deviceToken\":\"déjà-vu\"}}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: not an object",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"wake\",\"params\":\"text\"}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: keys reordered",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"wake\",\"params\":{\"boot\":{\"backendUrl\":\"http://localhost:3271\",\"deviceToken\":\"déjà-vu\"},\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"wake\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"boot\":{\"backendUrl\":\"http://localhost:3271\",\"deviceToken\":\"déjà-vu\"}}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: missing deviceId",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"wake\",\"params\":{\"boot\":{\"backendUrl\":\"http://localhost:3271\",\"deviceToken\":\"déjà-vu\"}}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: missing boot",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"wake\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params.boot: unknown key",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"wake\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"boot\":{\"backendUrl\":\"http://localhost:3271\",\"deviceToken\":\"déjà-vu\",\"zzUnknown\":1}}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params.boot: not an object",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"wake\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"boot\":\"text\"}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params.boot: keys reordered",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"wake\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"boot\":{\"deviceToken\":\"déjà-vu\",\"backendUrl\":\"http://localhost:3271\"}}}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"wake\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"boot\":{\"backendUrl\":\"http://localhost:3271\",\"deviceToken\":\"déjà-vu\"}}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params.boot: missing backendUrl",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"wake\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"boot\":{\"deviceToken\":\"déjà-vu\"}}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params.boot.backendUrl: not a string",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"wake\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"boot\":{\"backendUrl\":42,\"deviceToken\":\"déjà-vu\"}}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params.boot.backendUrl: breaks its pattern",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"wake\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"boot\":{\"backendUrl\":\"bad value!\\u0000\",\"deviceToken\":\"déjà-vu\"}}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params.boot: missing deviceToken",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"wake\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"boot\":{\"backendUrl\":\"http://localhost:3271\"}}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params.boot.deviceToken: not a string",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"wake\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"boot\":{\"backendUrl\":\"http://localhost:3271\",\"deviceToken\":42}}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params.boot.deviceToken: too short",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"wake\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"boot\":{\"backendUrl\":\"http://localhost:3271\",\"deviceToken\":\"\"}}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params.boot.deviceToken: too long",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"wake\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"boot\":{\"backendUrl\":\"http://localhost:3271\",\"deviceToken\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"}}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params.boot.deviceToken: breaks its pattern",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"wake\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"boot\":{\"backendUrl\":\"http://localhost:3271\",\"deviceToken\":\"bad value!\\u0000\"}}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: unknown key",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"grow_volume\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"volume\":\"home\",\"bytes\":70000},\"zzUnknown\":1}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"grow_volume\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"volume\":\"home\",\"bytes\":70000}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: not an object",
+   "input": "\"text\"",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: keys reordered",
+   "input": "{\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"volume\":\"home\",\"bytes\":70000},\"op\":\"grow_volume\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"grow_volume\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"volume\":\"home\",\"bytes\":70000}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: missing id",
+   "input": "{\"op\":\"grow_volume\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"volume\":\"home\",\"bytes\":70000}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: missing op",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"volume\":\"home\",\"bytes\":70000}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "op: other literal",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"bogus-literal\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"volume\":\"home\",\"bytes\":70000}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: missing params",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"grow_volume\"}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: unknown key",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"grow_volume\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"volume\":\"home\",\"bytes\":70000,\"zzUnknown\":1}}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"grow_volume\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"volume\":\"home\",\"bytes\":70000}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: not an object",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"grow_volume\",\"params\":\"text\"}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: keys reordered",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"grow_volume\",\"params\":{\"bytes\":70000,\"volume\":\"home\",\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"grow_volume\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"volume\":\"home\",\"bytes\":70000}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: missing deviceId",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"grow_volume\",\"params\":{\"volume\":\"home\",\"bytes\":70000}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: missing volume",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"grow_volume\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"bytes\":70000}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params.volume: not a member",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"grow_volume\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"volume\":\"bogus-member\",\"bytes\":70000}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params.volume: enum of wrong type",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"grow_volume\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"volume\":7,\"bytes\":70000}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: missing bytes",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"grow_volume\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"volume\":\"home\"}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params.bytes: not a number",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"grow_volume\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"volume\":\"home\",\"bytes\":\"1\"}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params.bytes: not an integer",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"grow_volume\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"volume\":\"home\",\"bytes\":1.5}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params.bytes: unsafe integer",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"grow_volume\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"volume\":\"home\",\"bytes\":9007199254740992}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params.bytes: below the minimum",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"grow_volume\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"volume\":\"home\",\"bytes\":0}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: unknown key",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"runtime_state\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},\"zzUnknown\":1}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"runtime_state\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: not an object",
+   "input": "\"text\"",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: keys reordered",
+   "input": "{\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},\"op\":\"runtime_state\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"runtime_state\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: missing id",
+   "input": "{\"op\":\"runtime_state\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: missing op",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "op: other literal",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"bogus-literal\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: missing params",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"runtime_state\"}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: unknown key",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"runtime_state\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"zzUnknown\":1}}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"runtime_state\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: not an object",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"runtime_state\",\"params\":\"text\"}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: keys reordered",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"runtime_state\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"runtime_state\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: missing deviceId",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"runtime_state\",\"params\":{}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: unknown key",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"image_state\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},\"zzUnknown\":1}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"image_state\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: not an object",
+   "input": "\"text\"",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: keys reordered",
+   "input": "{\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},\"op\":\"image_state\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"image_state\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: missing id",
+   "input": "{\"op\":\"image_state\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: missing op",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "op: other literal",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"bogus-literal\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: missing params",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"image_state\"}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: unknown key",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"image_state\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"zzUnknown\":1}}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"image_state\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: not an object",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"image_state\",\"params\":\"text\"}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: keys reordered",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"image_state\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"image_state\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: missing deviceId",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"image_state\",\"params\":{}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: unknown key",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"checkpoint\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},\"zzUnknown\":1}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"checkpoint\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: not an object",
+   "input": "\"text\"",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: keys reordered",
+   "input": "{\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},\"op\":\"checkpoint\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"checkpoint\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: missing id",
+   "input": "{\"op\":\"checkpoint\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: missing op",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "op: other literal",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"bogus-literal\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: missing params",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"checkpoint\"}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: unknown key",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"checkpoint\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"zzUnknown\":1}}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"checkpoint\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: not an object",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"checkpoint\",\"params\":\"text\"}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: keys reordered",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"checkpoint\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"checkpoint\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: missing deviceId",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"checkpoint\",\"params\":{}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: unknown key",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"hibernate\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},\"zzUnknown\":1}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"hibernate\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: not an object",
+   "input": "\"text\"",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: keys reordered",
+   "input": "{\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"},\"op\":\"hibernate\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"hibernate\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: missing id",
+   "input": "{\"op\":\"hibernate\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: missing op",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "op: other literal",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"bogus-literal\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: missing params",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"hibernate\"}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: unknown key",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"hibernate\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"zzUnknown\":1}}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"hibernate\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: not an object",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"hibernate\",\"params\":\"text\"}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: keys reordered",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"hibernate\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"hibernate\",\"params\":{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: missing deviceId",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"hibernate\",\"params\":{}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: unknown key",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"current_base_version\",\"params\":{},\"zzUnknown\":1}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"current_base_version\",\"params\":{}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: not an object",
+   "input": "\"text\"",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: keys reordered",
+   "input": "{\"params\":{},\"op\":\"current_base_version\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"current_base_version\",\"params\":{}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: missing id",
+   "input": "{\"op\":\"current_base_version\",\"params\":{}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: missing op",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "op: other literal",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"bogus-literal\",\"params\":{}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: missing params",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"current_base_version\"}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: unknown key",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"current_base_version\",\"params\":{\"zzUnknown\":1}}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"current_base_version\",\"params\":{}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: not an object",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"current_base_version\",\"params\":\"text\"}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: keys reordered",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"current_base_version\",\"params\":{}}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"current_base_version\",\"params\":{}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: unknown key",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reconcile\",\"params\":{},\"zzUnknown\":1}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reconcile\",\"params\":{}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: not an object",
+   "input": "\"text\"",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: keys reordered",
+   "input": "{\"params\":{},\"op\":\"reconcile\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reconcile\",\"params\":{}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: missing id",
+   "input": "{\"op\":\"reconcile\",\"params\":{}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: missing op",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"params\":{}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "op: other literal",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"bogus-literal\",\"params\":{}}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "root: missing params",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reconcile\"}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: unknown key",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reconcile\",\"params\":{\"zzUnknown\":1}}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reconcile\",\"params\":{}}"
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: not an object",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reconcile\",\"params\":\"text\"}",
+   "output": null
+  },
+  {
+   "root": "MachineRequest",
+   "codec": "json",
+   "name": "params: keys reordered",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reconcile\",\"params\":{}}",
+   "output": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"op\":\"reconcile\",\"params\":{}}"
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "sample 0",
+   "input": "{\"type\":\"ok\",\"id\":\"text\",\"result\":null}",
+   "output": "{\"type\":\"ok\",\"id\":\"text\",\"result\":null}"
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "sample 1",
+   "input": "{\"type\":\"ok\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}",
+   "output": "{\"type\":\"ok\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}"
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "sample 2",
+   "input": "{\"type\":\"error\",\"id\":\"text\",\"message\":\"text\"}",
+   "output": "{\"type\":\"error\",\"id\":\"text\",\"message\":\"text\"}"
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "sample 3",
+   "input": "{\"type\":\"error\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
+   "output": "{\"type\":\"error\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}"
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "sample 4",
+   "input": "{\"type\":\"death\",\"deviceId\":\"text\"}",
+   "output": "{\"type\":\"death\",\"deviceId\":\"text\"}"
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "sample 5",
+   "input": "{\"type\":\"death\",\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
+   "output": "{\"type\":\"death\",\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}"
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "root: no union option",
+   "input": "12345",
+   "output": null
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "root: unknown key",
+   "input": "{\"type\":\"error\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"zzUnknown\":1}",
+   "output": "{\"type\":\"error\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}"
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "root: not an object",
+   "input": "\"text\"",
+   "output": null
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "root: keys reordered",
+   "input": "{\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"type\":\"error\"}",
+   "output": "{\"type\":\"error\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}"
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "root: missing type",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
+   "output": null
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "type: other literal",
+   "input": "{\"type\":\"bogus-literal\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
+   "output": null
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "root: missing id",
+   "input": "{\"type\":\"error\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
+   "output": null
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "id: not a string",
+   "input": "{\"type\":\"error\",\"id\":42,\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
+   "output": null
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "id: too short",
+   "input": "{\"type\":\"error\",\"id\":\"\",\"message\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
+   "output": null
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "root: missing message",
+   "input": "{\"type\":\"error\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
+   "output": null
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "message: not a string",
+   "input": "{\"type\":\"error\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"message\":42}",
+   "output": null
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "root: unknown key",
+   "input": "{\"type\":\"ok\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"zzUnknown\":1}",
+   "output": "{\"type\":\"ok\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}"
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "root: not an object",
+   "input": "\"text\"",
+   "output": null
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "root: keys reordered",
+   "input": "{\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}},\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"type\":\"ok\"}",
+   "output": "{\"type\":\"ok\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}"
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "root: missing type",
+   "input": "{\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}",
+   "output": null
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "type: other literal",
+   "input": "{\"type\":\"bogus-literal\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}",
+   "output": null
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "root: missing id",
+   "input": "{\"type\":\"ok\",\"result\":{\"a\":[1,\"x\",true,null,1.5],\"b\":{\"c\":-3}}}",
+   "output": null
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "root: missing result",
+   "input": "{\"type\":\"ok\",\"id\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
+   "output": null
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "root: unknown key",
+   "input": "{\"type\":\"death\",\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"zzUnknown\":1}",
+   "output": "{\"type\":\"death\",\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}"
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "root: not an object",
+   "input": "\"text\"",
+   "output": null
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "root: keys reordered",
+   "input": "{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\",\"type\":\"death\"}",
+   "output": "{\"type\":\"death\",\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}"
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "root: missing type",
+   "input": "{\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
+   "output": null
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "type: other literal",
+   "input": "{\"type\":\"bogus-literal\",\"deviceId\":\"héllo \\\"quoted\\\" \\\\ back\\nslash\\t😀 <&> \\u0001\"}",
+   "output": null
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "root: missing deviceId",
+   "input": "{\"type\":\"death\"}",
+   "output": null
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "deviceId: not a string",
+   "input": "{\"type\":\"death\",\"deviceId\":42}",
+   "output": null
+  },
+  {
+   "root": "MachineResponse",
+   "codec": "json",
+   "name": "deviceId: too short",
+   "input": "{\"type\":\"death\",\"deviceId\":\"\"}",
+   "output": null
+  }
+ ]
+}
