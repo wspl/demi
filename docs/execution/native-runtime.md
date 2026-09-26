@@ -252,6 +252,13 @@ The runner allows **6 seconds** for the shutdown request and process exit.
 If shutdown fails or exceeds that deadline, the runner terminates and reaps the
 child. Startup failures also release the process and its transports.
 
+Once the shutdown is answered, either side may close its transport while the
+other still has closing HTTP/2 frames queued. For example, the service exits as
+soon as its connection has drained, while the caller's connection may still be
+sending its own GOAWAY; that write then fails with a broken pipe. On either
+side, a write into the closed pipe or socket, a reset or an end of input after
+an answered shutdown ends the connection and is not a failure.
+
 EOF ends input, not execution. Cancellation requires the handler to stop and
 release its resources; resetting a stream or aborting a task is insufficient.
 The [protocol limits](#validation-and-flow-control) set the cancellation grace.
