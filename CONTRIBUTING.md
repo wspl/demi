@@ -75,7 +75,8 @@ coding standards.
   only when environment variables supply those resources
   ([Real machine acceptance](docs/delivery/scenarios.md#real-machine-acceptance)).
 - Keep the suite green: before every commit, run the Rust tests, and when a
-  browser package changed, `bun run typecheck:web` and `bun run test`.
+  browser package or JavaScript that a crate ships changed,
+  `bun run typecheck:web` and `bun run test`.
 
 ## Commits
 

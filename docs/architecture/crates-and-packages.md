@@ -826,6 +826,9 @@ review.
   binary Cargo built into the target directory the test runs from
   (`command_service::testing::built_program`), and a TypeScript test through
   `DEMI_TEST_PROGRAMS` ([Validation](../delivery/builds-and-releases.md#validation)).
+  JavaScript that a crate ships, such as the capture extension of
+  `demi-commands`, is tested by a Bun test beside it, which `bun run test`
+  runs.
 - **Generated code.** The TypeScript generated from contract crates lives in
   `packages/protocol/src/generated/` and `packages/web/src/api/generated/` and
   is not committed ([Contracts](contracts.md#generated-typescript)).
@@ -876,7 +879,8 @@ unless:
   that has tests;
 - the graph is acyclic.
 
-The frontend test suite (`bun run test`) runs it.
+It is a test of the repository's scripts (`scripts/__tests__`), and the
+frontend test suite (`bun run test`) runs it.
 
 Other rules are enforced where they apply: Rust visibility keeps internals
 behind a crate's public items, and review enforces the rules in

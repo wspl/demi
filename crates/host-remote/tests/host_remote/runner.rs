@@ -18,7 +18,10 @@ use demi_host_remote::{
     CommandCatalog, CommandSelection, ContextSource, EnvironmentOptions, JobStart, LogPage, Pipe,
     PipeFailure, PipeReader, RemoteHost, RemoteShellEnvironment, ServiceCallError, ServiceRequest,
     ServiceStream,
-    testing::{FixtureOptions, NativeFixture, RunnerFixture, TEST_DEVICE, runner_binary},
+    testing::{
+        FixtureOptions, NativeFixture, RunnerFixture, TEST_DEVICE, native_fixture_binary,
+        runner_binary,
+    },
 };
 use demi_runner_protocol::wire::{
     self, ArtifactOwner, JOB_VIEW_BYTES, MAX_MESSAGE_BYTES, Outbound, PipeRef, STDIN_CHUNK_BYTES,
@@ -1648,7 +1651,7 @@ async fn a_one_shot_call_learns_its_exit_and_the_host_log_keeps_the_streams_word
             .is_err()
     );
 
-    let page = log_until(&host, "stream:result ended").await;
+    let page = log_until(&host, |page| said(page, "stream:result ended") > 0).await;
     let conversation = Some(user_context().conversation);
     let told: Vec<_> = page
         .lines
@@ -1686,13 +1689,13 @@ async fn a_one_shot_call_learns_its_exit_and_the_host_log_keeps_the_streams_word
     fixture.stop().await;
 }
 
-/// The Host log from its start, once it has the line `text`: a read waits
-/// for no queued line, so it asks until the writer has put that line in the
-/// files, and with it every line written before.
-async fn log_until(host: &RemoteHost, text: &str) -> LogPage {
+/// The Host log from its start, once `done` holds for it: a read waits for
+/// no queued line, so it asks until the writer has put the lines `done`
+/// looks for in the files, and with them every line written before.
+async fn log_until(host: &RemoteHost, done: impl Fn(&LogPage) -> bool) -> LogPage {
     let mut page = host.read_log(Some(0), 1000, None).await.unwrap();
     for _ in 0..500 {
-        if page.lines.iter().any(|line| line.text == text) {
+        if done(&page) {
             break;
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
@@ -1701,38 +1704,67 @@ async fn log_until(host: &RemoteHost, text: &str) -> LogPage {
     page
 }
 
-/// An open service stream holds its service (`native-runtime.md` § Keep a
-/// service resident): nothing else holds the fixture's service here, and a
-/// call made while the stream is open still reaches it rather than a new one.
+/// How many lines of `page` say `text`.
+fn said(page: &LogPage, text: &str) -> usize {
+    page.lines.iter().filter(|line| line.text == text).count()
+}
+
+/// A user stream's service stays for as long as the stream is open, and for
+/// the connection's next streams while the connection binds that release
+/// (`native-runtime.md` § Keep a service resident): consecutive one-shot
+/// calls reuse it, and binding another release of the package lets it go
+/// once no stream of it is open.
 #[tokio::test(flavor = "local")]
-async fn an_open_service_stream_holds_its_service_for_the_calls_beside_it() {
-    let native = NativeFixture::load();
+async fn user_calls_reuse_the_service_of_the_release_the_connection_bound_last() {
+    let first = NativeFixture::load();
+    // The same package with another executable: another release.
+    let releases = tempfile::tempdir().unwrap();
+    let mut executable = std::fs::read(native_fixture_binary()).unwrap();
+    executable.push(0);
+    let path = releases.path().join("fixture");
+    std::fs::write(&path, executable).unwrap();
+    let operations = first.descriptor.operations.iter().map(String::as_str);
+    let second = NativeFixture::package(&first.descriptor.id, path, operations);
     let fixture = RunnerFixture::start(FixtureOptions::default()).await;
     let host = fixture.host();
-    let (input, output, mut stream) = open(&fixture, service(&fixture, &native, "echo", None))
+    let call = |native: &NativeFixture| {
+        host.call_service(service(&fixture, native, "where", None), Bytes::new(), 64 * 1024)
+    };
+    // Consecutive calls, and a stream after them, reach one service.
+    call(&first).await.unwrap();
+    call(&first).await.unwrap();
+    let (input, output, mut stream) = open(&fixture, service(&fixture, &first, "echo", None))
         .await
         .unwrap();
-    // Were the stream not holding the service, the registry would stop it
-    // as soon as it had said that it holds no conversation, well within this.
+    // The connection binds the second release now; the open stream still
+    // holds the first one's service. Were it not, the registry would stop
+    // that service as soon as it had said that it holds no conversation,
+    // well within this.
+    call(&second).await.unwrap();
     tokio::time::sleep(Duration::from_millis(500)).await;
-    host.call_service(service(&fixture, &native, "where", None), Bytes::new(), 64 * 1024)
-        .await
-        .unwrap();
     input.writer().unwrap().end();
     assert_eq!(collect(output.reader().unwrap()).await.unwrap(), b"");
     assert_eq!(stream.done().await.unwrap().exit_code, 0);
-    let page = log_until(&host, "stream:where ended").await;
-    let starts = page
-        .lines
+    // With the stream gone, nothing holds the first release's service; the
+    // second one's stays for the next call.
+    call(&second).await.unwrap();
+    let stops = "service demicodes.runner-test holds no lease or conversation and stops";
+    let stopped = "service demicodes.runner-test stopped";
+    let page = log_until(&host, |page| {
+        said(page, "stream:where ended") == 4 && said(page, stopped) == 1
+    })
+    .await;
+    let texts: Vec<_> = page.lines.iter().map(|line| line.text.as_str()).collect();
+    let starts = texts
         .iter()
-        .filter(|line| {
-            line.source == "runner"
-                && line
-                    .text
-                    .starts_with("service demicodes.runner-test started ")
-        })
+        .filter(|text| text.starts_with("service demicodes.runner-test started "))
         .count();
-    assert_eq!(starts, 1, "{:#?}", page.lines);
+    assert_eq!((starts, said(&page, stopped)), (2, 1), "{texts:#?}");
+    let position = |text: &str| texts.iter().position(|line| *line == text);
+    assert!(
+        position(stops) > position("stream:echo ended"),
+        "the first release's service stops only once its stream has ended: {texts:#?}"
+    );
     fixture.stop().await;
 }
 

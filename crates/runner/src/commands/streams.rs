@@ -3,7 +3,11 @@
 //! context, then carry bytes between the invocation and the two pipes the
 //! request named.
 
-use std::{io, sync::Arc};
+use std::{
+    collections::HashMap,
+    io,
+    sync::{Arc, Mutex},
+};
 
 use bytes::Bytes;
 use demi_command_service::{
@@ -22,7 +26,7 @@ use crate::{
     },
     host_log::LineSplitter,
     pipes::PipeClient,
-    services::ServiceHandle,
+    services::{ServiceHandle, ServiceLease},
     tail::TailBuffer,
     tasks::report_pipe,
 };
@@ -35,6 +39,7 @@ pub struct ServiceStreams {
     connection: ConnectionHandle,
     pipes: PipeClient,
     services: ServiceHandle,
+    bindings: Bindings,
     draining: CancellationToken,
     streams: TaskTracker,
     /// Ends every open stream: cancelled by `close` and by the host
@@ -54,6 +59,7 @@ impl ServiceStreams {
             connection,
             pipes,
             services,
+            bindings: Bindings::default(),
             draining,
             streams: TaskTracker::new(),
             cancel,
@@ -93,12 +99,24 @@ impl ServiceStreams {
             .targets
             .get(crate::services::target())
             .map(|artifact| artifact.sha256.clone());
+        // The connection keeps the release its streams bound last
+        // (`Bindings`). The binding moves here, in the order the streams
+        // arrive, and the stream that moved it takes the new lease first,
+        // also when it is refused below, so no binding stays without one.
+        let moved = digest
+            .as_ref()
+            .is_some_and(|digest| self.bindings.bind(&package.id, digest));
+        let bindings = self.bindings.clone();
         let draining = self.draining.clone();
         let log = StreamLog {
             source: format!("stream:{operation}"),
             conversation: context.conversation.clone(),
         };
         self.streams.spawn(async move {
+            if moved && let Some(digest) = &digest {
+                let lease = services.lease(digest.clone()).await;
+                bindings.hold(&package.id, digest, lease);
+            }
             if draining.is_cancelled() {
                 let message = "the runner is draining for an upgrade".to_owned();
                 send_error(&reply, stream_id, ServiceErrorCode::Refused, message, &stream, &log).await;
@@ -249,6 +267,62 @@ impl ServiceStreams {
         self.cancel.cancel();
         self.streams.close();
         self.streams.wait().await;
+        self.bindings.clear();
+    }
+}
+
+/// The package releases the connection's streams bound last, one per
+/// package, each with the lease that keeps its service resident until the
+/// connection ends (`native-runtime.md` § Keep a service resident), so
+/// consecutive user calls reuse the service as consecutive jobs do.
+#[derive(Clone, Default)]
+struct Bindings(Arc<Mutex<HashMap<String, Bound>>>);
+
+/// The release a package is bound to, by its artifact for this host.
+struct Bound {
+    digest: String,
+    /// Empty until the stream that bound the release has taken its lease.
+    lease: Option<ServiceLease>,
+}
+
+impl Bindings {
+    /// Binds `package` to the release whose artifact is `digest`, and says
+    /// whether that moved the binding. A move ends the lease on the release
+    /// bound before; the caller then takes the new lease and hands it to
+    /// `hold`.
+    fn bind(&self, package: &str, digest: &str) -> bool {
+        let mut bound = self.0.lock().expect("the bindings are intact");
+        if bound.get(package).is_some_and(|bound| bound.digest == digest) {
+            return false;
+        }
+        bound.insert(
+            package.to_owned(),
+            Bound {
+                digest: digest.to_owned(),
+                lease: None,
+            },
+        );
+        true
+    }
+
+    /// Keeps `lease` for `package` when the package is still bound to the
+    /// release of `digest` and that binding holds no lease yet. Otherwise
+    /// the lease ends here: another release was bound meanwhile, the same
+    /// release was bound again and holds one already, or the connection has
+    /// ended.
+    fn hold(&self, package: &str, digest: &str, lease: ServiceLease) {
+        let mut bound = self.0.lock().expect("the bindings are intact");
+        if let Some(bound) = bound.get_mut(package)
+            && bound.digest == digest
+            && bound.lease.is_none()
+        {
+            bound.lease = Some(lease);
+        }
+    }
+
+    /// Ends every binding and its lease, with the connection.
+    fn clear(&self) {
+        self.0.lock().expect("the bindings are intact").clear();
     }
 }
 

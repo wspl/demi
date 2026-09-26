@@ -1,5 +1,4 @@
 ---
-'@demicodes/backend': patch
 '@demicodes/web-ui': patch
 ---
 
