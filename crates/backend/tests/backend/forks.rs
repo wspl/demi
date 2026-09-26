@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 
 use crate::conversations::{
     FIRST, SECOND, Socket, THIRD, anthropic, answer, create, kinds, last_text, on_device, send, settled, summaries,
-    tool_use, transcript,
+    tool_result, tool_use, transcript,
 };
 use crate::support::{Harness, MASTER_EMAIL, MASTER_PASSWORD};
 
@@ -220,18 +220,6 @@ async fn a_fork_keeps_the_edits_its_history_made_in_a_copy_of_its_own() {
     assert_eq!(copied.status, StatusCode::OK, "{}", String::from_utf8_lossy(&copied.body));
     assert_eq!(copied.json::<ChangeSides>(), sides);
     backend.close().await;
-}
-
-/// The text of the tool result `id` that `request` carries.
-fn tool_result(request: &Value, id: &str) -> String {
-    let result = request["messages"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .flat_map(|message| message["content"].as_array().into_iter().flatten())
-        .find(|block| block["type"] == "tool_result" && block["tool_use_id"] == id)
-        .unwrap_or_else(|| panic!("no result of {id}: {request}"));
-    result["content"][0]["text"].as_str().unwrap().to_owned()
 }
 
 #[tokio::test]
