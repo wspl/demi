@@ -39,10 +39,13 @@ keeps a second busy flag.
 A look is retention because the page makes it by itself: it lists the
 browser's tabs each time it is shown again and after each tool call, so a
 listing says nothing about whether anyone uses the Host. An open view says
-that someone does, so the Host they watch is not reclaimed under them. The view
-ends when the page closes, hides the view or loses its connection
-([Ending a view](../browser/live-view.md#ending-a-view)); a page left open on a
-view keeps its conversation active until then.
+that someone does, so the Host they watch is not reclaimed under them. The
+page closes its view while it is hidden, behind another browser tab or in a
+minimized window, and opens a new one when it is shown again
+([Ending a view](../browser/live-view.md#ending-a-view)). So a page left open
+on a view keeps its conversation, and its Cloud, active only while it is
+visible, when someone may be watching; once it is hidden, the idle window
+starts.
 
 ## Idle window
 
