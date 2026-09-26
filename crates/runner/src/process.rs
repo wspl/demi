@@ -3,9 +3,11 @@ use std::{
     io,
     path::PathBuf,
     process::{ExitStatus, Stdio},
+    time::Duration,
 };
 
 use bytes::Bytes;
+use demi_command_service::descriptors::{self, Backoff};
 use process_wrap::tokio::{ChildWrapper, CommandWrap, KillOnDrop};
 use futures_util::StreamExt;
 use tokio::{
@@ -86,16 +88,9 @@ impl ChildProcess {
             #[cfg(windows)]
             command.wrap(process_wrap::tokio::JobObject);
         }
-        // Out of open files, the process waits for one (`runner.md` § Load).
-        let mut backoff = demi_command_service::descriptors::Backoff::default();
-        let mut child = loop {
-            match command.spawn() {
-                Ok(child) => break child,
-                Err(error) if demi_command_service::descriptors::exhausted(&error) => {
-                    backoff.wait().await
-                }
-                Err(error) => return Err(classify_failure(error, &options).await),
-            }
+        let mut child = match start(|| command.spawn()).await {
+            Ok(child) => child,
+            Err(error) => return Err(classify_failure(error, &options).await),
         };
         let pid = child.id().expect("newly spawned process has an ID");
         let mut stdin = child.stdin().take().expect("piped stdin");
@@ -290,6 +285,84 @@ async fn pump<T: AsyncRead + Unpin>(
                 }
             }
         }
+    }
+}
+
+/// Starts a process with `attempt`, which tries to spawn it once. Every process
+/// the runner starts, a service, a raw process, a job's external command or a
+/// utility's child program, starts this way, so none fails for a condition
+/// that passes (`runner.md` § Load; `StartRetry` says which).
+pub(crate) async fn start<T>(mut attempt: impl FnMut() -> io::Result<T>) -> io::Result<T> {
+    let mut retry = StartRetry::default();
+    loop {
+        let error = match attempt() {
+            Ok(started) => return Ok(started),
+            Err(error) => error,
+        };
+        let Some(pause) = retry.pause(&error) else {
+            return Err(error);
+        };
+        tokio::time::sleep(pause).await;
+    }
+}
+
+/// `start` on a thread that may block, such as the shell's hooks.
+pub(crate) fn start_blocking<T>(mut attempt: impl FnMut() -> io::Result<T>) -> io::Result<T> {
+    let mut retry = StartRetry::default();
+    loop {
+        let error = match attempt() {
+            Ok(started) => return Ok(started),
+            Err(error) => error,
+        };
+        let Some(pause) = retry.pause(&error) else {
+            return Err(error);
+        };
+        std::thread::sleep(pause);
+    }
+}
+
+/// How long a start waits, in all, for its program to stop being busy.
+const BUSY_WAIT: Duration = Duration::from_secs(1);
+
+/// When a failed process start is tried again.
+///
+/// - Out of open files, always: another descriptor will close
+///   (`demi_command_service::descriptors`).
+/// - While its program is busy (`ETXTBSY`), for at most `BUSY_WAIT`. Linux
+///   refuses to run a file that any process holds open for writing, and the
+///   runner causes that itself. It writes files that it then runs, such as a
+///   service executable it has just copied into its cache or a script a job
+///   has just written, while other threads start processes. Starting a
+///   process forks the runner, and the child holds a copy of every descriptor
+///   the runner had open, the one writing that file too, until it runs its
+///   own program. Close-on-exec closes the copy only then, and Linux has no
+///   close-on-fork, so nothing the writer does can prevent the copy. A start
+///   of the file in that moment fails although the runner has closed it. The
+///   failure is inherent to fork and exec from threads on Linux, and it is
+///   bounded: every child the runner forks runs its program at once (std's
+///   and process-wrap's spawns; nothing in the runner forks otherwise), so the
+///   copy lasts from a fork to its exec. A program still busy after
+///   `BUSY_WAIT` is open for writing elsewhere, and the start fails with it.
+#[derive(Default)]
+struct StartRetry {
+    backoff: Backoff,
+    /// The pauses taken so far for a busy program.
+    busy: Duration,
+}
+
+impl StartRetry {
+    /// The pause before the next attempt, or `None` when `error` ends the
+    /// start.
+    fn pause(&mut self, error: &io::Error) -> Option<Duration> {
+        if descriptors::exhausted(error) {
+            return Some(self.backoff.pause());
+        }
+        if error.kind() != io::ErrorKind::ExecutableFileBusy || self.busy >= BUSY_WAIT {
+            return None;
+        }
+        let pause = self.backoff.pause();
+        self.busy += pause;
+        Some(pause)
     }
 }
 

@@ -78,11 +78,12 @@ impl ResidentService {
         command.wrap(process_wrap::tokio::ProcessGroup::leader());
         #[cfg(windows)]
         command.wrap(process_wrap::tokio::JobObject);
-        // Out of open files, the service waits for one (`runner.md` § Load).
-        let mut child = demi_command_service::descriptors::retry(&stop, || {
-            std::future::ready(command.spawn())
-        })
-        .await?;
+        // A start that waits (`crate::process::start`) ends with `stop`.
+        let mut child = tokio::select! {
+            biased;
+            _ = stop.cancelled() => return Err(RuntimeError::Cancelled),
+            child = crate::process::start(|| command.spawn()) => child?,
+        };
         let pid = child.id().expect("a new process has an ID");
         let input = child.stdin().take().expect("piped stdin");
         let output = child.stdout().take().expect("piped stdout");
