@@ -88,6 +88,12 @@ export CARGO_ZIGBUILD_ZIG_PATH="$(brew --prefix zig@<zig version>)/bin/zig"
 export PATH="$(brew --prefix llvm)/bin:$(brew --prefix lld)/bin:$PATH"
 ```
 
+`cargo xtask` is an alias, in the repository's `.cargo/config.toml`, for
+`cargo run --package xtask --`. Like any command that selects one crate, it
+builds `xtask` with a copy of the dependencies of its own; after a build of the
+whole workspace, `target/debug/xtask` runs the same commands without that copy,
+as `bun run contracts` does.
+
 `cargo xtask` pins the remaining inputs: the Apple SDK version, the Windows SDK
 and C runtime versions that cargo-xwin downloads, and the minimum macOS
 version. The Apple targets need an Apple SDK directory, passed with `--sdk` or
@@ -111,7 +117,9 @@ the runner and the command programs for all six targets. Repeated
 `--package <crate>` options name the executables to build, including
 `demi-backend` and `demi-machines`. Repeated `--target <triple>` options name
 the targets; without them each named executable is built for every target
-[Executables and targets](#executables-and-targets) gives it. `--artifacts`
+[Executables and targets](#executables-and-targets) gives it. A named target
+that a named executable does not run on, such as `demi-machines` for a macOS
+target, is refused before anything builds. `--artifacts`
 selects the Cargo target directory; its default is `.cache/native-target`.
 
 Development builds only the targets of the Hosts in use, and packages a
@@ -141,6 +149,8 @@ cargo xtask native build \
 `cargo xtask native package` turns built executables into a release directory.
 It takes the same repeated `--target` options as the build and packages exactly
 those targets; without them it requires every target of the executable.
+`--artifacts` names the Cargo target directory the build wrote, with the
+build's default.
 
 ```sh
 cargo xtask native package --package demi-commands \
@@ -155,15 +165,18 @@ Each executable has its own kind of release:
 
 - **Command packages.** Each command program is released on its own. Its
   release directory holds `descriptor.json` and one subdirectory per target
-  with the executable. The descriptor's operations are the ones the program
-  declares in its code, so a release cannot advertise an operation the program
-  does not serve, and its version is the workspace version.
+  with the executable. The descriptor's id and operations are the ones the
+  package's contract crate declares (`builtin-protocol` for `demi-commands`,
+  `claude-protocol` for `demi-claude`), the operation list the program routes
+  by, so a release cannot advertise an operation the program does not serve;
+  its version is the workspace version.
   [Bind an exact package](../execution/native-runtime.md#bind-an-exact-package)
   defines the descriptor.
 - **Runner.** A runner release is a directory named by the hash of its
-  contents, holding `manifest.json` and one executable per target. Packaging
-  then replaces the top-level `manifest.json` atomically, so it names the
-  release packaged last.
+  contents, holding `manifest.json` and one executable per target. Once that
+  directory is in place, packaging replaces the top-level `manifest.json`
+  atomically, so it names the release packaged last; earlier releases stay for
+  the runners installed from them.
 - **Backend and machine manager.** Each is released as one executable per
   target that carries the workspace version
   ([Package versioning](package-versioning.md#rust-executables)). The layout of
@@ -173,8 +186,10 @@ Every release is published the same way, through the one verified publication
 of the artifact library
 ([Crates and packages](../architecture/crates-and-packages.md#crates)): stage
 every artifact, verify each copy's size and SHA-256, publish once, and refuse
-conflicting metadata or corrupt bytes already in place. A failed publication
-removes its temporary files and leaves the top-level pointer as it was.
+conflicting metadata or corrupt bytes already in place. A release already in
+place with the same record and bytes is the one being published, so packaging
+the same build again succeeds. A failed publication removes its temporary
+files and leaves the top-level pointer as it was.
 
 A release of fewer than all targets is a development release, for a backend
 on the developer's own machine; publication refuses it
