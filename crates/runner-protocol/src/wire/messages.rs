@@ -651,7 +651,7 @@ pub struct StreamArtifactOwner {
 #[garde(allow_unvalidated)]
 pub struct RunnerInfo {
     pub name: String,
-    pub platform: String,
+    pub platform: RunnerPlatform,
     pub version: String,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[garde(inner(custom(demi_command_service::protocol::target)))]
@@ -662,6 +662,18 @@ pub struct RunnerInfo {
     /// refused, never paired.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     pub managed: Option<bool>,
+}
+
+/// The operating system a runner runs on, by the names Node's
+/// `process.platform` gives them, which the TypeScript backend reads in the
+/// hello too. A device keeps its runner's, and the browser receives it with
+/// the device.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum RunnerPlatform {
+    Darwin,
+    Win32,
+    Linux,
 }
 
 /// The account the runner works as.
@@ -841,4 +853,7 @@ serde_plain::derive_display_from_serialize!(NetErrorCode);
 serde_plain::derive_display_from_serialize!(ServiceErrorCode);
 serde_plain::derive_display_from_serialize!(ChangeKind);
 serde_plain::derive_display_from_serialize!(SpawnErrorKind);
+serde_plain::derive_display_from_serialize!(RunnerPlatform);
+// A device's platform is stored as its name.
+serde_plain::derive_fromstr_from_deserialize!(RunnerPlatform);
 

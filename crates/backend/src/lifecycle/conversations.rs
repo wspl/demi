@@ -132,6 +132,7 @@ mod tests {
     use tokio_util::sync::CancellationToken;
 
     use super::*;
+    use demi_runner_protocol::wire::RunnerPlatform;
     use crate::auth::sessions::TokenHash;
     use crate::backend::Services;
     use crate::config::LifecycleTuning;
@@ -175,7 +176,7 @@ mod tests {
         let mut devices = Vec::new();
         for name in names {
             let device = control
-                .create_device(owner.clone(), (*name).into(), "linux".into(), TokenHash::of(name))
+                .create_device(owner.clone(), (*name).into(), RunnerPlatform::Linux, TokenHash::of(name))
                 .await
                 .unwrap();
             devices.push(device.id);
