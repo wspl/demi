@@ -336,11 +336,11 @@ is not used), because it starts cold and is deleted afterwards.
 | F2 | — | done | AGENTS.md Go section, `.golangci.yml`, `scripts/go-check.sh` (`e00717bc`) |
 | F3 | — | done | runner, edit tracking, native runtime, commands, package boundaries, native builds (`e00717bc`); docs that only name locations (browser, scenarios, overview, sessions-and-targets, file-previews, live view) are updated when their WP merges |
 | F4a | — | done | `internal/toolctx`, `internal/toolctx/toolctxtest` (`cbcb5d5d`, `6bfdea40`) |
-| F4b | s2 | verifying | 5 of 7 packages generated, 6,855 corpus cases; core/agentproto split into F4c (design `6eb8299c`); `-mod=mod` needed while vendor/ holds Rust (`763449da`) |
+| F4b | s2 | fixing round 1 (H1 deep-nesting stack overflow; M1 record key order; L1–L6) | 5 of 7 packages generated, 6,855 corpus cases; core/agentproto split into F4c (design `6eb8299c`); `-mod=mod` needed while vendor/ holds Rust (`763449da`) |
 | F4c | s2 | next | agent protocol contracts, same agent as F4b |
 | F5 | — | done | triage: 37 failures → 11 causes; 22 environment (stripped native binary now used), 6 product (ledger L1–L10), 8 test-side, 1 unresolved (C4); ledger done (`ledger.md`: ~373 behaviors, 242 old test files; A1–A3 split, pipes.rs → S2, utilities_* → S1 accepted); triage running |
 | S1 | s1 | implementing | |
-| T0 | s4 | verifying | 41 utilities, 334 cases, recorder reproducible; Check to take the full registry (decided) |
+| T0 | s4 | round 2 (recycled to a new agent on the stronger model: round 1 too thin for Gate B) | review `reviews/T0-round1.md`; decisions D1 name-order walks, D2 StdinKind (`37282cf5`), D3 full registry in Check |
 | T1a | s3 | implementing | |
 
 ## Working method notes
@@ -355,3 +355,7 @@ is not used), because it starts cold and is deleted afterwards.
 - 2026-09-26: the old repository already generates Rust from Zod
   (`scripts/rust-zod.ts`); Go generation follows that pattern instead of a JSON
   Schema detour.
+- 2026-09-26: recycling for quality, not only size: T0 round 1 (cheaper model)
+  produced corpora too thin to judge Gate B; round 2 runs as a new agent on the
+  stronger model with the review as its handoff. Mechanical work that defines a
+  gate's yardstick gets the stronger model from the start.
