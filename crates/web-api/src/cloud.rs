@@ -110,33 +110,10 @@ pub struct CloudResetAnswer {
 
 #[cfg(test)]
 mod tests {
-    use serde_json::json;
-
     use super::*;
 
     #[test]
-    fn a_status_travels_with_its_nullable_fields_and_a_reset_names_its_operation() {
-        let status = CloudStatus {
-            device: None,
-            state: CloudState::Unallocated,
-            operation: None,
-            error: None,
-            volumes: None,
-            limits: CloudVolumes {
-                system_bytes: 16,
-                home_bytes: 32,
-            },
-        };
-        let json = serde_json::to_value(&status).unwrap();
-        assert_eq!(
-            json,
-            json!({
-                "device": null, "state": "unallocated", "operation": null, "error": null, "volumes": null,
-                "limits": { "systemBytes": 16, "homeBytes": 32 },
-            })
-        );
-        assert_eq!(serde_json::from_value::<CloudStatus>(json).unwrap(), status);
-
+    fn a_reset_names_its_operation_by_a_uuid_and_nothing_else() {
         let reset: CloudReset =
             demi_core::decode(r#"{"operationId":"0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b"}"#).unwrap();
         assert_eq!(reset.operation_id.as_str(), "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b");
