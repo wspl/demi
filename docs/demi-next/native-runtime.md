@@ -586,10 +586,11 @@ descriptors are not valid publication inputs.
 ## Contract generation and validation
 
 Design rules above define the contract. Every contract has one source. A
-contract the frontend also speaks keeps its Zod schema, in the frontend's
-libraries, as that source, because the frontend validates with it; a contract
-the Rust runner or native programs are built from keeps its Zod schema while
-they are Rust, since they generate their bindings from it. Go bindings for both
+contract that a TypeScript program also speaks keeps its Zod schema as that
+source: the frontend validates with it, and build tooling such as the guest
+image build writes with it. A contract the Rust runner or native programs are
+built from keeps its Zod schema while they are Rust, since they generate their
+bindings from it; the managed-boot file the runner reads is one of these. Go bindings for both
 are generated from the Zod source and enforce the same constraints without a
 second manually maintained definition. A contract spoken only between Go
 programs, such as the machine manager wire, is defined directly in Go, in the
@@ -602,6 +603,7 @@ package that owns it, with validation at the point of entry.
 | `packages/browser-protocol` — browser business schemas | `internal/contract/browser` |
 | `packages/command-protocol/src/index.ts` — native wire and descriptors | `internal/contract/cmdservice` |
 | `packages/agent/src/protocol` — conversation frames, blocks and the shared core types | `internal/contract/agentproto` |
+| `packages/machines/src/image-manifest.ts` — Cloud image manifest written by the guest image build | `internal/contract/imagemanifest` |
 
 `scripts/generate-go-contracts.ts` (`bun run go:contracts`) transforms the
 schemas into Go types with boundary validation:

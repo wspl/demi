@@ -80,8 +80,8 @@ scripts/
 The tree names the modules relevant to these boundaries, not every file.
 
 A contract has one source ([contract generation](demi-next/native-runtime.md#contract-generation-and-validation)):
-Zod for contracts the frontend or a Rust program is built from, Go for
-contracts spoken only between Go programs. There is no mirrored second schema.
+Zod for contracts a TypeScript program (the frontend, build tooling) or a Rust
+program speaks, Go for contracts spoken only between Go programs. There is no mirrored second schema.
 Generated Go and intermediate schema documents do not belong in source control.
 Test fixtures belong with tests; release descriptors belong with release artifacts.
 General-purpose operations use the standard library or established libraries.
@@ -591,7 +591,7 @@ shell -> toolctx, tools, contract
 runner -> commandservice, shell, contract
 commands -> commandservice, contract
 claude -> commandservice, contract
-machines -> none
+machines -> contract
 provider -> contract
 agent -> provider, shellenv, contract
 codingagent -> agent, shellenv, contract
