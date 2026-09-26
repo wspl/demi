@@ -1,6 +1,5 @@
-//! The machine-manager socket against the corpus the TypeScript codec
-//! recorded (`docs/internal/rust-migration/corpus/record-machines.ts`): every
-//! line decodes and encodes to the same bytes, and malformed lines are
+//! The machine-manager socket against its recorded corpus (`tests/fixtures`):
+//! every line decodes and encodes to the same bytes, and malformed lines are
 //! refused.
 
 use std::{fs, num::NonZeroU64, path::PathBuf};

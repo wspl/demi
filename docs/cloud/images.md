@@ -96,10 +96,16 @@ release host, `releases.astral.sh`, which serves them directly.
 
 The image supplies `demi` UID/GID 1000, passwordless sudo, a minimal init
 (`tini`), and `/usr/bin/demi-runner`, with the `demi` command alias expected by
-the native runtime. Embedded command packages use their content-addressed
-artifact paths and descriptors. Their identities must match the backend's
-selected releases; rebuilding the runner alone does not refresh command
-binaries.
+the native runtime. Each embedded command package's executable lies at its
+content-addressed path, `/opt/demi/artifacts/<sha256>/<executable>`, the one
+file in the directory its SHA-256 names. The runner starts command services
+from these copies instead of downloading the executables, after checking each
+against the backend's pinned descriptor
+([Preinstalled executables](../execution/native-runtime.md#preinstalled-executables)).
+Their identities must therefore match the backend's selected releases: the
+runner downloads a selected executable that the image does not hold, on the
+first command after every wake and reset. Rebuilding the runner alone does not
+refresh command binaries.
 
 The image contains mount points for `/home`, `/run`, `/tmp`, `/dev`, `/proc`,
 and `/dev/shm`. It does not mount them or configure routes at runtime. Service
@@ -157,7 +163,9 @@ commands and the browser through the real managed runner connection.
 When a runner or embedded native package changes, build the Cloud target,
 rebuild the image, restart the local manager, and reset local Cloud to that base
 before acceptance. Check the running runner's executable hash and native package
-identity after initial start and again after hibernate/wake. Do not hash PID 1
+identity after initial start and again after hibernate/wake. After the reset
+and after the wake, the first native command starts its service from the
+image's embedded executable, without a download. Do not hash PID 1
 as a proxy for the runner: PID 1 is init. Exercise the paired device in the same
 checkpoint.
 
