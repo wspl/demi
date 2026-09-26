@@ -1303,6 +1303,7 @@ dependencies = [
  "demi-agent",
  "demi-agent-protocol",
  "demi-artifact",
+ "demi-backend",
  "demi-builtin-protocol",
  "demi-claude-protocol",
  "demi-coding-agent",

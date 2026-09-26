@@ -419,6 +419,12 @@ impl TestBackend {
         self.backend.local_addr()
     }
 
+    /// Holds every commit of a conversation's checkpoint from now on, until
+    /// the hold is released or dropped.
+    pub fn hold_commits(&self) -> demi_backend::CommitHold {
+        self.backend.hold_commits()
+    }
+
     /// The `ws://` URL of `path`.
     pub fn ws_url(&self, path: &str) -> String {
         format!("ws://{}{path}", self.backend.local_addr())
