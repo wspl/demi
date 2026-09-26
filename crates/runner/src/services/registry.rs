@@ -50,13 +50,15 @@ pub struct ServiceRegistry {
 
 impl ServiceRegistry {
     /// Services start in `cwd` with exactly `env`; their executables are
-    /// cached in `cache`.
+    /// cached in `cache`, or taken from the copies the Host's image
+    /// preinstalled in `image`, when given.
     pub async fn new(
         cache: PathBuf,
+        image: Option<PathBuf>,
         cwd: PathBuf,
         env: BTreeMap<String, String>,
     ) -> Result<Self, RuntimeError> {
-        let cache = Arc::new(ArtifactCache::new(cache).await?);
+        let cache = Arc::new(ArtifactCache::new(cache, image).await?);
         let (requests, receiver) = mpsc::channel(REQUESTS);
         let owner = Owner {
             cache,

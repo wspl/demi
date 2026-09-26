@@ -7,7 +7,7 @@
 use std::collections::BTreeMap;
 
 use demi_command_service::protocol::{PackageArtifact, PackageDescriptor, digest};
-use demi_runner_protocol::release::RunnerRelease;
+use demi_runner_protocol::{image::ARTIFACTS_PATH, release::RunnerRelease};
 use serde::{Deserialize, Serialize};
 
 /// The manifest's schema version.
@@ -166,9 +166,6 @@ pub enum ManifestError {
 pub const RUNNER_PATH: &str = "/usr/bin/demi-runner";
 /// The image's init, which runs the runner and reaps orphaned processes.
 pub const INIT_PATH: &str = "/usr/bin/tini";
-/// Where an image embeds each command package's executable, in a directory
-/// named by the executable's SHA-256.
-pub const ARTIFACTS_PATH: &str = "/opt/demi/artifacts";
 
 impl CloudImageManifest {
     /// Decodes a manifest's bytes and checks it.
