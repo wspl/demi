@@ -267,13 +267,16 @@ ChromeDriver is not required.
 
 A browser release pins a complete version and a per-platform artifact record:
 platform, download location, byte size and SHA-256 established by the Demi release
-pipeline. Resolve official version/download metadata during release preparation;
+pipeline. `cargo xtask browser-release` resolves the official version and
+download metadata during release preparation
+([Chrome for Testing](../delivery/builds-and-releases.md#chrome-for-testing));
 Host startup installs the pinned artifact rather than resolving a moving channel
 such as `latest`. Validate downloaded bytes before publishing the installation.
 Paired-device installation and Cloud image preparation consume the same release
-record through the same installer, the one verified-download and atomic-publish
-path every Demi installer uses. Browser and driver/CDP compatibility must pass
-acceptance together.
+record through the same installer, the artifact library's archive
+installation, which is the one verified-download and atomic-publish path every
+Demi installer uses. Browser and driver/CDP compatibility must pass acceptance
+together.
 
 Platform availability is checked for the exact selected version against the
 [official artifact matrix](https://github.com/GoogleChromeLabs/chrome-for-testing#supported-platforms).
