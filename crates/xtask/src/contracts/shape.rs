@@ -5,9 +5,9 @@
 
 use serde_json::{Map, Value};
 
-/// The largest integer JavaScript represents exactly, `2^53 - 1`: the bound
-/// of every integer the browser reads.
-pub const MAX_SAFE_INTEGER: i64 = (1 << 53) - 1;
+/// Core's `MAX_SAFE_INTEGER`, the bound of every integer the browser reads,
+/// as a signed bound.
+pub const MAX_SAFE_INTEGER: i64 = demi_core::MAX_SAFE_INTEGER as i64;
 
 /// Keywords that describe a schema without constraining it. schemars writes
 /// `default` for a field serde fills in when it is absent, which the field's
@@ -32,7 +32,7 @@ pub enum Shape {
     /// A named definition.
     Ref(String),
     String(StringShape),
-    /// An integer within its bounds, which include JavaScript's safe range.
+    /// An integer within its bounds, which lie within JavaScript's safe range.
     Integer { min: i64, max: i64 },
     Number { min: Option<Bound>, max: Option<Bound> },
     Boolean,
@@ -69,10 +69,15 @@ pub struct StringShape {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StringFormat {
     Text,
+    /// Text web-api's `Trimmed` trims when it arrives: its bounds count what
+    /// remains (format `trimmed`).
+    Trimmed,
     /// A time as core's `Timestamp` writes it.
     DateTime,
     Email,
-    Url,
+    /// An `http` or `https` URL, as web-api's `EndpointUrl` reads it (format
+    /// `http-url`).
+    HttpUrl,
     /// Bytes as core's `B64Bytes` writes them.
     Base64,
 }
@@ -265,9 +270,10 @@ fn read_string(schema: &Map<String, Value>, at: &str) -> Result<Shape, Unsupport
         schema.get("contentEncoding").and_then(Value::as_str),
     ) {
         (None, None) => StringFormat::Text,
+        (Some("trimmed"), None) => StringFormat::Trimmed,
         (Some("date-time"), None) => StringFormat::DateTime,
         (Some("email"), None) => StringFormat::Email,
-        (Some("uri"), None) => StringFormat::Url,
+        (Some("http-url"), None) => StringFormat::HttpUrl,
         (None, Some("base64")) => StringFormat::Base64,
         (format, encoding) => {
             return Err(unsupported(
@@ -354,17 +360,18 @@ fn check_pattern(pattern: &str) -> Result<(), String> {
 }
 
 /// The bounds a schemars integer format gives its type, before the
-/// schema's own `minimum` and `maximum`.
+/// schema's own `minimum` and `maximum`. A 64-bit type's reach past `i64`
+/// changes nothing: it lies beyond JavaScript's safe range either way.
 fn format_bounds(format: Option<&str>, at: &str) -> Result<(i64, i64), Unsupported> {
     let bounds = match format {
         Some("int8") => (i64::from(i8::MIN), i64::from(i8::MAX)),
         Some("int16") => (i64::from(i16::MIN), i64::from(i16::MAX)),
         Some("int32") => (i64::from(i32::MIN), i64::from(i32::MAX)),
-        Some("int64" | "int") | None => (-MAX_SAFE_INTEGER, MAX_SAFE_INTEGER),
+        Some("int64" | "int") | None => (i64::MIN, i64::MAX),
         Some("uint8") => (0, i64::from(u8::MAX)),
         Some("uint16") => (0, i64::from(u16::MAX)),
         Some("uint32") => (0, i64::from(u32::MAX)),
-        Some("uint64" | "uint") => (0, MAX_SAFE_INTEGER),
+        Some("uint64" | "uint") => (0, i64::MAX),
         Some(other) => return Err(unsupported(at, format!("the integer format `{other}`"))),
     };
     Ok(bounds)
@@ -378,7 +385,7 @@ fn integer_bound(schema: &Map<String, Value>, key: &str, at: &str) -> Result<Opt
     if let Some(whole) = value.as_i64() {
         return Ok(Some(whole));
     }
-    // Beyond `i64` lies beyond the safe range the bounds are cut to anyway.
+    // Beyond `i64` lies beyond the safe range the bounds must keep to anyway.
     if value.as_u64().is_some() {
         return Ok(Some(i64::MAX));
     }
@@ -407,8 +414,15 @@ fn read_integer(schema: &Map<String, Value>, at: &str) -> Result<Shape, Unsuppor
     if let Some(exclusive) = integer_bound(schema, "exclusiveMaximum", at)? {
         max = max.min(exclusive.saturating_sub(1));
     }
-    let min = min.max(-MAX_SAFE_INTEGER);
-    let max = max.min(MAX_SAFE_INTEGER);
+    // An integer the browser reads is bounded to JavaScript's safe range
+    // (`contracts.md` § Encoding conventions), in the Rust type too, so that
+    // an end that decodes it refuses what the browser cannot hold.
+    if min < -MAX_SAFE_INTEGER || max > MAX_SAFE_INTEGER {
+        return Err(unsupported(
+            at,
+            format!("an integer from {min} to {max}, beyond JavaScript's safe range: bound it with garde's `range` to `MAX_SAFE_INTEGER`"),
+        ));
+    }
     if min > max {
         return Err(unsupported(at, format!("an integer between {min} and {max}")));
     }
@@ -634,5 +648,20 @@ mod tests {
             assert!(read(&refused, "t").is_err(), "{refused}");
         }
         assert!(read(&json!({ "type": "string", "pattern": "^[^./\\\\\\x00][a-z.]*(?:x|y)$" }), "t").is_ok());
+    }
+
+    #[test]
+    fn an_integer_the_rust_type_leaves_beyond_javascripts_safe_range_is_refused() {
+        for (unbounded, place) in [
+            (json!({ "type": "integer", "format": "uint64", "minimum": 0 }), "an integer from 0 to"),
+            (json!({ "type": "integer", "format": "int64", "maximum": 5 }), "an integer from -"),
+        ] {
+            let error = read(&unbounded, "Summary.revision").unwrap_err().to_string();
+            assert!(error.starts_with(&format!("Summary.revision: {place}")), "{error}");
+        }
+        let bounded = json!({ "type": "integer", "format": "uint64", "minimum": 0, "maximum": MAX_SAFE_INTEGER });
+        assert_eq!(read(&bounded, "t").unwrap(), Shape::Integer { min: 0, max: MAX_SAFE_INTEGER });
+        let narrow = json!({ "type": "integer", "format": "uint32", "minimum": 0 });
+        assert_eq!(read(&narrow, "t").unwrap(), Shape::Integer { min: 0, max: i64::from(u32::MAX) });
     }
 }

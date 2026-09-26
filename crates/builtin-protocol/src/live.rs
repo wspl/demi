@@ -7,7 +7,7 @@
 
 use std::sync::LazyLock;
 
-use demi_core::Nullable;
+use demi_core::{MAX_SAFE_INTEGER, Nullable};
 use regex::Regex;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -209,7 +209,7 @@ pub struct UploadFile {
     pub name: String,
     #[garde(length(chars, max = 200))]
     pub mime_type: String,
-    #[garde(skip)]
+    #[garde(range(max = MAX_SAFE_INTEGER))]
     pub size: u64,
 }
 
@@ -338,7 +338,7 @@ pub enum LiveViewerMessage {
         tab: TabId,
         #[garde(skip)]
         token: ControlToken,
-        #[garde(skip)]
+        #[garde(range(max = MAX_SAFE_INTEGER))]
         revision: u64,
         #[garde(length(chars, max = 10_000))]
         value: String,
@@ -351,7 +351,7 @@ pub enum LiveViewerMessage {
         tab: TabId,
         #[garde(skip)]
         token: ControlToken,
-        #[garde(skip)]
+        #[garde(range(max = MAX_SAFE_INTEGER))]
         revision: u64,
         #[garde(skip)]
         upload: u32,
@@ -433,7 +433,7 @@ pub struct ControlRect {
 pub struct LiveControl {
     #[garde(skip)]
     pub token: ControlToken,
-    #[garde(skip)]
+    #[garde(range(max = MAX_SAFE_INTEGER))]
     pub revision: u64,
     #[garde(skip)]
     pub kind: ControlKind,

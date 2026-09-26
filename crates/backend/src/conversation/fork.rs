@@ -192,6 +192,7 @@ mod tests {
     use demi_core::{SessionPhase, Timestamp};
 
     use super::*;
+    use demi_runner_protocol::wire::RunnerPlatform;
     use crate::auth::sessions::TokenHash;
     use crate::storage::blobs::{BlobStores, UserBlobs};
     use crate::storage::control::testing;
@@ -243,7 +244,7 @@ mod tests {
         let mut devices = Vec::new();
         for (name, token) in [("laptop", "one"), ("ci", "two")] {
             let device = control
-                .create_device(master.clone(), name.into(), "linux".into(), TokenHash::of(token))
+                .create_device(master.clone(), name.into(), RunnerPlatform::Linux, TokenHash::of(token))
                 .await
                 .unwrap();
             let host = AttachedHostRecord {

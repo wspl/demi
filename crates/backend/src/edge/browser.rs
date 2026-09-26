@@ -3,7 +3,9 @@
 //! command runs, in the package the `browser` user stream declares, as a
 //! one-shot user call. Listing, closing and moving a tab never wake a
 //! stopped Cloud, and an archive, a switch or a detach ends them; opening a
-//! tab is ordinary demand. The backend holds no browser logic.
+//! tab is ordinary demand. Listing is a look, which is no activity; the
+//! others operate the browser (`resource-lifecycle.md` § Activity). The
+//! backend holds no browser logic.
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -27,7 +29,7 @@ use super::conversations::owned;
 use super::error::ApiError;
 use super::gate::AuthUser;
 use crate::conversation::host_access::{HostAccessError, Refusal};
-use crate::conversation::stream::{BROWSER_STREAM, ServiceBinding, ServiceCall, UserCallError, Wake};
+use crate::conversation::stream::{BROWSER_STREAM, ServiceBinding, ServiceCall, UserCallError, UserCallKind};
 use crate::storage::conversation_index::ConversationRecord;
 
 /// The most bytes of an operation's JSON answer.
@@ -44,7 +46,7 @@ pub(super) async fn list(
         limit: None,
         timeout: None,
     };
-    let listed = call(&state, &user.id, record, Wake::No, BrowserOperation::Tabs, input).await?;
+    let listed = call(&state, &user.id, record, UserCallKind::Looks, BrowserOperation::Tabs, input).await?;
     // A stopped Cloud runs no browser.
     let tabs = match stopped_is_none(listed)? {
         Some(answer) => decode::<TabsResult>(&answer)?.tabs,
@@ -67,7 +69,7 @@ pub(super) async fn open(
         load: None,
         timeout: None,
     };
-    let answer = call(&state, &user.id, record, Wake::Yes, BrowserOperation::Open, input)
+    let answer = call(&state, &user.id, record, UserCallKind::Starts, BrowserOperation::Open, input)
         .await?
         .map_err(refused)?;
     let opened = decode::<OpenResult>(&answer)?;
@@ -91,7 +93,7 @@ pub(super) async fn close(
         return Ok(StatusCode::NO_CONTENT);
     };
     let input = CloseInput { tab, timeout: None };
-    match call(&state, &user.id, record, Wake::No, BrowserOperation::Close, input).await? {
+    match call(&state, &user.id, record, UserCallKind::Operates, BrowserOperation::Close, input).await? {
         Ok(_) | Err(UserCallError::Access(HostAccessError::Refused(Refusal::Stopped))) => Ok(StatusCode::NO_CONTENT),
         Err(error) if browser_failure(&error).is_some_and(|failure| failure.code == BrowserErrorCode::TabNotFound) => {
             Ok(StatusCode::NO_CONTENT)
@@ -113,7 +115,7 @@ pub(super) async fn navigate(
         load: None,
         timeout: None,
     };
-    on_tab(call(&state, &user.id, record, Wake::No, BrowserOperation::Goto, input).await?)
+    on_tab(call(&state, &user.id, record, UserCallKind::Operates, BrowserOperation::Goto, input).await?)
 }
 
 pub(super) async fn history(
@@ -131,7 +133,7 @@ pub(super) async fn history(
                 load: None,
                 timeout: None,
             };
-            call(&state, &user.id, record, Wake::No, BrowserOperation::Back, input).await?
+            call(&state, &user.id, record, UserCallKind::Operates, BrowserOperation::Back, input).await?
         }
         HistoryAction::Forward => {
             let input = ForwardInput {
@@ -139,7 +141,7 @@ pub(super) async fn history(
                 load: None,
                 timeout: None,
             };
-            call(&state, &user.id, record, Wake::No, BrowserOperation::Forward, input).await?
+            call(&state, &user.id, record, UserCallKind::Operates, BrowserOperation::Forward, input).await?
         }
         HistoryAction::Reload => {
             let input = ReloadInput {
@@ -147,7 +149,7 @@ pub(super) async fn history(
                 load: None,
                 timeout: None,
             };
-            call(&state, &user.id, record, Wake::No, BrowserOperation::Reload, input).await?
+            call(&state, &user.id, record, UserCallKind::Operates, BrowserOperation::Reload, input).await?
         }
     };
     on_tab(answered)
@@ -174,7 +176,7 @@ async fn call<I: Serialize>(
     state: &AppState,
     user: &UserId,
     record: ConversationRecord,
-    wake: Wake,
+    kind: UserCallKind,
     operation: fn(I) -> BrowserOperation,
     input: I,
 ) -> Result<Result<Bytes, UserCallError>, ApiError> {
@@ -199,7 +201,7 @@ async fn call<I: Serialize>(
     let answered = state
         .shards
         .of(user)
-        .call(move |shard, cancel| async move { shard.user_call(&record.id, wake, &call, &cancel).await })
+        .call(move |shard, cancel| async move { shard.user_call(&record.id, kind, &call, &cancel).await })
         .await?;
     Ok(answered)
 }

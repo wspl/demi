@@ -7,11 +7,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use demi_builtin_protocol::live;
-use demi_coding_agent::BUILTIN_PACKAGE;
+use demi_builtin_protocol::{PACKAGE as BUILTIN_PACKAGE, live};
 use demi_command_tree::NativeOperation;
 use demi_core::{Clock, SystemClock};
 use demi_web_api::settings::InstanceMode;
+use tracing_subscriber::filter::Targets;
 use url::Url;
 
 use demi_provider::models_dev::ModelsDevClient;
@@ -84,6 +84,10 @@ pub struct Config {
         default_value = DEFAULT_RELEASES_URL
     )]
     pub claude_releases_url: Url,
+    /// What the backend logs: a level, and a level per target, comma-separated,
+    /// such as `info,demi::provider::claude_code::wire=trace`
+    #[arg(long, env = "DEMI_LOG", value_name = "DEMI_LOG", default_value = "info")]
+    pub log: Targets,
 }
 
 /// A configuration value clap cannot check by itself.

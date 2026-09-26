@@ -9,6 +9,7 @@ use std::process::Stdio;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
+use demi_command_service::testing::built_program;
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::process::Child;
 use tokio::sync::watch;
@@ -33,9 +34,6 @@ pub fn runner_binary() -> PathBuf {
 pub fn native_fixture_binary() -> PathBuf {
     built_program("demi-native-fixture")
 }
-
-/// A program Cargo built beside the test, as every test finds one.
-pub use demi_command_service::testing::built_program;
 
 /// How a runner process starts.
 #[derive(Debug, Clone)]

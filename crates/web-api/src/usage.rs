@@ -2,6 +2,7 @@
 //! group per provider entry and model, in the order each pair was first
 //! used, with the number of requests and the sum of each token count.
 
+use demi_core::MAX_SAFE_INTEGER;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -20,10 +21,15 @@ pub struct UsageTotals {
 pub struct UsageGroup {
     pub provider_id: String,
     pub model_id: String,
+    #[garde(range(max = MAX_SAFE_INTEGER))]
     pub requests: u64,
+    #[garde(range(max = MAX_SAFE_INTEGER))]
     pub input_tokens: u64,
+    #[garde(range(max = MAX_SAFE_INTEGER))]
     pub output_tokens: u64,
+    #[garde(range(max = MAX_SAFE_INTEGER))]
     pub cache_read_tokens: u64,
+    #[garde(range(max = MAX_SAFE_INTEGER))]
     pub cache_write_tokens: u64,
 }
 

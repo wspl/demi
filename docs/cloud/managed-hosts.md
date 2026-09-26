@@ -441,10 +441,10 @@ uses join one allocation and wake. Metadata alone never creates a sandbox.
 
 The [idle rule](../execution/resource-lifecycle.md#idle-window) applies across
 every conversation using this device. Tabs, resident services, attachments, and
-passive observers do not keep it active. Maintenance does not restart the idle
-clock. Stopping Cloud ends all in-sandbox browser/native state and its
-[exposes](../execution/expose.md#lifetime); cleanup must not wake it or send
-per-conversation release to a stopped device.
+a look at what runs there, such as a tab listing, do not keep it active.
+Maintenance does not restart the idle clock. Stopping Cloud ends all in-sandbox
+browser/native state and its [exposes](../execution/expose.md#lifetime);
+cleanup must not wake it or send per-conversation release to a stopped device.
 
 The hard lifetime cap can stop unattended jobs only after reserving admission
 and rechecking active turns and other demand. A turn in flight on a

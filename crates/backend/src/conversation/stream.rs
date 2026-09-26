@@ -5,7 +5,9 @@
 //! ways for as long as the page keeps it open, and the edge relays them
 //! under the stream's lease; a one-shot call sends no input and reads its
 //! JSON answer to its end. Neither wakes a stopped Cloud unless the call is
-//! work the user starts.
+//! work the user starts. An open stream is the conversation's activity, and
+//! so is a call that operates the Host; a call that only looks is not
+//! (`resource-lifecycle.md` § Activity).
 
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
@@ -13,6 +15,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use demi_command_service::protocol::{CommandCaller, PackageDescriptor};
 use demi_command_tree::NativeOperation;
+use demi_gates::GateLease;
 use demi_host_remote::{Pipe, PipeReader, PipeWriter, ServiceCallError, ServiceRequest, ServiceStream};
 use demi_shell::HostErrorKind;
 use demi_web_api::error::ErrorCode;
@@ -20,7 +23,7 @@ use demi_web_api::ids::ConversationId;
 use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
 
-use super::host_access::{ConversationHost, HostAccessError, Waits};
+use super::host_access::{Attention, ConversationHost, HostAccessError, Waits};
 use super::transfer::OpenTransfer;
 use crate::runner::command_context::command_context;
 use crate::runner::native::NativeCatalog;
@@ -96,13 +99,20 @@ impl StreamError {
     }
 }
 
-/// Whether a one-shot user call wakes a stopped Cloud: work the user starts,
-/// such as opening a browser tab, does; a look at what runs there, such as
-/// listing the tabs, does not.
+/// What a one-shot user call does on the conversation's Host, which decides
+/// whether it wakes a stopped Cloud and whether it is activity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Wake {
-    Yes,
-    No,
+pub(crate) enum UserCallKind {
+    /// Work the user starts, such as opening a browser tab: an ordinary
+    /// operation of the conversation's host access, which wakes a stopped
+    /// Cloud.
+    Starts,
+    /// An operation of the user's on what runs there, such as closing a
+    /// tab: activity, though a stopped Cloud is refused rather than woken.
+    Operates,
+    /// A look at what runs there, such as listing the tabs: a stopped Cloud
+    /// is refused, and the look is no activity.
+    Looks,
 }
 
 /// A one-shot user call: the operation, its arguments, and the most its
@@ -135,7 +145,7 @@ impl Shard {
         binding: &ServiceBinding,
         cancel: &CancellationToken,
     ) -> Result<UserStream, StreamError> {
-        let access = self.admit_stream(id, cancel).await?;
+        let access = self.admit_stream(id, Attention::Watches, cancel).await?;
         let request = self
             .service_request(&access.conversation, &access.host, binding, None)
             .await?;
@@ -153,7 +163,7 @@ impl Shard {
             .await;
         let refused = match opened {
             Ok(Ok(service)) => {
-                let lease = self.lease_stream(access.open, service, input, output);
+                let lease = self.lease_stream(access.open, access.watching, service, input, output);
                 return Ok(UserStream {
                     to_host,
                     from_host,
@@ -170,45 +180,46 @@ impl Shard {
     }
 
     /// Runs a one-shot user call on the conversation's main Host and returns
-    /// its JSON answer. With `Wake::Yes` it is an ordinary operation of the
-    /// conversation's host access; with `Wake::No` it is admitted as a user
+    /// its JSON answer. Work the user starts is an ordinary operation of the
+    /// conversation's host access; any other call is admitted as a user
     /// stream is, and a transition ends it instead of waiting for it.
     pub(crate) async fn user_call(
         &self,
         id: &ConversationId,
-        wake: Wake,
+        kind: UserCallKind,
         call: &ServiceCall,
         cancel: &CancellationToken,
     ) -> Result<Bytes, UserCallError> {
-        match wake {
-            Wake::Yes => {
+        let attention = match kind {
+            UserCallKind::Starts => {
                 let record = self.owned_conversation(id).await?;
-                self.with_host(&record.id, None, cancel, async |host| {
-                    let request = self
-                        .service_request(&record.id, host, &call.binding, Some(&call.args))
-                        .await?;
-                    let answer = host.host.call_service(request, Bytes::new(), call.max_bytes).await?;
-                    Ok::<_, UserCallError>(answer)
-                })
-                .await?
-            }
-            Wake::No => {
-                // Registered with the conversation's transfers until the
-                // answer is in, so a transition ends the call.
-                let access = self.admit_stream(id, cancel).await?;
-                let request = self
-                    .service_request(&access.conversation, &access.host, &call.binding, Some(&call.args))
+                return self
+                    .with_host(&record.id, None, cancel, async |host| {
+                        let request = self
+                            .service_request(&record.id, host, &call.binding, Some(&call.args))
+                            .await?;
+                        let answer = host.host.call_service(request, Bytes::new(), call.max_bytes).await?;
+                        Ok::<_, UserCallError>(answer)
+                    })
                     .await?;
-                let waits = Waits {
-                    cancel,
-                    ended: Some(&access.open.ended),
-                };
-                let answer = waits
-                    .wait(access.host.host.call_service(request, Bytes::new(), call.max_bytes))
-                    .await??;
-                Ok(answer)
             }
-        }
+            UserCallKind::Operates => Attention::Operates,
+            UserCallKind::Looks => Attention::Looks,
+        };
+        // Registered with the conversation's transfers until the answer is
+        // in, so a transition ends the call.
+        let access = self.admit_stream(id, attention, cancel).await?;
+        let request = self
+            .service_request(&access.conversation, &access.host, &call.binding, Some(&call.args))
+            .await?;
+        let waits = Waits {
+            cancel,
+            ended: Some(&access.open.ended),
+        };
+        let answer = waits
+            .wait(access.host.host.call_service(request, Bytes::new(), call.max_bytes))
+            .await??;
+        Ok(answer)
     }
 
     /// What the runner invokes for the user: the operation in the package
@@ -236,12 +247,19 @@ impl Shard {
     }
 
     /// Hands the edge a lease on an open user stream. The shard's owner
-    /// task keeps the stream registered with the conversation's transfers
-    /// until the edge drops the lease or a transition ends the stream; then
-    /// both pipes fail, which cancels an invocation still running, and the
-    /// service stops serving the stream's artifact requests. A pipe that
-    /// completed stays complete.
-    fn lease_stream(&self, open: OpenTransfer, service: ServiceStream, input: Pipe, output: Pipe) -> Lease {
+    /// task keeps the stream registered with the conversation's transfers,
+    /// and its lease of the stream gate, until the edge drops the lease or a
+    /// transition ends the stream; then both pipes fail, which cancels an
+    /// invocation still running, and the service stops serving the stream's
+    /// artifact requests. A pipe that completed stays complete.
+    fn lease_stream(
+        &self,
+        open: OpenTransfer,
+        watching: Option<GateLease>,
+        service: ServiceStream,
+        input: Pipe,
+        output: Pipe,
+    ) -> Lease {
         let (lease, released) = Lease::new(open.ended.clone());
         let ended = open.ended.clone();
         self.tasks().spawn_local(async move {
@@ -252,6 +270,7 @@ impl Shard {
             input.fail("the user stream ended");
             output.fail("the user stream ended");
             drop(service);
+            drop(watching);
             drop(open);
         });
         lease

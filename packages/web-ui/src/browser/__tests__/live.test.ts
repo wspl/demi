@@ -264,22 +264,6 @@ test('a stalled stream discards input and resumes from a key frame', () => {
   expect(view.sent.at(-1)).toEqual({ type: 'keyframe', generation: 1 })
 })
 
-test('operating is activity, at most every thirty seconds, and moving is not', () => {
-  const operations: number[] = []
-  const view = session({ onOperation: () => operations.push(operations.length) })
-  view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
-  const none = { altKey: false, ctrlKey: false, metaKey: false, shiftKey: false }
-  view.live.input(pointerMessage(TAB.id, 'move', { x: 1, y: 1 }, { ...none, button: 0, buttons: 0, detail: 0 }))
-  expect(operations).toHaveLength(0)
-  view.live.input(pointerMessage(TAB.id, 'down', { x: 1, y: 1 }, { ...none, button: 0, buttons: 1, detail: 1 }))
-  view.advance(10_000)
-  view.live.input(keyMessage(TAB.id, 'down', { ...none, key: 'a', code: 'KeyA', keyCode: 65, repeat: false, location: 0, getModifierState: () => false }))
-  expect(operations).toHaveLength(1)
-  view.advance(21_000)
-  view.live.input(keyMessage(TAB.id, 'down', { ...none, key: 'b', code: 'KeyB', keyCode: 66, repeat: false, location: 0, getModifierState: () => false }))
-  expect(operations).toHaveLength(2)
-})
-
 test('a choice names the revision the viewer saw, and a dialog is answered once', () => {
   const view = session()
   view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))

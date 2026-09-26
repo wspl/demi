@@ -69,7 +69,11 @@ convention:
   the text of two times orders as the times do (`core`'s `Timestamp`, whole
   milliseconds of a `jiff::Timestamp`); a finer time is refused.
 - Integers are integer types. An integer the browser reads is bounded to
-  JavaScript's safe integer range.
+  JavaScript's safe integer range in the Rust type as well: a 64-bit field
+  carries garde's `range(max = MAX_SAFE_INTEGER)`, core's constant, so an end
+  that decodes it refuses what the browser cannot hold, and generation fails
+  for a field without the bound. On a type only the backend sends, nothing in
+  Rust checks the attribute: it states the bound the browser's schema checks.
 
 The runner wire has its own field names and MessagePack encoding, fixed by
 `runner-protocol` and its corpus; its optional and nullable fields follow the
@@ -179,11 +183,14 @@ Zod source and z.infer types
   extended with the tag; string enums and literals; arrays and records;
   optional fields (`.optional()`, which refuses `null`) and nullable ones
   (`.nullable()`, which must be present); string lengths and patterns;
-  integer and number bounds, an integer also bounded by its type and by
-  JavaScript's safe range; base64 bytes (`z.base64()`); times as core's
+  integer and number bounds, an integer's within JavaScript's safe range;
+  base64 bytes (`z.base64()`); times as core's
   `Timestamp` writes them (`z.iso.datetime({ precision: 3 })`: UTC with three
-  fractional digits, the contract's one spelling); email addresses and URLs;
-  JSON values (`z.json()`); flattened plain structs (merged properties); one
+  fractional digits, the contract's one spelling); email addresses; `http`
+  and `https` URLs (`z.url` with those protocols, `web-api`'s `EndpointUrl`);
+  text the backend trims on arrival, whose bounds count what the trim leaves
+  (`z.string().trim()`, `web-api`'s `Trimmed`); JSON values (`z.json()`);
+  flattened plain structs (merged properties); one
   named instantiation of a generic root type; recursion through `$ref`, as a
   getter of the object property that refers back, which Zod types
   recursively; strict and tolerant objects; and constant tables with
@@ -206,6 +213,18 @@ Zod source and z.infer types
   field. The emitter writes a strict object only for a type the browser never
   receives, such as a client frame, and refuses to generate one whose Rust
   type accepts unknown fields: the backend receives it.
+- **Tolerant values where the browser receives.** The same rule decides how
+  closely a value's schema follows its Rust type. Where the browser only
+  receives a value, its schema may accept more than the type holds, since the
+  backend never sends the difference: `z.base64()` accepts the nonzero
+  padding bits that `B64Bytes` refuses, a failure map's keys may be empty
+  where a block id cannot, and an email address may carry capitals, which
+  `EmailAddress` lowercases. Where the browser sends a value, its schema
+  refuses whatever the backend refuses: a name the backend trims is trimmed
+  before its length is checked, so blank text is refused, and an endpoint must
+  be an `http` or `https` URL. An email address the browser sends passes its
+  schema only when it has no surrounding white space and has the form the
+  backend checks, so the backend accepts every address the schema does.
 - **Checked on arrival.** `agent-client` validates every frame it receives, and
   `web` validates every REST response before applying it to state.
 - **One patch applier.** Transcript patches have one applier,

@@ -91,6 +91,7 @@ uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 demi-agent = { path = "../agent", features = ["testing"] }
+demi-command-service = { path = "../command-service", features = ["testing"] }
 demi-host-remote = { path = "../host-remote", features = ["testing"] }
 demi-provider = { path = "../provider", features = ["testing"] }
 demi-shell = { path = "../shell", features = ["testing"] }
