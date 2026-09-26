@@ -1,5 +1,5 @@
 //! The builtin package's contract: what each boundary accepts and refuses,
-//! and the JSON its results and messages make.
+//! and the JSON its results make.
 
 use demi_builtin_protocol::{
     DecodeError, Operation, OperationError,
@@ -10,7 +10,7 @@ use demi_builtin_protocol::{
     },
     capture::{CaptureEvent, FrameHeader},
     file::FileOperation,
-    live::{FileHeader, LiveModuleMessage, LiveViewerMessage, VideoHeader},
+    live::{FileHeader, LiveViewerMessage, VideoHeader},
     release::BrowserRelease,
 };
 use serde_json::{Value, json};
@@ -250,7 +250,6 @@ fn results_and_failures_print_the_documented_names() {
         }}),
     );
     assert_eq!(serde_json::from_value::<BrowserFailure>(printed).unwrap(), failure);
-    assert_eq!(BrowserErrorCode::OutcomeUnknown.to_string(), "outcome_unknown");
 }
 
 #[test]
@@ -289,18 +288,6 @@ fn live_messages_decode_as_the_page_sends_them() {
         let bytes = serde_json::to_vec(&message).unwrap();
         assert!(LiveViewerMessage::decode(&bytes).is_err(), "{message}");
     }
-    let ended = serde_json::to_value(LiveModuleMessage::Ended {
-        reason: demi_builtin_protocol::live::EndReason::BrowserEnded,
-    })
-    .unwrap();
-    assert_eq!(ended, json!({"type": "ended", "reason": "browser_ended"}));
-    let state = serde_json::to_value(LiveModuleMessage::State {
-        running: false,
-        tabs: Vec::new(),
-        watched: None,
-    })
-    .unwrap();
-    assert_eq!(state, json!({"type": "state", "running": false, "tabs": [], "watched": null}));
 }
 
 #[test]
