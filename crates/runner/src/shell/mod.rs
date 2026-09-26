@@ -3,6 +3,7 @@
 mod declared;
 pub mod edit_report;
 pub mod job;
+mod process_builtins;
 pub mod scope;
 pub mod utilities;
 
@@ -88,21 +89,7 @@ pub async fn execute(
         (1, OpenFile::Controlled { file: options.stdout, control: control.clone() }),
         (2, OpenFile::Controlled { file: options.stderr, control }),
     ]);
-    let mut registrations = brush_builtins::default_builtins(brush_builtins::BuiltinSet::BashMode);
-    for &(name, _) in crate::shell::utilities::UTILITIES {
-        registrations.insert(
-            name.to_owned(),
-            builtins::Registration {
-                execute_func: execute_utility,
-                content_func: |name, _, _| {
-                    Ok(format!("{name}: use {name} --help for utility options"))
-                },
-                disabled: false,
-                special_builtin: false,
-                declaration_builtin: false,
-            },
-        );
-    }
+    let mut registrations = registrations();
     if let Some(commands) = &options.scope.commands {
         for name in commands.execution.manifest.roots.keys() {
             registrations.insert(
@@ -148,6 +135,40 @@ pub async fn execute(
         code: result.exit_code.into(),
         cwd: shell.working_dir().to_owned(),
     })
+}
+
+/// The builtins every job's shell has: brush's, the runner's own in place of
+/// those that would act on the runner's process (`process_builtins`), and
+/// the standard utilities.
+pub(crate) fn registrations()
+-> HashMap<String, builtins::Registration<brush_core::extensions::DefaultShellExtensions>> {
+    let mut registrations = brush_builtins::default_builtins(brush_builtins::BuiltinSet::BashMode);
+    process_builtins::register(&mut registrations);
+    for &(name, _) in crate::shell::utilities::UTILITIES {
+        registrations.insert(
+            name.to_owned(),
+            builtins::Registration {
+                execute_func: execute_utility,
+                content_func: |name, _, _| {
+                    Ok(format!("{name}: use {name} --help for utility options"))
+                },
+                disabled: false,
+                special_builtin: false,
+                declaration_builtin: false,
+            },
+        );
+    }
+    registrations
+}
+
+/// The job that owns `shell`: its execution host is the job's scope.
+fn scope(shell: &Shell) -> io::Result<scope::Scope> {
+    // Brush hands its host back only as the trait object it was given.
+    shell
+        .execution_host()
+        .and_then(|host| (host.as_ref() as &dyn std::any::Any).downcast_ref::<scope::Scope>())
+        .cloned()
+        .ok_or_else(|| io::Error::other("missing shell execution owner"))
 }
 
 /// Login profiles configure user tools; runner-owned context stays authoritative.
@@ -210,12 +231,15 @@ fn execute_utility(
             })
             .collect();
         let stdin = Arc::new(invocation_file(&context, 0)?);
-        let scope = context
-            .shell
-            .execution_host()
-            .and_then(|host| (host.as_ref() as &dyn std::any::Any).downcast_ref::<scope::Scope>())
-            .ok_or_else(|| io::Error::other("missing shell execution owner"))?
-            .clone();
+        let scope = scope(context.shell)?;
+        // The utility's files and the programs it starts get the umask and
+        // limits of the shell that ran it (`runner.md` § Builtins that act on
+        // a process).
+        let attributes = context.shell.child_attributes().clone();
+        #[cfg(unix)]
+        let umask = attributes.umask.unwrap_or_else(crate::process::umask);
+        #[cfg(windows)]
+        let umask = 0o022;
         let invocation = crate::shell::utilities::Context {
             name,
             descriptors: context
@@ -223,9 +247,12 @@ fn execute_utility(
                 .filter(|(fd, _)| *fd > 2)
                 .map(|(fd, file)| Ok((fd, Arc::new(native_file(file)?))))
                 .collect::<Result<_, brush_core::Error>>()?,
-            control: Some(Arc::new(scope.clone())),
+            control: Some(Arc::new(scope::UtilityControl {
+                scope: scope.clone(),
+                attributes,
+            })),
             live_input: crate::stdio::is_live(&stdin, &env)?,
-            umask: 0o022,
+            umask,
             cwd: context.shell.working_dir().to_owned(),
             env,
             stdin,
