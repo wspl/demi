@@ -7,7 +7,8 @@ use demi_artifact::{
     Archive, Digest, Error, InstallLock, Mode, Permissions, Publication, ReleaseFile, ReleaseRecord,
     Staged, Verifier, copy, digest, download, download_measured, install_archive, installed, publish,
     publish_bytes, publish_directory, publish_release, receipt,
-    testing::{Answer, Server, loopback_client, zip},
+    client_allowing_http,
+    testing::{Answer, Server, zip},
     zip_holds,
 };
 use sha2::{Digest as _, Sha256};
@@ -28,15 +29,15 @@ fn declared(bytes: &[u8]) -> Digest {
 async fn serve(status: u16, body: &[u8], length: bool) -> Server {
     let answer = Answer {
         status,
-        body: body.to_vec(),
         length,
+        ..Answer::ok(body)
     };
     Server::start([("/artifact".to_owned(), answer)]).await
 }
 
 #[tokio::test]
 async fn a_download_is_verified_as_it_arrives() {
-    let client = loopback_client().unwrap();
+    let client = client_allowing_http().unwrap();
     let cancel = CancellationToken::new();
     let server = serve(200, BODY, true).await;
     let url = server.url("/artifact");
@@ -74,7 +75,7 @@ async fn a_download_is_verified_as_it_arrives() {
 
 #[tokio::test]
 async fn a_measured_download_reports_what_arrived_within_its_limit() {
-    let client = loopback_client().unwrap();
+    let client = client_allowing_http().unwrap();
     let cancel = CancellationToken::new();
     let server = serve(200, BODY, true).await;
     let mut output = Vec::new();
@@ -359,7 +360,7 @@ fn names(directory: &Path) -> Vec<String> {
 
 #[tokio::test]
 async fn an_archive_is_installed_once_and_checked_before_each_use() {
-    let client = loopback_client().unwrap();
+    let client = client_allowing_http().unwrap();
     let cancel = CancellationToken::new();
     let bytes = zip(&[("app/bin/tool", b"tool"), ("app/data", b"data")]);
     let server = Server::start([("/app.zip".to_owned(), Answer::ok(bytes.clone()))]).await;
@@ -421,7 +422,7 @@ async fn an_archive_is_installed_once_and_checked_before_each_use() {
 
 #[tokio::test]
 async fn an_archive_extracts_inside_its_installation_only_and_names_its_files() {
-    let client = loopback_client().unwrap();
+    let client = client_allowing_http().unwrap();
     let cancel = CancellationToken::new();
     let escaping = zip(&[("app/bin/tool", b"tool"), ("../escaped", b"no")]);
     let server = Server::start([("/escaping.zip".to_owned(), Answer::ok(escaping.clone()))]).await;

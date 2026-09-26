@@ -213,7 +213,7 @@ async fn prepare(
 
 #[cfg(test)]
 mod tests {
-    use demi_artifact::testing::{Answer, Server, loopback_client, zip};
+    use demi_artifact::testing::{Answer, Server, zip};
     use serde_json::json;
 
     use super::*;
@@ -263,7 +263,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_pinned_version_records_each_official_archive_with_its_executable() {
-        let client = loopback_client().unwrap();
+        let client = demi_artifact::client_allowing_http().unwrap();
         let cancel = CancellationToken::new();
         let version = "153.0.8010.36";
         // The argument is Chrome's four-part version, or nothing is fetched.
