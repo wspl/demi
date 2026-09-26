@@ -238,6 +238,98 @@ async fn sdk_client_keeps_other_calls_live_while_one_output_is_blocked() {
     .unwrap();
 }
 
+/// A service that answers each request and then resets it with NO_ERROR
+/// while the caller is still sending it (RFC 9113 § 8.1): a conversation
+/// request from its headers alone, an invocation after its metadata. Its
+/// window of 16 bytes holds back the rest of what the caller sends.
+async fn answer_early(io: tokio::io::DuplexStream) {
+    let mut connection = h2::server::Builder::new()
+        .initial_window_size(16)
+        .handshake::<_, Bytes>(io)
+        .await
+        .unwrap();
+    let mut answers = tokio::task::JoinSet::new();
+    while let Some(accepted) = connection.accept().await {
+        let (request, mut respond) = accepted.unwrap();
+        answers.spawn(async move {
+            let invocation = request.uri().path() == demi_command_service::protocol::INVOKE_PATH;
+            let mut body = request.into_body();
+            let mut metadata = Vec::new();
+            // A four-byte length, then the metadata.
+            while invocation
+                && (metadata.len() < 4
+                    || metadata.len() < 4 + u32::from_be_bytes(metadata[..4].try_into().unwrap()) as usize)
+            {
+                let chunk = body.data().await.unwrap().unwrap();
+                body.flow_control().release_capacity(chunk.len()).unwrap();
+                metadata.extend_from_slice(&chunk);
+            }
+            let mut stream = respond.send_response(http::Response::new(()), false).unwrap();
+            let completion = Completion {
+                exit_code: 0,
+                error: None,
+            };
+            for record in [Record::Stdout(Bytes::from_static(b"{}")), Record::Completion(completion)] {
+                stream.send_data(record.encode().unwrap(), false).unwrap();
+            }
+            stream.send_data(Bytes::new(), true).unwrap();
+            // Dropping the request unread resets it with NO_ERROR once the
+            // answer has left, as the service does.
+        });
+    }
+}
+
+/// A service may answer before it has the whole request and then reset it
+/// with NO_ERROR (`native-runtime.md` § Request body and input demand): a
+/// conversation release it answered succeeds, and an input chunk written
+/// after its answer is dropped without an error.
+#[tokio::test]
+async fn what_a_caller_sends_after_an_early_answer_is_not_a_failure() {
+    use demi_command_service::{Client, protocol::ConversationRequest};
+    tokio::time::timeout(Duration::from_secs(5), async {
+        let (client_io, server_io) = tokio::io::duplex(64 * 1024);
+        let server = tokio::spawn(answer_early(server_io));
+        let (client, connection) = Client::connect(client_io).await.unwrap();
+        let driver = tokio::spawn(connection);
+        // The first answer brings the service's settings; the second request
+        // leaves under its window.
+        for conversation in ["first", "second"] {
+            let (_input, mut output) = client
+                .conversation(&ConversationRequest::Release {
+                    conversation: conversation.into(),
+                })
+                .await
+                .unwrap();
+            assert_eq!(
+                output.next().await.unwrap(),
+                Some(Record::Stdout(Bytes::from_static(b"{}")))
+            );
+            assert!(matches!(output.next().await.unwrap(), Some(Record::Completion(_))));
+            assert_eq!(output.next().await.unwrap(), None);
+        }
+        let (mut input, mut output) = client
+            .invoke(&Invocation {
+                context: context(),
+                json: None,
+                edits: None,
+                operation: "echo".into(),
+                invocation_id: "early".into(),
+                args: serde_json::json!({}),
+                cwd: "/tmp".into(),
+                env: BTreeMap::new(),
+            })
+            .await
+            .unwrap();
+        while output.next().await.unwrap().is_some() {}
+        input.write(Bytes::from(vec![0; 1024])).await.unwrap();
+        input.end().unwrap();
+        driver.abort();
+        server.abort();
+    })
+    .await
+    .unwrap();
+}
+
 fn context() -> CommandContext {
     CommandContext {
         conversation: "conversation".into(),
