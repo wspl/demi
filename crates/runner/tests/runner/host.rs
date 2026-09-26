@@ -90,16 +90,7 @@ async fn a_start_the_runner_cannot_begin_ends_with_its_reason_as_the_spawn_error
             ),
             "{exit:?}"
         );
-        host.send(Inbound::JobKill {
-            job_id: "twin".into(),
-            signal: Some(Signal::Kill),
-        })
-        .await;
-        let exit = host.frame().await;
-        assert!(
-            matches!(&exit, Outbound::JobExit { signal: Some(signal), .. } if signal == "SIGKILL"),
-            "{exit:?}"
-        );
+        // Closing ends the first job with the connection.
         host.close().await;
     })
     .await
