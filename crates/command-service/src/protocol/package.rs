@@ -22,7 +22,9 @@ pub const TARGETS: &[&str] = &[
     "x86_64-pc-windows-msvc",
 ];
 
-/// The largest integer a JavaScript peer holds exactly.
+/// The largest integer a JavaScript peer holds exactly, as core's
+/// `MAX_SAFE_INTEGER`. This crate keeps its own: every command program links
+/// it, and it depends on no other crate of the workspace, core included.
 const MAX_SAFE_INTEGER: u64 = (1 << 53) - 1;
 
 /// One target's executable: its SHA-256 and size.
