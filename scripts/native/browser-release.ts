@@ -38,4 +38,4 @@ const records = await Promise.all(platforms.map(async ({ platform, ...record }) 
   return { ...record, url: entry.url, ...artifact }
 }))
 const release = browserReleaseSchema.parse({ version, platforms: records })
-await writeFile(resolve('crates/demi-commands/src/browser/releases/chrome.json'), `${JSON.stringify(release, null, 2)}\n`)
+await writeFile(resolve('crates/builtin-protocol/src/release/chrome.json'), `${JSON.stringify(release, null, 2)}\n`)
