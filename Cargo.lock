@@ -8309,15 +8309,20 @@ dependencies = [
  "demi-claude-protocol",
  "demi-command-service",
  "demi-core",
+ "demi-machines-protocol",
  "demi-runner-protocol",
  "demi-web-api",
+ "flate2",
+ "garde",
  "schemars",
  "serde",
  "serde_json",
+ "tar",
  "tempfile",
  "thiserror",
  "tokio",
  "tokio-util",
+ "zstd",
 ]
 
 [[package]]
