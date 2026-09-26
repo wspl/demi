@@ -357,6 +357,7 @@ and an error names the variable. `demi-backend --help` lists the flags.
 | `DEMI_WEB_DIRECTORY` | A built browser directory to serve beside the API. Optional. | [Web API](../product/web-api.md#serving-the-browser-build) |
 | `DEMI_RUNNER_RELEASE_DIR` | The runner releases the installer routes serve. Optional: without it, those routes answer 503. | [Builds and releases](../delivery/builds-and-releases.md) |
 | `DEMI_CLAUDE_RELEASES_URL` | The Claude Code distribution whose newest release the CLI on each Cloud follows. Default `https://downloads.claude.ai/claude-code-releases`, the vendor's. | [Claude Code](../providers/claude-code.md#which-version) |
+| `DEMI_LOG` | What the backend writes to its standard error, in `tracing-subscriber`'s `Targets` syntax: comma-separated, a default level and `target=level` pairs, each pair covering its target and the targets below it. For example, `info,demi::provider::claude_code::wire=trace` adds the Claude Code CLI's raw exchange to the default. Default `info`. | [Claude Code](../providers/claude-code.md#process-lifetime) |
 
 ## Deployment and user ownership
 
