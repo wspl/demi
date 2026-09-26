@@ -22,6 +22,7 @@ use demi_command_service::{
     Client, ServiceError,
     protocol::{ConversationRequest, ConversationStatus, PackageDescriptor, Record, ServiceInfo},
 };
+use demi_runner_protocol::image::ARTIFACTS_PATH;
 use tokio::{
     sync::{mpsc, oneshot, watch},
     task::JoinSet,
@@ -50,13 +51,17 @@ pub struct ServiceRegistry {
 
 impl ServiceRegistry {
     /// Services start in `cwd` with exactly `env`; their executables are
-    /// cached in `cache`.
+    /// cached in `cache`, or taken from a Cloud image's preinstalled copies.
     pub async fn new(
         cache: PathBuf,
         cwd: PathBuf,
         env: BTreeMap<String, String>,
     ) -> Result<Self, RuntimeError> {
-        let cache = Arc::new(ArtifactCache::new(cache).await?);
+        // Where a Cloud image preinstalls command executables. The runner
+        // looks there on every Host, and a paired device has nothing there;
+        // Cloud images are Linux only, so a Windows runner does not look.
+        let image = cfg!(unix).then(|| PathBuf::from(ARTIFACTS_PATH));
+        let cache = Arc::new(ArtifactCache::new(cache, image).await?);
         let (requests, receiver) = mpsc::channel(REQUESTS);
         let owner = Owner {
             cache,
