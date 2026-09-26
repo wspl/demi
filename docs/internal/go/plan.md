@@ -47,14 +47,17 @@ test.
 
 ## Contracts
 
-- Frontend-facing contracts (web API bodies, conversation frames, live view
-  protocol, core types) keep their Zod schemas in the frontend libraries as the
-  single source. Go types and validators are generated from them
-  (`bun run go:contracts`: Zod → Go, like the existing Zod → Rust generator). The frontend does not change.
-- Internal contracts (runner wire, machines wire, command-service wire,
-  manifests) keep Zod as the source while a TypeScript end still speaks them.
-  In X1, when both ends are Go, the source moves to Go and the TypeScript
-  packages are deleted.
+One source per contract, no transition step (decided 2026-09-26; design in
+`docs/demi-next/native-runtime.md` § Contract generation):
+- Contracts the frontend speaks (agent protocol and core types, live view,
+  web API bodies): Zod in the frontend libraries is the source; Go is generated.
+- Contracts the Rust runner and native programs are built from (runner wire,
+  manifests, command-service wire, browser commands): Zod while those programs
+  are Rust; Go is generated from the same source. When the runner lane ports
+  them, the contract is written in Go in that same work package and the Zod is
+  deleted.
+- Contracts spoken only between Go programs (machine manager wire): written
+  directly in Go by the owning lane (M1); never generated.
 
 ## Go layout
 
