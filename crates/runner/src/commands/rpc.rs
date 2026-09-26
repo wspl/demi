@@ -132,7 +132,7 @@ pub async fn invoke(
     pipes: &PipeClient,
     request: Request,
     input: Input,
-    output: &mut CommandOutput,
+    output: &mut CommandOutput<'_>,
     cancel: CancellationToken,
 ) -> Result<u8, ServiceError> {
     let connection = request.context.connection.clone();
@@ -200,7 +200,7 @@ async fn exchange(
     request: &Request,
     mut events: mpsc::Receiver<CallEvent>,
     input: Input,
-    output: &mut CommandOutput,
+    output: &mut CommandOutput<'_>,
     transport: &CallTransport<'_>,
 ) -> Result<u8, ServiceError> {
     let errors = output.errors();
