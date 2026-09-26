@@ -17,7 +17,6 @@ use demi_core::{
 };
 use demi_provider::{ProviderRuntime, testing::ScriptedRuntime};
 use futures_util::future::LocalBoxFuture;
-use sha2::{Digest, Sha256};
 
 use demi_shell::{Host, HostError, HostFs, HostIdentity, HostKey, HostProcess, ShellEnvironment};
 
@@ -223,28 +222,16 @@ impl Clock for TokioClock {
     }
 }
 
-/// Uploads a test gave the blocks they resolve to, and the media an edit
-/// keeps, loaded from the blob namespace the test gave, as a backend loads
-/// them from the caller's; every other file reference is refused, as a
-/// backend refuses one it does not hold.
+/// Uploads a test gave the blocks they resolve to; every other file
+/// reference is refused, as a backend refuses one it does not hold.
 #[derive(Debug, Default)]
 pub struct TestFiles {
     uploads: RefCell<BTreeMap<String, Vec<UserContentBlock>>>,
-    blobs: Option<Rc<MemoryBlobs>>,
 }
 
 impl TestFiles {
     pub fn new() -> Rc<Self> {
         Rc::new(Self::default())
-    }
-
-    /// Files whose kept media are loaded from `blobs`, the namespace the
-    /// test's store keeps media in.
-    pub fn with_blobs(blobs: Rc<MemoryBlobs>) -> Rc<Self> {
-        Rc::new(Self {
-            blobs: Some(blobs),
-            ..Self::default()
-        })
     }
 
     /// The upload `reference` resolves to `blocks`.
@@ -274,15 +261,6 @@ impl ContentResolver for TestFiles {
                     }
                     FileReference::RemoteFile { device_id, .. } => {
                         return Err(refused(format!("device {device_id} is not paired")));
-                    }
-                    FileReference::Media(kept) => {
-                        let Some(blobs) = &self.blobs else {
-                            return Err(refused("no blob namespace holds kept media".to_owned()));
-                        };
-                        let part = media::kept_media(kept, &**blobs)
-                            .await
-                            .map_err(|error| refused(error.to_string()))?;
-                        vec![part]
                     }
                 };
                 resolved.push(blocks);
@@ -717,8 +695,7 @@ impl MemoryBlobs {
 
 impl BlobStore for MemoryBlobs {
     fn put(&self, bytes: B64Bytes) -> LocalBoxFuture<'_, Result<BlobRef, StoreError>> {
-        let name = format!("{:x}", Sha256::digest(bytes.as_bytes()));
-        let blob = BlobRef::try_from(name).expect("a SHA-256 in hexadecimal names a blob");
+        let blob = BlobRef::of(bytes.as_bytes());
         self.blobs.borrow_mut().insert(blob.clone(), bytes);
         Box::pin(async move { Ok(blob) })
     }
