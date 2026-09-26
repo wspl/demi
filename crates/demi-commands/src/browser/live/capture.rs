@@ -129,8 +129,6 @@ impl CaptureServer {
                 let ended = ended.clone();
                 connections.spawn(async move {
                     let expected = format!("token={token}");
-                    // Tungstenite's callback answers a refusal with a whole response.
-                    #[allow(clippy::result_large_err)]
                     let authorized = |request: &Request, response: Response| {
                         if request.uri().query() == Some(expected.as_str()) {
                             Ok(response)

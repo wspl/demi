@@ -69,7 +69,7 @@ While the Rust migration in `docs/internal/rust-migration/plan.md` is under way,
 
 # Coding Standards
 
-- Rust: Rust API Guidelines, `rustfmt` defaults and the workspace clippy lints.
+- Rust: Rust API Guidelines and `rustfmt` defaults.
 - TypeScript: Google TypeScript Style Guide.
 - JavaScript: Google JavaScript Style Guide.
 - Vue: Vue Style Guide.

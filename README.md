@@ -35,17 +35,21 @@ You need:
 - Bun, for the browser packages.
 
 ```sh
-cargo xtask check       # formatting, clippy, the Rust tests and the crate boundary check
-cargo xtask test        # build the programs the tests start, then run the Rust tests
-cargo xtask contracts   # generate the browser's TypeScript contracts from the Rust types
+cargo check --workspace --all-targets --features demi-runner/test-fixtures
+cargo test --workspace --features demi-runner/test-fixtures  # the Rust tests
+cargo fmt --all --check
 
 bun install
-bun run contracts       # run cargo xtask contracts for the browser packages
+bun run contracts       # generate the browser's TypeScript contracts from the Rust types
 bun run typecheck:web   # type-check web-ui, web-gallery and web
-bun run test            # the browser packages' tests
+bun run test            # the TypeScript tests
 bun run web:dev         # the web application, against a running backend
 bun run web:gallery     # the component gallery
 ```
+
+Every Rust command selects the whole workspace with the runner's test
+fixtures, so they share one build
+([Validation](docs/delivery/builds-and-releases.md#validation)).
 
 The generated TypeScript is not committed; the frontend scripts that need it
 generate it first. [Web application](docs/product/web-application.md#development-and-checks)
