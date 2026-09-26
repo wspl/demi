@@ -5,7 +5,7 @@
 
 use std::{collections::HashMap, rc::Rc};
 
-use demi_command_tree::{HELP_DEFAULTS, InputSpec, Leaf, LeafKind, NativeOperation, Node};
+use demi_command_tree::{HELP_DEFAULTS, Leaf, LeafKind, NativeOperation, Node, check_input_subset};
 
 use crate::{RpcError, RpcHandler, RpcInvocation, RpcPort, reserved::is_reserved};
 
@@ -201,7 +201,7 @@ fn check(declared: &Declared) -> Result<(), RegisterError> {
     let mut path = Vec::new();
     walk_leaves(&declared.tree, &mut path, &mut |path, leaf| {
         if let Some(schema) = &leaf.input {
-            InputSpec::from_schema(schema)
+            check_input_subset(schema)
                 .map_err(|error| RegisterError(format!("\"{}\" {error}", path.join(" "))))?;
         }
         if leaf.kind == LeafKind::Rpc {

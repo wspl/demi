@@ -182,19 +182,21 @@ next to the wire's types, so that a command program depends on one crate.
   `Group`, `Leaf`, `LeafKind` with its `Rpc` and `Native` bindings: a
   declaration names a native command's package and operation
   (`NativeOperation`), and `Node::pin` pins each to the descriptor a manifest
-  carries, as a `Binding`); the command input subset and field table (`InputSpec::from_schema` is both the subset
-  check and the table argv parsing reads); argv parsing (`Node::select`,
-  `Selected::parse`, `Parsed::validate`); the argument check both ends run
-  (`Leaf::check_arguments`); help rendering (`Node::help`,
-  `HELP_DEFAULTS`); the settings every declaration's JSON Schema is generated
-  with (`command_schema_settings`); and bounded capture and validation of
-  `--json` output (`JsonCapture`).
+  carries, as a `Binding`); a declaration's schemas, compiled once, and the
+  one check of a value against a schema with its one wording
+  (`Schema::check`); the command input subset (`check_input_subset`, which
+  registration runs); argv parsing (`Node::select`, `Selected::parse`,
+  `Parsed::validate`), which reads each field's schema to convert its tokens;
+  the argument check both ends run (`Leaf::check_arguments`); help rendering
+  (`Node::help`, `HELP_DEFAULTS`); and the settings every declaration's JSON
+  Schema is generated with (`command_schema_settings`).
 - **Public boundary:** the items above. This crate is the single
   implementation of argv parsing, help and the input subset: the runner parses
   argv and renders `--help` with it, and the backend renders the model's
   command help and checks registrations with it. Argument validation is
   `jsonschema` over the declaration's schema at both ends, through the one
-  check and its one wording.
+  check and its one wording; the runner checks `--json` output against the
+  leaf's output schema with the same check.
   Behavior: [Commands](../execution/commands.md).
 - **Must not:** hold handlers or their bindings (`shell` pairs declarations
   with handlers), read stdin, or perform any other IO.
@@ -576,9 +578,11 @@ Each crate implements the provider contract for one vendor family.
 - **Owns:** the execution host: registration and the backend connection, Host
   operations (filesystem and process operations, file contents through pipes,
   the working tree, network and service streams), the Host log, shell jobs on
-  the embedded brush shell with the standard utilities, local command
-  forwarding, the artifact cache and resident service registry, and
-  installation.
+  the embedded brush shell with the standard utilities, the command
+  dispatcher (it parses argv with `command-tree`, and holds a `--json`
+  command's output until it is checked against the leaf's output schema),
+  local command forwarding, the artifact cache and resident service registry,
+  and installation.
 - **Conversation scope:** keeps each job's command context and writes it into
   every native invocation, keeps a service resident while it holds
   conversation state, and forwards the conversation release; it implements no
