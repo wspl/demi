@@ -41,8 +41,9 @@ Contracts and crate boundaries
 
 ## Evidence required at a checkpoint
 
-Every checkpoint passes `cargo xtask check` and, when TypeScript changed, the
-frontend's typechecks and tests ([Validation](builds-and-releases.md#validation)).
+Every checkpoint passes the Rust checks and tests and, when TypeScript
+changed, the frontend's typechecks and tests
+([Validation](builds-and-releases.md#validation)).
 Use crate tests for schemas, state machines, parsers, and adapters. Use
 [Scenarios](scenarios.md) for complete backend paths with scripted providers
 and real native runners, and its browser-contract suite for what the browser

@@ -16,13 +16,17 @@ extend Demi.
 ## Setup and checks
 
 ```sh
-cargo xtask check       # formatting, clippy, the Rust tests and the crate boundary check
-cargo xtask test        # build the programs the tests start, then run the Rust tests
+cargo check --workspace --all-targets --features demi-runner/test-fixtures
+cargo test --workspace --features demi-runner/test-fixtures  # the Rust tests and the crate boundary check
 
 bun install
 bun run typecheck:web   # type-check web-ui, web-gallery and web
-bun run test            # the browser packages' tests and the package boundary check
+bun run test            # the TypeScript tests and the package boundary check
 ```
+
+Every Rust command selects the whole workspace with the runner's test
+fixtures, so they share one build; [Validation](docs/delivery/builds-and-releases.md#validation)
+lists the Chrome suite and how a test finds the programs it starts.
 
 Rust types are the only definition of every wire and stored format
 ([Contracts](docs/architecture/contracts.md)). The browser's TypeScript types
@@ -38,7 +42,7 @@ breaks.
    [Crates and packages](docs/architecture/crates-and-packages.md) is the
    highest architectural constraint: what each crate and package owns, its
    public boundary, and what it must not do. Its two dependency graphs are
-   read by the boundary checks, so `cargo xtask check` fails when a crate's
+   read by the boundary checks, so the Rust tests fail when a crate's
    dependencies differ from the Rust graph, and `bun run test` fails when a
    browser package's differ from the TypeScript graph. A new crate, package or
    dependency between them starts with a change to that document.
@@ -50,8 +54,7 @@ breaks.
    Domain-specific helpers stay in the crate or package that owns the domain.
 3. **Concurrency.** State has one owner, read-mostly data is published as a
    snapshot, and blocking work leaves async threads
-   ([Concurrency](docs/architecture/concurrency.md)). The workspace lints
-   enforce these rules.
+   ([Concurrency](docs/architecture/concurrency.md)).
 4. **Validation at entry.** A value from outside the process is decoded into
    its type and validated where it enters. Nothing is asserted onto a value,
    and corrupt data is refused, never repaired
@@ -71,8 +74,8 @@ coding standards.
 - Suites that need a real machine manager, Chrome or the Claude Code CLI run
   only when environment variables supply those resources
   ([Real machine acceptance](docs/delivery/scenarios.md#real-machine-acceptance)).
-- Keep the suite green: before every commit, run `cargo xtask check`, and when
-  a browser package changed, `bun run typecheck:web` and `bun run test`.
+- Keep the suite green: before every commit, run the Rust tests, and when a
+  browser package changed, `bun run typecheck:web` and `bun run test`.
 
 ## Commits
 

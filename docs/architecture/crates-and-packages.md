@@ -610,13 +610,13 @@ Each crate implements the provider contract for one vendor family.
 
 #### `xtask`
 
-- **Owns:** the repository's development commands: `cargo xtask check`
-  (formatting, clippy with the workspace lints, the tests and the crate
-  boundary check), `xtask contracts` (the TypeScript emitter, which
-  `bun run contracts` runs after it builds the workspace;
-  [Contracts](contracts.md#generated-typescript)), `cargo xtask test` (builds
-  the binaries tests start and exports their paths), native build and release
-  packaging for every executable, and Cloud image packaging.
+- **Owns:** the repository's development commands: `xtask contracts` (the
+  TypeScript emitter, which `bun run contracts` runs after it builds the
+  workspace; [Contracts](contracts.md#generated-typescript)), native build and
+  release packaging for every executable, and Cloud image packaging; and the
+  crate boundary check, one of its tests ([Boundary checks](#boundary-checks)).
+  The checks and tests are plain Cargo and bun commands
+  ([Validation](../delivery/builds-and-releases.md#validation)).
 - **Public boundary:** its commands; no crate links it.
 - **Must not:** hold a second implementation of something a crate owns: it
   downloads and publishes through `artifact` and writes every record with its
@@ -798,8 +798,7 @@ review.
   not require matching packages: several contract crates generate into one
   `@demicodes/protocol`.
 - **Crate shape.** A crate keeps its `Cargo.toml` at its root, its source under
-  `src/` and Cargo's standard library and executable entry points. Each crate
-  sets `[lints] workspace = true`.
+  `src/` and Cargo's standard library and executable entry points.
 - **One composition root per executable.** Exactly one place assembles a
   program (`main.rs`, or `Backend::start` for the backend; `main.ts` for the
   web application). It may construct, inject, mount and return; it never
@@ -818,14 +817,17 @@ review.
   integration test binary. Test support is a `testing` cargo feature of the
   crate that owns the thing being faked (`agent::testing`,
   `provider::testing`, `host_remote::testing`, `command_service::testing`),
-  never a crate that depends upward. Tests reach other programs as built
-  binaries, whose paths `cargo xtask test` sets in environment variables.
+  never a crate that depends upward. A test reaches another program as the
+  binary Cargo built into the target directory the test runs from
+  (`command_service::testing::built_program`), and a TypeScript test through
+  `DEMI_TEST_PROGRAMS` ([Validation](../delivery/builds-and-releases.md#validation)).
 - **Generated code.** The TypeScript generated from contract crates lives in
   `packages/protocol/src/generated/` and `packages/web/src/api/generated/` and
   is not committed ([Contracts](contracts.md#generated-typescript)).
 - **Vendored crates.** A vendored crate keeps its upstream metadata and
   licenses. The root `Cargo.toml` declares its `[patch.crates-io]` path and
-  excludes it from the workspace, so it stays outside the workspace lints.
+  excludes it from the workspace, so the workspace's formatting and tests
+  leave it as upstream wrote it.
   Demi's adapters of a vendored crate stay in the responsible Demi crate. Its
   `[package.metadata.demi]` names the Demi crate that maintains it
   (`maintainer`) and each change from the upstream release with its reason
@@ -849,7 +851,7 @@ the workspace's `cargo metadata`, and fails unless:
   directly or through other crates;
 - the graph is acyclic.
 
-`cargo xtask check` runs it.
+The Rust tests run it.
 
 The package check reads the `text` block under
 [TypeScript packages](#typescript-packages-1) and the npm workspace, and fails
@@ -872,6 +874,5 @@ unless:
 The frontend test suite (`bun run test`) runs it.
 
 Other rules are enforced where they apply: Rust visibility keeps internals
-behind a crate's public items, the workspace lints enforce the rules in
-[Concurrency](concurrency.md), and the remaining "must not" rules of the
-entries above are enforced in review.
+behind a crate's public items, and review enforces the rules in
+[Concurrency](concurrency.md) and the "must not" rules of the entries above.

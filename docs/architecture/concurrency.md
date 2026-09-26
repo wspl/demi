@@ -273,13 +273,13 @@ which edge threads share. Each use says why in a comment. The native programs
 keep a handful of these, for example the set of changed paths that a file
 watcher's own thread records.
 
-**Enforcement.** The workspace lints deny `await_holding_lock` and
-`await_holding_refcell_ref`. `std::sync::RwLock` and `tokio::sync::RwLock` are
-disallowed types (publish a `watch` snapshot), and so is `tokio::sync::Mutex`
-(give the state one owner, or use a named gate).
+**Locks and awaits.** No lock guard and no `RefCell` borrow is held across an
+`.await`. Neither `std::sync::RwLock` nor `tokio::sync::RwLock` is used
+(publish a `watch` snapshot instead), nor `tokio::sync::Mutex` (give the state
+one owner, or use a named gate).
 
-**Queues.** Every queue is bounded; `tokio::sync::mpsc::unbounded_channel` is a
-disallowed method. A queue's owner decides what a full queue means, and the
+**Queues.** Every queue is bounded; `tokio::sync::mpsc::unbounded_channel` is
+not used. A queue's owner decides what a full queue means, and the
 rule lives with the owner: a conversation socket's outbox closes a connection
 that lags, and the client reconnects to the running session
 ([Frame protocol](../agent/runtime.md#frame-protocol)); the runner's
@@ -304,13 +304,11 @@ What crosses is owned data in both directions.
 | `demi-claude` | One blocking call each for hashing and file writes |
 | Machine manager | One entry point to the blocking pool; the storage and Linux functions take a token only that entry point creates, so running off the loop is checked at compile time. Child processes start from the loop, because spawning is quick and waiting is event-driven, and dropping one kills it; firewall updates run on the pool because their library spawns synchronously |
 
-`tokio::task::block_in_place` is a disallowed method everywhere. Crates whose
-code runs on async threads, the backend's shard and edge modules, the runner's
-control modules and the machine manager's loop, also disallow `std::fs`,
-`std::thread::sleep` and SQLite calls outside their blocking modules. A
-blocking module carries a module-level
-`#[expect(clippy::disallowed_methods, reason = "...")]`, so the exception is
-visible where it applies.
+`tokio::task::block_in_place` is not used: blocking work moves off the async
+thread instead of blocking it in place. Code that runs on async threads, the
+backend's shard and edge modules, the runner's control modules and the
+machine manager's loop, calls `std::fs`, `std::thread::sleep` and SQLite only
+from the blocking pool or a thread of its own.
 
 ## Cancellation and cleanup
 
@@ -382,5 +380,5 @@ document, for example the backend's in [Backend](../backend/backend.md).
   backend's tasks run on one current-thread runtime that the paused clock
   reaches. Its database still answers on threads of its own.
 - **Real programs are built binaries.** A test that needs a real runner or
-  another program starts the binary that `cargo xtask test` built and named in
-  an environment variable ([Module layout](crates-and-packages.md#module-layout)).
+  another program starts the binary Cargo built into the target directory the
+  test runs from ([Validation](../delivery/builds-and-releases.md#validation)).

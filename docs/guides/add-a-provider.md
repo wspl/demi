@@ -23,8 +23,7 @@ process.
 
 ## Create the crate
 
-1. Create the library crate `crates/provider-<vendor>` with
-   `[lints] workspace = true`, like every crate.
+1. Create the library crate `crates/provider-<vendor>`.
 2. Depend on `provider`, which holds the contract and the shared building
    blocks; a provider that starts a process also depends on `shell` for the
    Host process interface. Never depend on what sits above a provider: the
