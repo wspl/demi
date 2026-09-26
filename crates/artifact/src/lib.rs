@@ -1,7 +1,8 @@
 //! Verified bytes (`crates-and-packages.md` § artifact): downloads over HTTPS
-//! with a declared size and SHA-256, digests, durable atomic publication,
-//! release publication, the install lock between processes, install receipts
-//! and archive extraction.
+//! (plain HTTP too for a caller whose digest came over a connection it
+//! trusts) with a declared size and SHA-256, digests, durable atomic
+//! publication, release publication, the install lock between processes,
+//! install receipts and archive extraction.
 //! Callers name the location, size and digest they expect; nothing here
 //! chooses what to install.
 
@@ -15,7 +16,7 @@ mod release;
 
 pub use archive::extract_zip;
 pub use digest::{Digest, Verifier, digest};
-pub use download::{client, copy, download};
+pub use download::{client, client_allowing_http, copy, download};
 pub use lock::InstallLock;
 pub use publish::{
     Mode, Permissions, Publication, Staged, publish, publish_bytes, publish_bytes_blocking,
@@ -29,10 +30,7 @@ pub mod testing {
 
     /// A download client that also allows plain HTTP, for a fixture server.
     pub fn loopback_client() -> Result<reqwest::Client, crate::Error> {
-        crate::download::builder()
-            .https_only(false)
-            .build()
-            .map_err(|error| crate::Error::Download(error.without_url().to_string()))
+        crate::client_allowing_http()
     }
 }
 

@@ -24,6 +24,18 @@ pub fn client() -> Result<reqwest::Client, Error> {
         .map_err(|error| Error::Download(error.without_url().to_string()))
 }
 
+/// [`client`], but plain HTTP too: for a caller that received the declared
+/// size and SHA-256 over a connection it trusts, so the transport cannot
+/// change what it keeps, such as a runner installing a command executable
+/// (`native-runtime.md` § Install the selected executable). A download whose
+/// digest comes from the same server keeps [`client`].
+pub fn client_allowing_http() -> Result<reqwest::Client, Error> {
+    builder()
+        .https_only(false)
+        .build()
+        .map_err(|error| Error::Download(error.without_url().to_string()))
+}
+
 /// Streams `url` into `output`, enforcing the declared size and SHA-256. The
 /// caller owns `output` and discards it on any failure.
 pub async fn download(

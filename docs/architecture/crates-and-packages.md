@@ -298,11 +298,12 @@ next to the wire's types, so that a command program depends on one crate.
 
 #### `artifact`
 
-- **Owns:** verified download over HTTPS with a declared size and SHA-256,
-  digests, durable atomic publication, release publication (a directory of
-  verified files and the record that describes them, published once and
-  immutable), the install lock between processes, install receipts and archive
-  installation. Every download-and-verify path and every durable atomic write
+- **Owns:** verified download over HTTPS with a declared size and SHA-256
+  (plain HTTP too for the runner's artifact cache, whose digests come from the
+  pinned descriptor), digests, durable atomic publication, release
+  publication (a directory of verified files and the record that describes
+  them, published once and immutable), the install lock between processes,
+  install receipts and archive installation. Every download-and-verify path and every durable atomic write
   goes through it: the runner's artifact cache, the Chrome and Claude Code
   installers, the machine manager's image store and `xtask` release packaging.
 - **Public boundary:** the functions and types above.
