@@ -111,7 +111,10 @@ impl ServiceStreams {
             }
             // The stream holds its service from the start
             // (`native-runtime.md` § Keep a service resident).
-            let _lease = digest.map(|digest| services.lease(digest));
+            let _lease = match digest {
+                Some(digest) => Some(services.lease(digest).await),
+                None => None,
+            };
             let opened = async {
                 let mut resident = services
                     .acquire(&package, resolver, &stream)
