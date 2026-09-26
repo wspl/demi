@@ -65,15 +65,14 @@ coding standards.
 
 ## Tests
 
+[Testing](docs/delivery/testing.md) says what a test protects, where it runs,
+how it proves itself, what it may cost and how coverage is used; read it
+before you add or change a test.
+
 - Rust unit tests sit beside the code, and each crate has one integration test
   binary ([Module layout](docs/architecture/crates-and-packages.md#module-layout)).
   [Tests and time](docs/architecture/concurrency.md#tests-and-time) covers
   clocks, real processes and built binaries.
-- No automated test calls a real model. Tests use scripted providers and
-  fixtures, so a run costs nothing and answers the same way every time.
-- Suites that need a real machine manager, Chrome or the Claude Code CLI run
-  only when environment variables supply those resources
-  ([Real machine acceptance](docs/delivery/scenarios.md#real-machine-acceptance)).
 - Keep the suite green: before every commit, run the Rust tests, and when a
   browser package or JavaScript that a crate ships changed,
   `bun run typecheck:web` and `bun run test`.
