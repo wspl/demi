@@ -13,7 +13,7 @@ Three suites drive the whole backend:
 | --- | --- | --- | --- | --- |
 | Backend scenarios | Rust integration tests of the backend crate (`crates/backend/tests`) | HTTP and the conversation WebSocket, with the agent protocol's typed frames | A scripted provider family | Real runner processes; a scripted machine manager for the Cloud |
 | Browser-contract suite | Tests of `packages/web` | The web application's API client and `AgentClient`, against the backend executable | A scripted Anthropic-compatible endpoint | A real runner; the backend scenarios' scripted machine manager, which no path asks for the Cloud |
-| Real-machine suites | Rust tests that run only when environment variables supply their resources | As the backend scenarios | Scripted | A real machine manager, gVisor sandbox, and shipped image; real Chrome; the real Claude Code CLI |
+| Real-machine suites | Rust tests that run only when environment variables supply their resources; of them, only the browser suite exists ([Real machine acceptance](#real-machine-acceptance)) | As the backend scenarios | Scripted | A real machine manager, gVisor sandbox, and shipped image; real Chrome; the real Claude Code CLI |
 
 ## System under test
 
@@ -221,7 +221,15 @@ Chrome, or Claude Code CLI:
 | Suite | What is real | What its environment supplies |
 |---|---|---|
 | Cloud | The machine manager, its gVisor sandbox, and the shipped image | The manager's socket, a backend URL the manager allows, and a local copy of the image manifest |
-| Browser | Chrome for Testing on a paired device or on the Cloud | The command program that drives Chrome, and on the Cloud what the Cloud suite needs |
+| Browser | Chrome for Testing on a paired device or on the Cloud | The pinned Chrome for Testing executable (`DEMI_TEST_CHROME`), and on the Cloud what the Cloud suite needs |
 | Claude Code | The vendor's CLI on a runner, calling a local mock of the vendor's endpoint | The CLI executable |
+
+Only the browser suite exists, and only in part: the Chrome tests of
+`demi-commands` drive a real Chrome for Testing through the command program on
+the machine that runs them, not through the backend or on a Cloud
+([Validation](builds-and-releases.md#validation) gives the command). The Cloud
+suite, the browser on a Cloud, and the Claude Code suite are not written, and
+whether to write them is open. Until they are, release acceptance checks what
+they would observe by hand on a real Cloud and with the real Claude Code CLI.
 
 Deployment prerequisites are in [Cloud setup](../cloud/setup.md).
