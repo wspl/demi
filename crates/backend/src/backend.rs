@@ -468,6 +468,13 @@ impl Backend {
         self.local_addr
     }
 
+    /// Holds every commit of a conversation's checkpoint from now on, until
+    /// the hold is released.
+    #[cfg(feature = "testing")]
+    pub fn hold_commits(&self) -> crate::CommitHold {
+        self.services.conversations.hold_commits()
+    }
+
     /// Shuts the backend down. The listener closes first, so no new work
     /// starts and a new request on an open connection answers 503
     /// `backend_closing`; every step runs even when an earlier one fails, and
