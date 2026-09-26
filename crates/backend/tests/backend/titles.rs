@@ -2,16 +2,17 @@
 //! § Resource index): the first message titles the conversation at once and
 //! a request beside the first turn writes a better one; Detect title asks
 //! again; a rename that lands while a request is in flight wins; an archive
-//! ends the request. The model is a scripted family that tells a title
-//! request from a turn by its system prompt. No test calls a real model.
+//! ends the request; an answer without a title writes nothing. The model is
+//! a scripted family that tells a title request from a turn by its system
+//! prompt. No test calls a real model.
 
 use std::sync::{Arc, Mutex};
 
 use demi_agent::testing::model_of;
 use demi_backend::{FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry, ProviderFamily};
 use demi_core::{
-    AuthState, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList, RuntimeState, Timestamp, TokenUsage,
-    UserContentBlock,
+    AuthState, ModelSelection, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList, RuntimeState, Timestamp,
+    TokenUsage, UserContentBlock,
 };
 use demi_provider::{
     Capabilities, CatalogError, InferenceItem, InferenceRequest, Provider, ProviderEvent, ProviderRun, ProviderRuntime,
@@ -33,17 +34,20 @@ use crate::support::{Harness, Session, TestBackend, eventually};
 const GENERATED: &str = "TS2307 after package split";
 
 /// What the scripted model was asked for titles, and the title requests it
-/// may answer: each waits for a permit the test adds, or its cancel.
+/// may answer: each waits for a permit the test adds, or its cancel, and
+/// then writes `answer`.
 struct Script {
     asked: Mutex<Vec<InferenceRequest>>,
     answers: Semaphore,
+    answer: String,
 }
 
 impl Script {
-    fn new() -> Arc<Self> {
+    fn new(answer: &str) -> Arc<Self> {
         Arc::new(Self {
             asked: Mutex::new(Vec::new()),
             answers: Semaphore::new(0),
+            answer: answer.to_owned(),
         })
     }
 
@@ -132,7 +136,7 @@ impl ProviderRuntime for TitlingRuntime {
             tokio::select! {
                 permit = script.answers.acquire() => {
                     permit.unwrap().forget();
-                    stream::iter([ProviderEvent::TextDelta(format!("\"{GENERATED}\"\n")), usage()]).boxed_local()
+                    stream::iter([ProviderEvent::TextDelta(script.answer.clone()), usage()]).boxed_local()
                 }
                 // A cancelled run ends without an event.
                 () = cancel.cancelled() => stream::empty().boxed_local(),
@@ -170,9 +174,10 @@ fn input(request: &InferenceRequest) -> String {
     }
 }
 
-#[tokio::test]
-async fn a_title_follows_the_first_message_and_a_rename_or_an_archive_while_one_is_asked_wins() {
-    let script = Script::new();
+/// A backend with titles on, whose master has an entry of the scripted
+/// family, and the model of that entry; the harness holds the backend's
+/// data.
+async fn titling(script: &Arc<Script>) -> (Harness, TestBackend, Session, ModelSelection) {
     let mut harness = Harness::new().with_families(FamilyRegistry::builtin().with("titling", Titling(script.clone())));
     harness.conversations.titles = true;
     let (backend, master) = harness.start_set_up().await;
@@ -185,7 +190,13 @@ async fn a_title_follows_the_first_message_and_a_rename_or_an_archive_while_one_
         .await;
     assert_eq!(created.status, StatusCode::CREATED);
     let provider = created.json::<ProviderAnswer>().provider.id.as_str().to_owned();
-    let model = model_of(&provider, "m");
+    (harness, backend, master, model_of(&provider, "m"))
+}
+
+#[tokio::test]
+async fn a_title_follows_the_first_message_and_a_rename_or_an_archive_while_one_is_asked_wins() {
+    let script = Script::new(&format!("\"{GENERATED}\"\n"));
+    let (_harness, backend, master, model) = titling(&script).await;
     create(&backend, &master, FIRST).await;
     // The browser's record creation repeats the placeholder, which settles
     // nothing.
@@ -273,5 +284,25 @@ async fn a_title_follows_the_first_message_and_a_rename_or_an_archive_while_one_
         )
         .await;
     assert_eq!(foreign.refusal(), (StatusCode::NOT_FOUND, ErrorCode::ProviderNotFound));
+    backend.close().await;
+}
+
+#[tokio::test]
+async fn an_answer_without_a_title_leaves_the_messages_title_and_detect_title_available() {
+    let script = Script::new(" \n\n");
+    let (_harness, backend, master, model) = titling(&script).await;
+    create(&backend, &master, FIRST).await;
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open(&model).await;
+    socket.chat("m1", "hello   there").await;
+    eventually("the title request is asked", || async { script.asked() == 1 }).await;
+    script.answers.add_permits(1);
+    eventually("the request ends", || async {
+        !summary(&backend, &master, FIRST).await.title_generating
+    })
+    .await;
+    // The title in place stays, and asking again is the retry.
+    let left = summary(&backend, &master, FIRST).await;
+    assert_eq!((left.title.as_str(), left.title_current), ("hello there", false));
     backend.close().await;
 }
