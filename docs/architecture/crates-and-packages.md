@@ -206,7 +206,7 @@ next to the wire's types, so that a command program depends on one crate.
   `browser.*`, the package's operation list, browser targets, queries, tab
   state, observations and resource event payloads, the live
   view's messages and frame header, the capture extension's events and
-  commands, and the pinned Chrome release and receipt records. Limits are
+  commands, and the pinned Chrome release record. Limits are
   the crate's constants, shared by the inputs they bound; each input type
   carries its default timeout.
 - **Public boundary:** the types above. `coding-agent` declares the commands
