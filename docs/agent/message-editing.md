@@ -264,9 +264,10 @@ from three observations:
   transaction.
 - The backend tells a client nothing of an edit before its transaction commits
   ([Commit and idempotency](#commit-and-idempotency)). While a test holds the
-  commit after the edit's rows are written, the page has received neither the
-  `edit_result` nor a transcript change, the model has not been asked, and the
-  history a reload reads is the one before the edit; once the commit
+  commit after the edit's rows are written, the model has not been asked and
+  the history a reload reads is the one before the edit; while a test holds
+  the edit's save, the connection's outbox, which the page reads in order,
+  holds neither the `edit_result` nor a transcript change; once the commit
   completes, the replacement and the `edit_result` arrive. A process that
   exits before the commit therefore leaves no client told of an edit that a
   reload does not show.

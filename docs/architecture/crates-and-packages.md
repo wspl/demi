@@ -461,10 +461,11 @@ Each crate implements the provider contract for one vendor family.
   that every realization passes (`store_contract`), predictable identities
   (`SequentialIds`), provider runtimes that play scripts
   (`ScriptedProviders`), a Host type for agents without shell tools
-  (`NoHost`, `NoShells`) and a test client that drives a connection
-  (`TestClient`). A product supplies
-  the harness, the providers, a shell environment per Host and a tree store;
-  the agent never knows which shell engine runs. Behavior:
+  (`NoHost`, `NoShells`), a test client that drives a connection
+  (`TestClient`, and `waiting_frames` for what an outbox holds) and the
+  readers of a shell tool's result text (`field`, `preview`). A product
+  supplies the harness, the providers, a shell environment per Host and a
+  tree store; the agent never knows which shell engine runs. Behavior:
   [Agent runtime](../agent/runtime.md), [Subagents](../agent/subagents.md)
   and [Compaction](../agent/compaction.md).
 - **Rules:** the node assembly is the one place that creates a node's session;
