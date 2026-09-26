@@ -276,10 +276,30 @@ async fn shutdown_does_not_wait_for_a_blocked_output_consumer() {
     assert_eq!(table.len(), 0);
 }
 
+/// Waits until the job of `scope` blocks or loops: one of its units waits
+/// inside an interruptible read, write or sleep, or the job checks for
+/// cancellation another hundred times, as a loop does at every step.
+#[cfg(feature = "test-fixtures")]
+async fn blocked_or_looping(scope: &demi_runner::shell::scope::Scope, script: &str) {
+    let activity = scope.activity();
+    let checks = activity.checks();
+    tokio::time::timeout(Duration::from_secs(60), async {
+        while activity.waiting() == 0 && activity.checks() < checks + 100 {
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("{script} neither blocks nor loops"));
+}
+
 /// A job that blocks, in any of the ways below, ends with `SIGKILL` and no
-/// work left when it is cancelled. The blocked jobs run at once beside a
-/// sibling job, which prints the runner's process as its `$$`, waits in
+/// work left when it is cancelled there. The blocked jobs run at once beside
+/// a sibling job, which prints the runner's process as its `$$`, waits in
 /// `read` through every cancellation and then finishes as it would alone.
+/// About 4 s: each way of blocking needs a job of its own, and each job is a
+/// login shell that reads the machine's profile first (about 0.4 s in the
+/// Linux container, with nvm), so the jobs start together.
+#[cfg(feature = "test-fixtures")]
 #[tokio::test]
 async fn jobs_share_the_runner_process_and_cancellation_is_isolated() {
     use demi_runner::{
@@ -337,6 +357,7 @@ async fn jobs_share_the_runner_process_and_cancellation_is_isolated() {
         .await
         .unwrap();
         wait_for_job_ready(&mut job).await;
+        blocked_or_looping(&scope, script).await;
         job.cancel();
         let (exit, _) = tokio::time::timeout(Duration::from_secs(3), job.wait())
             .await
