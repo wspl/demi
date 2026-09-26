@@ -68,10 +68,8 @@ const account = { name: 'Zan' }
 const full = createSettingsState()
 const fullTab = ref<SettingsTab>('models')
 const fullNarrowTab = ref<SettingsTab>('skills')
-// Each pinned dialog closes from its own Close, and Open mounts it again: its
-// pages open dialogs of their own into the same well, and patching them back
-// into a dialog that closed in place fails in Vue (insertBefore on a node the
-// well no longer holds), so a closed dialog is unmounted instead.
+// Each pinned dialog closes from its own Close and opens again in place from Open,
+// as the product's settings dialog does.
 const fullOpen = ref(true)
 const fullNarrowOpen = ref(true)
 
@@ -101,9 +99,8 @@ const fullNarrowOpen = ref(true)
         <GalleryOverlayWell size="tall">
           <Button v-if="!fullOpen" size="md" @click="fullOpen = true">Open</Button>
           <SettingsDialog
-            v-if="fullOpen"
             v-model:tab="fullTab"
-            is-open
+            :is-open="fullOpen"
             :overlay-store="appOverlayStore"
             :account="account"
             :sections="SETTINGS_SECTIONS"
@@ -121,9 +118,8 @@ const fullNarrowOpen = ref(true)
         <GalleryOverlayWell size="narrow">
           <Button v-if="!fullNarrowOpen" size="md" @click="fullNarrowOpen = true">Open</Button>
           <SettingsDialog
-            v-if="fullNarrowOpen"
             v-model:tab="fullNarrowTab"
-            is-open
+            :is-open="fullNarrowOpen"
             :overlay-store="appOverlayStore"
             :account="account"
             :sections="SETTINGS_SECTIONS"
