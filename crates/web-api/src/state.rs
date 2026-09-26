@@ -19,9 +19,9 @@ use crate::workspaces::WorkspaceDto;
 /// workspaces in their order, the user's devices, the paired ones and the
 /// Cloud, the user's live exposes, soonest expiry first, with the domain of
 /// their hostnames, null when the instance has none and exposes are off,
-/// the summaries of the user's conversations, the active ones first, then
-/// the archived, and the Cloud's status. The backend assembles it on each
-/// request, without waking a Cloud or running inference.
+/// the backend's public URL, the summaries of the user's conversations, the
+/// active ones first, then the archived, and the Cloud's status. The backend
+/// assembles it on each request, without waking a Cloud or running inference.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ProductState {
@@ -35,6 +35,10 @@ pub struct ProductState {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub expose_domain: Option<String>,
+    /// The URL runners connect to (`DEMI_BACKEND_PUBLIC_URL`), whose origin
+    /// serves the installers: the page's install command names it, since
+    /// the page's own origin may be another server's, as in development.
+    pub public_url: String,
     pub conversations: Vec<ConversationSummary>,
     pub cloud: CloudStatus,
 }

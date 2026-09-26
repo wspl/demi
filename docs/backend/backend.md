@@ -349,7 +349,7 @@ and an error names the variable. `demi-backend --help` lists the flags.
 | `DEMI_BACKEND_DATA` | The data directory. Default `~/.demi/backend`. | [Storage](storage.md#ownership-and-layout) |
 | `DEMI_BACKEND_PORT` | The TCP port the backend listens on, 1 to 65535. Default 3271. | — |
 | `DEMI_INSTANCE_MODE` | `shared` or `isolated`. Required. | [Product](../product/product.md#instance-mode-shared-vs-isolated) |
-| `DEMI_BACKEND_PUBLIC_URL` | The URL runners and Cloud guests connect to; installers embed it, expose URLs take their scheme and port from it, and a development store's downloads are on it. Required. | [Cloud setup](../cloud/setup.md#configuration) |
+| `DEMI_BACKEND_PUBLIC_URL` | The URL runners and Cloud guests connect to; installers embed it, the page's install command fetches them from it, expose URLs take their scheme and port from it, and a development store's downloads are on it. Required. | [Cloud setup](../cloud/setup.md#configuration) |
 | `DEMI_MACHINES_SOCKET` | The machine manager's Unix socket. Required: every deployment has Cloud. | [Cloud setup](../cloud/setup.md#configuration) |
 | `DEMI_NATIVE_CONFIG` | The native command releases, and the object storage they are published to or the development store that serves them. Required. | [Native runtime](../execution/native-runtime.md#backend-deployment-configuration) |
 | `DEMI_CHANGE_STORE_CONFIG` | Puts the object store in an S3 bucket. Optional: the data directory holds it otherwise. | [Storage](storage.md#the-object-store) |

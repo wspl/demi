@@ -34,6 +34,9 @@ async fn the_state_is_the_users_snapshot_and_revalidates_by_its_etag() {
             devices: Vec::new(),
             exposes: Vec::new(),
             expose_domain: None,
+            // The URL runners connect to: without a configured one, the
+            // backend's own address.
+            public_url: format!("{}/", backend.url),
             conversations: Vec::new(),
             // A Cloud no work used yet is not made.
             cloud: CloudStatus {
@@ -55,6 +58,11 @@ async fn the_state_is_the_users_snapshot_and_revalidates_by_its_etag() {
     assert_eq!(first.headers["content-type"], "application/json");
     let body = String::from_utf8(first.body.clone()).unwrap();
     assert!(!body.contains("passwordHash") && !body.contains("$argon2"), "{body}");
+    // The page's install command fetches the installer at that URL's origin,
+    // which is this backend's; it has no runner releases to install.
+    let installer = url::Url::parse(&state.public_url).unwrap().join("/install.sh").unwrap();
+    let installer = reqwest::get(installer).await.unwrap();
+    assert_eq!(installer.status(), StatusCode::SERVICE_UNAVAILABLE);
 
     let unchanged = backend.get_with("/api/state", &master, &[("if-none-match", &etag)]).await;
     assert_eq!(unchanged.status, StatusCode::NOT_MODIFIED);
@@ -73,9 +81,11 @@ async fn the_state_is_the_users_snapshot_and_revalidates_by_its_etag() {
     assert_ne!(changed_etag, etag);
 
     // An existing user's snapshot after a restart is the same body, so the
-    // same ETag.
+    // same ETag. The backend comes back at its address, as a deployment's
+    // public URL stays.
+    let address = backend.address();
     backend.close().await;
-    let backend = harness.start().await;
+    let backend = harness.start_at(address).await;
     let again = backend
         .get_with("/api/state", &master, &[("if-none-match", &changed_etag)])
         .await;
