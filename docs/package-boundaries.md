@@ -27,71 +27,63 @@ listing, or a network stream, belongs to the runner wire like the others.
 
 ## Source organization
 
-TypeScript packages live under `packages/`; Rust crates live under `crates/`.
-An independent package requires independent use, distribution or dependency
+The frontend is TypeScript: `packages/web`, `packages/web-ui`,
+`packages/web-gallery` and the browser-side libraries they import
+(`@demicodes/core`, `@demicodes/utils`, the client and protocol of
+`@demicodes/agent`, and `@demicodes/browser-protocol`). Everything that runs
+on a server or a Host is Go, in one module at the repository root. An
+independent package requires independent use, distribution or dependency
 isolation. Separate responsibilities within one consumer belong in modules.
 Cross-language type correspondence does not require matching packages.
 
-The following tree shows all first-party Rust crates and the TypeScript packages
-that own their contracts. Other TypeScript packages retain their registry entries.
+TypeScript packages that the Go packages replace keep their registry entries
+until their Go replacement becomes the default; each Go entry below names the
+entry whose responsibilities it takes over.
 
 ```text
 packages/
-├── runner-protocol/
-│   └── src/schemas.ts          # Authoritative Zod runner messages
-├── command-loader/
-│   └── src/manifest/schema.ts  # Authoritative Zod manifest structure
-└── command-protocol/
-    └── src/index.ts            # Authoritative Zod command wire/package contracts
+├── runner-protocol/src/schemas.ts           # Authoritative Zod runner messages
+├── command-loader/src/manifest/schema.ts    # Authoritative Zod manifest structure
+├── command-protocol/src/index.ts            # Authoritative Zod command wire/package contracts
+└── browser-protocol/src/                    # Authoritative Zod browser and live view contracts
 
-crates/
-├── runner/                    # Execution host; distributed as demi-runner
-│   ├── Cargo.toml
-│   ├── build.rs               # Generates runner messages and manifest bindings
-│   └── src/
-│       ├── main.rs            # Executable entry point
-│       ├── connection/        # Backend connection and runner-message codec
-│       ├── commands/          # Manifest, CLI parsing/help, dispatch, callbacks,
-│       │                      # artifact cache and resident-process ownership
-│       └── shell/             # In-process brush, standard utility adaptation
-├── command-service/           # Communication SDK shared by execution hosts
-│   ├── Cargo.toml             # and independently distributed command programs
-│   ├── build.rs               # Generates command wire and package bindings
-│   └── src/
-│       ├── lib.rs             # Library entry point
-│       ├── protocol.rs        # Generated types and incremental framing
-│       ├── client.rs          # Caller side
-│       └── server.rs          # Handler side
-└── demi-commands/              # Independently distributed Demi command program
-    ├── Cargo.toml
-    └── src/
-        ├── main.rs            # Resident service entry point
-        ├── browser/           # Native browser driver and resource ownership
-        ├── files.rs           # Demi file operations
-        └── patch.rs           # Demi patch implementation
+cmd/                          # One composition root per executable
+├── demi-runner/              # Execution host
+├── demi-commands/            # Independently distributed Demi command program
+├── demi-claude/              # Independently distributed Claude Code installer
+├── demi-machines/            # Machine manager
+└── demi-backend/             # Backend
+
+internal/
+├── contract/<name>/          # Go bindings generated from the Zod schemas (not committed)
+├── commandservice/           # Communication SDK shared by the runner and command programs
+├── toolctx/                  # How a standard utility runs inside a shell job
+├── tools/<family>/           # The standard utilities
+├── shell/                    # Shell jobs on the embedded interpreter
+├── runner/                   # Connection, Host operations, native packages, services, git, working tree
+├── commands/                 # demi-commands: files, browser, live view
+├── claude/                   # demi-claude
+├── machines/                 # Machine manager
+├── provider/                 # Provider core and one package per vendor
+├── agent/, codingagent/      # Agent runtime and the coding harness
+├── hostremote/, shellenv/    # Backend side of Host access and shell environments
+└── backend/                  # Backend modules
+
+third_party/<fork>/           # Forked third-party modules, each with PATCHES.md
 
 scripts/
-├── rust-zod.ts                # Shared Zod-to-Rust generation tooling
-└── native/                    # Cross-target builds and release packaging
+├── go-zod.ts                 # Shared Zod-to-Go generation tooling
+├── generate-go-contracts.ts  # Writes every internal/contract package
+└── native/                   # Cross-target builds and release packaging
 ```
 
-Each package keeps its own source, tests and build manifest. The tree names the
-modules relevant to these boundaries, not every implementation file. Vendored
-third-party crates remain under `vendor/` outside the first-party workspace.
+The tree names the modules relevant to these boundaries, not every file.
 
-Zod schemas remain authoritative in their owning TypeScript packages. The runner
-consumes runner-message and manifest definitions; command-service consumes command
-wire and package definitions. The latter supplies its Rust types to both runner
-and command programs. There is no separate contracts directory, mirrored Rust
-protocol package or independently maintained Rust schema source.
-
-Cargo generation writes types and validators to each consuming crate's `OUT_DIR`.
-Generated Rust and intermediate schema documents do not belong in source control.
+Zod schemas remain authoritative in their owning TypeScript packages. There is no
+mirrored Go protocol package or independently maintained Go schema source.
+Generated Go and intermediate schema documents do not belong in source control.
 Test fixtures belong with tests; release descriptors belong with release artifacts.
-Shared generation tools live under `scripts/`; protocol packages do not import
-one another's private generation scripts. General-purpose operations use standard
-or established libraries. Shell-specific path conventions belong to shell
-adaptation, not a standalone path utility package.
+General-purpose operations use the standard library or established libraries.
 
 ## Dependency Direction
 
@@ -182,8 +174,8 @@ Test code may depend upward for integration coverage. Production code must not.
 
 - Native binding: the file command tree declares package and operation ids.
   The backend supplies exact release descriptors at runtime; command declarations
-  do not import a compiled-in release catalog. The Rust command implementation
-  remains in `crates/demi-commands`.
+  do not import a compiled-in release catalog. The command implementation
+  lives in `internal/commands`.
 
 ### `@demicodes/provider-claude-code`
 
@@ -322,7 +314,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Production deps: `@demicodes/command-protocol`, `@demicodes/shell`, `@demicodes/utils`.
 - Owns: strict manifest schemas, canonical manifest identities, package catalog validation, declaration serialization, manifest sources, and TypeScript dispatch for embedders through injected RPC/native executors. Manifests pin complete package descriptors and exact operation bindings; they contain no implementation source or artifact location.
 - Public boundary: `buildManifest`, `parseManifest`, manifest types, `createLoader`, manifest sources, `inProcessRpc`, RPC transport types and `treeFromManifest`.
-- Must not: know the backend, spawn processes, resolve object-store credentials, hold command definitions, transpile source or load downloaded code. The native runner consumes generated Rust manifest values and implements its CLI dispatch in Rust.
+- Must not: know the backend, spawn processes, resolve object-store credentials, hold command definitions, transpile source or load downloaded code. The native runner consumes generated Go manifest values and implements its CLI dispatch in Rust.
 
 ### `@demicodes/runner-protocol`
 
@@ -331,8 +323,8 @@ Test code may depend upward for integration coverage. Production code must not.
   `conversation_release` is the one generic release message; no browser policy.
 - Status: runner wire and managed-boot file schemas implemented.
 - Production deps: `@demicodes/command-protocol`, `@demicodes/shell` (the Host types the fs messages carry), `@demicodes/utils`, `@msgpack/msgpack` (the Bun end's codec).
-- Owns: the authoritative Zod backend runner wire contract — the message schemas (claim/auth handshake, liveness, the `fsOps` table from which the per-op fs requests and typed replies derive (file contents name a pipe and never ride a message, `docs/demi-next/runner.md` § File contents), streaming spawn, jobs, the rpc relay, the manifest push, transfers, the network stream `net_open` and its replies, the Host log read `log_read` and its replies), `createRunnerWire(codec)` (encode, and decode-with-validation per direction over an injected MessagePack codec: `msgpackCodec` under `@demicodes/runner-protocol/msgpack` used by Bun; Rust uses the generated contract and rmp-serde), the protocol constants (`RUNNER_PROTOCOL_VERSION`, `JOB_VIEW_BYTES`, the message size limit both ends enforce).
-- Public boundary: message types and schemas, `createRunnerWire`, the constants from root; `msgpackCodec` under `msgpack`; six-target runner release schemas under `release`; the managed-boot file schema (backend URL and device token), also consumed by machines and generated into the Rust runner. The backend consumes this package directly; the Rust runner generates bindings from its Zod schemas. It depends on neither endpoint.
+- Owns: the authoritative Zod backend runner wire contract — the message schemas (claim/auth handshake, liveness, the `fsOps` table from which the per-op fs requests and typed replies derive (file contents name a pipe and never ride a message, `docs/demi-next/runner.md` § File contents), streaming spawn, jobs, the rpc relay, the manifest push, transfers, the network stream `net_open` and its replies, the Host log read `log_read` and its replies), `createRunnerWire(codec)` (encode, and decode-with-validation per direction over an injected MessagePack codec: `msgpackCodec` under `@demicodes/runner-protocol/msgpack` used by Bun; Go uses the generated contract in `internal/contract/runnerwire`), the protocol constants (`RUNNER_PROTOCOL_VERSION`, `JOB_VIEW_BYTES`, the message size limit both ends enforce).
+- Public boundary: message types and schemas, `createRunnerWire`, the constants from root; `msgpackCodec` under `msgpack`; six-target runner release schemas under `release`; the managed-boot file schema (backend URL and device token), also consumed by machines and generated into the Go runner. The backend consumes this package directly; the Go runner generates bindings from its Zod schemas. It depends on neither endpoint.
 - Must not: contain network IO, a Host implementation, a shell environment, the job table, credentials, claim policy, device registry, or conversation state.
 
 ### `@demicodes/host-remote`
@@ -390,43 +382,40 @@ Test code may depend upward for integration coverage. Production code must not.
 - Production deps: none.
 - Public boundary: command wire and package schemas, types and constants.
 - Must not: implement command algorithms, perform transport IO, spawn services
-  or hold backend state. Rust bindings belong to `crates/command-service`.
+  or hold backend state. Go bindings are generated into `internal/contract/cmdservice`.
 
-### `crates/command-service` (Rust library)
+### `internal/commandservice` (Go package)
 
 - Retained-resource scope: generated lifecycle types, scoped dispatch,
   cancellation and bounded event transport; no tab, cookie or input policy.
-- Owns: generated command wire/package types and validation, incremental framing,
-  HTTP/2 client and server, bounded invocation IO and handler cancellation, and
+- Owns: command wire/package types and validation (generated into
+  `internal/contract/cmdservice`), incremental framing, HTTP/2 client and server, bounded invocation IO and handler cancellation, and
   the shared invocation edit recorder (`edits`): bounded file snapshots and a
   schema-validated journal coordinated across processes by an OS file lock.
 - Independent boundary: the runner and independently distributed command programs
   use the same communication SDK. Third-party command authors depend on this
   library without depending on runner or Demi command implementations.
-- `build.rs` consumes the Zod definitions in `packages/command-protocol`.
-  `src/integrity.rs` owns streaming artifact verification reused by installers;
-  `src/protocol.rs` includes generated types and owns framing and the
-  `Metadata` an invocation stream opens with: a native `Invocation`, or the
-  local command client's `LocalInvocation`; `client.rs` and `server.rs` own the
-  two transport roles. `src/descriptors.rs` owns waiting
-  out a lack of open files, for the runner, the edit recorder and command
-  programs alike (`docs/demi-next/runner.md` § Load).
-- Depends on: Tokio, tokio-util, h2, http, futures-util, bytes, serde, serde_json,
-  thiserror, package-identity hashing/canonicalization libraries, and libc or
-  windows-sys for the system's error codes.
+- Layout: integrity (streaming artifact verification reused by installers);
+  protocol (framing and the `Metadata` an invocation stream opens with: a
+  native `Invocation`, or the local command client's `LocalInvocation`); client
+  and server (the two transport roles); descriptors (waiting out a lack of open
+  files, for the runner, the edit recorder and command programs alike,
+  `docs/demi-next/runner.md` § Load); edits (the recorder).
+- Depends on: the Go standard library, `golang.org/x/net/http2`, and
+  `internal/contract/cmdservice`.
 - Public boundary: protocol types, client, service entry point, handler and IO,
   and waiting out a lack of open files.
 - Must not: implement commands, download artifacts, start command processes,
   hold credentials or change process-global cwd/environment for an invocation.
 
-### `crates/demi-commands` (Rust executable)
+### `cmd/demi-commands` and `internal/commands` (Go executable)
 
 - Browser scope: `browser/` owns browser/driver integration, the canonical
   tab registry, observations, command operations, the live view module with
   its capture extension and page observers
   ([Live browser view](demi-next/browser-live-view.md)), and resource
   cleanup. Browser business schemas come from `browser-protocol` and are generated
-  by this crate's build for native consumers; no second Rust schema authority.
+  into `internal/contract/browser`; no second Go schema authority.
   The command catalog and its ownership follow the
   [browser implementation status](demi-next/browser.md#implementation-status).
 - Owns: the independently released `demi-commands` resident program and all native
@@ -443,7 +432,7 @@ Test code may depend upward for integration coverage. Production code must not.
   conversations or be linked into runner. Standard shell utilities belong to
   runner's shell module.
 
-### `crates/demi-claude` (Rust executable)
+### `cmd/demi-claude` and `internal/claude` (Go executable)
 
 - Owns: the independently released `demi.claude` package, which installs and
   verifies Demi's copy of the Claude Code CLI on the machine that runs it
@@ -455,7 +444,7 @@ Test code may depend upward for integration coverage. Production code must not.
 - Must not: read release pointers or choose a version, start the CLI, or be
   linked into runner or `demi-commands`.
 
-### `crates/runner` (Rust executable)
+### `cmd/demi-runner`, `internal/runner`, `internal/shell`, `internal/tools` (Go executable)
 
 - Conversation scope: `commands/` keeps each job's command context and writes
   it into every native invocation, keeps a service resident while it holds
@@ -467,16 +456,18 @@ Test code may depend upward for integration coverage. Production code must not.
   (`service_open`: a user stream's invocation carried as two pipes, no protocol parsing), the Host's log
   (`host_log.rs`: the bounded log of diagnostics and its `log_read` answer), shell jobs, local command
   forwarding and installation.
-- `build.rs` consumes the Zod runner-message and manifest definitions from
-  `packages/runner-protocol` and `packages/command-loader`. Generated bindings
-  remain internal to the consuming runner modules.
-- `src/connection/` owns the backend connection and runner-message codec.
-- `src/commands/` owns manifest validation, CLI parsing/help, dispatch, application
+- Runner messages and manifests come from `internal/contract/runnerwire` and
+  `internal/contract/manifest`, generated from `packages/runner-protocol` and
+  `packages/command-loader`.
+- `internal/runner` owns the backend connection and runner-message codec,
+  Host operations, and the commands module: manifest validation, CLI parsing/help, dispatch, application
   callbacks, artifact acquisition/cache and resident command-process lifetimes.
   It verifies exact artifacts and reuses services by digest. Backend supplies
   artifact locations; storage-vendor selection remains outside runner.
-- `src/shell/` owns brush execution and standard utility registration/adaptation.
-  Brush, subshells and utility builtins execute inside the resident runner.
+- `internal/shell` owns shell jobs on the embedded interpreter
+  (`third_party/mvdan-sh`); `internal/tools` owns the standard utilities, which
+  run through `internal/toolctx`. The interpreter, subshells and utilities
+  execute inside the resident runner; no utility runs as a child process.
   Each job owns cwd, environment and IO. Declared builtins call the dispatcher
   directly; external programs call it through the forwarding executable.
 - Command definitions and package catalogs are fixed during the host program's
@@ -487,8 +478,8 @@ Test code may depend upward for integration coverage. Production code must not.
   Managed registration reads a validated temporary boot file. Init belongs to
   the shipped image; mounts, networking, and volumes belong to machines. The
   runner has no Linux PID 1 boot or kernel-command-line path.
-- First-party production dependency: command-service only. Vendored brush and
-  utility libraries are external dependencies, not additional Demi workspace crates.
+- First-party production dependencies: `internal/commandservice`, the
+  generated contracts, and the forks under `third_party/`.
 - Public boundary: the executable. Native build/release scripts produce six
   target artifacts. TypeScript integration fixtures belong to host-remote/testing.
 - Must not: own conversations or model/provider implementations, execute
@@ -584,23 +575,34 @@ web-gallery -> web-ui, browser-protocol, core, utils
 web -> web-ui, core, utils
 ```
 
-The browser contract supplies shared schemas to coding-agent and backend. Native
+The browser contract supplies shared schemas to coding-agent and backend. Go
 binding generation consumes browser-protocol as a build input and adds no
-first-party Rust runtime dependency.
+runtime dependency on TypeScript.
 
-First-party Rust production dependencies are:
+First-party Go production dependencies are (`contract` stands for the generated
+`internal/contract/*` packages, which depend on nothing first-party):
 
 ```text
-runner -> command-service
-demi-commands -> command-service
-demi-claude -> command-service
-command-service -> none
+commandservice -> contract
+toolctx -> none
+tools -> toolctx, contract
+shell -> toolctx, tools, contract
+runner -> commandservice, shell, contract
+commands -> commandservice, contract
+claude -> commandservice, contract
+machines -> contract
+provider -> contract
+agent -> provider, shellenv, contract
+codingagent -> agent, shellenv, contract
+hostremote -> contract
+shellenv -> hostremote, contract
+backend -> agent, codingagent, provider, hostremote, shellenv, contract
 ```
 
-Zod source consumption during Cargo builds is a build dependency on the owning
-TypeScript definitions, not a Rust runtime dependency or a mirrored crate.
-Cargo manifests must match this graph; external libraries and vendored dependencies
-are outside it.
+Zod source consumption during generation is a build dependency on the owning
+TypeScript definitions, not a Go runtime dependency or a mirrored package.
+Imports must match this graph; external modules and `third_party/` forks are
+outside it.
 
 `web-ui`, `web-gallery` and `web` are browser/product packages built with Vite/Vue; their internal source
 is `.vue` + `.ts`. The `.ts`-only `platform-entrypoints` boundary test does not scan them as
@@ -621,20 +623,22 @@ is always `src/index.ts`), and the root `test` script names every package that h
 How files and directories are organized inside a package. These are design
 rules, enforceable in review — not taste:
 
-Rust crates keep `Cargo.toml` at the crate root, Rust source under `src/` and
-Cargo's standard library/executable entrypoints. TypeScript source stays in its
-own package or repository build tooling. Each consuming `build.rs` generates
-Rust types and validation from authoritative Zod schemas into `OUT_DIR`, included
-with `include!`. A normal Cargo build runs generation without a manual preparation
-step. Cross-target build/release orchestration belongs in `scripts/native/`.
+Go code is one module at the repository root: executables under `cmd/<name>/`,
+packages under `internal/`. TypeScript source stays in its own package or
+repository build tooling. `scripts/generate-go-contracts.ts` generates Go types
+and validation from the authoritative Zod schemas into
+`internal/contract/<name>/zz_generated*.go`, which is not committed;
+`scripts/go-check.sh` and the build scripts run it before building.
+Cross-target build/release orchestration belongs in `scripts/native/`.
 See [native-runtime.md](demi-next/native-runtime.md#contract-generation-and-validation)
 for validation requirements. Cross-language integration fixtures belong to the
 TypeScript adapter exercising the native executable.
 
-Third-party source trees belong in the repository root's `vendor/<crate>/`,
-with their upstream metadata and licenses retained. The root `Cargo.toml`
-declares their `[patch.crates-io]` paths and excludes them from workspace
-membership. Demi adapters stay in their responsible `crates/` module. Dependency
+A forked third-party module belongs in `third_party/<name>/`, with its upstream
+license retained and a `PATCHES.md` that names the maintaining Demi package and
+every change from the upstream release with its reason. `go.mod` points to it
+with a `replace` directive. Only MIT, BSD or Apache licensed code is forked.
+Demi adapters stay in their responsible `internal/` package. Dependency
 versions and source identifiers stay in manifests, lockfiles and vendor metadata.
 `docs/` describes current architecture and usage, not dependency inventories,
 artifact hashes, CI run logs or one-off acceptance records.
@@ -663,7 +667,7 @@ module.
 - Platform-neutral package roots must not statically pull Node-only adapters, concrete providers, UI code, or test helpers into their import closure.
 - Public roots expose stable package contracts only; internal parser, transport, protocol, local adapter, auth-store, stream, and test helpers stay behind implementation files unless a package registry entry explicitly says otherwise.
 - Any workspace package imported by production source must be declared in `dependencies`, not hidden in `devDependencies` or transitive packages.
-- Runtime-specific code (Node or native Rust) lives behind an explicit platform entry or crate, never in a platform-neutral root.
+- Runtime-specific code (Node or Go) lives behind an explicit platform entry or package, never in a platform-neutral root.
 - Do not keep compatibility shims when a package split moves an implementation to its final package.
 
 ## Verification

@@ -158,7 +158,8 @@ whole tree. `watched` reports whether a watch is running.
 The runner keeps at most eight watched directories per connection and drops one
 after fifteen minutes without a request; closing the connection drops them all.
 
-Working-tree work runs on blocking threads off the connection's control loop.
+Working-tree work runs on its own goroutines, never on the one that reads the
+connection.
 At most two computations run at a time; a request beyond that waits for one to
 finish ([Load](#load)), and requests for the same directory share one
 computation. A computation stops at its next check when the connection closes
@@ -300,11 +301,26 @@ A shell job owns its working directory, environment, IO, and asynchronous work.
 It also carries the [command context](native-runtime.md#command-context) the
 backend built for it; the runner never derives that context from the job's
 environment.
-Brush runs inside the resident runner process. Declared roots call the shared
-command dispatcher; external tools such as Git, Python, and Node run as child
-processes. Every in-process file write passes through the job's scope, which
-reports the files the job created or modified when it exits
-([Edit tracking](edit-tracking.md)).
+The shell interpreter runs inside the resident runner process. It is Demi's fork
+of `mvdan.cc/sh` (`third_party/mvdan-sh`), extended where the job model below
+needs it. Declared roots call the shared command dispatcher. The standard
+utilities (`cat`, `grep`, `sed`, `find`, `jq`, `rg` and the rest of the runner's
+catalog) are Go functions that run in the runner process, never as child
+processes. External tools such as Git, Python, and Node run as child processes.
+Every in-process file write passes through the job's scope, which reports the
+files the job created or modified when it exits ([Edit tracking](edit-tracking.md)).
+
+A utility receives everything a process would take from the operating system
+from its job (`internal/toolctx`): working directory, environment, standard
+streams, umask, cancellation, filesystem access and a way to run another
+command, which `xargs`, `find -exec` and `env` use. The interpreter and the
+utilities never read or change process-global state such as the working
+directory, the environment, the standard descriptors, the umask, signal
+dispositions or process exit, so concurrent jobs cannot see each other. Each
+interpreter unit (the job's script, every pipeline stage, subshell, background
+list and process substitution) and each utility runs on its own goroutine.
+Pipeline stages between in-process commands are connected by in-memory pipes;
+an OS pipe is used only where an external program takes part.
 
 The diagram shows ownership, not execution order. Cancelling job A releases its
 work while preserving the runner and job B.
@@ -314,14 +330,14 @@ Runner process
 +--------------------------------------------------+
 | Job A                    Job B                   |
 | +--------------------+   +--------------------+  |
-| | Brush execution    |   | Brush execution    |  |
+| | Shell execution    |   | Shell execution    |  |
 | | Background tasks   |   | Background tasks   |  |
 | | IO and child work  |   | IO and child work  |  |
 | +--------------------+   +--------------------+  |
 +--------------------------------------------------+
 ```
 
-Each job starts a fresh login shell. Brush loads the system profile and first
+Each job starts a fresh login shell. The interpreter loads the system profile and first
 readable user login profile. The runner then restores its execution context,
 places command aliases first in PATH, and restores the requested cwd. Shell
 variables and functions do not carry over to the next job; persisted profile
@@ -337,7 +353,8 @@ completion. For example:
 The caller sees `started`, then a running job, then `done` and completion.
 A tool timeout returns the running job's handle. `shell_status` observes that job,
 and `shell_abort` cancels it. Background tasks remain job-owned rather than
-becoming detached services. Brush's internal tasks do not expose OS PIDs in `$!`.
+becoming detached services. In-process background lists have no OS PID; `$!`
+names them with a job-local identifier that `wait` and `kill` accept.
 
 ### Cancellation and completion
 
@@ -400,14 +417,16 @@ setup. [Managed hosts](managed-hosts.md#container-initialization) owns that
 responsibility split, boot credentials, and lifecycle. Replacement of the old
 PID 1 path is pending with the Cloud implementation.
 
-The implementation belongs to `crates/runner`: connection and registration code
-owns transport lifetime; `host.rs` dispatches Host operations; `shell/` owns brush
-and job cleanup. [Package boundaries](../package-boundaries.md) defines module
-ownership without duplicating it here.
+The implementation belongs to `cmd/demi-runner` and `internal/runner`:
+connection and registration code owns transport lifetime; the Host package
+dispatches Host operations; `internal/shell` owns the interpreter integration and
+job cleanup; `internal/tools` owns the utilities. [Package
+boundaries](../package-boundaries.md) defines module ownership without
+duplicating it here.
 
-Verification fixtures under `crates/runner/tests/` cover connections, processes,
-Host operations, shells, pipes, and local clients. TypeScript integration uses the
-actual Rust executable through `host-remote/testing`. The
+Go tests beside those packages cover connections, processes, Host operations,
+shells, utilities, pipes, and local clients. TypeScript integration uses the
+actual runner executable through `host-remote/testing`. The
 [native build guide](../native-builds.md#validation) defines target execution checks.
 Test locations identify the required coverage. Target execution results belong
 to CI and acceptance reports.

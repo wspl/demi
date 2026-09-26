@@ -1,0 +1,46 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - exhaustive
+    - forbidigo
+    - errorlint
+    - bodyclose
+    - noctx
+  settings:
+    exhaustive:
+      default-signifies-exhaustive: false
+    forbidigo:
+      analyze-types: true
+      forbid:
+        # The shell and the utilities run inside the runner for many jobs at
+        # once. They take directory, environment, streams, umask and exit from
+        # their job (internal/toolctx), never from the process.
+        - pattern: ^os\.(Chdir|Getwd|Setenv|Unsetenv|Clearenv|Getenv|LookupEnv|Environ|ExpandEnv|Exit)$
+          msg: process-global state; use the job's toolctx.Invocation
+        - pattern: ^os\.(Stdin|Stdout|Stderr)$
+          msg: process-global streams; use the invocation's streams
+        - pattern: ^(syscall|unix)\.Umask$
+          msg: the umask is process-wide; use Invocation.Umask
+        - pattern: ^signal\.(Notify|Ignore|Reset)$
+          msg: signal dispositions belong to the runner process
+        # Every filesystem access of a utility goes through Invocation.Files,
+        # which resolves the job's directory and records edits.
+        - pattern: ^os\.(Open|OpenFile|Create|CreateTemp|MkdirTemp|ReadFile|WriteFile|ReadDir|Stat|Lstat|Readlink|Mkdir|MkdirAll|Remove|RemoveAll|Rename|Symlink|Link|Chmod|Chown|Lchown|Chtimes|Truncate|DirFS)$
+          msg: use toolctx.Files
+        - pattern: ^os/exec\.
+          msg: utilities never start processes; use Invocation.Run
+  exclusions:
+    rules:
+      # The process-state bans apply to the shell and the utilities only.
+      - path-except: ^(internal/shell|internal/tools)/
+        linters:
+          - forbidigo
+      - path: _test\.go
+        linters:
+          - forbidigo
+
+formatters:
+  enable:
+    - gofmt

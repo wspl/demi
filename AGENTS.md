@@ -32,6 +32,16 @@
 - Keep the local Cloud guest image current yourself, without being asked: whenever the runner or a native command package changes (`demi-commands`, `demi-claude`, any crate the guest carries), cross-compile it for the guest, embed it in the rootfs, restart the machine manager, and reset the local Cloud onto the new base before acceptance. The local Cloud is a development environment: rebuild its image, restart its manager and reset it freely. A feature that runs on the Cloud is not accepted until it has run on the updated image.
 - Commit completed checkpoints with Conventional Commit subjects and push after each commit.
 
+# Go Port
+
+While the Go port in `docs/internal/go/plan.md` is under way, reread that plan at the start of every session and after every context compaction, before any other port work, and follow it. In short:
+
+- Server-side code moves to Go one process at a time behind an existing protocol, so every checkpoint is a working product and the old tests judge it (`DEMI_RUNNER_TEST_BINARY`, `DEMI_NATIVE_TEST_BINARY`).
+- One work package is one checkpoint: implemented in its worktree slot, verified by another agent, squash-merged into `go/main` as one Conventional Commit, checked with `scripts/go-check.sh`, pushed, and `docs/internal/` backed up to `go/internal`.
+- Only the orchestrator writes `docs/internal/`, design documents, cross-lane interfaces (`internal/toolctx`, generated contracts) and `go.mod`; an implementer that finds a design gap stops and reports it.
+- The standard utilities run inside the runner through `internal/toolctx`; none runs as a child process, and none touches process-global state (`.golangci.yml` enforces it).
+- Tests are ported by behavior: the ledger in `docs/internal/go/` maps every old test to a behavior and a work package.
+
 # Writing and Communication
 
 - Make the first explanation understandable without requiring the reader to ask for a simpler version. Start with what happens in a concrete example, then explain the rule. Use familiar words; introduce a technical term only when needed and explain it on first use.
@@ -55,6 +65,7 @@
 
 # Coding Standards
 
+- Go: Google Go Style Guide and Effective Go; `gofmt`; the repository's `.golangci.yml`. Every goroutine, timer and subscription is tied to a `context.Context` or an owner that stops it; tests that start them check for leaks with goleak. Mutable state has one owner goroutine or one mutex, never both. Mutually exclusive states are one typed constant checked exhaustively. Run the race detector on every test run.
 - TypeScript: Google TypeScript Style Guide.
 - JavaScript: Google JavaScript Style Guide.
 - Vue: Vue Style Guide.
