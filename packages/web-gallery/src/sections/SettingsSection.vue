@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SettingsDialog from '@demicodes/web-ui/settings/SettingsDialog.vue'
+import Button from '@demicodes/web-ui/ui/Button.vue'
 import type { SettingsTab } from '@demicodes/web-ui/settings/types'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GallerySection from '../components/GallerySection.vue'
@@ -67,6 +68,12 @@ const account = { name: 'Zan' }
 const full = createSettingsState()
 const fullTab = ref<SettingsTab>('models')
 const fullNarrowTab = ref<SettingsTab>('skills')
+// Each pinned dialog closes from its own Close, and Open mounts it again: its
+// pages open dialogs of their own into the same well, and patching them back
+// into a dialog that closed in place fails in Vue (insertBefore on a node the
+// well no longer holds), so a closed dialog is unmounted instead.
+const fullOpen = ref(true)
+const fullNarrowOpen = ref(true)
 
 </script>
 
@@ -92,12 +99,15 @@ const fullNarrowTab = ref<SettingsTab>('skills')
         note="A stress test: expiring auth, an unreachable local model, a crashed MCP server, a quota nearly spent, disabled entries, nested rows, long paths. Visible accounts reuse usage requests for one minute. Automatic refresh keeps existing meters and buttons still and enabled. Only a manual refresh spins its button; it bypasses the TTL or joins an automatic request already running."
       >
         <GalleryOverlayWell size="tall">
+          <Button v-if="!fullOpen" size="md" @click="fullOpen = true">Open</Button>
           <SettingsDialog
+            v-if="fullOpen"
             v-model:tab="fullTab"
-            :is-open="true"
+            is-open
             :overlay-store="appOverlayStore"
             :account="account"
             :sections="SETTINGS_SECTIONS"
+            @close="fullOpen = false"
           >
             <GallerySettingsFull :tab="fullTab" :state="full" />
           </SettingsDialog>
@@ -109,12 +119,15 @@ const fullNarrowTab = ref<SettingsTab>('skills')
         note="The long rail becomes a picker; the page still reads at this width."
       >
         <GalleryOverlayWell size="narrow">
+          <Button v-if="!fullNarrowOpen" size="md" @click="fullNarrowOpen = true">Open</Button>
           <SettingsDialog
+            v-if="fullNarrowOpen"
             v-model:tab="fullNarrowTab"
-            :is-open="true"
+            is-open
             :overlay-store="appOverlayStore"
             :account="account"
             :sections="SETTINGS_SECTIONS"
+            @close="fullNarrowOpen = false"
           >
             <GallerySettingsFull :tab="fullNarrowTab" :state="full" />
           </SettingsDialog>
