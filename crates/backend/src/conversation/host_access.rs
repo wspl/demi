@@ -5,7 +5,7 @@
 //! or a device that is not bound is refused; a Cloud's admission is taken,
 //! and the file gate is let go while that waits; then the operation runs
 //! once. Each conversation has one slot in its user's shard, with its file
-//! gate and its open transfers.
+//! gate, its open transfers and the gate its open user streams hold.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -43,6 +43,11 @@ pub(crate) struct ConversationSlot {
     /// Every operation on the conversation's Hosts holds a lease of it; a
     /// transition reserves it.
     pub(crate) files: ActivityGate,
+    /// Every open user stream holds a demand lease of it: someone watches
+    /// the conversation's Host, which is activity (`resource-lifecycle.md`
+    /// § Activity). Nothing reserves it, since a transition ends the streams
+    /// instead of waiting for them.
+    pub(crate) streams: ActivityGate,
     /// The open file transfers and user streams.
     pub(crate) transfers: Rc<TransferSet>,
 }
@@ -55,6 +60,7 @@ impl Conversations {
             .or_insert_with(|| {
                 Rc::new(ConversationSlot {
                     files: ActivityGate::new(),
+                    streams: ActivityGate::new(),
                     transfers: TransferSet::new(),
                 })
             })
@@ -163,15 +169,32 @@ pub(super) struct Admitted {
     _cloud: Option<CloudAdmission>,
 }
 
+/// What an admission that never wakes the Host is to the conversation's
+/// activity (`resource-lifecycle.md` § Activity).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Attention {
+    /// An open user stream: someone watches the Host, and the conversation
+    /// is active until the stream ends.
+    Watches,
+    /// An operation of the user's on what runs there, such as closing a
+    /// browser tab: activity that ends at once.
+    Operates,
+    /// A look at what runs there, such as listing the browser's tabs: no
+    /// activity.
+    Looks,
+}
+
 /// A user stream's hold on the conversation's main Host: registered with
-/// the conversation's open transfers, it holds neither the file gate nor a
-/// Cloud awake.
+/// the conversation's open transfers, it holds no file gate, and a stream
+/// holds its lease of the conversation's stream gate.
 pub(super) struct StreamAccess {
     /// The conversation's id as its record spells it.
     pub(super) conversation: ConversationId,
     pub(super) host: ConversationHost,
     pub(super) device: DeviceId,
     pub(super) open: OpenTransfer,
+    /// A stream's lease of the conversation's stream gate; none for a call.
+    pub(super) watching: Option<GateLease>,
 }
 
 /// What ends an admission's waits: the requester leaving, and, for a file
@@ -305,10 +328,15 @@ impl Shard {
     /// Host (§ Host operations): like any operation, except that a stopped
     /// Cloud is refused instead of woken, and that the admitted stream lets
     /// go of the file gate. It stays registered with the conversation's
-    /// transfers, so a transition ends it.
+    /// transfers, so a transition ends it. `attention` says what it is to
+    /// the conversation's activity: a look holds the file gate without
+    /// demand while it is admitted, and a stream takes its lease of the
+    /// stream gate before it lets go of the file gate, so an idle watch that
+    /// reserved the file gate sees every stream admitted before it.
     pub(super) async fn admit_stream(
         &self,
         id: &ConversationId,
+        attention: Attention,
         cancel: &CancellationToken,
     ) -> Result<StreamAccess, HostAccessError> {
         let record = self.owned_conversation(id).await?;
@@ -320,7 +348,11 @@ impl Shard {
             cancel,
             ended: Some(&open.ended),
         };
-        let files = waits.wait(slot.files.enter(Purpose::Demand)).await?;
+        let purpose = match attention {
+            Attention::Watches | Attention::Operates => Purpose::Demand,
+            Attention::Looks => Purpose::Maintenance,
+        };
+        let files = waits.wait(slot.files.enter(purpose)).await?;
         let mut selected = self.select_host(&record.id, None, false).await?;
         if !self.devices().online(&selected.device.id) {
             return Err(match selected.device.kind {
@@ -333,12 +365,17 @@ impl Shard {
         selected.prepare = false;
         let host = self.open_host(&record.id, &selected, None).await?;
         self.track_idle(&record.id);
+        let watching = match attention {
+            Attention::Watches => Some(slot.streams.enter(Purpose::Demand).await),
+            Attention::Operates | Attention::Looks => None,
+        };
         drop(files);
         Ok(StreamAccess {
             conversation: record.id,
             host,
             device: selected.device.id,
             open,
+            watching,
         })
     }
 

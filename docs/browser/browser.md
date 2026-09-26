@@ -222,10 +222,12 @@ transcript's media storage contract.
 The browser has no idle timer and no notion of agent activity. It ends a
 conversation's environment on exactly two signals it sees itself: the last tab
 closing, and the conversation release the runner forwards. The backend decides
-when to send that release from the one conversation idle rule, one hour of no
-agent activity, or from a target change or archive; an open tab, a page that is
-still loading, or a running download never postpones it. On Cloud the release
-is not sent: an idle machine stops, and the browser ends with it.
+when to send that release from the one
+[conversation idle rule](../execution/resource-lifecycle.md), an hour in which
+the conversation was not active, or from a target change or archive; an open
+tab, a page that is still loading, or a running download never postpones it.
+On Cloud the release is not sent: an idle machine stops, and the browser ends
+with it.
 
 Retirement stops Chrome for Testing, terminates its process tree, removes the
 temporary profile, and invalidates every tab, reference, and debugging handle

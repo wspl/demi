@@ -17,22 +17,32 @@ A conversation is active while any of these holds:
 - An agent turn is running or waiting for a provider, in the root or any child.
 - A shell job of the conversation is running on a Host.
 - A Host operation admitted through the conversation's host access is in
-  progress.
-- The user operates the conversation's Host through a
-  [user stream](native-runtime.md#user-streams), for example by clicking or
-  typing in the [live browser view](../browser/live-view.md#input). Each operation
-  the page reports is admitted and ends at once, so it restarts the window; the
-  page reports at most every 30 seconds while the user operates.
+  progress. An operation the user does on what runs there, such as closing or
+  navigating one of the
+  [conversation browser's tabs](../product/web-api.md#conversation-browser-tabs),
+  is admitted and ends at once, so it restarts the window.
+- A [user stream](native-runtime.md#user-streams) of the conversation is open,
+  such as the [live browser view](../browser/live-view.md): someone is watching
+  the conversation's Host, and may operate it. The stream is active from its
+  admission until it ends.
 
 Everything else is retention, not activity: open browser tabs, cookies, a
 resident native service, a provider's process kept between turns (the turn that
 waits for it is the activity; a Host that stops ends the process, and the next
 turn starts another), a paired device that stays online, a sidebar entry, a
-connected chat, a metadata observer, a scheduled future turn that has not been
-admitted, an open user stream that the user only watches, a
-[Host expose](expose.md#lifetime) and its visitors' traffic. The gates that
-admit this work are the only source of this fact; no module keeps a second
-busy flag.
+connected chat, a metadata observer, a look at what runs on the Host such as
+listing the conversation browser's tabs, a scheduled future turn that has not
+been admitted, a [Host expose](expose.md#lifetime) and its visitors' traffic.
+The gates that admit this work are the only source of this fact; no module
+keeps a second busy flag.
+
+A look is retention because the page makes it by itself: it lists the
+browser's tabs each time it is shown again and after each tool call, so a
+listing says nothing about whether anyone uses the Host. An open view says
+that someone does, so the Host they watch is not reclaimed under them. The view
+ends when the page closes, hides the view or loses its connection
+([Ending a view](../browser/live-view.md#ending-a-view)); a page left open on a
+view keeps its conversation active until then.
 
 ## Idle window
 
@@ -91,6 +101,6 @@ database, in real time with a short window
 | A conversation with open browser tabs idles for the window on a paired device | The device receives one release; its Chrome and profile are gone; the device and runner remain available |
 | A conversation idles for the window on Cloud | The machine stops; no release message is sent to it |
 | A running job or a waiting child turn exists at the deadline | Nothing is retired; the window restarts when the activity ends |
-| The user operates the live browser view with no agent activity | Each reported operation restarts the window; a view that is only watched does not |
+| A live browser view stays open with no agent activity, while the page lists the browser's tabs | Nothing is retired while the view is open, and the window starts when it closes; the listings restart nothing |
 | Target switch or archive while a timer is pending | One release to the old device; a stale timer cannot release the new binding |
 | Connection loss or backend shutdown | No idle watch or timer outlives it; no release attempt against a lost device |

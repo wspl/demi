@@ -25,13 +25,14 @@ pub(crate) struct ConversationWatches {
 }
 
 impl Shard {
-    /// What the conversation is doing: a turn of its tree, or an operation
-    /// holding its file gate.
+    /// What the conversation is doing: a turn of its tree, an operation
+    /// holding its file gate, or a user stream someone has open.
     pub(crate) fn conversation_activity(&self, id: &ConversationId) -> Activity {
-        let files = Activity::of(&self.conversations().slot(id).files.state());
+        let slot = self.conversations().slot(id);
+        let host = Activity::of(&slot.files.state()).and(Activity::of(&slot.streams.state()));
         match self.agent().tree(&root_of(id)) {
-            Some(tree) => files.and(Activity::of(&tree.admission().state())),
-            None => files,
+            Some(tree) => host.and(Activity::of(&tree.admission().state())),
+            None => host,
         }
     }
 

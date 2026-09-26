@@ -39,7 +39,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Conversation history | `GET /conversations/:id/transcript` returns root blocks and subagent histories, each with the [failure facts](../backend/backend.md#failure-facts) of its error blocks; `WS /conversations/:id/stream` carries the [agent frames](../agent/runtime.md#frame-protocol) of that one conversation |
 | Conversation files | `GET/POST /conversations/:id/fs`, `DELETE /conversations/:id/fs?path=...`, `GET /conversations/:id/fs/file?path=...`, `GET /conversations/:id/fs/raw?path=...&version=...&download=true\|false`, `PUT /conversations/:id/fs/raw?path=...&replace=true\|false` with raw bytes, `GET/POST /conversations/:id/hosts/:deviceId/fs` |
 | Working tree | `GET /conversations/:id/changes`, `GET /conversations/:id/changes/file?path=...`, `GET /conversations/:id/changes/raw?path=...&download=true\|false`, `GET /conversations/:id/commands/:commandId/changes/file?path=...&edit=...` |
-| User streams | `WS /conversations/:id/streams/:name` opens a declared [user stream](#user-streams); `POST /conversations/:id/activity` reports a user operation |
+| User streams | `WS /conversations/:id/streams/:name` opens a declared [user stream](#user-streams) |
 | Work panel | `GET/PUT /conversations/:id/panel` reads and saves the [work panel's state](#work-panel-state) |
 | Conversation browser | `GET/POST /conversations/:id/browser/tabs`, `DELETE /conversations/:id/browser/tabs/:tab`, `POST /conversations/:id/browser/tabs/:tab/navigate { url }`, `POST /conversations/:id/browser/tabs/:tab/history { action }`; see [Conversation browser tabs](#conversation-browser-tabs) |
 | Device log | `GET /devices/:id/log?since=<cursor>&limit=<n>&source=<source>` reads the [Host's log](../execution/runner.md#host-log) |
@@ -244,11 +244,6 @@ bytes. It closes the socket when the stream ends, with a code and a reason:
 | 1003 `binary_only` | The page sent a text message |
 | 1011 `host_unreachable` | The Host became unreachable, or a pipe to it failed |
 | 4000 `conversation_changed` | An archive, a target or directory change, or a detach ended the stream |
-
-`POST /api/conversations/:id/activity` records one user operation on the
-conversation's Host as [activity](../execution/resource-lifecycle.md#activity)
-and answers 204. The page calls it at most every 30 seconds while the user
-operates a user stream's view.
 
 ## Work panel state
 
