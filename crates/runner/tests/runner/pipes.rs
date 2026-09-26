@@ -10,6 +10,9 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 /// Only opening a connection has a deadline: an answer's headers, a body
 /// and an upload each stay quiet for three times as long and still complete.
+/// The quiet is real time, kept short: the deadline is the HTTP client's timer
+/// on real sockets, where a paused clock would also advance while bytes are
+/// in flight.
 #[tokio::test]
 async fn quiet_uploads_delayed_headers_and_bodies_outlive_the_connect_deadline() {
     const DEADLINE: Duration = Duration::from_millis(200);
