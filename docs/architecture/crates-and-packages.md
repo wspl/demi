@@ -206,7 +206,7 @@ next to the wire's types, so that a command program depends on one crate.
   `browser.*`, the package's operation list, browser targets, queries, tab
   state, observations and resource event payloads, the live
   view's messages and frame header, the capture extension's events and
-  commands, and the pinned Chrome release and receipt records. Limits are
+  commands, and the pinned Chrome release record. Limits are
   the crate's constants, shared by the inputs they bound; each input type
   carries its default timeout.
 - **Public boundary:** the types above. `coding-agent` declares the commands
@@ -300,12 +300,17 @@ next to the wire's types, so that a command program depends on one crate.
 
 - **Owns:** verified download over HTTPS with a declared size and SHA-256
   (plain HTTP too for the runner's artifact cache, whose digests come from the
-  pinned descriptor), digests, durable atomic publication, release
+  pinned descriptor), and the measured download that establishes them when a
+  release is prepared; digests; durable atomic publication; release
   publication (a directory of verified files and the record that describes
-  them, published once and immutable), the install lock between processes,
-  install receipts and archive installation. Every download-and-verify path and every durable atomic write
-  goes through it: the runner's artifact cache, the Chrome and Claude Code
-  installers, the machine manager's image store and `xtask` release packaging.
+  them, published once and immutable); the install lock between processes;
+  install receipts; and archive installation (a verified zip archive unpacked
+  into a directory named by its SHA-256, with the receipt that checks it
+  before each use), which installs Chrome for Testing on a paired device and
+  into the Cloud image. Every download-and-verify path and every durable
+  atomic write goes through it: the runner's artifact cache, the Chrome and
+  Claude Code installers, the machine manager's image store and `xtask`
+  release packaging.
 - **Public boundary:** the functions and types above.
 - **Must not:** choose what to install or read release pointers: its callers
   name the location, size and digest they expect.
@@ -614,8 +619,9 @@ Each crate implements the provider contract for one vendor family.
 - **Owns:** the repository's development commands: `xtask contracts` (the
   TypeScript emitter, which `bun run contracts` runs after it builds the
   workspace; [Contracts](contracts.md#generated-typescript)), native build and
-  release packaging for every executable, and Cloud image packaging; and the
-  crate boundary check, one of its tests ([Boundary checks](#boundary-checks)).
+  release packaging for every executable, the pinned Chrome for Testing
+  release record, and Cloud image packaging; and the crate boundary check, one
+  of its tests ([Boundary checks](#boundary-checks)).
   The checks and tests are plain Cargo and bun commands
   ([Validation](../delivery/builds-and-releases.md#validation)).
 - **Public boundary:** its commands; no crate links it.
@@ -822,6 +828,9 @@ review.
   binary Cargo built into the target directory the test runs from
   (`command_service::testing::built_program`), and a TypeScript test through
   `DEMI_TEST_PROGRAMS` ([Validation](../delivery/builds-and-releases.md#validation)).
+  JavaScript that a crate ships, such as the capture extension of
+  `demi-commands`, is tested by a Bun test beside it, which `bun run test`
+  runs.
 - **Generated code.** The TypeScript generated from contract crates lives in
   `packages/protocol/src/generated/` and `packages/web/src/api/generated/` and
   is not committed ([Contracts](contracts.md#generated-typescript)).
@@ -872,7 +881,8 @@ unless:
   that has tests;
 - the graph is acyclic.
 
-The frontend test suite (`bun run test`) runs it.
+It is a test of the repository's scripts (`scripts/__tests__`), and the
+frontend test suite (`bun run test`) runs it.
 
 Other rules are enforced where they apply: Rust visibility keeps internals
 behind a crate's public items, and review enforces the rules in
