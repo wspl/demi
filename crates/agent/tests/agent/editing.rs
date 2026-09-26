@@ -4,7 +4,8 @@
 //! requests the replacement makes, and the checkpoints the store keeps.
 
 use demi_agent::{
-    ForkError, ServerConfig,
+    AgentTreeStore, ForkError, ServerConfig,
+    store::{ClosePhase, NodeClose},
     testing::{MemoryTreeStore, TestClient, TestFiles, client_text, test_model},
     transcript::CutError,
 };
@@ -14,7 +15,7 @@ use demi_agent_protocol::{
 };
 use demi_core::{
     Attachment, B64Bytes, BlobRef, Block, BlockId, MediaSource, NodeId, OperationId, SessionPhase,
-    TurnId, UserContentBlock,
+    Timestamp, TurnId, UserContentBlock,
 };
 use demi_provider::{
     InferenceItem,
@@ -24,9 +25,12 @@ use demi_shell::{PortError, Revision, StorageOp, StorageReply};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
-use crate::support::{
-    CommandRun, Fixture, Gate, Model, TestHarness, agent, command_storage, conversation,
-    frames_until, held, is_idle, kinds, open, send,
+use crate::{
+    subagents::{checkpoint, child_record},
+    support::{
+        CommandRun, Fixture, Gate, Model, TestHarness, agent, command_storage, conversation,
+        frames_until, held, is_idle, kinds, open, send, until,
+    },
 };
 
 fn said(text: &str) -> Turn {
@@ -743,5 +747,81 @@ async fn an_edit_waits_for_no_child_and_an_edit_and_a_child_start_refuse_each_ot
         assert_eq!(starting.await.code, 0);
     }
     frames_until(&mut client, is_idle).await;
+    assert!(model.is_done());
+}
+
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_completion_whose_saves_failed_refuses_an_edit_until_a_later_save_delivers_it() {
+    let model = Model::default();
+    model.root([said("answer A"), said("answer B"), said("answer A2")]);
+    let fixture = Fixture::with_model(
+        &model,
+        TestHarness::default(),
+        MemoryTreeStore::new(),
+        ServerConfig::default(),
+    );
+    let store = &fixture.store;
+    let mut client = fixture.opened().await;
+    client.send(send("m1", "A")).await;
+    frames_until(&mut client, is_idle).await;
+    client.send(ClientFrame::Close {}).await;
+    // A child of the root closed before the root saved its completion, as a
+    // process that died between the two leaves them.
+    let child = NodeId::try_from("child").unwrap();
+    store
+        .create_node(
+            child_record("child", "conversation", None),
+            checkpoint(Vec::new(), Vec::new()),
+        )
+        .await
+        .unwrap();
+    let close = NodeClose {
+        phase: ClosePhase::Completed {
+            result: "notes say 42".into(),
+        },
+        at: Timestamp::UNIX_EPOCH,
+    };
+    store.close_node(&child, close).await.unwrap();
+
+    // The database refuses every save while the tree opens again: the save
+    // of the completion the opening delivers fails, and so does the turn
+    // the completion opens. The root ends idle, the completion undelivered.
+    store.fail_saves(usize::MAX);
+    let mut client = fixture.client();
+    client.send(open(test_model())).await;
+    let tree = fixture.server.tree(&conversation()).unwrap();
+    until(|| tree.is_quiescent()).await;
+    store.fail_saves(0);
+    let undelivered = store.record(&child).unwrap();
+    assert!(!undelivered.delivered);
+
+    // The record refuses the edit and stays as it was.
+    let target = user_block(&fixture, "m1");
+    let version = session_of(&fixture).transcript().version;
+    client
+        .send(edit("op1", &target, &version, client_text("A2")))
+        .await;
+    // The refused edit's action has ended, so none of its frames is left
+    // for the next wait.
+    until(|| tree.is_quiescent()).await;
+    assert_eq!(
+        edit_outcome(&client.received()),
+        rejected("Cannot edit while children or completion notifications are pending")
+    );
+    assert_eq!(store.record(&child).unwrap(), undelivered);
+
+    // The next save carries the completion; then the edit is accepted.
+    client.send(send("m2", "B")).await;
+    frames_until(&mut client, is_idle).await;
+    assert!(store.record(&child).unwrap().delivered);
+    let version = session_of(&fixture).transcript().version;
+    client
+        .send(edit("op2", &target, &version, client_text("A2")))
+        .await;
+    let frames = frames_until(&mut client, is_idle).await;
+    assert!(matches!(
+        edit_outcome(&frames),
+        EditOutcome::Accepted { .. }
+    ));
     assert!(model.is_done());
 }

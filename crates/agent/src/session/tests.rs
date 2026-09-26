@@ -166,7 +166,12 @@ fn yield_call(duration_ms: u64) -> Turn {
 /// An edit of the `user` block of the turn `turn` in the session's
 /// transcript as it is now, to one text. Equal requests have equal
 /// digests.
-fn edit_of(session: &AgentSession, turn: &str, operation: &str, replacement: &str) -> EditSubmission {
+fn edit_of(
+    session: &AgentSession,
+    turn: &str,
+    operation: &str,
+    replacement: &str,
+) -> EditSubmission {
     let snapshot = session.transcript();
     let target = snapshot
         .blocks

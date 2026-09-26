@@ -1200,7 +1200,7 @@ fn question(name: &str) -> String {
 
 #[tokio::test(flavor = "local")]
 async fn an_edit_before_or_after_compaction_boundaries_replays_only_the_summaries_of_what_it_keeps()
- {
+{
     let provider = ScriptedRuntime::new([
         answer("answer A"),
         answer("answer B"),
@@ -1352,11 +1352,7 @@ async fn a_pass_after_an_edit_summarizes_only_the_history_the_edit_kept() {
         .await
         .unwrap();
     for name in ["B", "C"] {
-        written
-            .send(text(name), turn(name))
-            .unwrap()
-            .await
-            .unwrap();
+        written.send(text(name), turn(name)).unwrap().await.unwrap();
     }
     let session = restore_compacting(&store, &provider, 1);
 
