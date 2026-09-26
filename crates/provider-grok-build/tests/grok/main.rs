@@ -12,14 +12,14 @@ mod request;
 use std::sync::Arc;
 
 use demi_provider::{
-    InferenceRequest, Provider, ProviderEvent, ProviderRuntime, RuntimeEnv,
+    Provider, ProviderRuntime, RuntimeEnv,
     credentials::{AccountMeta, CredentialPool, MemoryCredentialPool},
     quota::MemorySnapshots,
     testing::{FixedClock, MockResponse, MockVendor, RecordedRequest, jwt},
 };
 use demi_provider_grok_build::{GrokConfig, GrokProvider};
-use futures_util::StreamExt;
 use serde_json::{Value, json};
+pub(crate) use demi_provider::testing::run;
 
 pub(crate) const NOW: &str = "2026-09-18T14:00:00.000Z";
 pub(crate) const ACCOUNT: &str = "cred-g";
@@ -68,7 +68,7 @@ pub(crate) fn provider(
     pool: &MemoryCredentialPool,
     account: Option<&str>,
 ) -> GrokProvider {
-    let mut config = GrokConfig::new("grok-build", "Grok Build", account.map(str::to_owned));
+    let mut config = GrokConfig::new(account.map(str::to_owned));
     config.proxy_url = vendor.url("/v1").parse().unwrap();
     config.issuer_url = vendor.url("").parse().unwrap();
     let clock = Arc::new(FixedClock(NOW.parse().unwrap()));
@@ -93,13 +93,6 @@ pub(crate) fn runtime_of(provider: &GrokProvider) -> Box<dyn ProviderRuntime> {
             http: reqwest::Client::new(),
         })
         .unwrap()
-}
-
-pub(crate) async fn run(
-    runtime: &mut dyn ProviderRuntime,
-    request: InferenceRequest,
-) -> Vec<ProviderEvent> {
-    runtime.run(request).collect().await
 }
 
 /// A chat stream of `chunks`, closed by `[DONE]`.

@@ -357,6 +357,8 @@ async fn a_process_gets_what_was_sent_at_its_start_and_unread_input_blocks_nothi
     fixture.stop().await;
 }
 
+/// About 1.4 s here: three jobs, each a login shell that reads the machine's
+/// profile (about 0.4 s in the Linux container).
 #[tokio::test(flavor = "local")]
 async fn a_job_runs_on_the_runner_with_its_streams_its_files_and_the_device_environment() {
     let env = BTreeMap::from([
@@ -420,6 +422,9 @@ async fn a_job_runs_on_the_runner_with_its_streams_its_files_and_the_device_envi
     fixture.stop().await;
 }
 
+/// About 3.5 s here: eight jobs one after another, since each starts where the
+/// last one left the shell; each is a login shell that reads the machine's
+/// profile (about 0.4 s in the Linux container).
 #[tokio::test(flavor = "local")]
 async fn the_working_directory_carries_between_a_shells_jobs_and_nothing_else_does() {
     let fixture = RunnerFixture::start(FixtureOptions::default()).await;
@@ -525,6 +530,8 @@ async fn output_beyond_the_view_is_its_head_a_gap_note_and_its_true_tail() {
     fixture.stop().await;
 }
 
+/// About 1.3 s here: the runner connects twice, and its jobs are login shells
+/// that read the machine's profile (about 0.4 s each in the Linux container).
 #[tokio::test(flavor = "local")]
 async fn a_lost_connection_ends_the_job_on_both_sides_and_the_next_connection_serves() {
     let fixture = RunnerFixture::start(FixtureOptions::default()).await;
@@ -567,14 +574,16 @@ async fn a_lost_connection_ends_the_job_on_both_sides_and_the_next_connection_se
     fixture.stop().await;
 }
 
+/// About 2 s here: the listing over the message limit needs some 17,000
+/// files.
 #[tokio::test(flavor = "local")]
 async fn file_contents_travel_whole_or_in_ranges_and_never_in_a_message() {
     let fixture = RunnerFixture::start(FixtureOptions::default()).await;
     let host = fixture.host();
     let home = fixture.home().to_owned();
     let link = fixture.link().await;
-    // Far over the message limit, both ways.
-    let large = pattern(5 * MAX_MESSAGE_BYTES + 3);
+    // Over the message limit, both ways.
+    let large = pattern(MAX_MESSAGE_BYTES + 3);
     std::fs::write(format!("{home}/large.bin"), &large).unwrap();
     assert!(
         host.fs()
@@ -695,11 +704,11 @@ async fn file_contents_travel_whole_or_in_ranges_and_never_in_a_message() {
         .await
         .unwrap_err();
     assert_eq!(request.kind, HostErrorKind::TooLarge);
-    // Long names make a listing outgrow the limit with a few thousand
-    // entries.
+    // Names near the longest a file system allows (255 bytes with the
+    // index) make the listing outgrow the limit with the fewest entries.
     std::fs::create_dir(format!("{home}/listing")).unwrap();
-    let name = "n".repeat(200);
-    for index in 0..=MAX_MESSAGE_BYTES / 200 {
+    let name = "n".repeat(250);
+    for index in 0..=MAX_MESSAGE_BYTES / name.len() {
         std::fs::write(format!("{home}/listing/{name}{index}"), "").unwrap();
     }
     let reply = host
@@ -722,8 +731,13 @@ async fn a_reader_that_leaves_stops_the_runners_read_and_the_host_keeps_serving(
     })
     .await;
     let host = fixture.host();
+    // Far more than the pipes between the runner and the reader hold, so
+    // the runner still reads when the reader leaves; its bytes do not matter.
     let long = format!("{}/long.bin", fixture.home());
-    std::fs::write(&long, pattern(64 * MIB)).unwrap();
+    std::fs::File::create(&long)
+        .unwrap()
+        .set_len(64 * MIB as u64)
+        .unwrap();
     let mut reader = host.read_pipe(&long, ByteRange::default()).await.unwrap();
     let mut received = 0;
     while received <= MIB {
@@ -747,6 +761,8 @@ async fn a_reader_that_leaves_stops_the_runners_read_and_the_host_keeps_serving(
     fixture.stop().await;
 }
 
+/// About 1.5 s here: four jobs, each a login shell that reads the machine's
+/// profile (about 0.4 s in the Linux container).
 #[tokio::test(flavor = "local")]
 async fn a_jobs_pipes_carry_its_stdin_and_stdout_and_a_refused_end_stops_nothing() {
     let (sender, mut tap) = Tap::new();
@@ -927,6 +943,8 @@ async fn first_line(call: Call<Map<String, Value>>, port: RpcPort) -> Result<u8,
     Ok(0)
 }
 
+/// About 2.5 s here: five jobs one after another on one shell, each a login
+/// shell that reads the machine's profile (about 0.4 s in the Linux container).
 #[tokio::test(flavor = "local")]
 async fn declared_commands_call_back_with_storage_input_and_cancellation() {
     let started = Rc::new(Cell::new(false));
@@ -1062,6 +1080,8 @@ async fn emit(call: Call<EmitArgs>, port: RpcPort) -> Result<u8, RpcError> {
     Ok(0)
 }
 
+/// About 3 s here: six jobs one after another on one shell, each a login shell
+/// that reads the machine's profile (about 0.4 s in the Linux container).
 #[tokio::test(flavor = "local")]
 async fn a_nested_command_prints_its_groups_help_and_only_json_output_that_matches() {
     let mut commands = CommandSet::new();
@@ -1197,6 +1217,8 @@ async fn client(cwd: &str, env: &[(&str, &str)]) -> Output {
         .unwrap()
 }
 
+/// About 3 s here: two runners, and seven jobs one after another, each a login
+/// shell that reads the machine's profile (about 0.4 s in the Linux container).
 #[tokio::test(flavor = "local")]
 async fn a_native_command_runs_in_its_service_with_the_jobs_context_on_its_own_runner() {
     let native = NativeFixture::load();
@@ -1295,6 +1317,9 @@ async fn a_native_command_runs_in_its_service_with_the_jobs_context_on_its_own_r
     b.stop().await;
 }
 
+/// About 3.5 s here: its jobs run one after another, one for each hint it waits
+/// for; each is a login shell that reads the machine's profile (about 0.4 s in
+/// the Linux container).
 #[tokio::test(flavor = "local")]
 async fn a_running_command_shows_its_leafs_hint_until_the_leaf_ends() {
     let native = NativeFixture::load();
@@ -1444,6 +1469,9 @@ async fn a_busy_native_command_blocks_neither_the_runner_nor_its_abort_and_a_sec
     fixture.stop().await;
 }
 
+/// About 1.3 s here: three jobs, each with a manifest of its own and each a
+/// login shell that reads the machine's profile (about 0.4 s in the Linux
+/// container).
 #[tokio::test(flavor = "local")]
 async fn a_running_job_keeps_its_manifest_while_the_next_job_installs_another() {
     let native = NativeFixture::load();
@@ -1742,10 +1770,11 @@ async fn user_calls_reuse_the_service_of_the_release_the_connection_bound_last()
         .unwrap();
     // The connection binds the second release now; the open stream still
     // holds the first one's service. Were it not, the registry would stop
-    // that service as soon as it had said that it holds no conversation,
-    // well within this.
+    // that service as soon as it had said that it holds no conversation: a
+    // round trip to a running service, while this call first starts the
+    // second release's service. The log's order below shows which came
+    // first.
     call(&second).await.unwrap();
-    tokio::time::sleep(Duration::from_millis(500)).await;
     input.writer().unwrap().end();
     assert_eq!(collect(output.reader().unwrap()).await.unwrap(), b"");
     assert_eq!(stream.done().await.unwrap().exit_code, 0);
@@ -1934,14 +1963,15 @@ async fn a_network_stream_carries_a_device_socket_through_two_pipes() {
         .unwrap_err();
     assert_eq!(refused.code(), Some("refused"));
 
-    // A peer that resets the connection fails the output rather than ends
-    // it.
+    // A peer that resets the connection while bytes flow fails the output
+    // rather than ends it.
     let reaper = listener().await;
     let reaper_port = reaper.local_addr().unwrap().port();
     tokio::spawn(async move {
-        let (socket, _) = reaper.accept().await.unwrap();
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        // Unread bytes and no linger make the close a reset.
+        let (mut socket, _) = reaper.accept().await.unwrap();
+        let mut first = [0; 1];
+        socket.read_exact(&mut first).await.unwrap();
+        // No linger makes the close a reset.
         socket.set_zero_linger().unwrap();
     });
     let flow = pipes.to_device(TEST_DEVICE);

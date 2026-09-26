@@ -52,7 +52,7 @@ pub trait ProviderFamily: Send + Sync + 'static {
 
 /// What a family builds a provider from.
 pub struct FamilyArgs {
-    /// The entry's id, which the provider names itself by.
+    /// The entry's id, which a provider that logs its runs names them by.
     pub entry_id: String,
     /// The entry's label.
     pub label: String,
@@ -158,8 +158,6 @@ impl ProviderFamily for AnthropicFamily {
             return Err(FamilyError::WrongCredential);
         };
         let config = AnthropicConfig {
-            id: args.entry_id,
-            display_name: args.label,
             api_key: settings.api_key,
             base_url: settings.base_url,
         };
@@ -185,8 +183,6 @@ impl ProviderFamily for OpenAiFamily {
             return Err(FamilyError::WrongCredential);
         };
         let config = OpenAiConfig {
-            id: args.entry_id,
-            display_name: args.label,
             api_key: settings.api_key,
             base_url: settings.base_url,
             // An entry that names no wire speaks Responses.
@@ -210,8 +206,6 @@ impl ProviderFamily for GoogleFamily {
             return Err(FamilyError::WrongCredential);
         };
         let config = GoogleConfig {
-            id: args.entry_id,
-            display_name: args.label,
             api_key: settings.api_key,
             base_url: settings.base_url,
         };
@@ -233,7 +227,7 @@ impl ProviderFamily for CodexFamily {
             return Err(FamilyError::WrongCredential);
         };
         let (account, quota) = bound(subscription.account);
-        let config = CodexConfig::new(args.entry_id, args.label, account);
+        let config = CodexConfig::new(account);
         let provider = CodexProvider::new(config, subscription.pool, quota, args.http, args.clock);
         Ok(Arc::new(provider))
     }
@@ -253,7 +247,7 @@ impl ProviderFamily for GrokBuildFamily {
             return Err(FamilyError::WrongCredential);
         };
         let (account, quota) = bound(subscription.account);
-        let config = GrokConfig::new(args.entry_id, args.label, account);
+        let config = GrokConfig::new(account);
         let provider = GrokProvider::new(config, subscription.pool, quota, args.http, args.clock);
         Ok(Arc::new(provider))
     }

@@ -131,8 +131,6 @@ fn deepseek() -> Result<Rc<OpenAiProvider>, String> {
             .map_err(|error| format!("DEEPSEEK_BASE_URL: {error}"))?,
     );
     let config = OpenAiConfig {
-        id: "deepseek".into(),
-        display_name: "DeepSeek".into(),
         api_key,
         base_url,
         wire: WireApi::ChatCompletions,

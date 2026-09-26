@@ -28,10 +28,16 @@ impl InstallLock {
             .create(true)
             .truncate(false)
             .open(path)?;
+        let mut waiting = false;
         loop {
             match file.try_lock() {
                 Ok(()) => return Ok(Self { _file: file }),
                 Err(TryLockError::WouldBlock) => {
+                    if !waiting {
+                        waiting = true;
+                        #[cfg(feature = "testing")]
+                        crate::testing::count_lock_wait();
+                    }
                     tokio::select! {
                         _ = cancel.cancelled() => return Err(Error::Cancelled),
                         _ = tokio::time::sleep(RETRY) => {}

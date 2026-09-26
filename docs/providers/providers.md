@@ -153,7 +153,7 @@ time.
 
 ```text
 provider   shared by every user and request of one entry and account
-  identity, and whether it needs a process Host
+  whether it needs a process Host
   authentication and runtime status
   model directory, read fresh on each call
   reading its vendor's failure records

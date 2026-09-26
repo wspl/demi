@@ -349,8 +349,11 @@ next to the wire's types, so that a command program depends on one crate.
     and models as catalog models); the catalog, state, account and quota
     shapes they return are `core`'s, because the browser receives them.
 - **Public boundary:** the items above; `provider::testing` supplies scripted
-  runtimes (`ScriptedRuntime`), a scripted vendor server (`MockVendor`) and a
-  fixed clock (`FixedClock`). Behavior: [Providers](../providers/providers.md),
+  runtimes (`ScriptedRuntime`), a scripted vendor server (`MockVendor`), waits
+  for a run's events that fail a test instead of hanging it (`next_event`,
+  `all_events`), the check of an API-key entry's built-in catalog
+  (`assert_built_in_catalog`) and a fixed clock (`FixedClock`). Behavior:
+  [Providers](../providers/providers.md),
   [Models](../providers/models.md),
   [Usage and quota](../providers/usage-and-quota.md) and
   [Failures and recovery](../agent/failures-and-recovery.md).

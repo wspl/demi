@@ -63,10 +63,6 @@ pub enum TransportMode {
 /// The configuration of a `codex` entry's provider for one account.
 #[derive(Debug, Clone)]
 pub struct CodexConfig {
-    /// The entry's id.
-    pub id: String,
-    /// The entry's label.
-    pub display_name: String,
     /// The account the provider stands for; `None` only for a provider built
     /// to log in, which has no account yet.
     pub account: Option<String>,
@@ -88,14 +84,8 @@ impl CodexConfig {
     pub const AUTH_URL: &str = "https://auth.openai.com";
 
     /// The product's configuration of an entry's provider for `account`.
-    pub fn new(
-        id: impl Into<String>,
-        display_name: impl Into<String>,
-        account: Option<String>,
-    ) -> Self {
+    pub fn new(account: Option<String>) -> Self {
         Self {
-            id: id.into(),
-            display_name: display_name.into(),
             account,
             backend_url: Url::parse(Self::BACKEND_URL).expect("the backend URL parses"),
             auth_url: Url::parse(Self::AUTH_URL).expect("the sign-in URL parses"),
@@ -115,8 +105,6 @@ pub struct CodexProvider {
 
 /// What the provider and all its runtimes share.
 struct Shared {
-    id: String,
-    display_name: String,
     responses_url: Url,
     websocket_url: Url,
     models_url: Url,
@@ -176,8 +164,6 @@ impl CodexProvider {
         let responses_url = codex_url(&config.backend_url, "/responses");
         Self {
             shared: Arc::new(Shared {
-                id: config.id,
-                display_name: config.display_name,
                 websocket_url: websocket_url(&responses_url),
                 responses_url,
                 models_url: models::models_url(&config.backend_url),
@@ -223,14 +209,6 @@ fn websocket_url(responses: &Url) -> Url {
 }
 
 impl Provider for CodexProvider {
-    fn id(&self) -> &str {
-        &self.shared.id
-    }
-
-    fn display_name(&self) -> &str {
-        &self.shared.display_name
-    }
-
     fn capabilities(&self) -> Capabilities {
         Capabilities::default()
     }

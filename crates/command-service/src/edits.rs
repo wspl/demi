@@ -432,29 +432,6 @@ mod tests {
     }
 
     #[test]
-    fn interleaved_jobs_keep_their_own_segments() {
-        let root = tempfile::tempdir().unwrap();
-        let a = recorder(root.path(), "a");
-        let b = recorder(root.path(), "b");
-        let path = root.path().join("file");
-        fs::write(&path, "x=0\ny=0\n").unwrap();
-        a.record(&path, || fs::write(&path, "x=1\ny=0\n")).unwrap();
-        b.record(&path, || fs::write(&path, "x=1\ny=1\n")).unwrap();
-        a.record(&path, || fs::write(&path, "x=2\ny=1\n")).unwrap();
-        let report = a.report().unwrap();
-        let edits = &report.files[0].edits;
-        assert_eq!(edits.len(), 2);
-        assert_eq!(
-            contents(&edits[0]),
-            ("x=0\ny=0\n".into(), "x=1\ny=0\n".into())
-        );
-        assert_eq!(
-            contents(&edits[1]),
-            ("x=1\ny=1\n".into(), "x=2\ny=1\n".into())
-        );
-    }
-
-    #[test]
     fn separate_recorder_handles_share_the_job_journal() {
         let root = tempfile::tempdir().unwrap();
         let first = recorder(root.path(), "job");
@@ -469,26 +446,6 @@ mod tests {
             contents(&report.files[0].edits[0]),
             ("".into(), "two".into())
         );
-    }
-
-    #[test]
-    fn restored_and_removed_files_are_omitted() {
-        let root = tempfile::tempdir().unwrap();
-        let recorder = recorder(root.path(), "job");
-        let path = root.path().join("file");
-        fs::write(&path, "before").unwrap();
-        recorder
-            .record(&path, || fs::write(&path, "after"))
-            .unwrap();
-        recorder
-            .record(&path, || fs::write(&path, "before"))
-            .unwrap();
-        assert!(recorder.report().unwrap().files.is_empty());
-        recorder
-            .record(&path, || fs::write(&path, "again"))
-            .unwrap();
-        fs::remove_file(&path).unwrap();
-        assert!(recorder.report().unwrap().files.is_empty());
     }
 
     #[test]

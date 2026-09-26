@@ -20,12 +20,6 @@ use crate::{ProviderFailure, credentials::SubscriptionAccounts, quota::ProviderQ
 /// entry. It is used from any thread: the backend's request handlers read its
 /// status, models and quota, and each user's shard builds runtimes from it.
 pub trait Provider: Send + Sync + 'static {
-    /// The entry's id, as the backend configured it.
-    fn id(&self) -> &str;
-
-    /// The entry's label.
-    fn display_name(&self) -> &str;
-
     fn capabilities(&self) -> Capabilities;
 
     /// Whether the credential is present and usable. Never makes an

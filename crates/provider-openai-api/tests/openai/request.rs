@@ -9,12 +9,12 @@ use demi_core::{
 };
 use demi_provider::{
     InferenceItem, InferenceRequest, Provider, ProviderEvent, RuntimeEnv, ToolDefinition,
-    testing::{MockVendor, inference_request},
+    testing::{MockResponse, MockVendor, inference_request, sse_body},
 };
 use demi_provider_openai_api::VendorPolicy;
 use serde_json::{Value, json};
 
-use crate::{body_of, done, provider_at, run};
+use crate::{body_of, provider_at, run};
 
 fn text(text: &str) -> Vec<UserContentBlock> {
     vec![UserContentBlock::Text { text: text.into() }]
@@ -84,8 +84,36 @@ const NO_POLICY: VendorPolicy = VendorPolicy {
     replay_assistant_status: false,
 };
 
+/// Each wire's answer as the endpoint streams it, and the events a run makes
+/// of it. The mapping itself is the shared mappers' (`demi_provider::wire`);
+/// which mapper reads the answer is this runtime's choice.
+fn answer(wire: WireApi) -> (MockResponse, Vec<ProviderEvent>) {
+    let text = ProviderEvent::TextDelta("hi".into());
+    match wire {
+        WireApi::Responses => {
+            let body = sse_body(&[
+                json!({ "type": "response.output_text.delta", "delta": "hi" }),
+                json!({ "type": "response.completed", "response": { "usage": { "input_tokens": 3, "output_tokens": 1 } } }),
+            ]);
+            let usage = TokenUsage {
+                input_tokens: 3,
+                output_tokens: 1,
+                cache_read_tokens: 0,
+                cache_write_tokens: 0,
+            };
+            (MockResponse::event_stream(body), vec![text, ProviderEvent::Response(usage)])
+        }
+        WireApi::ChatCompletions => {
+            let chunk = sse_body(&[json!({ "choices": [{ "delta": { "content": "hi" } }] })]);
+            let body = format!("{chunk}data: [DONE]\n\n");
+            let events = vec![text, ProviderEvent::Response(TokenUsage::default())];
+            (MockResponse::event_stream(body), events)
+        }
+    }
+}
+
 #[tokio::test]
-async fn a_run_posts_to_its_wires_endpoint_with_the_key() {
+async fn a_run_posts_to_its_wires_endpoint_with_the_key_and_reads_the_answer_as_that_wire() {
     let vendor = MockVendor::start().await;
     let cases = [
         (WireApi::Responses, "/v1/", "/v1/responses"),
@@ -106,14 +134,15 @@ async fn a_run_posts_to_its_wires_endpoint_with_the_key() {
         ),
     ];
     for (wire, base, _) in cases {
-        vendor.respond(done());
+        let (response, expected) = answer(wire);
+        vendor.respond(response);
         let mut runtime = provider_at(&vendor, base, wire, NO_POLICY)
             .runtime(RuntimeEnv {
                 http: reqwest::Client::new(),
             })
             .unwrap();
         let events = run(runtime.as_mut(), inference_request()).await;
-        assert_eq!(events, [ProviderEvent::Response(TokenUsage::default())]);
+        assert_eq!(events, expected, "{wire:?}");
     }
     for ((_, _, path), request) in cases.iter().zip(vendor.requests()) {
         assert_eq!(
