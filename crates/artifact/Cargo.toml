@@ -29,3 +29,5 @@ zip = { version = "6", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 demi-artifact = { path = ".", features = ["testing"] }
+# A paused clock for the install lock's waits.
+tokio = { workspace = true, features = ["test-util"] }

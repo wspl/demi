@@ -41,3 +41,9 @@ libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation"] }
+
+[dev-dependencies]
+# The crate's own tests count its pauses (`testing::pauses`) and run on a
+# paused clock.
+demi-command-service = { path = ".", features = ["testing"] }
+tokio = { workspace = true, features = ["test-util"] }

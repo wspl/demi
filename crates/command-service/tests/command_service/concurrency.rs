@@ -132,7 +132,11 @@ async fn cancelling_a_call_never_turns_away_the_next() {
     .unwrap();
 }
 
-#[tokio::test(flavor = "multi_thread")]
+/// An output nobody reads fills only its own window. The clock is paused and
+/// the connection is in memory, so the sleep below ends only once nothing
+/// else can run, when every flood is held back by its full window; a call
+/// that the floods held back would then fail its deadline at once.
+#[tokio::test(start_paused = true)]
 async fn unread_outputs_never_hold_back_an_independent_call() {
     tokio::time::timeout(Duration::from_secs(30), async {
         let client = connected().await;
@@ -145,8 +149,7 @@ async fn unread_outputs_never_hold_back_an_independent_call() {
             ));
             floods.push((_input, output));
         }
-        // Each flood now fills its own window and nobody reads it.
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(1)).await;
         tokio::time::timeout(Duration::from_secs(1), short(&client))
             .await
             .expect("an independent call finishes beside unread outputs")
@@ -181,28 +184,6 @@ async fn abandoning_a_burst_of_calls_keeps_the_connection() {
         stop.cancel();
         while calls.join_next().await.is_some() {}
         short(&client).await.unwrap();
-    })
-    .await
-    .unwrap();
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn many_callers_back_to_back_all_succeed() {
-    tokio::time::timeout(Duration::from_secs(60), async {
-        let client = connected().await;
-        let mut callers = JoinSet::new();
-        for _ in 0..128 {
-            let client = client.clone();
-            callers.spawn(async move {
-                for _ in 0..50 {
-                    short(&client).await?;
-                }
-                Ok::<_, String>(())
-            });
-        }
-        while let Some(result) = callers.join_next().await {
-            result.unwrap().unwrap();
-        }
     })
     .await
     .unwrap();

@@ -31,7 +31,8 @@ pub use reqwest::Client;
 #[cfg(feature = "testing")]
 pub mod testing {
     //! Test support: a fixture HTTP server on `127.0.0.1` and the zip
-    //! archives it serves. [`crate::client_allowing_http`] downloads from it.
+    //! archives it serves, which [`crate::client_allowing_http`] downloads
+    //! from, and the count of the process's waits for install locks.
 
     use std::{
         collections::HashMap,
@@ -44,6 +45,22 @@ pub mod testing {
     };
 
     use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+    /// Every acquisition of an install lock in this process that found the
+    /// lock held.
+    static LOCK_WAITS: AtomicUsize = AtomicUsize::new(0);
+
+    pub(crate) fn count_lock_wait() {
+        LOCK_WAITS.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// How many acquisitions of an install lock in this process have found it
+    /// held and waited ([`crate::InstallLock`]). Nothing else shows that an
+    /// installer waits for another instead of installing beside it, so a test
+    /// of concurrent installers watches this count.
+    pub fn lock_waits() -> usize {
+        LOCK_WAITS.load(Ordering::SeqCst)
+    }
 
     /// A zip archive of `entries`, each a path and its contents.
     pub fn zip(entries: &[(&str, &[u8])]) -> Vec<u8> {
