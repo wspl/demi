@@ -1038,6 +1038,104 @@ async fn declared_commands_call_back_with_storage_input_and_cancellation() {
     fixture.stop().await;
 }
 
+/// The input of `probe json emit`.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct EmitArgs {
+    /// The text to print
+    text: String,
+}
+
+/// What `probe json emit --json` declares it prints.
+#[derive(JsonSchema)]
+struct Emitted {
+    #[expect(dead_code, reason = "the declaration needs only the schema")]
+    ok: bool,
+}
+
+/// Prints its text as the command's output, whatever the caller asked for.
+async fn emit(call: Call<EmitArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    port.stdout(call.args.text).await?;
+    Ok(0)
+}
+
+#[tokio::test(flavor = "local")]
+async fn a_nested_command_prints_its_groups_help_and_only_json_output_that_matches() {
+    let mut commands = CommandSet::new();
+    commands
+        .register(
+            GroupBuilder::new("probe", "Probes.").group(
+                GroupBuilder::new("json", "Output probes.").leaf(
+                    LeafBuilder::rpc("emit", "Print a text.")
+                        .input::<EmitArgs>()
+                        .positionals(["text"])
+                        .json_output::<Emitted>()
+                        .bind(TypedRpc::new(emit)),
+                ),
+            ),
+        )
+        .unwrap();
+    let native = NativeFixture::load();
+    let selection = CommandCatalog::new(Vec::new(), native.resolver())
+        .unwrap()
+        .select(&commands)
+        .unwrap();
+    let fixture = RunnerFixture::start(FixtureOptions {
+        commands,
+        ..FixtureOptions::default()
+    })
+    .await;
+    let shell = shell_on(fixture.host(), &[], Some(selection));
+    // A group below the root prints its help under its full path.
+    let help = run(&shell, "probe json --help").await;
+    assert_eq!(exited(&help), 0, "{}", help.stderr.tail);
+    let printed = &help.stdout.delta;
+    assert!(
+        printed.starts_with("probe json: Output probes.\n"),
+        "{printed}"
+    );
+    assert!(
+        printed.contains("  probe json emit <text> [--json]\n"),
+        "{printed}"
+    );
+    // Without --json the output passes as it is; with it, the output reaches
+    // stdout only as JSON that matches the declared schema.
+    let raw = run(&shell, "probe json emit 'not json'").await;
+    assert_eq!((exited(&raw), raw.stdout.delta.as_str()), (0, "not json"));
+    let valid = run(&shell, r#"probe json emit '{"ok":true}' --json"#).await;
+    assert_eq!(
+        (exited(&valid), valid.stdout.delta.as_str()),
+        (0, r#"{"ok":true}"#)
+    );
+    let not_json = run(&shell, "probe json emit 'not json' --json").await;
+    let mismatch = run(&shell, r#"probe json emit '{"ok":1}' --json"#).await;
+    for refused in [&not_json, &mismatch] {
+        assert_eq!(exited(refused), 1, "{}", refused.stderr.tail);
+        assert_eq!(refused.stdout.delta, "");
+        assert!(!refused.stderr.delta.is_empty());
+    }
+    assert!(
+        mismatch
+            .stderr
+            .delta
+            .contains("\"ok\" is not of type \"boolean\""),
+        "{}",
+        mismatch.stderr.delta
+    );
+    // A usage error exits 1 and names the field at fault.
+    let usage = run(&shell, "probe json emit").await;
+    assert_eq!(exited(&usage), 1);
+    assert!(
+        usage
+            .stderr
+            .delta
+            .contains("\"text\" is a required property"),
+        "{}",
+        usage.stderr.delta
+    );
+    fixture.stop().await;
+}
+
 /// The input of the fixture's `where`, which only its schema declares: the
 /// native operation reads it.
 #[derive(JsonSchema)]
