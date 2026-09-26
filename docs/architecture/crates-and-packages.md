@@ -299,12 +299,16 @@ next to the wire's types, so that a command program depends on one crate.
 #### `artifact`
 
 - **Owns:** verified download over HTTPS with a declared size and SHA-256,
-  digests, durable atomic publication, release publication (a directory of
+  and the measured download that establishes them when a release is prepared;
+  digests; durable atomic publication; release publication (a directory of
   verified files and the record that describes them, published once and
-  immutable), the install lock between processes, install receipts and archive
-  installation. Every download-and-verify path and every durable atomic write
-  goes through it: the runner's artifact cache, the Chrome and Claude Code
-  installers, the machine manager's image store and `xtask` release packaging.
+  immutable); the install lock between processes; install receipts; and
+  archive installation (a verified zip archive unpacked into a directory named
+  by its SHA-256, with the receipt that checks it before each use), which
+  installs Chrome for Testing on a paired device and into the Cloud image.
+  Every download-and-verify path and every durable atomic write goes through
+  it: the runner's artifact cache, the Chrome and Claude Code installers, the
+  machine manager's image store and `xtask` release packaging.
 - **Public boundary:** the functions and types above.
 - **Must not:** choose what to install or read release pointers: its callers
   name the location, size and digest they expect.
@@ -613,8 +617,9 @@ Each crate implements the provider contract for one vendor family.
 - **Owns:** the repository's development commands: `xtask contracts` (the
   TypeScript emitter, which `bun run contracts` runs after it builds the
   workspace; [Contracts](contracts.md#generated-typescript)), native build and
-  release packaging for every executable, and Cloud image packaging; and the
-  crate boundary check, one of its tests ([Boundary checks](#boundary-checks)).
+  release packaging for every executable, the pinned Chrome for Testing
+  release record, and Cloud image packaging; and the crate boundary check, one
+  of its tests ([Boundary checks](#boundary-checks)).
   The checks and tests are plain Cargo and bun commands
   ([Validation](../delivery/builds-and-releases.md#validation)).
 - **Public boundary:** its commands; no crate links it.

@@ -1,10 +1,11 @@
 //! The pinned Chrome for Testing release, installed once per service and
-//! verified before use (`browser.md` § Browser distribution).
+//! verified before use (`browser.md` § Browser distribution) by `artifact`'s
+//! archive installation, the one the Cloud image build uses too.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use demi_artifact::{Digest, InstallLock};
-use demi_builtin_protocol::release::{BrowserInstallation, BrowserRelease, ReleasePlatform};
+use demi_artifact::{Archive, Digest};
+use demi_builtin_protocol::release::BrowserRelease;
 use demi_command_service::protocol::host_target;
 use tokio::sync::OnceCell;
 use tokio_util::sync::CancellationToken;
@@ -16,8 +17,6 @@ use super::{BrowserError, Result};
 const IMAGE_ROOT: &str = "/opt/demi/browsers";
 /// Where the service installs it, under the user's home.
 const HOME_ROOT: &str = ".demi/browsers";
-/// The most bytes an installed executable may have, for its digest.
-const EXECUTABLE_BYTES: u64 = 1024 * 1024 * 1024;
 
 #[derive(Default)]
 pub(super) struct Installation {
@@ -50,9 +49,10 @@ impl Installation {
     }
 }
 
-/// Finds the release preinstalled in the image or under the user's home, or
-/// installs it under the home while holding the release's install lock, so
-/// another service installing it at the same time finds this one's result.
+/// Finds the release preinstalled in the image, or installs it under the
+/// user's home, where another service installing it at the same time finds
+/// this one's result. An installation that fails its check fails the
+/// install: nothing falls back to another location.
 async fn install(cancel: &CancellationToken) -> Result<PathBuf> {
     let release = release()?;
     let version = release.version;
@@ -63,11 +63,23 @@ async fn install(cancel: &CancellationToken) -> Result<PathBuf> {
         .ok_or_else(|| {
             BrowserError::Installation(format!("{version} is unavailable on {}", host_target()))
         })?;
+    let archive = Archive {
+        url: record.url,
+        digest: Digest {
+            size: record.size,
+            sha256: record.sha256,
+        },
+        executable: record.executable,
+    };
     #[cfg(unix)]
-    if let Some(executable) =
-        verified(&Path::new(IMAGE_ROOT).join(&record.sha256), &record, &version, cancel).await?
     {
-        return Ok(executable);
+        let preinstalled = PathBuf::from(IMAGE_ROOT).join(&archive.digest.sha256);
+        let found = demi_artifact::installed(&preinstalled, &archive, cancel)
+            .await
+            .map_err(|error| failed(&version, error))?;
+        if let Some(executable) = found {
+            return Ok(executable);
+        }
     }
     let home = std::env::home_dir()
         .filter(|home| home.is_absolute())
@@ -76,59 +88,10 @@ async fn install(cancel: &CancellationToken) -> Result<PathBuf> {
                 "{version} needs an absolute home directory to install into"
             ))
         })?;
-    let root = home.join(HOME_ROOT);
-    tokio::fs::create_dir_all(&root).await?;
-    let _lock = InstallLock::acquire(&root.join(format!("{}.lock", record.sha256)), cancel)
-        .await
-        .map_err(|error| failed(&version, error))?;
-    let destination = root.join(&record.sha256);
-    if let Some(executable) = verified(&destination, &record, &version, cancel).await? {
-        return Ok(executable);
-    }
-    let temporary = tempfile::Builder::new()
-        .prefix("chrome-install-")
-        .tempdir_in(&root)?;
-    let archive = temporary.path().join("chrome.zip");
     let client = demi_artifact::client().map_err(|error| failed(&version, error))?;
-    let mut output = tokio::fs::File::create(&archive).await?;
-    demi_artifact::download(
-        &client,
-        &record.url,
-        &Digest {
-            size: record.size,
-            sha256: record.sha256.clone(),
-        },
-        &mut output,
-        cancel,
-    )
-    .await
-    .map_err(|error| failed(&version, error))?;
-    drop(output);
-    let extraction = temporary.path().join("extracted");
-    demi_artifact::extract_zip(&archive, &extraction, cancel)
+    demi_artifact::install_archive(&client, &home.join(HOME_ROOT), &archive, cancel)
         .await
-        .map_err(|error| failed(&version, error))?;
-    let executable = demi_artifact::digest(
-        &extraction.join(&record.executable),
-        EXECUTABLE_BYTES,
-        cancel,
-    )
-    .await
-    .map_err(|error| failed(&version, error))?;
-    let receipt = BrowserInstallation {
-        archive_hash: record.sha256.clone(),
-        executable_hash: executable.sha256,
-    };
-    demi_artifact::receipt::write(&extraction, &receipt)
-        .await
-        .map_err(|error| failed(&version, error))?;
-    if cancel.is_cancelled() {
-        return Err(BrowserError::Cancelled);
-    }
-    demi_artifact::publish_directory(&extraction, &destination)
-        .await
-        .map_err(|error| failed(&version, error))?;
-    Ok(destination.join(&record.executable))
+        .map_err(|error| failed(&version, error))
 }
 
 /// Where any release's Chrome executables live, for finding its processes.
@@ -140,37 +103,6 @@ pub(super) fn roots() -> Vec<PathBuf> {
         roots.push(home.join(HOME_ROOT));
     }
     roots
-}
-
-/// The installation at `destination`, checked against its receipt; none
-/// when nothing is installed there. One that fails the check fails the
-/// install: nothing falls back to another location.
-async fn verified(
-    destination: &Path,
-    record: &ReleasePlatform,
-    version: &str,
-    cancel: &CancellationToken,
-) -> Result<Option<PathBuf>> {
-    if !tokio::fs::try_exists(destination).await? {
-        return Ok(None);
-    }
-    let receipt = demi_artifact::receipt::read(destination)
-        .await
-        .map_err(|error| failed(version, error))?
-        .ok_or_else(|| BrowserError::Installation(format!("{version} installation has no receipt")))?;
-    let receipt = BrowserInstallation::parse(&receipt).map_err(|error| {
-        BrowserError::Installation(format!("{version} installation has an invalid receipt: {error}"))
-    })?;
-    let executable = destination.join(&record.executable);
-    let actual = demi_artifact::digest(&executable, EXECUTABLE_BYTES, cancel)
-        .await
-        .map_err(|error| failed(version, error))?;
-    if receipt.archive_hash != record.sha256 || receipt.executable_hash != actual.sha256 {
-        return Err(BrowserError::Installation(format!(
-            "{version} installation failed its integrity check"
-        )));
-    }
-    Ok(Some(executable))
 }
 
 /// What a failure of the verified-bytes library means for the install.
@@ -185,8 +117,8 @@ fn failed(version: &str, error: demi_artifact::Error) -> BrowserError {
         error @ (Error::TooLarge { .. } | Error::Size { .. } | Error::Digest) => {
             BrowserError::Installation(format!("{version} failed verification: {error}"))
         }
-        error @ Error::Archive(_) => {
-            BrowserError::Installation(format!("{version} could not be extracted: {error}"))
+        error @ (Error::Archive(_) | Error::Installation { .. }) => {
+            BrowserError::Installation(format!("{version}: {error}"))
         }
         // An installation publishes no release, so it meets no conflict.
         error @ Error::Conflict(_) => {

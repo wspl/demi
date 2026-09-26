@@ -153,8 +153,11 @@ stop-post recovery runs, and only then puts the new unit in place and starts
 it. With `--root <directory>`, the installer writes the unit and the settings
 beneath that directory for review and changes nothing else.
 
-After installing the Linux dependencies and the manager binary and publishing an
-image, install the service with absolute paths:
+The manager binary comes from its release for the host's Linux target
+([Packaging](../delivery/builds-and-releases.md#packaging)); check the copy on
+the host against the release's `release.json`. After installing the Linux
+dependencies and the manager binary and publishing an image, install the
+service with absolute paths:
 
 ```sh
 sudo bash crates/machines/scripts/install-managed-hosts.sh \
@@ -195,9 +198,11 @@ address works on every installation.
 With an image already built inside Lima:
 
 ```sh
-cargo zigbuild --release --locked --target aarch64-unknown-linux-musl -p demi-machines
+cargo xtask native build --package demi-machines --target aarch64-unknown-linux-musl
+cargo xtask native package --package demi-machines \
+  --target aarch64-unknown-linux-musl --output .cache/releases/demi-machines-<build>
 bash crates/machines/scripts/lima-machines.sh \
-  --manager target/aarch64-unknown-linux-musl/release/demi-machines \
+  --manager .cache/releases/demi-machines-<build>/aarch64-unknown-linux-musl/demi-machines \
   --image /opt/demi-cloud/releases/build-id --dns 1.1.1.1
 ```
 

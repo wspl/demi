@@ -14,46 +14,73 @@ pub struct Digest {
     pub sha256: String,
 }
 
+/// Counts and hashes bytes as they arrive; bytes past the limit fail at once.
+#[derive(Debug)]
+pub(crate) struct Measure {
+    hash: Sha256,
+    size: u64,
+    limit: u64,
+}
+
+impl Measure {
+    pub(crate) fn new(limit: u64) -> Self {
+        Self {
+            hash: Sha256::new(),
+            size: 0,
+            limit,
+        }
+    }
+
+    pub(crate) fn update(&mut self, chunk: &[u8]) -> Result<(), Error> {
+        self.size = self
+            .size
+            .checked_add(chunk.len() as u64)
+            .filter(|size| *size <= self.limit)
+            .ok_or(Error::TooLarge { declared: self.limit })?;
+        self.hash.update(chunk);
+        Ok(())
+    }
+
+    /// The size and SHA-256 of the bytes seen.
+    pub(crate) fn finish(self) -> Digest {
+        Digest {
+            size: self.size,
+            sha256: format!("{:x}", self.hash.finalize()),
+        }
+    }
+}
+
 /// Checks bytes against a declared digest as they arrive, so a download that
 /// grows past its size stops at once.
 #[derive(Debug)]
 pub struct Verifier {
     expected: Digest,
-    hash: Sha256,
-    size: u64,
+    measure: Measure,
 }
 
 impl Verifier {
     pub fn new(expected: &Digest) -> Self {
         Self {
             expected: expected.clone(),
-            hash: Sha256::new(),
-            size: 0,
+            measure: Measure::new(expected.size),
         }
     }
 
     /// Counts and hashes the next chunk; bytes past the declared size fail.
     pub fn update(&mut self, chunk: &[u8]) -> Result<(), Error> {
-        self.size = self
-            .size
-            .checked_add(chunk.len() as u64)
-            .filter(|size| *size <= self.expected.size)
-            .ok_or(Error::TooLarge {
-                declared: self.expected.size,
-            })?;
-        self.hash.update(chunk);
-        Ok(())
+        self.measure.update(chunk)
     }
 
     /// Whether the bytes seen are exactly the declared ones.
     pub fn finish(self) -> Result<(), Error> {
-        if self.size != self.expected.size {
+        let seen = self.measure.finish();
+        if seen.size != self.expected.size {
             return Err(Error::Size {
                 declared: self.expected.size,
-                actual: self.size,
+                actual: seen.size,
             });
         }
-        if format!("{:x}", self.hash.finalize()) != self.expected.sha256 {
+        if seen.sha256 != self.expected.sha256 {
             return Err(Error::Digest);
         }
         Ok(())
@@ -67,8 +94,7 @@ pub async fn digest(path: &Path, limit: u64, cancel: &CancellationToken) -> Resu
     let cancel = cancel.clone();
     tokio::task::spawn_blocking(move || {
         let mut file = std::fs::File::open(path)?;
-        let mut hash = Sha256::new();
-        let mut size = 0_u64;
+        let mut measure = Measure::new(limit);
         let mut buffer = vec![0; 64 * 1024];
         loop {
             if cancel.is_cancelled() {
@@ -78,16 +104,9 @@ pub async fn digest(path: &Path, limit: u64, cancel: &CancellationToken) -> Resu
             if count == 0 {
                 break;
             }
-            size = size
-                .checked_add(count as u64)
-                .filter(|size| *size <= limit)
-                .ok_or(Error::TooLarge { declared: limit })?;
-            hash.update(&buffer[..count]);
+            measure.update(&buffer[..count])?;
         }
-        Ok(Digest {
-            size,
-            sha256: format!("{:x}", hash.finalize()),
-        })
+        Ok(measure.finish())
     })
     .await
     .map_err(std::io::Error::other)?
