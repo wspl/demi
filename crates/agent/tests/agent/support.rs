@@ -2,22 +2,17 @@
 //! node of a tree from its own script, a server over an in-memory tree
 //! store, and frame builders.
 
-use std::{
-    cell::RefCell,
-    collections::VecDeque,
-    rc::Rc,
-    sync::Arc,
-};
+use std::{cell::RefCell, collections::VecDeque, rc::Rc, sync::Arc};
 
 use demi_agent::{
     AgentHarness, AgentServer, AgentTreeStore, Profile, PromptContext, ServerConfig, ServerDeps,
     testing::{
         MemoryTreeStore, NoHost, NoShells, ScriptedProviders, SequentialIds, TestClient,
-        test_model,
+        TokioClock, test_model,
     },
 };
 use demi_agent_protocol::{ClientFrame, ServerFrame};
-use demi_core::{Block, ModelSelection, NodeId, TurnId, UserContentBlock};
+use demi_core::{Block, Clock, ModelSelection, NodeId, Timestamp, TurnId, UserContentBlock};
 use demi_provider::{
     InferenceItem, InferenceRequest, ProviderRun, ProviderRuntime,
     testing::{FixedClock, ScriptedRuntime, Turn},
@@ -31,14 +26,15 @@ use serde_json::{Value, json};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
-/// The harness the scenarios run: fixed texts, one command, and a context
-/// text the test can set for the next request.
+/// The harness the scenarios run: fixed texts, one command, and the
+/// conversation's execution context, which the test can set.
 #[derive(Default)]
 pub struct TestHarness {
     pub preamble: Option<String>,
     pub profiles: Vec<Profile>,
-    /// Handed out once, before the next request.
-    pub context: RefCell<VecDeque<String>>,
+    /// The execution context: each node whose transcript does not hold it
+    /// yet is given it before its next request.
+    pub context: RefCell<Option<String>>,
     /// The context texts each request's context hook was given.
     pub seen: RefCell<Vec<Vec<String>>>,
     /// The command help each system prompt was given.
@@ -80,7 +76,8 @@ impl AgentHarness for TestHarness {
         self.seen
             .borrow_mut()
             .push(seen.iter().map(|text| (*text).to_owned()).collect());
-        self.context.borrow_mut().pop_front()
+        let current = self.context.borrow().clone()?;
+        (!seen.contains(&current.as_str())).then_some(current)
     }
 }
 
@@ -410,7 +407,8 @@ impl Fixture {
     ) -> Self {
         let resolver = Rc::new(ScriptedProviders::default());
         resolver.provide("stub", script);
-        Self::build(resolver, TestHarness::default(), store, config)
+        let clock = Arc::new(FixedClock(start()));
+        Self::build(resolver, TestHarness::default(), store, config, clock)
     }
 
     /// A server of the provider `stub` answering from `model`, with
@@ -423,7 +421,27 @@ impl Fixture {
     ) -> Self {
         let resolver = Rc::new(ScriptedProviders::default());
         resolver.provide_runtime("stub", model.clone());
-        Self::build(resolver, harness, store, config)
+        Self::build(
+            resolver,
+            harness,
+            store,
+            config,
+            Arc::new(FixedClock(start())),
+        )
+    }
+
+    /// As [`with_model`](Self::with_model), on a wall clock that moves with
+    /// Tokio's, so that yield wakeups fall due.
+    pub fn with_model_on_tokio_time(model: &Model, harness: TestHarness) -> Self {
+        let resolver = Rc::new(ScriptedProviders::default());
+        resolver.provide_runtime("stub", model.clone());
+        Self::build(
+            resolver,
+            harness,
+            MemoryTreeStore::new(),
+            ServerConfig::default(),
+            Arc::new(TokioClock::new(start())),
+        )
     }
 
     fn build(
@@ -431,6 +449,7 @@ impl Fixture {
         harness: TestHarness,
         store: Rc<MemoryTreeStore>,
         config: ServerConfig,
+        clock: Arc<dyn Clock>,
     ) -> Self {
         let harness = Rc::new(harness);
         let stores = {
@@ -442,11 +461,7 @@ impl Fixture {
             providers: resolver.clone(),
             shells: Rc::new(NoShells),
             stores,
-            clock: Arc::new(FixedClock(
-                "2026-09-24T12:00:00.000Z"
-                    .parse()
-                    .expect("the time is RFC 3339"),
-            )),
+            clock,
             ids: Rc::new(SequentialIds::new("id")),
             config,
         });
@@ -516,6 +531,24 @@ pub async fn until(done: impl Fn() -> bool) {
         tokio::task::yield_now().await;
     }
     panic!("the condition never held");
+}
+
+/// The wall-clock time the scenarios start at.
+fn start() -> Timestamp {
+    "2026-09-24T12:00:00.000Z"
+        .parse()
+        .expect("the time is RFC 3339")
+}
+
+/// The root's session.
+pub fn session_of(fixture: &Fixture) -> demi_agent::AgentSession {
+    fixture
+        .server
+        .tree(&conversation())
+        .expect("the tree is live")
+        .root()
+        .session()
+        .clone()
 }
 
 pub fn conversation() -> NodeId {
