@@ -505,13 +505,17 @@ pub async fn stored_token(runner: &RunnerProcess) -> String {
     std::fs::read_to_string(path).unwrap().trim().to_owned()
 }
 
-/// Waits until `check` holds, asking every 20 ms for at most 20 s.
+/// How long a scenario waits for something that should come true before it
+/// fails as hung.
+pub const PATIENCE: Duration = Duration::from_secs(20);
+
+/// Waits until `check` holds, asking every 20 ms for at most [`PATIENCE`].
 pub async fn eventually<F, Fut>(what: &str, mut check: F)
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = bool>,
 {
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+    let deadline = tokio::time::Instant::now() + PATIENCE;
     while !check().await {
         assert!(tokio::time::Instant::now() < deadline, "never came true: {what}");
         tokio::time::sleep(Duration::from_millis(20)).await;
