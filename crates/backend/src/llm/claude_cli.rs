@@ -305,7 +305,7 @@ async fn call<T: DeserializeOwned>(
         args: None,
         json: None,
         cwd: target.home.clone(),
-        resolver: services.native.resolver(),
+        resolver: services.native.resolver(&services.public_url),
     };
     let (output, exit) = match target.host.call_service(request, input, MAX_ANSWER_BYTES).await {
         Ok(output) => (output, None),
