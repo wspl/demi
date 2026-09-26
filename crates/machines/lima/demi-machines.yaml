@@ -23,15 +23,6 @@ provision:
       export DEBIAN_FRONTEND=noninteractive
       apt-get update -qq
       apt-get install -y -qq e2fsprogs xfsprogs util-linux nftables iproute2 jq curl unzip bzip2 libarchive-tools zstd debootstrap python3 build-essential crossbuild-essential-amd64 clang git python-is-python3 python3-setuptools python3-build python3-wheel python3-venv pkg-config libffi-dev libssl-dev libnuma-dev libbpf-dev
-  # The Cloud image build (packages/guest-image) still runs Bun; the manager
-  # and its install scripts do not.
-  - mode: user
-    script: |
-      #!/bin/bash
-      set -euo pipefail
-      if ! [ -x "$HOME/.bun/bin/bun" ]; then
-        curl -fsSL https://bun.sh/install | bash
-      fi
 probes:
   - description: "the Linux Cloud data disk is mounted"
     script: |
