@@ -478,9 +478,8 @@ Each crate implements the provider contract for one vendor family.
   interfaces; own a shell interpreter; own a socket. The backend owns the
   conversation socket and hands the agent decoded frames. The compaction
   fixture's harness, a program run by hand against a real model, is an example
-  whose dev-dependencies include the OpenAI-compatible provider; the
-  `compaction-fixture` feature builds it, and no build of the one selection
-  enables that.
+  whose dev-dependencies include the OpenAI-compatible provider; every build of
+  the one selection compiles it, and no test runs it.
 
 #### `coding-agent`
 
