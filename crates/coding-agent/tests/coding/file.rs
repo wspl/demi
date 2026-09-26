@@ -3,9 +3,10 @@
 //! whose `file` commands run in the `demi.builtin` package the workspace
 //! built.
 
+use demi_agent::testing::{field, preview};
 use demi_provider::testing::ScriptedRuntime;
 
-use crate::support::{Fixture, field, preview, scripts, turn, within};
+use crate::support::{Fixture, scripts, turn, within};
 
 /// The results of running `scripts` in one message, with `prepare` run on
 /// the workspace first; the fixture stays for the test's own checks.
