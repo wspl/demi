@@ -4,11 +4,12 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
 import { useResources } from '../state/resources'
 import { useProduct } from '../state/product'
-import { claimDevice, deviceInstallation } from '../devices/pairing'
+import { claimDevice, useDeviceInstallation } from '../devices/pairing'
 import { useDeviceSettings } from './devices'
 const resources = useResources()
 const product = useProduct()
 const settings = useDeviceSettings()
+const installation = useDeviceInstallation()
 const { cloud, reset, revoking } = storeToRefs(settings)
 const { revoke, resetCloud } = settings
 </script>
@@ -24,7 +25,7 @@ const { revoke, resetCloud } = settings
     :reset-error="reset.status === 'failed' ? reset.message : null"
     @reset-cloud="resetCloud"
     :overlay-store="appOverlayStore"
-    :installation="deviceInstallation"
+    :installation="installation"
     :claim-device="claimDevice"
     @revoke="revoke"
   />
