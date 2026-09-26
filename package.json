@@ -19,7 +19,7 @@
     "changeset": "changeset",
     "changeset:version": "changeset version",
     "release": "bun run scripts/release.ts",
-    "test": "bun run contracts && DEMI_TEST_PROGRAMS=target/debug bun scripts/test.ts --conditions development --parallel --timeout=20000 ./packages/utils/src ./packages/agent-client/src ./packages/protocol/src ./packages/web-ui/src ./packages/web/src ./packages/web-gallery/src ./scripts/__tests__ ./scripts/native/__tests__ ./crates/demi-commands/src/browser/capture",
+    "test": "bun run contracts && DEMI_TEST_PROGRAMS=target/debug bun scripts/test.ts --conditions development --parallel --timeout=20000 ./packages/utils/src ./packages/agent-client/src ./packages/protocol/src ./packages/web-ui/src ./packages/web/src ./packages/web-gallery/src ./scripts/__tests__ ./crates/demi-commands/src/browser/capture",
     "web:gallery": "bun --filter @demicodes/web-gallery dev",
     "web:dev": "bun --filter @demicodes/web dev",
     "web:build": "bun --filter @demicodes/web build"

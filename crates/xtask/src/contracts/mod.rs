@@ -43,7 +43,7 @@ pub enum Error {
 /// Generates every module and answers the files it wrote, relative to the
 /// repository.
 pub fn run() -> Result<Vec<PathBuf>, Error> {
-    let repository = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
+    let repository = crate::repository();
     let generated = generate()?;
     let mut written = Vec::new();
     for (directory, files) in [
