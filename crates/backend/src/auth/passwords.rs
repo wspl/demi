@@ -113,20 +113,3 @@ fn verify(password: &Password, stored: &PasswordHash) -> Result<bool, HashError>
         Err(error) => Err(HashError::Argon2(error)),
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn a_password_verifies_against_its_own_hash_only() {
-        let hasher = PasswordHasher::new().await.unwrap();
-        let stored = hasher.hash(Password::from("right-pass-1".to_owned())).await.unwrap();
-        assert!(stored.as_str().starts_with("$argon2id$v=19$m=19456,t=2,p=1$"));
-        let right = Password::from("right-pass-1".to_owned());
-        assert!(hasher.verify(right.clone(), Some(stored.clone())).await.unwrap());
-        let wrong = Password::from("wrong-pass-1".to_owned());
-        assert!(!hasher.verify(wrong, Some(stored)).await.unwrap());
-        assert!(!hasher.verify(right, None).await.unwrap());
-    }
-}

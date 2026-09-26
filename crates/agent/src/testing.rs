@@ -732,11 +732,13 @@ impl<H: AgentHarness> TestClient<H> {
 
     /// Every frame waiting now.
     pub fn received(&mut self) -> Vec<ServerFrame> {
-        let mut frames = Vec::new();
-        while let Some(Outgoing::Frame(frame)) = self.frames.try_recv() {
-            frames.push(frame);
-        }
-        frames
+        waiting_frames(&mut self.frames)
+    }
+
+    /// The connection and its outbox apart, for a test that looks at what
+    /// the page has heard while a frame of its is still being handled.
+    pub fn split(&mut self) -> (&Connection<H>, &mut FrameRx) {
+        (&self.connection, &mut self.frames)
     }
 
     /// The frames up to and including the first that `until` accepts.
@@ -760,6 +762,15 @@ impl<H: AgentHarness> TestClient<H> {
     pub fn connection(&self) -> &Connection<H> {
         &self.connection
     }
+}
+
+/// Every frame `outbox` holds now.
+pub fn waiting_frames(outbox: &mut FrameRx) -> Vec<ServerFrame> {
+    let mut frames = Vec::new();
+    while let Some(Outgoing::Frame(frame)) = outbox.try_recv() {
+        frames.push(frame);
+    }
+    frames
 }
 
 /// The tree store contract's cases (`subagents.md` § Persistence), for any

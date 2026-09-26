@@ -360,7 +360,6 @@ impl From<RecordChange> for ConversationChange {
 mod tests {
     use std::cell::RefCell;
     use std::rc::Rc;
-    use std::time::Duration;
 
     use demi_web_api::ids::{DeviceId, UserId};
 
@@ -413,7 +412,12 @@ mod tests {
                 }
                 drop(operation);
                 // A transition holds the conversation: a rename waits for it,
-                // then applies.
+                // then applies. The rename reads the conversation first, and
+                // the control database answers its one connection's calls in
+                // order: once a read of the test's after it has come back and
+                // the test has yielded, the rename has gone as far as it can,
+                // to the gate or through its commit, which a second read would
+                // then see.
                 let held = slot.files.try_reserve().unwrap();
                 let renaming = {
                     let shard = shard.clone();
@@ -422,18 +426,23 @@ mod tests {
                         shard.transition(&id, RecordChange::Title("Renamed".into()).into()).await
                     })
                 };
-                tokio::time::sleep(Duration::from_millis(50)).await;
+                let control = &shard.services().control;
+                tokio::task::yield_now().await;
+                control.conversation(id.clone()).await.unwrap();
+                tokio::task::yield_now().await;
+                let held_title = control.conversation(id.clone()).await.unwrap().unwrap().title;
                 let waited = !renaming.is_finished();
                 drop(held);
                 renaming.await.unwrap().unwrap();
                 let record = shard.owned_conversation(&id).await.unwrap();
-                (refusals, waited, record.title)
+                (refusals, waited, held_title, record.title)
             })
             .await
             .unwrap();
-        let (refusals, waited, title) = refusals;
+        let (refusals, waited, held_title, title) = refusals;
         assert_eq!(refusals, [Err(ErrorCode::TurnInFlight); 3]);
         assert!(waited);
+        assert_ne!(held_title, "Renamed", "the rename applied while a transition held the conversation");
         assert_eq!(title, "Renamed");
         pool.close().await;
     }

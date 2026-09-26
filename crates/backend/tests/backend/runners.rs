@@ -72,6 +72,7 @@ async fn a_claimed_runner_reconnects_with_its_token_until_its_device_is_revoked(
     backend.close().await;
 }
 
+// Over a second: a pairing code's lifetime of one second passes in real time.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_waiting_runners_code_changes_while_it_waits_and_claims_are_limited() {
     let mut harness = Harness::new();
@@ -385,6 +386,7 @@ async fn after_a_backend_restart_the_devices_are_kept_and_their_runners_come_bac
     backend.close().await;
 
     // The session and the devices are records: both outlive the process.
+    // The backend comes back at its address, where the runners reconnect.
     let backend = harness.start_at(address).await;
     for device in [&laptop, &desktop] {
         backend.until_online(&master, device.id(), true).await;
