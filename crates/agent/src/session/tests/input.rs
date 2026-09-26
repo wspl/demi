@@ -3,8 +3,8 @@
 //! wakeups.
 
 use demi_core::{
-    AgentMessage, AgentMessageEvent, BlockId, CompletionOutcome, PendingSteer, Sender,
-    UserContentBlock, WakeupPlacement,
+    AgentMessage, AgentMessageEvent, BlockId, CompletionOutcome, PendingSteer, UserContentBlock,
+    WakeupPlacement,
 };
 
 use super::*;
@@ -14,28 +14,13 @@ use crate::{
     transcript::{WAKEUP_TEXT, agent_message_envelope},
 };
 
-fn message(id: &str) -> AgentMessage {
-    AgentMessage {
-        id: BlockId::try_from(id).unwrap(),
-        sender: Sender {
-            id: NodeId::try_from("child").unwrap(),
-            description: "UI implementation".into(),
-            round: 1,
-        },
-        recipient_id: root(),
-        timestamp: Timestamp::UNIX_EPOCH,
-        content: format!("Result {id}"),
-        event: AgentMessageEvent::Message {},
-    }
-}
-
 fn completion() -> AgentMessage {
     AgentMessage {
         id: BlockId::try_from("subagent:child:1").unwrap(),
         event: AgentMessageEvent::Completion {
             outcome: CompletionOutcome::Completed,
         },
-        ..message("done")
+        ..agent_message("done")
     }
 }
 
@@ -55,29 +40,6 @@ fn steers(items: &[InferenceItem]) -> Vec<String> {
             _ => None,
         })
         .collect()
-}
-
-/// A `yield` of `duration_ms`.
-fn yield_tool() -> (String, Invoke) {
-    tool("yield", |call| {
-        let duration_ms = call.input["durationMs"]
-            .as_u64()
-            .and_then(|duration| u32::try_from(duration).ok())
-            .expect("the test's yield names its duration");
-        Box::pin(async move {
-            Ok(ToolOutcome {
-                effect: Some(ToolEffect::ScheduleYield { duration_ms }),
-                ..output("")
-            })
-        })
-    })
-}
-
-fn yield_call(duration_ms: u64) -> Turn {
-    Turn::Events(vec![
-        event::tool_call("yield-1", "yield", json!({ "durationMs": duration_ms })),
-        event::response(1, 1),
-    ])
 }
 
 #[tokio::test(flavor = "local")]
@@ -179,6 +141,45 @@ async fn input_that_arrives_during_the_last_stream_asks_the_provider_once_more()
 }
 
 #[tokio::test(flavor = "local")]
+async fn a_steer_during_a_stream_that_calls_a_tool_is_written_before_the_tool_runs() {
+    let (call, release) = gated_turn(vec![
+        event::tool_call("call-1", "hold", json!({})),
+        event::response(1, 1),
+    ]);
+    let provider = ScriptedRuntime::new([
+        call,
+        Turn::Events(vec![event::text("continued"), event::response(1, 1)]),
+    ]);
+    let store = MemoryTreeStore::new();
+    let (hold, releases, started) = gated_tool("hold");
+    let session = start(&provider, vec![hold], &store, SessionConfig::default()).await;
+    let running = session.send(text("use the tool"), turn("t1")).unwrap();
+    until(|| provider.requests().len() == 1).await;
+
+    session
+        .steer(text("arrived during the stream"), steer_id("s1"))
+        .unwrap();
+    let _ = release.send(());
+    started.await.unwrap();
+
+    // The end of the stream is a boundary: the steer is history, and no
+    // longer pending, while the tool runs.
+    assert_eq!(
+        kinds(&session.transcript().blocks),
+        ["user", "tool_call:executing", "response", "steer"]
+    );
+    assert!(session.pending_steers().is_empty());
+    let _ = releases.borrow_mut().remove(0).send(());
+    running.await.unwrap();
+    let request = &provider.requests()[1];
+    assert_eq!(
+        item_kinds(&request.items),
+        ["user_message", "tool_use", "tool_result", "user_steer"]
+    );
+    assert_eq!(steers(&request.items), ["arrived during the stream"]);
+}
+
+#[tokio::test(flavor = "local")]
 async fn a_stop_writes_the_pending_steers_before_its_marker_and_a_steer_needs_a_running_turn() {
     let provider = ScriptedRuntime::new([Turn::pending()]);
     let store = MemoryTreeStore::new();
@@ -257,7 +258,7 @@ async fn agent_messages_that_arrive_during_a_tool_are_saved_and_enter_the_turn_i
     started.await.unwrap();
 
     session
-        .accept_agent_message(message("update"))
+        .accept_agent_message(agent_message("update"))
         .await
         .unwrap();
     session.accept_agent_message(completion()).await.unwrap();
@@ -296,7 +297,7 @@ async fn agent_messages_that_arrive_during_a_tool_are_saved_and_enter_the_turn_i
     assert_eq!(
         steers(&request.items),
         [
-            agent_message_envelope(&message("update")),
+            agent_message_envelope(&agent_message("update")),
             agent_message_envelope(&completion())
         ]
     );
@@ -320,13 +321,16 @@ async fn agent_messages_to_an_idle_session_open_one_continuation_and_a_repeat_wa
     let session = start(&provider, Vec::new(), &store, SessionConfig::default()).await;
 
     let (one, two) = tokio::join!(
-        session.accept_agent_message(message("one")),
-        session.accept_agent_message(message("two"))
+        session.accept_agent_message(agent_message("one")),
+        session.accept_agent_message(agent_message("two"))
     );
     one.unwrap();
     two.unwrap();
     session.settled().await;
-    session.accept_agent_message(message("one")).await.unwrap();
+    session
+        .accept_agent_message(agent_message("one"))
+        .await
+        .unwrap();
     session.settled().await;
 
     let requests = provider.requests();
@@ -340,6 +344,64 @@ async fn agent_messages_to_an_idle_session_open_one_continuation_and_a_repeat_wa
 }
 
 #[tokio::test(flavor = "local")]
+async fn retry_after_a_failed_continuation_reruns_it_from_its_message_and_keeps_the_turn_before() {
+    let provider = ScriptedRuntime::new([
+        Turn::Events(vec![event::text("task answer"), event::response(1, 1)]),
+        Turn::Events(vec![event::error("the vendor failed", None)]),
+        Turn::Events(vec![event::text("read the result"), event::response(1, 1)]),
+    ]);
+    let store = MemoryTreeStore::new();
+    let session = start(&provider, Vec::new(), &store, SessionConfig::default()).await;
+    session
+        .send(text("the task"), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
+    session
+        .accept_agent_message(agent_message("result"))
+        .await
+        .unwrap();
+    session.settled().await;
+    assert_eq!(
+        kinds(&session.transcript().blocks),
+        ["user", "text", "response", "agent_message", "error"]
+    );
+
+    session.retry().unwrap().await.unwrap();
+
+    // The message opened the failed turn: the retry keeps it and the
+    // finished turn before it, and asks again with both.
+    assert_eq!(
+        kinds(&session.transcript().blocks),
+        [
+            "user",
+            "text",
+            "response",
+            "agent_message",
+            "text",
+            "response"
+        ]
+    );
+    let requests = provider.requests();
+    assert_eq!(
+        requests[2].items.as_ref(),
+        [
+            InferenceItem::UserMessage {
+                content: text("the task"),
+            },
+            InferenceItem::AssistantText {
+                model_id: "test-model".into(),
+                text: "task answer".into(),
+            },
+            InferenceItem::UserSteer {
+                content: text(&agent_message_envelope(&agent_message("result"))),
+            },
+        ]
+    );
+    assert_eq!(requests[2].turn_id, requests[1].turn_id);
+}
+
+#[tokio::test(flavor = "local")]
 async fn a_message_that_came_after_the_users_stop_waits_for_the_users_next_action() {
     let provider = ScriptedRuntime::new([Turn::pending()]);
     let store = MemoryTreeStore::new();
@@ -347,13 +409,16 @@ async fn a_message_that_came_after_the_users_stop_waits_for_the_users_next_actio
     let running = session.send(text("start work"), turn("t1")).unwrap();
     until(|| provider.requests().len() == 1).await;
     session
-        .accept_agent_message(message("unread"))
+        .accept_agent_message(agent_message("unread"))
         .await
         .unwrap();
     session.abort().await;
     running.await.unwrap();
 
-    session.accept_agent_message(message("late")).await.unwrap();
+    session
+        .accept_agent_message(agent_message("late"))
+        .await
+        .unwrap();
 
     assert_eq!(kinds(&session.transcript().blocks), ["user", "abort"]);
     let checkpoint = store.checkpoint(&root()).unwrap();
@@ -378,8 +443,8 @@ async fn a_message_that_came_after_the_users_stop_waits_for_the_users_next_actio
     assert_eq!(
         steers(&requests[0].items),
         [
-            agent_message_envelope(&message("unread")),
-            agent_message_envelope(&message("late"))
+            agent_message_envelope(&agent_message("unread")),
+            agent_message_envelope(&agent_message("late"))
         ]
     );
 }
@@ -421,7 +486,7 @@ async fn a_message_admitted_while_the_action_finishes_opens_the_next_continuatio
     // The action's own save waits in the store: the action is finishing.
     until(|| gated.release.borrow().is_none()).await;
 
-    let admitted = session.accept_agent_message(message("race"));
+    let admitted = session.accept_agent_message(agent_message("race"));
     let _ = release.send(());
     admitted.await.unwrap();
     running.await.unwrap();
@@ -478,11 +543,11 @@ async fn an_agent_message_is_refused_for_another_recipient_or_other_content_unde
 
     let elsewhere = AgentMessage {
         recipient_id: NodeId::try_from("elsewhere").unwrap(),
-        ..message("m1")
+        ..agent_message("m1")
     };
     let empty = AgentMessage {
         content: "  ".into(),
-        ..message("m2")
+        ..agent_message("m2")
     };
     assert_eq!(
         session.accept_agent_message(elsewhere).await,
@@ -492,11 +557,14 @@ async fn an_agent_message_is_refused_for_another_recipient_or_other_content_unde
         session.accept_agent_message(empty).await,
         Err(AgentMessageError::Invalid(_))
     ));
-    session.accept_agent_message(message("m3")).await.unwrap();
+    session
+        .accept_agent_message(agent_message("m3"))
+        .await
+        .unwrap();
     session.settled().await;
     let other = AgentMessage {
         content: "something else".into(),
-        ..message("m3")
+        ..agent_message("m3")
     };
     assert_eq!(
         session.accept_agent_message(other).await,
@@ -523,7 +591,7 @@ async fn a_restored_message_wakes_the_session_once_and_a_written_one_is_never_de
     checkpoint.state.agent_inputs = vec![crate::store::PendingAgentInput {
         turn_id: turn("t1"),
         model: test_model(),
-        message: message("restored"),
+        message: agent_message("restored"),
     }];
     let later = ScriptedRuntime::new([Turn::Events(vec![
         event::text("recovered"),
@@ -542,7 +610,7 @@ async fn a_restored_message_wakes_the_session_once_and_a_written_one_is_never_de
     restored.wake();
     restored.settled().await;
     restored
-        .accept_agent_message(message("restored"))
+        .accept_agent_message(agent_message("restored"))
         .await
         .unwrap();
     restored.settled().await;
@@ -556,7 +624,7 @@ async fn a_restored_message_wakes_the_session_once_and_a_written_one_is_never_de
     );
     again.wake();
     again
-        .accept_agent_message(message("restored"))
+        .accept_agent_message(agent_message("restored"))
         .await
         .unwrap();
 
@@ -710,6 +778,9 @@ async fn a_wakeup_that_fires_during_a_turn_joins_it_as_a_steer() {
     until(|| provider.requests().len() == 2).await;
 
     tokio::time::sleep(Duration::from_secs(2)).await;
+    // The fired wakeup waits for the boundary, never among the pending
+    // steers.
+    assert!(session.pending_steers().is_empty());
     let _ = release.send(());
     running.await.unwrap();
 
@@ -787,7 +858,10 @@ async fn a_session_restored_after_an_interrupted_turn_holds_its_wakeups_and_mess
         .unwrap();
     let _running = session.send(text("keep going"), turn("t2")).unwrap();
     until(|| provider.requests().len() == 2).await;
-    session.accept_agent_message(message("news")).await.unwrap();
+    session
+        .accept_agent_message(agent_message("news"))
+        .await
+        .unwrap();
     // The process dies in the second turn.
     let crashed = store.copy();
     drop(session);
@@ -819,7 +893,7 @@ async fn a_session_restored_after_an_interrupted_turn_holds_its_wakeups_and_mess
     assert_eq!(
         steers(&request.items),
         [
-            agent_message_envelope(&message("news")),
+            agent_message_envelope(&agent_message("news")),
             WAKEUP_TEXT.to_owned()
         ]
     );

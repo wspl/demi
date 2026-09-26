@@ -202,9 +202,12 @@ result with the production replay would conceal replay defects.
 | The cut removes a compaction marker or the latest usage response | Context estimation does not use an invalid usage anchor ([Context estimate](compaction.md#context-estimate)). A preflight summary request contains only retained content, and the replacement where applicable. |
 | Patch application and reload | Applying the emitted patches to the client's initial copy produces the accepted transcript exactly; save and load produce the same blocks. |
 
-Fixed-seed cases generate bounded valid histories and edit positions. Their
-fixture-level prefix and replacement oracle is separate from the semantic
-assertions on inference items and on patch sequences.
+The edit keeps every block before the target and nothing after it, so the
+first, middle, and last positions cover the cut when the history holds each
+kind of block the cut removes: a tool call with its result, a steer, and plain
+turns. The prefix and replacement oracle, the blocks before the target compared
+with the history before the edit, is separate from the semantic assertions on
+inference items and on patch sequences.
 
 ## Session, provider and admission cases
 
@@ -215,9 +218,8 @@ assertions on inference items and on patch sequences.
 | Replace an attachment with a file of equal name and type but different bytes | A fresh runtime receives the new bytes; equal text, file names, and media types do not permit stale context reuse. |
 | A stateful provider has consumed the removed content | No continuation is sent to its transport; replacement inference starts independently. Disposing the discarded runtime does not end the replacement runtime. |
 | Preamble preparation fails | No published rewrite, durable mutation, or replacement inference; the next valid operation can acquire admission. |
-| Preparation is aborted, or provider runtime creation fails | The candidate is discarded, the accepted transcript gains no candidate abort or output blocks, and acquired resources are released. |
+| Preparation is aborted | The candidate is discarded, the accepted transcript gains no candidate abort or output blocks, and acquired resources are released. |
 | An abort arrives while the commit is in progress | The durable outcome decides: a failure preserves the accepted history; a success keeps the replacement and does not start generation once the cancellation has been accepted. |
-| Disposing the discarded runtime fails | The failure is observable, admission is released, and no request falls back to the consumed runtime. A committed replacement stays accepted. |
 | The model fails before output or after a completed tool | The replacement stays accepted. Explicit recovery follows the resume contract and does not repeat a completed tool because submission was retried. |
 | An active action, queued message, pending steer, pending agent message, wakeup, live child, or undelivered completion | Editing is rejected without deleting, consuming, or silently cancelling that work. |
 | A send, a model or target change, a child resume, or a completion delivery races with the edit | Exactly one admissible ordering takes effect; the loser observes busy or conflict, or operates on the committed state. Nothing enters the preparation window. |
