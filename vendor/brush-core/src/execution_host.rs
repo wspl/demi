@@ -19,6 +19,21 @@ pub trait FileControl: Send + Sync {
     }
 }
 
+/// What a shell's `umask` and `ulimit` set for the processes it starts. A shell
+/// embedded in a host process keeps them for itself, since changing that
+/// process would change them for everything else it runs; the host applies them
+/// to each process the shell starts, before the process runs its program.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ChildAttributes {
+    /// The file mode creation mask, once the shell set one; otherwise a process
+    /// the shell starts inherits the host's.
+    pub umask: Option<u32>,
+    /// The resource limits the shell set, each resource once, as its soft and
+    /// hard limit; a resource not listed keeps what the host gives it.
+    #[cfg(unix)]
+    pub limits: Vec<(rlimit::Resource, u64, u64)>,
+}
+
 /// Ownership hooks shared by a shell and every cloned subshell.
 pub trait ExecutionHost: Any + Send + Sync {
     /// Open a path through the embedding owner's file-operation boundary.
@@ -36,8 +51,9 @@ pub trait ExecutionHost: Any + Send + Sync {
     fn task_guard(&self) -> Box<dyn Send + Sync>;
     /// Scope a shell descriptor's reads and writes.
     fn file_control(&self) -> Arc<dyn FileControl>;
-    /// Spawn and retain ownership of an external child.
-    fn spawn(&self, command: Command) -> io::Result<ChildProcess>;
+    /// Spawn and retain ownership of an external child, giving it the attributes
+    /// its shell set before it runs.
+    fn spawn(&self, command: Command, attributes: &ChildAttributes) -> io::Result<ChildProcess>;
     /// Create a pipe; the embedding owner decides how to meet a lack of descriptors.
     fn pipe(&self) -> io::Result<(std::io::PipeReader, std::io::PipeWriter)> {
         std::io::pipe()
