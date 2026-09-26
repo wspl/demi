@@ -3,19 +3,16 @@ use std::{
     time::Duration,
 };
 
-use bytes::Bytes;
-use demi_artifact::testing::{Answer, Server};
-use demi_claude_protocol::Installed;
-use demi_command_service::{
-    Handler, Input, InvocationContext, Output,
-    protocol::{CommandCaller, CommandContext, CommandLocale, Completion, Invocation, Record},
+use demi_artifact::{
+    InstallLock,
+    testing::{Answer, Server, lock_waits},
 };
+use demi_claude_protocol::Installed;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    DemiClaude,
     install::{EnsureError, Installer, Roots},
     platform::{self, Loaders, platform_key},
 };
@@ -120,6 +117,17 @@ fn preinstall(root: &Path, version: &str, body: &[u8]) {
 async fn ensure(installer: &Installer, record: &[u8]) -> Result<Installed, EnsureError> {
     let release = installer.release(record)?;
     installer.ensure(&release, &CancellationToken::new()).await
+}
+
+/// Waits until `done` holds, polling; the deadline only guards against a hang.
+async fn until(what: &str, done: impl Fn() -> bool) {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        while !done() {
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("{what} never happened"));
 }
 
 const BODY: &[u8] = b"#!/bin/sh\necho fixture claude\n";
@@ -303,17 +311,33 @@ async fn a_mismatching_preinstalled_version_is_ignored_and_kept() {
     );
 }
 
+/// Three ensures of one version at once, two in one installer as two
+/// invocations of a service and one in another as another process, wait for
+/// an installer that holds the version's lock; once it lets go, one of them
+/// downloads and the others find its installation.
 #[tokio::test(flavor = "multi_thread")]
 async fn concurrent_ensures_download_once() {
     let machine = Machine::new();
-    let server = downloads(Duration::from_millis(200)).await;
+    let server = downloads(Duration::ZERO).await;
     let record = served(&server, "2.1.278", BODY.len(), &sha256(BODY));
-    // One installer is two invocations of a service; the other is another process.
+    std::fs::create_dir_all(&machine.home).unwrap();
+    let held = InstallLock::acquire(&machine.home.join("2.1.278.lock"), &CancellationToken::new())
+        .await
+        .unwrap();
+    let waits = lock_waits();
     let (service, process) = (machine.installer(), machine.installer());
-    let (first, second, third) = tokio::join!(
-        ensure(&service, &record),
-        ensure(&service, &record),
-        ensure(&process, &record),
+    let ((first, second, third), ()) = tokio::join!(
+        async {
+            tokio::join!(
+                ensure(&service, &record),
+                ensure(&service, &record),
+                ensure(&process, &record),
+            )
+        },
+        async {
+            until("the ensures wait for the lock", || lock_waits() >= waits + 3).await;
+            drop(held);
+        },
     );
     assert_eq!(first.unwrap(), second.unwrap());
     assert_eq!(third.unwrap().version, "2.1.278");
@@ -321,6 +345,8 @@ async fn concurrent_ensures_download_once() {
     assert_eq!(machine.home_directories(), ["2.1.278"]);
 }
 
+/// The server holds its answer: the download is under way when the test
+/// cancels it.
 #[tokio::test]
 async fn cancellation_stops_a_download_and_installs_nothing() {
     let machine = Machine::new();
@@ -331,12 +357,15 @@ async fn cancellation_stops_a_download_and_installs_nothing() {
         .unwrap();
     let cancel = CancellationToken::new();
     let canceller = cancel.clone();
-    tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        canceller.cancel();
+    let requested = until("the download starts", || server.requests() == 1);
+    let stopped = tokio::time::timeout(Duration::from_secs(10), async {
+        tokio::join!(installer.ensure(&release, &cancel), async {
+            requested.await;
+            canceller.cancel();
+        })
     });
-    let error = installer.ensure(&release, &cancel).await.unwrap_err();
-    assert!(matches!(error, EnsureError::Cancelled));
+    let (ensured, ()) = stopped.await.expect("cancellation stops the download");
+    assert!(matches!(ensured.unwrap_err(), EnsureError::Cancelled));
     assert!(machine.home_directories().is_empty());
 }
 
@@ -433,31 +462,6 @@ fn the_platform_key_follows_the_machine() {
     assert_eq!(platform_key("freebsd", "x86_64", none), None);
 }
 
-#[test]
-fn versions_order_semantically() {
-    let ascending = [
-        "1.0.0-alpha",
-        "1.0.0-alpha.1",
-        "1.0.0-alpha.beta",
-        "1.0.0-beta.2",
-        "1.0.0-beta.11",
-        "1.0.0",
-        "2.1.9",
-        "2.1.10",
-        "2.1.278",
-        "2.10.0",
-        "10.0.0",
-    ];
-    for (index, left) in ascending.iter().enumerate() {
-        for (other, right) in ascending.iter().enumerate() {
-            let order = demi_claude_protocol::parse_version(left)
-                .unwrap()
-                .cmp(&demi_claude_protocol::parse_version(right).unwrap());
-            assert_eq!(order, index.cmp(&other), "{left} {right}");
-        }
-    }
-}
-
 #[tokio::test]
 async fn status_lists_installations_newest_first() {
     let machine = Machine::new();
@@ -494,100 +498,4 @@ async fn status_lists_installations_newest_first() {
             ("2.1.9", machine.home.join("2.1.9").join(BINARY)),
         ]
     );
-}
-
-async fn invoke(service: &DemiClaude, operation: &str, input: Vec<u8>) -> (Value, Completion) {
-    let cancel = CancellationToken::new();
-    let (output, mut records) = Output::channel(cancel.clone());
-    let completion = service
-        .invoke(InvocationContext {
-            request: Invocation {
-                operation: operation.into(),
-                invocation_id: "invocation".into(),
-                context: CommandContext {
-                    conversation: "conversation".into(),
-                    caller: CommandCaller::agent("caller"),
-                    locale: CommandLocale {
-                        time_zone: "UTC".into(),
-                        languages: vec!["en-US".into()],
-                    },
-                },
-                args: json!({}),
-                cwd: "/".into(),
-                env: Default::default(),
-                edits: None,
-                json: None,
-            },
-            input: Input::from_stream(futures_util::stream::iter([Ok(Bytes::from(input))])),
-            output,
-            cancellation: cancel,
-        })
-        .await
-        .unwrap();
-    let mut stdout = Vec::new();
-    while let Some(record) = records.recv().await {
-        match record {
-            Record::Stdout(bytes) => stdout.extend_from_slice(&bytes),
-            other => panic!("unexpected record {other:?}"),
-        }
-    }
-    assert_eq!(stdout.pop(), Some(b'\n'));
-    (serde_json::from_slice(&stdout).unwrap(), completion)
-}
-
-#[tokio::test]
-async fn the_service_answers_one_document_for_each_invocation() {
-    let machine = Machine::new();
-    let server = downloads(Duration::ZERO).await;
-    let service = DemiClaude::new(machine.installer());
-    assert_eq!(service.operations(), ["claude.ensure", "claude.status"]);
-    let path = machine.home.join("2.1.278").join(BINARY);
-
-    let (document, completion) = invoke(
-        &service,
-        "claude.ensure",
-        served(&server, "2.1.278", BODY.len(), &sha256(BODY)),
-    )
-    .await;
-    assert_eq!(
-        document,
-        json!({ "ok": true, "version": "2.1.278", "path": path })
-    );
-    assert_eq!(
-        (completion.exit_code, completion.error.is_none()),
-        (0, true)
-    );
-
-    let (document, completion) = invoke(&service, "claude.status", Vec::new()).await;
-    assert_eq!(
-        document,
-        json!({
-            "ok": true,
-            "platform": platform::current().unwrap(),
-            "installed": [{ "version": "2.1.278", "path": path }],
-        })
-    );
-    assert_eq!(completion.exit_code, 0);
-
-    let (document, completion) = invoke(
-        &service,
-        "claude.ensure",
-        served(&server, "2.1.279", BODY.len(), &sha256(b"another executable")),
-    )
-    .await;
-    let error = completion.error.unwrap();
-    assert_eq!(completion.exit_code, 1);
-    assert_eq!(error.code, "verification_failed");
-    assert_eq!(
-        document,
-        json!({ "ok": false, "code": "verification_failed", "message": error.message })
-    );
-
-    let (document, completion) = invoke(&service, "claude.ensure", b"{}".to_vec()).await;
-    assert_eq!(document["ok"], json!(false));
-    assert_eq!(document["code"], json!("invalid_release"));
-    assert_eq!(completion.exit_code, 1);
-
-    let (document, _) = invoke(&service, "claude.ensure", vec![b' '; 64 * 1024 + 1]).await;
-    assert_eq!(document["code"], json!("invalid_release"));
 }

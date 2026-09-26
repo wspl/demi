@@ -33,15 +33,26 @@ pub const RUNNER: &str = "runner";
 
 const NEWER: &str = "host.log";
 const OLDER: &str = "host.log.1";
-/// Each of the two files holds this much (`runner.md` § Host log).
-const FILE_BYTES: u64 = 4 * 1024 * 1024;
 /// A longer line of text continues on the next log line.
 const LINE_BYTES: usize = 4096;
 /// Lines waiting for the writer; past it a line is dropped and counted.
 const QUEUE: usize = 1024;
-/// A read stops here and its cursor continues, so an answer stays well within
-/// the connection's message limit.
-const PAGE_BYTES: usize = 2 * 1024 * 1024;
+
+/// How much the files and a page of the log hold.
+#[derive(Clone, Copy)]
+struct Limits {
+    /// Each of the two files holds this much.
+    file_bytes: u64,
+    /// A read stops here and its cursor continues.
+    page_bytes: usize,
+}
+
+/// Each file holds 4 MiB (`runner.md` § Host log), and a page 2 MiB, so an
+/// answer stays well within the connection's message limit.
+const LIMITS: Limits = Limits {
+    file_bytes: 4 * 1024 * 1024,
+    page_bytes: 2 * 1024 * 1024,
+};
 
 /// One line as the files keep it, a JSON object per line. `seq` is the
 /// cursor: it grows by one per line across both files and across restarts.
@@ -105,7 +116,7 @@ enum Message {
 pub async fn open(directory: PathBuf) -> io::Result<(HostLogWriter, HostLogLayer)> {
     tokio::fs::create_dir_all(&directory).await?;
     crate::fs::chmod(&directory, 0o700).await?;
-    let files = tokio::task::spawn_blocking(move || Files::open(directory))
+    let files = tokio::task::spawn_blocking(move || Files::open(directory, LIMITS))
         .await
         .map_err(io::Error::other)??;
     let dropped = Arc::new(AtomicU64::new(0));
@@ -286,6 +297,7 @@ impl Visit for Visitor {
 
 struct Files {
     directory: PathBuf,
+    limits: Limits,
     next_seq: u64,
     /// The newer file, opened for append, and its length.
     newer: Option<(File, u64)>,
@@ -294,7 +306,7 @@ struct Files {
 }
 
 impl Files {
-    fn open(directory: PathBuf) -> io::Result<Self> {
+    fn open(directory: PathBuf, limits: Limits) -> io::Result<Self> {
         let mut last = None;
         for name in [OLDER, NEWER] {
             if let Some(line) = parse(&directory.join(name))?.pop() {
@@ -309,6 +321,7 @@ impl Files {
         };
         Ok(Self {
             directory,
+            limits,
             next_seq,
             newer: None,
             failing: false,
@@ -342,7 +355,7 @@ impl Files {
         .map_err(io::Error::other)?;
         bytes.push(b'\n');
         let size = bytes.len() as u64;
-        if self.newer()?.1 + size > FILE_BYTES {
+        if self.newer()?.1 + size > self.limits.file_bytes {
             self.newer = None;
             std::fs::rename(self.directory.join(NEWER), self.directory.join(OLDER))?;
         }
@@ -396,7 +409,7 @@ impl Files {
                     .as_ref()
                     .is_none_or(|source| line.source == *source)
         });
-        let mut budget = PAGE_BYTES;
+        let mut budget = self.limits.page_bytes;
         let mut fits = |line: &Line| {
             let size = line.source.len() + line.text.len() + 128;
             let fit = budget >= size;
@@ -500,6 +513,13 @@ impl LineSplitter {
 mod tests {
     use super::*;
 
+    /// Files with room for 16 long lines and pages for 8, so that a few dozen
+    /// lines fill a page and rotate the files.
+    const SMALL: Limits = Limits {
+        file_bytes: 16 * LINE_BYTES as u64,
+        page_bytes: 8 * LINE_BYTES,
+    };
+
     fn entry(source: &str, text: &str) -> Entry {
         Entry {
             at: 1_700_000_000_000,
@@ -521,89 +541,110 @@ mod tests {
         page.lines.iter().map(|line| line.text.as_str()).collect()
     }
 
-    #[test]
-    fn reads_the_newest_lines_then_continues_from_the_cursor() {
-        let directory = tempfile::tempdir().unwrap();
-        let mut files = Files::open(directory.path().into()).unwrap();
-        for index in 0..5 {
-            files.append(entry(RUNNER, &format!("line {index}")));
-        }
-        let tail = files.read(&query(None, 2, None)).unwrap();
-        assert_eq!(texts(&tail), ["line 3", "line 4"]);
-        assert_eq!(
-            files.read(&query(Some(tail.next), 10, None)).unwrap().lines,
-            []
-        );
-        files.append(entry(RUNNER, "line 5"));
-        files.append(entry(RUNNER, "line 6"));
-        let first = files.read(&query(Some(tail.next), 1, None)).unwrap();
-        assert_eq!(texts(&first), ["line 5"]);
-        let second = files.read(&query(Some(first.next), 1, None)).unwrap();
-        assert_eq!(texts(&second), ["line 6"]);
-        let all = files.read(&query(Some(0), 1000, None)).unwrap();
-        assert_eq!(all.lines.len(), 7);
-        assert_eq!(all.next, second.next);
+    /// Where a query's cursor stands.
+    #[derive(Clone, Copy, Debug)]
+    enum Since {
+        /// No cursor: the page ends at the newest line.
+        Newest,
+        /// After the line of this index.
+        After(usize),
+        /// This number.
+        Seq(u64),
     }
 
-    #[test]
-    fn an_empty_log_answers_no_lines_and_keeps_the_cursor() {
-        let directory = tempfile::tempdir().unwrap();
-        let files = Files::open(directory.path().into()).unwrap();
-        assert_eq!(
-            files.read(&query(None, 10, None)).unwrap(),
-            Page {
-                lines: vec![],
-                next: 0
-            }
-        );
-        assert_eq!(files.read(&query(Some(7), 10, None)).unwrap().next, 7);
+    /// Where the page's cursor continues.
+    #[derive(Clone, Copy, Debug)]
+    enum Next {
+        /// After the newest line of the log.
+        Newest,
+        /// After the line of this index.
+        Line(usize),
+        /// This number.
+        Seq(u64),
     }
 
+    /// Which lines a page holds and where its cursor continues, for each
+    /// cursor, limit and source, in a log of five lines from three sources
+    /// and in an empty one. A log's first line is numbered from the clock,
+    /// so a cursor that a former log handed out, such as 1, comes before
+    /// every line of this one; a cursor ahead of the newest line comes from a
+    /// log that is gone and continues from the oldest line.
     #[test]
-    fn keeps_one_source_and_moves_the_cursor_past_the_others() {
+    fn a_page_holds_what_its_cursor_limit_and_source_ask_for() {
         let directory = tempfile::tempdir().unwrap();
-        let mut files = Files::open(directory.path().into()).unwrap();
+        let mut files = Files::open(directory.path().into(), LIMITS).unwrap();
         files.append(entry("service:demi.builtin", "tabs failed"));
         files.append(entry(RUNNER, "online"));
         files.append(Entry {
             conversation_id: Some("conversation".into()),
             ..entry("stream:browser.live", "no tabs")
         });
-        files.append(entry(RUNNER, "stream ended"));
-        let page = files
+        files.append(entry(RUNNER, "line 3"));
+        files.append(entry(RUNNER, "line 4"));
+        let seqs: Vec<u64> = files
+            .read(&query(Some(0), 10, None))
+            .unwrap()
+            .lines
+            .iter()
+            .map(|line| line.seq)
+            .collect();
+        let empty = tempfile::tempdir().unwrap();
+        let empty = Files::open(empty.path().into(), LIMITS).unwrap();
+        let every = ["tabs failed", "online", "no tabs", "line 3", "line 4"];
+        let cases: [(&str, &Files, Since, usize, Option<&str>, &[&str], Next); 11] = [
+            ("the newest lines", &files, Since::Newest, 2, None, &["line 3", "line 4"], Next::Newest),
+            ("after the newest", &files, Since::After(4), 10, None, &[], Next::Newest),
+            ("one after a cursor", &files, Since::After(1), 1, None, &["no tabs"], Next::Line(2)),
+            ("the rest after a cursor", &files, Since::After(2), 10, None, &["line 3", "line 4"], Next::Newest),
+            ("from before the log", &files, Since::Seq(0), 10, None, &every, Next::Newest),
+            ("a former log's cursor", &files, Since::Seq(1), 10, None, &every, Next::Newest),
+            ("a cursor ahead", &files, Since::Seq(u64::MAX), 1, None, &["tabs failed"], Next::Line(0)),
+            ("one source", &files, Since::Seq(0), 10, Some("stream:browser.live"), &["no tabs"], Next::Newest),
+            ("the newest of one source", &files, Since::Newest, 1, Some(RUNNER), &["line 4"], Next::Newest),
+            ("an empty log", &empty, Since::Newest, 10, None, &[], Next::Seq(0)),
+            ("an empty log after a cursor", &empty, Since::Seq(7), 10, None, &[], Next::Seq(7)),
+        ];
+        for (name, log, since, limit, source, expected, next) in cases {
+            let since = match since {
+                Since::Newest => None,
+                Since::After(index) => Some(seqs[index]),
+                Since::Seq(seq) => Some(seq),
+            };
+            let next = match next {
+                Next::Newest => seqs[4],
+                Next::Line(index) => seqs[index],
+                Next::Seq(seq) => seq,
+            };
+            let page = log.read(&query(since, limit, source)).unwrap();
+            assert_eq!((texts(&page), page.next), (expected.to_vec(), next), "{name}");
+        }
+        let stream = files
             .read(&query(Some(0), 10, Some("stream:browser.live")))
             .unwrap();
-        assert_eq!(texts(&page), ["no tabs"]);
-        assert_eq!(
-            page.lines[0].conversation_id.as_deref(),
-            Some("conversation")
-        );
-        let newest = files.read(&query(None, 1, None)).unwrap().next;
-        assert_eq!(page.next, newest);
-        let tail = files.read(&query(None, 1, Some(RUNNER))).unwrap();
-        assert_eq!(texts(&tail), ["stream ended"]);
+        assert_eq!(stream.lines[0].conversation_id.as_deref(), Some("conversation"));
     }
 
+    /// Long lines fill the newer file, which then replaces the older one;
+    /// pages stop at their byte budget; a cursor reads every line once across
+    /// both files and a restart; the half line a crash left is skipped and
+    /// ended before the next; and once lines are gone, their cursor continues
+    /// from the oldest line kept.
     #[test]
-    fn replaces_the_older_file_and_a_cursor_survives_rotation_and_restart() {
+    fn the_numbering_carries_across_pages_rotation_a_restart_and_a_torn_line() {
         let directory = tempfile::tempdir().unwrap();
-        let mut files = Files::open(directory.path().into()).unwrap();
+        let mut files = Files::open(directory.path().into(), SMALL).unwrap();
         let text = "x".repeat(LINE_BYTES);
         files.append(entry(RUNNER, "first"));
         let cursor = files.read(&query(None, 1, None)).unwrap().next;
         // Enough to fill the newer file once but not twice.
-        let count = FILE_BYTES as usize / LINE_BYTES + 10;
+        let count = SMALL.file_bytes as usize / LINE_BYTES + 10;
         for _ in 0..count {
             files.append(entry(RUNNER, &text));
         }
-        let older = std::fs::metadata(directory.path().join(OLDER))
-            .unwrap()
-            .len();
-        let newer = std::fs::metadata(directory.path().join(NEWER))
-            .unwrap()
-            .len();
-        assert!(older <= FILE_BYTES && older > FILE_BYTES - 2 * LINE_BYTES as u64);
-        assert!(newer <= FILE_BYTES);
+        let size = |name: &str| std::fs::metadata(directory.path().join(name)).unwrap().len();
+        let older = size(OLDER);
+        assert!(older <= SMALL.file_bytes && older > SMALL.file_bytes - 2 * LINE_BYTES as u64);
+        assert!(size(NEWER) <= SMALL.file_bytes);
         let mut seen = 0;
         let mut since = cursor;
         loop {
@@ -612,14 +653,24 @@ mod tests {
                 break;
             }
             assert_eq!(page.lines[0].seq, since + 1);
+            assert!(page.lines.len() * LINE_BYTES <= SMALL.page_bytes);
             seen += page.lines.len();
             since = page.next;
         }
         assert_eq!(seen, count);
+        let tail = files.read(&query(None, 1000, None)).unwrap();
+        assert!(tail.lines.len() * LINE_BYTES <= SMALL.page_bytes);
+        assert_eq!(tail.lines.last().unwrap().seq, tail.next);
 
-        // A restart continues the numbering.
+        // A crash left half a line; a restart skips it and goes on numbering.
         drop(files);
-        let mut files = Files::open(directory.path().into()).unwrap();
+        let mut torn = OpenOptions::new()
+            .append(true)
+            .open(directory.path().join(NEWER))
+            .unwrap();
+        torn.write_all(b"{\"seq\":").unwrap();
+        drop(torn);
+        let mut files = Files::open(directory.path().into(), SMALL).unwrap();
         files.append(entry(RUNNER, "after restart"));
         let page = files.read(&query(Some(since), 10, None)).unwrap();
         assert_eq!(texts(&page), ["after restart"]);
@@ -630,72 +681,11 @@ mod tests {
         for _ in 0..2 * count {
             files.append(entry(RUNNER, &text));
         }
-        assert!(
-            std::fs::metadata(directory.path().join(OLDER))
-                .unwrap()
-                .len()
-                <= FILE_BYTES
-        );
+        assert!(size(OLDER) <= SMALL.file_bytes);
         let oldest = files.read(&query(Some(0), 1, None)).unwrap().lines[0].seq;
         assert!(oldest > cursor + 1);
         let expired = files.read(&query(Some(cursor), 1, None)).unwrap();
         assert_eq!(expired.lines[0].seq, oldest);
-    }
-
-    #[test]
-    fn a_cursor_from_a_log_that_is_gone_starts_at_the_oldest_line() {
-        let directory = tempfile::tempdir().unwrap();
-        let mut files = Files::open(directory.path().into()).unwrap();
-        files.append(entry(RUNNER, "old"));
-        let cursor = files.read(&query(None, 1, None)).unwrap().next;
-        drop(files);
-        std::fs::remove_file(directory.path().join(NEWER)).unwrap();
-        // The new log starts at the clock, which must have moved on.
-        std::thread::sleep(std::time::Duration::from_millis(2));
-        let mut files = Files::open(directory.path().into()).unwrap();
-        files.append(entry(RUNNER, "new"));
-        let page = files.read(&query(Some(cursor), 10, None)).unwrap();
-        assert_eq!(texts(&page), ["new"]);
-        let ahead = files.read(&query(Some(u64::MAX), 10, None)).unwrap();
-        assert_eq!(texts(&ahead), ["new"]);
-    }
-
-    #[test]
-    fn skips_half_a_line_and_ends_it_before_the_next() {
-        let directory = tempfile::tempdir().unwrap();
-        let mut files = Files::open(directory.path().into()).unwrap();
-        files.append(entry(RUNNER, "whole"));
-        drop(files);
-        let mut file = OpenOptions::new()
-            .append(true)
-            .open(directory.path().join(NEWER))
-            .unwrap();
-        file.write_all(b"{\"seq\":").unwrap();
-        drop(file);
-        let mut files = Files::open(directory.path().into()).unwrap();
-        files.append(entry(RUNNER, "next"));
-        let page = files.read(&query(Some(0), 10, None)).unwrap();
-        assert_eq!(texts(&page), ["whole", "next"]);
-        assert_eq!(page.lines[1].seq, page.lines[0].seq + 1);
-    }
-
-    #[test]
-    fn a_page_stops_at_its_byte_budget_and_the_cursor_continues() {
-        let directory = tempfile::tempdir().unwrap();
-        let mut files = Files::open(directory.path().into()).unwrap();
-        let text = "x".repeat(LINE_BYTES);
-        let count = 1000;
-        for _ in 0..count {
-            files.append(entry(RUNNER, &text));
-        }
-        let first = files.read(&query(Some(0), 1000, None)).unwrap();
-        assert!(first.lines.len() < count);
-        assert!(first.lines.len() * LINE_BYTES <= PAGE_BYTES);
-        let second = files.read(&query(Some(first.next), 1000, None)).unwrap();
-        assert_eq!(second.lines[0].seq, first.lines.last().unwrap().seq + 1);
-        let tail = files.read(&query(None, 1000, None)).unwrap();
-        assert!(tail.lines.len() < count);
-        assert_eq!(tail.lines.last().unwrap().seq, tail.next);
     }
 
     #[test]
@@ -755,7 +745,7 @@ mod tests {
     #[tokio::test]
     async fn a_full_queue_drops_lines_and_says_how_many() {
         let directory = tempfile::tempdir().unwrap();
-        let files = Files::open(directory.path().into()).unwrap();
+        let files = Files::open(directory.path().into(), LIMITS).unwrap();
         let dropped = Arc::new(AtomicU64::new(0));
         let (queue, queued) = mpsc::channel(QUEUE);
         let layer = HostLogLayer {
@@ -772,7 +762,7 @@ mod tests {
         let thread = std::thread::spawn(move || serve(files, queued, &dropped));
         queue.send(Message::Close).await.unwrap();
         thread.join().unwrap();
-        let files = Files::open(directory.path().into()).unwrap();
+        let files = Files::open(directory.path().into(), LIMITS).unwrap();
         let page = files.read(&query(None, 3, None)).unwrap();
         assert_eq!(texts(&page)[0], format!("line {}", QUEUE - 3));
         let all = files.read(&query(Some(0), QUEUE + 10, None)).unwrap();

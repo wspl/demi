@@ -93,7 +93,9 @@ async fn a_full_inbound_queue_waits_instead_of_closing() {
         for _ in 0..64 {
             server.send(Message::Binary(ping.clone().into())).await.unwrap();
         }
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        while client.input.len() < client.input.max_capacity() {
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
         for _ in 0..64 {
             assert!(matches!(
                 client.input.recv().await.unwrap(),

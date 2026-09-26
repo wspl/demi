@@ -29,5 +29,7 @@ tokio-util.workspace = true
 
 [dev-dependencies]
 demi-artifact = { path = "../artifact", features = ["testing"] }
+# The program started and driven as a service (`testing::ServiceProcess`).
+demi-command-service = { path = "../command-service", features = ["testing"] }
 futures-util.workspace = true
 sha2 = "0.10"

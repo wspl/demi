@@ -37,6 +37,9 @@ fn processes() -> Vec<Process> {
         .collect()
 }
 
+/// About 1.5 s in the Linux container: the helper the launcher left is
+/// reparented to the container's init, which reaps it about once a second,
+/// and retirement ends only once the helper is gone.
 #[tokio::test]
 async fn canceled_launch_reaps_helpers_before_removing_profile() {
     let directory = tempfile::tempdir().unwrap();
