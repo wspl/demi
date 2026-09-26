@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { artifactDigestSchema, nativeTargetSchema, nativeTargetsSchema, NATIVE_PROTOCOL_VERSION } from '@demicodes/command-protocol'
 
 /** The runner wire's version, which a runner release names. */
-export const RUNNER_PROTOCOL_VERSION = 18
+export const RUNNER_PROTOCOL_VERSION = 19
 
 export const releaseDigest = artifactDigestSchema
 export const releaseTarget = nativeTargetSchema

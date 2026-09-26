@@ -433,6 +433,9 @@ pub enum Outbound {
         stream: OutputStream,
         bytes: WireBytes,
     },
+    /// A raw process's end: the code it exited with; else the name of the
+    /// signal that ended it (`SIGKILL`), never other text; else, in
+    /// `spawn_error`, why the runner has no status for it.
     SpawnExit {
         spawn_id: String,
         #[serde(deserialize_with = "Option::deserialize")]
@@ -456,6 +459,7 @@ pub enum Outbound {
         #[serde(deserialize_with = "Option::deserialize")]
         hint: Option<String>,
     },
+    /// A job's end, its status given as `spawn_exit` gives a process's.
     JobExit {
         job_id: String,
         #[serde(deserialize_with = "Option::deserialize")]
@@ -664,10 +668,9 @@ pub struct RunnerInfo {
     pub managed: Option<bool>,
 }
 
-/// The operating system a runner runs on, by the names Node's
-/// `process.platform` gives them, which the TypeScript backend reads in the
-/// hello too. A device keeps its runner's, and the browser receives it with
-/// the device.
+/// The operating system a runner runs on, named as Node's
+/// `process.platform` names it. A device keeps its runner's, and the browser
+/// receives it with the device.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum RunnerPlatform {
@@ -783,7 +786,9 @@ pub enum ChangeKind {
     Renamed,
 }
 
-/// Why a process could not start.
+/// Why the runner has no status for a process or job: it could not start, or
+/// the runner failed it before its end was known, which is `Other`. `detail`
+/// holds the runner's words.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SpawnError {
