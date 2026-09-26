@@ -32,7 +32,7 @@ import { sessionFailureNotice, turnRecovery } from './session-status'
 import { getVisibleBlocks } from './visible-blocks'
 import type { PersistedScrollState } from '../composables/useBlockVirtualizer'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   conversation: ChatSessionState
   hasProvider: boolean
   pendingSubmission?: PendingSubmissionState | null
@@ -50,7 +50,11 @@ const props = defineProps<{
   asideOpen?: boolean
   /** The conversation's Host files its messages name; absent, their paths stay text. */
   files?: ConversationFiles
-}>()
+}>(), {
+  // Vue reads an absent boolean prop as false, which would offer Open panel
+  // where there is no panel; absent stays undefined.
+  asideOpen: undefined,
+})
 const emit = defineEmits<{
   openAside: []
   rename: [title: string]
