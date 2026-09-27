@@ -161,6 +161,46 @@ async fn a_process_is_never_started_without_the_accounts_token_or_when_the_place
     assert_eq!(failed.code, None);
 }
 
+// 0.04 s. The run goes on its own thread and runtime: a
+// run that spun on the line it kept would never yield to a guard in its own
+// runtime, so the test waits for its answer from outside, and the deadline
+// only guards against that spin.
+#[test]
+fn a_line_the_cli_prints_before_answering_initialize_is_read_by_the_run_after_the_answer() {
+    let (answer, answered) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build_local(tokio::runtime::LocalOptions::default())
+            .expect("a runtime for the run");
+        let events = runtime.block_on(async {
+            let provider = provider().await;
+            let (placement, mut starts) = ScriptedPlacement::new();
+            let mut runtime = runtime_of(&provider, &placement);
+            let (events, ()) = tokio::join!(all_events(runtime.run(request(vec![user("hi")]))), async {
+                let mut cli = starts.next().await;
+                let initialize = cli.read().await;
+                // The CLI tells its commands before it answers.
+                cli.say(json!({ "type": "system", "subtype": "commands_changed", "commands": [] }));
+                cli.say(json!({
+                    "type": "control_response",
+                    "response": { "subtype": "success", "request_id": initialize["request_id"] },
+                }));
+                assert_eq!(cli.read().await, user_line("hi"));
+                cli.text("hello");
+                cli.result(1, 1);
+            });
+            events
+        });
+        // The test gave up waiting only when this run spun.
+        let _ = answer.send(events);
+    });
+    let events = answered
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .expect("the run answered, instead of spinning on the line it kept");
+    assert_eq!(events, [text("hello"), usage(1, 1)]);
+}
+
 #[tokio::test(flavor = "local")]
 async fn a_kept_process_receives_only_what_the_transcript_gained_until_an_edit_another_model_or_new_tools_restart_it()
  {
