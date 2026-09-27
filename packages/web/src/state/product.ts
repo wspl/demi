@@ -1,6 +1,6 @@
 import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
-import { reconnectWait, watchSilence, type SilenceWatch } from '@demicodes/web-ui/transport/liveness'
+import { waitToReconnect, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/web-ui/transport/liveness'
 import { apiRequest, apiUrl, notifySessionEnded, readResponse } from '../api/client'
 import {
   modelCatalogSchema,
@@ -113,7 +113,8 @@ export const useProduct = defineStore('product', () => {
   /** Set while the page is signed in and follows the state. */
   let controller: AbortController | null = null
   let socket: WebSocket | null = null
-  let retryTimer: ReturnType<typeof setTimeout> | null = null
+  /** The wait before the channel connects again, while it is closed. */
+  let retry: ReconnectWait | null = null
   /** The open channel's silence watch (`web-application.md` § Liveness and reconnection). */
   let silence: SilenceWatch | null = null
   /** Consecutive connections that ended before their snapshot. */
@@ -125,10 +126,8 @@ export const useProduct = defineStore('product', () => {
   const partAt = new Map<Part, number>()
 
   function clearRetry(): void {
-    if (retryTimer !== null) {
-      clearTimeout(retryTimer)
-    }
-    retryTimer = null
+    retry?.cancel()
+    retry = null
   }
 
   /** Forgets the open channel, which then closes without telling this module. */
@@ -147,13 +146,16 @@ export const useProduct = defineStore('product', () => {
     scheduleRetry()
   }
 
-  /** Connects again after the wait for this many failures. */
+  /** Connects again after the wait for this many failures, or at the page's return. */
   function scheduleRetry(): void {
     if (!controller) {
       return
     }
     clearRetry()
-    retryTimer = setTimeout(connect, reconnectWait(failures))
+    retry = waitToReconnect(failures, () => {
+      retry = null
+      connect()
+    })
   }
 
   function connect(): void {
@@ -390,10 +392,7 @@ export const useProduct = defineStore('product', () => {
     connect()
   }
 
-  /**
-   * Connects at once when the channel is not open: a page that becomes
-   * visible or comes back online does, and so does a retry.
-   */
+  /** The user's Retry: connects at once when the channel is not open. */
   function reconnect(): void {
     if (!controller || socket) {
       return
