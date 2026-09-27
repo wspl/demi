@@ -165,8 +165,10 @@ restores). A turn or save that fails shows its failure in every tab until the
 conversation starts its next action, whichever tab starts it; a refusal of one
 tab's own request shows in that tab alone. Each tab has its own socket,
 attached to the conversation's one live tree
-([Connections and the live tree](../agent/runtime.md#connections-and-the-live-tree)),
-and every tab names the model the conversation's record holds
+([Connections and the live tree](../agent/runtime.md#connections-and-the-live-tree)).
+The conversation's model settings, its model, thinking effort and service
+tier, are one value its record holds: every tab and every device shows it, and
+a change made in any of them reaches all
 ([page synchronization](web-api.md#sidebar-mutations-read-state-and-page-synchronization)).
 A tab whose socket is lost, or whose tree another client disposed with
 `close`, opens the conversation again the same way and shows the tree as the
@@ -213,7 +215,9 @@ its save state, and keeps failed input for a retry.
 The backend owns saved conversation state, ordering, preferences, and attachments.
 Per-user IndexedDB retains local drafts, pending edits, unconfirmed submissions,
 and attachment bytes. A draft is its Markdown, with a mark where each staged
-file's capsule sits, and those files in mark order. The tabs of one browser
+file's capsule sits, and those files in mark order; the draft of a new
+conversation also holds its model settings, which its first send writes to its
+record, and a conversation with a record keeps them only there. The tabs of one browser
 share this storage, one saved draft per conversation: a page saves only the
 drafts it changed since it last saved or restored them, so a tab never
 replaces a draft that another tab saved for a conversation it left alone, and
