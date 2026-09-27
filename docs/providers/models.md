@@ -245,7 +245,8 @@ catalog facts (a context window of 272,000 tokens, no output limit, the efforts
 carries the model id, the output limit, the thinking setting and the tier.
 
 A selection is built from a catalog model by one conversion, which the backend
-applies before it sends the catalog to the browser. The conversation keeps its
+applies before it sends the catalog to the browser and when a conversation
+switches to the model. The conversation keeps its
 selection: a changed catalog does not change a running conversation, which
 keeps its model's facts until the user selects a model again. The one exception
 is an entry with a configured model list. The backend applies the configured
@@ -254,6 +255,46 @@ the next request of a running conversation, while the conversation's thinking
 and tier choices stay as the user made them. A model that the configured list
 does not name fails the request. The choice a new conversation starts with is
 a [user preference](../product/web-api.md#user-preferences).
+
+### A conversation's model settings
+
+A conversation's model settings are one value: the model selection its record
+holds, with the provider entry, the model and its facts, the thinking setting
+and the service tier. Every tab and every device shows that value, a change
+made anywhere reaches all of them, and the conversation's next provider request
+uses it
+([page synchronization](../product/web-api.md#sidebar-mutations-read-state-and-page-synchronization)).
+The page shows and changes the value as its settings, the parts a user
+chooses:
+
+| Part | Values |
+|---|---|
+| Model | A provider entry and one model of its catalog |
+| Thinking effort | An effort the model lists; `disabled`, thinking off, when the model can turn thinking off; or null, the model's default, which sends no thinking setting |
+| Service tier | A tier the model lists, or null for the vendor's default |
+
+The backend turns an effort into the thinking setting `effort` with the
+model's default summary, and `disabled` into thinking off. A model that cannot
+turn thinking off has no null effort: when a change names none, the backend
+chooses the model's default effort, else the first effort it lists, and the
+catalog tells the page that effort, so the effort the page shows is the one the
+request sends. For example, a switch to a model that lists `low` to `max`,
+names no default and cannot turn thinking off records `low`.
+
+A change names the parts it changes, and the value keeps the others. For
+example, one tab turns Fast on while another raises the effort: the value ends
+with both. The backend checks each part against the entry's catalog when it
+applies the change and refuses a model the catalog does not list, or an effort
+or tier the model does not offer, so the value holds only what its model
+offered when it was chosen.
+
+A switch to another model takes the effort and the tier the switch names, and
+the new model's defaults for a part it does not name. The model menu names the
+conversation's effort when the new model lists it, thinking off when the new
+model can turn thinking off, and Fast when the new model has a Fast tier of its
+own. So a switch from a model at `high` with Fast to one that lists `high` and
+has a Fast tier keeps both, and a switch to a model with neither takes its
+defaults.
 
 ### Output limit
 

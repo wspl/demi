@@ -18,14 +18,13 @@
 use std::os::unix::fs::PermissionsExt as _;
 use std::time::Duration;
 
-use demi_agent::testing::model_of;
 use demi_core::Block;
 use demi_provider::testing::{MockResponse, MockVendor};
 use demi_web_api::providers::{AddedAccount, CliInstall, NewestVersion, ProviderAnswer, ProviderCli};
 use reqwest::StatusCode;
 use serde_json::{Value, json};
 
-use crate::conversations::{Socket, create, last_text, on_device, transcript};
+use crate::conversations::{Socket, choose, create, last_text, on_device, transcript};
 use crate::support::{Harness, Session, TestBackend};
 
 const CONVERSATION: &str = "3c1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a01";
@@ -108,6 +107,30 @@ pub(crate) async fn settled(backend: &TestBackend, session: &Session, provider: 
     }
 }
 
+/// A models.dev document whose `anthropic` vendor lists the Claude models
+/// the scenarios choose, each leveling its thinking from `low` to `high`.
+pub(crate) fn claude_models() -> MockResponse {
+    let model = |name: &str| {
+        json!({
+            "name": name, "reasoning": true, "tool_call": true, "attachment": true,
+            "reasoning_options": [{ "type": "effort", "values": ["low", "medium", "high"] }],
+            "limit": { "context": 1_000_000, "output": 64_000 }
+        })
+    };
+    let document = json!({
+        "anthropic": {
+            "id": "anthropic", "name": "Anthropic", "npm": "@ai-sdk/anthropic",
+            "models": {
+                "claude-opus-4-8": model("Claude Opus 4.8"),
+                "claude-sonnet-4-6": model("Claude Sonnet 4.6")
+            }
+        }
+    });
+    MockResponse::status(200)
+        .header("etag", "\"fixture\"")
+        .chunk(document.to_string())
+}
+
 /// The conversation's transcript, which holds a turn once the socket has
 /// seen it end.
 async fn saved(backend: &TestBackend, session: &Session) -> Vec<Block> {
@@ -121,9 +144,13 @@ async fn a_conversation_on_a_paired_device_infers_through_the_clouds_cli_with_th
     let distribution = MockVendor::start().await;
     distribution.respond_at("/releases/latest", MockResponse::status(200).chunk(format!("{NEWEST}\n")));
     distribution.respond_at(&format!("/releases/{NEWEST}/manifest.json"), manifest(NEWEST));
+    // The catalog the conversation picks its model from.
+    let catalog = MockVendor::start().await;
+    catalog.respond_at("/api.json", claude_models());
     let harness = Harness::new()
         .with_claude_package()
-        .with_claude_releases(distribution.url("/releases"));
+        .with_claude_releases(distribution.url("/releases"))
+        .with_models_dev(catalog.url("/api.json"));
     let (backend, master) = harness.start_set_up().await;
 
     // Adding the first account starts the install on the Cloud, which has no
@@ -160,9 +187,9 @@ async fn a_conversation_on_a_paired_device_infers_through_the_clouds_cli_with_th
     // the CLI on the Cloud: it fails the same way.
     create(&backend, &master, CONVERSATION).await;
     let (laptop, _) = on_device(&harness, &backend, &master, CONVERSATION).await;
-    let model = model_of(&provider, "claude-opus-4-8");
+    choose(&backend, &master, CONVERSATION, &provider, "claude-opus-4-8").await;
     let mut socket = Socket::connect(&backend, &master, CONVERSATION).await;
-    socket.open(&model).await;
+    socket.open().await;
     socket.chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a01", "hello").await;
     let Some(Block::Error(error)) = saved(&backend, &master).await.pop() else {
         panic!("the request did not fail");

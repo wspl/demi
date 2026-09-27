@@ -1,18 +1,42 @@
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import { z } from 'zod'
-import type { ThinkingConfig } from '@demicodes/protocol'
+import { fastServiceTier, isFastMode } from './fast-mode'
 
-export const modelIntentSchema = z.object({
+/** The thinking effort that turns thinking off. */
+export const THINKING_OFF = 'disabled'
+
+/**
+ * A conversation's model settings (`models.md` § A conversation's model
+ * settings): the provider entry and model, the thinking effort, and the
+ * service tier. A conversation with a record shows the record's; a new one
+ * keeps its own until its first send writes them there. An empty provider
+ * and model mean none is chosen yet.
+ */
+export const modelSettingsSchema = z.object({
   providerId: z.string(),
   modelId: z.string(),
+  /** An effort the model lists, `disabled` for thinking off, or null for the model's default. */
   thinkingEffort: z.string().nullable(),
+  /** A tier the model lists, or null for the vendor's default. */
   serviceTierId: z.string().nullable(),
 })
 
-export type ModelIntent = z.infer<typeof modelIntentSchema>
+export type ModelSettings = z.infer<typeof modelSettingsSchema>
 
-/** Each conversation owns its choice; later preference changes cannot alter it. */
-export function initialModelIntent(previous?: ModelIntent): ModelIntent {
+/**
+ * One change of model settings, naming the parts it changes. A switch names
+ * the model, with the effort and the tier it keeps; a part it leaves out is
+ * null, the new model's default. A change without a model sets the parts it
+ * names and keeps the others.
+ */
+export interface ModelSettingsChange {
+  model?: { providerId: string; modelId: string }
+  thinkingEffort?: string | null
+  serviceTierId?: string | null
+}
+
+/** A new conversation starts with the user's last choice, or with none. */
+export function initialModelSettings(previous?: ModelSettings): ModelSettings {
   return previous ? { ...previous } : {
     providerId: '',
     modelId: '',
@@ -21,15 +45,75 @@ export function initialModelIntent(previous?: ModelIntent): ModelIntent {
   }
 }
 
-export function intentThinkingConfig(intent: ModelIntent): ThinkingConfig | undefined {
-  const effort = intent.thinkingEffort
-  if (effort === null) {
-    return undefined
+/** `settings` with `change` made, as the backend makes it of a record's. */
+export function applyModelChange(settings: ModelSettings, change: ModelSettingsChange): ModelSettings {
+  if (change.model) {
+    return {
+      providerId: change.model.providerId,
+      modelId: change.model.modelId,
+      thinkingEffort: change.thinkingEffort ?? null,
+      serviceTierId: change.serviceTierId ?? null,
+    }
   }
-  if (effort === 'disabled') {
-    return { type: 'disabled' }
+  return {
+    ...settings,
+    ...(change.thinkingEffort === undefined ? {} : { thinkingEffort: change.thinkingEffort }),
+    ...(change.serviceTierId === undefined ? {} : { serviceTierId: change.serviceTierId }),
   }
-  return { type: 'effort', effort, summary: null }
+}
+
+/** Whether `model` offers the effort `effort`: one it lists, or thinking off when it can turn thinking off. */
+export function offersEffort(model: ModelInfo, effort: string): boolean {
+  const reasoning = model.reasoning
+  if (!reasoning) {
+    return false
+  }
+  return effort === THINKING_OFF ? reasoning.canDisable : reasoning.efforts.includes(effort)
+}
+
+/** Whether `model` offers the service tier `tier`. */
+export function offersTier(model: ModelInfo, tier: string): boolean {
+  return model.serviceTiers?.some((listed) => listed.id === tier) ?? false
+}
+
+/**
+ * The change a switch to the model `next` of the entry `providerId` makes of
+ * `settings`, whose model is `current` (`models.md` § A conversation's model
+ * settings): it keeps the effort when the new model offers it, and Fast when
+ * Fast is on and the new model has a Fast tier of its own; the new model's
+ * defaults stand for the rest.
+ */
+export function modelSwitch(
+  settings: Pick<ModelSettings, 'thinkingEffort' | 'serviceTierId'> | null | undefined,
+  current: ModelInfo | null | undefined,
+  providerId: string,
+  next: ModelInfo,
+): ModelSettingsChange {
+  const change: ModelSettingsChange = { model: { providerId, modelId: next.id } }
+  const effort = settings?.thinkingEffort ?? null
+  if (effort !== null && offersEffort(next, effort)) {
+    change.thinkingEffort = effort
+  }
+  const fast = fastServiceTier(next)
+  if (fast && isFastMode(current, settings?.serviceTierId)) {
+    change.serviceTierId = fast.id
+  }
+  return change
+}
+
+/**
+ * The settings a new conversation's first send writes to its record: each
+ * part its model still offers, and null, the model's default, for a part it
+ * no longer does.
+ */
+export function offeredSettings(settings: ModelSettings, model: ModelInfo): ModelSettings {
+  const effort = settings.thinkingEffort
+  const tier = settings.serviceTierId
+  return {
+    ...settings,
+    thinkingEffort: effort !== null && offersEffort(model, effort) ? effort : null,
+    serviceTierId: tier !== null && offersTier(model, tier) ? tier : null,
+  }
 }
 
 export interface SelectedModel {
