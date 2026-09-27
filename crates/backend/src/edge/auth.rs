@@ -18,7 +18,9 @@ use super::cookies::{self, Https, SESSION_COOKIE};
 use super::error::ApiError;
 use super::gate::AuthUser;
 use crate::auth::email_change::{ChallengeOutcome, StartOutcome, StartRefusal};
+use crate::auth::sessions::TokenHash;
 use crate::backend::Services;
+use crate::sync::Part;
 
 pub(super) async fn setup_status(State(services): State<Arc<Services>>) -> Result<Json<SetupStatus>, ApiError> {
     let needed = !services.control.has_users().await?;
@@ -76,14 +78,17 @@ pub(super) async fn login(
     Ok((jar, Json(Identity { user: account.user })).into_response())
 }
 
-/// Ends the session the cookie names and clears the cookie.
+/// Ends the session the cookie names, with the synchronization channels
+/// that opened with it, and clears the cookie.
 pub(super) async fn logout(
     State(services): State<Arc<Services>>,
+    AuthUser(user): AuthUser,
     jar: CookieJar,
     Https(https): Https,
 ) -> Result<Response, ApiError> {
     if let Some(cookie) = jar.get(SESSION_COOKIE) {
         services.sessions.close(cookie.value()).await?;
+        services.sync.end_session(&user.id, &TokenHash::of(cookie.value()));
     }
     Ok((cookies::remove(jar, https), StatusCode::NO_CONTENT).into_response())
 }
@@ -102,6 +107,7 @@ pub(super) async fn set_nickname(
         .set_nickname(user.id, patch.nickname.into_string())
         .await?
         .ok_or_else(ApiError::unauthenticated)?;
+    services.sync.mark(&user.id, Part::User);
     Ok(Json(Identity { user }))
 }
 
@@ -175,7 +181,10 @@ pub(super) async fn confirm_email_change(
     JsonBody(confirm): JsonBody<EmailChangeConfirm>,
 ) -> Result<Json<Identity>, ApiError> {
     match services.email.confirm(user.id, confirm.id, &confirm.code).await? {
-        ChallengeOutcome::Changed(user) => Ok(Json(Identity { user })),
+        ChallengeOutcome::Changed(user) => {
+            services.sync.mark(&user.id, Part::User);
+            Ok(Json(Identity { user }))
+        }
         ChallengeOutcome::InvalidCode => Err(ApiError::new(
             StatusCode::BAD_REQUEST,
             ErrorCode::InvalidCode,

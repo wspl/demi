@@ -564,15 +564,15 @@ Each crate implements the provider contract for one vendor family.
   ([Message editing](../agent/message-editing.md#durability-and-failure-boundaries)),
   `Backend::file_gate`, a conversation's file gate, whose lease is the
   conversation's work to the idle rules and whose waiting entrants show an
-  operation a transition holds, and `Backend::hold_hellos`, which holds
-  runners' hellos at one step (`HelloStep`: the token's lookup, or the shard's
-  bind) for the scenarios that race a hello against its runner going away and
-  against shutdown
-  ([Runner](../execution/runner.md#connection-and-identity)), and
-  `Backend::hold_sync`, which holds the pages' synchronization channels at one
-  step (`SyncStep`: once registered, before a channel reads its snapshot; or
-  before it reads and sends the parts that changed) for the scenarios that
-  change the state while a channel waits
+  operation a transition holds, and two holds of a flow at one of its steps
+  until the test releases it (`StepHold`): `Backend::hold_hellos` holds
+  runners' hellos (`HelloStep`: the token's lookup, or the shard's bind) for
+  the scenarios that race a hello against its runner going away and against
+  shutdown ([Runner](../execution/runner.md#connection-and-identity)), and
+  `Backend::hold_sync` holds the pages' synchronization channels
+  (`SyncStep`: once a channel has read its snapshot, before it sends it; or
+  once a change woke it, before it takes and reads the parts that changed)
+  for the scenarios that change the state while a channel waits
   ([Browser synchronization](../backend/backend.md#browser-synchronization)).
   For suites that start the executable, the example program
   `scripted_machines` runs the scripted machine manager of its scenarios

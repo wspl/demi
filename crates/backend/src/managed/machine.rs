@@ -21,9 +21,10 @@
 //! admission made takes a lease of its own, refused while the Cloud is not
 //! running.
 
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, RefCell, RefMut};
 use std::collections::VecDeque;
 use std::future::Future;
+use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -48,6 +49,7 @@ use crate::shard::Shard;
 use crate::storage::StorageError;
 use crate::storage::devices::DeviceRecord;
 use crate::storage::managed::ManagedOperation;
+use crate::sync::{Part, UserMarks};
 
 /// Why the Cloud admits no operation, or why one of its transitions failed.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -157,6 +159,49 @@ pub(super) struct Machine {
     deaths: RefCell<VecDeque<Instant>>,
     /// Why the last boot, save or reset failed, until a boot succeeds.
     pub(super) error: RefCell<Option<String>>,
+    /// The user's pages, which show the Cloud's state.
+    marks: UserMarks,
+}
+
+/// The machine's phase held for a change: once a change of the Cloud's state
+/// is let go, the user's pages are told.
+pub(super) struct PhaseChange<'a> {
+    phase: RefMut<'a, Phase>,
+    before: CloudState,
+    marks: &'a UserMarks,
+}
+
+impl Deref for PhaseChange<'_> {
+    type Target = Phase;
+
+    fn deref(&self) -> &Phase {
+        &self.phase
+    }
+}
+
+impl DerefMut for PhaseChange<'_> {
+    fn deref_mut(&mut self) -> &mut Phase {
+        &mut self.phase
+    }
+}
+
+impl Drop for PhaseChange<'_> {
+    fn drop(&mut self) {
+        if state_of(&self.phase) != self.before {
+            self.marks.mark(Part::Cloud);
+        }
+    }
+}
+
+/// The Cloud's state in a phase.
+fn state_of(phase: &Phase) -> CloudState {
+    match phase {
+        Phase::Off => CloudState::Off,
+        Phase::Booting(_) => CloudState::Booting,
+        Phase::Running(_) => CloudState::Running,
+        Phase::Saving(_) => CloudState::Saving,
+        Phase::Resetting { .. } => CloudState::Resetting,
+    }
 }
 
 pub(super) enum Phase {
@@ -191,7 +236,7 @@ enum Ready {
 }
 
 impl Machine {
-    fn new(device: DeviceRecord, operation: Option<ManagedOperation>) -> Self {
+    fn new(device: DeviceRecord, operation: Option<ManagedOperation>, marks: UserMarks) -> Self {
         Self {
             device,
             gate: ActivityGate::new(),
@@ -200,21 +245,29 @@ impl Machine {
             operation: RefCell::new(operation),
             deaths: RefCell::new(VecDeque::new()),
             error: RefCell::new(None),
+            marks,
         }
     }
 
-    pub(super) fn phase(&self) -> std::cell::RefMut<'_, Phase> {
-        self.phase.borrow_mut()
+    /// The phase, held for a change.
+    pub(super) fn phase(&self) -> PhaseChange<'_> {
+        let phase = self.phase.borrow_mut();
+        PhaseChange {
+            before: state_of(&phase),
+            phase,
+            marks: &self.marks,
+        }
     }
 
     pub(super) fn state(&self) -> CloudState {
-        match &*self.phase.borrow() {
-            Phase::Off => CloudState::Off,
-            Phase::Booting(_) => CloudState::Booting,
-            Phase::Running(_) => CloudState::Running,
-            Phase::Saving(_) => CloudState::Saving,
-            Phase::Resetting { .. } => CloudState::Resetting,
-        }
+        state_of(&self.phase.borrow())
+    }
+
+    /// Records the latest reset as storage now holds it, which the user's
+    /// pages show.
+    pub(super) fn record_operation(&self, operation: ManagedOperation) {
+        self.operation.replace(Some(operation));
+        self.marks.mark(Part::Cloud);
     }
 
     pub(super) fn is_running(&self) -> bool {
@@ -321,7 +374,8 @@ impl Shard {
         if let Some(machine) = self.cloud().machine() {
             return Ok(machine);
         }
-        let machine = Rc::new(Machine::new(device.clone(), operation));
+        let marks = self.services().sync.of(self.user());
+        let machine = Rc::new(Machine::new(device.clone(), operation, marks));
         self.cloud().machine.replace(Some(machine.clone()));
         Ok(machine)
     }

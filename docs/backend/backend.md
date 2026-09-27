@@ -160,9 +160,12 @@ accounts.
 
 Setup and login are public entrances. Runner and pipe routes use device
 credentials instead of browser cookies. Public installer downloads contain no
-credential. All other `/api` resources, unknown paths included, pass through
-the browser session gate, so an unauthenticated request for a path that does
-not exist answers 401, not 404. Inaccessible user-owned objects return 404,
+credential. The synchronization channel checks the session cookie itself,
+since the gate would renew the session and the channel never does
+([Browser synchronization](#browser-synchronization)). All other `/api`
+resources, unknown paths included, pass through the browser session gate, so
+an unauthenticated request for a path that does not exist answers 401, not
+404. Inaccessible user-owned objects return 404,
 insufficient role returns 403, and missing authentication returns 401.
 
 A browser WebSocket also needs a page of the product. The browser keeps a
