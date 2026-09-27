@@ -2,7 +2,7 @@ import type { z } from 'zod'
 import { productStateSchema, type ProductState } from '../api/generated/web-api'
 
 /**
- * A product state as `GET /state` answers it, for the page's tests: a master
+ * A product state as the channel's snapshot carries it, for the page's tests: a master
  * of a shared instance with no providers, workspaces, devices, exposes or
  * conversations, without an expose domain, whose Cloud is not made yet. Each
  * of `parts` replaces a whole top-level field.

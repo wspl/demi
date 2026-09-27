@@ -99,11 +99,6 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
-  // The product store tells a refresh failure itself, once per outage.
-  function refreshSnapshot(): Promise<void> {
-    return product.refresh().catch(() => {})
-  }
-
   function storageError(error: unknown): void {
     if (!storageErrorReported) {
       storageErrorReported = true
@@ -176,9 +171,9 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * A conversation shows the model settings its record holds, whichever page
-   * or device changed them last (`web-api.md` § Sidebar mutations, read state
-   * and page synchronization). A record without a model leaves the page's
-   * own settings, which a send writes to it.
+   * or device changed them last (`web-api.md` § Sidebar mutations and read
+   * state). A record without a model leaves the page's own settings, which a
+   * send writes to it.
    */
   function followRecordModel(
     conversation: Conversation,
@@ -237,6 +232,8 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
+  // Each part the channel or a write's answer changes reaches the list at
+  // once, in the same step, so what follows a write sees it.
   watch(
     () => product.snapshot,
     (snapshot) => {
@@ -262,7 +259,7 @@ export const useConversations = defineStore('conversations', () => {
         const archiveChanged = current.archived !== record.archived
         Object.assign(current, metadata(record))
         followRecordModel(current, record)
-        // A snapshot read before the rename reached the backend must not show the old title again.
+        // A summary read before the rename reached the backend must not show the old title again.
         current.title = pendingTitles.get(current.id) ?? current.title
         // Nor may one read before the title request arrived stop its button spinning.
         current.titleGenerating ||= pendingRetitles.has(current.id)
@@ -304,6 +301,7 @@ export const useConversations = defineStore('conversations', () => {
         void activate(active.id)
       }
     },
+    { flush: 'sync' },
   )
 
   function persisted(conversation: Conversation): SavedDraft {
@@ -508,7 +506,7 @@ export const useConversations = defineStore('conversations', () => {
     const signal = lifetime.signal
     await restoreLocalDrafts()
     if (!signal.aborted) {
-      await product.start()
+      product.start()
     }
   }
 
@@ -750,9 +748,6 @@ export const useConversations = defineStore('conversations', () => {
         onEvent: (next) => {
           applyConversationEvent(conversation, next)
           reconcileSubmission(conversation)
-          if (next.type === 'phase' && next.phase === 'idle') {
-            void refreshSnapshot()
-          }
         },
       })
       entry.runtime = runtime
@@ -781,6 +776,17 @@ export const useConversations = defineStore('conversations', () => {
       }
     }
     await activate(conversation.id)
+    // A change of the conversation's context, which the channel can bring
+    // while the conversation opens, replaces its entry: the send waits for
+    // the entry that stands.
+    for (let entry = cache.get(conversation.id); entry && !entry.runtime;) {
+      await entry.opening.catch(() => {})
+      const standing = cache.get(conversation.id)
+      if (standing === entry) {
+        break
+      }
+      entry = standing
+    }
     const runtime = cache.get(conversation.id)?.runtime
     if (!runtime) {
       throw new Error(
@@ -805,6 +811,7 @@ export const useConversations = defineStore('conversations', () => {
 
   async function patch(id: string, changes: ConversationPatch): Promise<boolean> {
     const signal = lifetime.signal
+    const sentAt = product.sent()
     const response = await apiRequest(
       `/conversations/${encodeURIComponent(id)}`,
       {
@@ -815,12 +822,8 @@ export const useConversations = defineStore('conversations', () => {
     )
     const result = await readResponse(response, conversationUpdateSchema)
     signal.throwIfAborted()
-    // The answer is the record as the patch left it: its model settings show
-    // at once, before the next snapshot.
-    const changed = items.value.find((item) => item.id === id)
-    if (changed) {
-      followRecordModel(changed, result.conversation)
-    }
+    // The answer is the record as the patch left it, which shows at once.
+    product.answered(sentAt, { type: 'conversation', conversation: result.conversation })
     const failed = result.results.flatMap((field) => field.status === 'failed' ? [field] : [])
     if (failed.length) {
       reportError(
@@ -829,7 +832,6 @@ export const useConversations = defineStore('conversations', () => {
         { userVisible: true, expected: true },
       )
     }
-    await product.revalidate()
     return failed.length === 0
   }
 
@@ -891,6 +893,7 @@ export const useConversations = defineStore('conversations', () => {
         signal.throwIfAborted()
         let success = true
         for (let offset = 0; offset < ids.length; offset += 100) {
+          const sentAt = product.sent()
           const response = await apiRequest('/conversations/batch', {
             method: 'POST',
             signal,
@@ -903,6 +906,11 @@ export const useConversations = defineStore('conversations', () => {
           })
           const result = await readResponse(response, batchAnswerSchema)
           signal.throwIfAborted()
+          for (const item of result.results) {
+            if (item.status === 'updated') {
+              product.answered(sentAt, { type: 'conversation', conversation: item.conversation })
+            }
+          }
           const titleOf = (id: string) =>
             items.value.find((conversation) => conversation.id === id)?.title ?? id
           const failures = result.results.flatMap((item) =>
@@ -920,7 +928,6 @@ export const useConversations = defineStore('conversations', () => {
             })
           }
         }
-        await product.revalidate()
         return success
       })
     } catch (error) {
@@ -972,13 +979,11 @@ export const useConversations = defineStore('conversations', () => {
 
   async function fork(sourceId: string, request: MessageForkRequest): Promise<string> {
     const signal = lifetime.signal
+    const sentAt = product.sent()
     const { conversation: record } = await forkConversation(sourceId, request, signal)
-    await product.refresh()
     signal.throwIfAborted()
     // The destination's record holds the model settings it inherited.
-    if (!items.value.some((item) => item.id === record.id)) {
-      items.value.unshift(newConversation(record))
-    }
+    product.answered(sentAt, { type: 'conversation', conversation: record })
     return record.id
   }
 
@@ -989,6 +994,7 @@ export const useConversations = defineStore('conversations', () => {
       return
     }
     const signal = lifetime.signal
+    const sentAt = product.sent()
     const response = await apiRequest('/conversations', {
       method: 'POST',
       signal,
@@ -996,6 +1002,7 @@ export const useConversations = defineStore('conversations', () => {
     })
     const result = await readResponse(response, conversationAnswerSchema)
     signal.throwIfAborted()
+    product.answered(sentAt, { type: 'conversation', conversation: result.conversation })
     // The first send writes the conversation's model settings to its record,
     // each part its model no longer offers as the model's default.
     const shown = shownSettings(conversation)
@@ -1039,7 +1046,6 @@ export const useConversations = defineStore('conversations', () => {
         },
       )
     }
-    await product.refresh()
     signal.throwIfAborted()
     conversation.persistence = 'synced'
     cache.delete(conversation.id)
@@ -1100,9 +1106,9 @@ export const useConversations = defineStore('conversations', () => {
         `/conversations/${encodeURIComponent(conversation.id)}/title`,
         { method: 'POST', signal: lifetime.signal },
       )
-      // From here the snapshot says whether the request is still running.
+      // From here the conversation's summary says whether the request is
+      // still running.
       pendingRetitles.delete(conversation.id)
-      await product.revalidate()
     } catch (error) {
       pendingRetitles.delete(conversation.id)
       conversation.titleGenerating = false
@@ -1135,7 +1141,6 @@ export const useConversations = defineStore('conversations', () => {
           beforeId,
         } satisfies SidebarReorder),
       })
-      await product.revalidate()
     } catch (error) {
       report('Could not reorder conversations', error)
     }
@@ -1261,10 +1266,10 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Makes one change of the conversation's model settings, which names only
-   * the parts the user changed (`web-api.md` § Sidebar mutations, read state
-   * and page synchronization): a conversation with a record changes its
-   * record and shows the answer, and every other page shows it from its next
-   * snapshot; a conversation without one keeps the change in its draft. The
+   * the parts the user changed (`web-api.md` § Sidebar mutations and read
+   * state): a conversation with a record changes its record and shows the
+   * answer, and every other page shows it from the summary its channel
+   * brings; a conversation without one keeps the change in its draft. The
    * result is the user's last choice for new conversations.
    */
   async function changeModel(
@@ -1446,7 +1451,7 @@ export const useConversations = defineStore('conversations', () => {
     rename,
     retitle,
     markRead,
-    reloadList: refreshSnapshot,
+    reloadList: () => product.reconnect(),
     reloadSession,
     pin: (ids: string[], pinned: boolean) => batch(ids, { pinned }),
     archive: (ids: string[], archived = true) => batch(ids, { archived }),

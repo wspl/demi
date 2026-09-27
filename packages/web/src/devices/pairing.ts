@@ -28,8 +28,8 @@ export async function claimDevice(
       signal,
       ...jsonBody({ code } satisfies Claim),
     })
+    // The device list shows it once the channel brings the devices.
     const { device } = await readResponse(response, claimedDeviceSchema)
-    await useProduct().revalidate()
     return {
       ok: true,
       device: { id: device.id, name: device.name },

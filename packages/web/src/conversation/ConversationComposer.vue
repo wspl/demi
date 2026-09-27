@@ -151,7 +151,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
     <SessionComposer
       ref="composer"
       :model-load="product.catalogLoad"
-      @retry-models="product.revalidate"
+      @retry-models="product.reloadModels"
       v-model:draft="conversation.draft"
       v-model:message-edit="conversation.messageEdit"
       :upload="uploadAttachment"

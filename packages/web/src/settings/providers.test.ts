@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import { productState } from '../__tests__/product-state'
+import { playChannels } from '../__tests__/sync-channel'
 import type { ProductState } from '../api/generated/web-api'
 import { useProduct } from '../state/product'
 import { useProviderSettings } from './providers'
@@ -9,6 +10,7 @@ import { dismissToast, toasts } from '@demicodes/web-ui/infra/toast'
 
 const realFetch = globalThis.fetch
 let pinia: ReturnType<typeof createPinia>
+let channels: ReturnType<typeof playChannels>
 let state: ProductState
 let writes: number
 let write: (body: Record<string, unknown>) => Promise<Response>
@@ -43,9 +45,6 @@ beforeEach(async () => {
   }
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
-    if (path === '/api/state') {
-      return Response.json(state)
-    }
     if (path.startsWith('/api/models')) {
       return Response.json({ providers: [] })
     }
@@ -65,19 +64,25 @@ beforeEach(async () => {
     }
     if (path === '/api/providers/configured' && init?.method === 'PATCH') {
       writes++
-      return write(JSON.parse(String(init.body)))
+      const answer = await write(JSON.parse(String(init.body)))
+      // The page's channel brings the entry as the write left it.
+      channels.last().send({ type: 'providers', providers: state.providers })
+      return answer
     }
     if (path === '/api/providers/configured/quota' && init?.method === 'POST') {
       return probe(String(init.body), init.signal)
     }
     throw new Error(`Unexpected request: ${path}`)
   }) as typeof fetch
-  await useProduct().start()
+  channels = playChannels()
+  useProduct().start()
+  channels.last().connect(state)
   await useProduct().loadVendors()
 })
 afterEach(() => {
   useProduct().stop()
   disposePinia(pinia)
+  channels.restore()
   for (const toast of [...toasts]) {
     dismissToast(toast.id)
   }
@@ -94,12 +99,12 @@ async function idle(): Promise<void> {
   throw new Error('Provider operation did not finish')
 }
 
-test('reopening settings and revalidating preserve default provider IDs', async () => {
+test('reopening settings and a new snapshot preserve default provider IDs', async () => {
   const settings = useProviderSettings()
   const ids = settings.providers.map((provider) => provider.id)
   expect(ids).toContain('codex')
   expect(ids).toHaveLength(3)
-  await useProduct().revalidate()
+  channels.last().send({ type: 'snapshot', state })
   await nextTick()
   expect(
     useProviderSettings().providers.map((provider) => provider.id),
