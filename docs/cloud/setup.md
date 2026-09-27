@@ -11,11 +11,15 @@ artifacts are defined in [Cloud images](images.md).
 
 Use a native amd64 or arm64 Linux execution host with the runtime release
 pinned in [isolation and joining](managed-hosts.md#isolation-and-joining). The
-host needs Linux 5.14 or later, seccomp, namespaces, veth interfaces, cgroup v2
-with CPU/memory/PID controllers, OverlayFS, ext4, loop devices, filesystem
-freeze, and nftables. An ordinary hardware-virtualized VPS can provide these
-without exposing KVM. A restricted container sold as a VPS may not; check the
-facilities instead of relying on the provider's product name.
+host needs Linux 5.14 or later, seccomp, namespaces, veth interfaces,
+OverlayFS, ext4, loop devices, filesystem freeze, and nftables. With the
+manager's [resource limits](managed-hosts.md#resource-limits) on, the default,
+it also needs cgroup v2 with the CPU, memory, and PID controllers; a host
+without them runs the manager with `DEMI_MANAGED_LIMITS=off`, and its Clouds
+then have no CPU, memory, or PID limits. An ordinary hardware-virtualized VPS
+can provide these facilities without exposing KVM. A restricted container sold
+as a VPS may not; check the facilities instead of relying on the provider's
+product name.
 
 The installer installs the complete pinned runsc distribution and verifies its
 release checksum on amd64. On arm64 it builds the pinned source with the shipped
@@ -40,8 +44,9 @@ group may connect to the manager socket; group membership grants control of
 Cloud machines.
 
 Before it serves requests, startup validates root privileges and a private
-mount namespace, the programs and the exact runsc version, cgroup enforcement,
-a state directory on one filesystem, image architecture and integrity, storage
+mount namespace, the programs and the exact runsc version, cgroup enforcement
+when the resource limits are on, a state directory on one filesystem, image
+architecture and integrity, storage
 mount, freeze, and copy support with a probe image, and network policy
 installation. A missing requirement fails startup with a named diagnostic. The
 manager never falls back to another runtime or launches an unisolated process.
@@ -67,7 +72,8 @@ configuration is a startup error.
 | `DEMI_MACHINES_DATA` | Manager's persistent state, on one filesystem; default `/var/lib/demi-machines`. |
 | `DEMI_MANAGED_RUNSC` | Required absolute path to the pinned runsc executable. |
 | `DEMI_MANAGED_IMAGE` | Required directory containing the Cloud image manifest and archive. |
-| `DEMI_MANAGED_CPUS`, `DEMI_MANAGED_MEM_MIB` | Per-sandbox CPU budget and total memory limit. |
+| `DEMI_MANAGED_LIMITS` | `on` (default) or `off`: whether sandboxes run under the cgroup v2 CPU, memory, and PID limits ([Resource limits](managed-hosts.md#resource-limits)). |
+| `DEMI_MANAGED_CPUS`, `DEMI_MANAGED_MEM_MIB` | Per-sandbox CPU budget and total memory limit, with the limits on; either one with `DEMI_MANAGED_LIMITS=off` fails configuration. |
 | `DEMI_MANAGED_SYSTEM_MIB`, `DEMI_MANAGED_HOME_MIB` | Initial writable filesystem capacities. |
 | `DEMI_MANAGED_SUBNET`, `DEMI_MANAGED_SLOTS` | Non-overlapping IPv4 address pool and maximum network slots. |
 | `DEMI_MANAGED_DNS` | Required reachable IPv4 resolver addresses, validated as an address list. |
@@ -168,9 +174,12 @@ sudo bash crates/machines/scripts/install-managed-hosts.sh \
   --data /var/lib/demi-machines
 ```
 
-`--manager` names the manager executable. The backend user joins the
-`demi-cloud` group. Restart its service or login session to acquire that
-membership. The installer never starts the backend itself.
+`--manager` names the manager executable. `--limits off` installs the manager
+with its [resource limits](managed-hosts.md#resource-limits) off, for a host
+without the cgroup v2 controllers; without it, the settings say
+`DEMI_MANAGED_LIMITS=on`. The backend user joins the `demi-cloud` group.
+Restart its service or login session to acquire that membership. The installer
+never starts the backend itself.
 
 Publish a new image, restart the manager, and explicitly reset a device when it
 should use the new base. Restart alone does not upgrade pinned devices. A new

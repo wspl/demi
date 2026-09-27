@@ -176,10 +176,11 @@ impl Sandbox {
         fault::point("network-attached");
         let spec = oci::spec(&oci::Boot {
             directory: &self.directory,
-            cgroup: self.record.id.as_str(),
             namespace: &self.slot.namespace(),
-            cpus: core.config.cpus,
-            memory_bytes: core.config.memory_bytes(),
+            cgroup: core.config.limits.map(|limits| oci::Cgroup {
+                name: self.record.id.as_str(),
+                limits,
+            }),
         })?;
         let directory = self.directory.clone();
         let log = blocking::run(move |off| -> io::Result<_> {
@@ -304,7 +305,11 @@ impl Sandbox {
             // The sandbox was stopped; how its wait ended does not matter.
             let _ = waiter.await;
         }
-        cgroup::fence(&self.record.id).await?;
+        // Without the limits the sandbox has no cgroup; deleting the runtime
+        // ended its Sentry and Gofer.
+        if core.config.limits.is_some() {
+            cgroup::fence(&self.record.id).await?;
+        }
         let directory = self.directory.clone();
         blocking::run(move |off| unmount_all(off, &directory)).await?;
         core.network.detach(&self.slot).await?;
