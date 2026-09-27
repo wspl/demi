@@ -14,6 +14,7 @@ pub mod browser;
 pub mod cloud;
 pub mod conversations;
 pub mod devices;
+pub mod drafts;
 pub mod error;
 pub mod exposes;
 pub mod files;
