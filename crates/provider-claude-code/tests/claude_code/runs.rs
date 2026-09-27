@@ -248,22 +248,20 @@ async fn a_kept_process_receives_only_what_the_transcript_gained_until_an_edit_a
     assert!(cli.signals().is_empty());
 
     // An edit of the first message: the process is closed and a new one
-    // replays the transcript.
+    // receives the transcript as one message.
     let mut edited = second.clone();
     edited[0] = user("do other work");
-    let (events, replayed) = tokio::join!(all_events(runtime.run(request(edited))), async {
+    let (events, mut replayed) = tokio::join!(all_events(runtime.run(request(edited))), async {
         let mut replayed = starts.next().await;
         replayed.initialized().await;
-        assert_eq!(replayed.read().await, user_line("do other work"));
-        let assistant = replayed.read().await;
         assert_eq!(
-            assistant,
-            json!({ "type": "assistant", "message": { "role": "assistant", "content": [{ "type": "text", "text": "one" }] } })
+            replayed.read().await,
+            user_line("User: do other work\n\nAssistant: one\n\nUser: second question")
         );
-        assert_eq!(replayed.read().await, user_line("second question"));
         replayed.result(1, 1);
         replayed
     });
+    assert!(replayed.unread().is_empty());
     assert_eq!(events, [usage(1, 1)]);
     assert_eq!(cli.signals(), [Signal::Terminate]);
     assert_eq!(cli.end(), Some(ProcessEnd::Signalled("SIGTERM".into())));
@@ -284,9 +282,7 @@ async fn a_kept_process_receives_only_what_the_transcript_gained_until_an_edit_a
                     .windows(2)
                     .any(|pair| pair == ["--model", "claude-other"])
             );
-            for _ in 0..3 {
-                other.read().await;
-            }
+            other.read().await;
             other.result(1, 1);
             other
         }
@@ -299,9 +295,7 @@ async fn a_kept_process_receives_only_what_the_transcript_gained_until_an_edit_a
         async {
             let mut offered = starts.next().await;
             offered.initialized().await;
-            for _ in 0..3 {
-                offered.read().await;
-            }
+            offered.read().await;
             offered.result(1, 1);
         }
     );
@@ -311,7 +305,7 @@ async fn a_kept_process_receives_only_what_the_transcript_gained_until_an_edit_a
 }
 
 #[tokio::test(flavor = "local")]
-async fn a_new_process_replays_tool_calls_as_assistant_text_and_user_messages_as_the_users_input() {
+async fn a_new_process_receives_the_transcript_as_one_user_message_that_names_each_speaker() {
     let provider = provider().await;
     let (placement, mut starts) = ScriptedPlacement::new();
     let mut runtime = runtime_of(&provider, &placement);
@@ -339,26 +333,25 @@ async fn a_new_process_replays_tool_calls_as_assistant_text_and_user_messages_as
         tool_result("tool-1", "/tmp"),
         user("continue"),
     ];
-    let (events, ()) = tokio::join!(all_events(runtime.run(request(items))), async {
+    let (events, mut cli) = tokio::join!(all_events(runtime.run(request(items))), async {
         let mut cli = starts.next().await;
         cli.initialized().await;
-        let with_image = json!({ "type": "user", "message": { "role": "user", "content": [
-            { "type": "text", "text": "previous work" },
+        // The image stays in its place; the reasoning is left out; the tool
+        // call and its result are the model's own words.
+        let transcript = json!({ "type": "user", "message": { "role": "user", "content": [
+            { "type": "text", "text": "User: previous work" },
             { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "cG5n" } },
+            { "type": "text", "text": concat!(
+                "Assistant: [Earlier in this conversation I called the tool shell_exec with input: {\"script\":\"pwd\"}.",
+                "\n\nIt returned from shell_exec: /tmp]\n\nUser: continue",
+            ) },
         ] } });
-        assert_eq!(cli.read().await, with_image);
-        let narrative = json!({
-            "type": "assistant",
-            "message": { "role": "assistant", "content": [
-                { "type": "text", "text": "[Earlier in this conversation I called the tool shell_exec with input: {\"script\":\"pwd\"}." },
-                { "type": "text", "text": "It returned from shell_exec: /tmp]" },
-            ] },
-        });
-        assert_eq!(cli.read().await, narrative);
-        assert_eq!(cli.read().await, user_line("continue"));
+        assert_eq!(cli.read().await, transcript);
         cli.result(3, 1);
+        cli
     });
     assert_eq!(events, [usage(3, 1)]);
+    assert!(cli.unread().is_empty());
 }
 
 #[tokio::test(flavor = "local")]
