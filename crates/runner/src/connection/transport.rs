@@ -1,7 +1,9 @@
 //! The backend WebSocket (`runner.md` § Connection and identity): one owner
 //! task reads messages into a queue of eight and writes the queued replies.
 //! When the queue is full the reader waits, so the backend's writes wait too;
-//! only a message that breaks the protocol closes the connection.
+//! only a message that breaks the protocol closes the connection. A
+//! connection the runner ends on purpose, as a drain or a stop does, ends
+//! with a close frame.
 
 use std::{io, time::Duration};
 
@@ -15,12 +17,19 @@ use tokio::{
 };
 use tokio_tungstenite::{
     WebSocketStream,
-    tungstenite::{Message, protocol::WebSocketConfig},
+    tungstenite::{
+        Message,
+        protocol::{CloseFrame, WebSocketConfig, frame::coding::CloseCode},
+    },
 };
 use tokio_util::sync::CancellationToken;
 
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(15);
 const WRITE_TIMEOUT: Duration = Duration::from_secs(30);
+/// How long an ending the runner chose may take to send what is queued, its
+/// close frame and to hear the backend's; a backend that takes longer sees
+/// the connection end without them.
+const CLOSE_TIMEOUT: Duration = Duration::from_secs(5);
 const QUEUE_MESSAGES: usize = 8;
 
 pub struct Transport {
@@ -106,32 +115,44 @@ impl Transport {
                         Some(message) = outgoing.recv() => message,
                         else => break,
                     };
-                    let bytes = message.into_bytes();
-                    // Replies over the limit already failed their requests;
-                    // anything else this large breaks the protocol.
-                    if bytes.len() > wire::MAX_MESSAGE_BYTES {
-                        return Err(io::Error::new(
-                            io::ErrorKind::InvalidData,
-                            format!(
-                                "runner outbound message exceeds {} bytes",
-                                wire::MAX_MESSAGE_BYTES
-                            ),
-                        ));
-                    }
-                    tokio::time::timeout(WRITE_TIMEOUT, writer.send(Message::Binary(bytes.into())))
-                        .await
-                        .map_err(io::Error::other)?
-                        .map_err(io::Error::other)?;
+                    write(&mut writer, message).await?;
                 }
                 Ok::<_, io::Error>(())
             };
             // Both halves are owned by this task. Returning drops both futures
             // and the socket even when a write is stalled by a disconnected peer.
-            tokio::select! {
-                _ = stopped.cancelled() => Ok(()),
-                result = receive => result,
-                result = send => result,
+            let ended = tokio::select! {
+                _ = stopped.cancelled() => None,
+                result = receive => Some(result),
+                result = send => Some(result),
+            };
+            if let Some(result) = ended {
+                return result;
             }
+            // The runner ends this connection on purpose: what is queued
+            // goes first, then a close frame, and the connection ends with
+            // the backend's answer, so the backend sees the runner leave
+            // rather than lose it (`runner.md` § Connection and identity).
+            let close = async {
+                while let Ok(message) = controls.try_recv().or_else(|_| outgoing.try_recv()) {
+                    write(&mut writer, message).await?;
+                }
+                let frame = CloseFrame {
+                    code: CloseCode::Away,
+                    reason: "runner stopping".into(),
+                };
+                writer.send(Message::Close(Some(frame))).await.map_err(io::Error::other)?;
+                while let Some(message) = reader.next().await {
+                    if matches!(message, Ok(Message::Close(_)) | Err(_)) {
+                        break;
+                    }
+                }
+                Ok::<_, io::Error>(())
+            };
+            // The connection is over either way: a backend that is gone or
+            // slow only misses the orderly end.
+            let _closed = tokio::time::timeout(CLOSE_TIMEOUT, close).await;
+            Ok(())
         });
         Self {
             output,
@@ -172,6 +193,25 @@ impl Transport {
     pub fn cancellation(&self) -> CancellationToken {
         self.cancel.clone()
     }
+}
+
+/// Writes one queued frame. Replies over the limit already failed their
+/// requests; anything else this large breaks the protocol.
+async fn write<S>(writer: &mut S, message: Frame) -> io::Result<()>
+where
+    S: futures_util::Sink<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin,
+{
+    let bytes = message.into_bytes();
+    if bytes.len() > wire::MAX_MESSAGE_BYTES {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("runner outbound message exceeds {} bytes", wire::MAX_MESSAGE_BYTES),
+        ));
+    }
+    tokio::time::timeout(WRITE_TIMEOUT, writer.send(Message::Binary(bytes.into())))
+        .await
+        .map_err(io::Error::other)?
+        .map_err(io::Error::other)
 }
 
 impl Drop for Transport {
