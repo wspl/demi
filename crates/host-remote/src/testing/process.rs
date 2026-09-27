@@ -188,22 +188,22 @@ impl RunnerProcess {
     /// Empties the runner's state while it is stopped, as a Cloud reset
     /// replaces the system the runner's state lives on; its home stays.
     pub fn clear_state(&mut self) {
-        self.clear_state_but(None);
+        self.clear_state_but(&[]);
     }
 
     /// Empties the runner's state while it is stopped as a Cloud's stop
     /// does: its temporary state, `/run/demi` on a Cloud, goes, while its
-    /// log, which a Cloud keeps on its system layer (`runner.md` § Host log),
-    /// and its home stay.
+    /// log and its job directories, which a Cloud keeps on its system image
+    /// (`managed-hosts.md` § Images), and its home stay.
     pub fn clear_run_state(&mut self) {
-        self.clear_state_but(Some("log"));
+        self.clear_state_but(&["log", "jobs"]);
     }
 
-    fn clear_state_but(&mut self, kept: Option<&str>) {
+    fn clear_state_but(&mut self, kept: &[&str]) {
         assert!(self.child.is_none(), "the runner still runs");
         for entry in std::fs::read_dir(self.state.path()).expect("the runner state can be listed") {
             let entry = entry.expect("a runner state entry can be read");
-            if kept.is_some_and(|kept| entry.file_name() == kept) {
+            if kept.iter().any(|kept| entry.file_name() == *kept) {
                 continue;
             }
             let path = entry.path();
