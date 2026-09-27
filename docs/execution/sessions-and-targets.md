@@ -82,7 +82,8 @@ The backend performs one protected transition:
 3. End the conversation's file transfers, user streams and the one-shot user
    calls admitted like them, and wait for their release.
 4. Reserve conversation file admission. When the switch leaves the old device
-   and that device is a connected paired device, send it the
+   and that device's runner is connected, a paired device's or a running
+   Cloud's, send it the
    [conversation release](resource-lifecycle.md#conversation-release).
 5. Commit the target and attachment changes against the expected old selection.
 6. Advance the execution-context revision and release all reservations. Admit
@@ -288,7 +289,7 @@ touches no conversation's files. This table names every way to a Host:
 | --- | --- | --- | --- |
 | The conversation's host access | The agent's tool calls and shell jobs; attachments, the working tree, file text and file transfers; one-shot user calls that start work, such as opening a browser tab | The conversation's file gate while the operation runs, and, for a Cloud, the Cloud's admission | Woken; a running reset is waited for |
 | User-stream admission, a form of the conversation's host access | User streams; one-shot user calls that must not wake the Host | The file gate while admitting only | Not woken: the caller learns that the Host is stopped |
-| [Lifecycle access](#lifecycle-access), a form of the conversation's host access | The conversation release | Nothing: the release is a runner message, sent only to a connected paired device | Never sent to a Cloud |
+| [Lifecycle access](#lifecycle-access), a form of the conversation's host access | The conversation release | Nothing: the release is a runner message, sent only to a connected runner | Not woken: the Cloud hears the release after its next wake |
 | Device access | The public relay of a [Host expose](expose.md#the-public-relay); the [device log](../product/web-api.md#device-log); browsing a paired device's directories to choose a target; the [Claude Code versions](../providers/claude-code.md#what-the-user-sees) a provider's settings show | Nothing: the caller must own the device, and its runner must be connected | Not woken |
 | Machine access | Creating a Cloud project; [placing a provider's process](../providers/claude-code.md#where-it-runs) on the user's Cloud | The Cloud's admission; no file gate | Woken; a running reset is waited for |
 
@@ -320,9 +321,11 @@ observer. After reserving conversation file admission, it sends the
 conversation's host access to each device the change leaves, then commits the
 target/archive change. The old binding remains authoritative until commit.
 The release is a runner message, not Host IO: it needs no file gate, and it is
-skipped for a Cloud, which reclaims everything at the device level when it
-stops, and for a device that is not connected, because connection loss has
-already ended the conversation's state there.
+skipped for a device whose runner is not connected, a stopped Cloud among
+them, because the connection loss or the stop has already ended the
+conversation's services there. The device hears the release for the job
+output it still holds once its runner connects again
+([A release the device missed](resource-lifecycle.md#a-release-the-device-missed)).
 
 If the database commit fails after the release, the old selection remains and
 its next browser open starts fresh; page state cannot be rolled back. Device
@@ -420,11 +423,11 @@ session directory or Cloud machine. Workspace deletion requires no referencing
 conversations and deletes metadata, not its directory.
 
 Full shell output stays on the execution device until the conversation's Host
-resources are released: a paired device removes it at the
+resources are released: every Host removes it at the
 [conversation release](resource-lifecycle.md#conversation-release), and a
-Cloud keeps it under `/run/demi`, which a stop or a reset removes. Durable
-results must be written to persistent directories; the backend transcript
-retains only the recorded output view.
+Cloud's reset removes all of it with the system image. Durable results must be
+written to persistent directories; the backend transcript retains only the
+recorded output view.
 
 ## Implementation ownership and checks
 
