@@ -8,7 +8,14 @@
 # for Testing and uv, and publishes the verified root archive and manifest.
 #
 # Usage: sudo bash rootfs/build.sh --xtask PATH --runners DIR --package DIR...
-#          --output DIR [--work DIR] [--mirror URL]
+#          --output DIR [--work DIR] [--mirror URL] [--ca FILE]
+#
+# apt inside the tree runs with a cleared environment. A builder that reaches
+# the mirror only through an HTTPS proxy sets https_proxy, which apt there
+# then uses too. A builder whose proxy re-signs TLS passes --ca with the bundle
+# that holds the proxy's authority, which apt there then trusts instead of the
+# tree's own; the file is gone from the tree when the build ends. debootstrap
+# and xtask run with the caller's environment.
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 xtask=""
@@ -17,9 +24,10 @@ packages=()
 output=""
 work=/var/tmp/demi-cloud-root
 mirror=""
+ca=""
 usage() {
   echo 'usage: build.sh --xtask PATH --runners DIR --package DIR [--package DIR]...' >&2
-  echo '         --output DIR [--work DIR] [--mirror URL]' >&2
+  echo '         --output DIR [--work DIR] [--mirror URL] [--ca FILE]' >&2
   exit 2
 }
 while [ "$#" -gt 0 ]; do
@@ -31,12 +39,14 @@ while [ "$#" -gt 0 ]; do
     --output) output=$2 ;;
     --work) work=$2 ;;
     --mirror) mirror=$2 ;;
+    --ca) ca=$2 ;;
     *) echo "unknown argument: $1" >&2; usage ;;
   esac
   shift 2
 done
 [ -n "$xtask" ] && [ -n "$runners" ] && [ "${#packages[@]}" -gt 0 ] && [ -n "$output" ] || usage
 [ -x "$xtask" ] || { echo "no xtask executable at $xtask" >&2; exit 2; }
+[ -z "$ca" ] || [ -f "$ca" ] || { echo "no certificate bundle at $ca" >&2; exit 2; }
 # A release is immutable: every build publishes a new one.
 [ ! -e "$output" ] || { echo "$output exists: choose a new release directory" >&2; exit 2; }
 case "$(uname -m)" in
@@ -61,11 +71,13 @@ umask 022
 rm -rf "$work"
 mkdir -p "$work"
 # debootstrap's Ubuntu suites are one script under different names; a host
-# older than the suite lacks the name.
+# older than the suite lacks the name, and gets the script as an argument
+# rather than a new file among its own.
 scripts=/usr/share/debootstrap/scripts
-[ -e "$scripts/$suite" ] || ln -s gutsy "$scripts/$suite"
+script="$scripts/$suite"
+[ -e "$script" ] || script="$scripts/gutsy"
 debootstrap --arch="$deb_arch" --variant=minbase --include=apt-utils \
-  "$suite" "$work" "$mirror"
+  "$suite" "$work" "$mirror" "$script"
 cat > "$work/etc/apt/sources.list" <<SOURCES
 deb $mirror $suite main universe
 deb $mirror $suite-updates main universe
@@ -75,6 +87,16 @@ in_chroot() {
   chroot "$work" /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
     DEBIAN_FRONTEND=noninteractive HOME=/root "$@"
 }
+# What apt inside the tree needs of the caller's network: its HTTPS proxy and
+# the certificate bundle --ca names.
+apt_options=()
+if [ -n "${https_proxy:-}" ]; then
+  apt_options+=(-o "Acquire::https::Proxy=$https_proxy")
+fi
+if [ -n "$ca" ]; then
+  install -m 0644 "$ca" "$work/tmp/build-ca.pem"
+  apt_options+=(-o Acquire::https::CaInfo=/tmp/build-ca.pem)
+fi
 cleanup_mounts() {
   build_status=$?
   for path in "$work/dev" "$work/sys" "$work/proc"; do
@@ -91,8 +113,8 @@ mount --bind /dev "$work/dev"
 cp /etc/resolv.conf "$work/etc/resolv.conf"
 printf '#!/bin/sh\nexit 101\n' > "$work/usr/sbin/policy-rc.d"
 chmod 0755 "$work/usr/sbin/policy-rc.d"
-in_chroot apt-get update
-in_chroot apt-get install -y --no-install-recommends \
+in_chroot apt-get "${apt_options[@]}" update
+in_chroot apt-get "${apt_options[@]}" install -y --no-install-recommends \
   $(grep -v '^#' "$here/rootfs/packages.txt") tini
 in_chroot locale-gen en_US.UTF-8
 in_chroot apt-get clean
