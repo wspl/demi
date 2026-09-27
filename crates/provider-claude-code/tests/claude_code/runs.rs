@@ -8,7 +8,9 @@ use bytes::Bytes;
 use demi_core::{B64Bytes, MediaSource, ThinkingConfig, TokenUsage, UserContentBlock};
 use demi_provider::credentials::MemoryCredentialPool;
 use demi_provider::quota::MemorySnapshots;
-use demi_provider::{ErrorCode, InferenceItem, InferenceRequest, ProviderEvent, ProviderFailure};
+use demi_provider::{
+    ErrorCode, InferenceItem, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun,
+};
 use demi_provider_claude_code::{ClaudeCodeConfig, ClaudeCodeProvider};
 use demi_shell::{ProcessEnd, Signal, SpawnEnv, SpawnRequest};
 use serde_json::{Value, json};
@@ -38,6 +40,20 @@ fn failure(event: &ProviderEvent) -> &ProviderFailure {
         ProviderEvent::Error(failure) => failure,
         other => panic!("expected a failure, got {other:?}"),
     }
+}
+
+/// The events of `run` to its first failure, read as the agent reads a run:
+/// it drops the run at the failure.
+async fn as_the_agent_reads(mut run: ProviderRun<'_>) -> Vec<ProviderEvent> {
+    let mut events = Vec::new();
+    while let Some(event) = next_event(&mut run).await {
+        let failed = matches!(event, ProviderEvent::Error(_));
+        events.push(event);
+        if failed {
+            break;
+        }
+    }
+    events
 }
 
 #[tokio::test(flavor = "local")]
@@ -553,7 +569,7 @@ async fn the_clis_error_ends_the_turn_and_keeps_the_process_while_a_broken_line_
         "usage": { "input_tokens": 200000, "output_tokens": 0 },
     });
     let (events, mut cli) = tokio::join!(
-        all_events(runtime.run(request_without_tools(vec![user("huge")]))),
+        as_the_agent_reads(runtime.run(request_without_tools(vec![user("huge")]))),
         async {
             let mut cli = starts.next().await;
             cli.read().await;
