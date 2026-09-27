@@ -141,6 +141,7 @@ fixture must not define an alternative execution contract.
 | Backend restart after dispatch but before a result | The call has an explicit unknown outcome and is never silently replayed |
 | Backend shutdown | Every shutdown step runs even when one fails; open transfers and user streams end before the user's Cloud hibernates, so the Cloud still saves ([Startup and shutdown](../backend/backend.md#startup-and-shutdown)) |
 | Runner death | Its running jobs fail; reconnect permits new work; persistent files remain |
+| Runner connection lost during a conversation release | The archive, target switch or detach that sent the release succeeds, and the runner hears the release again after it connects ([A release that fails](../execution/resource-lifecycle.md#a-release-that-fails)) |
 | Cloud hibernate/wake | System and home changes survive; processes and temporary output do not |
 | Checkpoint publication failure | Previous committed generation remains usable; working files remain available for retry |
 | Reset failure before publication | Home and the previous generation remain recoverable; new work cannot use an indeterminate system |

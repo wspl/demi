@@ -1,13 +1,15 @@
 //! Retention (`storage.md` § Retention, `runtime.md` § Retired tool media,
-//! `resource-lifecycle.md` § A release the device missed): a collection
-//! deletes only a blob nothing references once it and its last use are past
-//! the grace, and nothing while a reference source cannot be read; a tool
-//! result's image goes after 30 days once no request can send it from a
-//! vendor's cache, never while a page has its conversation open and never a
-//! message's; and a device that missed a release hears it when its runner
-//! connects again. Times of a day and more pass on the test's clock; the
-//! objects are counted at the object store. The devices are real runners,
-//! and the model is an Anthropic endpoint the test scripts.
+//! `resource-lifecycle.md` § A release the device missed, § A release that
+//! fails): a collection deletes only a blob nothing references once it and
+//! its last use are past the grace, and nothing while a reference source
+//! cannot be read; a tool result's image goes after 30 days once no request
+//! can send it from a vendor's cache, never while a page has its conversation
+//! open and never a message's; a device that missed a release hears it when
+//! its runner connects again; and an archive succeeds though its device goes
+//! away in the middle of the release, which the device hears when it connects
+//! again. Times of a day and more pass on the test's clock; the objects are
+//! counted at the object store. The devices are real runners, and the model
+//! is an Anthropic endpoint the test scripts.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -22,9 +24,10 @@ use serde_json::json;
 use sha2::{Digest as _, Sha256};
 
 use crate::conversations::{FIRST, SECOND, Socket, anthropic, answer, choose, create, on_device, transcript};
+use crate::streams::{self, received};
 use crate::support::{Harness, MASTER_EMAIL, MASTER_PASSWORD, Paired, Session, TestBackend, eventually};
 use crate::uploads::{png, upload, with_upload};
-use crate::work::{say, shell};
+use crate::work::{say, shell, switch};
 
 const DAY: SignedDuration = SignedDuration::from_hours(24);
 
@@ -316,6 +319,48 @@ async fn a_device_offline_at_a_release_hears_it_when_its_runner_connects_again()
     paired.runner.start_again();
     eventually("the released job output is gone", || async {
         !job_output(&state, FIRST).exists() && !job_output(&state, stranger).exists()
+    })
+    .await;
+    backend.close().await;
+}
+
+// Under a second: a real device installs the fixture package, is killed in
+// the middle of a release, and starts again.
+#[tokio::test]
+async fn an_archive_succeeds_though_its_device_goes_away_during_the_release_which_the_device_hears_when_it_connects_again() {
+    let harness = Harness::new().with_native_fixture();
+    let (backend, master) = harness.start_set_up().await;
+    let mut laptop = backend.pair(&master, "laptop").await;
+    for id in [FIRST, SECOND] {
+        create(&backend, &master, id).await;
+        switch(&backend, &master, id, &laptop, laptop.runner.home_dir()).await;
+    }
+    // The first conversation's job output, as its shell jobs leave it; the
+    // fixture service holds the conversation, and its release of it never
+    // ends by itself.
+    let state = laptop.runner.state_dir().to_owned();
+    std::fs::create_dir_all(job_output(&state, FIRST).join("job-left")).unwrap();
+    let (_, code, reason) = received(&mut streams::socket(&backend, &master, FIRST, "stall_release").await).await;
+    assert_eq!((code, reason.as_str()), (1000, "completed"));
+
+    // The archive's release reaches the device, which goes away before it
+    // answers; the archive succeeds all the same.
+    let path = format!("/api/conversations/{FIRST}");
+    let archiving = backend.patch(&path, &master, json!({ "archived": true }));
+    let going_away = async {
+        let (_, code, reason) = received(&mut streams::socket(&backend, &master, SECOND, "stalled").await).await;
+        assert_eq!((code, reason.as_str()), (1000, "completed"));
+        laptop.runner.kill().await;
+    };
+    let (archived, ()) = tokio::join!(archiving, going_away);
+    assert_eq!(archived.status, StatusCode::OK, "{}", String::from_utf8_lossy(&archived.body));
+    assert!(job_output(&state, FIRST).exists());
+
+    // Its hello names the conversation, archived now, which hears the
+    // release at once.
+    laptop.runner.start_again();
+    eventually("the archived conversation's job output is gone", || async {
+        !job_output(&state, FIRST).exists()
     })
     .await;
     backend.close().await;
