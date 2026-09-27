@@ -244,6 +244,7 @@ next to the wire's types, so that a command program depends on one crate.
   - `Signal`, and the platform a runner reports in its hello
     (`RunnerPlatform`);
   - the protocol constants: `VERSION`, `MAX_MESSAGE_BYTES`, `JOB_VIEW_BYTES`,
+    `JOB_LIVE_BYTES`, `JOB_LIVE_INTERVAL`, `JOB_GROWTH_INTERVAL`,
     `STDIN_CHUNK_BYTES`, `LOG_READ_LINES` and `SERVICE_STDERR_CHARS`;
   - where a Cloud image embeds the command package executables that the
     runner starts in place of downloading them (`image::ARTIFACTS_PATH`).
@@ -419,8 +420,11 @@ Each crate implements the provider contract for one vendor family.
     `PortTransport`, `StorageOp`); the reserved command names;
   - the shell-environment contract behind the `shell_*` tools:
     `ShellEnvironment`, `ExecRequest`, `CommandStatus` and `CommandRecord`,
-    with one place in each command's output for the model and one for the
-    page (`Reader`).
+    which keeps the model's place in each command's output apart from the
+    pages' view of it (`PageView`), and the feed through which an
+    environment reports that view's changes and learns whether a page
+    watches (`PageFeed`,
+    [Live output](../agent/runtime.md#live-output)).
 - **Public boundary:** the items above; `shell::testing` supplies the Host
   conformance cases and an in-memory port for rpc handler tests
   (`MemoryPort`). The Host rules are in
