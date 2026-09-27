@@ -43,7 +43,7 @@ fn msgpack(value: &Value) -> Vec<u8> {
 #[test]
 fn every_backend_frame_decodes_and_encodes_to_the_same_bytes() {
     let frames = corpus("backend-to-runner");
-    assert_eq!(frames.len(), 54);
+    assert_eq!(frames.len(), 55);
     for (name, bytes) in frames {
         let message: Inbound =
             wire::decode(&bytes).unwrap_or_else(|error| panic!("{name}: {error}"));

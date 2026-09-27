@@ -135,6 +135,13 @@ impl CommandRecord {
         self.last_output = Instant::now();
     }
 
+    /// The command's output grew beyond what the record holds, such as a
+    /// stream past the runner's view of it: the command is not idle
+    /// (`runtime.md` § Results and previews).
+    pub fn grew(&mut self) {
+        self.last_output = Instant::now();
+    }
+
     /// Where the command's output files are on the Host.
     pub fn set_output_dir(&mut self, directory: String) {
         self.output_dir = Some(directory);

@@ -310,7 +310,13 @@ async fn a_process_gets_what_was_sent_at_its_start_and_unread_input_blocks_nothi
         .await
         .unwrap();
     let job_output = futures_util::stream::unfold(&job, |job| async move {
-        job.next_output().await.map(|chunk| (chunk, job))
+        job.next_output().await.map(|chunk| {
+            let chunk = ProcessOutput {
+                stream: chunk.stream,
+                bytes: chunk.bytes,
+            };
+            (chunk, job)
+        })
     });
     until_stdout(job_output, "ready").await;
     let mut process = host
