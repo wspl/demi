@@ -1,7 +1,8 @@
 // Captures the tabs the live view watches and encodes them as H.264
 // (`live-view.md` § Capture). The live view module on this Host
-// drives it over a loopback socket that accepts only this environment's token.
-import { socket as address } from './config.js';
+// drives it over a loopback socket that accepts only this environment's token,
+// and names the live protocol's codec.
+import { socket as address, codec } from './config.js';
 
 // A frame's header, big-endian: capture (u32), sequence (u32), flags (u8,
 // 1 = key frame), three reserved bytes, timestamp in microseconds (f64),
@@ -115,7 +116,7 @@ async function stop(id) {
 
 function configure(state, still) {
   state.encoder.configure({
-    codec: 'avc1.640033',
+    codec,
     width: state.width,
     height: state.height,
     framerate: still ? 1 : state.fps,

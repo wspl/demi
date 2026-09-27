@@ -69,7 +69,8 @@ pub(super) async fn execute(
     let mut work = async {
         let output = match &input.output {
             Some(output) => super::output::preflight(&context.request.cwd, output, input.overwrite == Some(true)).await?,
-            None => std::env::temp_dir().join(super::handles::fresh("demi-download")?),
+            // Beside the profiles, on disk (`browser.md` § Upload, download, and clipboard).
+            None => super::DirectoryBases::host().profiles.join(super::handles::fresh("demi-download")?),
         };
         let target = command.target();
         let point = match &input.xy {

@@ -464,6 +464,26 @@ test('a command\'s live frames build what the page shows of it, until its end', 
   })
 })
 
+// A command the user or the agent stopped shows as stopped, never as done:
+// from its last live frame, and from its stored view once the page reloads.
+test('a stopped command stays stopped, live and after a reload', () => {
+  const conversation = useConversations().items[0]!
+  conversation.blocks = [execCall('call-1', 'npm run watch', 'executing')]
+  conversation.terminals = []
+  const view = { shellId: 'sh', commandId: 'cmd', toolUseId: 'call-1', tail: 'watching\n', chars: 9, runningMs: 10 }
+  applyConversationEvent(conversation, { type: 'shell_output', status: { status: 'running', ...view } })
+  applyConversationEvent(conversation, { type: 'shell_output', status: { status: 'aborted', ...view } })
+  expect(toRaw(conversation.terminals)).toMatchObject([{ id: 'cmd', phase: 'aborted' }])
+
+  conversation.terminals = []
+  conversation.blocks = [{ ...execCall('call-1', 'npm run watch', 'completed'), view: {
+    kind: 'shell', status: 'aborted', shellId: 'sh', commandId: 'cmd', runningMs: 10, idleMs: 0,
+    chunks: [{ stream: 'stdout', text: 'watching\n' }], viewTruncated: false,
+  } }]
+  applyConversationEvent(conversation, { type: 'transcript_reset', blocks: conversation.blocks, failures: {} })
+  expect(toRaw(conversation.terminals)).toMatchObject([{ id: 'cmd', phase: 'aborted' }])
+})
+
 test('a child keeps the failure facts of its transcript: a reset replaces them, a patch adds to them', () => {
   const conversation = useConversations().items[0]!
   const job = {

@@ -975,15 +975,16 @@ async fn two_viewers_share_a_tab_and_the_last_to_operate_decides() {
     .await;
 }
 
-/// Decodes a key frame as the page does (`pictures.ts`: WebCodecs, H.264
-/// High) and keeps the picture in the page as a PNG in base64, the form in
-/// which a picture leaves Chrome whole; answers its length.
-const DECODE_PICTURE: &str = r#"async (encoded) => {
+/// Decodes a key frame as the page does (`pictures.ts`: WebCodecs, with the
+/// live protocol's codec) and keeps the picture in the page as a PNG in
+/// base64, the form in which a picture leaves Chrome whole; answers its
+/// length.
+const DECODE_PICTURE: &str = r#"async (encoded, codec) => {
   const data = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
   let decoder;
   const picture = await new Promise((resolve, reject) => {
     decoder = new VideoDecoder({ output: resolve, error: reject });
-    decoder.configure({ codec: 'avc1.640033', optimizeForLatency: true });
+    decoder.configure({ codec, optimizeForLatency: true });
     decoder.decode(new EncodedVideoChunk({ type: 'key', timestamp: 0, data }));
     // Every picture is out before the flush resolves.
     decoder.flush().then(() => reject(new Error('the frame decoded to no picture')), reject);
@@ -1030,7 +1031,11 @@ async fn run_in_page(fixture: &BrowserFixture, tab: &str, expression: &str) -> V
 async fn decoded(fixture: &BrowserFixture, tab: &str, frame: &[u8]) -> (u32, Vec<u8>) {
     use base64::{Engine as _, engine::general_purpose::STANDARD};
 
-    let decode = format!("({DECODE_PICTURE})('{}')", STANDARD.encode(frame));
+    let decode = format!(
+        "({DECODE_PICTURE})('{}', '{}')",
+        STANDARD.encode(frame),
+        demi_builtin_protocol::live::VIDEO_CODEC
+    );
     let length = run_in_page(fixture, tab, &decode)
         .await
         .as_u64()
