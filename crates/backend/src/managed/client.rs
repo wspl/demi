@@ -37,7 +37,7 @@ pub(crate) const DEATHS: usize = 256;
 
 /// Why a call to the manager has no result.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub(crate) enum MachinesError {
+pub enum MachinesError {
     /// The manager could not be reached, or the connection dropped before it
     /// answered: whether the operation ran is not known.
     #[error("Machine manager unavailable during {operation}: {reason}")]
@@ -51,8 +51,9 @@ pub(crate) enum MachinesError {
 }
 
 /// A handle on the machine manager's socket. `Send + Sync`: it is a service
-/// every shard shares.
-pub(crate) struct MachinesClient {
+/// every shard shares. The `testing` feature exports it for the Cloud suite,
+/// which asks a real manager for a checkpoint and a device's generation.
+pub struct MachinesClient {
     commands: mpsc::Sender<Command>,
     /// Ends the supervisor with the client.
     _supervisor: AbortOnDropHandle<()>,
@@ -74,7 +75,7 @@ impl MachinesClient {
     /// A client of the socket at `socket`, on the runtime that calls this,
     /// and the receiver of the manager's death events: the device of each
     /// sandbox that exited without being asked to stop.
-    pub(crate) fn new(socket: PathBuf) -> (Self, mpsc::Receiver<DeviceId>) {
+    pub fn new(socket: PathBuf) -> (Self, mpsc::Receiver<DeviceId>) {
         let (commands, received) = mpsc::channel(QUEUE);
         let (deaths, died) = mpsc::channel(DEATHS);
         let supervisor = Supervisor {
@@ -95,7 +96,7 @@ impl MachinesClient {
     }
 
     /// Runs `params` on the manager and answers its result.
-    pub(crate) async fn call<O: Operation>(&self, params: O) -> Result<O::Output, MachinesError> {
+    pub async fn call<O: Operation>(&self, params: O) -> Result<O::Output, MachinesError> {
         self.send(params, false).await
     }
 
