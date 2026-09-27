@@ -662,10 +662,13 @@ async fn the_frames_the_backend_refuses_never_reach_the_session() {
     // A message that is not JSON closes the socket.
     socket.send_text("not json".into()).await;
     assert_eq!(socket.closed().await, Some(u16::from(CloseCode::Invalid)));
-    let not_socket = backend.get(&format!("/api/conversations/{SECOND}/stream"), Some(&master)).await;
+    // A request from the product's page that is not an upgrade.
+    let product = [("origin", backend.url.as_str())];
+    let path = format!("/api/conversations/{SECOND}/stream");
+    let not_socket = backend.get_with(&path, &master, &product).await;
     assert_eq!(not_socket.refusal(), (StatusCode::NOT_FOUND, ErrorCode::ConversationNotFound));
     create(&backend, &master, SECOND).await;
-    let not_socket = backend.get(&format!("/api/conversations/{SECOND}/stream"), Some(&master)).await;
+    let not_socket = backend.get_with(&path, &master, &product).await;
     assert_eq!(not_socket.refusal(), (StatusCode::UPGRADE_REQUIRED, ErrorCode::UpgradeRequired));
     backend.close().await;
 }
