@@ -330,7 +330,7 @@ async fn finish(
     let model = &called.model.model;
     let budget = result::preview_budget_tokens(model.context_window);
     let expose = result::handle_required(&status, budget);
-    let outcome = result::shell_outcome(&status, budget, expose, model, called.limits);
+    let outcome = result::shell_outcome(&status, budget, expose, model, called.limits).await;
     if !expose {
         // A command the environment already forgot has nothing to release.
         environment.release_command(&status.command_id).await;
