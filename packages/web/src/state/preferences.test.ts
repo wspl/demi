@@ -2,12 +2,14 @@ import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import type { Preferences } from '../api/generated/web-api'
 import { productState } from '../__tests__/product-state'
+import { playChannels } from '../__tests__/sync-channel'
 import { usePreferences } from './preferences'
 import { useProduct } from './product'
 
 const realFetch = globalThis.fetch
 const realLanguages = Object.getOwnPropertyDescriptor(navigator, 'languages')
 let pinia: ReturnType<typeof createPinia>
+let channels: ReturnType<typeof playChannels>
 let saved: Preferences
 let patches: unknown[]
 
@@ -22,9 +24,6 @@ beforeEach(() => {
   })
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
-    if (path === '/api/state') {
-      return Response.json(productState({ preferences: saved }))
-    }
     if (path.startsWith('/api/models')) {
       return Response.json({ providers: [] })
     }
@@ -36,12 +35,14 @@ beforeEach(() => {
     }
     throw new Error(`Unexpected request: ${path}`)
   }) as typeof fetch
+  channels = playChannels()
 })
 
 afterEach(() => {
   usePreferences().stop()
   useProduct().stop()
   disposePinia(pinia)
+  channels.restore()
   globalThis.fetch = realFetch
   if (realLanguages) {
     Object.defineProperty(navigator, 'languages', realLanguages)
@@ -51,7 +52,8 @@ afterEach(() => {
 })
 
 test('the browser reports its time zone and languages once, and again when they differ from the stored ones', async () => {
-  await useProduct().start()
+  useProduct().start()
+  channels.last().connect(productState({ preferences: saved }))
   const preferences = usePreferences()
   const locale = {
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -63,9 +65,10 @@ test('the browser reports its time zone and languages once, and again when they 
   await preferences.reportLocale()
   expect(patches).toHaveLength(1)
 
-  // Another browser of the same user reported its own; this one reports again.
+  // Another browser of the same user reported its own, which the channel
+  // brings; this one reports again.
   saved = { ...saved, locale: { timeZone: 'Europe/Berlin', languages: ['de-DE'] } }
-  await useProduct().refresh()
+  channels.last().send({ type: 'preferences', preferences: saved })
   await preferences.reportLocale()
   expect(patches).toEqual([{ locale }, { locale }])
 })
