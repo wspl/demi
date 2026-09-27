@@ -257,7 +257,9 @@ impl Conversation {
             // No product shows the conversations' statuses.
             status_changed: Rc::new(|_| {}),
         });
-        let mut client = TestClient::connect(&server, &root, &fixture.cwd);
+        // A turn of the real model may take minutes.
+        let mut client =
+            TestClient::connect(&server, &root, &fixture.cwd).with_hang_guard(TURN_TIMEOUT);
         client.send(ClientFrame::Open {}).await;
         client
             .next_until(|frame| matches!(frame, ServerFrame::PendingSteers { .. }))
@@ -303,50 +305,45 @@ impl Conversation {
         context_tokens(&RequestView::new(&view, &model, RequestLimits::default()))
     }
 
-    /// Runs `frame` to the end of the action it starts.
-    async fn act(&mut self, frame: ClientFrame) -> Result<(), String> {
+    /// Runs `frame` to the end of the action it starts; a wait longer than
+    /// a turn may take fails as a hang.
+    async fn act(&mut self, frame: ClientFrame) {
         self.client.send(frame).await;
         let busy = |frame: &ServerFrame| matches!(frame, ServerFrame::Phase { phase } if *phase != SessionPhase::Idle);
         let idle = |frame: &ServerFrame| matches!(frame, ServerFrame::Phase { phase } if *phase == SessionPhase::Idle);
-        let ended = async {
-            self.client.next_until(busy).await;
-            self.client.next_until(idle).await
-        };
-        tokio::time::timeout(TURN_TIMEOUT, ended)
-            .await
-            .map(|_| ())
-            .map_err(|_| "the turn did not end in time".to_owned())
+        self.client.next_until(busy).await;
+        self.client.next_until(idle).await;
     }
 
     /// Sends `text` and returns the assistant text of its turn.
-    async fn send(&mut self, text: &str) -> Result<String, String> {
+    async fn send(&mut self, text: &str) -> String {
         let before = self.blocks().len();
         let id = TurnId::try_from(uuid()).expect("a uuid is not empty");
         self.act(ClientFrame::Send {
             message_id: id,
             content: client_text(text),
         })
-        .await?;
-        Ok(self.blocks()[before..]
+        .await;
+        self.blocks()[before..]
             .iter()
             .filter_map(|block| match block {
                 Block::Text(text) => Some(text.text.as_str()),
                 _ => None,
             })
             .collect::<Vec<_>>()
-            .join(" "))
+            .join(" ")
     }
 
-    async fn recall(&mut self) -> Result<usize, String> {
-        let answer = self.send(RECALL_PROMPT).await?;
+    async fn recall(&mut self) -> usize {
+        let answer = self.send(RECALL_PROMPT).await;
         let recalled = recalled(&answer);
         println!("   recall {recalled}/3: {}", tail(&answer));
-        Ok(recalled)
+        recalled
     }
 
-    async fn grow(&mut self, label: &str, chars: usize) -> Result<(), String> {
+    async fn grow(&mut self, label: &str, chars: usize) {
         let filler = format!("{FILLER_PROMPT}\n\n{label}-{}", "x".repeat(chars));
-        self.send(&filler).await.map(|_| ())
+        self.send(&filler).await;
     }
 }
 
@@ -391,19 +388,19 @@ async fn recall(fixture: Fixture) -> Result<bool, String> {
     let mut conversation = Conversation::open(fixture, flash(RECALL_WINDOW)).await?;
     let baseline = conversation.generations();
     println!("\n── baseline recall");
-    let mut rows = vec![(conversation.generations(), conversation.recall().await?)];
+    let mut rows = vec![(conversation.generations(), conversation.recall().await)];
     for extra in 1..=EXTRA_GENERATIONS {
         if rows.last().is_some_and(|(_, recalled)| *recalled < 3) {
             break;
         }
         println!("\n── extra compact #{extra}/{EXTRA_GENERATIONS}");
         let before = conversation.generations();
-        conversation.grow(&format!("VERIFY-{extra}"), 6_000).await?;
-        conversation.act(ClientFrame::Compact {}).await?;
+        conversation.grow(&format!("VERIFY-{extra}"), 6_000).await;
+        conversation.act(ClientFrame::Compact {}).await;
         if conversation.generations() <= before {
             println!("   compact added no generation; growing harder and retrying once");
-            conversation.grow(&format!("FORCE-{extra}"), 20_000).await?;
-            conversation.act(ClientFrame::Compact {}).await?;
+            conversation.grow(&format!("FORCE-{extra}"), 20_000).await;
+            conversation.act(ClientFrame::Compact {}).await;
         }
         if conversation.generations() <= before {
             println!("   still no new generation after the retry: stopping");
@@ -413,7 +410,7 @@ async fn recall(fixture: Fixture) -> Result<bool, String> {
             "   compacted: {before} → {} generations",
             conversation.generations()
         );
-        rows.push((conversation.generations(), conversation.recall().await?));
+        rows.push((conversation.generations(), conversation.recall().await));
     }
     let errors = conversation.errors();
     println!("\n===== LONG-SESSION COMPACTION VERIFY =====");
@@ -444,7 +441,7 @@ async fn switch(fixture: Fixture) -> Result<bool, String> {
     println!("\n── STEP 1: switch small → large, expecting no compaction");
     let before = conversation.generations();
     conversation.act_switch(large.clone()).await;
-    let recall_up = conversation.recall().await?;
+    let recall_up = conversation.recall().await;
     let no_compaction_up = conversation.generations() == before;
     println!("   compacted on the larger window: {}", !no_compaction_up);
 
@@ -454,7 +451,7 @@ async fn switch(fixture: Fixture) -> Result<bool, String> {
     while conversation.context(small_window) < threshold
         || conversation.context(large_window) < SWITCH_MIN_CONTEXT
     {
-        conversation.grow(&format!("FILLER-{turns}"), 8_000).await?;
+        conversation.grow(&format!("FILLER-{turns}"), 8_000).await;
         turns += 1;
         if turns > 40 {
             return Err("40 filler turns did not fill the small window".into());
@@ -470,13 +467,13 @@ async fn switch(fixture: Fixture) -> Result<bool, String> {
     );
     let before = conversation.generations();
     conversation.act_switch(small).await;
-    let recall_down = conversation.recall().await?;
+    let recall_down = conversation.recall().await;
     let compacted_down = conversation.generations() > before;
     println!("   compacted for the smaller window: {compacted_down}");
 
     println!("\n── STEP 4: switch back to large");
     conversation.act_switch(large).await;
-    let recall_back = conversation.recall().await?;
+    let recall_back = conversation.recall().await;
 
     let errors = conversation.errors();
     println!("\n===== WINDOW-SWITCH COMPACTION VERIFY =====");
