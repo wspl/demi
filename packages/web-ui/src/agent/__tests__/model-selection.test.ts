@@ -1,6 +1,14 @@
 import { expect, test } from 'bun:test'
 import type { ModelInfo, ProviderInfo } from '../../transport/protocol'
-import { availableProviders, composerModel, initialModelIntent, intentThinkingConfig, resolveSelectedModel } from '../model-selection'
+import {
+  availableProviders,
+  composerModel,
+  initialModelSettings,
+  modelSwitch,
+  offeredSettings,
+  resolveSelectedModel,
+  type ModelSettingsChange,
+} from '../model-selection'
 
 function model(id: string): ModelInfo {
   return {
@@ -32,13 +40,48 @@ test('new conversations keep independent complete choices including unavailable 
     providerId: 'offline', modelId: 'o1',
     thinkingEffort: 'high', serviceTierId: 'priority',
   }
-  const first = initialModelIntent(saved)
+  const first = initialModelSettings(saved)
   expect(composerModel(providers, models, first.providerId, first.modelId).kind).toBe('unavailable')
-  expect(intentThinkingConfig(first)).toEqual({ type: 'effort', effort: 'high', summary: null })
   first.thinkingEffort = 'disabled'
-  expect(intentThinkingConfig(first)).toEqual({ type: 'disabled' })
-  expect(initialModelIntent(saved)).toEqual(saved)
-  expect(intentThinkingConfig(initialModelIntent())).toBeUndefined()
+  expect(initialModelSettings(saved)).toEqual(saved)
+  expect(initialModelSettings()).toEqual({ providerId: '', modelId: '', thinkingEffort: null, serviceTierId: null })
+})
+
+/** A model that levels its thinking with `efforts`, and has `fast` as its Fast tier when given. */
+function leveled(id: string, efforts: string[], options: { canDisable?: boolean; fast?: string } = {}): ModelInfo {
+  return {
+    ...model(id),
+    reasoning: { efforts, defaultEffort: null, canDisable: options.canDisable ?? true },
+    serviceTiers: options.fast ? [{ id: options.fast, label: 'Fast', fast: true }] : null,
+  }
+}
+
+test('a switch keeps the effort and Fast the new model offers, and leaves the rest to its defaults', () => {
+  const current = leveled('a', ['low', 'high'], { fast: 'priority' })
+  const on = { thinkingEffort: 'high', serviceTierId: 'priority' }
+  const off = { thinkingEffort: 'disabled', serviceTierId: null }
+  const cases: [typeof on | typeof off, ModelInfo, ModelSettingsChange][] = [
+    // The new model lists the effort and has a Fast tier of its own.
+    [on, leveled('b', ['high'], { fast: 'flex' }), { thinkingEffort: 'high', serviceTierId: 'flex' }],
+    // It lists neither.
+    [on, leveled('b', ['medium']), {}],
+    // Thinking stays off where it can be turned off.
+    [off, leveled('b', ['low']), { thinkingEffort: 'disabled' }],
+    [off, leveled('b', ['low'], { canDisable: false }), {}],
+    // Fast that was off stays off.
+    [off, leveled('b', ['low'], { fast: 'priority' }), { thinkingEffort: 'disabled' }],
+  ]
+  for (const [settings, next, kept] of cases) {
+    expect(modelSwitch(settings, current, 'p', next)).toEqual({ model: { providerId: 'p', modelId: 'b' }, ...kept })
+  }
+})
+
+test('a first send names only the parts its model still offers', () => {
+  const settings = { providerId: 'p', modelId: 'a', thinkingEffort: 'xhigh', serviceTierId: 'priority' }
+  expect(offeredSettings(settings, leveled('a', ['low'], { fast: 'priority' })))
+    .toEqual({ ...settings, thinkingEffort: null })
+  expect(offeredSettings({ ...settings, thinkingEffort: 'low' }, leveled('a', ['low'])))
+    .toEqual({ ...settings, thinkingEffort: 'low', serviceTierId: null })
 })
 
 test('usable providers are available and carry at least one model', () => {
