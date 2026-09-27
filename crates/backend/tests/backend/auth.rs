@@ -192,6 +192,47 @@ async fn a_request_that_could_act_comes_from_a_page_of_the_product_or_from_no_pa
     backend.close().await;
 }
 
+/// A browser sends Fetch Metadata with every request `Origin` must come
+/// with, so a request with `Sec-Fetch-Site` and without `Origin` lost its
+/// `Origin` at a proxy in front of the backend, which turns the check off.
+/// The request passes, as any request without `Origin` does, and the
+/// backend's log says once that the proxy drops `Origin`; curl's request,
+/// which carries neither, says nothing.
+#[tokio::test]
+async fn a_request_whose_origin_a_proxy_dropped_passes_and_the_log_says_so_once() {
+    let logs = tempfile::tempdir().unwrap();
+    let path = logs.path().join("backend.log");
+    let file = std::sync::Arc::new(std::fs::File::create(&path).unwrap());
+    // The backend's log as `main` writes it; here it serves this test's
+    // thread, which runs the edge, and not the other tests of this process.
+    let _log = tracing::subscriber::set_default(tracing_subscriber::fmt().with_writer(file).finish());
+    let warnings = || {
+        std::fs::read_to_string(&path)
+            .unwrap()
+            .lines()
+            .filter(|line| line.contains("WARN") && line.contains("drops the Origin header"))
+            .count()
+    };
+    let backend = Harness::new().start().await;
+    let http = reqwest::Client::builder().no_proxy().build().unwrap();
+    let login = |fetch_site: Option<&'static str>| {
+        let mut request = http.post(format!("{}/api/auth/login", backend.url)).body("{}");
+        if let Some(site) = fetch_site {
+            request = request.header("sec-fetch-site", site);
+        }
+        async move { answer(request.send().await.unwrap()).await }
+    };
+    let passed = (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody);
+
+    assert_eq!(login(None).await.refusal(), passed);
+    assert_eq!(warnings(), 0);
+    for _ in 0..2 {
+        assert_eq!(login(Some("same-origin")).await.refusal(), passed);
+    }
+    assert_eq!(warnings(), 1);
+    backend.close().await;
+}
+
 #[tokio::test]
 async fn a_request_over_https_gets_a_secure_cookie() {
     let harness = Harness::new();
