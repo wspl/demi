@@ -95,14 +95,12 @@ fn received_types_are_strict_and_types_only_the_browser_receives_are_tolerant() 
 }
 
 #[test]
-fn bytes_times_identities_and_bounds_carry_their_formats() {
+fn times_identities_and_bounds_carry_their_formats() {
     let [root, _] = schemas::<Block>();
     let user = variant(&root, "type", "user");
     assert_eq!(user["properties"]["createdAt"]["format"], "date-time");
     assert_eq!(user["properties"]["id"]["minLength"], 1);
 
-    let binary = variant(definition(&root, "MediaSource"), "type", "binary");
-    assert_eq!(binary["properties"]["data"]["contentEncoding"], "base64");
     let reference = variant(definition(&root, "MediaSource"), "type", "ref");
     assert_eq!(reference["properties"]["ref"]["pattern"], "^[0-9a-f]{64}$");
 

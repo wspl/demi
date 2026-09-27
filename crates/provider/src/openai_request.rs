@@ -8,14 +8,11 @@
 use std::borrow::Cow;
 
 use base64::{Engine, engine::general_purpose::STANDARD};
-use demi_core::{
-    DocumentSource, MediaSource, ThinkingConfig, ThinkingSummary, ToolMediaSource,
-    ToolResultContentBlock, UserContentBlock, attachment_tag,
-};
+use demi_core::{ThinkingConfig, ThinkingSummary};
 use serde::Serialize;
 
 use crate::{
-    InferenceItem, ToolDefinition, UnloadedMedia,
+    InferenceItem, MediaBytes, Medium, ResultPart, ToolDefinition, UserPart,
     wire::responses::{ReasoningItem, split_tool_use_id},
 };
 
@@ -243,14 +240,14 @@ pub enum InputPart<'a> {
 pub fn responses_input<'a>(
     items: &'a [InferenceItem],
     dialect: &ResponsesDialect,
-) -> Result<Vec<InputItem<'a>>, UnloadedMedia> {
+) -> Vec<InputItem<'a>> {
     let mut input = Vec::with_capacity(items.len());
     for (index, item) in items.iter().enumerate() {
         match item {
             InferenceItem::UserMessage { content } | InferenceItem::UserSteer { content } => {
                 input.push(InputItem::User(UserInput {
                     role: "user",
-                    content: responses_user_parts(content)?,
+                    content: responses_user_parts(content),
                 }));
             }
             InferenceItem::AssistantText { model_id, text } => {
@@ -308,19 +305,19 @@ pub fn responses_input<'a>(
                 tool_use_id, output, ..
             } => {
                 let (call_id, _) = split_tool_use_id(tool_use_id);
-                push_tool_result(&mut input, call_id, output, dialect.tool_media)?;
+                push_tool_result(&mut input, call_id, output, dialect.tool_media);
             }
         }
     }
-    Ok(input)
+    input
 }
 
 fn push_tool_result<'a>(
     input: &mut Vec<InputItem<'a>>,
     call_id: &'a str,
-    output: &'a [ToolResultContentBlock],
+    output: &'a [ResultPart],
     media: ToolMedia,
-) -> Result<(), UnloadedMedia> {
+) {
     match media {
         ToolMedia::FollowUp => {
             input.push(InputItem::FunctionCallOutput(FunctionCallOutputInput {
@@ -328,15 +325,14 @@ fn push_tool_result<'a>(
                 call_id,
                 output: ToolOutput::Text(tool_output_text(output)),
             }));
-            let mut parts = Vec::new();
-            for block in output {
-                if let Some(source) = tool_media_source(block) {
-                    parts.push(InputPart::InputImage {
-                        image_url: Cow::Owned(tool_media_url(source)?),
-                        detail: "auto",
-                    });
-                }
-            }
+            let mut parts: Vec<InputPart<'_>> = output
+                .iter()
+                .filter_map(result_media)
+                .map(|bytes| InputPart::InputImage {
+                    image_url: Cow::Owned(data_url(bytes)),
+                    detail: "auto",
+                })
+                .collect();
             if !parts.is_empty() {
                 let note = format!("[media returned by tool call {call_id}]");
                 parts.insert(0, InputPart::InputText { text: Cow::Owned(note) });
@@ -349,21 +345,22 @@ fn push_tool_result<'a>(
         ToolMedia::Inline => {
             let text = output
                 .iter()
-                .filter_map(|block| match block {
-                    ToolResultContentBlock::Text { text } => Some(text.as_str()),
-                    ToolResultContentBlock::Image { .. } | ToolResultContentBlock::Video { .. } => None,
+                .filter_map(|part| match part {
+                    ResultPart::Text(text) => Some(text.as_str()),
+                    ResultPart::Image(_) | ResultPart::Video(_) => None,
                 })
                 .collect::<Vec<_>>()
                 .join("\n");
-            let mut images = Vec::new();
-            for block in output {
-                if let ToolResultContentBlock::Image { source } = block {
-                    images.push(InputPart::InputImage {
-                        image_url: Cow::Owned(tool_media_url(source)?),
+            let images: Vec<InputPart<'_>> = output
+                .iter()
+                .filter_map(|part| match part {
+                    ResultPart::Image(bytes) => Some(InputPart::InputImage {
+                        image_url: Cow::Owned(data_url(bytes)),
                         detail: "auto",
-                    });
-                }
-            }
+                    }),
+                    ResultPart::Text(_) | ResultPart::Video(_) => None,
+                })
+                .collect();
             let output = if images.is_empty() {
                 ToolOutput::Text(text)
             } else {
@@ -381,7 +378,6 @@ fn push_tool_result<'a>(
             }));
         }
     }
-    Ok(())
 }
 
 /// The reasoning item a thinking block's signature carries, when this
@@ -392,36 +388,23 @@ fn own_reasoning(signature: &str, tag: &str) -> Option<ReasoningItem> {
     serde_json::from_str(json).ok()
 }
 
-/// A user message's content as Responses parts: text, references and
-/// attachment tags as text, PDFs as files, images and videos as images.
-fn responses_user_parts(content: &[UserContentBlock]) -> Result<Vec<InputPart<'_>>, UnloadedMedia> {
+/// A user message's content as Responses parts: text as text, PDFs as
+/// files, images and videos as images.
+fn responses_user_parts(content: &[UserPart]) -> Vec<InputPart<'_>> {
     content
         .iter()
-        .map(|block| {
-            Ok(match block {
-                UserContentBlock::Text { text } => InputPart::InputText {
-                    text: Cow::Borrowed(text),
-                },
-                UserContentBlock::Reference { reference } => InputPart::InputText {
-                    text: Cow::Borrowed(reference),
-                },
-                UserContentBlock::Attachment(attachment) => InputPart::InputText {
-                    text: Cow::Owned(attachment_tag(attachment)),
-                },
-                UserContentBlock::Document { source } => {
-                    let (file_name, file_data) = document_data(source)?;
-                    InputPart::InputFile {
-                        filename: file_name,
-                        file_data,
-                    }
-                }
-                UserContentBlock::Image { source } | UserContentBlock::Video { source } => {
-                    InputPart::InputImage {
-                        image_url: media_url(source)?,
-                        detail: "auto",
-                    }
-                }
-            })
+        .map(|part| match part {
+            UserPart::Text(text) => InputPart::InputText {
+                text: Cow::Borrowed(text),
+            },
+            UserPart::Document { bytes, file_name } => InputPart::InputFile {
+                filename: file_name,
+                file_data: data_url(bytes),
+            },
+            UserPart::Image(medium) | UserPart::Video(medium) => InputPart::InputImage {
+                image_url: media_url(medium),
+                detail: "auto",
+            },
         })
         .collect()
 }
@@ -550,7 +533,7 @@ pub fn chat_messages<'a>(
     system_prompt: &'a str,
     items: &'a [InferenceItem],
     dialect: ChatDialect,
-) -> Result<Vec<ChatMessage<'a>>, UnloadedMedia> {
+) -> Vec<ChatMessage<'a>> {
     let mut messages = Vec::new();
     if !demi_core::is_blank(system_prompt) {
         messages.push(ChatMessage::System {
@@ -563,7 +546,7 @@ pub fn chat_messages<'a>(
             InferenceItem::UserMessage { content } | InferenceItem::UserSteer { content } => {
                 turn.flush(&mut messages, dialect);
                 messages.push(ChatMessage::User {
-                    content: chat_user_content(content, dialect.media)?,
+                    content: chat_user_content(content, dialect.media),
                 });
             }
             InferenceItem::AssistantText { text, .. } => {
@@ -593,7 +576,7 @@ pub fn chat_messages<'a>(
                     content: tool_output_text(output),
                 });
                 if dialect.media == ChatMedia::Native {
-                    push_tool_media(&mut messages, tool_use_id, output)?;
+                    push_tool_media(&mut messages, tool_use_id, output);
                 }
             }
             InferenceItem::AssistantThinking { text, .. } => {
@@ -605,7 +588,7 @@ pub fn chat_messages<'a>(
         }
     }
     turn.flush(&mut messages, dialect);
-    Ok(messages)
+    messages
 }
 
 /// The assistant message being assembled, and thinking that came before it.
@@ -661,43 +644,36 @@ impl<'a> AssistantTurn<'a> {
 
 /// A user message's content as Chat Completions parts, as plain text when
 /// every part is text.
-fn chat_user_content(content: &[UserContentBlock], media: ChatMedia) -> Result<ChatContent<'_>, UnloadedMedia> {
+fn chat_user_content(content: &[UserPart], media: ChatMedia) -> ChatContent<'_> {
     let mut parts = Vec::new();
-    for block in content {
-        match block {
-            UserContentBlock::Text { text } => parts.push(ChatPart::Text {
+    for part in content {
+        match part {
+            UserPart::Text(text) => parts.push(ChatPart::Text {
                 text: Cow::Borrowed(text),
             }),
-            UserContentBlock::Reference { reference } => parts.push(ChatPart::Text {
-                text: Cow::Borrowed(reference),
-            }),
-            UserContentBlock::Attachment(attachment) => parts.push(ChatPart::Text {
-                text: Cow::Owned(attachment_tag(attachment)),
-            }),
-            UserContentBlock::Document { source } => {
+            UserPart::Document { bytes, file_name } => {
                 if media == ChatMedia::Native {
-                    let (file_name, file_data) = document_data(source)?;
                     parts.push(ChatPart::File {
                         file: FileData {
                             filename: file_name,
-                            file_data,
+                            file_data: data_url(bytes),
                         },
                     });
                 }
             }
-            UserContentBlock::Video { source } if media == ChatMedia::Images => {
-                let named = match source {
-                    MediaSource::Url { url } => url,
-                    MediaSource::Binary { media_type, .. } | MediaSource::Ref { media_type, .. } => media_type,
+            UserPart::Video(medium) if media == ChatMedia::Images => {
+                let named = match medium {
+                    Medium::Url(url) => url,
+                    Medium::Bytes(bytes) => &bytes.media_type,
                 };
                 parts.push(ChatPart::Text {
                     text: Cow::Owned(format!("[video:{named}]")),
                 });
             }
-            UserContentBlock::Image { source } | UserContentBlock::Video { source } => {
+            UserPart::Image(medium) | UserPart::Video(medium) => {
                 parts.push(ChatPart::ImageUrl {
                     image_url: ImageUrl {
-                        url: media_url(source)?,
+                        url: media_url(medium),
                         detail: "auto",
                     },
                 });
@@ -711,10 +687,10 @@ fn chat_user_content(content: &[UserContentBlock], media: ChatMedia) -> Result<C
             ChatPart::ImageUrl { .. } | ChatPart::File { .. } => None,
         })
         .collect();
-    Ok(match texts {
+    match texts {
         Some(texts) => ChatContent::Text(texts.join("\n")),
         None => ChatContent::Parts(parts),
-    })
+    }
 }
 
 /// The images and videos a tool returned, in a user message after the tool's
@@ -722,19 +698,18 @@ fn chat_user_content(content: &[UserContentBlock], media: ChatMedia) -> Result<C
 fn push_tool_media<'a>(
     messages: &mut Vec<ChatMessage<'a>>,
     tool_use_id: &str,
-    output: &'a [ToolResultContentBlock],
-) -> Result<(), UnloadedMedia> {
-    let mut parts = Vec::new();
-    for block in output {
-        if let Some(source) = tool_media_source(block) {
-            parts.push(ChatPart::ImageUrl {
-                image_url: ImageUrl {
-                    url: Cow::Owned(tool_media_url(source)?),
-                    detail: "auto",
-                },
-            });
-        }
-    }
+    output: &'a [ResultPart],
+) {
+    let mut parts: Vec<ChatPart<'_>> = output
+        .iter()
+        .filter_map(result_media)
+        .map(|bytes| ChatPart::ImageUrl {
+            image_url: ImageUrl {
+                url: Cow::Owned(data_url(bytes)),
+                detail: "auto",
+            },
+        })
+        .collect();
     if !parts.is_empty() {
         let note = format!("[media returned by tool call {tool_use_id}]");
         parts.insert(0, ChatPart::Text { text: Cow::Owned(note) });
@@ -742,19 +717,18 @@ fn push_tool_media<'a>(
             content: ChatContent::Parts(parts),
         });
     }
-    Ok(())
 }
 
 /// A tool's output as text, for formats without media in a tool's output:
 /// each image or video becomes a placeholder that names its type, such as
 /// `[image:image/png]`.
-pub fn tool_output_text(output: &[ToolResultContentBlock]) -> String {
+pub fn tool_output_text(output: &[ResultPart]) -> String {
     output
         .iter()
-        .map(|block| match block {
-            ToolResultContentBlock::Text { text } => text.clone(),
-            ToolResultContentBlock::Image { source } => format!("[image:{}]", tool_media_type(source)),
-            ToolResultContentBlock::Video { source } => format!("[video:{}]", tool_media_type(source)),
+        .map(|part| match part {
+            ResultPart::Text(text) => text.clone(),
+            ResultPart::Image(bytes) => format!("[image:{}]", bytes.media_type),
+            ResultPart::Video(bytes) => format!("[video:{}]", bytes.media_type),
         })
         .collect::<Vec<_>>()
         .join("\n")
@@ -770,47 +744,28 @@ pub fn tool_arguments(input: &serde_json::Value) -> String {
     }
 }
 
-fn tool_media_source(block: &ToolResultContentBlock) -> Option<&ToolMediaSource> {
-    match block {
-        ToolResultContentBlock::Image { source } | ToolResultContentBlock::Video { source } => Some(source),
-        ToolResultContentBlock::Text { .. } => None,
+/// The bytes of a tool's image or video; none for its text.
+fn result_media(part: &ResultPart) -> Option<&MediaBytes> {
+    match part {
+        ResultPart::Image(bytes) | ResultPart::Video(bytes) => Some(bytes),
+        ResultPart::Text(_) => None,
     }
 }
 
-fn tool_media_type(source: &ToolMediaSource) -> &str {
-    match source {
-        ToolMediaSource::Binary { media_type, .. } | ToolMediaSource::Ref { media_type, .. } => media_type,
+/// Where the vendor reads an image or a video: its URL, or its bytes as a
+/// data URL.
+fn media_url(medium: &Medium) -> Cow<'_, str> {
+    match medium {
+        Medium::Bytes(bytes) => Cow::Owned(data_url(bytes)),
+        Medium::Url(url) => Cow::Borrowed(url),
     }
 }
 
-fn tool_media_url(source: &ToolMediaSource) -> Result<String, UnloadedMedia> {
-    match source {
-        ToolMediaSource::Binary { data, media_type } => Ok(data_url(media_type, data)),
-        ToolMediaSource::Ref { r#ref, .. } => Err(UnloadedMedia(r#ref.to_string())),
-    }
-}
-
-fn media_url(source: &MediaSource) -> Result<Cow<'_, str>, UnloadedMedia> {
-    match source {
-        MediaSource::Binary { data, media_type } => Ok(Cow::Owned(data_url(media_type, data))),
-        MediaSource::Url { url } => Ok(Cow::Borrowed(url)),
-        MediaSource::Ref { r#ref, .. } => Err(UnloadedMedia(r#ref.to_string())),
-    }
-}
-
-/// A PDF's file name and its bytes as a data URL.
-fn document_data(source: &DocumentSource) -> Result<(&str, String), UnloadedMedia> {
-    match source {
-        DocumentSource::Binary {
-            data,
-            media_type,
-            file_name,
-        } => Ok((file_name, data_url(media_type, data))),
-        DocumentSource::Ref { r#ref, .. } => Err(UnloadedMedia(r#ref.to_string())),
-    }
-}
-
-/// Bytes as a `data:` URL of `media_type`, base64 encoded.
-fn data_url(media_type: &str, bytes: &[u8]) -> String {
-    format!("data:{media_type};base64,{}", STANDARD.encode(bytes))
+/// A medium's bytes as a `data:` URL of its media type, base64 encoded.
+fn data_url(bytes: &MediaBytes) -> String {
+    format!(
+        "data:{};base64,{}",
+        bytes.media_type,
+        STANDARD.encode(&bytes.data)
+    )
 }

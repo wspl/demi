@@ -37,11 +37,6 @@ async fn a_completion_of_an_earlier_round_marks_the_current_one_undelivered() {
 }
 
 #[tokio::test(flavor = "local")]
-async fn a_checkpoint_that_holds_media_bytes_is_refused() {
-    store_contract::a_checkpoint_that_holds_media_bytes_is_refused(&*MemoryTreeStore::new()).await;
-}
-
-#[tokio::test(flavor = "local")]
 async fn the_blob_namespace_names_bytes_by_their_sha256() {
     store_contract::the_blob_namespace_names_bytes_by_their_sha256(&*MemoryTreeStore::new()).await;
 }

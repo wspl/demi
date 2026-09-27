@@ -5,11 +5,12 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use demi_core::{B64Bytes, MediaSource, ThinkingConfig, TokenUsage, UserContentBlock};
+use demi_core::{B64Bytes, ThinkingConfig, TokenUsage};
 use demi_provider::credentials::MemoryCredentialPool;
 use demi_provider::quota::MemorySnapshots;
 use demi_provider::{
-    ErrorCode, InferenceItem, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun,
+    ErrorCode, InferenceItem, InferenceRequest, MediaBytes, Medium, ProviderEvent, ProviderFailure,
+    ProviderRun, UserPart,
 };
 use demi_provider_claude_code::{ClaudeCodeConfig, ClaudeCodeProvider};
 use demi_shell::{ProcessEnd, Signal, SpawnEnv, SpawnRequest};
@@ -325,20 +326,13 @@ async fn a_new_process_receives_the_transcript_as_one_user_message_that_names_ea
     let provider = provider().await;
     let (placement, mut starts) = ScriptedPlacement::new();
     let mut runtime = runtime_of(&provider, &placement);
-    let screenshot = UserContentBlock::Image {
-        source: MediaSource::Binary {
-            data: B64Bytes::from(Bytes::from_static(b"png")),
-            media_type: "image/png".into(),
-        },
-    };
+    let screenshot = UserPart::Image(Medium::Bytes(MediaBytes {
+        data: B64Bytes::from(Bytes::from_static(b"png")),
+        media_type: "image/png".into(),
+    }));
     let items = vec![
         InferenceItem::UserMessage {
-            content: vec![
-                UserContentBlock::Text {
-                    text: "previous work".into(),
-                },
-                screenshot,
-            ],
+            content: vec![UserPart::Text("previous work".into()), screenshot],
         },
         InferenceItem::AssistantThinking {
             model_id: "claude-test".into(),

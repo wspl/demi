@@ -17,7 +17,9 @@ use std::{io::Read, process::ExitCode, rc::Rc, sync::Arc, time::Duration};
 use demi_agent::{
     AgentHarness, AgentServer, AgentTreeStore, CompactionConfig, PromptContext, ProviderResolver,
     RandomIds, ResolveError, ServerConfig, ServerDeps, SessionConfig,
-    store::{CheckpointState, CheckpointUpdate, CommandStateSnapshot, NodeRecord},
+    store::{
+        CheckpointState, CheckpointUpdate, CommandStateSnapshot, NodeRecord, media::HeldMedia,
+    },
     testing::{MemoryTreeStore, NoHost, NoShells, TestClient, client_text},
     transcript::estimate::context_tokens,
 };
@@ -287,14 +289,15 @@ impl Conversation {
     }
 
     /// The history since the last compaction, as the next request would
-    /// estimate it with `window`.
+    /// estimate it with `window`, its media by reference only, as frames
+    /// carry them.
     fn context(&self, window: u32) -> u64 {
         let blocks = self.blocks();
         let start = blocks
             .iter()
             .rposition(|block| matches!(block, Block::CompactionBoundary(_)))
             .unwrap_or(0);
-        context_tokens(&blocks[start..], Some(window))
+        context_tokens(&blocks[start..], &HeldMedia::default(), Some(window))
     }
 
     /// Runs `frame` to the end of the action it starts.

@@ -657,8 +657,8 @@ export function transcriptDemoBlocks(): Block[] {
         {
           type: 'document',
           source: {
-            type: 'binary',
-            data: '',
+            type: 'ref',
+            ref: galleryBlobs.guide,
             mediaType: 'application/pdf',
             fileName: 'login-failure.pdf'
           }

@@ -22,7 +22,7 @@ use super::{
 use crate::{
     store::{
         Checkpoint, CheckpointUpdate, CommandStateHistory, CommitGuard, SessionStore, StoreError,
-        media::{BlobStore, HeldMedia},
+        media::{BlobStore, HeldMedia, ModelView},
     },
     transcript::{
         TranscriptLog, compaction_window,
@@ -95,14 +95,16 @@ impl CompactionConfig {
     }
 }
 
-/// Whether the estimate of `blocks`, the replayed blocks as the model
+/// Whether the estimate of `view`, the replayed blocks as the model
 /// receives them, is at or over the token threshold of `model`.
-fn over_token_threshold(s: &SessionShared, model: &ModelSelection, blocks: &[Block]) -> bool {
+fn over_token_threshold(s: &SessionShared, model: &ModelSelection, view: &ModelView) -> bool {
     let window = model.model.context_window;
     s.config
         .compaction
         .threshold(window)
-        .is_some_and(|threshold| context_tokens(blocks, Some(window)) >= threshold)
+        .is_some_and(|threshold| {
+            context_tokens(&view.blocks, &view.media, Some(window)) >= threshold
+        })
 }
 
 /// Whether the history is at or over a threshold of `model`, whose vendor
@@ -115,11 +117,11 @@ async fn over_a_threshold(
     cancel: &TurnCancel,
 ) -> Result<bool, TurnError> {
     let view = model_view(s, cancel).await?;
-    if over_token_threshold(s, model, &view.blocks) {
+    if over_token_threshold(s, model, &view) {
         return Ok(true);
     }
     let system_prompt = cancel.guard(s.runtime.system_prompt()).await?;
-    let replayed = replay(&view.blocks, &model.model, limits);
+    let replayed = replay(&view, &model.model, limits);
     let size = request_size(&system_prompt, &replayed.items);
     Ok(s.config.compaction.size_reached(limits, size))
 }
@@ -144,7 +146,7 @@ pub(super) async fn compacting<T>(
 pub(super) async fn preflight(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<(), TurnError> {
     let model = s.read(|core| core.model.clone());
     let view = model_view(s, cancel).await?;
-    if over_token_threshold(s, &model, &view.blocks) {
+    if over_token_threshold(s, &model, &view) {
         compacting(s, run_pass(s, cancel)).await?;
     }
     Ok(())
@@ -219,7 +221,7 @@ pub(super) async fn run_pass(
     loop {
         let compacted_tokens = view.blocks[start..cut]
             .iter()
-            .map(block_tokens)
+            .map(|block| block_tokens(block, &view.media))
             .sum::<u64>();
         // The copy holds the window by reference, with the bytes the session
         // holds for it.

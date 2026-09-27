@@ -3,20 +3,18 @@
 
 use std::{num::NonZeroU32, sync::Arc};
 
-use demi_core::{
-    B64Bytes, MediaSource, ThinkingConfig, TokenUsage, ToolMediaSource, ToolResultContentBlock,
-    UserContentBlock,
-};
+use demi_core::{B64Bytes, ThinkingConfig, TokenUsage};
 use demi_provider::{
-    InferenceItem, InferenceRequest, Provider, ProviderEvent, RuntimeEnv, ToolDefinition,
+    InferenceItem, InferenceRequest, MediaBytes, Medium, Provider, ProviderEvent, ResultPart,
+    RuntimeEnv, ToolDefinition, UserPart,
     testing::{MockVendor, inference_request},
 };
 use serde_json::{Value, json};
 
 use crate::{body_of, chunks, provider_at, run};
 
-fn text(text: &str) -> Vec<UserContentBlock> {
-    vec![UserContentBlock::Text { text: text.into() }]
+fn text(text: &str) -> Vec<UserPart> {
+    vec![UserPart::Text(text.into())]
 }
 
 fn request_with(items: Vec<InferenceItem>) -> InferenceRequest {
@@ -43,7 +41,7 @@ fn tool_use(id: &str, name: &str, input: Value) -> InferenceItem {
     }
 }
 
-fn tool_result(id: &str, output: Vec<ToolResultContentBlock>) -> InferenceItem {
+fn tool_result(id: &str, output: Vec<ResultPart>) -> InferenceItem {
     InferenceItem::ToolResult {
         tool_use_id: id.into(),
         output,
@@ -206,12 +204,7 @@ async fn a_tool_call_replays_with_the_signature_of_the_thinking_item_in_front_of
         },
         signed("google:sig-abc"),
         tool_use("call-1", "shell_exec", json!({ "command": "ls" })),
-        tool_result(
-            "call-1",
-            vec![ToolResultContentBlock::Text {
-                text: "a.md".into(),
-            }],
-        ),
+        tool_result("call-1", vec![ResultPart::Text("a.md".into())]),
     ]))
     .await;
     assert_eq!(
@@ -243,15 +236,11 @@ async fn a_tool_call_without_a_signature_of_this_provider_replays_as_text() {
         items.push(tool_result(
             "call-9",
             vec![
-                ToolResultContentBlock::Text {
-                    text: "a.md".into(),
-                },
-                ToolResultContentBlock::Image {
-                    source: ToolMediaSource::Binary {
-                        data: B64Bytes::from(&b"PNG"[..]),
-                        media_type: "image/png".into(),
-                    },
-                },
+                ResultPart::Text("a.md".into()),
+                ResultPart::Image(MediaBytes {
+                    data: B64Bytes::from(&b"PNG"[..]),
+                    media_type: "image/png".into(),
+                }),
             ],
         ));
         let body = body_of(request_with(items)).await;
@@ -273,20 +262,12 @@ async fn video_rides_inline_and_tool_media_follows_the_function_response() {
     let body = body_of(request_with(vec![
         InferenceItem::UserMessage {
             content: vec![
-                UserContentBlock::Text {
-                    text: "watch this".into(),
-                },
-                UserContentBlock::Video {
-                    source: MediaSource::Binary {
-                        data: B64Bytes::from(&b"VID"[..]),
-                        media_type: "video/mp4".into(),
-                    },
-                },
-                UserContentBlock::Image {
-                    source: MediaSource::Url {
-                        url: "https://example.com/a.png".into(),
-                    },
-                },
+                UserPart::Text("watch this".into()),
+                UserPart::Video(Medium::Bytes(MediaBytes {
+                    data: B64Bytes::from(&b"VID"[..]),
+                    media_type: "video/mp4".into(),
+                })),
+                UserPart::Image(Medium::Url("https://example.com/a.png".into())),
             ],
         },
         signed("google:sig-2"),
@@ -294,15 +275,11 @@ async fn video_rides_inline_and_tool_media_follows_the_function_response() {
         tool_result(
             "call-2",
             vec![
-                ToolResultContentBlock::Text {
-                    text: "rendered".into(),
-                },
-                ToolResultContentBlock::Image {
-                    source: ToolMediaSource::Binary {
-                        data: B64Bytes::from(&b"PNG"[..]),
-                        media_type: "image/png".into(),
-                    },
-                },
+                ResultPart::Text("rendered".into()),
+                ResultPart::Image(MediaBytes {
+                    data: B64Bytes::from(&b"PNG"[..]),
+                    media_type: "image/png".into(),
+                }),
             ],
         ),
     ]))

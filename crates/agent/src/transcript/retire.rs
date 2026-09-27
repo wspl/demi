@@ -1,14 +1,15 @@
 //! Retired tool media (`runtime.md` § Retired tool media): a tool result's
-//! image or video that is more than 30 days old gives way, in its place in
-//! the result, to one line of text that says what it was and when it was
-//! removed, once no request can send it while a vendor may still keep that
-//! request in its cache. A message's media come from the user's uploads and
-//! are never retired. The backend applies the rule to stored conversations
+//! image or video that is more than 30 days old is gone from the result,
+//! and in its place a part says what it was and when it was removed, once
+//! no request can send it while a vendor may still keep that request in its
+//! cache. A message's media come from the user's uploads and are never
+//! retired. The backend applies the rule to stored conversations
 //! (`storage.md` § Retiring tool media).
 
-use demi_core::{Block, Timestamp, ToolMediaSource, ToolResultContentBlock};
+use demi_core::{
+    Block, GoneCause, ModelMediaKind, Timestamp, ToolMediaSource, ToolResultContentBlock,
+};
 use jiff::SignedDuration;
-use jiff::tz::TimeZone;
 
 use super::replay_start;
 
@@ -30,22 +31,17 @@ pub struct Retirement {
 }
 
 /// The blocks of one node's transcript that the rule changes, by index,
-/// each with its expired tool media retired. A `tool_call` block more than
-/// [`KEPT`] old gives up its media when the conversation is idle, or when
-/// it lies before the node's last `compaction_boundary` and that boundary
-/// is more than [`CACHE_LIFETIME`] old: replay starts at the boundary, so
-/// no request has sent the medium since the summary request.
+/// each with its expired tool media retired: gone, retired now. A
+/// `tool_call` block more than [`KEPT`] old gives up its media when the
+/// conversation is idle, or when it lies before the node's last
+/// `compaction_boundary` and that boundary is more than [`CACHE_LIFETIME`]
+/// old: replay starts at the boundary, so no request has sent the medium
+/// since the summary request.
 pub fn retire(blocks: &[Block], retirement: Retirement) -> Vec<(usize, Block)> {
     let start = replay_start(blocks);
     let summarized = match blocks.get(start) {
         Some(Block::CompactionBoundary(boundary)) => older_than(boundary.created_at, CACHE_LIFETIME, retirement.now),
         _ => false,
-    };
-    let text = |kind: &str, media_type: &str| ToolResultContentBlock::Text {
-        text: format!(
-            "[{kind}:{media_type}, removed on {}: a tool result's images and videos are kept for 30 days]",
-            retirement.now.to_jiff().to_zoned(TimeZone::UTC).date()
-        ),
     };
     let mut changed = Vec::new();
     for (index, block) in blocks.iter().enumerate() {
@@ -59,16 +55,22 @@ pub fn retire(blocks: &[Block], retirement: Retirement) -> Vec<(usize, Block)> {
         let mut retired = call.clone();
         let mut any = false;
         for part in &mut retired.output {
-            let replacement = match part {
+            let (kind, media_type) = match part {
                 ToolResultContentBlock::Image {
                     source: ToolMediaSource::Ref { media_type, .. },
-                } => text("image", media_type),
+                } => (ModelMediaKind::Image, media_type.clone()),
                 ToolResultContentBlock::Video {
                     source: ToolMediaSource::Ref { media_type, .. },
-                } => text("video", media_type),
-                _ => continue,
+                } => (ModelMediaKind::Video, media_type.clone()),
+                ToolResultContentBlock::Text { .. } | ToolResultContentBlock::Gone { .. } => {
+                    continue;
+                }
             };
-            *part = replacement;
+            *part = ToolResultContentBlock::Gone {
+                kind,
+                media_type,
+                cause: GoneCause::Retired { at: retirement.now },
+            };
             any = true;
         }
         if any {
@@ -172,14 +174,13 @@ mod tests {
         let Block::ToolCall(mut call) = shot(name, age_days) else {
             unreachable!("a shot is a tool call")
         };
-        call.output[1] = ToolResultContentBlock::Text {
-            text: "[image:image/png, removed on 2026-10-01: a tool result's images and videos are kept for 30 days]"
-                .into(),
+        let gone = |kind, media_type: &str| ToolResultContentBlock::Gone {
+            kind,
+            media_type: media_type.into(),
+            cause: GoneCause::Retired { at: now() },
         };
-        call.output[2] = ToolResultContentBlock::Text {
-            text: "[video:video/mp4, removed on 2026-10-01: a tool result's images and videos are kept for 30 days]"
-                .into(),
-        };
+        call.output[1] = gone(ModelMediaKind::Image, "image/png");
+        call.output[2] = gone(ModelMediaKind::Video, "video/mp4");
         Block::ToolCall(call)
     }
 
@@ -223,8 +224,8 @@ mod tests {
                 let Block::ToolCall(call) = &blocks[index] else {
                     panic!("{situation}: only a tool call changes");
                 };
-                // The text takes each medium's place; the rest of the block
-                // stays as it was.
+                // A part that says each medium is gone takes its place; the
+                // rest of the block stays as it was.
                 assert_eq!(block, retired(call.id.as_str(), 31), "{situation}");
             }
         }

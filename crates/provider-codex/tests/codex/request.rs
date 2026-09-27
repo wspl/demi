@@ -4,12 +4,9 @@
 
 use std::sync::Arc;
 
-use demi_core::{
-    B64Bytes, ThinkingConfig, ThinkingSummary, ToolMediaSource, ToolResultContentBlock,
-    UserContentBlock,
-};
+use demi_core::{B64Bytes, ThinkingConfig, ThinkingSummary};
 use demi_provider::{
-    InferenceItem, InferenceRequest, ToolDefinition,
+    InferenceItem, InferenceRequest, MediaBytes, ResultPart, ToolDefinition, UserPart,
     openai_request::{prompt_cache_key, short_hash},
     testing::{MockVendor, RecordedRequest, inference_request, jwt},
 };
@@ -18,8 +15,8 @@ use serde_json::{Value, json};
 
 use crate::{NOW, RESPONSES, completed, fresh_token, pool_with, provider, run, runtime_of, secret};
 
-fn text(text: &str) -> Vec<UserContentBlock> {
-    vec![UserContentBlock::Text { text: text.into() }]
+fn text(text: &str) -> Vec<UserPart> {
+    vec![UserPart::Text(text.into())]
 }
 
 fn shell_tool() -> ToolDefinition {
@@ -89,9 +86,7 @@ async fn a_body_replays_the_transcript_with_codexs_items_tools_and_reasoning() {
         },
         InferenceItem::ToolResult {
             tool_use_id: "call_1|fc_1".into(),
-            output: vec![ToolResultContentBlock::Text {
-                text: "/tmp".into(),
-            }],
+            output: vec![ResultPart::Text("/tmp".into())],
             is_error: false,
         },
     ]))
@@ -143,21 +138,15 @@ async fn thinking_signed_by_another_vendor_is_skipped_and_tool_images_ride_insid
         InferenceItem::ToolResult {
             tool_use_id: "call_1|fc_1".into(),
             output: vec![
-                ToolResultContentBlock::Text {
-                    text: "see image".into(),
-                },
-                ToolResultContentBlock::Image {
-                    source: ToolMediaSource::Binary {
-                        data: B64Bytes::from(vec![1, 2, 3]),
-                        media_type: "image/png".into(),
-                    },
-                },
-                ToolResultContentBlock::Video {
-                    source: ToolMediaSource::Binary {
-                        data: B64Bytes::from(vec![4]),
-                        media_type: "video/mp4".into(),
-                    },
-                },
+                ResultPart::Text("see image".into()),
+                ResultPart::Image(MediaBytes {
+                    data: B64Bytes::from(vec![1, 2, 3]),
+                    media_type: "image/png".into(),
+                }),
+                ResultPart::Video(MediaBytes {
+                    data: B64Bytes::from(vec![4]),
+                    media_type: "video/mp4".into(),
+                }),
             ],
             is_error: false,
         },

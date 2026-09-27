@@ -11,11 +11,11 @@ use std::sync::{Arc, Mutex};
 use demi_backend::{FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry, ProviderFamily};
 use demi_core::{
     AuthState, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList, RuntimeState, Timestamp,
-    TokenUsage, UserContentBlock,
+    TokenUsage,
 };
 use demi_provider::{
     Capabilities, CatalogError, InferenceItem, InferenceRequest, Provider, ProviderEvent, ProviderRun, ProviderRuntime,
-    RequestLimits, RuntimeEnv, RuntimeError,
+    RequestLimits, RuntimeEnv, RuntimeError, UserPart,
 };
 use demi_web_api::conversations::ConversationSummary;
 use demi_web_api::error::ErrorCode;
@@ -165,7 +165,7 @@ async fn summary(backend: &TestBackend, session: &Session, id: &str) -> Conversa
 fn input(request: &InferenceRequest) -> String {
     match &request.items[..] {
         [InferenceItem::UserMessage { content }] => match &content[..] {
-            [UserContentBlock::Text { text }] => text.clone(),
+            [UserPart::Text(text)] => text.clone(),
             other => panic!("{other:?}"),
         },
         other => panic!("{other:?}"),

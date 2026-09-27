@@ -13,11 +13,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
-use demi_core::{StreamKind, ThinkingConfig, UserContentBlock};
+use demi_core::{StreamKind, ThinkingConfig};
 use demi_provider::quota::Observation;
 use demi_provider::wire::Tagged;
 use demi_provider::{
-    InferenceItem, InferenceRequest, ProviderFailure, ToolCall, UnloadedMedia, encode_body,
+    InferenceItem, InferenceRequest, ProviderFailure, ResultPart, ToolCall, UserPart, encode_body,
 };
 use demi_shell::{Process, ProcessControl, ProcessEnd, ProcessOutput, Signal};
 use futures_channel::mpsc;
@@ -78,7 +78,7 @@ impl ProcessKey {
 #[derive(Default)]
 struct Sent {
     count: usize,
-    first: Option<Vec<UserContentBlock>>,
+    first: Option<Vec<UserPart>>,
 }
 
 impl Sent {
@@ -101,7 +101,7 @@ impl Sent {
     }
 }
 
-fn first_user_message(items: &[InferenceItem]) -> Option<&Vec<UserContentBlock>> {
+fn first_user_message(items: &[InferenceItem]) -> Option<&Vec<UserPart>> {
     items.iter().find_map(|item| match item {
         InferenceItem::UserMessage { content } => Some(content),
         _ => None,
@@ -460,7 +460,7 @@ impl LiveCli {
                     },
                 },
             };
-            Ok::<_, UnloadedMedia>(input::line(&response))
+            input::line(&response)
         })
         .await?;
         self.write(line).await
@@ -490,12 +490,9 @@ impl LiveCli {
                 .map(|call| {
                     let (output, is_error) = tool_result(&items, &call.tool_use_id)
                         .expect("every call of the batch has a result");
-                    Ok((
-                        call.tool_use_id.clone(),
-                        mcp::tool_result(output, is_error)?,
-                    ))
+                    (call.tool_use_id.clone(), mcp::tool_result(output, is_error))
                 })
-                .collect::<Result<Vec<_>, UnloadedMedia>>()
+                .collect::<Vec<_>>()
         })
         .await?;
         if let Some(mcp) = &self.mcp {
@@ -620,7 +617,7 @@ async fn next_mcp(mcp: &mut Option<Mcp>) -> McpEvent {
 fn tool_result<'a>(
     items: &'a [InferenceItem],
     tool_use_id: &str,
-) -> Option<(&'a [demi_core::ToolResultContentBlock], bool)> {
+) -> Option<(&'a [ResultPart], bool)> {
     items.iter().rev().find_map(|item| match item {
         InferenceItem::ToolResult {
             tool_use_id: id,

@@ -5,9 +5,9 @@
 
 use std::sync::Arc;
 
-use demi_core::{ModelSelection, ToolResultContentBlock, ToolView};
+use demi_core::{ModelSelection, ToolView};
 use demi_gates::{GateLease, Reservation};
-use demi_provider::{RequestLimits, ToolDefinition};
+use demi_provider::{RequestLimits, ResultPart, ToolDefinition};
 use futures_util::future::LocalBoxFuture;
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
@@ -81,7 +81,9 @@ pub(crate) struct ToolInvocation {
 /// How a tool call completed.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ToolOutcome {
-    pub(crate) output: Vec<ToolResultContentBlock>,
+    /// The result, with its media's bytes, which the session stores before
+    /// the result enters the transcript (`runtime.md` § Media).
+    pub(crate) output: Vec<ResultPart>,
     pub(crate) is_error: bool,
     pub(crate) view: Option<ToolView>,
     /// What the session does beyond recording the result; it writes the
@@ -93,7 +95,7 @@ impl ToolOutcome {
     /// A call that completed as an error with this text.
     pub(crate) fn error(text: String) -> Self {
         Self {
-            output: vec![ToolResultContentBlock::Text { text }],
+            output: vec![ResultPart::Text(text)],
             is_error: true,
             view: None,
             effect: None,
