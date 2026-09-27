@@ -29,3 +29,18 @@ export const TOO_LARGE_NOTE = 'Too large to show.'
 export function svgImageUrl(text: string): string {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(text)}`
 }
+
+/**
+ * Ends what an image or a player still loads when it leaves the page:
+ * removing the element leaves its fetch running, and a player keeps
+ * downloading, so the element drops its source, and a player loads nothing.
+ */
+export function dropSource(element: HTMLImageElement | HTMLMediaElement): void {
+  if (element instanceof HTMLMediaElement) {
+    element.pause()
+    element.removeAttribute('src')
+    element.load()
+    return
+  }
+  element.removeAttribute('src')
+}

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref } from 'vue'
+import { dropSource } from './preview'
 
 /** A video or audio file in the browser's own player. */
 defineProps<{ src: string; kind: 'video' | 'audio'; name: string }>()
@@ -14,14 +15,8 @@ function metadata(): void {
 }
 
 onBeforeUnmount(() => {
-  // A removed player keeps downloading; the standard way to stop it is to
-  // drop its source and load nothing.
-  const element = media.value
-  if (!element)
-    return
-  element.pause()
-  element.removeAttribute('src')
-  element.load()
+  if (media.value)
+    dropSource(media.value)
 })
 </script>
 

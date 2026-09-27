@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref, watch } from 'vue'
+import { dropSource } from './preview'
 
 /**
  * A picture scaled down to fit and never enlarged; a click shows it at its
@@ -22,8 +23,8 @@ function loaded(): void {
 }
 
 onBeforeUnmount(() => {
-  // Removing the element leaves its fetch running; dropping the source ends it.
-  image.value?.removeAttribute('src')
+  if (image.value)
+    dropSource(image.value)
 })
 </script>
 
@@ -42,9 +43,3 @@ onBeforeUnmount(() => {
     >
   </div>
 </template>
-
-<style scoped>
-.checkerboard {
-  background: repeating-conic-gradient(var(--line) 0% 25%, transparent 0% 50%) 0 0 / 16px 16px;
-}
-</style>

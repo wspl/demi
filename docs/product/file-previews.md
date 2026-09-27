@@ -188,13 +188,13 @@ open, and a click opens it large:
   such as `[image not stored: <reason>]` when the bytes could not be stored
   ([Media](../agent/runtime.md#media)). The page shows that text where the
   medium would be, as the model reads it.
-- **A medium that does not load.** When the page cannot load a medium's
-  bytes, because its blob is missing or the request failed, *Could not load
-  this image.* (or *video*) shows in its place, at the same height, and a
-  reload of the page tries again. A blob that a block references is never
-  deleted ([Media](../agent/runtime.md#media)), so this is a fault; a request
-  that replays the medium then carries `[missing image blob <ref>]` in its
-  place.
+- **A medium that cannot be shown.** When the page cannot show a medium,
+  because its blob is missing, the request failed or the browser cannot
+  decode it, *Could not show this image.* (or *video*) shows in its place, at
+  the same height, and a reload of the page tries again. A blob that a block
+  references is never deleted ([Media](../agent/runtime.md#media)), so a
+  missing one is a fault; a request that replays the medium then carries
+  `[missing image blob <ref>]` in its place.
 - **The model's picture.** The page loads the blob the result references,
   the same bytes the model receives, so it shows exactly the picture the
   model saw: a blob is named by the hash of its bytes, and nothing changes
