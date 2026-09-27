@@ -31,16 +31,25 @@ pub use tree::Tree;
 
 use crate::{
     AgentHarness, IdSource, Node, SessionConfig, ShellEnvironmentFactory,
-    session::{ForkError, fork_seed},
+    session::{ForkError, ModelSwitch, fork_seed},
     store::{
         AgentTreeStore, Checkpoint, CheckpointUpdate, CommandStateHistory, NodeRecord, StoreError,
     },
 };
 
-/// Where the agent gets a provider runtime for a session. The backend
-/// resolves the provider entry the selection names and builds the runtime on
-/// the shard that will own it; the agent never sees the provider itself.
+/// Where the agent gets a conversation's model selection and the provider
+/// runtimes its sessions infer with. The backend holds each conversation's
+/// selection in its record, resolves the provider entry a selection names
+/// and builds the runtime on the shard that will own it; the agent never sees
+/// the provider itself.
 pub trait ProviderResolver {
+    /// The model selection the conversation `root`'s tree opens with: the
+    /// one its record holds (`runtime.md` § Connections and the live tree).
+    fn selection<'a>(
+        &'a self,
+        root: &'a NodeId,
+    ) -> LocalBoxFuture<'a, Result<ModelSelection, ResolveError>>;
+
     /// A runtime for a session of the conversation `root` that infers with
     /// `model`.
     fn runtime<'a>(
@@ -142,6 +151,41 @@ impl<H: AgentHarness> AgentServer<H> {
     /// The conversation's live tree, if it has one.
     pub fn tree(&self, root: &NodeId) -> Option<Rc<Tree<H>>> {
         self.trees.borrow().get(root).cloned()
+    }
+
+    /// Prepares a switch of the conversation `root`'s live tree to `model`
+    /// (`runtime.md` § Model switch): a model of another provider than the
+    /// root's latest selection gets its runtime now, so one that cannot run
+    /// fails before anything changes. None when no tree is live, since a tree
+    /// opens with the selection the conversation's record holds.
+    pub async fn prepare_switch(
+        &self,
+        root: &NodeId,
+        model: ModelSelection,
+    ) -> Result<Option<ModelSwitch>, ResolveError> {
+        let Some(tree) = self.tree(root) else {
+            return Ok(None);
+        };
+        let runtime = if tree.root().session().needs_runtime_for(&model) {
+            Some(self.deps.providers.runtime(root, &model).await?)
+        } else {
+            None
+        };
+        Ok(Some(ModelSwitch { model, runtime }))
+    }
+
+    /// Switches the conversation `root`'s live tree to a prepared switch; it
+    /// lands at the root's next provider request. With no tree live, or one
+    /// that is closing, the switch's runtime is closed: the conversation's
+    /// next open takes the selection from its record.
+    pub async fn switch_model(&self, root: &NodeId, switch: ModelSwitch) {
+        let refused = match self.tree(root) {
+            Some(tree) => tree.root().session().update_model(switch).err(),
+            None => Some(switch),
+        };
+        if let Some(switch) = refused {
+            switch.discard().await;
+        }
     }
 
     /// The live node `node` of the conversation `root`: where the backend's

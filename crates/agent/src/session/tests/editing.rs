@@ -80,7 +80,8 @@ async fn while_an_edit_saves_nothing_of_it_shows_and_the_session_admits_only_the
     assert_eq!(runtimes.borrow().closed, [1]);
 
     // A save that commits: while it waits, the same request shares its
-    // acceptance, and the session refuses every other change.
+    // acceptance, and the session refuses every other change but a model
+    // switch, which waits for the edit.
     let gate = store.hold_saves();
     let submission = edit_of(&session, "B", "op2", "B3");
     let first = spawn_edit(&session, submission.clone());
@@ -121,9 +122,8 @@ async fn while_an_edit_saves_nothing_of_it_shows_and_the_session_admits_only_the
     let switch = ModelSwitch {
         model: model_of("stub", "other-model"),
         runtime: None,
-        apply: ModelSwitchApply::NextTurn,
     };
-    assert_eq!(session.update_model(switch), Err(AdmissionError::Editing));
+    session.update_model(switch).unwrap();
     assert_eq!(session.retry().err(), Some(AdmissionError::Editing));
     assert_eq!(session.compact().err(), Some(AdmissionError::Editing));
     assert_eq!(

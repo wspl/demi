@@ -14,8 +14,8 @@ use std::{
     time::Duration,
 };
 
-use demi_agent_protocol::{ModelSwitchApply, ServerFrame};
-use demi_core::{Clock, ModelSelection, NodeId};
+use demi_agent_protocol::ServerFrame;
+use demi_core::{Clock, NodeId};
 use demi_gates::{ActivityGate, KeyedSerialGate, Reservation};
 use demi_shell::{CommandStatus, RegisterError};
 use futures_util::future::join_all;
@@ -28,9 +28,7 @@ use super::{AgentServer, ResolveError, commands, connection::Outbox};
 use crate::{
     AgentHarness, IdSource, Node, Profile,
     node::{self, AssembleError, NodeRole, NodeSpec, Prompt},
-    session::{
-        AdmissionError, Continuation, ModelSwitch, SessionEvent, Settle, Status, Subscription,
-    },
+    session::{Continuation, ModelSwitch, SessionEvent, Settle, Status, Subscription},
     store::{AgentTreeStore, NodeRecord, StoreError},
     tools,
 };
@@ -147,8 +145,6 @@ pub(crate) enum OpenError {
     Resolve(#[from] ResolveError),
     #[error(transparent)]
     Assemble(#[from] AssembleError),
-    #[error(transparent)]
-    Admission(#[from] AdmissionError),
     #[error(
         "subagent profile name \"{INHERIT_PROFILE}\" is reserved: omitting --profile already inherits the parent"
     )]
@@ -159,15 +155,15 @@ pub(crate) enum OpenError {
 }
 
 impl<H: AgentHarness> Tree<H> {
-    /// Opens the conversation's tree from its store, or creates it, with a
-    /// runtime for `model`; a restored root aligns with `model` from its next
-    /// turn on. The caller holds the root's opening order and then hands the
-    /// continuation to [`continue_restored`](Self::continue_restored).
+    /// Opens the conversation's tree from its store, or creates it, with the
+    /// model selection its record holds and a runtime for it; a restored root
+    /// switches to that selection at its next provider request. The caller
+    /// holds the root's opening order and then hands the continuation to
+    /// [`continue_restored`](Self::continue_restored).
     pub(crate) async fn open(
         server: &Rc<AgentServer<H>>,
         root: &NodeId,
         cwd: &str,
-        model: ModelSelection,
     ) -> Result<(Rc<Self>, Option<Continuation>), OpenError> {
         let deps = &server.deps;
         let profiles: Rc<[Profile]> = deps.harness.profiles().into();
@@ -183,6 +179,7 @@ impl<H: AgentHarness> Tree<H> {
         )?);
         let store = (deps.stores)(root);
         let admission = ActivityGate::new();
+        let model = deps.providers.selection(root).await?;
         let runtime = deps.providers.runtime(root, &model).await?;
         let sink = Rc::new(FrameSink::new());
         let shell_output: Rc<dyn Fn(&CommandStatus)> = {
@@ -213,12 +210,13 @@ impl<H: AgentHarness> Tree<H> {
         .await?;
         let session = assembled.node.session().clone();
         if assembled.continuation.is_some() {
-            // The runtime already serves `model`'s provider.
-            session.update_model(ModelSwitch {
+            // The runtime already serves `model`'s provider. A session just
+            // restored is not closing, so it takes the switch, which holds no
+            // runtime to close either way.
+            let _ = session.update_model(ModelSwitch {
                 model,
                 runtime: None,
-                apply: ModelSwitchApply::NextTurn,
-            })?;
+            });
         }
         let frames = session.subscribe({
             let sink = sink.clone();
@@ -374,35 +372,6 @@ impl<H: AgentHarness> Tree<H> {
             .chain(self.root.live_shells())
             .chain(self.replay())
             .collect()
-    }
-
-    /// Aligns the tree's model with `model`: from the next action, or also
-    /// inside a running turn when `apply` says so. A model of another
-    /// provider gets its runtime first, so a failure changes nothing.
-    pub(crate) async fn align_model(
-        &self,
-        server: &AgentServer<H>,
-        model: ModelSelection,
-        apply: ModelSwitchApply,
-    ) -> Result<(), OpenError> {
-        let session = self.root.session();
-        let runtime = if session.needs_runtime_for(&model) {
-            Some(
-                server
-                    .deps
-                    .providers
-                    .runtime(self.root.id(), &model)
-                    .await?,
-            )
-        } else {
-            None
-        };
-        session.update_model(ModelSwitch {
-            model,
-            runtime,
-            apply,
-        })?;
-        Ok(())
     }
 
     /// What a restored tree does next (`runtime.md` § Dispose and restore,

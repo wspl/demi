@@ -10,10 +10,9 @@ use std::{
 };
 
 use demi_agent_protocol::{
-    ClientFrame, ClientFrameKind, EditOutcome, EditRequest, ModelSwitchApply, ServerFrame,
-    SteerOutcome,
+    ClientFrame, ClientFrameKind, EditOutcome, EditRequest, ServerFrame, SteerOutcome,
 };
-use demi_core::{BlockId, ModelSelection, NodeId, SessionPhase, TurnId};
+use demi_core::{BlockId, NodeId, SessionPhase, TurnId};
 use tokio::sync::mpsc::{self, error::TrySendError};
 
 use super::{
@@ -29,7 +28,7 @@ use crate::{
 
 /// What a refusal says when the connection has no session.
 const NO_SESSION: &str = "No session is open";
-/// What a steer's and a model change's refusal says then.
+/// What a steer's refusal says then.
 const NO_SESSION_HERE: &str = "No session is open on this connection";
 /// What a queued message's steer says when the message is not queued.
 const NOT_QUEUED: &str = "Queued message not found";
@@ -151,7 +150,7 @@ impl<H: AgentHarness> Connection<H> {
     /// it. A failure is answered as a frame, never returned.
     pub async fn handle(&self, frame: ClientFrame) {
         match frame {
-            ClientFrame::Open { model } => self.open(model).await,
+            ClientFrame::Open {} => self.open().await,
             ClientFrame::Close {} => self.close().await,
             frame => match self.attached() {
                 Some(tree) => self.dispatch(&tree, frame).await,
@@ -212,9 +211,10 @@ impl<H: AgentHarness> Connection<H> {
     }
 
     /// Attaches the connection to the conversation's tree beside any other,
-    /// restoring the tree when it is not live; a second `open` on one
-    /// connection is refused.
-    async fn open(&self, model: ModelSelection) {
+    /// restoring the tree when it is not live; a live tree already follows
+    /// the conversation's model selection. A second `open` on one connection
+    /// is refused.
+    async fn open(&self) {
         if self.attached().is_some() {
             self.reject(
                 ClientFrameKind::Open,
@@ -224,17 +224,8 @@ impl<H: AgentHarness> Connection<H> {
         }
         let _turn = self.server.opening.acquire(self.root.clone()).await;
         let (tree, continuation) = match self.server.tree(&self.root) {
-            Some(tree) => {
-                if let Err(error) = tree
-                    .align_model(&self.server, model, ModelSwitchApply::NextTurn)
-                    .await
-                {
-                    self.error(error);
-                    return;
-                }
-                (tree, None)
-            }
-            None => match Tree::open(&self.server, &self.root, &self.cwd, model).await {
+            Some(tree) => (tree, None),
+            None => match Tree::open(&self.server, &self.root, &self.cwd).await {
                 Ok(opened) => opened,
                 Err(error) => {
                     self.error(error);
@@ -276,9 +267,6 @@ impl<H: AgentHarness> Connection<H> {
                         reason: NO_SESSION_HERE.to_owned(),
                     },
                 });
-            }
-            ClientFrame::SetProvider { .. } => {
-                self.reject(ClientFrameKind::SetProvider, NO_SESSION_HERE)
             }
             ClientFrame::CancelPendingSteer { .. }
             | ClientFrame::AbortSubagents {}
@@ -336,12 +324,6 @@ impl<H: AgentHarness> Connection<H> {
             }
             ClientFrame::ClearMessageQueue {} => {
                 session.clear_message_queue();
-            }
-            ClientFrame::SetProvider { model, apply } => {
-                let apply = apply.unwrap_or(ModelSwitchApply::NextTurn);
-                if let Err(error) = tree.align_model(&self.server, model, apply).await {
-                    self.error(error);
-                }
             }
             ClientFrame::Abort {} => {
                 let result = session.abort().await;
@@ -403,7 +385,7 @@ impl<H: AgentHarness> Connection<H> {
                     Err(error) => self.error(error),
                 }
             }
-            ClientFrame::Open { .. } | ClientFrame::Close {} => {
+            ClientFrame::Open {} | ClientFrame::Close {} => {
                 unreachable!("open and close are handled before dispatch")
             }
         }

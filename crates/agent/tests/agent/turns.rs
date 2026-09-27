@@ -8,13 +8,15 @@ use std::{rc::Rc, time::Duration};
 use demi_agent::{
     ServerConfig, attachments,
     store::media::{BlobStore, externalize_frame},
-    testing::{MemoryBlobs, MemoryTreeStore, TestClient, TestFiles, model_of, test_model},
+    testing::{MemoryBlobs, MemoryTreeStore, TestClient, TestFiles, model_of},
 };
 use demi_agent_protocol::{
-    AbortResult, AbortTarget, ClientContent, ClientFrame, ModelSwitchApply, ServerFrame,
-    TranscriptPatch,
+    AbortResult, AbortTarget, ClientContent, ClientFrame, ServerFrame, TranscriptPatch,
 };
-use demi_core::{B64Bytes, Block, FailureSource, MediaSource, SessionPhase, UserContentBlock};
+use demi_core::{
+    B64Bytes, Block, FailureSource, MediaSource, ModelSelection, SessionPhase, ThinkingConfig,
+    UserContentBlock,
+};
 use demi_provider::{
     ErrorCode, InferenceItem, ProviderEvent,
     testing::{ScriptedRuntime, Turn, event},
@@ -24,7 +26,7 @@ use serde_json::{Value, json};
 
 use crate::support::{
     Fixture, Gate, conversation, frames_until, held, is_idle, is_pending_steers, kinds, open, send,
-    session_of, until,
+    session_of, switch, until,
 };
 
 #[tokio::test(flavor = "local")]
@@ -46,7 +48,7 @@ async fn a_message_runs_to_its_response_and_its_patches_rebuild_the_transcript()
     ]);
     let fixture = Fixture::new(&script);
     let mut client = fixture.client();
-    client.send(open(test_model())).await;
+    client.send(open()).await;
     let handshake = client.next_until(is_pending_steers).await;
     client.send(send("m1", "List the files")).await;
     let turn = client.next_until(is_idle).await;
@@ -121,7 +123,7 @@ async fn a_message_runs_to_its_response_and_its_patches_rebuild_the_transcript()
     assert!(fixture.server.tree(&conversation()).is_none());
     assert_eq!(script.closes(), 1);
     let mut reopened = fixture.client();
-    reopened.send(open(test_model())).await;
+    reopened.send(open()).await;
     let handshake = reopened.next_until(is_pending_steers).await;
     let ServerFrame::TranscriptReset {
         blocks, version, ..
@@ -264,7 +266,7 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
     files.upload("upload-1", blocks);
     let mut client =
         TestClient::connect_with(&fixture.server, &conversation(), "/workspace", files);
-    client.send(open(test_model())).await;
+    client.send(open()).await;
     client.next_until(is_pending_steers).await;
     client
         .send(ClientFrame::Send {
@@ -324,7 +326,7 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
         if message == "m3" {
             blobs.forget(&uploaded);
         }
-        client.send(open(test_model())).await;
+        client.send(open()).await;
         client.next_until(is_pending_steers).await;
         client.send(send(message, "and now?")).await;
         client.next_until(is_idle).await;
@@ -439,7 +441,7 @@ async fn close_during_a_turn_saves_the_interruption_and_the_queue_and_a_reopen_r
     assert_eq!(script.closes(), 1);
 
     let mut reopened = fixture.client();
-    reopened.send(open(test_model())).await;
+    reopened.send(open()).await;
     let frames = reopened.next_until(is_idle).await;
     let ServerFrame::TranscriptReset { blocks, .. } = &frames[1] else {
         panic!("{frames:?}");
@@ -471,7 +473,7 @@ async fn a_crash_during_a_turn_is_recorded_as_an_interruption_when_the_conversat
     let after = ScriptedRuntime::new(Vec::new());
     let restarted = Fixture::with(&after, crashed.clone(), ServerConfig::default());
     let mut reopened = restarted.client();
-    reopened.send(open(test_model())).await;
+    reopened.send(open()).await;
     let frames = reopened.received();
 
     assert_eq!(frames[0], ServerFrame::Opened);
@@ -490,91 +492,103 @@ async fn a_crash_during_a_turn_is_recorded_as_an_interruption_when_the_conversat
     assert_eq!(checkpoint.state.phase, SessionPhase::Idle);
 }
 
+/// A switch lands at the root's next provider request (`runtime.md` § Model
+/// switch): the request in flight keeps its model, and the running turn's
+/// next request carries the new model, effort and tier.
 #[tokio::test(flavor = "local")]
-async fn an_immediate_switch_lands_inside_the_running_turn_and_a_next_turn_switch_waits() {
-    for (apply, expected) in [
-        (
-            Some(ModelSwitchApply::Immediate),
-            ["test-model", "model-b", "model-b"],
-        ),
-        (None, ["test-model", "test-model", "model-b"]),
-    ] {
-        let release = Gate::new();
-        let first = held(
-            &release,
-            vec![
-                event::tool_call("call-1", "shell_exec", json!({})),
-                event::response(1, 1),
-            ],
-        );
-        let script = ScriptedRuntime::new([
-            first,
-            Turn::Events(vec![event::text("one"), event::response(1, 1)]),
-            Turn::Events(vec![event::text("two"), event::response(1, 1)]),
-        ]);
-        let fixture = Fixture::new(&script);
-        let mut client = fixture.opened().await;
-        client.send(send("m1", "first")).await;
-        until(|| script.requests().len() == 1).await;
-        client
-            .send(ClientFrame::SetProvider {
-                model: model_of("stub", "model-b"),
-                apply,
-            })
-            .await;
-        release.open();
-        client.next_until(is_idle).await;
-        client.send(send("m2", "second")).await;
-        client.next_until(is_idle).await;
+async fn a_switch_lands_at_the_next_request_inside_the_running_turn() {
+    let release = Gate::new();
+    let first = held(
+        &release,
+        vec![
+            event::tool_call("call-1", "shell_exec", json!({})),
+            event::response(1, 1),
+        ],
+    );
+    let script = ScriptedRuntime::new([
+        first,
+        Turn::Events(vec![event::text("one"), event::response(1, 1)]),
+        Turn::Events(vec![event::text("two"), event::response(1, 1)]),
+    ]);
+    let fixture = Fixture::new(&script);
+    let mut client = fixture.opened().await;
+    client.send(send("m1", "first")).await;
+    until(|| script.requests().len() == 1).await;
+    let switched = ModelSelection {
+        thinking: Some(ThinkingConfig::Effort {
+            effort: "high".into(),
+            summary: None,
+        }),
+        service_tier_id: Some("priority".into()),
+        ..model_of("stub", "model-b")
+    };
+    switch(&fixture, switched).await;
+    release.open();
+    client.next_until(is_idle).await;
+    client.send(send("m2", "second")).await;
+    client.next_until(is_idle).await;
 
-        let models: Vec<String> = script
-            .requests()
-            .iter()
-            .map(|request| request.model_id.clone())
-            .collect();
-        assert_eq!(models, expected, "{apply:?}");
-        // The same provider serves both models: nothing was resolved again.
-        assert_eq!(fixture.resolver.calls.borrow().len(), 1);
-        // Each block keeps, as the page reads it, the model current when it
-        // was written; the checkpoint keeps the new one.
-        let blocks = session_of(&fixture).transcript().blocks;
-        let written: Vec<(String, String)> = kinds(&blocks)
-            .into_iter()
-            .zip(&blocks)
-            .map(|(kind, block)| {
-                let model = serde_json::to_value(block).unwrap()["model"]["model"]["id"].clone();
-                (kind, model.as_str().unwrap().to_owned())
-            })
-            .collect();
-        let landed = if apply.is_some() {
-            "model-b"
-        } else {
-            "test-model"
-        };
-        let expected_blocks = [
-            ("user", "test-model"),
-            ("tool_call:error", "test-model"),
-            ("response", "test-model"),
-            ("text", landed),
-            ("response", landed),
-            ("user", "model-b"),
-            ("text", "model-b"),
-            ("response", "model-b"),
+    let requests: Vec<(String, Option<ThinkingConfig>, Option<String>)> = script
+        .requests()
+        .iter()
+        .map(|request| {
+            (
+                request.model_id.clone(),
+                request.thinking.clone(),
+                request.service_tier_id.clone(),
+            )
+        })
+        .collect();
+    let high = Some(ThinkingConfig::Effort {
+        effort: "high".into(),
+        summary: None,
+    });
+    let priority = Some("priority".to_owned());
+    assert_eq!(
+        requests,
+        [
+            ("test-model".to_owned(), None, None),
+            ("model-b".to_owned(), high.clone(), priority.clone()),
+            ("model-b".to_owned(), high, priority),
         ]
-        .map(|(kind, model)| (kind.to_owned(), model.to_owned()));
-        assert_eq!(written, expected_blocks, "{apply:?}");
-        let checkpoint = fixture.store.checkpoint(&conversation()).unwrap();
-        assert_eq!(checkpoint.state.model.model.id, "model-b");
-    }
+    );
+    // The same provider serves both models: nothing was resolved again.
+    assert_eq!(fixture.resolver.calls.borrow().len(), 1);
+    // Each block keeps, as the page reads it, the model current when it was
+    // written; the checkpoint keeps the new one.
+    let blocks = session_of(&fixture).transcript().blocks;
+    let written: Vec<(String, String)> = kinds(&blocks)
+        .into_iter()
+        .zip(&blocks)
+        .map(|(kind, block)| {
+            let model = serde_json::to_value(block).unwrap()["model"]["model"]["id"].clone();
+            (kind, model.as_str().unwrap().to_owned())
+        })
+        .collect();
+    let expected_blocks = [
+        ("user", "test-model"),
+        ("tool_call:error", "test-model"),
+        ("response", "test-model"),
+        ("text", "model-b"),
+        ("response", "model-b"),
+        ("user", "model-b"),
+        ("text", "model-b"),
+        ("response", "model-b"),
+    ]
+    .map(|(kind, model)| (kind.to_owned(), model.to_owned()));
+    assert_eq!(written, expected_blocks);
+    let checkpoint = fixture.store.checkpoint(&conversation()).unwrap();
+    assert_eq!(checkpoint.state.model.model.id, "model-b");
 }
 
-/// A switch to another provider builds that provider's runtime, which serves
-/// from the next turn on; the old runtime is closed then, and so is the
-/// runtime of a pending switch that a switch to yet another provider
-/// replaced. A switch within the pending switch's provider builds nothing
-/// and keeps its runtime.
+/// A switch to another provider builds that provider's runtime before it is
+/// recorded, which serves from the next request on; the old runtime is
+/// closed then, and so is the runtime of a pending switch that a switch to
+/// yet another provider replaced. A switch within the pending switch's
+/// provider builds nothing and keeps its runtime.
 #[tokio::test(flavor = "local")]
-async fn a_switch_to_another_provider_builds_its_runtime_and_closes_the_old_one_at_the_next_turn() {
+async fn a_switch_to_another_provider_builds_its_runtime_and_closes_the_old_one_at_the_next_request()
+{
     let stub = ScriptedRuntime::new([Turn::Events(vec![
         event::text("from stub"),
         event::response(1, 1),
@@ -596,9 +610,7 @@ async fn a_switch_to_another_provider_builds_its_runtime_and_closes_the_old_one_
         model_of("other", "other-model"),
         model_of("other", "other-model-2"),
     ] {
-        client
-            .send(ClientFrame::SetProvider { model, apply: None })
-            .await;
+        switch(&fixture, model).await;
     }
     client.send(send("m2", "second")).await;
     frames_until(&mut client, is_idle).await;

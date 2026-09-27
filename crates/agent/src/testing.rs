@@ -155,15 +155,24 @@ pub fn preview(result: &str) -> &str {
 type Runtimes = Rc<dyn Fn() -> Box<dyn ProviderRuntime>>;
 
 /// Provider runtimes by provider id: every runtime of one provider plays
-/// that provider's one script, and a provider without one is unknown.
+/// that provider's one script, and a provider without one is unknown. Every
+/// conversation's record holds the selection a test chose last, else
+/// [`test_model`].
 #[derive(Default)]
 pub struct ScriptedProviders {
     runtimes: RefCell<HashMap<String, Runtimes>>,
+    selection: RefCell<Option<ModelSelection>>,
     /// Every resolution asked for: the conversation and the provider.
     pub calls: RefCell<Vec<(NodeId, String)>>,
 }
 
 impl ScriptedProviders {
+    /// The selection every conversation's tree opens with from now on, as
+    /// its record would hold it.
+    pub fn select(&self, model: ModelSelection) {
+        self.selection.replace(Some(model));
+    }
+
     pub fn provide(&self, provider: &str, script: &ScriptedRuntime) {
         self.provide_runtime(provider, script.clone());
     }
@@ -179,6 +188,14 @@ impl ScriptedProviders {
 }
 
 impl ProviderResolver for ScriptedProviders {
+    fn selection<'a>(
+        &'a self,
+        _root: &'a NodeId,
+    ) -> LocalBoxFuture<'a, Result<ModelSelection, ResolveError>> {
+        let selection = self.selection.borrow().clone().unwrap_or_else(test_model);
+        Box::pin(async move { Ok(selection) })
+    }
+
     fn runtime<'a>(
         &'a self,
         root: &'a NodeId,

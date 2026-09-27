@@ -122,6 +122,26 @@ pub struct ModelSelection {
     pub service_tier_id: Option<String>,
 }
 
+/// The thinking effort of a conversation's model settings that turns thinking
+/// off (`models.md` § A conversation's model settings).
+pub const THINKING_OFF: &str = "disabled";
+
+impl ModelSelection {
+    /// The thinking effort the selection's thinking setting names, as a
+    /// conversation's model settings show it: its effort, [`THINKING_OFF`]
+    /// when thinking is off, and none without a setting. A token budget names
+    /// no effort; no selection built from model settings has one.
+    pub fn thinking_effort(&self) -> Option<&str> {
+        match self.thinking.as_ref()? {
+            ThinkingConfig::Adaptive { effort } | ThinkingConfig::Effort { effort, .. } => {
+                Some(effort)
+            }
+            ThinkingConfig::Disabled {} => Some(THINKING_OFF),
+            ThinkingConfig::Budget { .. } => None,
+        }
+    }
+}
+
 /// Whether a reasoning summary is asked for, and how detailed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]

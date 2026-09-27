@@ -6,7 +6,7 @@
 use demi_agent::{
     AgentTreeStore, ForkError, ServerConfig,
     store::{ClosePhase, NodeClose},
-    testing::{MemoryTreeStore, TestClient, TestFiles, client_text, test_model, waiting_frames},
+    testing::{MemoryTreeStore, TestClient, TestFiles, client_text, model_of, waiting_frames},
     transcript::CutError,
 };
 use demi_agent_protocol::{
@@ -32,7 +32,7 @@ use crate::{
     subagents::{checkpoint, child_record},
     support::{
         CommandRun, Fixture, Gate, Model, TestHarness, agent, command_storage, conversation,
-        frames_until, held, is_idle, kinds, open, send, session_of, until,
+        frames_until, held, is_idle, kinds, open, send, session_of, switch, until,
     },
 };
 
@@ -262,7 +262,7 @@ async fn an_edit_replaces_its_message_and_what_follows_once_and_infers_on_a_fres
     client.send(ClientFrame::Close {}).await;
     frames_until(&mut client, |frame| *frame == ServerFrame::Closed).await;
     let mut reopened = fixture.client();
-    reopened.send(open(test_model())).await;
+    reopened.send(open()).await;
     reopened.received();
     let replacement_block = user_block(&fixture, turn_id.as_str());
     reopened
@@ -325,6 +325,52 @@ async fn the_page_hears_of_an_edit_only_once_its_save_commits() {
         )),
         "{answered:#?}"
     );
+}
+
+/// A model switch while an edit is being prepared is not refused: it waits
+/// for the edit (`runtime.md` § Model switch). The replacement turn's first
+/// request carries the model it was prepared with, and its next request the
+/// new one.
+#[tokio::test(flavor = "local")]
+async fn a_switch_while_an_edit_is_prepared_lands_after_the_replacements_first_request() {
+    let script = ScriptedRuntime::new([
+        said("answer A"),
+        Turn::Events(vec![
+            event::tool_call("call-1", "shell_exec", json!({})),
+            event::response(1, 1),
+        ]),
+        said("answer A2"),
+    ]);
+    let fixture = Fixture::new(&script);
+    let mut client = fixture.opened().await;
+    client.send(send("m1", "A")).await;
+    frames_until(&mut client, is_idle).await;
+    let target = user_block(&fixture, "m1");
+    let version = session_of(&fixture).transcript().version;
+
+    let gate = fixture.store.hold_saves();
+    {
+        let editing = client.send(edit("op1", &target, &version, client_text("A2")));
+        tokio::pin!(editing);
+        while gate.waiting() == 0 {
+            assert!(futures_util::poll!(editing.as_mut()).is_pending());
+            tokio::task::yield_now().await;
+        }
+        switch(&fixture, model_of("stub", "model-b")).await;
+        gate.release();
+        editing.await;
+    }
+    let frames = frames_until(&mut client, is_idle).await;
+    assert!(
+        matches!(edit_outcome(&frames), EditOutcome::Accepted { .. }),
+        "{frames:#?}"
+    );
+    let models: Vec<String> = script
+        .requests()
+        .iter()
+        .map(|request| request.model_id.clone())
+        .collect();
+    assert_eq!(models, ["test-model", "test-model", "model-b"]);
 }
 
 #[tokio::test(flavor = "local")]
@@ -447,7 +493,7 @@ async fn an_edit_keeps_the_files_its_message_holds_and_refuses_one_it_does_not()
     let elsewhere = blobs.put(B64Bytes::new(b"GIF89a".to_vec())).await.unwrap();
     let mut client =
         TestClient::connect_with(&fixture.server, &conversation(), "/workspace", files);
-    client.send(open(test_model())).await;
+    client.send(open()).await;
     client.received();
     let upload = |reference: &str, file_name: &str| ClientContent::Upload {
         r#ref: reference.into(),
@@ -660,7 +706,7 @@ async fn a_fork_seed_keeps_the_history_through_a_completed_text_from_a_live_or_a
     // The destination opens idle with the prefix and its command state, and
     // continues on its own.
     let mut forked = TestClient::connect(&fixture.server, &destination, "/workspace");
-    forked.send(open(test_model())).await;
+    forked.send(open()).await;
     let handshake = forked.received();
     let Some(ServerFrame::TranscriptReset { blocks: seeded, .. }) = handshake.get(1) else {
         panic!("{handshake:#?}")
@@ -935,7 +981,7 @@ async fn a_completion_whose_saves_failed_refuses_an_edit_until_a_later_save_deli
     // the completion opens. The root ends idle, the completion undelivered.
     store.fail_saves(usize::MAX);
     let mut client = fixture.client();
-    client.send(open(test_model())).await;
+    client.send(open()).await;
     let tree = fixture.server.tree(&conversation()).unwrap();
     until(|| tree.is_quiescent()).await;
     store.fail_saves(0);

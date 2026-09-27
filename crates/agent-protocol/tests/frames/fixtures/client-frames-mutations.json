@@ -10,14 +10,11 @@
       "browserRefuses": true
     },
     {
-      "why": "a provider instead of a model",
+      "why": "a model, which the conversation's record holds",
       "fixture": "open",
-      "remove": [
-        "/model"
-      ],
       "set": {
-        "/provider": {
-          "providerId": "anthropic"
+        "/model": {
+          "providerId": "stub"
         }
       },
       "browserRefuses": true
@@ -190,30 +187,6 @@
         }
       },
       "browserRefuses": false
-    },
-    {
-      "why": "a switch timing that is null",
-      "fixture": "set_provider",
-      "set": {
-        "/apply": null
-      },
-      "browserRefuses": true
-    },
-    {
-      "why": "a switch timing outside the set",
-      "fixture": "set_provider",
-      "set": {
-        "/apply": "later"
-      },
-      "browserRefuses": true
-    },
-    {
-      "why": "an output limit of zero",
-      "fixture": "open",
-      "set": {
-        "/model/model/outputLimit": 0
-      },
-      "browserRefuses": true
     },
     {
       "why": "an edit without content",

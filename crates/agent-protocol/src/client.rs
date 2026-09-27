@@ -1,11 +1,8 @@
 //! What the browser sends (`runtime.md` § Client frames).
 
-use demi_core::{
-    BlobRef, BlockId, CommandId, ModelSelection, NodeId, OperationId, TurnId, is_blank,
-};
+use demi_core::{BlobRef, BlockId, CommandId, NodeId, OperationId, TurnId, is_blank};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_with::rust::unwrap_or_skip;
 
 use crate::TranscriptVersion;
 
@@ -20,11 +17,9 @@ use crate::TranscriptVersion;
 )]
 pub enum ClientFrame {
     /// Attach this connection to the conversation's tree, restoring it when
-    /// it is not live, and align the tree's model with `model`.
-    Open {
-        #[garde(dive)]
-        model: ModelSelection,
-    },
+    /// it is not live with the model selection the conversation's record
+    /// holds; no frame names a model (`runtime.md` § Model switch).
+    Open {},
     /// Submit a message; its id becomes its turn's id and its queue entry's.
     Send {
         #[garde(skip)]
@@ -65,16 +60,6 @@ pub enum ClientFrame {
         steer_id: BlockId,
     },
     ClearMessageQueue {},
-    /// Change the model selection.
-    SetProvider {
-        #[garde(dive)]
-        model: ModelSelection,
-        /// When the switch lands; the next action when absent.
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-        #[schemars(with = "ModelSwitchApply")]
-        #[garde(skip)]
-        apply: Option<ModelSwitchApply>,
-    },
     /// Stop one thing (`runtime.md` § Stop).
     Abort {},
     AbortSubagents {},
@@ -117,7 +102,6 @@ pub enum ClientFrameKind {
     SendQueuedMessage,
     SteerQueuedMessage,
     ClearMessageQueue,
-    SetProvider,
     Abort,
     AbortSubagents,
     AbortSubagent,
@@ -136,7 +120,7 @@ serde_plain::derive_fromstr_from_deserialize!(ClientFrameKind);
 impl ClientFrame {
     pub fn kind(&self) -> ClientFrameKind {
         match self {
-            Self::Open { .. } => ClientFrameKind::Open,
+            Self::Open {} => ClientFrameKind::Open,
             Self::Send { .. } => ClientFrameKind::Send,
             Self::EditAndSend { .. } => ClientFrameKind::EditAndSend,
             Self::Steer { .. } => ClientFrameKind::Steer,
@@ -145,7 +129,6 @@ impl ClientFrame {
             Self::SendQueuedMessage { .. } => ClientFrameKind::SendQueuedMessage,
             Self::SteerQueuedMessage { .. } => ClientFrameKind::SteerQueuedMessage,
             Self::ClearMessageQueue {} => ClientFrameKind::ClearMessageQueue,
-            Self::SetProvider { .. } => ClientFrameKind::SetProvider,
             Self::Abort {} => ClientFrameKind::Abort,
             Self::AbortSubagents {} => ClientFrameKind::AbortSubagents,
             Self::AbortSubagent { .. } => ClientFrameKind::AbortSubagent,
@@ -308,16 +291,3 @@ pub enum MediaRef {
         file_name: String,
     },
 }
-
-/// When a model switch lands (`runtime.md` § Model switch).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum ModelSwitchApply {
-    /// At the next continuation boundary, inside a running turn.
-    Immediate,
-    /// At the start of the next action.
-    NextTurn,
-}
-
-serde_plain::derive_display_from_serialize!(ModelSwitchApply);
-serde_plain::derive_fromstr_from_deserialize!(ModelSwitchApply);
