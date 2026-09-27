@@ -8,10 +8,9 @@
 
 use std::sync::{Arc, Mutex};
 
-use demi_agent::testing::model_of;
 use demi_backend::{FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry, ProviderFamily};
 use demi_core::{
-    AuthState, ModelSelection, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList, RuntimeState, Timestamp,
+    AuthState, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList, RuntimeState, Timestamp,
     TokenUsage, UserContentBlock,
 };
 use demi_provider::{
@@ -27,7 +26,7 @@ use reqwest::StatusCode;
 use serde_json::json;
 use tokio::sync::Semaphore;
 
-use crate::conversations::{FIRST, SECOND, Socket, create, summaries};
+use crate::conversations::{FIRST, SECOND, Socket, choose, create, summaries};
 use crate::support::{Harness, Session, TestBackend, eventually};
 
 /// The title the scripted model writes.
@@ -91,7 +90,12 @@ impl Provider for TitlingProvider {
     }
 
     fn list_models(&self) -> BoxFuture<'_, Result<ProviderModelList, CatalogError>> {
-        Box::pin(async { Err(CatalogError::Unavailable("no directory".into())) })
+        Box::pin(async {
+            // The model `m`, with no thinking effort to choose.
+            let mut catalog = crate::families::catalog(&["m"]);
+            catalog.models[0].supported_thinking_efforts = None;
+            Ok(catalog)
+        })
     }
 
     fn read_failure(&self, _: &ProviderErrorDiagnostics, _: Timestamp) -> ProviderFailureFacts {
@@ -165,9 +169,8 @@ fn input(request: &InferenceRequest) -> String {
 }
 
 /// A backend with titles on, whose master has an entry of the scripted
-/// family, and the model of that entry; the harness holds the backend's
-/// data.
-async fn titling(script: &Arc<Script>) -> (Harness, TestBackend, Session, ModelSelection) {
+/// family, and that entry; the harness holds the backend's data.
+async fn titling(script: &Arc<Script>) -> (Harness, TestBackend, Session, String) {
     let mut harness = Harness::new().with_families(FamilyRegistry::builtin().with("titling", Titling(script.clone())));
     harness.conversations.titles = true;
     let (backend, master) = harness.start_set_up().await;
@@ -180,14 +183,15 @@ async fn titling(script: &Arc<Script>) -> (Harness, TestBackend, Session, ModelS
         .await;
     assert_eq!(created.status, StatusCode::CREATED);
     let provider = created.json::<ProviderAnswer>().provider.id.as_str().to_owned();
-    (harness, backend, master, model_of(&provider, "m"))
+    (harness, backend, master, provider)
 }
 
 #[tokio::test]
 async fn a_title_follows_the_first_message_and_a_rename_or_an_archive_while_one_is_asked_wins() {
     let script = Script::new(&format!("\"{GENERATED}\"\n"));
-    let (_harness, backend, master, model) = titling(&script).await;
+    let (_harness, backend, master, provider) = titling(&script).await;
     create(&backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "m").await;
     // The browser's record creation repeats the placeholder, which settles
     // nothing.
     let repeated = backend
@@ -195,7 +199,7 @@ async fn a_title_follows_the_first_message_and_a_rename_or_an_archive_while_one_
         .await;
     assert_eq!(repeated.status, StatusCode::OK);
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    socket.open(&model).await;
+    socket.open().await;
 
     // The first message is the title at once, and a request beside the
     // first turn writes a better one.
@@ -227,7 +231,7 @@ async fn a_title_follows_the_first_message_and_a_rename_or_an_archive_while_one_
     socket.chat("m2", "and the login test").await;
     assert!(!summary(&backend, &master, FIRST).await.title_current);
     let path = format!("/api/conversations/{FIRST}/title");
-    let detect = backend.post(&path, Some(&master), json!({ "model": model })).await;
+    let detect = backend.post(&path, Some(&master), json!({})).await;
     assert_eq!(detect.status, StatusCode::ACCEPTED, "{}", String::from_utf8_lossy(&detect.body));
     eventually("Detect title is asked", || async { script.asked() == 2 }).await;
     assert_eq!(input(&script.asked.lock().unwrap()[1]), format!("1. {message}\n2. and the login test"));
@@ -244,7 +248,7 @@ async fn a_title_follows_the_first_message_and_a_rename_or_an_archive_while_one_
     assert_eq!((kept.title.as_str(), kept.title_current), ("Kept", true));
 
     // An archive ends a request in flight, which writes nothing.
-    backend.post(&path, Some(&master), json!({ "model": model })).await;
+    backend.post(&path, Some(&master), json!({})).await;
     eventually("the third request is asked", || async { script.asked() == 3 }).await;
     let archived = backend
         .patch(&format!("/api/conversations/{FIRST}"), &master, json!({ "archived": true }))
@@ -257,33 +261,33 @@ async fn a_title_follows_the_first_message_and_a_rename_or_an_archive_while_one_
     })
     .await;
     assert_eq!(script.answers.available_permits(), 0);
-    let refused = backend.post(&path, Some(&master), json!({ "model": model })).await;
+    let refused = backend.post(&path, Some(&master), json!({})).await;
     assert_eq!(refused.refusal(), (StatusCode::CONFLICT, ErrorCode::ConversationArchived));
 
-    // What there is nothing to title with is refused.
+    // What there is nothing to title with is refused: a conversation without
+    // a model, one without a message, and one whose provider is gone.
     create(&backend, &master, SECOND).await;
-    let empty = backend
-        .post(&format!("/api/conversations/{SECOND}/title"), Some(&master), json!({ "model": model }))
-        .await;
+    let second = format!("/api/conversations/{SECOND}/title");
+    let unchosen = backend.post(&second, Some(&master), json!({})).await;
+    assert_eq!(unchosen.refusal(), (StatusCode::CONFLICT, ErrorCode::ModelNotSelected));
+    choose(&backend, &master, SECOND, &provider, "m").await;
+    let empty = backend.post(&second, Some(&master), json!({})).await;
     assert_eq!(empty.refusal(), (StatusCode::CONFLICT, ErrorCode::NoMessages));
-    let foreign = backend
-        .post(
-            &format!("/api/conversations/{SECOND}/title"),
-            Some(&master),
-            json!({ "model": model_of("someone-elses", "m") }),
-        )
-        .await;
-    assert_eq!(foreign.refusal(), (StatusCode::NOT_FOUND, ErrorCode::ProviderNotFound));
+    let deleted = backend.delete(&format!("/api/providers/{provider}"), &master).await;
+    assert_eq!(deleted.status, StatusCode::NO_CONTENT);
+    let gone = backend.post(&second, Some(&master), json!({})).await;
+    assert_eq!(gone.refusal(), (StatusCode::NOT_FOUND, ErrorCode::ProviderNotFound));
     backend.close().await;
 }
 
 #[tokio::test]
 async fn an_answer_without_a_title_leaves_the_messages_title_and_detect_title_available() {
     let script = Script::new(" \n\n");
-    let (_harness, backend, master, model) = titling(&script).await;
+    let (_harness, backend, master, provider) = titling(&script).await;
     create(&backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "m").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    socket.open(&model).await;
+    socket.open().await;
     socket.chat("m1", "hello   there").await;
     eventually("the title request is asked", || async { script.asked() == 1 }).await;
     script.answers.add_permits(1);

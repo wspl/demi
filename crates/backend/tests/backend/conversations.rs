@@ -12,11 +12,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use demi_agent::testing::{client_text, model_of};
+use demi_agent::testing::client_text;
 use demi_agent_protocol::{ClientFrame, EditOutcome, EditRequest, ServerFrame, TranscriptVersion};
 use demi_backend::{FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry, ProviderFamily};
 use demi_core::{
-    AuthState, Block, ModelSelection, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList, RuntimeState,
+    AuthState, Block, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList, RuntimeState,
     SessionPhase, Timestamp, TokenUsage, TurnId,
 };
 use demi_provider::testing::{MockResponse, MockVendor};
@@ -26,7 +26,7 @@ use demi_provider::{
 };
 use demi_web_api::conversations::{
     BatchAnswer, BatchResult, ConversationAnswer, ConversationStatus, ConversationSummary, ConversationUpdate,
-    Conversations, FieldResult, PatchField, Transcript,
+    Conversations, FieldResult, ModelSettings, PatchField, Transcript,
 };
 use demi_web_api::error::ErrorCode;
 use demi_web_api::providers::{CredentialKind, ProviderAnswer};
@@ -135,9 +135,10 @@ impl Socket {
         }
     }
 
-    /// Opens the conversation with `model` and reads the handshake.
-    pub(crate) async fn open(&mut self, model: &ModelSelection) -> Vec<ServerFrame> {
-        self.send(&ClientFrame::Open { model: model.clone() }).await;
+    /// Opens the conversation, with the model its record holds, and reads
+    /// the handshake.
+    pub(crate) async fn open(&mut self) -> Vec<ServerFrame> {
+        self.send(&ClientFrame::Open {}).await;
         let handshake = self.until(|frame| matches!(frame, ServerFrame::PendingSteers { .. })).await;
         assert_eq!(handshake.first(), Some(&ServerFrame::Opened), "{handshake:?}");
         handshake
@@ -326,6 +327,21 @@ pub(crate) async fn create(backend: &TestBackend, session: &Session, id: &str) -
     created.json::<ConversationAnswer>().conversation
 }
 
+/// Chooses the model `model` of the entry `provider` for the conversation
+/// `id`, as a page's first send does, and answers the conversation.
+pub(crate) async fn choose(
+    backend: &TestBackend,
+    session: &Session,
+    id: &str,
+    provider: &str,
+    model: &str,
+) -> ConversationSummary {
+    let body = json!({ "model": { "providerId": provider, "modelId": model } });
+    let chosen = backend.patch(&format!("/api/conversations/{id}"), session, body).await;
+    assert_eq!(chosen.status, StatusCode::OK, "{}", String::from_utf8_lossy(&chosen.body));
+    chosen.json::<ConversationUpdate>().conversation
+}
+
 /// Makes the master's conversation `id` work in a new `work` directory of a
 /// paired device's real runner, as a target switch would leave it; answers
 /// the device and that directory.
@@ -449,10 +465,10 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     let (backend, master) = harness.start_set_up().await;
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
-    let model = model_of(&provider, "claude-opus-4-8");
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
 
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    let handshake = socket.open(&model).await;
+    let handshake = socket.open().await;
     let kinds_of: Vec<String> = handshake
         .iter()
         .map(|frame| serde_json::to_value(frame).unwrap()["type"].as_str().unwrap().to_owned())
@@ -488,10 +504,8 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
 
     assert_eq!((summary.status, summary.unread), (ConversationStatus::Completed, true));
     assert!(summary.revision > 0);
-    assert_eq!(
-        (summary.provider_id.as_ref().map(|id| id.as_str()), summary.model_id.as_deref()),
-        (Some(provider.as_str()), Some("claude-opus-4-8"))
-    );
+    let model = summary.model.as_ref().map(|model| (model.provider_id.as_str(), model.model_id.as_str()));
+    assert_eq!(model, Some((provider.as_str(), "claude-opus-4-8")));
     let beyond = backend
         .post(&format!("/api/conversations/{FIRST}/read"), Some(&master), json!({ "revision": summary.revision + 1 }))
         .await;
@@ -516,7 +530,7 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     // A reload opens the same history, and a later message continues it.
     drop(socket);
     let mut reloaded = Socket::connect(&backend, &master, FIRST).await;
-    let handshake = reloaded.open(&model).await;
+    let handshake = reloaded.open().await;
     let ServerFrame::TranscriptReset { blocks, .. } = &handshake[1] else {
         panic!("{handshake:?}");
     };
@@ -537,18 +551,18 @@ async fn a_client_that_falls_behind_is_closed_as_lagging_and_a_reopen_adopts_the
     let (backend, master) = harness.start_set_up().await;
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
-    let model = model_of(&provider, "claude-opus-4-8");
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
     let deltas: Vec<String> = (0..200).map(|index| format!("{index} ")).collect();
     let deltas: Vec<&str> = deltas.iter().map(String::as_str).collect();
     vendor.respond(answer(&deltas, 5, 200));
 
     let mut slow = Socket::connect(&backend, &master, FIRST).await;
-    slow.open(&model).await;
+    slow.open().await;
     slow.send(&send("m1", "Count")).await;
     assert_eq!(slow.closed().await, Some(4001));
 
     let mut again = Socket::connect(&backend, &master, FIRST).await;
-    again.open(&model).await;
+    again.open().await;
     let deadline = tokio::time::Instant::now() + PATIENCE;
     let blocks = loop {
         let blocks = again.live().await;
@@ -578,14 +592,14 @@ async fn the_frames_the_backend_refuses_never_reach_the_session() {
         panic!("an invalid frame is answered with an error");
     };
     assert_eq!(code.as_deref(), Some("invalid_frame"));
-    socket.send(&ClientFrame::Open { model: model_of("someone-elses", "m") }).await;
+    // A conversation without a model opens no tree.
+    socket.send(&ClientFrame::Open {}).await;
     let ServerFrame::Error { code, .. } = socket.frame().await else {
-        panic!("a provider outside the user's scope is refused");
+        panic!("an open without a model is refused");
     };
-    assert_eq!(code.as_deref(), Some("provider_not_found"));
-    let summary = summaries(&backend, &master).await.remove(0);
-    assert_eq!(summary.provider_id, None, "nothing was recorded");
-    socket.open(&model_of(&provider, "claude-opus-4-8")).await;
+    assert_eq!(code.as_deref(), Some("model_not_selected"));
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
+    socket.open().await;
 
     // Archived, the conversation takes no frame but its close, and no
     // socket.
@@ -781,10 +795,9 @@ async fn an_edit_of_the_entry_reaches_the_next_request_and_a_deleted_entry_refus
     });
     let provider = entry(&backend, &master, body).await;
     create(&backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "m").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    // The selection the page sent names no output limit; the entry's
-    // configured model does.
-    socket.open(&model_of(&provider, "m")).await;
+    socket.open().await;
 
     // An edit while the first request runs: that request finishes with the
     // runtime it started with, and the next one gets a new runtime.
@@ -830,8 +843,9 @@ async fn a_request_over_the_rate_limit_fails_without_reaching_the_vendor() {
     let (backend, master) = harness.start_set_up().await;
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    socket.open(&model_of(&provider, "claude-opus-4-8")).await;
+    socket.open().await;
 
     vendor.respond(answer(&["one"], 1, 1));
     socket.chat("m1", "first").await;
@@ -852,9 +866,9 @@ async fn a_shutdown_in_the_middle_of_a_turn_saves_its_interruption_and_the_next_
     let (backend, master) = harness.start_set_up().await;
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
-    let model = model_of(&provider, "claude-opus-4-8");
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    socket.open(&model).await;
+    socket.open().await;
     vendor.respond(answer(&["first"], 4, 1));
     socket.chat("m1", "a first message").await;
     vendor.respond(MockResponse::event_stream(": thinking\n\n").stay_open());
@@ -877,7 +891,7 @@ async fn a_shutdown_in_the_middle_of_a_turn_saves_its_interruption_and_the_next_
 
     // The next turn runs on the restored tree.
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    socket.open(&model).await;
+    socket.open().await;
     vendor.respond(answer(&["done"], 1, 1));
     socket.chat("m3", "go on").await;
     assert_eq!(last_text(&socket.live().await), "done");
@@ -891,8 +905,9 @@ async fn the_page_receives_what_the_provider_reads_from_an_error_blocks_record()
     let (backend, master) = harness.start_set_up().await;
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    socket.open(&model_of(&provider, "claude-opus-4-8")).await;
+    socket.open().await;
     vendor.respond(
         MockResponse::status(401)
             .header("retry-after", "120")
@@ -948,8 +963,9 @@ async fn a_deepseek_tool_continuation_sends_the_reasoning_back_to_the_compatible
     });
     let provider = entry(&backend, &master, body).await;
     create(&backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "m").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    socket.open(&model_of(&provider, "m")).await;
+    socket.open().await;
     let stream = |delta: Value| {
         MockResponse::event_stream(format!(
             "data: {}\n\ndata: [DONE]\n\n",
@@ -1022,19 +1038,14 @@ async fn each_field_of_a_patch_applies_on_its_own_and_an_archived_conversation_t
         [applied(PatchField::Pinned), applied(PatchField::Model), applied(PatchField::Target)]
     );
     let conversation = update.conversation;
-    assert_eq!(
-        (conversation.pinned, conversation.provider_id.as_ref().map(|id| id.as_str()), conversation.model_id.as_deref()),
-        (true, Some(provider.as_str()), Some("claude-opus-4-8"))
-    );
+    let model = conversation.model.as_ref().map(|model| (model.provider_id.as_str(), model.model_id.as_str()));
+    assert_eq!((conversation.pinned, model), (true, Some((provider.as_str(), "claude-opus-4-8"))));
     assert_eq!(listed().await, [FIRST, SECOND], "a pinned conversation leads");
     // A patch of one field that is refused answers that field's refusal.
     let foreign = backend
         .patch(&path, &master, json!({ "model": { "providerId": "someone-elses", "modelId": "m" } }))
         .await;
     assert_eq!(foreign.refusal(), (StatusCode::NOT_FOUND, ErrorCode::ProviderNotFound));
-    let cleared = backend.patch(&path, &master, json!({ "model": null })).await;
-    let conversation = cleared.json::<ConversationUpdate>().conversation;
-    assert_eq!((conversation.provider_id, conversation.model_id), (None, None));
 
     // The archive goes first, so the rename beside it is refused.
     let archived = backend.patch(&path, &master, json!({ "title": "Renamed", "archived": true })).await;
@@ -1066,6 +1077,7 @@ async fn each_field_of_a_patch_applies_on_its_own_and_an_archived_conversation_t
         json!({ "title": "x".repeat(257) }),
         json!({ "name": "x" }),
         json!({ "model": { "providerId": provider } }),
+        json!({ "model": null }),
         json!({ "archived": "yes" }),
     ];
     for body in bodies {
@@ -1081,6 +1093,115 @@ async fn each_field_of_a_patch_applies_on_its_own_and_an_archived_conversation_t
     backend.close().await;
 }
 
+/// A configured model with the efforts `low` and `high`, whose Fast is the
+/// tier `fast` when there is one.
+fn leveled(id: &str, fast: Option<&str>) -> Value {
+    json!({
+        "id": id, "displayName": id.to_uppercase(), "contextWindow": 100000, "outputLimit": 4000,
+        "thinkingEfforts": ["low", "high"], "acceptedExtensions": null, "fastTier": fast
+    })
+}
+
+/// A conversation's model settings are one value that every page shows
+/// (`web-api.md` § Sidebar mutations, read state and page synchronization):
+/// a change names only its parts, so two pages that change different parts
+/// keep both; another page reads the change in its next snapshot; the
+/// conversation's next request uses it, whichever page sends it; and a tree
+/// opened after a change made while none was live opens with it.
+#[tokio::test]
+async fn a_change_of_the_model_settings_reaches_every_page_and_the_next_request() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let body = json!({
+        "source": "custom", "providerType": "anthropic", "label": "Work", "apiKey": "sk-ant-test",
+        "baseUrl": vendor.url("/v1"), "models": [leveled("m", Some("priority")), leveled("n", None)]
+    });
+    let provider = entry(&backend, &master, body).await;
+    create(&backend, &master, FIRST).await;
+    create(&backend, &master, SECOND).await;
+    let path = format!("/api/conversations/{FIRST}");
+    let settings = |model: &str, effort: Option<&str>, tier: Option<&str>| ModelSettings {
+        provider_id: provider.as_str().try_into().unwrap(),
+        model_id: model.into(),
+        thinking_effort: effort.map(str::to_owned),
+        service_tier_id: tier.map(str::to_owned),
+    };
+    let chosen = choose(&backend, &master, FIRST, &provider, "m").await;
+    assert_eq!(chosen.model, Some(settings("m", None, None)));
+
+    // Page A raises the effort, and page B, another sign-in that has not
+    // read that, turns Fast on: the value ends with both, and page A reads
+    // it in its next snapshot.
+    let other = backend.login(MASTER_EMAIL, crate::support::MASTER_PASSWORD).await;
+    let mut socket = Socket::connect(&backend, &other, FIRST).await;
+    socket.open().await;
+    let raised = backend.patch(&path, &master, json!({ "thinkingEffort": "high" })).await;
+    assert_eq!(raised.json::<ConversationUpdate>().results, [applied(PatchField::ThinkingEffort)]);
+    let fast = backend.patch(&path, &other, json!({ "serviceTierId": "priority" })).await;
+    let both = settings("m", Some("high"), Some("priority"));
+    assert_eq!(fast.json::<ConversationUpdate>().conversation.model, Some(both.clone()));
+    assert_eq!(summary(&backend, &master, FIRST).await.model, Some(both));
+
+    // Page B's message runs with both.
+    vendor.respond(answer(&["one"], 1, 1));
+    socket.chat("m1", "first").await;
+    let sent = vendor.requests()[0].json();
+    assert_eq!(
+        (&sent["model"], &sent["output_config"]["effort"], &sent["service_tier"]),
+        (&json!("m"), &json!("high"), &json!("priority"))
+    );
+
+    // Page A switches the model as its menu does, naming the effort the new
+    // model lists; the new model has no Fast tier, so the tier goes. Page
+    // B's next message runs with the new value.
+    let body = json!({ "model": { "providerId": provider, "modelId": "n" }, "thinkingEffort": "high" });
+    let switched = backend.patch(&path, &master, body).await;
+    let update = switched.json::<ConversationUpdate>();
+    assert_eq!(update.results, [applied(PatchField::Model), applied(PatchField::ThinkingEffort)]);
+    assert_eq!(update.conversation.model, Some(settings("n", Some("high"), None)));
+    vendor.respond(answer(&["two"], 1, 1));
+    socket.chat("m2", "second").await;
+    let sent = vendor.requests()[1].json();
+    assert_eq!(
+        (&sent["model"], &sent["output_config"]["effort"], sent.get("service_tier")),
+        (&json!("n"), &json!("high"), None)
+    );
+
+    // A change while no tree is live is the record's, and the next open
+    // takes it.
+    socket.send(&ClientFrame::Close {}).await;
+    socket.until(|frame| matches!(frame, ServerFrame::Closed)).await;
+    let lowered = backend.patch(&path, &master, json!({ "thinkingEffort": "low" })).await;
+    assert_eq!(lowered.status, StatusCode::OK);
+    socket.open().await;
+    vendor.respond(answer(&["three"], 1, 1));
+    socket.chat("m3", "third").await;
+    assert_eq!(vendor.requests()[2].json()["output_config"]["effort"], "low");
+
+    // A part the model does not offer, a model the catalog does not list,
+    // and a part for a conversation without a model are refused and change
+    // nothing.
+    let second = format!("/api/conversations/{SECOND}");
+    let refusals = [
+        (&path, json!({ "serviceTierId": "priority" }), StatusCode::CONFLICT, ErrorCode::SettingUnavailable),
+        (&path, json!({ "thinkingEffort": "max" }), StatusCode::CONFLICT, ErrorCode::SettingUnavailable),
+        (
+            &path,
+            json!({ "model": { "providerId": provider, "modelId": "x" } }),
+            StatusCode::NOT_FOUND,
+            ErrorCode::ModelNotFound,
+        ),
+        (&second, json!({ "thinkingEffort": "low" }), StatusCode::CONFLICT, ErrorCode::ModelNotSelected),
+    ];
+    for (target, body, status, code) in refusals {
+        let refused = backend.patch(target, &master, body.clone()).await;
+        assert_eq!(refused.refusal(), (status, code), "{body}");
+    }
+    assert_eq!(summary(&backend, &master, FIRST).await.model, Some(settings("n", Some("low"), None)));
+    backend.close().await;
+}
+
 #[tokio::test]
 async fn an_archive_refuses_running_work_and_holds_the_open_socket_until_the_restore() {
     let vendor = MockVendor::start().await;
@@ -1088,8 +1209,9 @@ async fn an_archive_refuses_running_work_and_holds_the_open_socket_until_the_res
     let (backend, master) = harness.start_set_up().await;
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    socket.open(&model_of(&provider, "claude-opus-4-8")).await;
+    socket.open().await;
     vendor.respond(MockResponse::event_stream(": thinking\n\n").stay_open());
     socket.send(&send("m1", "take your time")).await;
     vendor.received(1).await;

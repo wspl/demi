@@ -12,6 +12,7 @@ mod harness;
 pub(crate) mod host_access;
 mod providers;
 pub(crate) mod remote_files;
+pub(crate) mod settings;
 mod shells;
 mod socket;
 pub(crate) mod stream;

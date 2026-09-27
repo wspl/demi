@@ -3,7 +3,7 @@
 //! state and page synchronization).
 
 use demi_agent_protocol::{Failures, SubagentJob};
-use demi_core::{Block, BlockId, MAX_SAFE_INTEGER, ModelSelection, Nullable, Timestamp};
+use demi_core::{Block, BlockId, MAX_SAFE_INTEGER, Nullable, Timestamp};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::{double_option, unwrap_or_skip};
@@ -77,14 +77,11 @@ pub struct ConversationSummary {
     /// such as a target switch.
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub context_version: u64,
-    /// The provider entry the conversation last selected; null for none.
+    /// The conversation's model settings, the value every page shows; null
+    /// while the conversation has no model yet.
     #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<ProviderId>")]
-    pub provider_id: Option<ProviderId>,
-    /// The model of that entry; null exactly when `providerId` is.
-    #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<String>")]
-    pub model_id: Option<String>,
+    #[schemars(with = "Nullable<ModelSettings>")]
+    pub model: Option<ModelSettings>,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
     /// The directory the conversation's work runs in, resolved by the backend
@@ -103,6 +100,30 @@ pub struct ConversationSummary {
     pub title_current: bool,
     /// Whether a title request of the conversation is in flight.
     pub title_generating: bool,
+}
+
+/// A conversation's model settings (`models.md` § A conversation's model
+/// settings): the provider entry and model, the thinking effort and the
+/// service tier. A new conversation starts with the user's last choice, which
+/// is model settings too.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ModelSettings {
+    #[garde(skip)]
+    pub provider_id: ProviderId,
+    #[garde(length(chars, min = 1))]
+    pub model_id: String,
+    /// An effort the model lists, `disabled` for thinking off, or null for
+    /// the model's default.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<String>")]
+    #[garde(skip)]
+    pub thinking_effort: Option<String>,
+    /// A tier the model lists, or null for the vendor's default.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<String>")]
+    #[garde(skip)]
+    pub service_tier_id: Option<String>,
 }
 
 /// Where a conversation stands (`web-api.md` § Sidebar mutations, read state
@@ -196,12 +217,24 @@ pub struct ConversationPatch {
     #[schemars(with = "bool")]
     #[garde(skip)]
     pub pinned: Option<bool>,
-    /// The provider entry and model the conversation selects, or null for
-    /// none.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "double_option")]
-    #[schemars(with = "Option<ModelChoice>")]
+    /// A switch to this model, with the effort and the tier this patch
+    /// names and the model's defaults for a part it leaves out.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "ModelChoice")]
     #[garde(dive)]
-    pub model: Option<Option<ModelChoice>>,
+    pub model: Option<ModelChoice>,
+    /// The conversation's thinking effort: one its model lists, `disabled`
+    /// for thinking off, or null for the model's default.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "double_option")]
+    #[schemars(with = "Option<String>")]
+    #[garde(length(chars, min = 1))]
+    pub thinking_effort: Option<Option<String>>,
+    /// The conversation's service tier: one its model lists, or null for the
+    /// vendor's default.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "double_option")]
+    #[schemars(with = "Option<String>")]
+    #[garde(length(chars, min = 1))]
+    pub service_tier_id: Option<Option<String>>,
     /// A switch of the conversation's execution target.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "ConversationTarget")]
@@ -227,6 +260,8 @@ pub enum PatchField {
     Archived,
     Pinned,
     Model,
+    ThinkingEffort,
+    ServiceTierId,
     Target,
 }
 
@@ -295,15 +330,6 @@ pub enum BatchResult {
     },
 }
 
-/// `POST /conversations/:id/title`: a generated title, asked of `model`, the
-/// selection the composer shows.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
-#[serde(deny_unknown_fields)]
-pub struct TitleRequest {
-    #[garde(dive)]
-    pub model: ModelSelection,
-}
-
 /// `POST /conversations/:id/fork`: the new conversation's id, chosen by the
 /// browser, and the completed assistant text the history is kept through.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
@@ -315,12 +341,11 @@ pub struct ForkRequest {
     pub block_id: BlockId,
 }
 
-/// The answer of a Fork: the new conversation and the complete model
-/// selection it inherited, which the composer starts from.
+/// The answer of a Fork: the new conversation, whose model settings are the
+/// ones it inherited from its source.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ForkAnswer {
     pub conversation: ConversationSummary,
-    pub model: ModelSelection,
 }
 
 #[cfg(test)]

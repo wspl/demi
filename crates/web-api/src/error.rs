@@ -55,6 +55,14 @@ pub enum ErrorCode {
     Forbidden,
     /// The provider entry does not exist in the caller's scope.
     ProviderNotFound,
+    /// The provider entry's catalog does not list the model.
+    ModelNotFound,
+    /// The conversation's model does not offer the thinking effort or the
+    /// service tier.
+    SettingUnavailable,
+    /// The conversation has no model yet: it cannot be opened, titled, or
+    /// given an effort or a tier.
+    ModelNotSelected,
     /// Another change of the entry is still running, such as a device login
     /// into it.
     ProviderBusy,

@@ -29,18 +29,17 @@ use std::collections::BTreeMap;
 use std::sync::LazyLock;
 
 use bytes::Bytes;
-use demi_agent::testing::model_of;
-use demi_agent_protocol::{ClientFrame, ServerFrame};
-use demi_core::{Block, ThinkingConfig, TokenUsage, ToolCallStatus, ToolResultContentBlock};
+use demi_agent_protocol::ServerFrame;
+use demi_core::{Block, TokenUsage, ToolCallStatus, ToolResultContentBlock};
 use demi_provider::testing::{MockResponse, MockVendor, RecordedRequest};
 use demi_web_api::providers::{CliInstall, NewestVersion, ProviderAnswer};
 use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
 
-use crate::claude::settled;
+use crate::claude::{claude_models, settled};
 use crate::conversations::{
-    Socket, create, events, kinds, last_text, message, message_start, send, text_block, thinking_block,
+    Socket, choose, create, events, kinds, last_text, message, message_start, send, text_block, thinking_block,
     tool_use_block, transcript, usage,
 };
 use crate::support::{Harness, Session, TestBackend};
@@ -183,9 +182,11 @@ impl World {
             distribution.respond_at(&format!("{RELEASES}/{version}/{platform}/claude"), executable);
         }
         let vendor = MockVendor::start().await;
+        vendor.respond_at("/api.json", claude_models());
         let harness = Harness::new()
             .with_claude_package()
-            .with_claude_releases(distribution.url(RELEASES));
+            .with_claude_releases(distribution.url(RELEASES))
+            .with_models_dev(vendor.url("/api.json"));
         harness.manager.script(|script| script.cloud_env = Some(cloud_env(&vendor, &ca)));
         let (backend, master) = harness.start_set_up().await;
         let imported = backend
@@ -220,8 +221,9 @@ impl World {
     /// The master's conversation, open on the Claude Code entry.
     async fn conversation(&self) -> Socket {
         create(&self.backend, &self.master, CONVERSATION).await;
+        choose(&self.backend, &self.master, CONVERSATION, &self.provider, MODEL).await;
         let mut socket = Socket::connect(&self.backend, &self.master, CONVERSATION).await;
-        socket.open(&model_of(&self.provider, MODEL)).await;
+        socket.open().await;
         socket
     }
 
@@ -484,9 +486,12 @@ async fn stop_ends_the_clis_stream_and_each_new_process_replays_the_transcript_f
 
     // Another model and effort need another process, started with them,
     // which receives the transcript too.
-    let mut other = model_of(&world.provider, OTHER_MODEL);
-    other.thinking = Some(ThinkingConfig::Adaptive { effort: "medium".into() });
-    socket.send(&ClientFrame::SetProvider { model: other, apply: None }).await;
+    let switch = json!({ "model": { "providerId": world.provider, "modelId": OTHER_MODEL }, "thinkingEffort": "medium" });
+    let switched = world
+        .backend
+        .patch(&format!("/api/conversations/{CONVERSATION}"), &world.master, switch)
+        .await;
+    assert_eq!(switched.status, StatusCode::OK, "{}", String::from_utf8_lossy(&switched.body));
     world.answers(message(
         vec![text_block(0, &["Another model answers."])],
         "end_turn",
