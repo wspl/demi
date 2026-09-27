@@ -5,8 +5,6 @@ import {
   type ClientContent,
   type ClientFrame,
   type EditRequest,
-  type ModelSelection,
-  type ModelSwitchApply,
   type PendingSteer,
   type ProviderErrorDiagnostics,
   type QueuedMessage,
@@ -120,9 +118,12 @@ export class AgentClient {
     }
   }
 
-  /** Attaches to the conversation's tree and selects `model`; resolves on `opened`. */
-  open(model: ModelSelection): Promise<void> {
-    return this.request({ type: 'open', model }, (event) => {
+  /**
+   * Attaches to the conversation's tree, which runs with the model settings
+   * the conversation's record holds; resolves on `opened`.
+   */
+  open(): Promise<void> {
+    return this.request({ type: 'open' }, (event) => {
       if (event.type === 'opened') {
         return { resolve: undefined }
       }
@@ -212,15 +213,6 @@ export class AgentClient {
 
   cancelPendingSteer(steerId: string): void {
     this.sendFrame({ type: 'cancel_pending_steer', steerId })
-  }
-
-  /**
-   * Changes the model selection. `next_turn`, the default, applies it at the
-   * next action; `immediate` at the next continuation boundary of the
-   * running turn (`runtime.md` § Model switch).
-   */
-  setProvider(model: ModelSelection, apply?: ModelSwitchApply): void {
-    this.sendFrame({ type: 'set_provider', model, apply })
   }
 
   /** Runs the latest turn again from the user's input; resolves when it ends. */
