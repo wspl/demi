@@ -5,6 +5,7 @@
 use std::path::Path;
 
 use chromiumoxide::browser::BrowserConfigBuilder;
+use demi_builtin_protocol::live::VIDEO_CODEC;
 use demi_command_service::protocol::CommandLocale;
 
 use super::Result;
@@ -115,7 +116,8 @@ fn desktop_user_agent(version: &str) -> String {
 }
 
 /// Configures Chrome's switches, the user's locale and the capture extension
-/// on a profile about to be launched; the extension dials `capture`.
+/// on a profile about to be launched; the extension dials `capture` and
+/// encodes with the live protocol's codec.
 pub(super) async fn configure(
     builder: BrowserConfigBuilder,
     profile: &Path,
@@ -131,8 +133,9 @@ pub(super) async fn configure(
     tokio::fs::write(
         extension.join("config.js"),
         format!(
-            "export const socket = {};\n",
-            serde_json::Value::String(capture.to_owned())
+            "export const socket = {};\nexport const codec = {};\n",
+            serde_json::Value::String(capture.to_owned()),
+            serde_json::Value::String(VIDEO_CODEC.to_owned()),
         ),
     )
     .await?;

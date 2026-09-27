@@ -5,6 +5,7 @@
  */
 import {
   LIVE_CONTROL_FRAME,
+  LIVE_VIDEO_CODEC,
   LIVE_VIDEO_FRAME,
   type LiveControl,
   type LiveModuleMessage,
@@ -16,7 +17,6 @@ import type { OpenLiveStream, LiveStreamHandlers } from '@demicodes/web-ui/brows
 import { CONTROL, META } from '@demicodes/web-ui/browser/input'
 import { BrowserTabsError, type BrowserTabInfo, type BrowserTabsApi } from '@demicodes/web-ui/browser/tabs'
 
-const CODEC = 'avc1.640033'
 const FPS = 10
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -254,7 +254,7 @@ class GalleryBrowser {
       error: () => this.stopPictures(),
     })
     this.encoder.configure({
-      codec: CODEC,
+      codec: LIVE_VIDEO_CODEC,
       width: size.width,
       height: size.height,
       framerate: FPS,
