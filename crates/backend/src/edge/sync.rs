@@ -1,8 +1,8 @@
 //! `WS /api/sync` (`web-api.md` § Page synchronization): the page's
-//! synchronization channel. It requires a page of the product and the
-//! session cookie, which it checks without renewing the session, since only
-//! requests renew it; once upgraded, the socket moves into the user's shard,
-//! which serves it until it closes.
+//! synchronization channel. It requires the session cookie, which it checks
+//! without renewing the session, since only requests renew it; once
+//! upgraded, the socket moves into the user's shard, which serves it until
+//! it closes.
 
 use axum::extract::State;
 use axum::extract::ws::WebSocketUpgrade;
@@ -15,12 +15,10 @@ use demi_web_api::error::ErrorCode;
 use super::AppState;
 use super::cookies::SESSION_COOKIE;
 use super::error::ApiError;
-use super::gate::ProductPage;
 use crate::auth::sessions::TokenHash;
 use crate::sync::ChannelSession;
 
 pub(super) async fn channel(
-    _: ProductPage,
     State(state): State<AppState>,
     jar: CookieJar,
     upgrade: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,

@@ -164,8 +164,9 @@ pub enum ErrorCode {
     ChangesFailed,
     /// The Host failed the operation in a way no other code names.
     HostOperationFailed,
-    /// A WebSocket of the product opens only from a page of the product
-    /// itself (`backend.md` § Authentication and ownership).
+    /// The request could act with the user's session and came from a page
+    /// that is not the product's (`backend.md` § Authentication and
+    /// ownership).
     ForbiddenOrigin,
     /// No user stream has that name.
     UnknownStream,
