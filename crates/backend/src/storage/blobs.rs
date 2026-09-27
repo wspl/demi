@@ -46,9 +46,11 @@ pub(crate) struct UserBlobs {
 }
 
 impl UserBlobs {
-    /// Stores `bytes` and answers their name. A name always names the same
-    /// bytes, so finding the object there already is success: repeated
-    /// uploads of one file store it once.
+    /// Stores `bytes` and answers their name (`storage.md` § The object
+    /// store). A name always names the same bytes, so a blob the namespace
+    /// holds already is success: the put asks first whether it exists, and
+    /// sends its bytes only when it does not, so repeated uploads of one file
+    /// store it once and send it once.
     pub(crate) async fn put(&self, bytes: Bytes) -> Result<BlobRef, StorageError> {
         // Hashing an upload of 25 MiB takes tens of milliseconds, which would
         // hold an async thread that long.
@@ -57,11 +59,18 @@ impl UserBlobs {
             (bytes, blob)
         })
         .await?;
+        let location = self.location(&blob);
+        match self.objects.head(&location).await {
+            Ok(_) => return Ok(blob),
+            Err(object_store::Error::NotFound { .. }) => {}
+            Err(error) => return Err(error.into()),
+        }
         let create = PutOptions {
             mode: PutMode::Create,
             ..PutOptions::default()
         };
-        match self.objects.put_opts(&self.location(&blob), PutPayload::from_bytes(bytes), create).await {
+        match self.objects.put_opts(&location, PutPayload::from_bytes(bytes), create).await {
+            // A put of the same bytes may have created it since the HEAD.
             Ok(_) | Err(object_store::Error::AlreadyExists { .. }) => Ok(blob),
             Err(error) => Err(error.into()),
         }

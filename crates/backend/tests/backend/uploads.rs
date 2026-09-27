@@ -9,6 +9,7 @@
 //! still arrive. No test calls a real model.
 
 use demi_agent_protocol::{ClientContent, ClientFrame, EditOutcome, EditRequest, MediaRef, ServerFrame, SteerOutcome};
+use demi_backend::ObjectCounts;
 use demi_core::{Block, BlockId, MediaSource, SessionPhase, TurnId, UserContentBlock};
 use demi_provider::testing::MockVendor;
 use demi_web_api::attachments::{ATTACHMENT_MAX_BYTES, AttachmentAnswer, AttachmentDto};
@@ -57,6 +58,26 @@ fn with_upload(id: &str, text: &str, uploads: &[(&AttachmentDto, &str)]) -> Clie
         message_id: TurnId::try_from(id).unwrap(),
         content: naming(text, uploads),
     }
+}
+
+#[tokio::test]
+async fn a_repeated_upload_sends_the_object_store_no_bytes() {
+    let counts = ObjectCounts::default();
+    let harness = Harness::new().with_object_counts(&counts);
+    let (backend, master) = harness.start_set_up().await;
+    let before = counts.tally();
+    let first = upload(&backend, &master, "shot.png", "image/png", &PNG).await;
+    let stored = counts.tally().since(&before);
+    assert_eq!((stored.puts, stored.bytes_put), (1, 12), "{stored:?}");
+
+    // The same bytes under another name are the same blob: the object store
+    // is asked whether it holds it, and receives none of its bytes again.
+    let before = counts.tally();
+    let again = upload(&backend, &master, "copy.png", "image/png", &PNG).await;
+    let repeated = counts.tally().since(&before);
+    assert_eq!(again.sha256, first.sha256);
+    assert_eq!((repeated.puts, repeated.bytes_put, repeated.heads), (0, 0, 1), "{repeated:?}");
+    backend.close().await;
 }
 
 /// The model's shell call that waits until the file `go` appears where the
