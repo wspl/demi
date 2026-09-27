@@ -38,20 +38,18 @@ pub(crate) const COMPACTION_SUMMARY_INSTRUCTION: &str = "Summarize the conversat
 /// How many passes a model switch runs to fit the new model's window.
 const MAX_FIT_PASSES: usize = 8;
 
-/// When a session compacts, and how much history it keeps.
+/// When a session compacts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CompactionConfig {
-    /// The estimated tokens the kept history holds at least.
-    pub keep_recent_tokens: u64,
-    /// The share of a model's context window, in percent, at which the
-    /// history is compacted; none never compacts, as a session copy does not.
+    /// The share of a model's context window, and of each of its vendor's
+    /// request limits, in percent, at which the history is compacted; none
+    /// never compacts, as a session copy does not.
     pub threshold_percent: Option<u8>,
 }
 
 impl Default for CompactionConfig {
     fn default() -> Self {
         Self {
-            keep_recent_tokens: 4_000,
             threshold_percent: Some(80),
         }
     }
@@ -141,12 +139,14 @@ pub(super) async fn compact_to_fit(
     .await
 }
 
-/// One pass (`compaction.md` § One pass): the window from the last boundary
-/// to the cut is summarized by a session copy, and a boundary holding the
-/// summary is inserted at the cut with a marker at the end. Returns whether
-/// it compacted anything. A summary request that exceeds the context is
-/// asked again for the first half of the window, down to one block after
-/// the previous boundary; when that one exceeds it too, the pass fails.
+/// One pass (`compaction.md` § One pass): the window, what the session's
+/// latest answered request carried from the last boundary on, is summarized
+/// by a session copy, whose request is that request with the instruction
+/// after it; a boundary holding the summary is inserted where the window
+/// ends, with a marker at the end. Returns whether it compacted anything. A
+/// summary request that exceeds the context is asked again for the first
+/// half of the window, down to one block after the previous boundary; when
+/// that one exceeds it too, the pass fails.
 pub(super) async fn run_pass(
     s: &Rc<SessionShared>,
     cancel: &TurnCancel,
@@ -160,7 +160,7 @@ pub(super) async fn run_pass(
             return None;
         }
         let blocks = &view.blocks;
-        let window = compaction_window(blocks, s.config.compaction.keep_recent_tokens)?;
+        let window = compaction_window(blocks);
         // A window of a boundary and its marker alone would only summarize a
         // summary again.
         let first = blocks[window.start..window.cut]

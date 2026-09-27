@@ -13,7 +13,7 @@ use demi_core::{
 use demi_provider::{InferenceItem, RequestLimits};
 use serde_json::Value;
 
-use super::{RESUME_TEXT, WAKEUP_TEXT, replay_start};
+use super::{RESUME_TEXT, WAKEUP_TEXT, latest_answer, replay_start};
 
 /// The scalar values a replayed text keeps from its start, and from its end,
 /// when it is longer than both together.
@@ -263,34 +263,6 @@ fn accepts_document(model: &Model, media_type: &str) -> bool {
 /// the file name as a document's.
 fn unsent(kind: &str, name: &str, reason: &str) -> String {
     format!("[{kind}:{name}, not sent: {reason}]")
-}
-
-/// Where the answer to the latest answered request begins: the request whose
-/// `response` block comes last, after the last `compaction_marker`, whose
-/// answer is the run of thinking, text and tool-call blocks directly before
-/// that `response` block. None when no request was answered since the last
-/// compaction.
-fn latest_answer(blocks: &[Block]) -> Option<usize> {
-    let floor = blocks
-        .iter()
-        .rposition(|block| matches!(block, Block::CompactionMarker(_)))
-        .map_or(0, |marker| marker + 1);
-    let response = floor
-        + blocks[floor..]
-            .iter()
-            .rposition(|block| matches!(block, Block::Response(_)))?;
-    let before_answer = blocks[floor..response]
-        .iter()
-        .rposition(|block| !is_answer(block));
-    Some(before_answer.map_or(floor, |index| floor + index + 1))
-}
-
-/// Whether a block is part of a model's answer.
-fn is_answer(block: &Block) -> bool {
-    matches!(
-        block,
-        Block::Thinking(_) | Block::RedactedThinking(_) | Block::Text(_) | Block::ToolCall(_)
-    )
 }
 
 /// A tool call's input as the JSON value the provider supplied, or its text
