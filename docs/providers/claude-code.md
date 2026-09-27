@@ -360,7 +360,8 @@ no second MCP transport.
 The process is kept between turns ([Where it runs](#where-it-runs) says what
 that means for the Cloud). A run takes the process while it runs and hands it
 back to the runtime only where the conversation can continue in it; every other
-exit ends it.
+exit ends it. It hands the process back before the run's last event, because
+the agent stops reading a run at its failure.
 
 | Situation | What happens | The process |
 |---|---|---|
