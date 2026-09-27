@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { SquareTerminal } from '@lucide/vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import AnsiText from './AnsiText.vue'
@@ -7,6 +7,7 @@ import ShellEditPills from './ShellEditPills.vue'
 import FunctionalBlock from './FunctionalBlock.vue'
 import type { ToolCallBlock } from '../block-types'
 import { getToolErrorText, shellTerminalOutputChunks } from '../block-helpers'
+import { useLiveCalls } from '../live-calls'
 import { standardToolTitle } from '../tool-rendering'
 
 const props = defineProps<{
@@ -18,10 +19,27 @@ const props = defineProps<{
 const command = computed(() => (props.input['script'] as string) ?? '')
 const title = computed(() => standardToolTitle('shell_exec', props.input))
 const errorText = computed(() => getToolErrorText(props.block))
+const liveCalls = useLiveCalls()
+/** While the call runs, its command's output as it comes (`runtime.md` § Rendering boundary). */
+const liveOutput = computed(() =>
+  props.block.status === 'executing' ? liveCalls(props.block.toolUseId)?.output ?? '' : '',
+)
+// Once the call returned, the view its result stored.
 const terminalOutputText = computed(
-  () => shellTerminalOutputChunks(props.block).map((chunk) => chunk.text).join('')
+  () => liveOutput.value
+    || shellTerminalOutputChunks(props.block).map((chunk) => chunk.text).join('')
 )
 const isOpen = defineModel<boolean>('open', { default: false })
+// A running call opens once its command's output starts to come, a change
+// while it is mounted, as a block opens for its active output.
+watch(
+  () => liveOutput.value !== '',
+  (coming) => {
+    if (coming) {
+      isOpen.value = true
+    }
+  },
+)
 </script>
 
 <template>

@@ -56,3 +56,20 @@ export const DEMO_GIT_DIFF = [
   `     expect(cookie.httpOnly).toBe(true)`,
   `${blue}warning:${reset} keep the helper on ${magenta}session${reset}; do not write ${yellow}sid${reset}`,
 ].join('\n')
+
+/** A watch run's lines, one a frame: the gallery's live command prints them over and over. */
+export const DEMO_WATCH_LINES = [
+  `${dim}[watch]${reset} src/auth.test.ts changed, rerunning`,
+  `${brightGreen}(pass)${reset} writes the session cookie ${dim}[3.87ms]${reset}`,
+  `${brightGreen}(pass)${reset} sets the session header ${dim}[0.94ms]${reset}`,
+  `${brightGreen}(pass)${reset} reads the new cookie name ${dim}[1.62ms]${reset}`,
+  `${brightYellow}(skip)${reset} expired cookie ${dim}[pending]${reset}`,
+  ` ${green}3 pass${reset}  ${yellow}1 skip${reset}  ${dim}0 fail${reset}`,
+  '',
+]
+
+/** A burst longer than a frame's tail of 4,096 characters: the page shows the tail anew. */
+export const DEMO_WATCH_BURST = Array.from(
+  { length: 120 },
+  (_, index) => `${dim}  at handler (src/server/routes/session.ts:${index + 1}:14)${reset}`,
+).join('\n')

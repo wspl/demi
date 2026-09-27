@@ -58,7 +58,8 @@ import GalleryModelPreference from '../components/GalleryModelPreference.vue'
 import GalleryFindBar from '../components/GalleryFindBar.vue'
 import GalleryUserMessageLengths from '../components/GalleryUserMessageLengths.vue'
 import { submitMessageEdit, type MessageEditState } from '@demicodes/web-ui/agent/message-editing'
-import { firstRunningTerminalId } from '@demicodes/web-ui/agent/terminals'
+import { callTerminal, firstRunningTerminalId } from '@demicodes/web-ui/agent/terminals'
+import { provideLiveCalls } from '@demicodes/web-ui/agent/live-calls'
 import type { ThinkingConfig, UserContentBlock } from '@demicodes/protocol'
 import { composerAttachment, encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/attachments'
 import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
@@ -86,6 +87,7 @@ import {
 } from '../fixtures/catalog'
 import { gallerySubagents } from '../fixtures/subagents'
 import { galleryTerminals } from '../fixtures/terminals'
+import { useLiveGalleryCommand } from '../live-command'
 import { useTurnFlow, type TurnFlowKind } from '../turn-flow'
 import GalleryComposer from '../components/GalleryComposer.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
@@ -102,6 +104,9 @@ const messageEdit = ref<MessageEditState | null>(null)
 const editRevision = ref(0)
 const agents = reactive(gallerySubagents())
 const terminals = reactive(galleryTerminals())
+// The running call's command prints as it runs; the call's specimen shows it
+// under the call, and the Terminals window in its tab.
+useLiveGalleryCommand(terminals)
 const finishedOnly = agents.filter((agent) => agent.phase !== 'running')
 const exhibitAgentId = ref<string | null>(
   runningSubagents(agents)[0]?.id ?? agents[0]?.id ?? null,
@@ -352,6 +357,11 @@ session.queue = [
 ]
 const streamFlow = useTurnFlow({ id: 'gallery-stream' })
 const turnFlow = useTurnFlow({ id: 'gallery-turn' })
+// The specimens' calls show their commands' output while they run: the live
+// call's and the Turn's, whose flow runs its own command.
+provideLiveCalls((toolUseId) =>
+  callTerminal([...terminals, ...turnFlow.state.terminals], undefined, toolUseId),
+)
 const changesFlow = useTurnFlow({ id: 'gallery-changes', title: 'Cookie rename', blocks: changesDemoBlocks() })
 const changesSurface = ref<{ dockHeight: number }>()
 const changesList = ref<{ isAtBottom: boolean; scrollToBottom: () => void }>()
@@ -494,6 +504,7 @@ const functionalCollapsed = ref(false)
 const functionalExpanded = ref(true)
 const functionalTool = ref(false)
 const functionalShellExpanded = ref(true)
+const functionalShellLive = ref(true)
 const functionalShellFiles = ref(false)
 const changeCaseOpen = reactive<Record<string, boolean>>({})
 const functionalThinkingStartedAt = new Date().toISOString()
@@ -1142,7 +1153,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="FunctionalBlock"
-        note="Thinking, shell (collapsed and expanded), loading, and error."
+        note="Thinking, shell (collapsed and expanded), loading, and error. While a shell call runs, its command's output shows under it as it comes, a line every frame here; once the call returned, the call keeps the view its result stored."
       >
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack [--agent-pad-x:0px]">
@@ -1210,6 +1221,17 @@ onBeforeUnmount(() => {
                 v-model:open="functionalShellExpanded"
                 :block="shellTool"
                 :input="parseToolInput(shellTool.input)"
+                :is-streaming="false"
+              />
+            </GallerySpecimen>
+            <GallerySpecimen
+              variant="shell · live output"
+              wide
+            >
+              <ToolShellBlock
+                v-model:open="functionalShellLive"
+                :block="runningShellTool"
+                :input="parseToolInput(runningShellTool.input)"
                 :is-streaming="false"
               />
             </GallerySpecimen>
@@ -1459,7 +1481,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Terminals"
-        note="The same window. Tabs are running jobs; the body is a read-only xterm with ANSI color from bun, rg and git."
+        note="The same window. Tabs are running jobs; the body is a read-only xterm with ANSI color from bun, rg and git. The watch tab's output comes live: the terminal adds only what is new and keeps its scrollback, and after a burst longer than a frame holds, it shows the frame's tail anew. Closing a running tab stops its command."
       >
         <div class="relative h-[24rem] min-h-0">
           <TerminalPanel

@@ -67,6 +67,7 @@ function closeTab(terminal: TerminalRecord): void {
       v-if="active"
       :key="active.id"
       :output="active.output"
+      :chars="active.chars"
       :running="active.phase === 'running'"
     />
   </SessionOverlay>

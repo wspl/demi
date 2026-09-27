@@ -16,6 +16,8 @@ import SubagentPanel from '@demicodes/web-ui/agent/SubagentPanel.vue'
 import TerminalChip from '@demicodes/web-ui/agent/TerminalChip.vue'
 import TerminalPanel from '@demicodes/web-ui/agent/TerminalPanel.vue'
 import { useSessionPanels } from './useSessionPanels'
+import { provideLiveCalls } from './live-calls'
+import { callTerminal, dockTerminals } from './terminals'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import type { ChatSessionState, PendingSubmissionState } from './types'
 import type { MessageForkHandler } from './message-fork'
@@ -73,6 +75,17 @@ const emit = defineEmits<{
   saveScroll: [id: string, state: PersistedScrollState | null]
 }>()
 provideEditSelection((selection) => props.selectEdit?.(selection))
+// A running call shows its command's output under it; once the call
+// returned, a command that still runs is the dock's (`runtime.md`
+// § Rendering boundary).
+provideLiveCalls((toolUseId) => callTerminal(props.conversation.terminals, undefined, toolUseId))
+const terminals = computed(() =>
+  dockTerminals(props.conversation.terminals, (subagentId) =>
+    subagentId === undefined
+      ? props.conversation.blocks
+      : props.conversation.subagents.find((agent) => agent.id === subagentId)?.blocks ?? [],
+  ),
+)
 // Relative paths resolve against the directory the conversation works in.
 provideMessageFiles(() => props.files && { ...props.files, cwd: props.conversation.cwd })
 const surface = ref<{ dockHeight: number }>()
@@ -165,7 +178,7 @@ const list = ref<{
 const { activeSubagentId, activeTerminalId, toggleAgents, toggleTerminals, close } =
   useSessionPanels(
     () => props.conversation.subagents,
-    () => props.conversation.terminals,
+    () => terminals.value,
   )
 watch(() => props.conversation.id, close)
 </script>
@@ -301,7 +314,7 @@ watch(() => props.conversation.id, close)
                 {{ recovery === 'resume' ? 'Resume' : 'Continue' }}
               </SessionDockChip>
               <TerminalChip
-                :terminals="conversation.terminals"
+                :terminals="terminals"
                 :open="activeTerminalId !== null"
                 @open="toggleTerminals"
               />
@@ -325,12 +338,13 @@ watch(() => props.conversation.id, close)
           <SubagentPanel
             v-model:active-id="activeSubagentId"
             :agents="conversation.subagents"
+            :terminals="conversation.terminals"
             @abort="emit('abortSubagents')"
             @abort-agent="(id) => emit('abortSubagent', id)"
           />
           <TerminalPanel
             v-model:active-id="activeTerminalId"
-            :terminals="conversation.terminals"
+            :terminals="terminals"
             @abort="(id) => emit('abortTerminal', id)"
           />
         </template>
