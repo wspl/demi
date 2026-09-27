@@ -34,7 +34,7 @@ conversation's host access; they are not conversation database content.
 |---|---|---|
 | `control.sqlite` | Accounts, auth sessions, preferences, devices, workspaces, exposes, conversation index, providers, model catalogs, usage, attachment metadata, operation records | The control service, on its database thread |
 | Conversation database | Root and subagent nodes, checkpoint state, transcript blocks, command history | The shard of the user who owns the conversation |
-| User blob namespace | Uploaded bytes and transcript media addressed by content hash | The upload route, and a session when a tool's medium enters its transcript |
+| User blob namespace | Uploaded bytes and transcript media addressed by content hash | The upload route, the conversation socket when an uploaded image enters fitted, and a session when a tool's medium enters its transcript |
 | Change store | Both sides of every file a command edited, bound to the conversation ([Edit tracking](../execution/edit-tracking.md#the-change-store)) | Command completion |
 
 Both kinds of database are SQLite, reached through rusqlite with SQLite
@@ -219,7 +219,9 @@ blob.
 
 Root and subagent blocks hold their media by reference in every row and every
 frame, so the conversation database holds no media bytes. A medium is stored
-once, when it enters: an upload by the upload route, and a tool's medium by
+once, when it enters: an upload by the upload route, an uploaded image that
+fitting changed ([Images in the transcript](../agent/runtime.md#images-in-the-transcript))
+by the conversation socket as it resolves the message, and a tool's medium by
 the session, through its tree store, before the tool's result enters the
 transcript. A session reads back, through the same store, only the media its
 provider requests send, and cold browser history reads none. The agent
@@ -229,8 +231,9 @@ Browser delivery and uploaded attachment resolution are defined in
 [Backend media handling](backend.md#media-by-reference).
 
 A blob is published before any row or frame that references it: an upload
-is stored before a message can name it, and a tool's medium enters the
-transcript only once its put has succeeded. A database failure can leave an
+is stored before a message can name it, a fitted image before its message
+reaches the session, and a tool's medium enters the transcript only once its
+put has succeeded. A database failure can leave an
 unreferenced blob; it never leaves a committed block pointing at unpublished
 bytes. There is no transaction spanning SQLite and the object store. Nothing
 reclaims an unreferenced blob; when one may go is an open decision
