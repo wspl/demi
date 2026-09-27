@@ -12,7 +12,8 @@ import { useOverlay } from '../composables/useOverlay'
 
 /**
  * Size: md is the default compact panel, wide fits a settings row beside a
- * long input, lg is an editor, xl is the settings shell.
+ * long input, lg is an editor, xl is the settings shell, full is a viewer
+ * that fills the window.
  * Inline (a catalog host provides `overlayInlineKey`): the panel renders in flow at its
  * own size, with no scrim and no centering.
  * Nesting: a dialog opened from inside another stacks on it; the one beneath stays,
@@ -25,7 +26,7 @@ import { useOverlay } from '../composables/useOverlay'
 const props = defineProps<{
   isOpen: boolean
   overlayStore: OverlayStore
-  size?: 'md' | 'wide' | 'lg' | 'xl'
+  size?: 'md' | 'wide' | 'lg' | 'xl' | 'full'
   label?: string
   /** Every dialog closes from its top-right corner; a flow that must finish can hide it. */
   hideClose?: boolean
@@ -81,7 +82,7 @@ onKeyStroke('Escape', (event) => {
           class="dialog-panel relative flex flex-col overflow-hidden rounded-xl bg-surface-dialog shadow-2xl"
           :class="[
             inline ? 'w-full' : 'max-h-[calc(100%-2rem)] w-[calc(100%-2rem)]',
-            size === 'xl' ? 'max-w-5xl' : size === 'lg' ? 'max-w-3xl' : size === 'wide' ? 'max-w-xl' : 'max-w-md',
+            size === 'full' ? 'h-[calc(100%-2rem)]' : size === 'xl' ? 'max-w-5xl' : size === 'lg' ? 'max-w-3xl' : size === 'wide' ? 'max-w-xl' : 'max-w-md',
           ]"
           role="dialog"
           aria-modal="true"

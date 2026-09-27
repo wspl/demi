@@ -30,6 +30,7 @@ fn signed(signature: &str) -> InferenceItem {
         model_id: "gemini".into(),
         text: String::new(),
         signature: Some(signature.into()),
+        kept_past_summary: false,
     }
 }
 

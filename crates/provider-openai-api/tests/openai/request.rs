@@ -55,6 +55,7 @@ fn thinking(text: &str, signature: Option<&str>) -> InferenceItem {
         model_id: "gpt-test".into(),
         text: text.into(),
         signature: signature.map(str::to_owned),
+        kept_past_summary: false,
     }
 }
 
@@ -530,6 +531,7 @@ async fn thinking_is_replayed_as_reasoning_content_only_when_the_vendor_policy_a
         InferenceItem::AssistantRedactedThinking {
             model_id: "deepseek-v4-pro".into(),
             data: "opaque".into(),
+            kept_past_summary: false,
         },
         tool_use("call-1", "a.ts"),
         tool_result("call-1", contents("contents")),

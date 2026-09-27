@@ -345,14 +345,8 @@ pub(super) async fn committed(
         file_name(path.as_str()).as_deref(),
     ));
     answer.extend(part.headers());
-    match part.range() {
-        Some(range) if method != Method::HEAD => {
-            let start = usize::try_from(range.offset).expect("a part of held bytes fits usize");
-            let length = range.length.map_or(bytes.len() - start, |length| {
-                usize::try_from(length).expect("a part of held bytes fits usize")
-            });
-            Ok((part.status(), answer, bytes.slice(start..start + length)).into_response())
-        }
+    match part.part_of(&bytes) {
+        Some(body) if method != Method::HEAD => Ok((part.status(), answer, body).into_response()),
         _ => Ok((part.status(), answer).into_response()),
     }
 }

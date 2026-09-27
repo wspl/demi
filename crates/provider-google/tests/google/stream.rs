@@ -36,9 +36,10 @@ async fn thought_parts_stream_as_thinking_and_a_function_call_emits_its_signatur
         json!({ "usageMetadata": { "promptTokenCount": 10, "candidatesTokenCount": 4, "thoughtsTokenCount": 20, "cachedContentTokenCount": 3 } }),
     ]))
     .await;
-    // Thinking is billed apart from the answer, and both are output.
+    // Thinking is billed apart from the answer, and both are output; the
+    // prompt count includes what the vendor read from its cache.
     let usage = TokenUsage {
-        input_tokens: 10,
+        input_tokens: 7,
         output_tokens: 24,
         cache_read_tokens: 3,
         cache_write_tokens: 0,

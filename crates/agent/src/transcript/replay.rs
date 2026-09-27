@@ -1,27 +1,51 @@
 //! What the model receives of a transcript (`runtime.md` § Replay): the
 //! blocks from the last compaction boundary on, each as its inference item,
-//! with long texts cut in the middle (`compaction.md` § Text bounds).
+//! with long texts cut in the middle (`compaction.md` § Text bounds), and
+//! each medium the request's model cannot take as a text that says why.
 
 use std::borrow::Cow;
 
 use demi_core::{
-    AgentMessage, Block, ToolCallStatus, ToolResultContentBlock, UserContentBlock, WakeupPlacement,
+    AgentMessage, Block, DocumentSource, FileExtension, MediaSource, Model, ToolCallStatus,
+    ToolMediaSource, ToolResultContentBlock, UserContentBlock, WakeupPlacement,
+    file_extension_support, model_accepts_media_type,
 };
-use demi_provider::InferenceItem;
+use demi_provider::{InferenceItem, RequestLimits};
 use serde_json::Value;
 
-use super::{RESUME_TEXT, WAKEUP_TEXT, replay_start};
+use super::{RESUME_TEXT, WAKEUP_TEXT, latest_answer, replay_start};
 
 /// The scalar values a replayed text keeps from its start, and from its end,
 /// when it is longer than both together.
 const HEAD_CHARS: usize = 8_000;
 const TAIL_CHARS: usize = 8_000;
 
-/// The inference items of `blocks`, in order.
-pub(crate) fn replay(blocks: &[Block]) -> Vec<InferenceItem> {
+/// What a request carries of a transcript.
+pub(crate) struct Replay {
+    /// The inference items of the blocks, in order.
+    pub(crate) items: Vec<InferenceItem>,
+    /// How many leading items the latest answered request carried: those of
+    /// the blocks before its answer.
+    pub(crate) answered: usize,
+}
+
+/// What a request of `model`, whose vendor takes requests within `limits`,
+/// carries of `blocks`.
+pub(crate) fn replay(blocks: &[Block], model: &Model, limits: RequestLimits) -> Replay {
     let start = replay_start(blocks);
+    let answer = latest_answer(blocks);
+    let kept = kept_past_summary(blocks, start);
+    let media = Media {
+        model,
+        half_body: limits.body_bytes.map(|bytes| bytes / 2),
+    };
     let mut items = Vec::new();
-    for block in &blocks[start..] {
+    let mut answered = 0;
+    for (index, block) in blocks.iter().enumerate().skip(start) {
+        if Some(index) == answer {
+            answered = items.len();
+        }
+        let kept_past_summary = kept.contains(&index);
         match block {
             Block::User(user) => {
                 let preamble = user
@@ -30,7 +54,7 @@ pub(crate) fn replay(blocks: &[Block]) -> Vec<InferenceItem> {
                     .map(|text| UserContentBlock::Text { text: text.clone() });
                 let content = preamble.chain(user.content.iter().cloned()).collect();
                 items.push(InferenceItem::UserMessage {
-                    content: bound_content(content),
+                    content: media.content(content),
                 });
             }
             Block::Context(context) => items.push(InferenceItem::UserMessage {
@@ -44,7 +68,7 @@ pub(crate) fn replay(blocks: &[Block]) -> Vec<InferenceItem> {
                 });
             }
             Block::Steer(steer) => items.push(InferenceItem::UserSteer {
-                content: bound_content(steer.content.clone()),
+                content: media.content(steer.content.clone()),
             }),
             Block::AgentMessage(receipt) => items.push(InferenceItem::UserSteer {
                 content: vec![text(agent_message_envelope(&receipt.message))],
@@ -62,12 +86,14 @@ pub(crate) fn replay(blocks: &[Block]) -> Vec<InferenceItem> {
                     model_id: thinking.model.model.id.clone(),
                     text: replayed,
                     signature: thinking.signature.clone(),
+                    kept_past_summary,
                 });
             }
             Block::RedactedThinking(redacted) => {
                 items.push(InferenceItem::AssistantRedactedThinking {
                     model_id: redacted.model.model.id.clone(),
                     data: redacted.data.clone(),
+                    kept_past_summary,
                 });
             }
             Block::Text(answer) => items.push(InferenceItem::AssistantText {
@@ -84,7 +110,7 @@ pub(crate) fn replay(blocks: &[Block]) -> Vec<InferenceItem> {
                 if call.status != ToolCallStatus::Executing {
                     items.push(InferenceItem::ToolResult {
                         tool_use_id: call.tool_use_id.clone(),
-                        output: call.output.iter().map(bound_result).collect(),
+                        output: call.output.iter().map(|part| media.result(part)).collect(),
                         is_error: call.status == ToolCallStatus::Error,
                     });
                 }
@@ -102,7 +128,141 @@ pub(crate) fn replay(blocks: &[Block]) -> Vec<InferenceItem> {
             }
         }
     }
-    items
+    Replay { items, answered }
+}
+
+/// The blocks compaction kept after the summary replay starts at: those
+/// between the last `compaction_boundary`, at `start`, and its marker. Their
+/// reasoning followed the history the summary replaced.
+fn kept_past_summary(blocks: &[Block], start: usize) -> std::ops::Range<usize> {
+    if !matches!(blocks.get(start), Some(Block::CompactionBoundary(_))) {
+        return 0..0;
+    }
+    let marker = blocks[start..]
+        .iter()
+        .position(|block| matches!(block, Block::CompactionMarker(_)))
+        .map_or(blocks.len(), |offset| start + offset);
+    start + 1..marker
+}
+
+/// Which media a request's model takes (`runtime.md` § Replay): the types
+/// it reads natively, each within half of its vendor's request body limit.
+/// Any other medium reaches it as a text that names it and says why, the
+/// same text in every request to that model.
+struct Media<'a> {
+    model: &'a Model,
+    /// Half of the body limit, the most base64 one medium may take; none
+    /// when the vendor documents no limit.
+    half_body: Option<u64>,
+}
+
+impl Media<'_> {
+    /// A message's content as the model receives it: long texts bounded,
+    /// and each medium it cannot take as its text.
+    fn content(&self, content: Vec<UserContentBlock>) -> Vec<UserContentBlock> {
+        content
+            .into_iter()
+            .map(|part| match part {
+                UserContentBlock::Text { text } => UserContentBlock::Text {
+                    text: bound_text(&text).into_owned(),
+                },
+                part => match self.unsent_part(&part) {
+                    Some(text) => UserContentBlock::Text { text },
+                    None => part,
+                },
+            })
+            .collect()
+    }
+
+    /// The text of a message's medium the model cannot take; none for any
+    /// other part.
+    fn unsent_part(&self, part: &UserContentBlock) -> Option<String> {
+        match part {
+            UserContentBlock::Image { source } => self.unsent_media("image", source),
+            UserContentBlock::Video { source } => self.unsent_media("video", source),
+            UserContentBlock::Document { source } => {
+                let (media_type, file_name, data) = match source {
+                    DocumentSource::Binary {
+                        data,
+                        media_type,
+                        file_name,
+                    } => (media_type, file_name, Some(data)),
+                    DocumentSource::Ref {
+                        media_type,
+                        file_name,
+                        ..
+                    } => (media_type, file_name, None),
+                };
+                let reason = self.refusal(accepts_document(self.model, media_type), data)?;
+                Some(unsent("document", file_name, reason))
+            }
+            _ => None,
+        }
+    }
+
+    fn unsent_media(&self, kind: &str, source: &MediaSource) -> Option<String> {
+        let (media_type, data) = match source {
+            MediaSource::Binary { data, media_type } => (media_type, Some(data)),
+            MediaSource::Ref { media_type, .. } => (media_type, None),
+            // A URL names no type; the vendor fetches what it names.
+            MediaSource::Url { .. } => return None,
+        };
+        let reason = self.refusal(model_accepts_media_type(self.model, media_type), data)?;
+        Some(unsent(kind, media_type, reason))
+    }
+
+    /// A tool result's part as the model receives it: a text bounded, and a
+    /// medium the model cannot take as its text.
+    fn result(&self, part: &ToolResultContentBlock) -> ToolResultContentBlock {
+        let (kind, source) = match part {
+            ToolResultContentBlock::Text { text } => {
+                return ToolResultContentBlock::Text {
+                    text: bound_text(text).into_owned(),
+                };
+            }
+            ToolResultContentBlock::Image { source } => ("image", source),
+            ToolResultContentBlock::Video { source } => ("video", source),
+        };
+        let (media_type, data) = match source {
+            ToolMediaSource::Binary { data, media_type } => (media_type, Some(data)),
+            ToolMediaSource::Ref { media_type, .. } => (media_type, None),
+        };
+        match self.refusal(model_accepts_media_type(self.model, media_type), data) {
+            Some(reason) => ToolResultContentBlock::Text {
+                text: unsent(kind, media_type, reason),
+            },
+            None => part.clone(),
+        }
+    }
+
+    /// Why a medium is not sent: its type is not `accepted`, or its bytes,
+    /// when the session holds them, take more than half of the body limit as
+    /// base64.
+    fn refusal(&self, accepted: bool, data: Option<&demi_core::B64Bytes>) -> Option<&'static str> {
+        if !accepted {
+            return Some("the model does not accept it");
+        }
+        let too_large = self
+            .half_body
+            .zip(data)
+            .is_some_and(|(half, data)| data.base64_len() > half);
+        too_large.then_some("too large for the model's requests")
+    }
+}
+
+/// Whether `model` reads the document of `media_type` natively: a model's
+/// documents are PDFs (`attachments`).
+fn accepts_document(model: &Model, media_type: &str) -> bool {
+    let pdf = media_type.split(';').next().map(str::trim) == Some("application/pdf");
+    pdf && file_extension_support(model.accepted_extensions.as_deref(), FileExtension::Pdf)
+        == Some(true)
+}
+
+/// The text a medium that is not sent becomes: `[<kind>:<name>, not sent:
+/// <reason>]`, with the media type as the name of an image or a video and
+/// the file name as a document's.
+fn unsent(kind: &str, name: &str, reason: &str) -> String {
+    format!("[{kind}:{name}, not sent: {reason}]")
 }
 
 /// A tool call's input as the JSON value the provider supplied, or its text
@@ -150,34 +310,91 @@ pub(crate) fn char_offset(text: &str, chars: usize) -> usize {
         .map_or(text.len(), |(offset, _)| offset)
 }
 
-fn bound_content(content: Vec<UserContentBlock>) -> Vec<UserContentBlock> {
-    content
-        .into_iter()
-        .map(|part| match part {
-            UserContentBlock::Text { text } => UserContentBlock::Text {
-                text: bound_text(&text).into_owned(),
-            },
-            other => other,
-        })
-        .collect()
-}
-
-fn bound_result(part: &ToolResultContentBlock) -> ToolResultContentBlock {
-    match part {
-        ToolResultContentBlock::Text { text } => ToolResultContentBlock::Text {
-            text: bound_text(text).into_owned(),
-        },
-        other => other.clone(),
-    }
-}
-
 fn text(text: String) -> UserContentBlock {
     UserContentBlock::Text { text }
 }
 
 #[cfg(test)]
 mod tests {
+    use demi_core::{
+        BlockId, CompactionBoundaryBlock, CompactionMarkerBlock, RedactedThinkingBlock,
+        ThinkingBlock, Timestamp,
+    };
+
     use super::*;
+    use crate::testing::test_model;
+
+    #[test]
+    fn reasoning_between_the_last_boundary_and_its_marker_is_marked_as_kept_past_a_summary() {
+        let model = test_model();
+        let id = |value: &str| BlockId::try_from(value).unwrap();
+        let thinking = |value: &str| {
+            Block::Thinking(ThinkingBlock {
+                id: id(value),
+                created_at: Timestamp::UNIX_EPOCH,
+                model: model.clone(),
+                text: value.into(),
+                signature: Some(format!("anthropic:{value}")),
+            })
+        };
+        let redacted = Block::RedactedThinking(RedactedThinkingBlock {
+            id: id("redacted"),
+            created_at: Timestamp::UNIX_EPOCH,
+            model: model.clone(),
+            data: "anthropic:opaque".into(),
+        });
+        let boundary = Block::CompactionBoundary(CompactionBoundaryBlock {
+            id: id("boundary"),
+            created_at: Timestamp::UNIX_EPOCH,
+            model: model.clone(),
+            summary: "the user asked twice".into(),
+            summary_tokens: 5,
+        });
+        let marker = Block::CompactionMarker(CompactionMarkerBlock {
+            id: id("marker"),
+            created_at: Timestamp::UNIX_EPOCH,
+            model: model.clone(),
+            boundary_id: id("boundary"),
+            compacted_tokens: 100,
+        });
+        let kept = |blocks: &[Block]| -> Vec<(String, bool)> {
+            replay(blocks, &model.model, RequestLimits::default())
+                .items
+                .into_iter()
+                .filter_map(|item| match item {
+                    InferenceItem::AssistantThinking {
+                        text,
+                        kept_past_summary,
+                        ..
+                    } => Some((text, kept_past_summary)),
+                    InferenceItem::AssistantRedactedThinking {
+                        data,
+                        kept_past_summary,
+                        ..
+                    } => Some((data, kept_past_summary)),
+                    _ => None,
+                })
+                .collect()
+        };
+        let compacted = [
+            thinking("summarized"),
+            boundary,
+            thinking("kept"),
+            redacted,
+            marker,
+            thinking("after"),
+        ];
+        assert_eq!(
+            kept(&compacted),
+            [
+                ("kept".to_owned(), true),
+                ("anthropic:opaque".to_owned(), true),
+                ("after".to_owned(), false)
+            ]
+        );
+        // Without a summary, nothing is kept past one.
+        assert_eq!(kept(&compacted[5..]), [("after".to_owned(), false)]);
+    }
 
     #[test]
     fn a_long_text_keeps_its_ends_and_counts_what_it_left_out_in_scalar_values() {

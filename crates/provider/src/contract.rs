@@ -5,8 +5,8 @@
 use std::{num::NonZeroU32, sync::Arc};
 
 use demi_core::{
-    AuthState, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList, RuntimeState,
-    ThinkingConfig, Timestamp, TokenUsage, ToolResultContentBlock, UserContentBlock,
+    AuthState, Model, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
+    RuntimeState, ThinkingConfig, Timestamp, TokenUsage, ToolResultContentBlock, UserContentBlock,
 };
 use futures_util::{
     future::{BoxFuture, LocalBoxFuture},
@@ -115,6 +115,44 @@ pub trait ProviderRuntime {
     /// dropped without closing still has its process killed, without
     /// waiting.
     fn close(&mut self) -> LocalBoxFuture<'_, ()>;
+
+    /// What the vendor accepts in one request of `model`, however few tokens
+    /// it holds (`models.md` § Request limits).
+    fn request_limits(&self, model: &Model) -> RequestLimits;
+}
+
+/// What a vendor accepts in one request (`models.md` § Request limits). A
+/// limit the vendor does not document is none: a request it refuses as too
+/// large still leads to compaction.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RequestLimits {
+    /// The most bytes of a request body, as the vendor receives it.
+    pub body_bytes: Option<u64>,
+    /// The most images one request carries.
+    pub images: Option<u32>,
+}
+
+impl RequestLimits {
+    /// The OpenAI API's, which Codex's backend shares.
+    pub const OPENAI: Self = Self {
+        body_bytes: Some(512_000_000),
+        images: Some(1_500),
+    };
+
+    /// The Anthropic Messages API's for `model`, which Claude Code's CLI
+    /// sends its history to: 32 MB, and 100 images when the model's context
+    /// window is at most 200,000 tokens or unknown, 600 otherwise.
+    pub fn anthropic_messages(model: &Model) -> Self {
+        let images = if model.context_window <= 200_000 {
+            100
+        } else {
+            600
+        };
+        Self {
+            body_bytes: Some(32_000_000),
+            images: Some(images),
+        }
+    }
 }
 
 /// The events of one run.
@@ -142,9 +180,27 @@ pub struct InferenceRequest {
     pub tools: Arc<[ToolDefinition]>,
     pub thinking: Option<ThinkingConfig>,
     pub service_tier_id: Option<String>,
+    /// How the request extends the session's earlier requests, for a vendor
+    /// that caches only where a request marks it.
+    pub prompt_cache: PromptCache,
     /// Cancels the run: it stops its work at once and ends without a further
     /// event.
     pub cancel: CancellationToken,
+}
+
+/// How a request extends the session's earlier requests (`providers.md`
+/// § Prompt cache).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PromptCache {
+    /// A request that is no session's, such as a title request or a
+    /// connection test: no later request extends it, and it extends none, so
+    /// nothing is cached for it.
+    Off,
+    /// A request of a session, a summary request included. Its first
+    /// `answered_items` items are what the session's latest answered request
+    /// carried; none when no request was answered since the last compaction
+    /// (`runtime.md` § Replay).
+    Session { answered_items: usize },
 }
 
 impl InferenceRequest {
@@ -179,11 +235,18 @@ pub enum InferenceItem {
         model_id: String,
         text: String,
         signature: Option<String>,
+        /// Compaction kept it after a summary, which replaced the history it
+        /// followed (`runtime.md` § Replay): a provider whose vendor checks
+        /// reasoning against that history leaves it out (`providers.md`
+        /// § Per vendor).
+        kept_past_summary: bool,
     },
     /// Opaque reasoning data, replayed as received.
     AssistantRedactedThinking {
         model_id: String,
         data: String,
+        /// As for [`Self::AssistantThinking`].
+        kept_past_summary: bool,
     },
     ToolUse {
         model_id: String,

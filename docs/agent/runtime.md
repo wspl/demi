@@ -103,7 +103,9 @@ action starts
   compact first when the history is over the threshold
   |
   +-> write pending steers and agent messages into the transcript
+  |   compact first when the request reaches a size threshold
   |   request the provider, retrying transient failures
+  |   refused as too large: compact once and request again
   |   apply the provider's events to the transcript as they stream
   |   save, then run the requested tools one at a time, in order
   |   usage reached the compaction threshold: compact, append `resume`, loop
@@ -119,8 +121,9 @@ A turn ends when a response requests no tool, or when a tool asks to end the
 turn after its result, as `yield` does. Input that arrived during the round
 overrides both: the turn asks the provider once more. Transient provider
 failures are retried inside the request
-([Retries](failures-and-recovery.md#retries)); compaction inside a turn is
-described in [Compaction](compaction.md#compaction).
+([Retries](failures-and-recovery.md#retries)); compaction inside a turn,
+before a request that would be too large and after one that was refused, is
+described in [Compaction](compaction.md#when-compaction-runs).
 
 While an action runs, its stage is one of: preparing (before the first
 request), streaming from the provider, running tools, compacting, or
@@ -459,9 +462,13 @@ the five completes as an error `Tool not found: <name>`.
   released.
 - When a command exits with binary stdout, the result attaches it as an image
   or a video only when the stream is complete, its bytes are a media type of
-  the model-media table, the model accepts that type, and it fits the cap for
-  its kind: 4 MiB for an image, 16 MiB for a video. Otherwise the result says
-  why nothing was attached and where the raw bytes remain readable.
+  the model-media table, and the model accepts that type. An image is attached
+  as it is fitted ([Images in the transcript](#images-in-the-transcript)). A
+  video is attached up to 16 MiB, and only when its base64 takes at most half
+  of the model's request body limit
+  ([Request limits](../providers/models.md#request-limits)), so that a request
+  still has room for the history around it. Otherwise the result says why
+  nothing was attached and where the raw bytes remain readable.
 
 ### Live output
 
@@ -611,12 +618,60 @@ were sent. Each medium is replayed with the bytes the session holds for it
 ([Media](#media)). A tool call's input is replayed as the JSON value the
 provider supplied, or as text when it is not valid JSON.
 
-Replay reads only what the blocks hold for the model, never an ID or a time,
-and a block keeps its place. The same history therefore gives the same items in
-any session, and each request's items begin with the previous request's until a
-history rewrite or a new `compaction_boundary` changes what is replayed. With
-an unchanged system prompt and tools, a provider that caches request prefixes
-reuses them ([Keeping the cache prefix](compaction.md#keeping-the-cache-prefix)).
+An image, video or document is replayed as a text that names it and says why
+it was not sent when the request's model does not accept its type
+([Accepted attachment types](../providers/models.md#accepted-attachment-types)),
+or when its base64 is longer than half of the model's request body limit
+([Request limits](../providers/models.md#request-limits)), which leaves no room
+for the history around it:
+
+| The medium | Its text |
+| --- | --- |
+| Of a type the model does not accept | `[<kind>:<name>, not sent: the model does not accept it]` |
+| Over half of the model's body limit | `[<kind>:<name>, not sent: too large for the model's requests]` |
+
+The kind is `image`, `video` or `document`, and the name is the media type of
+an image or a video and the file name of a document. The text depends only on
+the medium and the request's model, so every request to that model carries the
+same text. For example, after a switch to a model without video, a tool
+result's video reaches that model as
+`[video:video/mp4, not sent: the model does not accept it]` in every request,
+and a switch back sends the video again.
+
+Reasoning between the last `compaction_boundary` and its marker, which
+compaction kept after the summary, is marked as kept past a summary: the
+history it followed is gone, and a provider whose vendor checks reasoning
+against that history leaves it out
+([Per vendor](../providers/providers.md#per-vendor)). When an edit removed the
+marker, all reasoning after the boundary is marked, since leaving reasoning
+out is safe and replaying reasoning whose history changed is not.
+
+Replay reads only what the blocks hold for the model, and which media the
+request's model accepts, never an ID or a time, and a block keeps its place.
+The same history therefore gives the same items for the same model in any
+session. Each request's items begin with the previous request's: new blocks
+are appended, a tool call's result completes a call no request has carried
+yet, and a view is never replayed. Only compaction, a model switch and an edit
+change what an earlier request carried; a retry and a resume cut back to an
+earlier request. This is how a session keeps its vendor's cache
+([Prompt cache](../providers/providers.md#prompt-cache)).
+
+A request also says how many of its leading items the session's latest
+answered request carried. That request is the one whose `response` block
+comes last after the last compaction, that is, after the last
+`compaction_boundary` and its marker when the history has them; its
+answer begins at the first of the thinking, text and tool-call blocks directly
+before that `response` block, and its content is what the blocks before its
+answer replay. Compaction summarizes that content
+([One pass](compaction.md#one-pass)), and a vendor reads its cache entry at its
+end. Before any request is answered after the last compaction, the request
+says none. With Claude Code, a run that ends in a batch of tool calls
+([Tool-call batches](../providers/claude-code.md#tool-call-batches)) writes no
+`response` block, because the CLI reports usage only on the line that ends its
+turn
+([Requests over stream-json](../providers/claude-code.md#requests-over-stream-json)),
+so its latest answered request is the last request that ended a turn. A title request says instead that it is no session's
+([Conversation titles](../product/product.md#conversation-titles)).
 
 ### Media
 
@@ -638,8 +693,11 @@ each provider request while the block is replayed:         the held bytes
 ```
 
 - **Storing.** A medium's bytes are stored when the medium enters, and never
-  again. An upload is stored when the page uploads it, and the medium a
-  message receives from it references the upload's own blob
+  again; an image is fitted before that
+  ([Images in the transcript](#images-in-the-transcript)). An upload is
+  stored when the page uploads it, and the medium a message receives from it
+  references the upload's own blob, or the fitted image's, which the backend
+  stores as it resolves the message's content
   ([Media by reference](../backend/backend.md#media-by-reference)). The
   session has its store put a tool's medium after the tool returns and
   before the result enters the transcript. The put computes the bytes'
@@ -648,6 +706,13 @@ each provider request while the block is replayed:         the held bytes
   A tool's medium whose put fails becomes the text
   `[<kind> not stored: <reason>]` in its result, so the turn goes on and no
   block names a blob that was not stored.
+- **Text in a medium's place.** A text that takes a tool medium's place in a
+  result, such as the one above or a retired medium's
+  ([Retired tool media](#retired-tool-media)), is a text part of its own that
+  starts with `[image` or `[video`, and no other text part of a tool result
+  starts so.
+  The page shows it where the medium was
+  ([Media a tool returned](../product/file-previews.md#media-a-tool-returned)).
 - **References.** The transcript, the queued messages, the pending steers,
   every checkpoint row and every frame hold media only by reference. Nothing
   converts media when a block is saved or sent, a store refuses a checkpoint
@@ -657,7 +722,8 @@ each provider request while the block is replayed:         the held bytes
   replayed blocks or its waiting input (queued messages and pending steers)
   reference: the medium's bytes, or the fact that its blob is missing. A
   medium arrives with its bytes: a tool's medium with its own, an upload's
-  with those the backend read to write the file to the Host. When a new
+  with those the backend read to write the file to the Host or with the
+  fitted image's. When a new
   `compaction_boundary`, a history rewrite or a withdrawn input leaves a
   medium unreferenced, the session lets go of it before its next request. A
   live tree therefore holds, per live session, at most the media its next
@@ -687,6 +753,41 @@ each provider request while the block is replayed:         the held bytes
   decides where the bytes go. A session reaches the owner's blob namespace
   only through its tree store ([Tree store](#tree-store)); the agent's server
   has no blob store of its own.
+
+### Images in the transcript
+
+An image enters the transcript once: when a tool result attaches it
+([Results and previews](#results-and-previews)), or when a message's upload
+becomes its native medium
+([Attachments](../product/product.md#attachments)). It is fitted then to what
+every provider accepts of one image, at most 2,000 px on each side and
+5,000,000 bytes as base64, which is 3,750,000 bytes of image, and it never
+changes afterwards, so every request sends the same bytes.
+
+| The image | What enters the transcript |
+| --- | --- |
+| PNG, JPEG or WebP, at most 2,000 px on each side and 3,750,000 bytes | The image, unchanged |
+| Larger than 2,000 px on a side | The image turned upright by its EXIF orientation and scaled down to fit 2,000 × 2,000 px, keeping its aspect ratio: a JPEG as JPEG at quality 90, a PNG or WebP as PNG |
+| A GIF | Its first frame as PNG, fitted the same way |
+| Over 3,750,000 bytes after that | The fitted image as JPEG at quality 85 |
+| Still over 3,750,000 bytes, not decodable, or needing more than 256 MiB to decode | No image: a tool result says why, and an upload stays an attachment the model reads by path |
+
+For example, a screenshot of 3,000 × 1,500 px enters as 2,000 × 1,000 px. The
+limits follow the vendors: the Anthropic API refuses a request with more than
+20 images when a side of any of them exceeds 2,000 px, and OpenAI and Gemini
+scale a larger image down themselves; the vendors' strictest limit for one
+image is that of the Anthropic models on Amazon Bedrock and Google Cloud, 5 MB
+as base64. A GIF becomes a PNG because Gemini does not read GIF and the other
+vendors read only its first frame. A fitted image carries no EXIF data, so its
+orientation is applied before it is scaled.
+
+The original stays where it came from: a tool's stdout in the command's
+retained output on the Host, whose path the result names, and an upload in its
+attachment file on the Host and in its upload blob, whose attachment record
+keeps the original's size and hash. Fitting decodes and encodes on the
+blocking pool ([Blocking work](../architecture/concurrency.md#blocking-work)).
+Videos and documents are not fitted; they count toward the request's size
+([Request size](compaction.md#request-size)).
 
 ### Views
 
@@ -742,10 +843,8 @@ one of these holds:
   previous one carried the image.
 - A message's images, videos and documents are never retired: they come from
   the user's uploads.
-- The page shows the call as before. The renderers of the five tools draw its
-  stored `view`, which never held the image
-  ([Rendering boundary](#rendering-boundary)), and the generic tool card shows
-  the text as it shows any text part.
+- The page shows the text where the image or video was, as the model reads
+  it ([Media a tool returned](../product/file-previews.md#media-a-tool-returned)).
 - The agent owns the rule: which media are retired, when, and the text. The
   backend applies it to stored conversations
   ([Retention](../backend/storage.md#retention)).
@@ -790,6 +889,11 @@ A renderer uses the `tool_call` fields as [Transcript](#transcript) defines
 them: `toolName` selects the rendering, `input` is JSON text the renderer
 parses, `status` and `output` give the result, and `view` enriches the display
 with the command's own output and status.
+
+The images and videos a result carries are parts of its `output`, held by
+reference ([Media](#media)); the view never holds them. Each tool's rendering
+shows them with the call, and a text in a medium's place where the medium was
+([Media a tool returned](../product/file-previews.md#media-a-tool-returned)).
 
 Live frames add to the transcript; they do not replace it:
 
@@ -1155,8 +1259,13 @@ where a tool runs; no test calls a real model.
 | A client stops reading | The connection closes as lagging; a reconnect adopts the running tree and its turn completes |
 | Frames of an open | The handshake order above; patch revisions increase by one; a stale patch after a reset is ignored; a gap triggers `sync_transcript` |
 | Scripted tool events | Each of the five tools renders with its own component and its `description` title; updates replace the block in place; an unknown tool name renders as a generic card |
+| A tool's result carries an image, a video, or a text in a medium's place | The page shows each under the call's row, the media loaded from the blob route; a click on the image opens it large |
 | Tool calls | Input refusals, the repeat guard, preview budgets, handle release and binary stdout verdicts match [Tools](#tools) |
 | A stored conversation with images is opened by two pages, and one asks for the transcript again after a gap | No blob is put: every frame carries the references its rows hold |
 | A restored conversation with images before and after its last `compaction_boundary` runs a turn of two requests | The first request reads the blob of each replayed medium once and none from before the boundary; the second reads none; both carry the replayed media's bytes |
 | A tool's medium cannot be stored | Its result holds `[<kind> not stored: <reason>]`, the model receives that text, and the turn goes on |
 | A replayed medium's blob is missing | The model receives `[missing <kind> blob <ref>]` in its place, in every request of the live tree, and the turn goes on |
+| One scripted conversation with tools, images, thinking, a steer, a subagent's result and a yield, for each provider | Each request's body begins with the previous request's body, byte for byte apart from the Anthropic cache marks, which the vendor does not count as content; each exception of [The rule](../providers/providers.md#the-rule) changes only what that rule names |
+| A switch to a model that does not accept video | Every request to it carries the history's videos as the same text |
+| A video whose base64 is over half of a model's request body limit | A tool result does not attach it, and replay sends one already in the history as the same text in every request to that model |
+| An image over 2,000 px enters from a tool result and from an upload | It enters fitted, every later request carries the same bytes, and the original stays on the Host |

@@ -114,7 +114,7 @@ pub struct CompletedResponse {
 }
 
 /// Token counts as the API reports them: whole numbers, or absent. The input
-/// count includes the cached prefix.
+/// count includes what the API read from its cache and what it wrote to it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub struct Usage {
     #[serde(default)]
@@ -129,13 +129,18 @@ pub struct Usage {
 pub struct InputTokensDetails {
     #[serde(default)]
     pub cached_tokens: Option<u64>,
+    #[serde(default)]
+    pub cache_write_tokens: Option<u64>,
 }
 
 impl Usage {
-    /// The run's usage, with the cached prefix kept apart from the input.
+    /// The run's usage, with what the API read from its cache and what it
+    /// wrote to it kept apart from the input.
     pub fn token_usage(&self) -> TokenUsage {
-        let cached = self.input_tokens_details.and_then(|details| details.cached_tokens);
-        usage_with_cached_input(self.input_tokens, self.output_tokens, cached)
+        let details = self.input_tokens_details;
+        let read = details.and_then(|details| details.cached_tokens);
+        let written = details.and_then(|details| details.cache_write_tokens);
+        usage_with_cached_input(self.input_tokens, self.output_tokens, read, written)
     }
 }
 

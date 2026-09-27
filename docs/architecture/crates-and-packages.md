@@ -337,8 +337,10 @@ next to the wire's types, so that a command program depends on one crate.
   - the provider contract: `Provider`, one entry shared by every user and
     request (identity, capabilities, authentication status, models, failure
     reading, quota, accounts and `runtime`), and `ProviderRuntime`, one
-    session's runtime (`run`, `fresh`, `close`); `InferenceRequest`,
-    `ProviderEvent`, `ProviderFailure` and its `ErrorCode`;
+    session's runtime (`run`, `fresh`, `close`, and its vendor's request
+    limits for a model, `RequestLimits`); `InferenceRequest`, with how it
+    extends the session's earlier requests (`PromptCache`), `ProviderEvent`,
+    `ProviderFailure` and its `ErrorCode`;
   - the HTTP failure record and its standard reading (`HttpFailureRecord`,
     `http_failure`, `read_http_failure`), and the text of a credential a
     provider holds (`Secret`), which never prints;
@@ -467,8 +469,11 @@ Each crate implements the provider contract for one vendor family.
     backend answers (`ContentResolver`);
   - the media rules (`store::media`): a medium stored once when it enters a
     transcript, the bytes a session holds for its requests and the model's
-    view of them, over the `BlobStore` its tree store gives it; the blocks an
-    upload becomes with its recorded media type and opening (`attachments`);
+    view of them, over the `BlobStore` its tree store gives it; the fitting of
+    an image as it enters, with the `image` crate (`images`,
+    [Images in the transcript](../agent/runtime.md#images-in-the-transcript));
+    the blocks an upload becomes with its recorded media type and opening
+    (`attachments`);
     and the conversation title request and its rules (`title`).
 - **Public boundary:** the items above; `agent::testing` supplies an in-memory
   tree store (`MemoryTreeStore`) with an in-memory blob namespace

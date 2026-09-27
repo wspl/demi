@@ -6,7 +6,10 @@
 use demi_agent::{
     AgentTreeStore, ForkError, ServerConfig,
     store::{ClosePhase, NodeClose},
-    testing::{MemoryTreeStore, TestClient, TestFiles, client_text, model_of, waiting_frames},
+    testing::{
+        MemoryTreeStore, TestClient, TestFiles, client_text, model_of, model_reading,
+        waiting_frames,
+    },
     transcript::CutError,
 };
 use demi_agent_protocol::{
@@ -14,8 +17,8 @@ use demi_agent_protocol::{
     TranscriptVersion,
 };
 use demi_core::{
-    Attachment, B64Bytes, BlobRef, Block, BlockId, DocumentSource, MediaSource, NodeId,
-    OperationId, SessionPhase, Timestamp, TurnId, UserContentBlock,
+    Attachment, B64Bytes, BlobRef, Block, BlockId, DocumentSource, FileExtension, MediaSource,
+    NodeId, OperationId, SessionPhase, Timestamp, TurnId, UserContentBlock,
 };
 use demi_provider::{
     InferenceItem,
@@ -456,6 +459,11 @@ async fn an_edit_keeps_the_files_its_message_holds_and_refuses_one_it_does_not()
     let blobs = MemoryBlobs::new();
     let store = MemoryTreeStore::with_blobs(blobs.clone());
     let fixture = Fixture::with(&script, store, ServerConfig::default());
+    fixture.resolver.select(model_reading(
+        "stub",
+        "test-model",
+        &[FileExtension::Png, FileExtension::Mp4, FileExtension::Pdf],
+    ));
     let files = TestFiles::new();
     let png = B64Bytes::new(vec![0x89, b'P', b'N', b'G']);
     let mp4 = B64Bytes::new(b"\0\0\0\x18ftypmp42".to_vec());
