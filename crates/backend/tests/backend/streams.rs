@@ -59,7 +59,7 @@ pub(crate) async fn socket(backend: &TestBackend, session: &Session, conversatio
 
 /// What the page receives until the backend closes the socket, and the
 /// close's code and reason.
-async fn received(socket: &mut Socket) -> (Vec<u8>, u16, String) {
+pub(crate) async fn received(socket: &mut Socket) -> (Vec<u8>, u16, String) {
     let mut bytes = Vec::new();
     loop {
         let message = tokio::time::timeout(Duration::from_secs(20), socket.next())

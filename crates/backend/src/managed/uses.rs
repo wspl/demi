@@ -25,7 +25,11 @@ use crate::storage::StorageError;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Role {
     Target,
-    Provider,
+    /// Its model's process runs on the Cloud; `attached` when the Cloud is
+    /// one of its Hosts too.
+    Provider {
+        attached: bool,
+    },
     Attached,
 }
 
@@ -33,7 +37,13 @@ impl Role {
     /// Whether the conversation cannot work without the Cloud, so a stop or
     /// a reset holds it.
     fn needs_cloud(self) -> bool {
-        matches!(self, Self::Target | Self::Provider)
+        matches!(self, Self::Target | Self::Provider { .. })
+    }
+
+    /// Whether the Cloud is one of the conversation's Hosts, main or
+    /// attached, where its jobs run and its services hold its state.
+    pub(super) fn is_host(self) -> bool {
+        matches!(self, Self::Target | Self::Attached | Self::Provider { attached: true })
     }
 }
 
@@ -63,7 +73,9 @@ impl Shard {
             let role = if conversation.on_cloud {
                 Role::Target
             } else if provider {
-                Role::Provider
+                Role::Provider {
+                    attached: conversation.attached,
+                }
             } else if conversation.attached {
                 Role::Attached
             } else {
@@ -139,7 +151,7 @@ impl Shard {
             let slot = self.conversations().slot(id);
             let transfers = match role {
                 Role::Target => Some(slot.transfers.close().await),
-                Role::Provider | Role::Attached => None,
+                Role::Provider { .. } | Role::Attached => None,
             };
             let files = tokio::time::timeout(hold, slot.files.reserve())
                 .await

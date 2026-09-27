@@ -1,17 +1,17 @@
 //! The conversation idle clock (`resource-lifecycle.md` § Idle window): a
 //! conversation that has not been active for the idle window hears the
-//! conversation release on every connected paired device it reaches, main
-//! or attached. Its watch starts with the conversation's first Host
-//! admission and ends once it released; a won target switch starts it
-//! again, so a deadline of the old binding never releases the new one; an
-//! archive ends it. A Cloud never hears a release: it reclaims everything
-//! when it stops, which its own watch decides.
+//! conversation release on every Host it reaches, main or attached, whose
+//! runner is connected: a paired device or a running Cloud. Its watch starts
+//! with the conversation's first Host admission and ends once it released;
+//! a won target switch starts it again, so a deadline of the old binding
+//! never releases the new one; an archive ends it. A Cloud's idle stop sends
+//! the releases that fall due with it first (`managed`), and a Host that
+//! missed one hears it after its hello (`answer_held`).
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
-use demi_web_api::devices::DeviceKind;
 use demi_web_api::ids::{ConversationId, DeviceId};
 use tokio_util::task::AbortOnDropHandle;
 
@@ -82,17 +82,14 @@ impl Shard {
         self.idle_watches().watches.borrow_mut().clear();
     }
 
-    /// Answers the conversations a paired device's runner holds job output
-    /// for, as its hello names them (`resource-lifecycle.md` § A release the
-    /// device missed): the device hears the release at once of a conversation
-    /// its owner does not have, or that is archived or no longer bound to the
-    /// device; any other's idle watch starts unless it runs, so an idle
-    /// conversation hears the release one window later. A Cloud hears no
-    /// release, and its runner names none.
+    /// Answers the conversations a runner holds job output for, a paired
+    /// device's or a Cloud's, as its hello names them
+    /// (`resource-lifecycle.md` § A release the device missed): the device
+    /// hears the release at once of a conversation its owner does not have,
+    /// or that is archived or no longer bound to the device; any other's idle
+    /// watch starts unless it runs, so an idle conversation hears the release
+    /// one window later.
     pub(crate) async fn answer_held(&self, device: &DeviceRecord, conversations: Vec<String>) {
-        if device.kind == DeviceKind::Managed {
-            return;
-        }
         for name in conversations {
             if let Err(error) = self.answer_held_conversation(&device.id, &name).await {
                 tracing::warn!(device = %device.id, conversation = %name, "held job output not answered: {error}");
@@ -332,32 +329,6 @@ mod tests {
                 }
                 // The devices stay usable.
                 operate().await;
-            })
-            .await
-            .unwrap();
-        pool.close().await;
-    }
-
-    #[tokio::test(flavor = "local")]
-    async fn a_conversation_on_the_cloud_sends_its_cloud_no_release_when_it_idles() {
-        let data = tempfile::tempdir().unwrap();
-        let (services, owner, _) = fixture(data.path(), &[]).await;
-        let cloud = services.control.managed_device_or_create(owner.clone()).await.unwrap().id;
-        let pool = ShardPool::start(ShardPlacement::Inline, services).await.unwrap();
-        pool.shards()
-            .of(&owner)
-            .call(move |shard, _| async move {
-                let id = ConversationId::try_from(ID).unwrap();
-                // The Cloud's runner is connected, and the conversation's
-                // watch runs, as a Host admission starts it; once the window
-                // has passed, the watch retires the conversation and ends,
-                // and the Cloud heard nothing.
-                let released = runners(&shard, &[cloud]);
-                let started = Instant::now();
-                shard.track_idle(&id);
-                until_retired(&shard, &id).await;
-                assert!(started.elapsed() >= WINDOW, "{:?}", started.elapsed());
-                assert!(released.borrow().is_empty());
             })
             .await
             .unwrap();

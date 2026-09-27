@@ -502,17 +502,13 @@ impl Shard {
     }
 
     /// Lifecycle access (§ Lifecycle access): the conversation release, sent
-    /// to `device` when it is a connected paired device. It takes no file
-    /// gate and wakes nothing: a Cloud reclaims everything when it stops, and
-    /// a device whose runner is not connected lost the conversation's state
-    /// with its connection.
+    /// to `device` while its runner is connected, a paired device's or a
+    /// running Cloud's. It takes no file gate and wakes nothing: a device
+    /// whose runner is not connected, a stopped Cloud among them, lost the
+    /// conversation's services with its connection, and its next hello names
+    /// the job output it still holds (`resource-lifecycle.md` § A release
+    /// the device missed).
     pub(crate) async fn release_on(&self, id: &ConversationId, device: &DeviceId) -> Result<(), HostAccessError> {
-        let Some(record) = self.services().control.device(device.clone()).await? else {
-            return Ok(());
-        };
-        if record.kind == DeviceKind::Managed {
-            return Ok(());
-        }
         let Some(link) = self.devices().link(device) else {
             return Ok(());
         };

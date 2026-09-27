@@ -28,6 +28,9 @@ pub struct Options {
     pub directory: PathBuf,
     /// The Host's log, which `main` opened (`runner.md` § Host log).
     pub log: HostLogReader,
+    /// The job root, where each shell job keeps its output under its
+    /// conversation (`runner.md` § Pipes and output).
+    pub jobs: PathBuf,
     pub executable: PathBuf,
     pub cwd: PathBuf,
     pub env: BTreeMap<String, String>,
@@ -111,6 +114,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<()> {
         paths,
         pipes,
         log: options.log,
+        jobs: options.jobs,
         shell: options.shell,
         endpoint: server.endpoint().into(),
         cwd: options.cwd,

@@ -123,10 +123,11 @@ rm -rf "$work/var/lib/apt/lists/"*
 # The guest user, its sudo, its shell.
 in_chroot groupadd -g 1000 demi
 in_chroot useradd -m -u 1000 -g 1000 -s /bin/bash demi
-# The runner's Host log lives on the system layer, so it outlives a stop and
-# a wake (runner.md § Host log). Made inside the tree, where `demi` is a
-# name: uutils' install on the build host refuses a numeric owner.
-in_chroot install -d -m 0700 -o demi -g demi /var/log/demi
+# The runner's Host log and its job output live on the system layer, so they
+# outlive a stop and a wake (runner.md § Host log, managed-hosts.md § Images).
+# Made inside the tree, where `demi` is a name: uutils' install on the build
+# host refuses a numeric owner.
+in_chroot install -d -m 0700 -o demi -g demi /var/log/demi /var/lib/demi
 cp -a --no-preserve=ownership "$here/rootfs/overlay/." "$work/"
 chmod 0440 "$work/etc/sudoers.d/demi"
 echo demi > "$work/etc/hostname"

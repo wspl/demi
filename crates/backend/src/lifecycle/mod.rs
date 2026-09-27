@@ -6,10 +6,11 @@
 //! reservation and only then retires it, so work that won admission first
 //! is never retired. Maintenance holds a gate without demand: it postpones
 //! a retirement without restarting the window, and the retirement follows
-//! its release. The Cloud stops at the device level (`managed`); a paired
-//! device hears the conversation release ([`conversations`]). Once a day,
-//! the retention pass retires expired tool media and collects the blobs
-//! nothing references ([`retention`]).
+//! its release. Each Host of an idle conversation, a paired device or a
+//! running Cloud, hears the conversation release ([`conversations`]); a
+//! Cloud also stops as a whole (`managed`). Once a day, the retention pass
+//! retires expired tool media and collects the blobs nothing references
+//! ([`retention`]).
 
 pub(crate) mod conversations;
 pub(crate) mod retention;
