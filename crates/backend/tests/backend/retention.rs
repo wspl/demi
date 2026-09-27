@@ -1,13 +1,15 @@
-//! Retention (`storage.md` § Retention, `runtime.md` § Retired tool media): a collection
+//! Retention (`storage.md` § Retention, `runtime.md` § Retired tool media,
+//! `resource-lifecycle.md` § A release the device missed): a collection
 //! deletes only a blob nothing references once it and its last use are past
 //! the grace, and nothing while a reference source cannot be read; a tool
 //! result's image goes after 30 days once no request can send it from a
 //! vendor's cache, never while a page has its conversation open and never a
-//! message's. Times of a day and more pass on the test's clock; the
+//! message's; and a device that missed a release hears it when its runner
+//! connects again. Times of a day and more pass on the test's clock; the
 //! objects are counted at the object store. The devices are real runners,
 //! and the model is an Anthropic endpoint the test scripts.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use demi_agent_protocol::{ClientFrame, ServerFrame};
@@ -256,5 +258,49 @@ async fn a_conversation_idle_for_30_days_loses_its_tool_images_and_its_next_requ
     let sent = vendor.requests().last().unwrap().json()["messages"].to_string();
     assert!(sent.contains(&retired), "{sent}");
     assert!(!sent.contains(&data_encoding::BASE64.encode(&png(1))), "{sent}");
+    backend.close().await;
+}
+
+/// The job directories a paired device's runner holds for `conversation`.
+fn job_output(state: &Path, conversation: &str) -> PathBuf {
+    state.join("jobs").join(conversation.to_ascii_lowercase())
+}
+
+// About two seconds: a real device runs a shell command and restarts.
+#[tokio::test]
+async fn a_device_offline_at_a_release_hears_it_when_its_runner_connects_again() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    let (mut paired, _root) = on_device(&harness, &backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    vendor.respond(shell("toolu_1", "printf done", 60_000));
+    vendor.respond(say("Done."));
+    socket.chat("m1", "Do it").await;
+    let state = paired.runner.state_dir().to_owned();
+    assert!(job_output(&state, FIRST).exists());
+    // A leftover of a conversation the device's owner does not have.
+    let stranger = "9f8e7d6c-5b4a-4c3d-8e2f-1a0b9c8d7e6f";
+    std::fs::create_dir_all(job_output(&state, stranger).join("job-left")).unwrap();
+
+    // The device is offline when the conversation is archived, so it hears
+    // no release then.
+    close(&mut socket).await;
+    paired.runner.stop().await;
+    eventually("the device is offline", || async { !backend.online(&master, paired.id()).await }).await;
+    let archived = backend.patch(&format!("/api/conversations/{FIRST}"), &master, json!({ "archived": true })).await;
+    assert_eq!(archived.status, StatusCode::OK, "{}", String::from_utf8_lossy(&archived.body));
+    assert!(job_output(&state, FIRST).exists());
+
+    // Its hello names both, and each is released at once.
+    paired.runner.start_again();
+    eventually("the released job output is gone", || async {
+        !job_output(&state, FIRST).exists() && !job_output(&state, stranger).exists()
+    })
+    .await;
     backend.close().await;
 }
