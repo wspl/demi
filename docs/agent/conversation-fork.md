@@ -23,9 +23,9 @@ Creation defaults:
   messages belong only to the source.
 - Open the destination after creation. It starts idle with an empty composer
   and does not call a model until the user sends a message.
-- Inherit the source's current model configuration, including a model switch
-  the source has accepted for its next turn, and its workspace or device
-  selection.
+- Inherit the source's model settings, the selection its record holds
+  ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)),
+  and its workspace or device selection.
 - Restore command state, including todos, at the selected message's boundary
   according to [Command state history](command-state-history.md#fork-and-editing).
 - Keep the source's unsent composer draft in the source.
@@ -63,8 +63,10 @@ browser needs no new conversation-socket frame for this product action.
 The agent server has two Fork operations: prepare an owned seed from a source,
 and initialize a destination root from that seed. The seed is a root
 checkpoint: the retained transcript, the command state with the versions its
-boundaries reference, the selected model configuration, the cwd, and the
-harness name. It holds no source runtime or persistence handle.
+boundaries reference, a model selection, the cwd, and the harness name. It
+holds no source runtime or persistence handle. The backend gives the seed the
+model selection of the source's record, which the Fork operation records, so
+the destination's root and its record start with the same one.
 
 For a live source, the session captures and copies the selected prefix in one
 step, before any preparation or persistence waits. For a stored source, the
@@ -106,12 +108,11 @@ ID. The server obtains the transcript content itself; the browser never uploads
 a replacement history. The server verifies ownership of the source and of the
 destination UUID before preparing data.
 
-The response contains the ordinary conversation summary and the complete
-inherited model selection. The browser initializes the destination's composer
-with that model's thinking and service-tier settings, then opens the
-destination if the user is still viewing the source. `web-ui` keeps the pending
-state and the retry UUID per message, above the virtualized rows; failures
-appear beside that message's Fork action.
+The response contains the ordinary conversation summary, whose model settings
+are the ones the destination inherited; the browser shows them as it shows any
+conversation's, then opens the destination if the user is still viewing the
+source. `web-ui` keeps the pending state and the retry UUID per message, above
+the virtualized rows; failures appear beside that message's Fork action.
 
 The UUID identifies one creation attempt. Repeating that attempt returns the
 same destination. Reusing the UUID with a different source or cutoff is a

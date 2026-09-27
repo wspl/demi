@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use demi_agent::{
     Outgoing, ServerConfig,
-    testing::{MemoryTreeStore, TestFiles, client_text, model_of, test_model},
+    testing::{MemoryTreeStore, TestFiles, client_text, model_of},
 };
 use demi_agent_protocol::{ClientFrame, ClientFrameKind, EditOutcome, ServerFrame, SteerOutcome};
 use demi_core::{Block, BlockId, CommandId, NodeId, SessionPhase};
@@ -44,7 +44,7 @@ async fn the_open_handshake_is_one_step_and_each_patch_is_one_revision_past_the_
     let fixture = Fixture::new(&script);
     let mut client = fixture.client();
 
-    client.send(open(test_model())).await;
+    client.send(open()).await;
     let handshake = client.received();
     client.send(send("m1", "hi")).await;
     let turn = client.next_until(is_idle).await;
@@ -80,10 +80,7 @@ async fn two_opens_of_one_conversation_at_once_build_one_tree() {
     let mut first = fixture.client();
     let mut second = fixture.client();
 
-    tokio::join!(
-        first.send(open(test_model())),
-        second.send(open(test_model()))
-    );
+    tokio::join!(first.send(open()), second.send(open()));
 
     assert_eq!(fixture.resolver.calls.borrow().len(), 1);
     assert_eq!(fixture.store.saves().len(), 1);
@@ -336,10 +333,6 @@ async fn frames_that_need_a_session_are_refused_without_one_and_while_it_is_busy
             steer_id: steer_id.clone(),
             content: demi_agent::testing::client_text("steer"),
         },
-        ClientFrame::SetProvider {
-            model: test_model(),
-            apply: None,
-        },
         ClientFrame::CancelPendingSteer {
             steer_id: steer_id.clone(),
         },
@@ -364,18 +357,14 @@ async fn frames_that_need_a_session_are_refused_without_one_and_while_it_is_busy
                     reason: "No session is open on this connection".into(),
                 },
             },
-            rejected(
-                ClientFrameKind::SetProvider,
-                "No session is open on this connection"
-            ),
         ]
     );
     client.send(ClientFrame::Close {}).await;
     assert_eq!(client.received(), [ServerFrame::Closed]);
 
-    client.send(open(test_model())).await;
+    client.send(open()).await;
     client.next_until(is_pending_steers).await;
-    client.send(open(test_model())).await;
+    client.send(open()).await;
     assert_eq!(
         client.next().await,
         Some(rejected(
@@ -414,7 +403,8 @@ async fn an_unknown_provider_leaves_the_connection_unattached() {
     let fixture = Fixture::new(&script);
     let mut client = fixture.client();
 
-    client.send(open(model_of("missing", "some-model"))).await;
+    fixture.resolver.select(model_of("missing", "some-model"));
+    client.send(open()).await;
     client.send(send("m1", "hi")).await;
 
     assert_eq!(
@@ -443,7 +433,7 @@ async fn a_connection_dropped_with_its_socket_detaches_and_its_outbox_ends() {
         fixture
             .server
             .connect(conversation(), "/workspace".into(), TestFiles::new());
-    connection.handle(open(test_model())).await;
+    connection.handle(open()).await;
     let tree = fixture.server.tree(&conversation()).unwrap();
     assert!(tree.is_attached());
 

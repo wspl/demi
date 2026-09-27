@@ -2,7 +2,6 @@ import { test, expect } from 'bun:test'
 import type { ModelInfo } from '../../transport/protocol'
 import {
   buildReasoningState,
-  reasoningOptionConfig,
   reasoningOptionIndex,
   reasoningOptionLabel
 } from '../reasoning'
@@ -15,70 +14,46 @@ const base: ModelInfo = {
   acceptedExtensions: [],
   reasoning: {
     efforts: ['low', 'medium', 'high'],
-    defaultEffort: null,
+    unnamedEffort: null,
     canDisable: true
   },
   serviceTiers: null,
 }
 
-test('offers Off when the model can disable thinking', () => {
+/** The same efforts on a model that cannot turn thinking off, for which the backend holds `medium` when none is named. */
+const alwaysThinking: ModelInfo = {
+  ...base,
+  reasoning: { ...base.reasoning!, unnamedEffort: 'medium', canDisable: false },
+}
+
+test('a model that can turn thinking off offers its default and Off before its efforts, and no effort shows as the default', () => {
   const state = buildReasoningState(base)!
-  expect(state.canDisable).toBe(true)
-  expect(state.options.map((o) => o.label)).toContain('Off')
-  expect(state.options[0]!.config).toEqual({ type: 'disabled' })
+  expect(state.options.map((option) => [option.label, option.effort])).toEqual([
+    ['Default', null],
+    ['Off', 'disabled'],
+    ['Low', 'low'],
+    ['Medium', 'medium'],
+    ['High', 'high'],
+  ])
+  // Its request then names no thinking setting, which Default says.
+  expect(reasoningOptionLabel(state, null)).toBe('Default')
 })
 
-test('omits Off when the model cannot disable thinking (e.g. Claude Code)', () => {
-  const state = buildReasoningState(
-    {
-      ...base,
-      reasoning: {
-        ...base.reasoning!,
-        canDisable: false
-      }
-    }
-  )!
-  expect(state.canDisable).toBe(false)
-  expect(state.options.map((o) => o.label)).not.toContain('Off')
-  expect(state.options.every((o) => o.config.type === 'effort')).toBe(true)
-  // the default selection is still a real effort, never "disabled"
-  expect(state.defaultConfig).toEqual(
-    {
-      type: 'effort',
-      effort: 'low',
-      summary: null
-    }
-  )
+test('a model that cannot turn thinking off offers only its efforts, and no effort shows the one its requests carry', () => {
+  const state = buildReasoningState(alwaysThinking)!
+  expect(state.options.map((option) => option.label)).toEqual(['Low', 'Medium', 'High'])
+  expect(reasoningOptionLabel(state, null)).toBe('Medium')
 })
 
 test('no reasoning state when the model has no efforts', () => {
   expect(buildReasoningState({ ...base, reasoning: null })).toBeNull()
 })
 
-test('option index maps disabled and effort configs', () => {
+test('an effort shows its own option, and one the model does not offer shows what none shows', () => {
   const state = buildReasoningState(base)!
-  expect(reasoningOptionIndex(state, { type: 'disabled' })).toBe(0)
-  expect(reasoningOptionIndex(state, {
-      type: 'effort',
-      effort: 'medium',
-      summary: null
-    })).toBe(
-    2
-  )
-  expect(reasoningOptionConfig(state, 0)).toEqual({ type: 'disabled' })
-  expect(reasoningOptionConfig(state, 3)).toEqual(
-    {
-      type: 'effort',
-      effort: 'high',
-      summary: null
-    }
-  )
-  expect(reasoningOptionLabel(state, { type: 'disabled' })).toBe('Off')
-  expect(reasoningOptionLabel(state, {
-      type: 'effort',
-      effort: 'high',
-      summary: null
-    })).toBe(
-    'High'
-  )
+  expect(reasoningOptionIndex(state, 'disabled')).toBe(1)
+  expect(reasoningOptionIndex(state, 'medium')).toBe(3)
+  expect(reasoningOptionLabel(state, 'high')).toBe('High')
+  expect(reasoningOptionLabel(state, 'xhigh')).toBe('Default')
+  expect(reasoningOptionLabel(buildReasoningState(alwaysThinking)!, 'xhigh')).toBe('Medium')
 })

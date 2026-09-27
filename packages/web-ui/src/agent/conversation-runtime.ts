@@ -1,7 +1,7 @@
 import { shallowRef, triggerRef } from 'vue'
 import { SessionError, SteerRejectedError, type AgentClient, type ClientSessionEvent } from '@demicodes/agent-client'
 import { asError } from '@demicodes/utils'
-import type { ClientContent, EditRequest, ModelSelection, TranscriptVersion } from '@demicodes/protocol'
+import type { ClientContent, EditRequest, TranscriptVersion } from '@demicodes/protocol'
 import { AgentSocketError } from '../transport/agent-socket'
 import { hasAcceptedSubmission } from './submission'
 import type { ConversationState } from './types'
@@ -21,7 +21,6 @@ export type RuntimeState = Pick<
   | 'phase'
   | 'queue'
   | 'pendingSteers'
-  | 'model'
   | 'lastError'
   | 'load'
   | 'pendingAction'
@@ -31,7 +30,6 @@ export type RuntimeState = Pick<
 export interface ConversationRuntimeOptions {
   state: RuntimeState
   connect: (signal: AbortSignal) => Promise<AgentClient>
-  prepareModel: () => Promise<ModelSelection>
   onEvent?: (event: ClientSessionEvent) => void
   /** The wait before the first reconnect attempt; every later one doubles it, up to `maxMs`. */
   reconnect?: { baseMs: number; maxMs: number }
@@ -147,17 +145,6 @@ export class ConversationRuntime {
     }
     await this.abort()
     await this.resume()
-  }
-
-  async setModel(): Promise<void> {
-    const client = this.client.value
-    const controller = this.controller
-    if (!client || !controller) {
-      return
-    }
-    const model = await this.options.prepareModel()
-    controller.signal.throwIfAborted()
-    client.setProvider(model)
   }
 
   async abort(): Promise<void> {
@@ -296,8 +283,6 @@ export class ConversationRuntime {
     const disconnect = () => client?.disconnect(asError(attempt.signal.reason))
     attempt.signal.addEventListener('abort', disconnect, { once: true })
     try {
-      const model = await this.options.prepareModel()
-      attempt.signal.throwIfAborted()
       client = await this.options.connect(attempt.signal)
       attempt.signal.throwIfAborted()
       unsubscribe = client.subscribe((event) => {
@@ -306,7 +291,7 @@ export class ConversationRuntime {
           triggerRef(this.client)
         }
       })
-      await client.open(model)
+      await client.open()
       attempt.signal.throwIfAborted()
       this.client.value = client
       this.unsubscribe = unsubscribe

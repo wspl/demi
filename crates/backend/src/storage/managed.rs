@@ -3,13 +3,14 @@
 //! boot mints, the announcement of a reset to the user's conversations, and
 //! which of the user's conversations use the Cloud.
 
+use demi_core::ModelSelection;
 use demi_machines_protocol::BaseVersion;
 use demi_web_api::cloud::ResetPhase;
 use demi_web_api::ids::{ConversationId, DeviceId, OperationId, ProviderId, UserId};
 use rusqlite::{OptionalExtension, Row, params};
 
 use super::StorageError;
-use super::columns::decode;
+use super::columns::{decode, json};
 use super::control::ControlService;
 use crate::auth::sessions::TokenHash;
 
@@ -185,7 +186,7 @@ impl ControlService {
         self.call(move |connection, _| {
             let cloud = cloud.as_ref().map(DeviceId::as_str);
             let mut statement = connection.prepare_cached(
-                "SELECT c.id, c.target_kind, c.target_device_id, w.device_id AS workspace_device, c.provider_id,
+                "SELECT c.id, c.target_kind, c.target_device_id, w.device_id AS workspace_device, c.model,
                         EXISTS (SELECT 1 FROM conversation_hosts h
                                 WHERE h.conversation_id = c.id AND h.device_id = ?2) AS attached
                  FROM conversations c LEFT JOIN workspaces w ON w.id = c.target_workspace_id
@@ -201,8 +202,11 @@ impl ControlService {
                 let target_device = device.or(workspace_device);
                 let on_cloud = kind == "cloud" || (cloud.is_some() && target_device.as_deref() == cloud);
                 let provider = row
-                    .get::<_, Option<String>>("provider_id")?
-                    .map(|provider| decode(TABLE, "provider_id", ProviderId::try_from(provider)))
+                    .get::<_, Option<String>>("model")?
+                    .map(|model| {
+                        let selection: ModelSelection = json(TABLE, "model", &model)?;
+                        decode(TABLE, "model", ProviderId::try_from(selection.provider_id))
+                    })
                     .transpose()?;
                 uses.push(CloudUseRecord {
                     id: decode(TABLE, "id", ConversationId::try_from(row.get::<_, String>("id")?))?,

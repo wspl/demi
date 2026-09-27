@@ -4,7 +4,7 @@ import type {
   SidebarConversation,
   SidebarProject,
 } from '@demicodes/web-ui/sidebar/types'
-import type { ModelIntent, PendingSteerMessage } from '@demicodes/web-ui/agent/types'
+import type { ModelSettings, PendingSteerMessage } from '@demicodes/web-ui/agent/types'
 import type {
   ComposerFileAttachment,
   ComposerRemoteAttachment,
@@ -38,7 +38,7 @@ export interface Conversation extends SidebarConversation {
   phase: SessionPhase
   queue: QueuedMessage[]
   pendingSteers: PendingSteerMessage[]
-  model: ModelIntent
+  model: ModelSettings
   lastError: string | null
   /** The composer's Markdown, a mark where each file's capsule stands. */
   draft: string

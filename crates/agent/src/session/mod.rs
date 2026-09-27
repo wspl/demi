@@ -34,7 +34,7 @@ use std::{
     time::Duration,
 };
 
-use demi_agent_protocol::{AbortResult, ModelSwitchApply, TranscriptPatch, TranscriptVersion};
+use demi_agent_protocol::{AbortResult, TranscriptPatch, TranscriptVersion};
 use demi_core::{
     AgentMessage, Block, BlockId, Clock, ModelSelection, NodeId, PendingSteer,
     ProviderErrorDiagnostics, QueuedMessage, SessionPhase, ToolResultContentBlock, TurnId,
@@ -117,13 +117,32 @@ pub(crate) struct Continuation {
     pub(crate) queued: Vec<QueuedMessage>,
 }
 
-/// A change of the model selection (`runtime.md` § Model switch).
-pub(crate) struct ModelSwitch {
+/// A change of the model selection (`runtime.md` § Model switch), with the
+/// runtime it needs when its model belongs to another provider.
+pub struct ModelSwitch {
     pub(crate) model: ModelSelection,
     /// A new runtime when the model belongs to another provider than the
     /// selection before it.
     pub(crate) runtime: Option<Box<dyn ProviderRuntime>>,
-    pub(crate) apply: ModelSwitchApply,
+}
+
+impl std::fmt::Debug for ModelSwitch {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ModelSwitch")
+            .field("model", &self.model)
+            .field("runtime", &self.runtime.is_some())
+            .finish()
+    }
+}
+
+impl ModelSwitch {
+    /// Closes the runtime of a switch that no session took.
+    pub async fn discard(self) {
+        if let Some(mut runtime) = self.runtime {
+            runtime.close().await;
+        }
+    }
 }
 
 /// The transcript at one moment, with its version.
@@ -818,10 +837,12 @@ impl AgentSession {
         }
     }
 
-    /// Records a model switch; it lands at the next action, or also at the
-    /// next continuation boundary when it is immediate. A runtime the switch
-    /// replaces is closed once it serves no run.
-    pub(crate) fn update_model(&self, switch: ModelSwitch) -> Result<(), AdmissionError> {
+    /// Records a model switch, which lands at the next provider request; one
+    /// that arrives while an edit is being prepared waits for the edit
+    /// (`runtime.md` § Model switch). A runtime the switch replaces is closed
+    /// once it serves no run. A session that is closing gives the switch
+    /// back.
+    pub(crate) fn update_model(&self, switch: ModelSwitch) -> Result<(), ModelSwitch> {
         self.shared.update(|core| core.record_switch(switch))
     }
 
