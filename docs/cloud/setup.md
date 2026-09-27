@@ -16,10 +16,14 @@ OverlayFS, ext4, loop devices, filesystem freeze, and nftables. With the
 manager's [resource limits](managed-hosts.md#resource-limits) on, the default,
 it also needs cgroup v2 with the CPU, memory, and PID controllers; a host
 without them runs the manager with `DEMI_MANAGED_LIMITS=off`, and its Clouds
-then have no CPU, memory, or PID limits. An ordinary hardware-virtualized VPS
-can provide these facilities without exposing KVM. A restricted container sold
-as a VPS may not; check the facilities instead of relying on the provider's
-product name.
+then have no CPU, memory, or PID limits. The manager runs as root with
+`CAP_SYS_RESOURCE`, which the kernel requires to grow a mounted ext4
+filesystem. Some container platforms drop that capability even for root; on
+such a host a Cloud's disks cannot grow, and each
+[growth](managed-hosts.md#lifecycle-and-capacity) fails with an error that
+names the capability. An ordinary hardware-virtualized VPS can provide these
+facilities without exposing KVM. A restricted container sold as a VPS may not;
+check the facilities instead of relying on the provider's product name.
 
 The installer installs the complete pinned runsc distribution and verifies its
 release checksum on amd64. On arm64 it builds the pinned source with the shipped
