@@ -217,6 +217,25 @@ without asking.
   defines these methods as safe, the product's routes use them only to read,
   and another page cannot read their answers.
 
+A reverse proxy in front of the backend passes each request's `Origin` and
+`Host` headers to it unchanged, since the check reads both. A proxy that
+drops `Origin` turns the check off without a sign: every request then passes,
+as a request from `curl` does. Behind a proxy that rewrites `Host`, the
+backend refuses the product's own pages, unless `DEMI_BACKEND_PUBLIC_URL` is
+their origin. An operator checks a deployment from outside with a request that names another
+origin, which must answer 403 `forbidden_origin`:
+
+```sh
+curl -s -X POST https://demi.example/api/auth/login \
+  -H 'Origin: https://elsewhere.example' \
+  -H 'Content-Type: application/json' --data '{}'
+```
+
+Any other answer means that the proxy did not pass `Origin`: the backend then
+took the login as one from no page, and refused only its empty body, with 400
+`invalid_body`. The same request with the product's own origin, such as
+`https://demi.example`, must answer 400 `invalid_body`, not 403.
+
 The edge checks ownership before it hands a request to a shard: it resolves
 the caller from the cookie, loads the conversation, device, workspace or
 provider entry the path names, and answers 404 when it belongs to someone
@@ -577,7 +596,9 @@ routing key. Routing hints select placement; authentication still establishes
 identity. Login requests can reach any worker because account lookup uses
 shared control records. Pairing must reach the worker that holds the unclaimed
 runner's connection, so its routing must preserve that connection-to-code
-relationship. An off-the-shelf reverse proxy applies the map; the product
+relationship. An off-the-shelf reverse proxy applies the map, passing
+`Origin` and `Host` unchanged
+([Authentication and ownership](#authentication-and-ownership)); the product
 supplies deployment configuration rather than a custom router.
 
 At most one worker serves a user at a time, and a route map alone does not
