@@ -66,6 +66,7 @@ pub fn module(header: &str) -> String {
         writeln!(source, "export const {name} = {value}").expect("writing to a string");
     }
     for (name, description, value) in [
+        ("LIVE_VIDEO_CODEC", "The video frames' codec, as WebCodecs names it.", live::VIDEO_CODEC),
         ("LIVE_CAPTURE_UNAVAILABLE", "A notice's code when the Host cannot capture the watched tab.", live::CAPTURE_UNAVAILABLE),
         ("LIVE_CAPTURE_FAILED", "A notice's code when the watched tab's capture failed.", live::CAPTURE_FAILED),
     ] {
