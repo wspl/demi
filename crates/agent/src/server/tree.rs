@@ -1,8 +1,8 @@
 //! A conversation's live tree (`runtime.md` § Connections and the live
-//! tree, `subagents.md`): its root and every live child, its attachment to at
-//! most one connection, the frames its sessions' events become, and its
-//! eviction once it has stayed detached and quiescent. The supervisor
-//! operations on its children are in [`supervisor`].
+//! tree, `subagents.md`): its root and every live child, the connections
+//! attached to it, the frames its sessions' events become, and its eviction
+//! once it has stayed detached and quiescent. The supervisor operations on
+//! its children are in [`supervisor`].
 
 mod supervisor;
 
@@ -71,10 +71,10 @@ pub struct Tree<H: AgentHarness> {
     _eviction: AbortOnDropHandle<()>,
 }
 
-/// Where a tree's frames go: the attached connection's outbox, or nowhere
-/// while the tree is detached; its turns keep running either way.
+/// Where a tree's frames go: the outbox of every attached connection. The
+/// turns of a tree with none keep running; their events go nowhere.
 pub(crate) struct FrameSink {
-    attachment: watch::Sender<Option<Attachment>>,
+    attachments: watch::Sender<Vec<Attachment>>,
 }
 
 #[derive(Clone)]
@@ -86,44 +86,57 @@ pub(crate) struct Attachment {
 impl FrameSink {
     fn new() -> Self {
         Self {
-            attachment: watch::Sender::new(None),
+            attachments: watch::Sender::new(Vec::new()),
         }
     }
 
-    /// Sends `frame` to the attached connection. A connection whose outbox is
-    /// full, or whose socket is gone, is detached.
+    /// Sends the event `frame` to every attached connection. A connection
+    /// whose outbox is full, or whose socket is gone, is detached; the
+    /// others keep receiving.
     pub(crate) fn emit(&self, frame: ServerFrame) {
-        let delivered = match &*self.attachment.borrow() {
-            Some(attachment) => attachment.outbox.push(frame),
-            None => return,
-        };
-        if !delivered {
-            self.attachment.send_replace(None);
+        let refused: Vec<u64> = self
+            .attachments
+            .borrow()
+            .iter()
+            .filter(|attachment| !attachment.outbox.push(frame.clone()))
+            .map(|attachment| attachment.connection)
+            .collect();
+        if refused.is_empty() {
+            return;
         }
+        self.attachments.send_modify(|attachments| {
+            attachments.retain(|attachment| !refused.contains(&attachment.connection));
+        });
     }
 
     pub(crate) fn is_attached_to(&self, connection: u64) -> bool {
-        matches!(&*self.attachment.borrow(), Some(attachment) if attachment.connection == connection)
+        self.attachments
+            .borrow()
+            .iter()
+            .any(|attachment| attachment.connection == connection)
     }
 
-    /// Attaches a connection; one attached before it receives `closed` and is
-    /// detached.
+    /// Attaches a connection beside the others.
     fn attach(&self, attachment: Attachment) {
-        if let Some(previous) = self.attachment.send_replace(Some(attachment)) {
-            // The previous connection is detached either way; a `closed` it
-            // cannot take goes nowhere.
-            previous.outbox.push(ServerFrame::Closed);
-        }
+        self.attachments
+            .send_modify(|attachments| attachments.push(attachment));
     }
 
     pub(crate) fn detach(&self, connection: u64) {
-        self.attachment.send_if_modified(|attachment| {
-            if !matches!(attachment, Some(current) if current.connection == connection) {
-                return false;
-            }
-            *attachment = None;
-            true
+        self.attachments.send_if_modified(|attachments| {
+            let before = attachments.len();
+            attachments.retain(|attachment| attachment.connection != connection);
+            attachments.len() != before
         });
+    }
+
+    /// Detaches every connection, each with `closed`.
+    fn close_all(&self) {
+        for attachment in self.attachments.send_replace(Vec::new()) {
+            // A connection that lagged or lost its socket is detached
+            // either way; its `closed` goes nowhere.
+            attachment.outbox.push(ServerFrame::Closed);
+        }
     }
 }
 
@@ -221,7 +234,7 @@ impl<H: AgentHarness> Tree<H> {
             let eviction = tokio::task::spawn_local(evict_when_idle(
                 tree.clone(),
                 idle,
-                sink.attachment.subscribe(),
+                sink.attachments.subscribe(),
                 session.status_watch(),
                 changes.subscribe(),
             ));
@@ -293,9 +306,9 @@ impl<H: AgentHarness> Tree<H> {
         reservation
     }
 
-    /// Whether a connection is attached.
+    /// Whether any connection is attached.
     pub fn is_attached(&self) -> bool {
-        self.sink.attachment.borrow().is_some()
+        !self.sink.attachments.borrow().is_empty()
     }
 
     pub(crate) fn sink(&self) -> &FrameSink {
@@ -310,10 +323,11 @@ impl<H: AgentHarness> Tree<H> {
             && quiescent(&self.root.session().status())
     }
 
-    /// Attaches a connection and sends it the open handshake in one step, so
-    /// nothing happens to the tree between `opened` and the last child's
-    /// transcript: the root's snapshot frames, then each live child's
-    /// `started` and transcript, depth first in spawn order.
+    /// Attaches a connection beside the others and sends it the open
+    /// handshake in one step, so nothing happens to the tree between
+    /// `opened` and the last child's transcript: the root's snapshot frames,
+    /// then each live child's `started` and transcript, depth first in spawn
+    /// order, then the root's live commands.
     pub(crate) fn attach(&self, connection: u64, outbox: Rc<Outbox>) {
         self.sink.attach(Attachment {
             connection,
@@ -346,21 +360,20 @@ impl<H: AgentHarness> Tree<H> {
         }
     }
 
-    /// Sends the attached connection `connection` fresh transcripts of the
-    /// root and of every live child, after a gap in the patch revisions.
-    pub(crate) fn sync(&self, connection: u64) {
-        if !self.sink.is_attached_to(connection) {
-            return;
-        }
+    /// Fresh transcripts of the root and of every live child, with the
+    /// root's live commands: the answer to a connection that saw a gap in
+    /// the patch revisions, which goes to that connection alone.
+    pub(crate) fn fresh_transcripts(&self) -> Vec<ServerFrame> {
         let snapshot = self.root.session().transcript();
-        self.sink.emit(ServerFrame::TranscriptReset {
+        let reset = ServerFrame::TranscriptReset {
             blocks: snapshot.blocks,
             version: snapshot.version,
             failures: None,
-        });
-        for frame in self.root.live_shells().into_iter().chain(self.replay()) {
-            self.sink.emit(frame);
-        }
+        };
+        std::iter::once(reset)
+            .chain(self.root.live_shells())
+            .chain(self.replay())
+            .collect()
     }
 
     /// Aligns the tree's model with `model`: from the next action, or also
@@ -406,8 +419,8 @@ impl<H: AgentHarness> Tree<H> {
 
     /// Disposes the tree: the starts and closes under way finish, then every
     /// session saves its final checkpoint and the subtree stays live in the
-    /// store for the next open. The attached connection receives what the
-    /// disposal changed, then is detached.
+    /// store for the next open. Every attached connection receives what the
+    /// disposal changed, then `closed`, and is detached.
     pub(crate) async fn dispose(&self) {
         self.disposing.set(true);
         for child in self.children.borrow().values() {
@@ -435,7 +448,7 @@ impl<H: AgentHarness> Tree<H> {
                 diagnostics: None,
             });
         }
-        self.sink.attachment.send_replace(None);
+        self.sink.close_all();
     }
 
     fn bump(&self) {
@@ -500,12 +513,12 @@ fn quiescent(status: &Status) -> bool {
 async fn evict_when_idle<H: AgentHarness>(
     tree: Weak<Tree<H>>,
     idle: Duration,
-    mut attachment: watch::Receiver<Option<Attachment>>,
+    mut attachments: watch::Receiver<Vec<Attachment>>,
     mut status: watch::Receiver<Status>,
     mut changes: watch::Receiver<u64>,
 ) {
     loop {
-        attachment.mark_unchanged();
+        attachments.mark_unchanged();
         status.mark_unchanged();
         changes.mark_unchanged();
         let Some(live) = tree.upgrade() else {
@@ -522,7 +535,7 @@ async fn evict_when_idle<H: AgentHarness>(
         };
         tokio::select! {
             () = timeout => break,
-            changed = attachment.changed() => if changed.is_err() { return },
+            changed = attachments.changed() => if changed.is_err() { return },
             changed = status.changed() => if changed.is_err() { return },
             changed = changes.changed() => if changed.is_err() { return },
         }

@@ -293,9 +293,8 @@ unfinished turn, which restores like any other
   after reconnect and restart, and after a later edit removes the replacement
   turn. Identical retries do not rewrite again; conflicting payloads are
   rejected.
-- Two editors open from the same snapshot. One edit is accepted; the other,
-  submitted through a connection that took the conversation over, is rejected
-  as a conflict.
+- Two editors open from the same snapshot, each on its own connection to the
+  conversation. One edit is accepted; the other is rejected as a conflict.
 - A dropped transcript patch requires snapshot resynchronization, and a lost
   acceptance frame requires reconciliation. Neither case guesses success from
   message text or silently generates a fresh operation ID.

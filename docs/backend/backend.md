@@ -196,9 +196,11 @@ code, is defined once in the contract crates and generated for the browser
 ([Generated TypeScript](../architecture/contracts.md#generated-typescript));
 [Web API](../product/web-api.md) lists the routes.
 
-Each open conversation uses one WebSocket at
+Each page that has a conversation open uses one WebSocket at
 `/api/conversations/:id/stream`, carrying the agent protocol's client and
-server frames ([Frame protocol](../agent/runtime.md#frame-protocol)). After
+server frames ([Frame protocol](../agent/runtime.md#frame-protocol)); the
+sockets of several pages attach to the conversation's one live tree
+([Connections and the live tree](../agent/runtime.md#connections-and-the-live-tree)). After
 the upgrade the socket moves into the user's shard, which serves it until it
 closes. Execution context comes from the conversation's server-side target;
 the browser cannot override it with an arbitrary frame cwd.
