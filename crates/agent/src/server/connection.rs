@@ -24,7 +24,6 @@ use super::{
 use crate::{
     AgentHarness, AgentSession,
     session::{EditCheck, EditSubmission, accepted, edit_digest},
-    tools,
 };
 
 /// What a refusal says when the connection has no session.
@@ -45,6 +44,23 @@ pub(crate) struct Outbox {
 }
 
 impl Outbox {
+    /// An outbox of at most `frames` frames, and its receiving end.
+    pub(crate) fn new(frames: usize) -> (Rc<Self>, FrameRx) {
+        let (sender, receiver) = mpsc::channel(frames);
+        let lagged = Rc::new(Cell::new(false));
+        let outbox = Rc::new(Self {
+            sender: RefCell::new(Some(sender)),
+            lagged: lagged.clone(),
+        });
+        (
+            outbox,
+            FrameRx {
+                frames: receiver,
+                lagged,
+            },
+        )
+    }
+
     /// Queues `frame`; false once the outbox lagged or its receiver is gone,
     /// when the frame goes nowhere.
     pub(crate) fn push(&self, frame: ServerFrame) -> bool {
@@ -128,12 +144,7 @@ impl<H: AgentHarness> Connection<H> {
         cwd: String,
         resolver: Rc<dyn ContentResolver>,
     ) -> (Self, FrameRx) {
-        let (sender, frames) = mpsc::channel(server.deps.config.outbox_frames);
-        let lagged = Rc::new(Cell::new(false));
-        let outbox = Rc::new(Outbox {
-            sender: RefCell::new(Some(sender)),
-            lagged: lagged.clone(),
-        });
+        let (outbox, frames) = Outbox::new(server.deps.config.outbox_frames);
         let connection = Self {
             id,
             root,
@@ -142,7 +153,7 @@ impl<H: AgentHarness> Connection<H> {
             resolver,
             outbox,
         };
-        (connection, FrameRx { frames, lagged })
+        (connection, frames)
     }
 
     /// Handles one decoded frame to its end; a frame whose handling waits,
@@ -385,22 +396,22 @@ impl<H: AgentHarness> Connection<H> {
                     outcome,
                 });
             }
-            // The command's status is an event of the tree: every attached
-            // connection shows it. Only the write's acknowledgement is a
-            // reply.
+            // What the command prints and its end reach every attached
+            // connection as its `shell_output` (`runtime.md` § Live output);
+            // only the write's acknowledgement is a reply.
             ClientFrame::ShellWrite { command_id, stdin } => {
-                match tree.root().shell_write(&command_id, stdin).await {
-                    Ok(status) => {
-                        tree.sink().emit(tools::shell_output(&status));
-                        self.send(ServerFrame::ShellWriteResult { command_id });
-                    }
+                match tree
+                    .shells_of(&command_id)
+                    .shell_write(&command_id, stdin)
+                    .await
+                {
+                    Ok(()) => self.send(ServerFrame::ShellWriteResult { command_id }),
                     Err(error) => self.error(error),
                 }
             }
             ClientFrame::ShellAbort { command_id } => {
-                match tree.root().shell_abort(&command_id).await {
-                    Ok(status) => tree.sink().emit(tools::shell_output(&status)),
-                    Err(error) => self.error(error),
+                if let Err(error) = tree.shells_of(&command_id).shell_abort(&command_id).await {
+                    self.error(error);
                 }
             }
             ClientFrame::Open { .. } | ClientFrame::Close {} => {

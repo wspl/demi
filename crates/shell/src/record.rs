@@ -1,10 +1,11 @@
-//! One command's record, which `shell_status` reads, and the views cut from
-//! it. Every shell environment keeps its commands in these; a record does not
+//! One command's record: the model's view, which `shell_status` reads, and
+//! the pages' view (`runtime.md` § Results and previews, § Live output).
+//! Every shell environment keeps its commands in these; a record does not
 //! know what ran the script.
 //!
-//! Views count bytes and cut text only between characters: a stream's cursor
-//! advances by the bytes a view delivered, and a view never splits a
-//! character. Tails are the last [`TAIL_CHARS`] characters.
+//! The model's views count bytes and cut text only between characters: a
+//! stream's cursor advances by the bytes a view delivered, and a view never
+//! splits a character. Tails are the last [`TAIL_CHARS`] characters.
 
 use bytes::Bytes;
 use demi_core::{
@@ -17,11 +18,14 @@ use crate::{BinaryOutput, CommandState, CommandStatus, EditedFiles};
 /// How much of a stream's end a view carries.
 pub const TAIL_CHARS: usize = 4096;
 
-/// A command's output and state, and the cursors of its views.
+/// A command's output and state, the cursors of the model's view, and the
+/// pages' view.
 #[derive(Debug)]
 pub struct CommandRecord {
     shell_id: ShellId,
     command_id: CommandId,
+    /// The `shell_exec` call that started the command.
+    tool_use_id: String,
     output_dir: Option<String>,
     started: Instant,
     last_output: Instant,
@@ -32,29 +36,58 @@ pub struct CommandRecord {
     chunks: Vec<Chunk>,
     /// Where the model's next view starts.
     model: Positions,
-    /// Where the page's next view starts.
-    page: Positions,
+    page: PageText,
     files: Option<EditedFiles>,
 }
 
-/// Who reads a command's status. Each keeps its own position in the output,
-/// so neither's read changes what the other sees next (`runtime.md` §
-/// Results and previews).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Reader {
-    /// The model, through the shell tools.
-    Model,
-    /// The user's page, through the shell frames.
-    Page,
-}
-
-/// Where one reader's next view of each stream, and of the merged output,
+/// Where the model's next view of each stream, and of the merged output,
 /// starts, in bytes.
 #[derive(Debug, Default, Clone, Copy)]
 struct Positions {
     stdout: usize,
     stderr: usize,
     output: usize,
+}
+
+/// The pages' view of a command's output (`runtime.md` § Live output): its
+/// last [`TAIL_CHARS`] characters, and how many characters it has held since
+/// the command started. No read moves it.
+#[derive(Debug, Default)]
+struct PageText {
+    tail: String,
+    chars: u64,
+}
+
+impl PageText {
+    fn push(&mut self, text: &str) {
+        self.chars += text.chars().count() as u64;
+        self.tail.push_str(text);
+        let cut = self.tail.len() - tail_chars(&self.tail).len();
+        self.tail.drain(..cut);
+    }
+}
+
+/// A command as the pages see it (`runtime.md` § Live output): its handles,
+/// the `shell_exec` call that started it, where it is, the last
+/// [`TAIL_CHARS`] characters of the pages' view of its output, and how many
+/// characters that view has held since the command started.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PageView {
+    pub shell_id: ShellId,
+    pub command_id: CommandId,
+    pub tool_use_id: String,
+    pub state: PageState,
+    pub tail: String,
+    pub chars: u64,
+    pub running_ms: u64,
+}
+
+/// Where a command is, as the pages see it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PageState {
+    Running,
+    Exited { exit_code: i32 },
+    Aborted,
 }
 
 #[derive(Debug)]
@@ -93,11 +126,13 @@ pub enum Ending {
 }
 
 impl CommandRecord {
-    pub fn new(shell_id: ShellId, command_id: CommandId) -> Self {
+    /// A running command that the `shell_exec` call `tool_use_id` started.
+    pub fn new(shell_id: ShellId, command_id: CommandId, tool_use_id: String) -> Self {
         let now = Instant::now();
         Self {
             shell_id,
             command_id,
+            tool_use_id,
             output_dir: None,
             started: now,
             last_output: now,
@@ -106,7 +141,7 @@ impl CommandRecord {
             stderr: Stream::default(),
             chunks: Vec::new(),
             model: Positions::default(),
-            page: Positions::default(),
+            page: PageText::default(),
             files: None,
         }
     }
@@ -128,11 +163,21 @@ impl CommandRecord {
         &self.stream(stream).text
     }
 
-    /// Output that arrived while the command runs.
-    pub fn append_output(&mut self, stream: StreamKind, text: &str) {
+    /// Output that arrived while the command runs, which the model's view
+    /// and the pages' view hold. True when the pages' view changed: it
+    /// changes no more once the command ended.
+    pub fn append_output(&mut self, stream: StreamKind, text: &str) -> bool {
         self.stream_mut(stream).text.push_str(text);
         self.push_chunk(stream, text);
         self.last_output = Instant::now();
+        self.append_page(text)
+    }
+
+    /// Output only the pages' view holds, such as a stream's newest bytes
+    /// beyond the runner's view of it. True when the pages' view changed.
+    pub fn append_page_output(&mut self, text: &str) -> bool {
+        self.last_output = Instant::now();
+        self.append_page(text)
     }
 
     /// The command's output grew beyond what the record holds, such as a
@@ -140,6 +185,14 @@ impl CommandRecord {
     /// (`runtime.md` § Results and previews).
     pub fn grew(&mut self) {
         self.last_output = Instant::now();
+    }
+
+    fn append_page(&mut self, text: &str) -> bool {
+        if !self.is_running() || text.is_empty() {
+            return false;
+        }
+        self.page.push(text);
+        true
     }
 
     /// Where the command's output files are on the Host.
@@ -158,23 +211,28 @@ impl CommandRecord {
         self.files = Some(files);
     }
 
-    /// Ends the command with its final streams. What the end adds to a
-    /// stream that was streamed follows the chunks the views showed, so a
-    /// reader's merged position stays valid; a binary stdout is presented
-    /// anew, from its placeholder.
+    /// Ends the command with its final streams, and adds `page_end`, what
+    /// the end adds to the pages' view. What the end adds to a stream that
+    /// was streamed follows the chunks the model's views showed, so its
+    /// merged position stays valid; a binary stdout is presented anew, from
+    /// its placeholder. True when the pages' view changed: a command that
+    /// had ended already keeps the end the pages were shown.
     pub fn settle(
         &mut self,
         ending: Ending,
         stdout: String,
         stderr: String,
         binary_stdout: Option<BinaryOutput>,
-    ) {
+        page_end: &str,
+    ) -> bool {
+        let running = self.is_running();
+        if running {
+            self.page.push(page_end);
+        }
         if binary_stdout.is_some() {
             self.chunks.clear();
-            for positions in [&mut self.model, &mut self.page] {
-                positions.output = 0;
-                positions.stdout = 0;
-            }
+            self.model.output = 0;
+            self.model.stdout = 0;
         } else {
             for (stream, text) in [(StreamKind::Stdout, &stdout), (StreamKind::Stderr, &stderr)] {
                 if let Some(rest) = text.strip_prefix(self.stream(stream).text.as_str()) {
@@ -198,29 +256,25 @@ impl CommandRecord {
             },
             Ending::Aborted => Phase::Aborted,
         };
+        running
     }
 
-    /// Marks a running command stopped whose streams never ended.
-    pub fn mark_aborted(&mut self) {
-        if self.is_running() {
-            self.last_output = Instant::now();
-            self.phase = Phase::Aborted;
+    /// Marks a running command stopped whose streams never ended. True when
+    /// it ran until now.
+    pub fn mark_aborted(&mut self) -> bool {
+        if !self.is_running() {
+            return false;
         }
+        self.last_output = Instant::now();
+        self.phase = Phase::Aborted;
+        true
     }
 
-    /// The status `reader` sees: each stream's output since its last view,
+    /// The model's status: each stream's output since the model's last view,
     /// at most `max_output_bytes` of it (all of it when zero), and its tail.
-    /// The view moves only `reader`'s positions.
-    pub fn status(
-        &mut self,
-        reader: Reader,
-        max_output_bytes: usize,
-        hint: Option<String>,
-    ) -> CommandStatus {
-        let positions = match reader {
-            Reader::Model => &mut self.model,
-            Reader::Page => &mut self.page,
-        };
+    /// The view moves only the model's positions.
+    pub fn status(&mut self, max_output_bytes: usize, hint: Option<String>) -> CommandStatus {
+        let positions = &mut self.model;
         let stdout = stream_view(
             &self.stdout,
             &mut positions.stdout,
@@ -259,6 +313,25 @@ impl CommandRecord {
             idle_ms: millis(now - self.last_output),
             state,
             files: self.files.clone(),
+        }
+    }
+
+    /// The command as the pages see it now.
+    pub fn page_view(&self) -> PageView {
+        PageView {
+            shell_id: self.shell_id.clone(),
+            command_id: self.command_id.clone(),
+            tool_use_id: self.tool_use_id.clone(),
+            state: match &self.phase {
+                Phase::Running => PageState::Running,
+                Phase::Exited { exit_code, .. } => PageState::Exited {
+                    exit_code: *exit_code,
+                },
+                Phase::Aborted => PageState::Aborted,
+            },
+            tail: self.page.tail.clone(),
+            chars: self.page.chars,
+            running_ms: millis(Instant::now() - self.started),
         }
     }
 
@@ -305,7 +378,6 @@ impl CommandRecord {
         }
         self.chunks.clear();
         self.model.output = 0;
-        self.page.output = 0;
         self.push_chunk(StreamKind::Stdout, &self.stdout.text.clone());
         self.push_chunk(StreamKind::Stderr, &self.stderr.text.clone());
     }

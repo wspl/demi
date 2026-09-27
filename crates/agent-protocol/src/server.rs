@@ -5,9 +5,9 @@
 use std::collections::BTreeMap;
 
 use demi_core::{
-    BinaryStdout, Block, BlockId, CommandId, MAX_SAFE_INTEGER, NodeId, Nullable, OperationId,
-    OutputView, PendingSteer, ProviderErrorDiagnostics, ProviderFailureFacts, QueuedMessage,
-    SessionPhase, ShellId, StreamView, Timestamp, TurnId,
+    Block, BlockId, CommandId, MAX_SAFE_INTEGER, NodeId, Nullable, OperationId, PendingSteer,
+    ProviderErrorDiagnostics, ProviderFailureFacts, QueuedMessage, SessionPhase, ShellId,
+    Timestamp, TurnId,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -89,13 +89,18 @@ pub enum ServerFrame {
         #[garde(dive)]
         result: AbortResult,
     },
-    /// A running command's status and output, live. Boxed because it is
-    /// the largest frame by far.
+    /// A command's live view (`runtime.md` § Live output): the same for
+    /// every page, whatever any page or the model read.
     ShellOutput {
+        /// The subagent whose command it is; absent for the root's.
+        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "NodeId")]
+        #[garde(skip)]
+        subagent_id: Option<NodeId>,
         #[garde(dive)]
         status: Box<ShellStatus>,
     },
-    /// Acknowledges `shell_write`, after the `shell_output` it caused.
+    /// Acknowledges `shell_write`.
     ShellWriteResult {
         #[garde(skip)]
         command_id: CommandId,
@@ -279,8 +284,8 @@ pub enum JobPhase {
 serde_plain::derive_display_from_serialize!(JobPhase);
 serde_plain::derive_fromstr_from_deserialize!(JobPhase);
 
-/// A command's status, live: running, exited or stopped, with its output
-/// since the last look. Binary stdout is described by its size, never sent.
+/// Where a command is, with the pages' view of it: running, exited with its
+/// code, or stopped.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(tag = "status", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum ShellStatus {
@@ -288,12 +293,6 @@ pub enum ShellStatus {
         #[serde(flatten)]
         #[garde(dive)]
         command: CommandView,
-        /// The running command's guidance for the model, when it declares
-        /// one.
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-        #[schemars(with = "String")]
-        #[garde(skip)]
-        running_hint: Option<String>,
     },
     Exited {
         #[serde(flatten)]
@@ -301,11 +300,6 @@ pub enum ShellStatus {
         command: CommandView,
         #[garde(skip)]
         exit_code: i32,
-        /// Present when the final stdout was not text.
-        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-        #[schemars(with = "BinaryStdout")]
-        #[garde(dive)]
-        binary_stdout: Option<BinaryStdout>,
     },
     Aborted {
         #[serde(flatten)]
@@ -315,17 +309,18 @@ pub enum ShellStatus {
 }
 
 impl ShellStatus {
-    /// The command and its output, whatever its status.
+    /// The command and its view, whatever its status.
     pub fn command(&self) -> &CommandView {
         match self {
-            Self::Running { command, .. }
+            Self::Running { command }
             | Self::Exited { command, .. }
             | Self::Aborted { command } => command,
         }
     }
 }
 
-/// The part of a command's status every status has.
+/// A command as the pages see it, whatever its status (`runtime.md`
+/// § Live output).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandView {
@@ -333,20 +328,19 @@ pub struct CommandView {
     pub shell_id: ShellId,
     #[garde(skip)]
     pub command_id: CommandId,
-    /// The directory on the Host that holds the command's output files;
-    /// absent when none is kept.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-    #[schemars(with = "String")]
+    /// The `shell_exec` call that started it, in the subagent's transcript
+    /// when the frame names one.
     #[garde(skip)]
-    pub output_dir: Option<String>,
-    #[garde(dive)]
-    pub stdout: StreamView,
-    #[garde(dive)]
-    pub stderr: StreamView,
-    #[garde(dive)]
-    pub output: OutputView,
+    pub tool_use_id: String,
+    /// The last 4,096 characters of the pages' view of its output: its
+    /// output in the order it reached the backend, with a note where the
+    /// runner left some out.
+    #[garde(skip)]
+    pub tail: String,
+    /// How many characters the view has held since the command started. A
+    /// page adds only the characters beyond those it has shown.
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub chars: u64,
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub running_ms: u64,
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub idle_ms: u64,
 }

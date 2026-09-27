@@ -56,6 +56,9 @@ pub(crate) trait SessionRuntime {
 /// One call of a tool.
 #[derive(Debug, Clone)]
 pub(crate) struct ToolInvocation {
+    /// The provider's id of the call, which the pages' view of a command
+    /// the call starts names.
+    pub(crate) tool_use_id: String,
     pub(crate) tool_name: String,
     /// The input as the JSON value the provider supplied, or its text when
     /// that is not valid JSON; the tool validates it.
