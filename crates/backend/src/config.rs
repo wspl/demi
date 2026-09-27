@@ -205,7 +205,8 @@ pub struct BackendConfig {
 }
 
 /// When Demi reclaims what a conversation uses on a Host
-/// (`resource-lifecycle.md` § Idle window). Tests shorten the times.
+/// (`resource-lifecycle.md` § Idle window), and how often the retention pass
+/// runs (`storage.md` § The retention pass). Tests shorten the times.
 #[derive(Debug, Clone, Copy)]
 pub struct LifecycleTuning {
     /// How long a conversation, or every conversation using the Cloud, stays
@@ -213,6 +214,11 @@ pub struct LifecycleTuning {
     pub idle_window: Duration,
     /// How often a conversation's idle watch reads its activity.
     pub idle_poll: Duration,
+    /// How long after one retention pass of every user the next starts; the
+    /// first starts once the backend serves. None runs no pass by itself,
+    /// for tests that run a user's pass when they choose
+    /// (`Backend::run_retention`).
+    pub retention_interval: Option<Duration>,
 }
 
 impl Default for LifecycleTuning {
@@ -220,6 +226,7 @@ impl Default for LifecycleTuning {
         Self {
             idle_window: Duration::from_secs(60 * 60),
             idle_poll: Duration::from_secs(30),
+            retention_interval: Some(Duration::from_secs(24 * 60 * 60)),
         }
     }
 }

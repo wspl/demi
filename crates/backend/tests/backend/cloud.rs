@@ -89,11 +89,12 @@ pub(crate) async fn reset(backend: &TestBackend, session: &Session, id: &str) ->
     answer.json()
 }
 
-/// Short idle windows, read often.
+/// Short idle windows, read often, and no retention pass by itself.
 pub(crate) fn idle_after(window: Duration) -> LifecycleTuning {
     LifecycleTuning {
         idle_window: window,
         idle_poll: Duration::from_millis(50),
+        retention_interval: None,
     }
 }
 
