@@ -111,8 +111,12 @@ fn long_message() -> Vec<demi_core::UserContentBlock> {
     text(&"x".repeat(3_000))
 }
 
+/// Whether `request` is a summary request: it carries the summary
+/// instruction, which no request of the session does.
 fn is_copy(request: &demi_provider::InferenceRequest) -> bool {
-    request.session_id != "root"
+    request
+        .items
+        .contains(&user_item(COMPACTION_SUMMARY_INSTRUCTION))
 }
 
 /// How many items each summary request held, in order.
@@ -182,6 +186,9 @@ async fn a_history_over_the_threshold_is_compacted_before_the_turn_by_a_copy_tha
     // session replays it, then the instruction; same system prompt, tools
     // and model.
     assert!(is_copy(summary) && !is_copy(second));
+    // It carries the session's id, which keeps it with the session's
+    // requests at the vendor.
+    assert_eq!(summary.session_id, first.session_id);
     let mut expected = first.items.to_vec();
     expected.push(answer_item("small-model", "first answer"));
     expected.push(user_item(COMPACTION_SUMMARY_INSTRUCTION));
