@@ -26,9 +26,10 @@ use demi_runner_protocol::wire::{
 };
 use demi_shell::{
     Call, CommandSet, CommandState, ExecRequest, GroupBuilder, HostError, HostErrorKind,
-    HostProcess, JobCaller, LeafBuilder, ObservationWindow, PortError, Process, ProcessEnd, RpcError,
-    Reader, RpcInvocation, RpcPort, ShellEnvironment, ShellTarget, SpawnEnv, SpawnRequest, StorageOp,
-    StorageReply, TypedRpc, testing::test_command_context,
+    HostProcess, JobCaller, LeafBuilder, ObservationWindow, PageState, PortError, Process,
+    ProcessEnd, RpcError, RpcInvocation, RpcPort, ShellEnvironment, ShellTarget, SpawnEnv,
+    SpawnRequest, StorageOp, StorageReply, TypedRpc,
+    testing::{TestPages, test_command_context},
 };
 use futures_util::future::LocalBoxFuture;
 use serde_json::{Map, Value};
@@ -69,9 +70,14 @@ fn spawn(command: &str, retained: bool) -> SpawnRequest {
 }
 
 fn environment(host: RemoteHost) -> RemoteShellEnvironment {
+    watched_environment(host, TestPages::new(false))
+}
+
+/// An environment whose commands' pages' views go to `pages`.
+fn watched_environment(host: RemoteHost, pages: Rc<TestPages>) -> RemoteShellEnvironment {
     let context: demi_host_remote::ContextSource =
         Rc::new(|| Box::pin(async { Ok(test_command_context()) }));
-    RemoteShellEnvironment::new(EnvironmentOptions::new(host, context))
+    RemoteShellEnvironment::new(EnvironmentOptions::new(host, context, pages))
 }
 
 fn exec(script: &str) -> ExecRequest {
@@ -80,6 +86,7 @@ fn exec(script: &str) -> ExecRequest {
         shell: ShellTarget::Default,
         window: ObservationWindow::from_millis(1).unwrap(),
         caller: caller(),
+        tool_use_id: "call".into(),
     }
 }
 
@@ -658,7 +665,7 @@ async fn a_status_shows_the_latest_first_registered_hint_and_none_once_the_job_e
         hint: hint.map(str::to_owned),
     };
     let shown =
-        |shell: &RemoteShellEnvironment| match shell.status(&started.command_id, Reader::Model).unwrap().state {
+        |shell: &RemoteShellEnvironment| match shell.status(&started.command_id).unwrap().state {
             CommandState::Running { hint } => hint,
             other => panic!("expected a running command, got {other:?}"),
         };
@@ -681,20 +688,23 @@ async fn a_status_shows_the_latest_first_registered_hint_and_none_once_the_job_e
     let aborting = {
         let shell = shell.clone();
         let command = started.command_id.clone();
-        tokio::task::spawn_local(async move { shell.abort(&command, Reader::Model).await })
+        tokio::task::spawn_local(async move { shell.abort(&command).await })
     };
     let Inbound::JobKill { signal, .. } = link.next().await else {
         panic!("expected the job to be stopped")
     };
     assert_eq!(signal, Some(demi_runner_protocol::wire::Signal::Terminate));
     link.send(job_exit(&job_id, None, Some("SIGTERM"))).await;
-    let aborted = aborting.await.unwrap().unwrap();
-    assert!(matches!(aborted.state, CommandState::Aborted));
+    aborting.await.unwrap().unwrap();
+    assert!(matches!(
+        shell.status(&started.command_id).unwrap().state,
+        CommandState::Aborted
+    ));
     link.send(hint("late", Some("arrived after the end"), &job_id))
         .await;
     drain(&mut link).await;
     assert!(matches!(
-        shell.status(&started.command_id, Reader::Model).unwrap().state,
+        shell.status(&started.command_id).unwrap().state,
         CommandState::Aborted
     ));
 
@@ -707,6 +717,119 @@ async fn a_status_shows_the_latest_first_registered_hint_and_none_once_the_job_e
     link.close().await;
     assert!(matches!(job.end().await.status, ProcessEnd::Lost(_)));
     assert_eq!(job.running_hint(), None);
+}
+
+/// While a page watches, a command's job is followed, and the pages' view
+/// holds its output in the order it came: each stream's first bytes, the
+/// newest bytes beyond them with a note where the runner left some out, and
+/// at the end the rest of each stream from its tail; the model's view holds
+/// only the first bytes (`runtime.md` § Live output).
+#[tokio::test(flavor = "local")]
+async fn a_watched_command_is_followed_and_its_pages_view_holds_what_the_runner_sent() {
+    let device = device();
+    let mut link = device.connect(None);
+    let pages = TestPages::new(false);
+    let shell = watched_environment(device.host("/work", Admission::Free), pages.clone());
+    let started = shell
+        .exec(exec("build"), CancellationToken::new())
+        .await
+        .unwrap();
+    // The pages learn of the command before its first output.
+    let view = pages.next().await;
+    assert_eq!(view.command_id, started.command_id);
+    assert_eq!(
+        (view.tool_use_id.as_str(), view.state, view.tail.as_str(), view.chars),
+        ("call", PageState::Running, "", 0)
+    );
+    let Inbound::JobStart { job_id, .. } = link.next().await else {
+        panic!("expected a job")
+    };
+    // What the backend sends the runner next, within a hang guard.
+    let next = async |link: &mut TestLink| {
+        tokio::time::timeout(Duration::from_secs(10), link.next())
+            .await
+            .expect("a message within the hang guard")
+    };
+
+    // A job starts unfollowed; a page that comes makes it followed.
+    pages.watch(true);
+    assert!(matches!(
+        next(&mut link).await,
+        Inbound::JobFollow { follow: true, .. }
+    ));
+    let output = |offset: u64, bytes: &[u8]| Outbound::JobOutput {
+        job_id: job_id.clone(),
+        stream: OutputStream::Stdout,
+        offset,
+        bytes: WireBytes(bytes.to_vec()),
+    };
+    let view_end = JOB_VIEW_BYTES as u64;
+    link.send(output(0, b"first\n")).await;
+    assert_eq!(pages.next().await.tail, "first\n");
+    link.send(output(6, &vec![b'x'; JOB_VIEW_BYTES - 6])).await;
+    pages.next().await;
+    // The runner left ten bytes out before its newest ones.
+    link.send(output(view_end + 10, b"newest\n")).await;
+    let view = pages.next().await;
+    let note = "\n[... 10 bytes of stdout not shown ...]\n";
+    assert!(
+        view.tail.ends_with(&format!("x{note}newest\n")),
+        "{:?}",
+        &view.tail[view.tail.len() - 60..]
+    );
+    assert_eq!(view.chars, view_end + note.len() as u64 + 7);
+    // The model's view holds only the stream's first bytes.
+    let status = shell.status(&started.command_id).unwrap();
+    assert!(status.stdout.tail.ends_with('x'));
+    assert_eq!(status.stdout.bytes, view_end);
+
+    // A page that leaves makes the job unfollowed.
+    pages.watch(false);
+    assert!(matches!(
+        next(&mut link).await,
+        Inbound::JobFollow { follow: false, .. }
+    ));
+
+    // The end adds the rest of each stream from its tail, once.
+    let mut stream = b"first\n".to_vec();
+    stream.extend(vec![b'x'; JOB_VIEW_BYTES - 6]);
+    stream.extend(b"yyyyyyyyyynewest\nlast\n");
+    let tail = stream[stream.len() - JOB_VIEW_BYTES..].to_vec();
+    link.send(Outbound::JobExit {
+        job_id: job_id.clone(),
+        exit_code: Some(0),
+        signal: None,
+        spawn_error: None,
+        cwd: None,
+        output: Some(demi_runner_protocol::wire::RetainedOutput {
+            stdout_path: "/out/stdout.txt".into(),
+            stderr_path: "/out/stderr.txt".into(),
+            stdout_bytes: stream.len() as u64,
+            stderr_bytes: 0,
+            stdout_tail: WireBytes(tail),
+            stderr_tail: WireBytes(Vec::new()),
+        }),
+        files: Vec::new(),
+        files_truncated: false,
+    })
+    .await;
+    let end = pages.next().await;
+    assert_eq!(end.state, PageState::Exited { exit_code: 0 });
+    assert!(end.tail.ends_with("newest\nlast\n"), "{:?}", end.tail);
+    drain(&mut link).await;
+    assert_eq!(pages.drain(), []);
+
+    // A command that starts while a page watches is followed at once.
+    pages.watch(true);
+    shell
+        .exec(exec("again"), CancellationToken::new())
+        .await
+        .unwrap();
+    assert!(matches!(next(&mut link).await, Inbound::JobStart { .. }));
+    assert!(matches!(
+        next(&mut link).await,
+        Inbound::JobFollow { follow: true, .. }
+    ));
 }
 
 /// The model's idle time counts from the latest growth of a command's
@@ -733,14 +856,14 @@ async fn a_stream_that_grows_beyond_its_view_keeps_its_command_from_idling() {
     link.send(output(0, vec![b'x'; JOB_VIEW_BYTES])).await;
     drain(&mut link).await;
     tokio::time::advance(Duration::from_secs(5)).await;
-    let status = shell.status(&started.command_id, Reader::Model).unwrap();
+    let status = shell.status(&started.command_id).unwrap();
     assert_eq!(status.idle_ms, 5000);
 
     // The runner says the stream grew beyond its view: the command is not
     // idle, and the model's view still holds the stream's first bytes.
     link.send(output(JOB_VIEW_BYTES as u64 + 100, Vec::new())).await;
     drain(&mut link).await;
-    let status = shell.status(&started.command_id, Reader::Model).unwrap();
+    let status = shell.status(&started.command_id).unwrap();
     assert_eq!(status.idle_ms, 0);
     assert_eq!(status.stdout.tail.len(), 4096);
     assert_eq!(status.stdout.bytes, JOB_VIEW_BYTES as u64);
@@ -772,13 +895,13 @@ async fn a_job_the_runner_could_not_run_ends_127_with_the_runners_reason() {
         files_truncated: false,
     })
     .await;
-    let mut status = shell.status(&started.command_id, Reader::Model).unwrap();
+    let mut status = shell.status(&started.command_id).unwrap();
     for _ in 0..100 {
         if !matches!(status.state, CommandState::Running { .. }) {
             break;
         }
         tokio::task::yield_now().await;
-        status = shell.status(&started.command_id, Reader::Model).unwrap();
+        status = shell.status(&started.command_id).unwrap();
     }
     assert!(
         matches!(status.state, CommandState::Exited { exit_code: 127, .. }),
@@ -874,7 +997,7 @@ async fn a_command_ends_once_its_edits_are_published_and_keeps_them() {
     let (publish, barrier) = tokio::sync::oneshot::channel();
     let context: demi_host_remote::ContextSource =
         Rc::new(|| Box::pin(async { Ok(test_command_context()) }));
-    let mut options = EnvironmentOptions::new(host, context);
+    let mut options = EnvironmentOptions::new(host, context, TestPages::new(false));
     options.retain = Some(Rc::new(Publisher {
         barrier: RefCell::new(Some(barrier)),
         file: file.clone(),
@@ -909,17 +1032,17 @@ async fn a_command_ends_once_its_edits_are_published_and_keeps_them() {
     .await;
     drain(&mut link).await;
     assert!(matches!(
-        shell.status(&started.command_id, Reader::Model).unwrap().state,
+        shell.status(&started.command_id).unwrap().state,
         CommandState::Running { .. }
     ));
     publish.send(()).unwrap();
-    let mut status = shell.status(&started.command_id, Reader::Model).unwrap();
+    let mut status = shell.status(&started.command_id).unwrap();
     for _ in 0..100 {
         if !matches!(status.state, CommandState::Running { .. }) {
             break;
         }
         tokio::task::yield_now().await;
-        status = shell.status(&started.command_id, Reader::Model).unwrap();
+        status = shell.status(&started.command_id).unwrap();
     }
     assert!(matches!(
         status.state,
@@ -929,7 +1052,7 @@ async fn a_command_ends_once_its_edits_are_published_and_keeps_them() {
     assert_eq!((files.files, files.truncated), (vec![file.clone()], true));
     assert_eq!(
         shell
-            .status(&started.command_id, Reader::Model)
+            .status(&started.command_id)
             .unwrap()
             .files
             .unwrap()

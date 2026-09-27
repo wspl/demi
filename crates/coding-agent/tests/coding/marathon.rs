@@ -288,27 +288,31 @@ async fn the_shell_tools_feed_a_waiting_command_stop_a_long_one_and_yield_betwee
             "{aborted}"
         );
 
-        // Each exec, write and abort sent the command's status to the client;
-        // the checks sent none.
-        let outputs: Vec<(CommandId, &'static str)> = frames
-            .iter()
-            .filter_map(|frame| match frame {
-                ServerFrame::ShellOutput { status } => Some((
-                    status.command().command_id.clone(),
-                    match **status {
-                        ShellStatus::Running { .. } => "running",
-                        ShellStatus::Exited { .. } => "exited",
-                        ShellStatus::Aborted { .. } => "aborted",
-                    },
-                )),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(outputs.len(), 4, "{outputs:?}");
-        assert_eq!(outputs[0], (reader.clone(), "running"));
-        assert_eq!(outputs[1].0, reader);
-        assert_eq!(outputs[2], (long.clone(), "running"));
-        assert_eq!(outputs[3], (long, "aborted"));
+        // The page saw each command's output and its end, and nothing of a
+        // command after its end (`runtime.md` § Live output).
+        let mut ends: Vec<(CommandId, ShellStatus)> = Vec::new();
+        for frame in &frames {
+            let ServerFrame::ShellOutput { status, .. } = frame else {
+                continue;
+            };
+            let command = &status.command().command_id;
+            assert!(
+                !ends.iter().any(|(ended, _)| ended == command),
+                "a frame after the end of {command}"
+            );
+            if !matches!(**status, ShellStatus::Running { .. }) {
+                ends.push((command.clone(), ShellStatus::clone(status)));
+            }
+        }
+        let [(first, greeted), (second, stopped)] = &ends[..] else {
+            panic!("{ends:?}");
+        };
+        assert_eq!((first, second), (&reader, &long));
+        assert!(
+            matches!(greeted, ShellStatus::Exited { exit_code: 0, command } if command.tail == "hello Alice\n"),
+            "{greeted:?}"
+        );
+        assert!(matches!(stopped, ShellStatus::Aborted { .. }), "{stopped:?}");
         // No call was an error, the abort included.
         let kinds = fixture.kinds();
         assert!(

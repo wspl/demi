@@ -300,85 +300,24 @@
       "status": "running",
       "shellId": "sh-1",
       "commandId": "cmd-1",
-      "outputDir": "/home/demi/.demi/output/cmd-1",
-      "stdout": {
-        "path": "/home/demi/.demi/output/cmd-1/stdout",
-        "offset": 12,
-        "delta": "ok 12 tests\n",
-        "tail": "ok 12 tests\n",
-        "bytes": 12,
-        "truncated": false
-      },
-      "stderr": {
-        "offset": 0,
-        "delta": "",
-        "tail": "",
-        "bytes": 0,
-        "truncated": false
-      },
-      "output": {
-        "path": "/home/demi/.demi/output/cmd-1",
-        "offset": 12,
-        "text": "ok 12 tests\n",
-        "tail": "ok 12 tests\n",
-        "chunks": [
-          {
-            "stream": "stdout",
-            "text": "ok 12 tests\n"
-          }
-        ],
-        "bytes": 12,
-        "truncated": false
-      },
-      "runningMs": 1200,
-      "idleMs": 15,
-      "runningHint": "The server keeps running; read its log with shell_status."
+      "toolUseId": "toolu_1",
+      "tail": "ok 12 tests\n",
+      "chars": 12,
+      "runningMs": 1200
     }
   },
   {
     "type": "shell_output",
+    "subagentId": "node-2",
     "status": {
       "status": "exited",
-      "shellId": "sh-1",
-      "commandId": "cmd-1",
-      "outputDir": "/home/demi/.demi/output/cmd-1",
-      "stdout": {
-        "path": "/home/demi/.demi/output/cmd-1/stdout",
-        "offset": 12,
-        "delta": "ok 12 tests\n",
-        "tail": "ok 12 tests\n",
-        "bytes": 12,
-        "truncated": false
-      },
-      "stderr": {
-        "offset": 0,
-        "delta": "",
-        "tail": "",
-        "bytes": 0,
-        "truncated": false
-      },
-      "output": {
-        "path": "/home/demi/.demi/output/cmd-1",
-        "offset": 12,
-        "text": "ok 12 tests\n",
-        "tail": "ok 12 tests\n",
-        "chunks": [
-          {
-            "stream": "stdout",
-            "text": "ok 12 tests\n"
-          }
-        ],
-        "bytes": 12,
-        "truncated": false
-      },
+      "shellId": "sh-2",
+      "commandId": "cmd-2",
+      "toolUseId": "toolu_2",
+      "tail": "[... 20000000 bytes of stdout not shown ...]\n<binary stdout: 20000000 bytes, exceeds the 16777216-byte binary limit; raw bytes at /home/demi/.demi/output/cmd-2/stdout.txt>\n",
+      "chars": 180,
       "runningMs": 1200,
-      "idleMs": 15,
-      "exitCode": 0,
-      "binaryStdout": {
-        "truncated": true,
-        "totalBytes": 20000000,
-        "limitBytes": 16777216
-      }
+      "exitCode": 0
     }
   },
   {
@@ -387,38 +326,10 @@
       "status": "aborted",
       "shellId": "sh-1",
       "commandId": "cmd-1",
-      "outputDir": "/home/demi/.demi/output/cmd-1",
-      "stdout": {
-        "path": "/home/demi/.demi/output/cmd-1/stdout",
-        "offset": 12,
-        "delta": "ok 12 tests\n",
-        "tail": "ok 12 tests\n",
-        "bytes": 12,
-        "truncated": false
-      },
-      "stderr": {
-        "offset": 0,
-        "delta": "",
-        "tail": "",
-        "bytes": 0,
-        "truncated": false
-      },
-      "output": {
-        "path": "/home/demi/.demi/output/cmd-1",
-        "offset": 12,
-        "text": "ok 12 tests\n",
-        "tail": "ok 12 tests\n",
-        "chunks": [
-          {
-            "stream": "stdout",
-            "text": "ok 12 tests\n"
-          }
-        ],
-        "bytes": 12,
-        "truncated": false
-      },
-      "runningMs": 1200,
-      "idleMs": 15
+      "toolUseId": "toolu_1",
+      "tail": "ok 12 tests\n",
+      "chars": 12,
+      "runningMs": 1500
     }
   },
   {
