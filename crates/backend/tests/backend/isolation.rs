@@ -22,14 +22,17 @@ async fn user(backend: &TestBackend, master: &Session, email: &str) -> Session {
     backend.login(email, &password).await
 }
 
-async fn upload(backend: &TestBackend, session: &Session, media_type: &str, bytes: &[u8]) -> String {
+/// Uploads `bytes`, and answers the upload's id and where its bytes are.
+async fn upload(backend: &TestBackend, session: &Session, media_type: &str, bytes: &[u8]) -> (String, String) {
     let headers = [("content-type", media_type)];
     let sent = backend
         .response(Method::POST, "/api/attachments?name=file", session, &headers, Some(bytes.to_vec().into()))
         .await;
     let uploaded = answer(sent).await;
     assert_eq!(uploaded.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&uploaded.body));
-    uploaded.json::<Value>()["attachment"]["sha256"].as_str().unwrap().to_owned()
+    let attachment = &uploaded.json::<Value>()["attachment"];
+    let field = |name: &str| attachment[name].as_str().unwrap().to_owned();
+    (field("id"), field("sha256"))
 }
 
 async fn created(backend: &TestBackend, session: &Session, path: &str, body: Value) -> Value {
@@ -77,9 +80,9 @@ async fn another_users_objects_answer_404_on_every_route_to_users_and_admins_ali
     let conversation = uuid::Uuid::new_v4().to_string();
     created(&backend, &alice, "/api/conversations", json!({ "id": conversation })).await;
     created(&backend, &alice, &format!("/api/conversations/{conversation}/hosts"), json!({ "deviceId": device })).await;
-    let image = upload(&backend, &alice, "image/png", &PNG).await;
+    let (image_upload, image) = upload(&backend, &alice, "image/png", &PNG).await;
     let private = b"alice private file";
-    let private_hash = upload(&backend, &alice, "text/plain", private).await;
+    let (_, private_hash) = upload(&backend, &alice, "text/plain", private).await;
     assert_eq!(private_hash, hex::encode(Sha256::digest(private)));
     Socket::connect(&backend, &alice, &conversation).await;
     let bobs = uuid::Uuid::new_v4().to_string();
@@ -102,6 +105,18 @@ async fn another_users_objects_answer_404_on_every_route_to_users_and_admins_ali
         (Method::GET, format!("/api/conversations/{c}/changes"), None),
         (Method::GET, format!("/api/conversations/{c}/panel"), None),
         (Method::PUT, format!("/api/conversations/{c}/panel"), Some(json!({ "selection": "change", "tabs": [] }))),
+        (Method::GET, format!("/api/conversations/{c}/draft"), None),
+        (Method::PUT, format!("/api/conversations/{c}/draft"), Some(json!({ "base": 0, "text": "", "files": [] }))),
+        (
+            Method::POST,
+            format!("/api/conversations/{c}/draft/replaced"),
+            Some(json!({ "action": "dismiss", "revision": 1 })),
+        ),
+        (
+            Method::PUT,
+            format!("/api/conversations/{bobs}/draft"),
+            Some(json!({ "base": 0, "text": "\u{FFFC}", "files": [{ "type": "upload", "ref": image_upload, "fileName": "a.png" }] })),
+        ),
         (Method::GET, format!("/api/conversations/{c}/browser/tabs"), None),
         (Method::POST, format!("/api/conversations/{c}/activity"), None),
         (Method::GET, format!("/api/conversations/{c}/hosts/{device}/fs"), None),
@@ -151,7 +166,7 @@ async fn another_users_objects_answer_404_on_every_route_to_users_and_admins_ali
     assert_eq!(backend.get(&format!("/api/blobs/{image}"), Some(&alice)).await.body, PNG);
     assert_eq!(backend.get(&format!("/api/blobs/{private_hash}"), Some(&alice)).await.body, private);
     // The same bytes are Bob's only once he stores his own copy.
-    assert_eq!(upload(&backend, &bob, "image/png", &PNG).await, image);
+    assert_eq!(upload(&backend, &bob, "image/png", &PNG).await.1, image);
     assert_eq!(backend.get(&format!("/api/blobs/{image}"), Some(&bob)).await.body, PNG);
     let still = backend.get(&format!("/api/blobs/{private_hash}"), Some(&bob)).await;
     assert_eq!(still.status, StatusCode::NOT_FOUND);
