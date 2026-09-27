@@ -212,6 +212,25 @@ test('a view whose tree another client disposed opens it again, as after a lost 
   }
 })
 
+test('a failure the session reported is over once another tab starts the next action', async () => {
+  const h = clientHarness()
+  const current = state()
+  const runtime = new ConversationRuntime({ state: current, prepareModel: async () => model, connect: async () => h.client })
+  try {
+    await runtime.connect()
+    h.receive({ type: 'phase', phase: 'running' })
+    h.receive({ type: 'error', message: 'The provider failed', code: 'provider_error' })
+    h.receive({ type: 'phase', phase: 'idle' })
+    expect(current.lastError).toBe('The provider failed')
+    // Another tab sends: this tab hears only the session start the next action.
+    h.receive({ type: 'phase', phase: 'running' })
+    expect(current.lastError).toBeNull()
+    expect(h.sent.map((frame) => frame.type)).toEqual(['open'])
+  } finally {
+    runtime.dispose()
+  }
+})
+
 test('a connection that cannot be made is retried with backoff, never told as a failure', async () => {
   const h = clientHarness()
   const current = state()

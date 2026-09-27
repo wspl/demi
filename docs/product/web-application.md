@@ -154,12 +154,17 @@ attachment without stopping the backend task. Reload starts a new browser cache.
 A conversation open in several tabs or browsers is live and usable in each.
 For example, the user sends a message in one tab: a second tab shows the
 message, the reply as it streams and each tool call, and its Stop stops the
-turn. Every tab shows the same messages, running output, phase, queue,
-pending steers and subagents; every tab can send, steer, queue, stop, edit,
+turn. Every tab shows the same messages, output of running commands
+([Results and previews](../agent/runtime.md#results-and-previews)), phase,
+queue, pending steers and subagents; every tab can send, steer, queue, stop, edit,
 retry, switch the model and write to a running command; and what one tab does
 shows in all of them. Opening the conversation in another tab takes nothing
-over. A draft not yet sent stays in the tab it was typed in. Each tab has its
-own socket, attached to the conversation's one live tree
+over. A draft not yet sent stays in the tab it was typed in
+([Persistence and adapters](#persistence-and-adapters) says what a reload
+restores). A turn or save that fails shows its failure in every tab until the
+conversation starts its next action, whichever tab starts it; a refusal of one
+tab's own request shows in that tab alone. Each tab has its own socket,
+attached to the conversation's one live tree
 ([Connections and the live tree](../agent/runtime.md#connections-and-the-live-tree)),
 and every tab names the model the conversation's record holds
 ([page synchronization](web-api.md#sidebar-mutations-read-state-and-page-synchronization)).
@@ -208,7 +213,12 @@ its save state, and keeps failed input for a retry.
 The backend owns saved conversation state, ordering, preferences, and attachments.
 Per-user IndexedDB retains local drafts, pending edits, unconfirmed submissions,
 and attachment bytes. A draft is its Markdown, with a mark where each staged
-file's capsule sits, and those files in mark order. Browser-local preferences
+file's capsule sits, and those files in mark order. The tabs of one browser
+share this storage, one saved draft per conversation: a page saves only the
+drafts it changed since it last saved or restored them, so a tab never
+replaces a draft that another tab saved for a conversation it left alone, and
+a reload restores the draft saved last for its conversation, by whichever
+tab. Browser-local preferences
 hold presentation-only choices. Work-panel width and per-conversation open/closed state use the same account-scoped
 local preferences. Refreshing restores whether the panel was open; a conversation
 without a saved choice starts closed. The panel's tabs and selection are saved

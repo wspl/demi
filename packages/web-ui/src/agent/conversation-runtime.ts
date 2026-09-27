@@ -352,6 +352,12 @@ export class ConversationRuntime {
         state.failures = event.failures
         break
       case 'phase':
+        // A failure the session reported is over once the session starts
+        // another action, whichever tab started it; a tab that did not
+        // start it would otherwise keep showing it.
+        if (state.phase === 'idle' && event.phase !== 'idle') {
+          state.lastError = null
+        }
         state.phase = event.phase
         this.settlePendingAction()
         break
