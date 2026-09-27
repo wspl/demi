@@ -100,7 +100,6 @@ import { useLiveGalleryCommand } from '../live-command'
 import { useTurnFlow, type TurnFlowKind } from '../turn-flow'
 import GalleryComposer from '../components/GalleryComposer.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
-import GalleryPhoneToolMedia from '../components/GalleryPhoneToolMedia.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import GalleryTabStripDrive from '../components/GalleryTabStripDrive.vue'
@@ -1269,7 +1268,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="Tool media"
-        note="The images and videos a call's result carries show under its row at one preview height, folded or open, in the order of the result. A click on an image opens it large over the dimmed page: fitted and never enlarged, a click toggles actual size, and Escape, the close control or a click on the dimmed page closes it. A video plays in the browser's player, whose full-screen control shows it large. A medium that is gone shows one line where it was: that it was not stored, with the store's reason, or the day it was removed. A medium the page cannot show says so at the same height."
+        note="The images and videos a call's result carries show under its row at one preview height, folded or open, in the order of the result. A click on an image opens it large over the dimmed page: fitted and never enlarged, a click toggles actual size, and Escape, the close control or a click on the dimmed page closes it. A video plays in the browser's player, whose full-screen control shows it large. A medium that is gone shows one line where it was: that it was not stored, with the store's reason, or the day it was removed. A medium the page cannot show says so at the same height. At a phone's width a preview fits the column, an image opened large fills the screen, where a tap toggles actual size, and an iPhone plays a video full screen."
       >
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack [--agent-pad-x:0px]">
@@ -1286,15 +1285,6 @@ onBeforeUnmount(() => {
             </GallerySpecimen>
           </div>
         </div>
-      </GallerySection>
-
-      <GallerySection
-        title="Tool media · phone width"
-        note="The same calls at a phone's width: a preview fits the column, and an image opened large fills the screen, where a tap toggles actual size and the close control or a tap on the dimmed page closes it. A video plays in the browser's player, which an iPhone shows full screen."
-      >
-        <GalleryOverlayWell size="narrow">
-          <GalleryPhoneToolMedia :calls="[screenshotTool, fullPageTool, recordingTool]" />
-        </GalleryOverlayWell>
       </GallerySection>
 
       <GallerySection
