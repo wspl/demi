@@ -414,6 +414,34 @@ impl ControlService {
         .await
     }
 
+    /// Records that the conversation's agent tree was live at `at`
+    /// (`storage.md` § Retiring tool media). A record never moves back, so
+    /// one written late cannot hide a later one.
+    pub(crate) async fn mark_live(&self, id: ConversationId, at: Timestamp) -> Result<(), StorageError> {
+        self.call(move |connection, _| {
+            connection.execute(
+                "UPDATE conversations SET live_at = MAX(live_at, ?2) WHERE id = ?1",
+                params![id.as_str(), at.as_millisecond()],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// When the conversation's agent tree was last seen live; none when there
+    /// is no such conversation.
+    pub(crate) async fn live_at(&self, id: ConversationId) -> Result<Option<Timestamp>, StorageError> {
+        self.call(move |connection, _| {
+            connection
+                .query_row("SELECT live_at FROM conversations WHERE id = ?1", [id.as_str()], |row| {
+                    Ok(instant(row, "conversations", "live_at"))
+                })
+                .optional()?
+                .transpose()
+        })
+        .await
+    }
+
     /// Records activity in the conversation now. Activity never reorders the
     /// sidebar.
     pub(crate) async fn touch_conversation(&self, id: ConversationId) -> Result<(), StorageError> {
@@ -445,7 +473,7 @@ impl TitleOrigin {
     }
 }
 
-/// A conversation as it enters the index.
+/// A conversation as it enters the index, seen live as it is created.
 pub(crate) struct NewConversation<'a> {
     pub(crate) id: &'a ConversationId,
     pub(crate) owner: &'a UserId,
@@ -465,10 +493,10 @@ pub(crate) fn insert_conversation(connection: &Connection, new: &NewConversation
     let inserted = connection.execute(
         "INSERT INTO conversations (id, user_id, title, title_origin, archived, pinned, sort_order,
            read_revision, target_kind, target_device_id, target_path, target_workspace_id, context_version,
-           model, user_messages, titled_messages, created_at, updated_at)
+           model, user_messages, titled_messages, created_at, updated_at, live_at)
          VALUES (?1, ?2, ?3, ?4, 0, 0,
            (SELECT COALESCE(MIN(sort_order), 0) - 1 FROM conversations WHERE user_id = ?2),
-           0, ?5, ?6, ?7, ?8, 0, ?9, 0, 0, ?10, ?10)
+           0, ?5, ?6, ?7, ?8, 0, ?9, 0, 0, ?10, ?10, ?10)
          ON CONFLICT (id) DO NOTHING",
         params![
             new.id.as_str(),
