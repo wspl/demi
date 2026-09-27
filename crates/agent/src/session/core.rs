@@ -1253,11 +1253,7 @@ impl SessionCore {
         request_id: String,
         cancel: CancellationToken,
     ) -> InferenceRequest {
-        let replayed = replay(&RequestView::new(
-            view,
-            &self.model.model,
-            self.request_limits(),
-        ));
+        let replayed = replay(&self.request_view(view));
         InferenceRequest {
             session_id: self.id.to_string(),
             turn_id: self.turn().to_string(),
@@ -1284,6 +1280,12 @@ impl SessionCore {
             .as_ref()
             .expect("the provider runtime is in its slot between runs")
             .request_limits(&self.model.model)
+    }
+
+    /// A request of the current model over `view`, the model's view of the
+    /// replayed blocks: what replay sends it and what the estimates weigh.
+    pub(super) fn request_view<'a>(&'a self, view: &'a ModelView) -> RequestView<'a> {
+        RequestView::new(view, &self.model.model, self.request_limits())
     }
 
     // Media.
