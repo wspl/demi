@@ -49,7 +49,6 @@ async fn small_session_with(
         .update_model(ModelSwitch {
             model: small_model(),
             runtime: None,
-            apply: ModelSwitchApply::NextTurn,
         })
         .unwrap();
     session
@@ -547,7 +546,6 @@ async fn a_switch_to_a_smaller_window_compacts_with_the_model_before_it() {
         .update_model(ModelSwitch {
             model: small_model(),
             runtime: None,
-            apply: ModelSwitchApply::NextTurn,
         })
         .unwrap();
 
@@ -561,7 +559,6 @@ async fn a_switch_to_a_smaller_window_compacts_with_the_model_before_it() {
         .update_model(ModelSwitch {
             model: test_model(),
             runtime: None,
-            apply: ModelSwitchApply::NextTurn,
         })
         .unwrap();
     session
@@ -588,8 +585,7 @@ async fn a_switch_to_a_smaller_window_compacts_with_the_model_before_it() {
 }
 
 #[tokio::test(flavor = "local")]
-async fn an_immediate_switch_to_a_smaller_window_compacts_inside_the_turn_with_the_model_before_it()
-{
+async fn a_switch_inside_a_turn_to_a_smaller_window_compacts_with_the_model_before_it() {
     let provider = ScriptedRuntime::new([
         answer("first"),
         Turn::Events(vec![
@@ -621,7 +617,6 @@ async fn an_immediate_switch_to_a_smaller_window_compacts_inside_the_turn_with_t
         .update_model(ModelSwitch {
             model: small_model(),
             runtime: None,
-            apply: ModelSwitchApply::Immediate,
         })
         .unwrap();
     let _ = releases.borrow_mut().remove(0).send(());
@@ -1008,7 +1003,6 @@ async fn a_resume_with_a_pending_switch_to_a_smaller_window_unwinds_then_compact
         .update_model(ModelSwitch {
             model: small_model(),
             runtime: None,
-            apply: ModelSwitchApply::NextTurn,
         })
         .unwrap();
 

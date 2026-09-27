@@ -14,7 +14,6 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use demi_agent::testing::model_of;
 use demi_backend::{FamilyRegistry, LifecycleTuning};
 use demi_gates::Purpose;
 use demi_provider::testing::MockVendor;
@@ -28,7 +27,7 @@ use reqwest::StatusCode;
 use serde_json::json;
 use tokio::sync::Notify;
 
-use crate::conversations::{Socket, anthropic_at, create};
+use crate::conversations::{Socket, anthropic_at, choose, create};
 use crate::families::{self, ScriptedKey};
 use crate::support::{Harness, PATIENCE, Session, TestBackend, eventually};
 use crate::work::{Driven, say, shell};
@@ -607,7 +606,13 @@ async fn a_reset_holds_a_conversation_on_a_paired_device_whose_provider_runs_on_
         .post(
             "/api/providers",
             Some(&master),
-            json!({ "source": "custom", "providerType": "process", "label": "Process", "apiKey": "k" }),
+            json!({
+                "source": "custom", "providerType": "process", "label": "Process", "apiKey": "k",
+                "models": [{
+                    "id": "m", "displayName": "M", "contextWindow": 100000, "outputLimit": null,
+                    "thinkingEfforts": [], "acceptedExtensions": null, "fastTier": null
+                }]
+            }),
         )
         .await;
     assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
@@ -615,9 +620,9 @@ async fn a_reset_holds_a_conversation_on_a_paired_device_whose_provider_runs_on_
     // Its files and commands are on alpha; only its provider uses the Cloud.
     create(&backend, &master, FIRST).await;
     crate::work::switch(&backend, &master, FIRST, &alpha, alpha.runner.home_dir()).await;
-    let model = model_of(provider.as_str(), "m");
+    choose(&backend, &master, FIRST, provider.as_str(), "m").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    socket.open(&model).await;
+    socket.open().await;
     drop(socket);
 
     let (held, proceed) = (Arc::new(Notify::new()), Arc::new(Notify::new()));
@@ -629,7 +634,7 @@ async fn a_reset_holds_a_conversation_on_a_paired_device_whose_provider_runs_on_
     let mut waiting = backend.file_gate(&master, FIRST).await.waiting();
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     {
-        let opening = socket.open(&model);
+        let opening = socket.open();
         tokio::pin!(opening);
         tokio::select! {
             _ = &mut opening => panic!("the open did not wait for the reset"),

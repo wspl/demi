@@ -7,8 +7,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ATTACHMENT_FILE_EXTENSIONS, FileExtension, Model, ModelSelection, Nullable, ThinkingCapability,
-    ThinkingConfig, ThinkingSummary, Timestamp, VIDEO_FILE_EXTENSIONS,
+    ATTACHMENT_FILE_EXTENSIONS, FileExtension, Model, ModelSelection, Nullable, THINKING_OFF,
+    ThinkingCapability, ThinkingConfig, ThinkingSummary, Timestamp, VIDEO_FILE_EXTENSIONS,
 };
 
 /// An entry's catalog as one read of its source returned it. The backend
@@ -142,6 +142,100 @@ impl ProviderModel {
         }
     }
 
+    /// The thinking setting that the thinking effort `effort` of a
+    /// conversation's model settings makes on this model (`models.md` § A
+    /// conversation's model settings): an effort the model lists becomes its
+    /// thinking setting at that effort, with the default summary;
+    /// [`THINKING_OFF`] turns thinking off when the model can; none is no
+    /// setting, the model's default, except on a model that cannot turn
+    /// thinking off, which thinks at its [`unnamed_effort`](Self::unnamed_effort).
+    pub fn thinking_for(
+        &self,
+        effort: Option<&str>,
+    ) -> Result<Option<ThinkingConfig>, UnavailableSetting> {
+        let effort = match effort {
+            Some(effort) => effort.to_owned(),
+            None => match self.unnamed_effort() {
+                Some(effort) => effort,
+                None => return Ok(None),
+            },
+        };
+        let effort = effort.as_str();
+        let unavailable = || UnavailableSetting::Effort(effort.to_owned());
+        let capabilities = self.thinking_capabilities();
+        if effort == THINKING_OFF {
+            // Off is a choice beside the efforts of a model that levels its
+            // thinking.
+            let leveled = capabilities.iter().any(|capability| {
+                matches!(
+                    capability,
+                    ThinkingCapability::Adaptive { .. } | ThinkingCapability::Effort { .. }
+                )
+            });
+            if !leveled || self.can_disable_thinking == Some(false) {
+                return Err(unavailable());
+            }
+            return Ok(Some(ThinkingConfig::Disabled {}));
+        }
+        capabilities
+            .into_iter()
+            .find_map(|capability| match capability {
+                ThinkingCapability::Adaptive { efforts, .. } if efforts.iter().any(|listed| listed == effort) => {
+                    Some(ThinkingConfig::Adaptive {
+                        effort: effort.to_owned(),
+                    })
+                }
+                ThinkingCapability::Effort {
+                    efforts,
+                    default_summary,
+                    ..
+                } if efforts.iter().any(|listed| listed == effort) => Some(ThinkingConfig::Effort {
+                    effort: effort.to_owned(),
+                    summary: default_summary,
+                }),
+                _ => None,
+            })
+            .map(Some)
+            .ok_or_else(unavailable)
+    }
+
+    /// The thinking effort a conversation's model settings hold on this
+    /// model when a change names none (`models.md` § A conversation's model
+    /// settings). A model that cannot turn thinking off thinks at its default
+    /// effort when it lists it, else at the first it lists. A model that can
+    /// turn thinking off has none: its default is to send no thinking setting.
+    pub fn unnamed_effort(&self) -> Option<String> {
+        if self.can_disable_thinking != Some(false) {
+            return None;
+        }
+        self.thinking_capabilities().into_iter().find_map(|capability| match capability {
+            ThinkingCapability::Adaptive {
+                efforts,
+                default_effort,
+            }
+            | ThinkingCapability::Effort {
+                efforts,
+                default_effort,
+                ..
+            } => default_effort
+                .filter(|effort| efforts.contains(effort))
+                .or_else(|| efforts.into_iter().next()),
+            _ => None,
+        })
+    }
+
+    /// The service tier `tier` of a conversation's model settings on this
+    /// model: a tier the model lists, or none for the vendor's default.
+    pub fn tier_for(&self, tier: Option<&str>) -> Result<Option<String>, UnavailableSetting> {
+        let Some(tier) = tier else {
+            return Ok(None);
+        };
+        if !self.service_tiers.iter().any(|listed| listed.id == tier) {
+            return Err(UnavailableSetting::Tier(tier.to_owned()));
+        }
+        Ok(Some(tier.to_owned()))
+    }
+
     /// The types the model reads natively (`models.md` § Accepted
     /// attachment types): the exact list when the catalog states one;
     /// otherwise the attachment types when it is known to read attachments
@@ -189,6 +283,15 @@ impl ProviderModel {
             default_summary: None,
         }]
     }
+}
+
+/// A part of a conversation's model settings that its model does not offer.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum UnavailableSetting {
+    #[error("The model does not offer the thinking effort \"{0}\"")]
+    Effort(String),
+    #[error("The model does not offer the service tier \"{0}\"")]
+    Tier(String),
 }
 
 /// A service tier a model offers. The product's Fast switch selects the tier

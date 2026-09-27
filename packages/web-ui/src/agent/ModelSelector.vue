@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { ThinkingConfig } from '@demicodes/protocol'
 import { CircleX, Sparkles, TriangleAlert, Zap } from '@lucide/vue'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
@@ -11,7 +10,7 @@ import Button from '../ui/Button.vue'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { isFastMode } from './fast-mode'
-import { composerModel } from './model-selection'
+import { composerModel, type ModelSettings, type ModelSettingsChange } from './model-selection'
 import { buildReasoningState, reasoningOptionLabel } from './reasoning'
 import ModelMenu from './ModelMenu.vue'
 
@@ -19,25 +18,22 @@ const props = defineProps<{
   load?: 'loading' | 'ready' | 'failed'
   providers: ProviderInfo[]
   models: Record<string, ModelInfo[]>
-  selectedProviderId?: string | null
-  selectedModelId?: string | null
-  thinkingConfig?: ThinkingConfig
-  serviceTierId?: string | null
+  /** The conversation's model settings; none while nothing is chosen. */
+  settings?: ModelSettings | null
 }>()
 
 const emit = defineEmits<{
   retry: []
-  selectModel: [providerId: string, modelId: string]
-  changeThinking: [config: ThinkingConfig]
-  changeServiceTier: [serviceTierId: string | null]
+  /** One change of the model settings, naming only the parts it changes. */
+  change: [change: ModelSettingsChange]
 }>()
 
 const state = computed(() =>
   composerModel(
     props.providers,
     props.models,
-    props.selectedProviderId,
-    props.selectedModelId,
+    props.settings?.providerId,
+    props.settings?.modelId,
   ),
 )
 const unavailable = computed(() => state.value.kind === 'unavailable')
@@ -45,13 +41,13 @@ const selected = computed(() =>
   state.value.kind === 'ready' ? state.value.selected : null,
 )
 const fast = computed(() =>
-  isFastMode(selected.value?.model, props.serviceTierId),
+  isFastMode(selected.value?.model, props.settings?.serviceTierId),
 )
 // The chip names the reasoning level beside the model, quieter than the name, so the
 // current effort is visible without opening the menu.
 const reasoningLabel = computed(() => {
   const reasoning = buildReasoningState(selected.value?.model ?? null)
-  return reasoning ? reasoningOptionLabel(reasoning, props.thinkingConfig) : ''
+  return reasoning ? reasoningOptionLabel(reasoning, props.settings?.thinkingEffort ?? null) : ''
 })
 
 // Each state is an icon and a label. The label shows while the editor keeps its
@@ -129,15 +125,8 @@ const compact = useRoomLabel(label, () => labelText.value)
         <ModelMenu
           :providers="providers"
           :models="models"
-          :selected-provider-id="selectedProviderId"
-          :selected-model-id="selectedModelId"
-          :thinking-config="thinkingConfig"
-          :service-tier-id="serviceTierId"
-          @select-model="
-            (providerId, modelId) => emit('selectModel', providerId, modelId)
-          "
-          @change-thinking="(config) => emit('changeThinking', config)"
-          @change-service-tier="(tierId) => emit('changeServiceTier', tierId)"
+          :settings="settings"
+          @change="(change) => emit('change', change)"
         />
       </template>
     </Dropdown>

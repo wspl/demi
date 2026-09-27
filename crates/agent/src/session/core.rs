@@ -7,7 +7,7 @@
 
 use std::{collections::VecDeque, mem, num::NonZeroU32, rc::Rc, sync::Arc};
 
-use demi_agent_protocol::{AbortTarget, ModelSwitchApply};
+use demi_agent_protocol::AbortTarget;
 use demi_core::{
     AgentMessage, Block, BlockId, Clock, FailureSource, ModelSelection, NodeId, PendingSteer,
     ProviderErrorDiagnostics, QueuedMessage, SessionPhase, ToolResultContentBlock, TurnId,
@@ -50,6 +50,10 @@ pub(crate) struct SessionCore {
     pub(super) provider: Option<Box<dyn ProviderRuntime>>,
     /// A recorded model switch that has not landed yet.
     pub(super) switch: Option<ModelSwitch>,
+    /// A switch that arrived while an edit was being prepared: it waits for
+    /// the edit, and is recorded once the edit is accepted or rejected
+    /// (`runtime.md` § Model switch).
+    pub(super) waiting_switch: Option<ModelSwitch>,
     /// Runtimes a later switch replaced before they served a request, closed
     /// when the next switch lands or at dispose.
     pub(super) retired: Vec<Box<dyn ProviderRuntime>>,
@@ -179,15 +183,6 @@ pub(super) enum AbortStep {
     Nothing,
 }
 
-/// Where a recorded model switch may land.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum SwitchPoint {
-    /// The start of an action: every switch lands.
-    ActionStart,
-    /// A continuation boundary inside a turn: an immediate switch lands.
-    Continuation,
-}
-
 /// What the wrapper does once a change is complete.
 #[derive(Default)]
 struct Requests {
@@ -241,6 +236,7 @@ impl SessionCore {
             model: parts.model,
             provider: Some(parts.provider),
             switch: None,
+            waiting_switch: None,
             retired: Vec::new(),
             transcript: parts.transcript,
             commands: parts.commands,
@@ -386,9 +382,13 @@ impl SessionCore {
     ) -> Vec<Box<dyn ProviderRuntime>> {
         self.adopt_rewrite(blocks, commands);
         self.edits.push(receipt.clone());
+        // The replacement was prepared with the recorded switch; the one
+        // that waited for the edit is recorded now, and lands after the
+        // replacement's first request.
         let mut discarded: Vec<_> = self.provider.replace(runtime).into_iter().collect();
         discarded.extend(self.switch.take().and_then(|switch| switch.runtime));
         discarded.append(&mut self.retired);
+        self.switch = self.waiting_switch.take();
         self.model = model;
         if let Some(edit) = &mut self.editing {
             edit.accepted = true;
@@ -397,10 +397,14 @@ impl SessionCore {
         discarded
     }
 
-    /// Rejects the edit being prepared: nothing of the history changed.
+    /// Rejects the edit being prepared: nothing of the history changed, and
+    /// a switch that waited for the edit is recorded.
     pub(super) fn reject_edit(&mut self, error: EditError) {
         if let Some(edit) = self.editing.take() {
             edit.resolve(Err(error));
+        }
+        if let Some(switch) = self.waiting_switch.take() {
+            replace_switch(&mut self.switch, switch, &mut self.retired);
         }
     }
 
@@ -768,6 +772,7 @@ impl SessionCore {
     pub(super) fn take_runtimes(&mut self) -> Vec<Box<dyn ProviderRuntime>> {
         let mut runtimes: Vec<_> = self.provider.take().into_iter().collect();
         runtimes.extend(self.switch.take().and_then(|switch| switch.runtime));
+        runtimes.extend(self.waiting_switch.take().and_then(|switch| switch.runtime));
         runtimes.append(&mut self.retired);
         runtimes
     }
@@ -1029,31 +1034,25 @@ impl SessionCore {
     // The model selection.
 
     /// Records `switch` in place of the pending one (`runtime.md` § Model
-    /// switch). A switch within the pending switch's provider brings no
-    /// runtime and lands on the pending switch's; one that brings its own
-    /// retires the pending switch's, which closes when a switch lands.
-    pub(super) fn record_switch(&mut self, mut switch: ModelSwitch) -> Result<(), AdmissionError> {
-        self.refuse_admission()?;
-        if let Some(replaced) = self.switch.take() {
-            if switch.runtime.is_none() {
-                switch.runtime = replaced.runtime;
-            } else {
-                self.retired.extend(replaced.runtime);
-            }
+    /// switch); while an edit is being prepared, in place of the one that
+    /// waits for it. A session that is closing gives it back.
+    pub(super) fn record_switch(&mut self, switch: ModelSwitch) -> Result<(), ModelSwitch> {
+        if self.disposing {
+            return Err(switch);
         }
-        self.switch = Some(switch);
+        let slot = if self.preparing_edit() {
+            &mut self.waiting_switch
+        } else {
+            &mut self.switch
+        };
+        replace_switch(slot, switch, &mut self.retired);
         Ok(())
     }
 
-    /// The model the recorded switch lands at `point` with, if it lands
-    /// there.
-    pub(super) fn switch_target(&self, point: SwitchPoint) -> Option<ModelSelection> {
-        let switch = self.switch.as_ref()?;
-        let lands = match point {
-            SwitchPoint::ActionStart => true,
-            SwitchPoint::Continuation => switch.apply == ModelSwitchApply::Immediate,
-        };
-        lands.then(|| switch.model.clone())
+    /// The model the recorded switch lands with at the next provider
+    /// request.
+    pub(super) fn switch_target(&self) -> Option<ModelSelection> {
+        self.switch.as_ref().map(|switch| switch.model.clone())
     }
 
     /// Makes the recorded switch current, and returns the runtimes it
@@ -1075,11 +1074,20 @@ impl SessionCore {
         replaced
     }
 
-    /// The selection the next request will use once a recorded switch lands.
-    pub(super) fn latest_selection(&self) -> &ModelSelection {
+    /// The selection the next request uses once the recorded switch lands.
+    /// A switch that waits for an edit lands later.
+    pub(super) fn landing_selection(&self) -> &ModelSelection {
         self.switch
             .as_ref()
             .map_or(&self.model, |switch| &switch.model)
+    }
+
+    /// The selection the last switch named: the one that waits for an edit,
+    /// else the one the next request lands.
+    pub(super) fn latest_selection(&self) -> &ModelSelection {
+        self.waiting_switch
+            .as_ref()
+            .map_or_else(|| self.landing_selection(), |switch| &switch.model)
     }
 
     // The transcript during a turn.
@@ -1496,4 +1504,23 @@ pub(super) fn with_request_id(mut failure: ProviderFailure, request_id: &str) ->
     });
     diagnostics.client_request_id = Some(request_id.to_owned());
     failure
+}
+
+/// Puts `switch` in `slot` in place of the switch there. A switch within the
+/// replaced switch's provider brings no runtime and lands on the replaced
+/// one's; one that brings its own retires the replaced one's, which closes
+/// when a switch lands.
+fn replace_switch(
+    slot: &mut Option<ModelSwitch>,
+    mut switch: ModelSwitch,
+    retired: &mut Vec<Box<dyn ProviderRuntime>>,
+) {
+    if let Some(replaced) = slot.take() {
+        if switch.runtime.is_none() {
+            switch.runtime = replaced.runtime;
+        } else {
+            retired.extend(replaced.runtime);
+        }
+    }
+    *slot = Some(switch);
 }

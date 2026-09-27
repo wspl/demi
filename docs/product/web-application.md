@@ -165,8 +165,10 @@ that fails shows its failure in every tab until the
 conversation starts its next action, whichever tab starts it; a refusal of one
 tab's own request shows in that tab alone. Each tab has its own socket,
 attached to the conversation's one live tree
-([Connections and the live tree](../agent/runtime.md#connections-and-the-live-tree)),
-and every tab names the model the conversation's record holds
+([Connections and the live tree](../agent/runtime.md#connections-and-the-live-tree)).
+The conversation's model settings, its model, thinking effort and service
+tier, are one value its record holds: every tab and every device shows it, and
+a change made in any of them reaches all
 ([page synchronization](web-api.md#sidebar-mutations-read-state-and-page-synchronization)).
 A tab whose socket is lost, or whose tree another client disposed with
 `close`, opens the conversation again the same way and shows the tree as the
@@ -214,12 +216,15 @@ The backend owns saved conversation state, ordering, preferences, attachments,
 and each conversation's draft ([Drafts](#drafts)). Per-user IndexedDB keeps
 what the backend does not have yet or does not keep: draft edits the backend
 has not confirmed, with the bytes of their files not yet uploaded;
-unconfirmed submissions; new conversations until their first send; edits of
-sent messages in progress; and, for each conversation, its scroll position
-and the thinking effort and service tier chosen for its model. The tabs of
-one browser share this storage, and a page writes a conversation's record
-only for a change its own user made, so a tab never replaces what another tab
-wrote for a conversation it left alone. Browser-local preferences
+unconfirmed submissions; new conversations, with their model settings, until
+their first send writes them to the record; edits of sent messages in
+progress; and each conversation's scroll position. A conversation with a
+record keeps its model settings only there
+([page synchronization](web-api.md#sidebar-mutations-read-state-and-page-synchronization)).
+The tabs of one browser share this storage, and a page writes a
+conversation's record only for a change its own user made, so a tab never
+replaces what another tab wrote for a conversation it left alone.
+Browser-local preferences
 hold presentation-only choices. Work-panel width and per-conversation open/closed state use the same account-scoped
 local preferences. Refreshing restores whether the panel was open; a conversation
 without a saved choice starts closed. The panel's tabs and selection are saved
