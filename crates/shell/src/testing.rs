@@ -1,6 +1,6 @@
 //! Test support: the Host conformance cases every [`Host`] passes, the
-//! command context test work carries, and an in-memory port for `rpc`
-//! handlers.
+//! command context test work carries, an in-memory port for `rpc`
+//! handlers, and a page feed that keeps what it is told.
 
 use std::{
     cell::{Cell, RefCell},
@@ -13,13 +13,73 @@ use demi_command_service::protocol::{CommandCaller, CommandContext, CommandLocal
 use demi_core::{B64Bytes, StreamKind, Timestamp};
 use futures_util::{StreamExt, future::LocalBoxFuture, stream};
 use serde_json::Value;
+use tokio::sync::{Notify, watch};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    ByteRange, CpOptions, FileContents, FileKind, Host, HostError, MkdirOptions, PortError,
-    PortRequest, PortResponse, PortTransport, Process, ProcessEnd, Revision, RmOptions, RpcPort,
-    Signal, SpawnEnv, SpawnErrorKind, SpawnRequest, StorageOp, StorageReply, WriteOptions,
+    ByteRange, CommandRecord, CpOptions, FileContents, FileKind, Host, HostError, MkdirOptions,
+    PageFeed, PageView, PortError, PortRequest, PortResponse, PortTransport, Process, ProcessEnd,
+    Revision, RmOptions, RpcPort, Signal, SpawnEnv, SpawnErrorKind, SpawnRequest, StorageOp,
+    StorageReply, WriteOptions,
 };
+
+/// A page feed for environment tests: it keeps the view of each change it is
+/// told of, and a page watches while the test says so.
+pub struct TestPages {
+    watching: watch::Sender<bool>,
+    views: RefCell<VecDeque<PageView>>,
+    told: Notify,
+}
+
+impl TestPages {
+    pub fn new(watching: bool) -> Rc<Self> {
+        Rc::new(Self {
+            watching: watch::Sender::new(watching),
+            views: RefCell::default(),
+            told: Notify::new(),
+        })
+    }
+
+    /// Shows or hides the page.
+    pub fn watch(&self, watching: bool) {
+        self.watching.send_replace(watching);
+    }
+
+    /// The view of the next change the feed is told of, within a hang
+    /// guard of ten seconds.
+    pub async fn next(&self) -> PageView {
+        let next = async {
+            loop {
+                let told = self.told.notified();
+                if let Some(view) = self.views.borrow_mut().pop_front() {
+                    return view;
+                }
+                told.await;
+            }
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(10), next)
+            .await
+            .expect("a change within the hang guard")
+    }
+
+    /// The views of the changes told and not taken yet, which it forgets.
+    pub fn drain(&self) -> Vec<PageView> {
+        self.views.borrow_mut().drain(..).collect()
+    }
+}
+
+impl PageFeed for TestPages {
+    fn changed(&self, record: &Rc<RefCell<CommandRecord>>) {
+        self.views
+            .borrow_mut()
+            .push_back(record.borrow().page_view());
+        self.told.notify_waiters();
+    }
+
+    fn watching(&self) -> watch::Receiver<bool> {
+        self.watching.subscribe()
+    }
+}
 
 /// The command context test work carries (`native-runtime.md` § Command
 /// context). Its locale differs from the backend's default, so a command

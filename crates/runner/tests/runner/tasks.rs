@@ -1,16 +1,25 @@
-use demi_runner::connection::wire::{RetainedOutput, Signal, WireBytes};
+use demi_runner::connection::wire::{
+    JOB_LIVE_BYTES, JOB_LIVE_INTERVAL, JOB_VIEW_BYTES, RetainedOutput, Signal, WireBytes,
+};
 use demi_runner::{
     pipes::PipeClient,
     tasks::{JobConfig, JobTable, TaskCommand, TaskSpec, WorkId},
 };
-use std::{path::Path, time::Duration};
-use tokio::sync::mpsc;
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
+use tokio::{sync::mpsc, time::Instant};
 
 #[derive(serde::Deserialize)]
 #[serde(tag = "type")]
 enum Reply {
     #[serde(rename = "job_output")]
-    Output { stream: String, bytes: WireBytes },
+    Output {
+        stream: String,
+        offset: u64,
+        bytes: WireBytes,
+    },
     #[serde(rename = "job_exit")]
     Exit {
         #[serde(rename = "exitCode")]
@@ -83,11 +92,26 @@ async fn shell_job_keeps_full_logs_but_only_sends_head_and_tail_views() {
             .unwrap()
             .unwrap();
         match rmp_serde::from_slice::<Reply>(&message.into_bytes()).unwrap() {
-            Reply::Output { stream, bytes } => {
-                if stream == "stdout" {
-                    stdout.extend(bytes.0);
+            Reply::Output {
+                stream,
+                offset,
+                bytes,
+            } => {
+                let view = if stream == "stdout" {
+                    &mut stdout
                 } else {
-                    stderr.extend(bytes.0);
+                    &mut stderr
+                };
+                if offset < JOB_VIEW_BYTES as u64 {
+                    // A stream's first bytes come in order.
+                    assert_eq!(offset, view.len() as u64);
+                    view.extend(bytes.0);
+                } else {
+                    // Beyond them, a job nobody follows sends only how long
+                    // the stream grew.
+                    assert!(bytes.0.is_empty(), "{stream} at {offset}");
+                    let total = if stream == "stdout" { 60000 } else { 40000 };
+                    assert!(offset <= total, "{stream} at {offset}");
                 }
             }
             Reply::Exit {
@@ -118,6 +142,164 @@ async fn shell_job_keeps_full_logs_but_only_sends_head_and_tail_views() {
     assert_eq!(table.len(), 0);
 }
 
+/// The next reply of the job's, within a hang guard.
+async fn reply(receiver: &mut mpsc::Receiver<demi_runner::connection::wire::Frame>) -> Reply {
+    let message = tokio::time::timeout(Duration::from_secs(10), receiver.recv())
+        .await
+        .expect("a reply within the hang guard")
+        .expect("the job's replies");
+    rmp_serde::from_slice(&message.into_bytes()).unwrap()
+}
+
+/// The next stdout bytes beyond the view, and where they start; what says
+/// only a stream's length is passed over.
+async fn beyond(receiver: &mut mpsc::Receiver<demi_runner::connection::wire::Frame>) -> (u64, Vec<u8>) {
+    loop {
+        match reply(receiver).await {
+            Reply::Output {
+                stream,
+                offset,
+                bytes,
+            } if stream == "stdout" && !bytes.0.is_empty() => {
+                assert!(offset >= JOB_VIEW_BYTES as u64, "beyond the view: {offset}");
+                return (offset, bytes.0);
+            }
+            Reply::Output { .. } => {}
+            Reply::Exit { .. } => panic!("the job ended"),
+        }
+    }
+}
+
+/// Waits until the job's stdout file holds `bytes`: the runner has read
+/// them.
+async fn written(logs: &Path, bytes: u64) {
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let file = std::fs::read_dir(logs)
+                .ok()
+                .into_iter()
+                .flatten()
+                .map(|entry| entry.unwrap().path())
+                .find(|path| path.file_name().unwrap().to_string_lossy().starts_with("job-"))
+                .map(|directory: PathBuf| directory.join("stdout.txt"));
+            let length = file.and_then(|file| std::fs::metadata(file).ok()).map(|metadata| metadata.len());
+            if length == Some(bytes) {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("the job's stdout never held {bytes} bytes"));
+}
+
+/// While the backend follows a job, the job sends the newest bytes beyond
+/// each stream's first `JOB_VIEW_BYTES`: at once when following starts, then
+/// at most one message every `JOB_LIVE_INTERVAL`, each of at most
+/// `JOB_LIVE_BYTES`, and its last output before its exit; unfollowed, only
+/// how long a stream grew (`runner.md` § Pipes and output). About 1.5 s: a
+/// login shell, and a loop that prints for about half a second, so that its
+/// output spans a few intervals.
+#[tokio::test]
+async fn a_followed_job_sends_its_newest_output_beyond_the_view() {
+    let root = tempfile::tempdir().unwrap();
+    let logs = root.path().join("logs");
+    let (mut table, mut receiver) = table(root.path(), 64);
+    let job = WorkId::Job("job".into());
+    table
+        .start(TaskSpec {
+            id: "job".into(),
+            cwd: root.path().into(),
+            env: crate::home(root.path()),
+            command: TaskCommand::Shell {
+                script: "printf '%060000d' 0; read a; i=0; while [ $i -lt 50 ]; do printf '%05d\n' $i; i=$((i+1)); sleep 0.01; done; read b; printf '%020000d' 1; read c; printf end".into(),
+                stdin: None,
+                stdout: None,
+                commands: None,
+            },
+        })
+        .unwrap();
+    let view = JOB_VIEW_BYTES as u64;
+    let live = JOB_LIVE_BYTES as u64;
+
+    // Unfollowed: the first 32 KiB, then only how long the stream grew.
+    let mut head = 0;
+    loop {
+        match reply(&mut receiver).await {
+            Reply::Output { offset, bytes, .. } if offset < view => {
+                assert_eq!(offset, head);
+                head += bytes.0.len() as u64;
+            }
+            Reply::Output { offset, bytes, .. } => {
+                assert!(bytes.0.is_empty());
+                assert_eq!(head, view);
+                assert!(offset > view && offset <= 60_000, "{offset}");
+                break;
+            }
+            Reply::Exit { .. } => panic!("the job ended"),
+        }
+    }
+
+    // Following starts with the newest bytes, at most `JOB_LIVE_BYTES`.
+    written(&logs, 60_000).await;
+    table.follow(&job, true);
+    assert_eq!(beyond(&mut receiver).await, (60_000 - live, vec![b'0'; JOB_LIVE_BYTES]));
+
+    // Then output comes at most once an interval, and nothing is left out
+    // of output that fits.
+    let started = Instant::now();
+    table.input(&job, "\n".into()).unwrap();
+    let mut end = 60_000;
+    let mut messages = 0;
+    while end < 60_300 {
+        let (offset, bytes) = beyond(&mut receiver).await;
+        assert_eq!(offset, end);
+        end += bytes.len() as u64;
+        messages += 1;
+    }
+    let intervals = started.elapsed().as_millis() / JOB_LIVE_INTERVAL.as_millis();
+    assert!(
+        messages <= intervals + 2,
+        "{messages} messages in {:?}",
+        started.elapsed()
+    );
+
+    // Unfollowed, none of its bytes go.
+    table.follow(&job, false);
+    table.input(&job, "\n".into()).unwrap();
+    written(&logs, 80_300).await;
+    while let Ok(message) = receiver.try_recv() {
+        let Reply::Output { bytes, .. } = rmp_serde::from_slice(&message.into_bytes()).unwrap() else {
+            panic!("the job ended");
+        };
+        assert!(bytes.0.is_empty(), "no bytes while unfollowed");
+    }
+
+    // Following again catches up with the newest bytes, and leaves out what
+    // does not fit: the end of the 1 printed 20,000 digits wide.
+    table.follow(&job, true);
+    let mut newest = vec![b'0'; JOB_LIVE_BYTES - 1];
+    newest.push(b'1');
+    assert_eq!(beyond(&mut receiver).await, (80_300 - live, newest));
+
+    // The last output leaves before the exit.
+    table.input(&job, "\n".into()).unwrap();
+    let mut last = Vec::new();
+    let output = loop {
+        match reply(&mut receiver).await {
+            Reply::Output { offset, bytes, .. } if !bytes.0.is_empty() => {
+                assert_eq!(offset, 80_300 + last.len() as u64);
+                last.extend(bytes.0);
+            }
+            Reply::Output { .. } => {}
+            Reply::Exit { output, .. } => break output.unwrap(),
+        }
+    };
+    assert_eq!(last, b"end");
+    assert_eq!(output.stdout_bytes, 80_303);
+    table.close().await;
+}
+
 #[tokio::test]
 async fn functions_and_compound_pipelines_drain_large_output_and_here_documents() {
     let root = tempfile::tempdir().unwrap();
@@ -141,7 +323,7 @@ async fn functions_and_compound_pipelines_drain_large_output_and_here_documents(
         loop {
             let message = receiver.recv().await.unwrap();
             match rmp_serde::from_slice::<Reply>(&message.into_bytes()).unwrap() {
-                Reply::Output { stream, bytes } => {
+                Reply::Output { stream, bytes, .. } => {
                     assert_eq!(stream, "stdout", "{:?}", bytes.0);
                     output.extend(bytes.0);
                 }

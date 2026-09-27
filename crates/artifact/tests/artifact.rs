@@ -192,6 +192,13 @@ async fn a_staged_file_appears_only_when_published() {
         .await
         .unwrap();
     abandoned.file().write_all(b"partial").await.unwrap();
+    // Its name says whose it is, should its process die before it is
+    // published (`runner.md` § File contents).
+    let names: Vec<String> = std::fs::read_dir(directory.path())
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .collect();
+    assert!(matches!(&names[..], [name] if name.starts_with(".demi-partial-")), "{names:?}");
     drop(abandoned);
     assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 0);
     let mut staged = Staged::new(&path, publication(Mode::CreateNew, Permissions::Executable))

@@ -115,6 +115,13 @@ pub enum Inbound {
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         signal: Option<Signal>,
     },
+    /// Starts or stops sending the job's output beyond each stream's first
+    /// `JOB_VIEW_BYTES` (`runner.md` § Pipes and output). A job starts
+    /// unfollowed.
+    JobFollow {
+        job_id: String,
+        follow: bool,
+    },
     RpcStdinPull {
         call_id: String,
     },
@@ -444,10 +451,15 @@ pub enum Outbound {
         #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
         spawn_error: Option<SpawnError>,
     },
-    /// Live output while the job runs, up to the view budget per stream.
+    /// A stream's bytes from `offset` while the job runs (`runner.md`
+    /// § Pipes and output). Beyond the stream's first `JOB_VIEW_BYTES`, an
+    /// offset past the end of the stream's previous bytes says the runner
+    /// left the bytes between out, and a message without bytes says only
+    /// that the stream is `offset` bytes long.
     JobOutput {
         job_id: String,
         stream: OutputStream,
+        offset: u64,
         bytes: WireBytes,
     },
     /// A registered leaf's guidance while its invocation is active; none

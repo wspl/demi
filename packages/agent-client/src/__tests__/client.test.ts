@@ -242,7 +242,7 @@ test('each subagent transcript follows the same revision rule', () => {
   h.receive({ type: 'transcript_reset', blocks: [], version: { epoch: 'e', revision: 0 } })
   h.receive({ type: 'subagent_transcript_reset', subagentId: 'child', blocks: [], revision: 3 })
   h.receive({ type: 'subagent_transcript_patch', subagentId: 'child', patches: [{ op: 'add', index: 0, value: text('x', 'x') }], revision: 4 })
-  h.receive({ type: 'subagent_transcript_patch', subagentId: 'child', patches: [{ op: 'remove', index: 0 }], revision: 4 })
+  h.receive({ type: 'subagent_transcript_patch', subagentId: 'child', patches: [{ op: 'append_text', index: 0, delta: ' again' }], revision: 4 })
   const patches = h.events.filter((event) => event.type === 'subagent_transcript_patch')
   expect(patches).toEqual([
     { type: 'subagent_transcript_patch', subagentId: 'child', patches: [{ op: 'add', index: 0, value: text('x', 'x') }], failures: {} },

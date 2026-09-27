@@ -7,6 +7,7 @@ import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import type { ChatSessionState, ConversationState } from '@demicodes/web-ui/agent/types'
 import { segmentStreamUnits } from '@demicodes/web-ui/ui/stream-reveal'
 import { demoModel, shellView } from './fixtures/blocks'
+import { printLive } from './live-command'
 
 /**
  * `turn` is a full turn from a sent message; `resume` and `retry` recover an
@@ -23,6 +24,13 @@ export type TurnFlowState = ConversationState & ChatSessionState
 const THINK_1 = 'The cookie name changed from sid to session. The helper already writes the new header. The test is the one still looking for sid.'
 const THINK_2 = 'The helper is fine. Update the assertion in auth.test.ts and leave cookie.ts alone.'
 const REPLY = 'The cookie helper is fine. The test still expects `sid`.\n\nI updated the assertion in `auth.test.ts` and left `cookie.ts` alone.'
+const TOOL_SCRIPT = 'rg -n "sid" packages/web/src/auth.test.ts'
+/** What the turn's command prints, a line at a time while its call runs. */
+const TOOL_LINES = [
+  'packages/web/src/auth.test.ts:18:    expect(cookie.name).toBe("sid")',
+  'packages/web/src/auth.test.ts:42:    // legacy sid header',
+  'packages/web/src/auth.test.ts:57:    expect(readHeader()).not.toContain("sid=")',
+]
 const USER_TEXT = 'The login test in packages/web/src/auth.test.ts is failing after the session cookie rename.'
 const RETRY_ERROR = 'Anthropic API request failed with HTTP 529: Overloaded. The upstream service is temporarily unavailable.'
 /** The simulated server's acknowledgement of a recovery or a reconnect. */
@@ -73,6 +81,8 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   const timers: number[] = []
   let token = 0
   let sequence = 0
+  /** The call of the turn that runs now, whose command a stop ends. */
+  let runningTool: string | null = null
 
   function cancel(): void {
     token += 1
@@ -80,6 +90,11 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       window.clearTimeout(id)
     }
     timers.length = 0
+    // A stopped action ends the command its running call started.
+    if (runningTool) {
+      endCommand(runningTool)
+      runningTool = null
+    }
   }
 
   function at(run: number, ms: number, fn: () => void): void {
@@ -144,12 +159,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
 
   function tool(id: string, createdAt: string, status: ToolCallBlock['status']): ToolCallBlock {
     const output = status === 'completed'
-      ? [
-          {
-            type: 'text' as const,
-            text: 'packages/web/src/auth.test.ts:18:    expect(cookie.name).toBe("sid")\n',
-          },
-        ]
+      ? [{ type: 'text' as const, text: `${TOOL_LINES.join('\n')}\n` }]
       : []
     return {
       type: 'tool_call',
@@ -160,7 +170,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       toolName: 'shell_exec',
       status,
       input: JSON.stringify({
-        script: 'rg -n "sid" packages/web/src/auth.test.ts',
+        script: TOOL_SCRIPT,
         description: 'Find the old cookie name in the login test',
       }),
         output,
@@ -239,6 +249,20 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     reply(run, thought + 240, REPLY)
   }
 
+  /** The command the turn's call runs, whose output shows under the call as it comes, as the product's live frames bring it. */
+  function command(toolId: string): TerminalRecord | undefined {
+    return state.terminals.find((terminal) => terminal.id === `cmd-${toolId}`)
+  }
+
+  /** Ends the command a stopped or finished call ran. */
+  function endCommand(toolId: string): void {
+    const terminal = command(toolId)
+    if (terminal?.phase === 'running') {
+      terminal.phase = 'exited'
+      terminal.endedAt = now()
+    }
+  }
+
   /** A whole turn on the current transcript: request, think, run a tool, think, reply. */
   function runTurn(run: number): void {
     state.phase = 'running'
@@ -248,9 +272,29 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     at(run, thought1 + 200, () => {
       toolStartedAt = now()
       append(tool(toolId, toolStartedAt, 'executing'))
+      runningTool = toolId
+      state.terminals.push({
+        id: `cmd-${toolId}`,
+        name: TOOL_SCRIPT,
+        phase: 'running',
+        startedAt: toolStartedAt,
+        output: '',
+        chars: 0,
+        toolUseId: `${toolId}-use`,
+      })
+    })
+    TOOL_LINES.forEach((line, index) => {
+      at(run, thought1 + 200 + (index + 1) * 300, () => {
+        const terminal = command(toolId)
+        if (terminal) {
+          printLive(terminal, `${line}\n`)
+        }
+      })
     })
     const toolDone = thought1 + 200 + TOOL_RUN_MS
     at(run, toolDone, () => {
+      endCommand(toolId)
+      runningTool = null
       replace(toolId, tool(toolId, toolStartedAt, 'completed'))
     })
     thinkThenReply(run, toolDone + WAIT_MS, THINK_2)

@@ -29,9 +29,9 @@ use demi_runner_protocol::wire::{
 use demi_shell::{
     ByteRange, Call, CommandSet, CommandState, CommandStatus, ExecRequest, FileContents,
     GroupBuilder, Host, HostError, HostErrorKind, JobCaller, LeafBuilder, ObservationWindow,
-    Process, ProcessEnd, ProcessOutput, Reader, RpcError, RpcPort, ShellEnvironment, ShellTarget, Signal,
+    Process, ProcessEnd, ProcessOutput, RpcError, RpcPort, ShellEnvironment, ShellTarget, Signal,
     SpawnEnv, SpawnRequest, StorageOp, StorageReply, TypedRpc, WriteOptions,
-    testing::{host_conformance_cases, test_command_context},
+    testing::{TestPages, host_conformance_cases, test_command_context},
 };
 use futures_util::{Stream, StreamExt};
 use schemars::JsonSchema;
@@ -59,6 +59,7 @@ fn exec(script: &str, window: u64) -> ExecRequest {
         shell: ShellTarget::Default,
         window: ObservationWindow::from_millis(window).unwrap(),
         caller: caller(),
+        tool_use_id: "call".into(),
     }
 }
 
@@ -70,7 +71,7 @@ fn shell_on(
     commands: Option<CommandSelection>,
 ) -> RemoteShellEnvironment {
     let context: ContextSource = Rc::new(|| Box::pin(async { Ok(test_command_context()) }));
-    let mut options = EnvironmentOptions::new(host, context);
+    let mut options = EnvironmentOptions::new(host, context, TestPages::new(false));
     options.initial_env = [("PATH", "/usr/bin:/bin")]
         .iter()
         .chain(env)
@@ -120,7 +121,7 @@ async fn until<T>(what: &str, mut probe: impl FnMut() -> Option<T>) -> T {
 /// The command's status once it stopped running.
 async fn settled(shell: &RemoteShellEnvironment, status: &CommandStatus) -> CommandStatus {
     until("the command's end", || {
-        let status = shell.status(&status.command_id, Reader::Model).unwrap();
+        let status = shell.status(&status.command_id).unwrap();
         (!matches!(status.state, CommandState::Running { .. })).then_some(status)
     })
     .await
@@ -310,7 +311,13 @@ async fn a_process_gets_what_was_sent_at_its_start_and_unread_input_blocks_nothi
         .await
         .unwrap();
     let job_output = futures_util::stream::unfold(&job, |job| async move {
-        job.next_output().await.map(|chunk| (chunk, job))
+        job.next_output().await.map(|chunk| {
+            let chunk = ProcessOutput {
+                stream: chunk.stream,
+                bytes: chunk.bytes,
+            };
+            (chunk, job)
+        })
     });
     until_stdout(job_output, "ready").await;
     let mut process = host
@@ -461,6 +468,7 @@ async fn the_working_directory_carries_between_a_shells_jobs_and_nothing_else_do
                 },
                 window: ObservationWindow::from_millis(10_000).unwrap(),
                 caller: caller(),
+                tool_use_id: "call".into(),
             },
             CancellationToken::new(),
         )
@@ -484,17 +492,19 @@ async fn a_job_outliving_its_window_runs_takes_input_and_can_be_aborted() {
         .unwrap();
     assert!(matches!(running.state, CommandState::Running { .. }));
     until("the head of the view", || {
-        (shell.status(&running.command_id, Reader::Model).unwrap().stdout.tail == "ready\n").then_some(())
+        (shell.status(&running.command_id).unwrap().stdout.tail == "ready\n").then_some(())
     })
     .await;
     let link = fixture.link().await;
     assert_eq!(link.running_jobs(), 1);
-    let written = shell
-        .write(&running.command_id, Bytes::from_static(b"typed\n"), Reader::Model)
+    shell
+        .write(&running.command_id, Bytes::from_static(b"typed\n"))
         .await
         .unwrap();
+    let written = shell.status(&running.command_id).unwrap();
     assert!(matches!(written.state, CommandState::Running { .. }));
-    let aborted = shell.abort(&running.command_id, Reader::Model).await.unwrap();
+    shell.abort(&running.command_id).await.unwrap();
+    let aborted = shell.status(&running.command_id).unwrap();
     assert!(
         matches!(aborted.state, CommandState::Aborted),
         "{:?}",
@@ -502,7 +512,7 @@ async fn a_job_outliving_its_window_runs_takes_input_and_can_be_aborted() {
     );
     assert_eq!(link.running_jobs(), 0);
     assert!(matches!(
-        shell.status(&running.command_id, Reader::Model).unwrap().state,
+        shell.status(&running.command_id).unwrap().state,
         CommandState::Aborted
     ));
     fixture.stop().await;
@@ -1037,7 +1047,7 @@ async fn declared_commands_call_back_with_storage_input_and_cancellation() {
         .unwrap();
     assert!(matches!(typing.state, CommandState::Running { .. }));
     shell
-        .write(&typing.command_id, Bytes::from_static(b"typed\n"), Reader::Model)
+        .write(&typing.command_id, Bytes::from_static(b"typed\n"))
         .await
         .unwrap();
     let typed = settled(&shell, &typing).await;
@@ -1056,7 +1066,8 @@ async fn declared_commands_call_back_with_storage_input_and_cancellation() {
     // A job still starting has no call to stop yet: the stop is observed
     // once the call runs.
     until("the call's start", || started.get().then_some(())).await;
-    let aborted = shell.abort(&holding.command_id, Reader::Model).await.unwrap();
+    shell.abort(&holding.command_id).await.unwrap();
+    let aborted = shell.status(&holding.command_id).unwrap();
     assert!(
         matches!(aborted.state, CommandState::Aborted),
         "{:?}",
@@ -1310,7 +1321,7 @@ async fn a_native_command_runs_in_its_service_with_the_jobs_context_on_its_own_r
         String::from_utf8_lossy(&wrong.stderr).contains("not live on this runner"),
         "{wrong:?}"
     );
-    on_a.abort(&capture.command_id, Reader::Model).await.unwrap();
+    on_a.abort(&capture.command_id).await.unwrap();
     let stale = client(
         a.home(),
         &[
@@ -1353,7 +1364,7 @@ async fn a_running_command_shows_its_leafs_hint_until_the_leaf_ends() {
     .await;
     let shell = shell_on(fixture.host(), &[], Some(selection));
     let shows = |status: &CommandStatus, expected: Option<&str>| {
-        let hint = hint(&shell.status(&status.command_id, Reader::Model).unwrap());
+        let hint = hint(&shell.status(&status.command_id).unwrap());
         (hint.as_deref() == expected).then_some(())
     };
     for leaf in ["native", "rpc"] {
@@ -1367,11 +1378,12 @@ async fn a_running_command_shows_its_leafs_hint_until_the_leaf_ends() {
             .unwrap();
         until(&expected, || shows(&started, Some(&expected))).await;
         shell
-            .write(&started.command_id, Bytes::from_static(b"finish\n"), Reader::Model)
+            .write(&started.command_id, Bytes::from_static(b"finish\n"))
             .await
             .unwrap();
         until("the hint's end", || shows(&started, None)).await;
-        let stopped = shell.abort(&started.command_id, Reader::Model).await.unwrap();
+        shell.abort(&started.command_id).await.unwrap();
+        let stopped = shell.status(&started.command_id).unwrap();
         assert!(
             matches!(stopped.state, CommandState::Aborted),
             "{:?}",
@@ -1409,7 +1421,8 @@ async fn a_running_command_shows_its_leafs_hint_until_the_leaf_ends() {
         .unwrap();
     assert_eq!(finish(kill).await.1, ProcessEnd::Exited(0));
     until("the child's hint to end", || shows(&child, None)).await;
-    let stopped = shell.abort(&child.command_id, Reader::Model).await.unwrap();
+    shell.abort(&child.command_id).await.unwrap();
+    let stopped = shell.status(&child.command_id).unwrap();
     assert!(
         matches!(stopped.state, CommandState::Aborted),
         "{:?}",
@@ -1431,7 +1444,7 @@ async fn a_running_command_shows_its_leafs_hint_until_the_leaf_ends() {
         .unwrap();
     assert_eq!(hint(&plain), None);
     shell
-        .write(&plain.command_id, Bytes::from_static(b"done\n"), Reader::Model)
+        .write(&plain.command_id, Bytes::from_static(b"done\n"))
         .await
         .unwrap();
     assert_eq!(exited(&settled(&shell, &plain).await), 0);
@@ -1466,7 +1479,8 @@ async fn a_busy_native_command_blocks_neither_the_runner_nor_its_abort_and_a_sec
         String::from_utf8_lossy(&second.stderr).contains("already active"),
         "{second:?}"
     );
-    let aborted = shell.abort(&spinning.command_id, Reader::Model).await.unwrap();
+    shell.abort(&spinning.command_id).await.unwrap();
+    let aborted = shell.status(&spinning.command_id).unwrap();
     assert!(
         matches!(aborted.state, CommandState::Aborted),
         "{:?}",
