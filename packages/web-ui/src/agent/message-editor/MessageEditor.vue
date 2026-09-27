@@ -50,7 +50,10 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  /** The message changed: its Markdown, and the files of its capsules in the order of their marks. */
+  /**
+   * The message changed, typed or shown from outside: its Markdown, and the
+   * files of its capsules in the order of their marks.
+   */
   change: [markdown: string, attachments: MessageCapsule[]]
   submit: []
   cancel: []
@@ -196,7 +199,12 @@ function write(): void {
   emit('change', markdown, attachments)
 }
 
-/** Shows a message that came from outside, such as a cleared draft; the undo history forgets what was there. */
+/**
+ * Shows a message that came from outside, such as a cleared draft; the undo
+ * history forgets what was there. The owner hears of it as of a typed one:
+ * what it keeps of the message, such as the files a sent message took with
+ * it, follows the document.
+ */
 function show(): void {
   const doc = editor.schema.nodeFromJSON(parseUserMarkdown(props.markdown, props.attachments))
   const tr = editor.state.tr.replaceWith(0, editor.state.doc.content.size, doc.content)
@@ -205,8 +213,7 @@ function show(): void {
   tr.setMeta('preventUpdate', true)
   editor.view.dispatch(tr)
   landing = null
-  shown = serializeUserMarkdown<MessageCapsule>(editor.getJSON()).markdown
-  measure()
+  write()
 }
 
 function inCode(view: EditorView): boolean {

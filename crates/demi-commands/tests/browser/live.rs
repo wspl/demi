@@ -975,28 +975,90 @@ async fn two_viewers_share_a_tab_and_the_last_to_operate_decides() {
     .await;
 }
 
-/// The picture the viewer received, decoded by ffmpeg into pixels.
-fn decoded(frame: &[u8]) -> (u32, Vec<u8>) {
-    let directory = tempfile::tempdir().expect("a place for the frame");
-    let encoded = directory.path().join("frame.h264");
-    let image = directory.path().join("frame.png");
-    std::fs::write(&encoded, frame).expect("write the frame");
-    let ffmpeg = std::process::Command::new("ffmpeg")
-        .args(["-y", "-loglevel", "error", "-f", "h264", "-i"])
-        .arg(&encoded)
-        .args(["-frames:v", "1"])
-        .arg(&image)
-        .status()
-        .expect("ffmpeg decodes the picture");
-    assert!(ffmpeg.success(), "ffmpeg could not decode the picture");
-    let bytes = std::fs::read(&image).expect("the decoded picture");
+/// Decodes a key frame as the page does (`pictures.ts`: WebCodecs, H.264
+/// High) and keeps the picture in the page as a PNG in base64, the form in
+/// which a picture leaves Chrome whole; answers its length.
+const DECODE_PICTURE: &str = r#"async (encoded) => {
+  const data = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
+  let decoder;
+  const picture = await new Promise((resolve, reject) => {
+    decoder = new VideoDecoder({ output: resolve, error: reject });
+    decoder.configure({ codec: 'avc1.640033', optimizeForLatency: true });
+    decoder.decode(new EncodedVideoChunk({ type: 'key', timestamp: 0, data }));
+    // Every picture is out before the flush resolves.
+    decoder.flush().then(() => reject(new Error('the frame decoded to no picture')), reject);
+  });
+  decoder.close();
+  const canvas = new OffscreenCanvas(picture.displayWidth, picture.displayHeight);
+  canvas.getContext('2d', { alpha: false }).drawImage(picture, 0, 0);
+  picture.close();
+  const png = await canvas.convertToBlob({ type: 'image/png' });
+  const url = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(png);
+  });
+  globalThis.decodedPicture = url.slice(url.indexOf(',') + 1);
+  return globalThis.decodedPicture.length;
+}"#;
+
+/// How much of a kept picture one answer carries, within a command's 64 KiB
+/// output.
+const PICTURE_SLICE: usize = 48 * 1024;
+
+/// Runs `expression` in `tab` through the agent's CDP command, which, unlike
+/// `browser.eval`, allows side effects and awaits a promise, and answers its
+/// value.
+async fn run_in_page(fixture: &BrowserFixture, tab: &str, expression: &str) -> Value {
+    let params = json!({"expression": expression, "awaitPromise": true, "returnByValue": true});
+    let answer = fixture
+        .call(
+            "browser.cdp.send",
+            json!({"tab": tab, "method": "Runtime.evaluate", "params": params.to_string()}),
+        )
+        .await;
+    assert!(
+        answer["result"].get("exceptionDetails").is_none(),
+        "{expression:.80}: {answer}"
+    );
+    answer["result"]["result"]["value"].clone()
+}
+
+/// The picture the viewer received, decoded by the Chrome that shows `tab`
+/// as the page decodes it, into RGB pixels.
+async fn decoded(fixture: &BrowserFixture, tab: &str, frame: &[u8]) -> (u32, Vec<u8>) {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+
+    let decode = format!("({DECODE_PICTURE})('{}')", STANDARD.encode(frame));
+    let length = run_in_page(fixture, tab, &decode)
+        .await
+        .as_u64()
+        .expect("the kept picture's length") as usize;
+    let mut encoded = String::with_capacity(length);
+    while encoded.len() < length {
+        let from = encoded.len();
+        let slice = format!("globalThis.decodedPicture.slice({from}, {})", from + PICTURE_SLICE);
+        let value = run_in_page(fixture, tab, &slice).await;
+        encoded.push_str(value.as_str().expect("a slice of the kept picture"));
+    }
+    run_in_page(fixture, tab, "delete globalThis.decodedPicture").await;
+    let bytes = STANDARD.decode(encoded).expect("the picture in base64");
     let mut reader = png::Decoder::new(std::io::Cursor::new(bytes))
         .read_info()
         .expect("png");
     let mut pixels = vec![0; reader.output_buffer_size().unwrap_or(0)];
     let info = reader.next_frame(&mut pixels).expect("png frame");
     pixels.truncate(info.buffer_size());
-    assert_eq!(info.color_type, png::ColorType::Rgb, "ffmpeg writes RGB");
+    let pixels = match info.color_type {
+        png::ColorType::Rgb => pixels,
+        png::ColorType::Rgba => pixels
+            .chunks_exact(4)
+            .flat_map(|pixel| &pixel[..3])
+            .copied()
+            .collect(),
+        other => panic!("a canvas's PNG is RGB or RGBA, not {other:?}"),
+    };
     (info.width, pixels)
 }
 
@@ -1030,7 +1092,7 @@ async fn a_narrow_still_picture_matches_the_page_coordinates() {
                 .await;
             let (_, key, _, _, frame) = view.picture(stream["generation"].as_u64().unwrap()).await;
             assert!(key);
-            let (decoded_width, pixels) = decoded(&frame);
+            let (decoded_width, pixels) = decoded(&fixture, &tab, &frame).await;
             for (x, y) in [(4, 4), (width * 2 - 5, height * 2 - 5)] {
                 let at = ((y * decoded_width + x) * 3) as usize;
                 assert!(pixels[at..at + 3].iter().all(|value| *value > 230), "white page corner at {x},{y}: {:?}", &pixels[at..at + 3]);
@@ -1087,7 +1149,7 @@ async fn a_watched_tab_arrives_with_the_detail_of_the_viewers_ratio() {
         let (_, key, width, _, frame) = view.picture(single["generation"].as_u64().unwrap()).await;
         assert!(key);
         assert_eq!(width, 800);
-        let (decoded_width, pixels) = decoded(&frame);
+        let (decoded_width, pixels) = decoded(&fixture, &tab, &frame).await;
         assert_eq!(decoded_width, 800, "the picture is the viewport at ratio 1");
         // Sample above the moving red marker, which crosses the lower stripes.
         let flat = contrast(decoded_width, &pixels, 390, 150, 350);
@@ -1107,7 +1169,7 @@ async fn a_watched_tab_arrives_with_the_detail_of_the_viewers_ratio() {
             view.picture(double["generation"].as_u64().unwrap()).await;
         assert!(key);
         assert_eq!((width, height), (1600, 1200));
-        let (retina, pixels) = decoded(&frame);
+        let (retina, pixels) = decoded(&fixture, &tab, &frame).await;
         assert_eq!(retina, 1600, "the picture is twice the viewport at ratio 2");
         let sharp = contrast(retina, &pixels, 780, 300, 700);
         // At ratio 1 the stripes average into grey; at ratio 2 each one is its

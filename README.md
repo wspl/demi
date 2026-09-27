@@ -33,6 +33,8 @@ You need:
 - The cross tools, to build for a platform other than your own
   ([Toolchain](docs/delivery/builds-and-releases.md#toolchain)).
 - Bun, for the browser packages.
+- Node, for the web application's dev server, `bun run web:dev`
+  ([Development and checks](docs/product/web-application.md#development-and-checks)).
 
 ```sh
 cargo check --workspace --all-targets --features demi-runner/test-fixtures

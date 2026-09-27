@@ -3,5 +3,6 @@ registry = "https://registry.npmjs.org/"
 
 [run]
 # Run node-shebang bins (tsdown, tsgo, vue-tsc, tsc, esbuild, changeset) on the
-# Bun runtime so the toolchain has no system-Node dependency.
+# Bun runtime so the toolchain has no system-Node dependency. The product's dev
+# server is the exception: `web:dev` runs Vite under Node (scripts/web-dev.ts).
 bun = true

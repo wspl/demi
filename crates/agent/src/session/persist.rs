@@ -4,81 +4,18 @@
 //! failed one leaves its rows to the next.
 
 use std::{
-    collections::BTreeSet,
     rc::{Rc, Weak},
     time::Duration,
 };
 
-use demi_agent_protocol::TranscriptPatch;
 use demi_core::Block;
 use tokio::sync::Notify;
 
 use super::{SessionEvent, SessionShared};
-use crate::store::{CommandStateHistory, CommandVersion, CommitGuard, StoreError};
-
-/// Which transcript rows the next save writes: every row from `floor` on,
-/// because an insertion or removal there moved them, and the rows below it
-/// that changed in place.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub(crate) struct DirtyRows {
-    floor: Option<usize>,
-    points: BTreeSet<usize>,
-}
-
-impl DirtyRows {
-    pub(crate) fn mark(&mut self, patches: &[TranscriptPatch]) {
-        for patch in patches {
-            match patch {
-                TranscriptPatch::Add { index, .. } | TranscriptPatch::Remove { index } => {
-                    self.lower_floor(row(*index));
-                }
-                TranscriptPatch::Replace { .. } => self.lower_floor(0),
-                TranscriptPatch::ReplaceBlock { index, .. }
-                | TranscriptPatch::AppendText { index, .. } => {
-                    let index = row(*index);
-                    if self.floor.is_none_or(|floor| index < floor) {
-                        self.points.insert(index);
-                    }
-                }
-            }
-        }
-    }
-
-    fn lower_floor(&mut self, index: usize) {
-        let floor = self.floor.map_or(index, |floor| floor.min(index));
-        self.floor = Some(floor);
-        self.points.retain(|point| *point < floor);
-    }
-
-    /// The rows to write out of `len`, ascending.
-    pub(crate) fn indices(&self, len: usize) -> Vec<usize> {
-        let floor = self.floor.unwrap_or(len).min(len);
-        self.points
-            .iter()
-            .copied()
-            .filter(|index| *index < floor)
-            .chain(floor..len)
-            .collect()
-    }
-
-    /// Puts back the rows a failed save did not write.
-    pub(crate) fn merge(&mut self, other: DirtyRows) {
-        if let Some(floor) = other.floor {
-            self.lower_floor(floor);
-        }
-        let floor = self.floor;
-        self.points.extend(
-            other
-                .points
-                .into_iter()
-                .filter(|index| floor.is_none_or(|floor| *index < floor)),
-        );
-    }
-}
-
-fn row(index: u32) -> usize {
-    usize::try_from(index).expect("a patch index fits in usize")
-}
+use crate::{
+    store::{CommandStateHistory, CommandVersion, CommitGuard, StoreError},
+    transcript::DirtyRows,
+};
 
 /// Whether a save is due and which rows it writes.
 #[derive(Debug, Default)]

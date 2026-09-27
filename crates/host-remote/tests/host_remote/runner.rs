@@ -647,7 +647,16 @@ async fn file_contents_travel_whole_or_in_ranges_and_never_in_a_message() {
     assert_eq!(refusal(home.clone()).await.code(), Some("EISDIR"));
 
     // A write that cannot land leaves the destination as it was, and no
-    // temporary copy.
+    // temporary copy, whatever the runner names it.
+    let entries = || {
+        let mut names: Vec<_> = std::fs::read_dir(&home)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        names.sort();
+        names
+    };
+    let before = entries();
     let absent = host
         .fs()
         .write_file(
@@ -673,12 +682,10 @@ async fn file_contents_travel_whole_or_in_ranges_and_never_in_a_message() {
         std::fs::read_to_string(format!("{home}/target/kept")).unwrap(),
         "kept"
     );
-    let leftovers: Vec<_> = std::fs::read_dir(&home)
-        .unwrap()
-        .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
-        .filter(|name| name.starts_with(".demi-write-"))
-        .collect();
-    assert!(leftovers.is_empty(), "{leftovers:?}");
+    let mut expected = before;
+    expected.push("target".into());
+    expected.sort();
+    assert_eq!(entries(), expected);
     std::fs::write(format!("{home}/replaced"), "old").unwrap();
     host.fs()
         .write_file(

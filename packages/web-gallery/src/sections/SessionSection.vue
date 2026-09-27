@@ -25,6 +25,7 @@ import ChangeView from '@demicodes/web-ui/files/ChangeView.vue'
 import FileView from '@demicodes/web-ui/files/FileView.vue'
 import { createGalleryChangeSet, createGalleryWorkspace } from '../fixtures/workspace'
 import { galleryBrowserTabs } from '../fixtures/live-browser'
+import { productWould } from '../product-would'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import { ASIDE_SHARE, SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
@@ -132,11 +133,17 @@ const panelActiveConversationId = ref<string | null>('c-login')
  * holds it: the fixed views, the selection and tabs, and the `browser` kind
  * over the gallery's own browser, or over the one the specimen supplies. The
  * kind reads that browser's tabs whenever the page is shown again, so a panel
- * whose strip starts empty supplies a browser without tabs.
+ * whose strip starts empty supplies a browser without tabs. A specimen can
+ * also say whether this browser decodes the pictures; by default it asks the
+ * browser, as the product does.
  */
 function useWorkTabs(
   selection: string,
-  { path = 'src/auth/cookie.ts', tabs = galleryBrowserTabs() }: { path?: string; tabs?: BrowserTabsApi } = {},
+  { path = 'src/auth/cookie.ts', tabs = galleryBrowserTabs(), pictures }: {
+    path?: string
+    tabs?: BrowserTabsApi
+    pictures?: () => Promise<boolean>
+  } = {},
 ) {
   const views = ref(workPanelTabs(path))
   const panel = ref<PanelState>({ ...emptyPanelState(), selection })
@@ -148,7 +155,7 @@ function useWorkTabs(
     add: (data) => {
       panel.value = addTab(panel.value, { kind: 'browser', data }, { select: false }).state
     },
-  })
+  }, { pictures })
   onBeforeUnmount(() => browser.dispose())
   const kinds: PanelTabKind[] = [browserTabKind(browser), pageTabKind]
   function select(next: string) {
@@ -325,6 +332,9 @@ async function closeOnDevice() {
   await browserWork.browser.api.close(tab)
   await browserWork.browser.refresh()
 }
+// The same browser in a viewer's browser that cannot decode H.264, such as a Chromium without proprietary codecs.
+const undecodedWork = useWorkTabs('change', { path: '', pictures: async () => false })
+void undecodedWork.browser.refresh()
 // The Session view is the product's ChatSession over a scripted runtime; Turns and Stream replay one flow each.
 const sessionFlow = useTurnFlow({
   id: 'gallery-session',
@@ -1693,7 +1703,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Work panel"
-        note="Change and File are fixed views, content-sized buttons outside the tab strip: they are not tabs, never shrink or scroll with them, and only compete with them for the selection. The strip holds the user's tabs, content-sized and capped at 160px, with scrolling and close menus that affect only tabs. The add control opens a tab in the conversation's browser: globe-plus while the strip is empty, a plain plus beside tabs. The new tab stands in the strip at once, selected, on about:blank, and its content says the browser is starting until its picture arrives; the gallery's browser takes about a second, as a Host takes a moment. A page the device closed keeps its tab, which says so and offers Close tab and Reload; a request the Host refuses shows its message with Retry. While a view connects the content only says that it waits. A page holds no view while it is hidden, behind another browser tab or in a minimized window, and opens a new one when it is shown again: switch away from the gallery and back, and the picture connects again, its moving mark starting over. Resizing keeps the previous picture's aspect ratio until the browser supplies a frame at the new size; the old picture is never stretched to the new viewport. The viewport control is a square icon button, a computer or a phone, as far from the address as the navigation group is; its menu rows carry the same icons. A page tab opens only from an expose, with the expose glyph and the exposed address as its name, and frames its page in a sandbox: Refresh reloads it, the trailing control opens it in an ordinary browser tab, and Back and Forward stay unavailable because a framed page keeps its history to itself. Change groups its added/removed counts with a 2px gap and shows uncommitted totals and returns to Uncommitted when clicked; file pills still open retained edits there. File uses a Lucide outline icon until a file is selected, then its file-type icon. Every tab content puts its address row immediately below the strip; the same divider as File and Change separates it from the page. Browser and File navigation buttons have no extra gap between them; both address bars leave 12px after the navigation group. A tab the user just made opens with its address focused and selected, waiting for where to go. A click into an address selects it whole, a second click places the caret, and Enter submits it and lets the field go, so keys reach the page again."
+        note="Change and File are fixed views, content-sized buttons outside the tab strip: they are not tabs, never shrink or scroll with them, and only compete with them for the selection. The strip holds the user's tabs, content-sized and capped at 160px, with scrolling and close menus that affect only tabs. The add control opens a tab in the conversation's browser: globe-plus while the strip is empty, a plain plus beside tabs. The new tab stands in the strip at once, selected, on about:blank, and its content says the browser is starting until its picture arrives; the gallery's browser takes about a second, as a Host takes a moment. A page the device closed keeps its tab, which says so and offers Close tab and Reload; a request the Host refuses shows its message with Retry. While a view connects the content only says that it waits. A viewer's browser that cannot decode the Host's H.264, such as a Chromium built without proprietary codecs, opens no view: its browser tab says so in place of the picture, as the last specimen's does in any browser. A page holds no view while it is hidden, behind another browser tab or in a minimized window, and opens a new one when it is shown again: switch away from the gallery and back, and the picture connects again, its moving mark starting over. Resizing keeps the previous picture's aspect ratio until the browser supplies a frame at the new size; the old picture is never stretched to the new viewport. The viewport control is a square icon button, a computer or a phone, as far from the address as the navigation group is; its menu rows carry the same icons. A page tab opens only from an expose, with the expose glyph and the exposed address as its name, and frames its page in a sandbox: Refresh reloads it, the trailing control opens it in an ordinary browser tab, and Back and Forward stay unavailable because a framed page keeps its history to itself. Change groups its added/removed counts with a 2px gap and shows uncommitted totals and returns to Uncommitted when clicked; file pills still open retained edits there. File uses a Lucide outline icon until a file is selected, then its file-type icon. Every tab content puts its address row immediately below the strip; the same divider as File and Change separates it from the page. Browser and File navigation buttons have no extra gap between them; both address bars leave 12px after the navigation group. A tab the user just made opens with its address focused and selected, waiting for where to go. A click into an address selects it whole, a second click places the caret, and Enter submits it and lets the field go, so keys reach the page again."
       >
         <div class="grid gap-6 md:grid-cols-2">
           <GallerySpecimen variant="tabs" wide>
@@ -1724,12 +1734,29 @@ onBeforeUnmount(() => {
                 @open="browserWork.open"
                 @back="browserWork.back"
                 @forward="browserWork.forward"
+                @close="productWould('The work panel closes')"
               />
             </div>
             <!-- What the agent's close, or a browser that ended, does to the tab being shown. -->
             <div class="mt-2 flex items-center gap-2 text-[12px] text-fg-muted">
               <Button size="sm" :disabled="shownBrowserTab === null" @click="closeOnDevice">Close the page on the device</Button>
               <span>the shown browser tab stays, and says so</span>
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="tabs · a viewer's browser that cannot decode H.264 · live" wide>
+            <div class="gallery-frame flex h-[24rem] overflow-hidden">
+              <WorkPanel
+                class="w-full"
+                :views="undecodedWork.views.value" :panel="undecodedWork.panel.value" :kinds="undecodedWork.kinds"
+                :workspace="workspace"
+                @select="undecodedWork.select"
+                @add-tab="undecodedWork.add" @update-tab="undecodedWork.update" @close-tabs="undecodedWork.closeTabs"
+                @show-change="undecodedWork.showChange"
+                @open="undecodedWork.open"
+                @back="undecodedWork.back"
+                @forward="undecodedWork.forward"
+                @close="productWould('The work panel closes')"
+              />
             </div>
           </GallerySpecimen>
         </div>

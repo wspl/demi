@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import type { LiveViewerMessage } from '@demicodes/protocol'
 import { deferred } from '@demicodes/utils'
+import { until } from '@vueuse/core'
 import { ref } from 'vue'
 import {
   BrowserTabsController,
@@ -9,6 +10,8 @@ import {
   type BrowserTabInfo,
   type BrowserTabList,
   type BrowserTabsApi,
+  type BrowserTabsOptions,
+  type PictureSupport,
 } from '../tabs'
 
 const AGENT_TAB: BrowserTabInfo = {
@@ -19,7 +22,7 @@ const AGENT_TAB: BrowserTabInfo = {
 }
 const USER_TAB: BrowserTabInfo = { id: 't_useraaaaaaaaaaaaaaaaaa', title: '', url: 'about:blank', createdBy: { kind: 'user' } }
 
-function harness(api: Partial<BrowserTabsApi>, visibility = ref<DocumentVisibilityState>('visible')) {
+function harness(api: Partial<BrowserTabsApi>, options: BrowserTabsOptions = {}) {
   const panel: BrowserTabData[] = []
   const controller = new BrowserTabsController(
     {
@@ -32,9 +35,25 @@ function harness(api: Partial<BrowserTabsApi>, visibility = ref<DocumentVisibili
       ...api,
     },
     { bound: () => panel, add: (data) => void panel.push(data) },
-    visibility,
+    { visibility: ref<DocumentVisibilityState>('visible'), ...options },
   )
   return { controller, panel }
+}
+
+/**
+ * The browser's `VideoDecoder`, answering by codec, until the returned
+ * function puts back its absence: bun has no WebCodecs.
+ */
+function stubDecoder(decodes: (codec: string) => boolean): () => void {
+  Object.defineProperty(globalThis, 'VideoDecoder', {
+    configurable: true,
+    value: class {
+      static async isConfigSupported(config: VideoDecoderConfig): Promise<VideoDecoderSupport> {
+        return { supported: decodes(config.codec), config }
+      }
+    },
+  })
+  return () => void Reflect.deleteProperty(globalThis, 'VideoDecoder')
 }
 
 test('a browser tab no panel tab is bound to is added once, and nothing is ever removed', async () => {
@@ -128,7 +147,7 @@ test('a panel tab that lost its binding gets the tab this page opened for it, no
   expect(opens).toBe(2)
 })
 
-test('a hidden page closes its view, and shown again watches the shown tab on a new view', () => {
+test('a hidden page closes its view, and shown again watches the shown tab on a new view', async () => {
   const visibility = ref<DocumentVisibilityState>('visible')
   const views: Array<{ sent: LiveViewerMessage[]; closed: boolean }> = []
   const decoder = new TextDecoder()
@@ -145,8 +164,9 @@ test('a hidden page closes its view, and shown again watches the shown tab on a 
         }
       },
     },
-    visibility,
+    { visibility, pictures: async () => true },
   )
+  await until(controller.pictures).toBe('supported')
   controller.show(AGENT_TAB.id)
   expect(views).toHaveLength(1)
   // Nobody can watch a hidden page, and an open view would keep its Cloud awake.
@@ -176,7 +196,7 @@ test('a page shown again reads the tab list and adds the tabs the agent opened w
         return answer.promise
       },
     },
-    visibility,
+    { visibility },
   )
   visibility.value = 'hidden'
   expect(reads).toBe(0)
@@ -186,4 +206,31 @@ test('a page shown again reads the tab list and adds the tabs the agent opened w
   await answer.promise
   expect(panel).toEqual([{ url: AGENT_TAB.url, tab: AGENT_TAB.id }])
   controller.dispose()
+})
+
+test('a browser that cannot decode the pictures opens no view, and one that can opens one', async () => {
+  // A Chromium built without proprietary codecs has WebCodecs, and VP8 and VP9, but no H.264.
+  const browsers: Array<[string, ((codec: string) => boolean) | null, PictureSupport, number]> = [
+    ['no WebCodecs', null, 'unsupported', 0],
+    ['WebCodecs without H.264', (codec) => codec.startsWith('vp'), 'unsupported', 0],
+    ['WebCodecs with H.264', () => true, 'supported', 1],
+  ]
+  for (const [browser, decodes, support, viewCount] of browsers) {
+    const restore = decodes ? stubDecoder(decodes) : () => {}
+    try {
+      let views = 0
+      const { controller } = harness({
+        stream: () => {
+          views += 1
+          return { send: () => {}, close: () => {} }
+        },
+      })
+      controller.show(AGENT_TAB.id)
+      await until(controller.pictures).not.toBe('checking')
+      expect({ browser, support: controller.pictures.value, views }).toEqual({ browser, support, views: viewCount })
+      controller.dispose()
+    } finally {
+      restore()
+    }
+  }
 })

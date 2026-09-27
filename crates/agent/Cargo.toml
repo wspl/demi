@@ -12,8 +12,9 @@ doctest = false
 [features]
 # An in-memory tree store, predictable ids, scripted provider runtimes and a
 # test client that drives a connection (`agent::testing`), for the tests of
-# the agent and of what sits above it.
-testing = ["demi-provider/testing"]
+# the agent and of what sits above it, with the view of the actions waiting
+# at a tree's admission (`demi-gates/testing`).
+testing = ["demi-gates/testing", "demi-provider/testing"]
 
 [dependencies]
 bytes.workspace = true

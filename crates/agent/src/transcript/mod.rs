@@ -12,7 +12,7 @@ pub use cut::CutError;
 pub(crate) use cut::{
     before_user, compaction_window, last_assistant_text, resume_point, rewind, through_assistant,
 };
-pub(crate) use journal::PatchBatch;
+pub(crate) use journal::{DirtyRows, PatchBatch};
 pub(crate) use log::TranscriptLog;
 #[cfg(test)]
 pub(crate) use replay::agent_message_envelope;
