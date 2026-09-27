@@ -555,25 +555,11 @@ async fn a_new_open_recovers_after_chrome_crashes_without_replaying_old_tabs() {
                 json!({"tab":old,"method":"Fetch.enable","params":"{}"}),
             )
             .await;
-        let executable = PathBuf::from(std::env::var_os("DEMI_TEST_CHROME").unwrap());
-        let mut system = System::new();
-        system.refresh_processes_specifics(
-            ProcessesToUpdate::All,
-            true,
-            ProcessRefreshKind::nothing().with_exe(UpdateKind::Always),
-        );
-        let main = system
-            .processes()
-            .values()
-            .find(|process| {
-                process.parent() == Some(sysinfo::Pid::from_u32(std::process::id()))
-                    && process.exe() == Some(executable.as_path())
-            })
-            .expect("the fixture owns its Chrome child");
-        let leader = i32::try_from(main.pid().as_u32()).unwrap();
-        let profile = chrome_profiles()
-            .remove(&leader)
-            .expect("the fixture owns Chrome's profile");
+        // The fixture runs the Chrome the product installed, which need not be
+        // `DEMI_TEST_CHROME`; the one profile it holds names its main process.
+        let mut profiles = chrome_profiles();
+        assert_eq!(profiles.len(), 1, "the fixture owns one Chrome");
+        let (leader, profile) = profiles.pop_first().unwrap();
         assert_eq!(unsafe { libc::kill(leader, libc::SIGKILL) }, 0);
         tokio::time::timeout(Duration::from_secs(10), async {
             while profile.exists() {
