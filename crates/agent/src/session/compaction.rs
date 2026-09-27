@@ -4,7 +4,7 @@
 
 use std::{future::Future, rc::Rc, sync::Arc};
 
-use demi_core::{Block, ModelSelection, NodeId, TokenUsage, TurnId, UserContentBlock};
+use demi_core::{Block, ModelSelection, TokenUsage, TurnId, UserContentBlock};
 use demi_gates::{ActivityGate, GateLease, Purpose, Reservation};
 use demi_provider::{ErrorCode, ToolDefinition};
 use futures_util::future::LocalBoxFuture;
@@ -270,20 +270,20 @@ async fn summarize(
     outcome
 }
 
-/// A session copy of `window` (`compaction.md` § Session copy): its own id,
-/// the session's model, working directory, retry policy, system prompt and
-/// tools, a fresh runtime of the same provider, and the command versions the
-/// window refers to with the session's current one. It never compacts, saves
-/// nowhere, and runs inside the session's action without an admission of its
-/// own.
+/// A session copy of `window` (`compaction.md` § Session copy): the
+/// session's id, which its requests carry so that the vendor keeps them with
+/// the session's, the session's model, working directory, retry policy,
+/// system prompt and tools, a fresh runtime of the same provider, and the
+/// command versions the window refers to with the session's current one. It
+/// never compacts, saves nowhere, and runs inside the session's action
+/// without an admission of its own.
 fn session_copy(s: &Rc<SessionShared>, window: Vec<Block>) -> AgentSession {
     let parts = s.read(|core| {
         let commands = core
             .commands
             .select(&window, core.commands.revision(), false);
         CoreParts {
-            id: NodeId::try_from(s.ids.next_id())
-                .expect("an id source never gives an empty identity"),
+            id: core.id.clone(),
             cwd: core.cwd.clone(),
             harness: core.harness.clone(),
             model: core.model.clone(),
