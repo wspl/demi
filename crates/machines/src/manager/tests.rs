@@ -18,7 +18,7 @@ use tokio::sync::mpsc;
 
 use super::{Core, Manager, OpError};
 use crate::{
-    config::{Config, Mode},
+    config::{Config, Limits, Mode},
     linux::testing::isolate,
     recovery::{self, RecoveryError},
     server::MachineService,
@@ -47,8 +47,10 @@ fn fixture() -> Fixture {
         runsc: PathBuf::from("/nonexistent/runsc"),
         image: directory.path().join("image"),
         backend_url: "http://203.0.113.10:3271".parse().unwrap(),
-        cpus: NonZeroU32::new(2).unwrap(),
-        memory_mib: NonZeroU32::new(2048).unwrap(),
+        limits: Some(Limits {
+            cpus: NonZeroU32::new(2).unwrap(),
+            memory_mib: NonZeroU32::new(2048).unwrap(),
+        }),
         system_mib: NonZeroU32::new(32).unwrap(),
         home_mib: NonZeroU32::new(32).unwrap(),
         subnet: "172.30.0.0/16".parse().unwrap(),

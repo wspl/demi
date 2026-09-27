@@ -1,12 +1,10 @@
 //! One boot's OCI runtime configuration (`managed-hosts.md` § Isolation and
 //! joining): the prepared root, UID 1000's process under init, the runtime
-//! mounts, the network namespace and the cgroup limits. The profile is code,
-//! not configuration: only the paths, the slot and the budget vary.
+//! mounts, the network namespace and, with the resource limits on, the
+//! cgroup and its limits. The profile is code, not configuration: only the
+//! paths, the slot and the limits vary.
 
-use std::{
-    collections::HashSet,
-    num::{NonZeroU32, NonZeroU64},
-};
+use std::collections::HashSet;
 
 use demi_machines_protocol::image::{INIT_PATH, RUNNER_PATH};
 use oci_spec::{
@@ -20,6 +18,7 @@ use oci_spec::{
 };
 
 use super::files::{RuntimeDirectory, USER_ID};
+use crate::config::Limits;
 
 /// The capabilities setuid programs such as sudo may gain; the process
 /// itself starts with none.
@@ -49,12 +48,18 @@ const PROCESS_LIMIT: u64 = 1024;
 /// What one boot's configuration varies by.
 pub struct Boot<'a> {
     pub directory: &'a RuntimeDirectory,
-    /// The cgroup under `demi-cloud`, named by the sandbox id.
-    pub cgroup: &'a str,
     /// The network namespace's name under `/run/netns`.
     pub namespace: &'a str,
-    pub cpus: NonZeroU32,
-    pub memory_bytes: NonZeroU64,
+    /// The boot's cgroup; `None` with the resource limits off, when the
+    /// sandbox has none.
+    pub cgroup: Option<Cgroup<'a>>,
+}
+
+/// A sandbox's cgroup under `demi-cloud`, named by the sandbox id, and its
+/// limits.
+pub struct Cgroup<'a> {
+    pub name: &'a str,
+    pub limits: Limits,
 }
 
 pub fn spec(boot: &Boot<'_>) -> Result<Spec, OciSpecError> {
@@ -103,8 +108,6 @@ pub fn spec(boot: &Boot<'_>) -> Result<Spec, OciSpecError> {
         ])
         .build()?;
     let namespace = |typ| LinuxNamespaceBuilder::default().typ(typ).build();
-    let quota = i64::from(boot.cpus.get()) * CPU_PERIOD as i64;
-    let memory = i64::try_from(boot.memory_bytes.get()).expect("a memory limit fits in i64");
     let linux = LinuxBuilder::default()
         .namespaces(vec![
             namespace(LinuxNamespaceType::Pid)?,
@@ -116,15 +119,6 @@ pub fn spec(boot: &Boot<'_>) -> Result<Spec, OciSpecError> {
                 .path(format!("/run/netns/{}", boot.namespace))
                 .build()?,
         ])
-        .cgroups_path(format!("/demi-cloud/{}", boot.cgroup))
-        .resources(
-            LinuxResourcesBuilder::default()
-                .cpu(LinuxCpuBuilder::default().period(CPU_PERIOD).quota(quota).build()?)
-                // The same limit for memory and memory with swap: no swap.
-                .memory(LinuxMemoryBuilder::default().limit(memory).swap(memory).build()?)
-                .pids(LinuxPidsBuilder::default().limit(PROCESS_LIMIT as i64).build()?)
-                .build()?,
-        )
         .masked_paths(
             ["/proc/kcore", "/proc/keys", "/proc/timer_list", "/sys"]
                 .map(String::from)
@@ -134,8 +128,25 @@ pub fn spec(boot: &Boot<'_>) -> Result<Spec, OciSpecError> {
             ["/proc/sys", "/proc/sysrq-trigger", "/proc/irq", "/proc/bus"]
                 .map(String::from)
                 .to_vec(),
-        )
-        .build()?;
+        );
+    let linux = match &boot.cgroup {
+        Some(cgroup) => {
+            let quota = i64::from(cgroup.limits.cpus.get()) * CPU_PERIOD as i64;
+            let memory = i64::try_from(cgroup.limits.memory_bytes().get()).expect("a memory limit fits in i64");
+            linux
+                .cgroups_path(format!("/demi-cloud/{}", cgroup.name))
+                .resources(
+                    LinuxResourcesBuilder::default()
+                        .cpu(LinuxCpuBuilder::default().period(CPU_PERIOD).quota(quota).build()?)
+                        // The same limit for memory and memory with swap: no swap.
+                        .memory(LinuxMemoryBuilder::default().limit(memory).swap(memory).build()?)
+                        .pids(LinuxPidsBuilder::default().limit(PROCESS_LIMIT as i64).build()?)
+                        .build()?,
+                )
+        }
+        None => linux,
+    };
+    let linux = linux.build()?;
     let mut spec = SpecBuilder::default()
         .version("1.1.0")
         .root(
@@ -208,10 +219,14 @@ mod tests {
         );
         let spec = spec(&Boot {
             directory: &directory,
-            cgroup: "demi-00000000-0000-4000-8000-000000000000",
             namespace: "demi-3",
-            cpus: NonZeroU32::new(2).unwrap(),
-            memory_bytes: NonZeroU64::new(2048 << 20).unwrap(),
+            cgroup: Some(Cgroup {
+                name: "demi-00000000-0000-4000-8000-000000000000",
+                limits: Limits {
+                    cpus: std::num::NonZeroU32::new(2).unwrap(),
+                    memory_mib: std::num::NonZeroU32::new(2048).unwrap(),
+                },
+            }),
         })
         .unwrap();
         let expected: Spec =
