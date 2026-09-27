@@ -496,36 +496,6 @@ impl Fixture {
     }
 }
 
-/// The frames until and with the first that `done` accepts; the wait fails
-/// the test after ten seconds.
-pub async fn frames_until(
-    client: &mut TestClient<TestHarness>,
-    done: impl Fn(&ServerFrame) -> bool,
-) -> Vec<ServerFrame> {
-    async fn collect(
-        client: &mut TestClient<TestHarness>,
-        done: &impl Fn(&ServerFrame) -> bool,
-        frames: &mut Vec<ServerFrame>,
-    ) {
-        while let Some(frame) = client.next().await {
-            let last = done(&frame);
-            frames.push(frame);
-            if last {
-                return;
-            }
-        }
-        panic!("the connection closed");
-    }
-    let mut frames = Vec::new();
-    let waited = tokio::time::timeout(
-        std::time::Duration::from_secs(10),
-        collect(client, &done, &mut frames),
-    )
-    .await;
-    assert!(waited.is_ok(), "no frame ended the wait: {frames:#?}");
-    frames
-}
-
 /// Lets the other tasks run until `done` holds, such as a worker reaching
 /// its provider request.
 pub async fn until(done: impl Fn() -> bool) {
