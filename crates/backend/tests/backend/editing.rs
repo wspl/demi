@@ -3,7 +3,7 @@
 //! over the socket replaces its message and what followed it, gives the model
 //! only the history it kept, restores the todos to the point before the
 //! edited message and leaves the files the removed turns wrote. Sent again
-//! over a socket that took the conversation over, or after a restart of the
+//! over another socket of the conversation, or after a restart of the
 //! backend, the same edit answers its receipt without asking the model again,
 //! and an edit from the old snapshot is refused. While the edit's commit is
 //! held, the model is not asked and a reload reads the history before it;
@@ -75,7 +75,7 @@ fn idle(frame: &ServerFrame) -> bool {
 // Over a second: a real device runs the turns' jobs, and its runner comes back
 // after the backend's restart.
 #[tokio::test]
-async fn an_edit_restores_the_todos_keeps_the_files_and_answers_its_receipt_after_a_takeover_and_a_restart() {
+async fn an_edit_restores_the_todos_keeps_the_files_and_answers_its_receipt_on_another_socket_and_after_a_restart() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
@@ -119,8 +119,9 @@ async fn an_edit_restores_the_todos_keeps_the_files_and_answers_its_receipt_afte
     // The files the removed turn wrote stay.
     assert_eq!(std::fs::read_to_string(format!("{root}/sentinel.txt")).unwrap(), "permanent");
 
-    // Another socket takes the conversation over: the same edit answers its
-    // receipt, and the old snapshot is refused, neither asking the model.
+    // Another socket of the conversation, beside the first: the same edit
+    // answers its receipt there, and the old snapshot is refused, neither
+    // asking the model.
     let mut second = Socket::connect(&backend, &master, FIRST).await;
     second.open(&model).await;
     assert_eq!(edit(&mut second, &repeated).await, accepted);
