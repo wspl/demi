@@ -37,6 +37,38 @@ fn processes() -> Vec<Process> {
         .collect()
 }
 
+/// Chrome refuses root on Linux with its sandbox, which Demi keeps: the
+/// browser's error says to run the runner as an ordinary user, rather than
+/// passing on Chrome's advice to drop the sandbox (`browser.md` § Native
+/// driver). The launcher refuses as Chrome does.
+#[tokio::test]
+async fn a_launch_as_root_says_to_run_the_runner_as_an_ordinary_user() {
+    let directory = tempfile::tempdir().unwrap();
+    let launcher = directory.path().join("root-chrome");
+    std::fs::write(
+        &launcher,
+        "#!/bin/sh
+echo '[1:1:0927/010848.716678:ERROR:content/browser/zygote_host/zygote_host_impl_linux.cc:102] Running as root without --no-sandbox is not supported. See https://crbug.com/638180.' >&2
+exit 1
+",
+    )
+    .unwrap();
+    std::fs::set_permissions(&launcher, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let locale = demi_command_service::protocol::CommandLocale {
+        time_zone: "UTC".into(),
+        languages: vec!["en-US".into()],
+    };
+    let result = with_browser(
+        LaunchOptions::pinned(launcher, locale).unwrap(),
+        CancellationToken::new(),
+        |_| async { Ok(()) },
+    )
+    .await;
+    let error = result.expect_err("the launch fails");
+    assert!(matches!(error, BrowserError::Root), "{error:?}");
+    assert!(error.to_string().contains("run the runner as an ordinary user"), "{error}");
+}
+
 /// About 1.5 s in the Linux container: the helper the launcher left is
 /// reparented to the container's init, which reaps it about once a second,
 /// and retirement ends only once the helper is gone.
