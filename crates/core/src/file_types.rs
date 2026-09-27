@@ -21,7 +21,7 @@ pub struct PreviewType {
 }
 
 /// The file-type table.
-pub const PREVIEW_TYPES: [PreviewType; 20] = [
+pub const PREVIEW_TYPES: [PreviewType; 21] = [
     preview("image/png", &["png"], true),
     preview("image/jpeg", &["jpg", "jpeg"], true),
     preview("image/gif", &["gif"], true),
@@ -30,7 +30,9 @@ pub const PREVIEW_TYPES: [PreviewType; 20] = [
     preview("image/bmp", &["bmp"], true),
     preview("image/x-icon", &["ico"], true),
     preview("image/svg+xml", &["svg"], true),
-    preview("video/mp4", &["mp4", "m4v"], true),
+    preview("video/mp4", &["mp4"], true),
+    // Apple's MP4 variant, the type a model receives M4V bytes as.
+    preview("video/x-m4v", &["m4v"], true),
     preview("video/webm", &["webm"], true),
     preview("video/quicktime", &["mov"], true),
     preview("audio/mpeg", &["mp3"], true),
