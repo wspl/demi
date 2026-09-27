@@ -198,7 +198,11 @@ wait shortened by a random part so that the pages of all users do not return
 at once after a restart. The waits start over at a second once the socket
 works again: the channel when its snapshot arrives, a conversation when it
 opens. Meanwhile the page keeps the channel's copy as it was, and a
-conversation shows that it is connecting.
+conversation shows that it is connecting. A conversation socket that is lost
+before the session answered `open`, as when the backend restarts while the
+conversation opens, follows the same rule: only a session that answers
+`open` with a refusal, an `error` or a `rejected`, shows the conversation as
+failed.
 
 ### Page synchronization
 

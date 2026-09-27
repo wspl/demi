@@ -39,13 +39,14 @@ const OPEN_TIMEOUT_MS = 30_000
 /**
  * Owns one reconnectable client. Disposing a view leaves its server task alive.
  *
- * A connection that cannot be made or is lost, or whose tree another client
- * disposed, is never a failure the reader is told about: on a weak network
- * it comes and goes, so the runtime keeps `load` at `reconnecting` (the
- * transcript's tail row says Connecting, the composer stays) and tries again
- * after the page's reconnect waits (`web-application.md` § Liveness and
- * reconnection) until the socket is back or the view is disposed. An action
- * taken meanwhile waits for the connection.
+ * A connection that cannot be made or is lost, before the session answered
+ * `open` or after, or whose tree another client disposed, is never a
+ * failure the reader is told about: on a weak network it comes and goes, so
+ * the runtime keeps `load` at `reconnecting` (the transcript's tail row says
+ * Connecting, the composer stays) and tries again after the page's reconnect
+ * waits (`web-application.md` § Liveness and reconnection) until the socket
+ * is back or the view is disposed. An action taken meanwhile waits for the
+ * connection.
  * Only the session refusing to open is a failure, told once through `load`
  * `failed` and `lastError`.
  */
@@ -288,10 +289,17 @@ export class ConversationRuntime {
       client = await this.options.connect(attempt.signal)
       attempt.signal.throwIfAborted()
       unsubscribe = client.subscribe((event) => {
-        if (this.controller === controller) {
-          this.applyEvent(event)
-          triggerRef(this.client)
+        if (this.controller !== controller) {
+          return
         }
+        // Until the session opens, the connection's end is this attempt's:
+        // `open` fails with it, and the opening decides what follows.
+        const ended = event.type === 'closed' || event.type === 'disconnected'
+        if (ended && this.client.value !== client) {
+          return
+        }
+        this.applyEvent(event)
+        triggerRef(this.client)
       })
       await client.open()
       attempt.signal.throwIfAborted()
