@@ -16,7 +16,10 @@ use demi_provider::{
     testing::{MockResponse, MockVendor, jwt},
 };
 use demi_provider_anthropic_api::{AnthropicConfig, AnthropicProvider};
-use demi_provider_codex::{CodexConfig, CodexProvider, TransportMode};
+use demi_provider_codex::{
+    CodexConfig, CodexProvider, TransportMode,
+    testing::{FakeWebSocket, Script, Step},
+};
 use demi_provider_google::{GoogleConfig, GoogleProvider};
 use demi_provider_grok_build::{GrokConfig, GrokProvider};
 use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider, VendorPolicy};
@@ -72,7 +75,10 @@ enum Family {
     Responses,
     ChatCompletions,
     Google,
+    /// Codex over server-sent events.
     Codex,
+    /// Codex over its WebSocket: each body as one `response.create` message.
+    CodexWebSocket,
     GrokBuild,
 }
 
@@ -89,7 +95,7 @@ impl Family {
             Self::Anthropic => format!("anthropic:{name}"),
             Self::Responses | Self::ChatCompletions => format!("openai:{}", reasoning()),
             Self::Google => format!("google:{name}"),
-            Self::Codex => format!("codex:{}", reasoning()),
+            Self::Codex | Self::CodexWebSocket => format!("codex:{}", reasoning()),
             Self::GrokBuild => format!("grok:{name}"),
         }
     }
@@ -99,7 +105,7 @@ impl Family {
     fn thinking_fields(self) -> &'static [&'static str] {
         match self {
             Self::Anthropic => &["thinking", "output_config"],
-            Self::Responses | Self::Codex => &["reasoning"],
+            Self::Responses | Self::Codex | Self::CodexWebSocket => &["reasoning"],
             Self::ChatCompletions | Self::GrokBuild => &["reasoning_effort"],
             Self::Google => &["generationConfig"],
         }
@@ -110,13 +116,14 @@ impl Family {
     fn sequence(self) -> &'static str {
         match self {
             Self::Anthropic | Self::ChatCompletions | Self::GrokBuild => "messages",
-            Self::Responses | Self::Codex => "input",
+            Self::Responses | Self::Codex | Self::CodexWebSocket => "input",
             Self::Google => "contents",
         }
     }
 
-    /// A runtime of this family's provider at `vendor`.
-    async fn runtime(self, vendor: &MockVendor) -> Box<dyn ProviderRuntime> {
+    /// A runtime of this family's provider at `vendor`, or at `socket` for
+    /// Codex's WebSocket.
+    async fn runtime(self, vendor: &MockVendor, socket: &FakeWebSocket) -> Box<dyn ProviderRuntime> {
         let clock: Arc<dyn demi_core::Clock> = Arc::new(FixedClock(NOW.parse().unwrap()));
         let env = RuntimeEnv {
             http: reqwest::Client::new(),
@@ -147,7 +154,7 @@ impl Family {
                 };
                 GoogleProvider::new(config, clock).runtime(env)
             }
-            Self::Codex => {
+            Self::Codex | Self::CodexWebSocket => {
                 let token = jwt(&serde_json::json!({
                     "exp": 1_789_743_600,
                     "https://api.openai.com/auth": { "chatgpt_account_id": "acct-1" }
@@ -158,9 +165,13 @@ impl Family {
                 });
                 let pool = pool_with("cred-c", secret.to_string()).await;
                 let mut config = CodexConfig::new(Some("cred-c".into()));
-                config.backend_url = vendor.url("/backend-api").parse().unwrap();
                 config.auth_url = vendor.url("").parse().unwrap();
-                config.transport = TransportMode::Sse;
+                (config.backend_url, config.transport) = match self {
+                    Self::CodexWebSocket => {
+                        (socket.backend_url().parse().unwrap(), TransportMode::WebSocket)
+                    }
+                    _ => (vendor.url("/backend-api").parse().unwrap(), TransportMode::Sse),
+                };
                 let snapshots = Arc::new(MemorySnapshots::new());
                 CodexProvider::new(config, pool, snapshots, reqwest::Client::new(), clock).runtime(env)
             }
@@ -265,12 +276,20 @@ fn extends(family: Family, earlier: &Value, later: &Value, what: &str) {
 /// The scripted conversation, with `family`'s signatures: a message with an
 /// image, signed reasoning, two parallel calls of which one returns an image,
 /// a steer and a subagent's result during them, a yield after reasoning, a
-/// summary, and a message after it. Returns what the vendor received.
-async fn conversation(family: Family) -> Vec<Value> {
+/// summary, and a message after it. Returns the bodies the vendor received,
+/// as sent.
+async fn conversation(family: Family) -> Vec<String> {
     let vendor = MockVendor::start().await;
     for _ in 0..8 {
         vendor.respond(MockResponse::event_stream(""));
     }
+    let completed = json!({
+        "type": "response.completed",
+        "response": { "usage": { "input_tokens": 1, "output_tokens": 1 } }
+    });
+    let socket =
+        FakeWebSocket::start(vec![Script::Accept(vec![Step::Send(completed.to_string())]); 8], None)
+            .await;
     let thinking = |name: &str| {
         vec![
             ProviderEvent::ThinkingStart,
@@ -331,7 +350,7 @@ async fn conversation(family: Family) -> Vec<Value> {
     let runtime = test_runtime(vec![look, note, yield_tool()]);
     let tee = Tee {
         script: script.clone(),
-        real: family.runtime(&vendor).await,
+        real: family.runtime(&vendor, &socket).await,
     };
     let store = MemoryTreeStore::new();
     let session = start_with(
@@ -404,9 +423,20 @@ async fn conversation(family: Family) -> Vec<Value> {
         .unwrap();
 
     assert_eq!(script.remaining(), 0, "{family:?}");
-    let requests = vendor.requests();
-    assert_eq!(requests.len(), 6, "{family:?}");
-    requests.iter().map(|request| request.json()).collect()
+    let bodies: Vec<String> = match family {
+        Family::CodexWebSocket => socket
+            .connections()
+            .into_iter()
+            .map(|connection| connection.received[0].clone())
+            .collect(),
+        _ => vendor
+            .requests()
+            .iter()
+            .map(|request| String::from_utf8(request.body.to_vec()).expect("a JSON body is UTF-8"))
+            .collect(),
+    };
+    assert_eq!(bodies.len(), 6, "{family:?}");
+    bodies
 }
 
 // Each family's conversation runs its requests over a local server: about
@@ -414,15 +444,34 @@ async fn conversation(family: Family) -> Vec<Value> {
 #[tokio::test(flavor = "local")]
 async fn each_providers_requests_begin_with_the_one_before_and_a_summary_or_a_thinking_change_changes_only_what_it_must()
 {
+    let mut over_events = Vec::new();
     for family in [
         Family::Anthropic,
         Family::Responses,
         Family::ChatCompletions,
         Family::Google,
         Family::Codex,
+        Family::CodexWebSocket,
         Family::GrokBuild,
     ] {
-        let bodies = conversation(family).await;
+        let sent = conversation(family).await;
+        match family {
+            Family::Codex => over_events.clone_from(&sent),
+            // Codex's WebSocket carries the body it sends over server-sent
+            // events, byte for byte, after the message's type.
+            Family::CodexWebSocket => {
+                let messages: Vec<String> = over_events
+                    .iter()
+                    .map(|body| format!("{{\"type\":\"response.create\",{}", &body[1..]))
+                    .collect();
+                assert_eq!(sent, messages);
+            }
+            _ => {}
+        }
+        let bodies: Vec<Value> = sent
+            .iter()
+            .map(|body| serde_json::from_str(body).expect("the body is JSON"))
+            .collect();
         let [first, second, third, summary, after, deeper] = bodies.as_slice() else {
             unreachable!()
         };
@@ -456,7 +505,9 @@ async fn each_providers_requests_begin_with_the_one_before_and_a_summary_or_a_th
         let kept = after.to_string();
         match family {
             Family::Anthropic => assert!(!kept.contains("\"thinking\""), "{kept}"),
-            Family::Responses | Family::Codex => assert!(kept.contains("rs_second"), "{kept}"),
+            Family::Responses | Family::Codex | Family::CodexWebSocket => {
+                assert!(kept.contains("rs_second"), "{kept}")
+            }
             Family::Google => assert!(kept.contains("\"thoughtSignature\":\"second\""), "{kept}"),
             Family::ChatCompletions | Family::GrokBuild => {}
         }

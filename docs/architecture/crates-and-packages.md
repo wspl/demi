@@ -390,7 +390,9 @@ Each crate implements the provider contract for one vendor family.
 
 - **Public boundary:** each crate's `Provider` implementation and its
   configuration type; transports, body builders, stream parsers and
-  authentication stores stay private. Endpoint rules are in
+  authentication stores stay private. `provider_codex::testing` supplies a
+  scripted Codex backend WebSocket (`FakeWebSocket`), which records what each
+  connection receives. Endpoint rules are in
   [Providers](../providers/providers.md).
 - **Secret boundary:** keys, tokens, custom headers and raw endpoint values stay
   inside the provider and never reach a frame or response the browser sees.
@@ -886,7 +888,8 @@ review.
 - **Tests.** Unit tests sit beside the code, and each crate has one
   integration test binary. Test support is a `testing` cargo feature of the
   crate that owns the thing being faked (`agent::testing`,
-  `provider::testing`, `host_remote::testing`, `command_service::testing`),
+  `provider::testing`, `provider_codex::testing`, `host_remote::testing`,
+  `command_service::testing`),
   never a crate that depends upward. A test reaches another program as the
   binary Cargo built into the target directory the test runs from
   (`command_service::testing::built_program`), and a TypeScript test through

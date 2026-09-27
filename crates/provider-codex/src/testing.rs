@@ -1,9 +1,10 @@
-//! A scripted WebSocket server for the Codex WebSocket transport. It records
-//! each connection's handshake headers, the messages it receives and the
-//! close reason the client sends, and plays one script per connection. A
-//! connection that is not a WebSocket upgrade, such as the server-sent
-//! events fallback, is forwarded to a scripted HTTP vendor, so both
-//! transports share one backend URL as they do in the product.
+//! Test support (feature `testing`): a scripted Codex backend WebSocket, for
+//! the tests of this provider's WebSocket transport and of what sends its
+//! requests. It records each connection's handshake headers, the messages it
+//! receives and the close reason the client sends, and plays one script per
+//! connection. A connection that is not a WebSocket upgrade, such as the
+//! server-sent events fallback, is forwarded to a scripted HTTP vendor, so
+//! both transports share one backend URL as they do in the product.
 
 use std::{
     collections::VecDeque,
@@ -23,7 +24,7 @@ use tokio_util::task::AbortOnDropHandle;
 
 /// What a connection does after the client's first message.
 #[derive(Clone)]
-pub(crate) enum Step {
+pub enum Step {
     Send(String),
     /// Closes the connection with a close frame.
     Close,
@@ -33,7 +34,7 @@ pub(crate) enum Step {
 
 /// How a WebSocket connection answers its handshake.
 #[derive(Clone)]
-pub(crate) enum Script {
+pub enum Script {
     /// Accepts, with `x-codex-primary-used-percent: 12` on the handshake's
     /// answer, and plays the steps.
     Accept(Vec<Step>),
@@ -44,15 +45,15 @@ pub(crate) enum Script {
 
 /// What one WebSocket connection saw.
 #[derive(Debug, Clone, Default)]
-pub(crate) struct Connection {
-    pub(crate) headers: HeaderMap,
-    pub(crate) received: Vec<String>,
-    pub(crate) close_reason: Option<String>,
+pub struct Connection {
+    pub headers: HeaderMap,
+    pub received: Vec<String>,
+    pub close_reason: Option<String>,
 }
 
 type Recorded = Arc<Mutex<Vec<Connection>>>;
 
-pub(crate) struct FakeWebSocket {
+pub struct FakeWebSocket {
     address: SocketAddr,
     connections: Recorded,
     _server: AbortOnDropHandle<()>,
@@ -61,7 +62,7 @@ pub(crate) struct FakeWebSocket {
 impl FakeWebSocket {
     /// A server playing `scripts`, one per WebSocket connection, forwarding
     /// other connections to `http`.
-    pub(crate) async fn start(scripts: Vec<Script>, http: Option<SocketAddr>) -> Self {
+    pub async fn start(scripts: Vec<Script>, http: Option<SocketAddr>) -> Self {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let connections: Recorded = Arc::default();
@@ -90,17 +91,17 @@ impl FakeWebSocket {
     }
 
     /// The backend base URL whose `…/codex/responses` this server answers.
-    pub(crate) fn backend_url(&self) -> String {
+    pub fn backend_url(&self) -> String {
         format!("http://{}/backend-api", self.address)
     }
 
-    pub(crate) fn connections(&self) -> Vec<Connection> {
+    pub fn connections(&self) -> Vec<Connection> {
         self.connections.lock().unwrap().clone()
     }
 
     /// Waits until the client closed connection `index` with a reason, at
     /// most five seconds.
-    pub(crate) async fn close_reason(&self, index: usize) -> Option<String> {
+    pub async fn close_reason(&self, index: usize) -> Option<String> {
         for _ in 0..500 {
             if let Some(reason) = self
                 .connections()

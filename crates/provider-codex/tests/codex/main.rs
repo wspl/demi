@@ -4,7 +4,6 @@
 //! failures, quota, catalog and device login. No test calls the real vendor.
 
 mod auth;
-mod fake_websocket;
 mod login;
 mod models;
 mod quota;
