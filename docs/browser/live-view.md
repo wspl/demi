@@ -332,7 +332,12 @@ Lima's `vz` VMs do not pass SME through.
   than queueing it. For example, a Cloud pauses while it copies its disks for a
   checkpoint, with the browser still running
   ([Managed hosts](../cloud/managed-hosts.md#lifecycle-and-capacity)); input typed
-  during the pause must not reach the page all at once afterward.
+  during the pause must not reach the page all at once afterward. A stream
+  that brings nothing for 75 seconds is broken, as any of the page's sockets
+  is ([Liveness and reconnection](../product/web-application.md#liveness-and-reconnection)):
+  the page ends the view and opens a new one after its waits, or at once
+  when the page comes back from a sleep that long. A stall that ends sooner,
+  such as that pause, keeps the view.
 - The page acknowledges each frame it shows. The module adapts from
   end-to-end acknowledgement delay: queueing delay is the main signal. Under
   congestion it lowers the bit rate, then the frame rate, then the resolution.

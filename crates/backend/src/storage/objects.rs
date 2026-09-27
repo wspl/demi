@@ -241,6 +241,12 @@ pub mod counting {
                 return self.inner.get_opts(location, options).await;
             }
             let _reading = self.counts.read();
+            // A read takes a moment, as it does over a network. A local file
+            // can answer on its blocking thread before the caller starts its
+            // next read, and a loaded machine makes that likely, so without
+            // this yield reads that start together would count as one at a
+            // time.
+            tokio::task::yield_now().await;
             self.inner.get_opts(location, options).await
         }
 

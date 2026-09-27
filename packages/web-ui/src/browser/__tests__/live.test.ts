@@ -2,7 +2,8 @@ import { expect, jest, spyOn, test } from 'bun:test'
 import type { LiveControl, LiveModuleMessage, LiveTab, LiveViewerMessage } from '@demicodes/protocol'
 import { LiveFrameReader, encodeFile, encodeMessage, type LiveFrame } from '../frames'
 import { keyMessage, localKey, modifiers, pointerMessage, viewerPlatform, wheelMessage } from '../input'
-import { LiveSession, REFUSED_FRAME, type LiveSessionOptions, type LiveStreamHandlers, type PictureSink } from '../session'
+import { pageReturned } from '../../transport/liveness'
+import { LiveSession, REFUSED_FRAME, SILENT_STREAM, type LiveSessionOptions, type LiveStreamHandlers, type PictureSink } from '../session'
 import { deviceSnap, panelSize, placePicture, panelRect, tabPoint, viewportChoices } from '../view'
 
 const WEB = { width: 800, height: 600, devicePixelRatio: 2, mode: 'web' } as const
@@ -336,6 +337,45 @@ test('a view that ends opens again after the page\'s waits, which start over onc
   }
 })
 
+test('a view whose stream brings nothing for 75 seconds is broken and opens again, at once when the page comes back', () => {
+  jest.useFakeTimers()
+  // Without the random part: the first wait is a second.
+  const random = spyOn(Math, 'random').mockReturnValue(0)
+  try {
+    const ended: string[] = []
+    const view = session({ onEnded: (reason) => ended.push(reason) })
+    const hellos = () => view.sent.filter((message) => message.type === 'hello').length
+    view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
+    // A still page: the module's heartbeats are all the view hears, and they keep it.
+    for (let beats = 0; beats < 3; beats += 1) {
+      jest.advanceTimersByTime(74_000)
+      view.receive(moduleFrame({ type: 'heartbeat' }))
+    }
+    // The network drops without a close, and nothing more arrives.
+    jest.advanceTimersByTime(74_999)
+    expect(ended).toEqual([])
+    jest.advanceTimersByTime(1)
+    expect(ended).toEqual([SILENT_STREAM])
+    expect(view.live.state).toMatchObject({ connection: 'opening', ended: SILENT_STREAM })
+    jest.advanceTimersByTime(1_000)
+    expect(hellos()).toBe(2)
+    view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
+    // The laptop sleeps for 80 seconds with the page shown: the clock goes
+    // on, the watch's timer does not, and the page comes back online.
+    jest.setSystemTime(Date.now() + 80_000)
+    pageReturned()
+    expect(ended).toEqual([SILENT_STREAM, SILENT_STREAM])
+    expect(hellos()).toBe(3)
+    view.live.close()
+    // A closed view's watch is gone with its stream.
+    jest.advanceTimersByTime(75_000)
+    expect(ended).toHaveLength(2)
+  } finally {
+    random.mockRestore()
+    jest.useRealTimers()
+  }
+})
+
 test('a view that ends opens again, watching what the viewer watched', () => {
   jest.useFakeTimers()
   try {
@@ -345,7 +385,7 @@ test('a view that ends opens again, watching what the viewer watched', () => {
     view.close('host_unreachable')
     expect(view.live.state).toMatchObject({ connection: 'opening', running: false })
     expect(view.live.state.tabs).toHaveLength(0)
-    jest.runAllTimers()
+    jest.runOnlyPendingTimers()
     const opened = view.sent.slice(-3)
     expect(opened).toEqual([
       { type: 'hello', platform: 'mac' },
@@ -355,7 +395,7 @@ test('a view that ends opens again, watching what the viewer watched', () => {
     // The page stops asking once the view itself is closed.
     view.live.close()
     view.close('closed')
-    jest.runAllTimers()
+    jest.runOnlyPendingTimers()
     expect(view.sent.at(-1)).toEqual({ type: 'watch', tab: TAB.id })
     expect(view.live.state.connection).toBe('ended')
   } finally {
@@ -372,7 +412,7 @@ test('a frame the protocol refuses ends the view, and the next view opens', () =
     view.receive(rawFrame(1, new TextEncoder().encode('{"type":"state","running":"yes"}')))
     expect(ended).toEqual([REFUSED_FRAME])
     expect(view.live.state).toMatchObject({ connection: 'opening', running: false, ended: REFUSED_FRAME })
-    jest.runAllTimers()
+    jest.runOnlyPendingTimers()
     expect(view.sent.filter((message) => message.type === 'hello')).toHaveLength(2)
     view.live.close()
   } finally {
@@ -388,7 +428,7 @@ test('a view that opens again reads its stream from the first byte', () => {
     // The stream ends inside a frame; the next stream's first frame is whole.
     view.receive(state.subarray(0, 7))
     view.close('host_unreachable')
-    jest.runAllTimers()
+    jest.runOnlyPendingTimers()
     view.receive(state)
     expect(view.live.state).toMatchObject({ connection: 'live', running: true, watched: TAB.id })
     view.live.close()
@@ -403,7 +443,7 @@ test('a view the module ended and the socket then closed opens again once', () =
     const view = session()
     view.receive(moduleFrame({ type: 'ended', reason: 'browser_ended' }))
     view.close('closed')
-    jest.runAllTimers()
+    jest.runOnlyPendingTimers()
     expect(view.sent.filter((message) => message.type === 'hello')).toHaveLength(2)
     view.live.close()
   } finally {

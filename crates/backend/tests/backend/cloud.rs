@@ -6,13 +6,15 @@
 //! another keeps running hears its release there, one archived while the
 //! Cloud is stopped hears it through the Cloud's hello after the wake, a
 //! Cloud the manager stopped without a word boots again, a conversation that
-//! left the Cloud still reaches it, a reset keeps home and identity and
-//! tells the model, a failed reset resumes, a reset holds the conversations
-//! that need the Cloud and leaves the ones that only have it attached,
-//! capacity counts across users, a Cloud that keeps dying stops booting
-//! until a reset, a boot whose runner never connects fails, and a shutdown
-//! saves the Cloud. The machine manager is the scripted one; each Cloud's
-//! runner is real, and the model is an Anthropic endpoint the test scripts.
+//! left the Cloud still reaches it, one whose model's process runs on the
+//! Cloud it has attached hears its release there before the idle stop, a
+//! reset keeps home and identity and tells the model, a failed reset
+//! resumes, a reset holds the conversations that need the Cloud and leaves
+//! the ones that only have it attached, capacity counts across users, a
+//! Cloud that keeps dying stops booting until a reset, a boot whose runner
+//! never connects fails, and a shutdown saves the Cloud. The machine manager
+//! is the scripted one; each Cloud's runner is real, and the model is an
+//! Anthropic endpoint the test scripts.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -91,6 +93,37 @@ pub(crate) async fn reset(backend: &TestBackend, session: &Session, id: &str) ->
     let answer = backend.post("/api/cloud/reset", Some(session), json!({ "operationId": id })).await;
     assert_eq!(answer.status, StatusCode::ACCEPTED, "{}", String::from_utf8_lossy(&answer.body));
     answer.json()
+}
+
+/// `harness` with the family `process` too, whose provider runs a process
+/// on a Host, which the user's Cloud then is, and answers every run with
+/// `ok`.
+fn with_process_family(harness: Harness) -> Harness {
+    let process = ScriptedKey {
+        directory: Arc::new(families::Directory::default()),
+        wires: &[],
+        process_host: true,
+    };
+    harness.with_families(FamilyRegistry::builtin().with("process", process))
+}
+
+/// The master's entry of the family `process`, with its one model `m`.
+async fn process_entry(backend: &TestBackend, master: &Session) -> String {
+    let created = backend
+        .post(
+            "/api/providers",
+            Some(master),
+            json!({
+                "source": "custom", "providerType": "process", "label": "Process", "apiKey": "k",
+                "models": [{
+                    "id": "m", "displayName": "M", "contextWindow": 100000, "outputLimit": null,
+                    "thinkingEfforts": [], "acceptedExtensions": null, "fastTier": null
+                }]
+            }),
+        )
+        .await;
+    assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
+    created.json::<demi_web_api::providers::ProviderAnswer>().provider.id.as_str().to_owned()
 }
 
 /// Short idle windows, read often, and no retention pass by itself.
@@ -370,6 +403,54 @@ async fn a_conversation_that_left_the_cloud_reaches_it_as_an_attached_host_which
     // Idle, the Cloud releases the conversation that has it attached before
     // it stops: the output of that command is not saved with it.
     eventually("the idle Cloud stops a third time", || async { !harness.manager.running(&device) }).await;
+    assert!(!job_output.exists(), "{}", job_output.display());
+    backend.close().await;
+}
+
+// Several seconds: the Cloud boots, it and a paired device each install the
+// builtin package, and the Cloud's idle window passes in real time. The
+// conversation uses the Cloud as `provider` and has it attached. Its own idle
+// release reaches the Cloud as any attached Host's does, since the Hosts that
+// hear it come from its binding, not its provider. The idle stop is where the
+// role shows: the stop holds a `provider` conversation, as one on the Cloud,
+// instead of reserving it for its release as one that only has the Cloud
+// attached, and must still release it there.
+#[tokio::test]
+async fn a_conversation_whose_model_runs_on_the_cloud_it_has_attached_hears_its_release_there_before_the_idle_stop() {
+    let vendor = MockVendor::start().await;
+    let mut harness = with_process_family(Harness::new().with_builtin_package());
+    harness.lifecycle = idle_after(Duration::from_millis(800));
+    // The conversation's own idle watch reads its activity once an hour
+    // while it works here, so its output on the Cloud goes with the Cloud's
+    // stop alone.
+    harness.lifecycle.idle_poll = Duration::from_secs(3600);
+    harness.cloud.sweep = Duration::from_millis(50);
+    let (backend, master) = harness.start_set_up().await;
+    let alpha = backend.pair(&master, "alpha").await;
+    let anthropic = anthropic_at(&backend, &master, &vendor, "/work").await;
+    let process = process_entry(&backend, &master).await;
+    create(&backend, &master, FIRST).await;
+
+    // Its first use boots the Cloud, which a switch to alpha leaves attached.
+    let listed = backend.get(&format!("/api/conversations/{FIRST}/fs"), Some(&master)).await;
+    assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
+    let device = the_cloud(&harness);
+    crate::work::switch(&backend, &master, FIRST, &alpha, alpha.runner.home_dir()).await;
+    // A lease of its file gate is its work, until the test lets it rest.
+    let working = backend.file_gate(&master, FIRST).await.enter(Purpose::Demand).await;
+    let mut work = Driven::open(&backend, &master, &vendor, FIRST, &anthropic, "/work").await;
+    let ran = work.turn(vec![shell("t1", "demi host shell --host Cloud pwd", 30_000), say("ran")]).await;
+    let session = format!("{}/sessions/{FIRST}", harness.manager.home(&device));
+    assert!(ran.received[0].contains(&session), "{}", ran.received[0]);
+    let job_output = harness.manager.state(&device).join("jobs").join(FIRST);
+    assert!(job_output.exists(), "{}", job_output.display());
+
+    // Its model's process runs on the Cloud from now on: it uses the Cloud
+    // as `provider`, and has it attached. At rest, the Cloud hears its
+    // release before it stops, and saves no output of that command.
+    choose(&backend, &master, FIRST, &process, "m").await;
+    drop(working);
+    eventually("the idle Cloud stops", || async { !harness.manager.running(&device) }).await;
     assert!(!job_output.exists(), "{}", job_output.display());
     backend.close().await;
 }
@@ -720,33 +801,14 @@ async fn shutdown_ends_an_open_download_saves_the_cloud_and_reports_a_save_that_
 
 #[tokio::test]
 async fn a_reset_holds_a_conversation_on_a_paired_device_whose_provider_runs_on_the_cloud() {
-    let process = ScriptedKey {
-        directory: Arc::new(families::Directory::default()),
-        wires: &[],
-        process_host: true,
-    };
-    let harness = Harness::new().with_families(FamilyRegistry::builtin().with("process", process));
+    let harness = with_process_family(Harness::new());
     let (backend, master) = harness.start_set_up().await;
     let alpha = backend.pair(&master, "alpha").await;
-    let created = backend
-        .post(
-            "/api/providers",
-            Some(&master),
-            json!({
-                "source": "custom", "providerType": "process", "label": "Process", "apiKey": "k",
-                "models": [{
-                    "id": "m", "displayName": "M", "contextWindow": 100000, "outputLimit": null,
-                    "thinkingEfforts": [], "acceptedExtensions": null, "fastTier": null
-                }]
-            }),
-        )
-        .await;
-    assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
-    let provider = created.json::<demi_web_api::providers::ProviderAnswer>().provider.id;
+    let provider = process_entry(&backend, &master).await;
     // Its files and commands are on alpha; only its provider uses the Cloud.
     create(&backend, &master, FIRST).await;
     crate::work::switch(&backend, &master, FIRST, &alpha, alpha.runner.home_dir()).await;
-    choose(&backend, &master, FIRST, provider.as_str(), "m").await;
+    choose(&backend, &master, FIRST, &provider, "m").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
     drop(socket);
