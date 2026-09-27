@@ -204,9 +204,13 @@ page checks each one against the schema generated from them into
 ([Generated TypeScript](../architecture/contracts.md#generated-typescript)).
 Video frames are binary: a header naming the tab,
 the stream generation, a sequence number, whether the frame is a key frame, its
-timestamp and its size, followed by H.264 Annex B data. The page and the
-module ship in the same release, as the page and the backend do, so the
-protocol carries no version.
+timestamp and its size, followed by H.264 Annex B data. The protocol also fixes
+the pictures' codec: H.264 High at level 5.1, `avc1.640033` in WebCodecs'
+terms. The module has the capture extension encode with it, and the page, which
+receives it from `builtin-protocol` with the protocol's other constants, asks
+its browser for a decoder of it before it opens a view; the stream does not
+name it. The page and the module ship in the same release, as the page and the
+backend do, so the protocol carries no version.
 
 A frame the protocol refuses is therefore a defect of its sender, and it ends
 the view. A frame is refused when:
@@ -507,7 +511,7 @@ crate and package; for the live view:
 
 | Where | Responsibility |
 | --- | --- |
-| `builtin-protocol` | The live protocol: its message types, the frame kinds, the frame header and the frame limit; the capture extension's messages. The page receives the live protocol as generated TypeScript in `@demicodes/protocol`. |
+| `builtin-protocol` | The live protocol: its message types, the frame kinds, the frame header, the frame limit and the video codec; the capture extension's messages. The page receives the live protocol as generated TypeScript in `@demicodes/protocol`. |
 | `demi-commands` | The live view module: viewers, capture control, delivery and congestion, heartbeat, input, viewport modes and screen ratio, served by the live hub and the capture channel; the capture extension and page observers as embedded resources; launch configuration. |
 | `command-service`, `runner`, `runner-protocol`, `host-remote` | [User streams](../execution/native-runtime.md#user-streams) and [service streams](../execution/runner.md#service-streams), with no browser knowledge. |
 | `coding-agent` | Declaring `viewport set --scale` with the other `demi browser` commands. |
