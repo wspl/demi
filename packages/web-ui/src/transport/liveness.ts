@@ -1,7 +1,7 @@
 /**
  * The liveness of a page's WebSockets to the backend: the synchronization
- * channel and each conversation socket (`web-application.md` § Liveness and
- * reconnection). The backend sends a
+ * channel, each conversation socket and each live browser view
+ * (`web-application.md` § Liveness and reconnection). The backend sends a
  * heartbeat on a socket that has sent nothing else for 30 seconds, so a
  * socket that brings nothing for much longer died without a close, as when a
  * laptop slept and its network dropped. A socket that closes, breaks or
