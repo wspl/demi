@@ -314,7 +314,11 @@ release ([Validation](../delivery/builds-and-releases.md#validation)).
 Chrome runs headlessly. Its browser toolbar, address-bar WebUI, and their preload
 and process-overhead experiments are disabled: these internal interfaces are not
 agent pages and must not consume renderers while an agent opens its application.
-Page rendering and Chrome's sandbox remain enabled. The environment also loads
+Page rendering and Chrome's sandbox remain enabled. On Linux, Chrome refuses
+to run as root with its sandbox, so a runner that runs as root cannot use the
+browser: its browser commands fail with `browser_unavailable`, saying to run
+the runner as an ordinary user, as a Cloud's runner is (UID 1000). The
+environment also loads
 the live view's capture extension, with a fixed key so that its ID can be
 allowlisted for tab capture ([Capture](live-view.md#capture)).
 
