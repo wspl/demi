@@ -22,7 +22,7 @@ use futures_util::{StreamExt as _, stream};
 use crate::{
     editing::{edit, edit_outcome, said, user_block},
     support::{
-        Fixture, Gate, conversation, frame_type, frames_until, held, is_idle, is_pending_steers,
+        Fixture, Gate, conversation, frame_type, held, is_idle, is_pending_steers,
         kinds, open, send, session_of, turn, until,
     },
 };
@@ -124,8 +124,8 @@ async fn two_connections_of_one_tree_receive_its_events_and_each_its_own_replies
     let mut second = fixture.opened().await;
 
     first.send(send("m1", "hi")).await;
-    let seen_by_first = frames_until(&mut first, is_idle).await;
-    let seen_by_second = frames_until(&mut second, is_idle).await;
+    let seen_by_first = first.next_until(is_idle).await;
+    let seen_by_second = second.next_until(is_idle).await;
     assert_eq!(seen_by_first, seen_by_second);
     assert!(
         seen_by_second
@@ -197,7 +197,7 @@ async fn a_connection_that_falls_behind_is_closed_alone_and_the_other_receives_t
     let mut stalled = fixture.opened().await;
 
     reading.send(send("m1", "count")).await;
-    let turn = frames_until(&mut reading, is_idle).await;
+    let turn = reading.next_until(is_idle).await;
 
     let patches = turn
         .iter()
@@ -248,8 +248,8 @@ async fn connections_acting_at_once_are_decided_by_the_rules_of_one() {
     second.send(send("m2", "two")).await;
     first.send(send("m3", "three")).await;
     first_turn.open();
-    let seen_by_first = frames_until(&mut first, is_idle).await;
-    let seen_by_second = frames_until(&mut second, is_idle).await;
+    let seen_by_first = first.next_until(is_idle).await;
+    let seen_by_second = second.next_until(is_idle).await;
     let queues: Vec<Vec<String>> = seen_by_second.iter().filter_map(queued).collect();
     assert!(
         queues.contains(&vec!["m2".to_owned(), "m3".to_owned()]),
@@ -283,7 +283,7 @@ async fn connections_acting_at_once_are_decided_by_the_rules_of_one() {
         saves.release();
         editing.await;
     }
-    let refused = frames_until(&mut second, is_idle).await;
+    let refused = second.next_until(is_idle).await;
     assert!(
         refused.contains(&ServerFrame::Rejected {
             command: ClientFrameKind::Send,
@@ -291,7 +291,7 @@ async fn connections_acting_at_once_are_decided_by_the_rules_of_one() {
         }),
         "{refused:?}"
     );
-    let edited = frames_until(&mut first, is_idle).await;
+    let edited = first.next_until(is_idle).await;
     let EditOutcome::Accepted { turn_id } = edit_outcome(&edited) else {
         panic!("{edited:?}");
     };
@@ -312,7 +312,7 @@ async fn connections_acting_at_once_are_decided_by_the_rules_of_one() {
             reason: "Message editing requires a settled session with no pending work".into(),
         }
     );
-    frames_until(&mut second, is_idle).await;
+    second.next_until(is_idle).await;
 }
 
 #[tokio::test(flavor = "local")]
