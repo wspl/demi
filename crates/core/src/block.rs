@@ -26,8 +26,8 @@ pub enum Block {
     Steer(SteerBlock),
     /// A message from another agent of the tree.
     AgentMessage(AgentMessageBlock),
-    /// A turn continues after a cut: a resume, compaction inside a turn, or an
-    /// immediate model switch that compacted.
+    /// A turn continues after a cut: a resume, compaction inside a turn, or a
+    /// model switch that landed inside a turn and compacted.
     Resume(ResumeBlock),
     /// The stopped marker a Stop leaves.
     Abort(AbortBlock),

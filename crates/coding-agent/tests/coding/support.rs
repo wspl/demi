@@ -12,7 +12,6 @@ use demi_agent::{
     ShellEnvironmentFactory,
     testing::{
         MemoryTreeStore, ScriptedProviders, SequentialIds, TestClient, TokioClock, client_text,
-        test_model,
     },
 };
 use demi_agent_protocol::{ClientFrame, ServerFrame};
@@ -135,11 +134,7 @@ impl Fixture {
     /// A client that opened the conversation; its handshake waits unread.
     pub async fn attach(&self) -> TestClient<Harness> {
         let client = TestClient::connect(&self.server, &conversation(), &self.workspace);
-        client
-            .send(ClientFrame::Open {
-                model: test_model(),
-            })
-            .await;
+        client.send(ClientFrame::Open {}).await;
         client
     }
 
