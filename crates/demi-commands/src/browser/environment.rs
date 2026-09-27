@@ -77,14 +77,21 @@ impl BrowserHandle {
     }
 }
 
-/// A browser profile's directory name starts with this, in the
-/// [`profile_base`].
-const PROFILE_PREFIX: &str = "demi-browser-";
-/// The file a profile's lock is held on while its environment exists.
-const PROFILE_LOCK: &str = "demi-profile.lock";
-/// The lock file until it is held. The sweep never opens it, so it finds a
-/// profile either without a lock or with a held one.
+/// An environment's runtime directory's name starts with this, in the
+/// runtime base; the rest is the environment's identity.
+const RUNTIME_PREFIX: &str = "demi-browser-";
+/// An environment's profile's name starts with this, in the profile base;
+/// the rest is its environment's identity.
+const PROFILE_PREFIX: &str = "demi-profile-";
+/// The file an environment's lock is held on while the environment exists,
+/// in its runtime directory.
+const LOCK: &str = "demi-profile.lock";
+/// The lock file until it is held. The sweep never opens it, so it finds an
+/// environment either without a lock or with a held one.
 const STAGED_LOCK: &str = "demi-profile.lock.new";
+/// The runtime directory's link to its profile, on Unix.
+#[cfg(unix)]
+const PROFILE_LINK: &str = "profile";
 
 /// The user a service sweeps browser directories for: its own. Other
 /// users' directories in the shared bases are neither opened nor reported
@@ -124,41 +131,173 @@ impl Owner {
     }
 }
 
-/// Where browser profiles live, and where the orphan sweep looks: `/tmp` on
-/// Unix, whatever the service's own temporary directory is, and the
-/// system's temporary directory on Windows. Chrome makes its
-/// process-singleton socket inside the profile, and a long `TMPDIR` would
-/// take the socket's path past its limit (`browser.md` § Native driver).
-pub fn profile_base() -> PathBuf {
-    if cfg!(unix) {
-        PathBuf::from("/tmp")
-    } else {
-        std::env::temp_dir()
+/// Where browser environments keep their directories, computed in this one
+/// place (`browser.md` § Native driver).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DirectoryBases {
+    /// The environments' runtime directories, each Chrome's temporary
+    /// directory with the environment's lock: short, since Chrome makes its
+    /// process-singleton socket there and the socket's path has a limit.
+    pub runtime: PathBuf,
+    /// The profiles, with their downloads and uploads, and the downloads
+    /// saved without `--output`: on disk, since they can grow large.
+    pub profiles: PathBuf,
+}
+
+impl DirectoryBases {
+    /// This Host's. On Unix the runtime directories go in `/tmp`, whatever
+    /// the service's own temporary directory is, and the profiles in the
+    /// service's `TMPDIR` when it names a directory, otherwise in `/var/tmp`,
+    /// which is on disk on Linux, macOS and the Cloud. On Windows both are
+    /// the system's temporary directory, where one directory holds a whole
+    /// environment.
+    pub fn host() -> Self {
+        if cfg!(unix) {
+            let profiles = std::env::var_os("TMPDIR")
+                .map(PathBuf::from)
+                .filter(|directory| directory.is_absolute())
+                .unwrap_or_else(|| PathBuf::from("/var/tmp"));
+            Self {
+                runtime: PathBuf::from("/tmp"),
+                profiles,
+            }
+        } else {
+            let temporary = std::env::temp_dir();
+            Self {
+                runtime: temporary.clone(),
+                profiles: temporary,
+            }
+        }
     }
 }
 
-/// A new profile in `base` that only its user can read, with its lock held
-/// until the returned file closes, however this service ends. The lock file
-/// takes the name the sweep opens only once it is held, so a sweep that runs
-/// meanwhile, in another service of the same user, leaves the profile alone.
-fn create_profile(base: &Path) -> Result<(tempfile::TempDir, std::fs::File)> {
-    let mut profile = tempfile::Builder::new();
-    profile.prefix(PROFILE_PREFIX);
-    // Only its user may read it: every user shares `/tmp`.
-    #[cfg(unix)]
-    profile.permissions(std::os::unix::fs::PermissionsExt::from_mode(0o700));
-    let profile = profile.tempdir_in(base)?;
-    let staged = profile.path().join(STAGED_LOCK);
-    let lock = std::fs::File::create_new(&staged)?;
-    lock.try_lock().map_err(|error| match error {
-        std::fs::TryLockError::Error(error) => BrowserError::Io(error),
-        // Nothing else opens the staged file; a lock there is a defect.
-        std::fs::TryLockError::WouldBlock => {
-            BrowserError::Io(io::Error::other("a new browser profile is already locked"))
+/// One environment's directories, removed when dropped until
+/// [`Self::keep_until_retired`]: the runtime directory, Chrome's temporary
+/// directory, which holds the environment's lock and on Unix a link to the
+/// profile; and on Unix the profile, a directory of its own with Chrome's
+/// user data, the downloads and the uploads. On Windows the runtime
+/// directory is the profile.
+struct EnvironmentDirectories {
+    runtime: tempfile::TempDir,
+    profile: Option<tempfile::TempDir>,
+    /// Held until retirement has removed both, however this service ends.
+    lock: std::fs::File,
+}
+
+impl EnvironmentDirectories {
+    /// Makes an environment's directories in `bases`, each readable only by
+    /// its user, since every user shares the bases on Unix. The runtime
+    /// directory comes first with its lock held, whose file takes the name
+    /// the sweep opens only once it is held, so that a sweep running
+    /// meanwhile, in another service of the same user, leaves it alone. On
+    /// Unix the link comes next, then the profile it names, so that a
+    /// running environment's profile always has its runtime directory.
+    fn create(bases: &DirectoryBases) -> Result<Self> {
+        let runtime = private_directory(&bases.runtime, RUNTIME_PREFIX, 6)?;
+        let staged = runtime.path().join(STAGED_LOCK);
+        let lock = std::fs::File::create_new(&staged)?;
+        lock.try_lock().map_err(|error| match error {
+            std::fs::TryLockError::Error(error) => BrowserError::Io(error),
+            // Nothing else opens the staged file; a lock there is a defect.
+            std::fs::TryLockError::WouldBlock => BrowserError::Io(io::Error::other(
+                "a new browser environment is already locked",
+            )),
+        })?;
+        std::fs::rename(&staged, runtime.path().join(LOCK))?;
+        #[cfg(unix)]
+        let profile = {
+            let identity = runtime
+                .path()
+                .file_name()
+                .and_then(|name| name.to_str())
+                .and_then(|name| name.strip_prefix(RUNTIME_PREFIX))
+                .expect("a runtime directory is named by its prefix and an identity");
+            let name = format!("{PROFILE_PREFIX}{identity}");
+            std::os::unix::fs::symlink(
+                bases.profiles.join(&name),
+                runtime.path().join(PROFILE_LINK),
+            )?;
+            Some(private_directory(&bases.profiles, &name, 0)?)
+        };
+        #[cfg(not(unix))]
+        let profile = None;
+        Ok(Self {
+            runtime,
+            profile,
+            lock,
+        })
+    }
+
+    /// Chrome's temporary directory, which names the environment.
+    fn runtime(&self) -> &Path {
+        self.runtime.path()
+    }
+
+    /// Chrome's user data directory, which holds the downloads and uploads.
+    fn profile(&self) -> &Path {
+        self.profile.as_ref().unwrap_or(&self.runtime).path()
+    }
+
+    /// From here only retirement removes the directories: Chrome may be
+    /// writing into them.
+    fn keep_until_retired(&mut self) {
+        self.runtime.disable_cleanup(true);
+        if let Some(profile) = &mut self.profile {
+            profile.disable_cleanup(true);
         }
-    })?;
-    std::fs::rename(&staged, profile.path().join(PROFILE_LOCK))?;
-    Ok((profile, lock))
+    }
+
+    /// Removes the profile, then the runtime directory, once `retired` says
+    /// that Chrome's processes are gone, and then lets the lock go. A
+    /// failure keeps what is left, for a later sweep, and names the profile.
+    async fn remove(self, retired: Result<()>) -> Result<()> {
+        let runtime = self.runtime.keep();
+        let profile = self.profile.map(tempfile::TempDir::keep);
+        let result = async {
+            retired?;
+            if let Some(profile) = &profile {
+                remove_directory(profile).await?;
+            }
+            remove_directory(&runtime).await
+        }
+        .await;
+        drop(self.lock);
+        result.map_err(|source| BrowserError::ProfileRetained {
+            path: profile.unwrap_or(runtime),
+            source: Box::new(source),
+        })
+    }
+}
+
+/// A new directory in `base` that only its user can read, named `prefix`
+/// and `random` random characters.
+fn private_directory(base: &Path, prefix: &str, random: usize) -> io::Result<tempfile::TempDir> {
+    let mut directory = tempfile::Builder::new();
+    directory.prefix(prefix).rand_bytes(random);
+    #[cfg(unix)]
+    directory.permissions(std::os::unix::fs::PermissionsExt::from_mode(0o700));
+    directory.tempdir_in(base)
+}
+
+/// Removes `directory`, retrying only "directory not empty" for at most
+/// 300 ms: Chrome's last writes can land just after its processes are gone.
+async fn remove_directory(directory: &Path) -> Result<()> {
+    let deadline = tokio::time::Instant::now() + Duration::from_millis(300);
+    loop {
+        match tokio::fs::remove_dir_all(directory).await {
+            Ok(()) => return Ok(()),
+            Err(error)
+                if error.kind() == io::ErrorKind::DirectoryNotEmpty
+                    && tokio::time::Instant::now() < deadline =>
+            {
+                tokio::time::sleep_until(
+                    deadline.min(tokio::time::Instant::now() + Duration::from_millis(50)),
+                )
+                .await;
+            }
+            Err(error) => return Err(BrowserError::from(error)),
+        }
+    }
 }
 
 /// The caller supplies the installed, verified release executable, never a PATH lookup.
@@ -197,7 +336,7 @@ pub struct BrowserEnvironment {
     pub(super) live: Arc<super::live::Hub>,
 }
 
-/// Own Chrome, its event task and its profile until the conversation work ends.
+/// Own Chrome, its event task and its directories until the conversation work ends.
 /// Completion, failure and owner cancellation share the same joined cleanup path.
 /// Cancel through `stop` and await this owner. On abrupt future disposal the child
 /// has kill-on-drop protection; weak session handles cannot keep Chrome alive.
@@ -215,17 +354,17 @@ where
             "Chrome executable must be absolute".into(),
         ));
     }
-    let (mut profile, profile_lock) = create_profile(&profile_base())?;
-    let mut process = ChromeProcess::new(profile.path(), &options.executable);
-    let download_directory = profile.path().join("downloads");
+    let mut directories = EnvironmentDirectories::create(&DirectoryBases::host())?;
+    let mut process = ChromeProcess::new(directories.runtime(), &options.executable);
+    let download_directory = directories.profile().join("downloads");
     tokio::fs::create_dir(&download_directory).await?;
-    let upload_directory = profile.path().join("uploads");
+    let upload_directory = directories.profile().join("uploads");
     tokio::fs::create_dir(&upload_directory).await?;
     let builder = BrowserConfig::builder()
         .respect_https_errors()
         .surface_invalid_messages()
         .chrome_executable(options.executable)
-        .user_data_dir(profile.path())
+        .user_data_dir(directories.profile())
         .viewport(Viewport {
             width: super::viewport::UNWATCHED.width,
             height: super::viewport::UNWATCHED.height,
@@ -236,7 +375,7 @@ where
     let capture = super::live::capture::CaptureServer::bind().await?;
     let config = super::launch::configure(
         builder,
-        profile.path(),
+        directories.profile(),
         &options.version,
         &options.locale,
         &capture.address()?,
@@ -245,17 +384,17 @@ where
     .build()
     .map_err(BrowserError::Configuration)?;
     let platform_arguments = super::launch::platform_arguments(&options.locale);
-    // Only joined retirement may remove a profile once Chrome could be writing.
-    profile.disable_cleanup(true);
+    directories.keep_until_retired();
+    let profile = directories.profile().to_owned();
     let launched = tokio::select! {
         biased;
         _ = stop.cancelled() => Err(BrowserError::Cancelled),
-        result = Browser::launch_with(config, |command| process.spawn(command.args(&platform_arguments))) => result.map_err(BrowserError::from),
+        result = Browser::launch_with(config, |command| process.spawn(command.args(&platform_arguments), &profile)) => result.map_err(BrowserError::from),
     };
     let (browser, mut handler) = match launched {
         Ok(launched) => launched,
         Err(error) => {
-            let cleanup = remove_profile(profile, process.terminate().await).await;
+            let cleanup = directories.remove(process.terminate().await).await;
             return after_cleanup(Err(error), cleanup);
         }
     };
@@ -355,47 +494,80 @@ where
     calls.close();
     let _outlived = tokio::time::timeout(REQUEST_TIMEOUT, calls.wait()).await;
     let retired = retire_browser(Arc::into_inner(browser), pump, &mut process).await;
-    let cleanup = remove_profile(profile, retired).await;
-    drop(profile_lock);
+    let cleanup = directories.remove(retired).await;
     after_cleanup(outcome, cleanup)
 }
 
 /// Removes what browsers left behind when their service ended without
-/// retiring them (`browser.md` § Native driver). A profile of this user's
-/// whose lock this service can take belongs to no running service: its
-/// marked Chrome processes end the way retirement ends them, then the
-/// profile goes. A profile whose lock is held, or that has no lock yet, is
-/// left alone, and so is another user's, without a word.
+/// retiring them (`browser.md` § Native driver), in two passes over this
+/// user's directories; another user's are left alone, without a word.
+/// First the runtime directories: one whose lock this service can take
+/// belongs to no running service, so its marked Chrome processes end the
+/// way retirement ends them, then the profile its link names goes, then the
+/// directory. One whose lock is held, or that has no lock yet, is left
+/// alone. Then the profiles whose runtime directory is gone, which happens
+/// when a restart emptied a `/tmp` held in memory: no running environment
+/// has one.
 pub async fn sweep_orphans(directories: &super::BrowserDirectories) {
-    sweep_orphans_in(&profile_base(), directories.roots(), Owner::current()).await;
+    sweep_orphans_in(&DirectoryBases::host(), directories.roots(), Owner::current()).await;
 }
 
-async fn sweep_orphans_in(directory: &Path, installations: Vec<PathBuf>, owner: Owner) {
-    let Ok(mut entries) = tokio::fs::read_dir(directory).await else {
-        return;
-    };
-    while let Ok(Some(entry)) = entries.next_entry().await {
-        if !entry.file_name().to_string_lossy().starts_with(PROFILE_PREFIX) {
-            continue;
+async fn sweep_orphans_in(bases: &DirectoryBases, installations: Vec<PathBuf>, owner: Owner) {
+    for runtime in owned_directories(&bases.runtime, RUNTIME_PREFIX, owner).await {
+        if let Err(error) = sweep_orphan(&runtime, installations.clone(), owner).await {
+            tracing::warn!(
+                "could not remove the orphaned browser environment {}: {error}",
+                runtime.display()
+            );
         }
-        let profile = entry.path();
-        if !owner.owns_directory(&profile) {
+    }
+    for profile in owned_directories(&bases.profiles, PROFILE_PREFIX, owner).await {
+        let identity = profile
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(|name| name.strip_prefix(PROFILE_PREFIX));
+        let Some(identity) = identity else {
             continue;
-        }
-        if let Err(error) = sweep_orphan(&profile, installations.clone()).await {
-            tracing::warn!("could not remove orphaned browser profile {}: {error}", profile.display());
+        };
+        let runtime = bases.runtime.join(format!("{RUNTIME_PREFIX}{identity}"));
+        // Any other answer leaves the profile to its runtime directory, which
+        // the first pass or its running service looks after.
+        let gone = matches!(
+            tokio::fs::symlink_metadata(&runtime).await,
+            Err(error) if error.kind() == io::ErrorKind::NotFound
+        );
+        if gone && let Err(error) = remove_present(&profile).await {
+            tracing::warn!(
+                "could not remove the orphaned browser profile {}: {error}",
+                profile.display()
+            );
         }
     }
 }
 
-async fn sweep_orphan(profile: &std::path::Path, installations: Vec<PathBuf>) -> Result<()> {
+/// The directories this user owns in `base` whose names start with `prefix`.
+async fn owned_directories(base: &Path, prefix: &str, owner: Owner) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    let Ok(mut entries) = tokio::fs::read_dir(base).await else {
+        return found;
+    };
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let path = entry.path();
+        if entry.file_name().to_string_lossy().starts_with(prefix) && owner.owns_directory(&path) {
+            found.push(path);
+        }
+    }
+    found
+}
+
+async fn sweep_orphan(runtime: &Path, installations: Vec<PathBuf>, owner: Owner) -> Result<()> {
     let lock = match std::fs::File::options()
         .read(true)
         .write(true)
-        .open(profile.join(PROFILE_LOCK))
+        .open(runtime.join(LOCK))
     {
         Ok(lock) => lock,
-        // A profile being made, or one this release did not make.
+        // An environment being made, or one this release did not make.
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
         Err(error) => return Err(error.into()),
     };
@@ -405,10 +577,40 @@ async fn sweep_orphan(profile: &std::path::Path, installations: Vec<PathBuf>) ->
         Err(std::fs::TryLockError::WouldBlock) => return Ok(()),
         Err(std::fs::TryLockError::Error(error)) => return Err(error.into()),
     }
-    ChromeProcess::marked(profile, installations).terminate().await?;
-    tokio::fs::remove_dir_all(profile).await?;
+    ChromeProcess::marked(runtime, installations).terminate().await?;
+    #[cfg(unix)]
+    if let Some(profile) = linked_profile(runtime, owner).await? {
+        remove_present(&profile).await?;
+    }
+    #[cfg(not(unix))]
+    let _ = owner;
+    tokio::fs::remove_dir_all(runtime).await?;
     drop(lock);
     Ok(())
+}
+
+/// The profile `runtime` links to, when the link names a profile directory
+/// of this user's; whatever else a link could name is left alone.
+#[cfg(unix)]
+async fn linked_profile(runtime: &Path, owner: Owner) -> Result<Option<PathBuf>> {
+    let profile = match tokio::fs::read_link(runtime.join(PROFILE_LINK)).await {
+        Ok(profile) => profile,
+        // Its service ended before it made the link, and so the profile.
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    let named = profile
+        .file_name()
+        .is_some_and(|name| name.to_string_lossy().starts_with(PROFILE_PREFIX));
+    Ok((named && owner.owns_directory(&profile)).then_some(profile))
+}
+
+/// Removes `directory` and what it holds, unless it is gone already.
+async fn remove_present(directory: &Path) -> Result<()> {
+    match tokio::fs::remove_dir_all(directory).await {
+        Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error.into()),
+        _ => Ok(()),
+    }
 }
 
 impl BrowserEnvironment {
@@ -695,35 +897,6 @@ async fn retire_browser(
     task
 }
 
-/// Remove Chrome's profile only after retirement, briefly retrying concurrent directory updates.
-async fn remove_profile(profile: tempfile::TempDir, retired: Result<()>) -> Result<()> {
-    let path = profile.keep();
-    let result = async {
-        retired?;
-        let deadline = tokio::time::Instant::now() + Duration::from_millis(300);
-        loop {
-            match tokio::fs::remove_dir_all(&path).await {
-                Ok(()) => return Ok(()),
-                Err(error)
-                    if error.kind() == io::ErrorKind::DirectoryNotEmpty
-                        && tokio::time::Instant::now() < deadline =>
-                {
-                    tokio::time::sleep_until(
-                        deadline.min(tokio::time::Instant::now() + Duration::from_millis(50)),
-                    )
-                    .await;
-                }
-                Err(error) => return Err(BrowserError::from(error)),
-            }
-        }
-    }
-    .await;
-    result.map_err(|source| BrowserError::ProfileRetained {
-        path,
-        source: Box::new(source),
-    })
-}
-
 /// What only the Chrome tests reach: Chrome's own view of its targets, and
 /// evaluation in a target no command addresses.
 #[cfg(feature = "testing")]
@@ -757,87 +930,178 @@ impl BrowserEnvironment {
 mod tests {
     use super::*;
 
-    /// A profile nobody holds goes; a held one and one without a lock stay.
-    #[tokio::test]
-    async fn the_sweep_removes_only_the_profiles_no_service_holds() {
-        let temporary = tempfile::tempdir().unwrap();
-        let profile = |name: &str| {
-            let path = temporary.path().join(format!("{PROFILE_PREFIX}{name}"));
-            std::fs::create_dir(&path).unwrap();
-            path
+    /// Bases of a test's own, in `temporary`.
+    fn bases(temporary: &tempfile::TempDir) -> DirectoryBases {
+        let bases = DirectoryBases {
+            runtime: temporary.path().join("runtime"),
+            profiles: temporary.path().join("profiles"),
         };
-        let orphan = profile("orphan");
-        std::fs::File::create(orphan.join(PROFILE_LOCK)).unwrap();
-        let held = profile("held");
-        let lock = std::fs::File::create(held.join(PROFILE_LOCK)).unwrap();
+        std::fs::create_dir(&bases.runtime).unwrap();
+        std::fs::create_dir(&bases.profiles).unwrap();
+        bases
+    }
+
+    /// The runtime directory and the profile of the environment `identity`,
+    /// linked on Unix as a service links them.
+    fn environment(bases: &DirectoryBases, identity: &str) -> (PathBuf, PathBuf) {
+        let runtime = bases.runtime.join(format!("{RUNTIME_PREFIX}{identity}"));
+        let profile = bases.profiles.join(format!("{PROFILE_PREFIX}{identity}"));
+        std::fs::create_dir(&runtime).unwrap();
+        std::fs::create_dir(&profile).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&profile, runtime.join(PROFILE_LINK)).unwrap();
+        (runtime, profile)
+    }
+
+    /// An environment nobody holds goes with its profile; a held one and
+    /// one without a lock stay.
+    #[tokio::test]
+    async fn the_sweep_removes_only_the_environments_no_service_holds() {
+        let temporary = tempfile::tempdir().unwrap();
+        let bases = bases(&temporary);
+        let (orphan, orphan_profile) = environment(&bases, "orphan");
+        std::fs::File::create(orphan.join(LOCK)).unwrap();
+        let (held, held_profile) = environment(&bases, "held");
+        let lock = std::fs::File::create(held.join(LOCK)).unwrap();
         lock.try_lock().unwrap();
-        let unlocked = profile("being-made");
-        let other = temporary.path().join("not-a-profile");
+        let (unlocked, unlocked_profile) = environment(&bases, "being-made");
+        let other = bases.runtime.join("not-an-environment");
         std::fs::create_dir(&other).unwrap();
-        std::fs::File::create(other.join(PROFILE_LOCK)).unwrap();
-        sweep_orphans_in(temporary.path(), Vec::new(), Owner::current()).await;
+        std::fs::File::create(other.join(LOCK)).unwrap();
+        sweep_orphans_in(&bases, Vec::new(), Owner::current()).await;
         assert!(!orphan.exists());
-        assert!(held.exists());
-        assert!(unlocked.exists());
+        assert!(!orphan_profile.exists());
+        assert!(held.exists() && held_profile.exists());
+        assert!(unlocked.exists() && unlocked_profile.exists());
         assert!(other.exists());
     }
 
-    /// Every user's profiles share `/tmp`, and a service sweeps only its
-    /// own user's: another user's orphan is neither opened nor reported.
-    /// Here the orphan is this test's, and the first sweep runs for another
-    /// user.
+    /// A restart that empties a `/tmp` held in memory takes the runtime
+    /// directories and leaves the profiles on disk. A profile whose runtime
+    /// directory is gone goes; one whose runtime directory is there stays
+    /// with it.
+    #[tokio::test]
+    async fn the_sweep_removes_a_profile_whose_runtime_directory_is_gone() {
+        let temporary = tempfile::tempdir().unwrap();
+        let bases = bases(&temporary);
+        let (emptied, left) = environment(&bases, "emptied");
+        std::fs::remove_dir_all(&emptied).unwrap();
+        let (held, held_profile) = environment(&bases, "held");
+        let lock = std::fs::File::create(held.join(LOCK)).unwrap();
+        lock.try_lock().unwrap();
+        let other = bases.profiles.join("not-a-profile");
+        std::fs::create_dir(&other).unwrap();
+        sweep_orphans_in(&bases, Vec::new(), Owner::current()).await;
+        assert!(!left.exists());
+        assert!(held_profile.exists());
+        assert!(other.exists());
+    }
+
+    /// An orphan's link is followed only to a profile directory of this
+    /// user's. What a link names otherwise stays, while the orphan goes: a
+    /// directory of another name, a symbolic link named as a profile, and,
+    /// which only root can arrange, another user's profile.
     #[cfg(unix)]
     #[tokio::test]
-    async fn the_sweep_leaves_other_users_profiles_alone() {
+    async fn the_sweep_follows_an_orphans_link_only_to_a_profile_of_this_users() {
         let temporary = tempfile::tempdir().unwrap();
-        let orphan = temporary.path().join(format!("{PROFILE_PREFIX}orphan"));
-        std::fs::create_dir(&orphan).unwrap();
-        std::fs::File::create(orphan.join(PROFILE_LOCK)).unwrap();
+        let bases = bases(&temporary);
+        let orphan = |identity: &str, target: &Path| {
+            let runtime = bases.runtime.join(format!("{RUNTIME_PREFIX}{identity}"));
+            std::fs::create_dir(&runtime).unwrap();
+            std::fs::File::create(runtime.join(LOCK)).unwrap();
+            std::os::unix::fs::symlink(target, runtime.join(PROFILE_LINK)).unwrap();
+            runtime
+        };
+        let elsewhere = temporary.path().join("elsewhere");
+        std::fs::create_dir(&elsewhere).unwrap();
+        let symbolic = bases.profiles.join(format!("{PROFILE_PREFIX}symbolic"));
+        std::os::unix::fs::symlink(&elsewhere, &symbolic).unwrap();
+        let mut orphans = vec![orphan("elsewhere", &elsewhere), orphan("symbolic", &symbolic)];
+        let mut named = vec![elsewhere, symbolic];
+        let this_user = Owner::current();
+        if this_user.uid == 0 {
+            let foreign = bases.profiles.join(format!("{PROFILE_PREFIX}foreign"));
+            std::fs::create_dir(&foreign).unwrap();
+            std::os::unix::fs::chown(&foreign, Some(65534), Some(65534)).unwrap();
+            orphans.push(orphan("foreign", &foreign));
+            named.push(foreign);
+        }
+        sweep_orphans_in(&bases, Vec::new(), this_user).await;
+        for orphan in orphans {
+            assert!(!orphan.exists(), "{} stayed", orphan.display());
+        }
+        for path in named {
+            assert!(path.symlink_metadata().is_ok(), "{} went", path.display());
+        }
+    }
+
+    /// Every user's environments share `/tmp` and `/var/tmp`, and a service
+    /// sweeps only its own user's: another user's orphan and profile are
+    /// neither opened nor reported. Here they are this test's, and the first
+    /// sweep runs for another user.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn the_sweep_leaves_other_users_environments_alone() {
+        let temporary = tempfile::tempdir().unwrap();
+        let bases = bases(&temporary);
+        let (orphan, profile) = environment(&bases, "orphan");
+        std::fs::File::create(orphan.join(LOCK)).unwrap();
+        let (emptied, left) = environment(&bases, "emptied");
+        std::fs::remove_dir_all(&emptied).unwrap();
         let this_user = Owner::current();
         let another_user = Owner {
             uid: this_user.uid.wrapping_add(1),
         };
-        sweep_orphans_in(temporary.path(), Vec::new(), another_user).await;
-        assert!(orphan.exists());
-        sweep_orphans_in(temporary.path(), Vec::new(), this_user).await;
-        assert!(!orphan.exists());
+        sweep_orphans_in(&bases, Vec::new(), another_user).await;
+        assert!(orphan.exists() && profile.exists() && left.exists());
+        sweep_orphans_in(&bases, Vec::new(), this_user).await;
+        assert!(!orphan.exists() && !profile.exists() && !left.exists());
     }
 
     /// Another service of the same user may sweep at any moment, also while
-    /// this one makes a profile, and takes none: a new profile's lock is
-    /// held before the sweep can find it. Three sweeps race the making of
-    /// 4,000 profiles; with the lock file named before it was held, they
-    /// took one in each of 20 runs, and with only one sweep and 2,000
-    /// profiles in 13 of 20. About 0.4 s.
+    /// this one makes an environment's directories, and takes none: a new
+    /// environment's lock is held before the sweep can find it. Three sweeps
+    /// race the making of 4,000 environments; with the lock file named
+    /// before it was held, they took one in each of 20 runs, and with only
+    /// one sweep and 2,000 environments in 13 of 20. About 0.4 s.
     #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
-    async fn a_sweep_takes_no_profile_being_made() {
-        let base = tempfile::tempdir().unwrap();
+    async fn a_sweep_takes_no_environment_being_made() {
+        let temporary = tempfile::tempdir().unwrap();
+        let bases = bases(&temporary);
         let made = CancellationToken::new();
         let sweeps: Vec<_> = (0..3)
             .map(|_| {
                 tokio::spawn({
-                    let base = base.path().to_owned();
+                    let bases = bases.clone();
                     let made = made.clone();
                     async move {
                         while !made.is_cancelled() {
-                            sweep_orphans_in(&base, Vec::new(), Owner::current()).await;
+                            sweep_orphans_in(&bases, Vec::new(), Owner::current()).await;
                         }
                     }
                 })
             })
             .collect();
         let making = tokio::task::spawn_blocking({
-            let base = base.path().to_owned();
+            let bases = bases.clone();
             move || {
                 for _ in 0..4000 {
-                    let (profile, lock) =
-                        create_profile(&base).expect("the sweep took the lock of a profile being made");
+                    let directories = EnvironmentDirectories::create(&bases)
+                        .expect("the sweep took the lock of an environment being made");
                     assert!(
-                        profile.path().join(PROFILE_LOCK).is_file(),
-                        "the sweep removed a profile being made"
+                        directories.runtime().join(LOCK).is_file() && directories.profile().is_dir(),
+                        "the sweep removed an environment being made"
                     );
-                    // Retirement removes a profile before it lets its lock go.
+                    // Retirement removes the profile, then the runtime
+                    // directory, and then lets the lock go.
+                    let EnvironmentDirectories {
+                        runtime,
+                        profile,
+                        lock,
+                    } = directories;
                     drop(profile);
+                    drop(runtime);
                     drop(lock);
                 }
             }
@@ -851,14 +1115,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn failed_process_retirement_retains_the_profile_and_cause() {
-        let profile = tempfile::tempdir().unwrap();
-        let path = profile.path().to_owned();
-        let result = remove_profile(profile, Err(BrowserError::Timeout)).await;
+    async fn failed_process_retirement_retains_the_directories_and_cause() {
+        let temporary = tempfile::tempdir().unwrap();
+        let bases = bases(&temporary);
+        let mut directories = EnvironmentDirectories::create(&bases).unwrap();
+        directories.keep_until_retired();
+        let runtime = directories.runtime().to_owned();
+        let profile = directories.profile().to_owned();
+        let result = directories.remove(Err(BrowserError::Timeout)).await;
         assert!(
-            matches!(result, Err(BrowserError::ProfileRetained { source, .. }) if matches!(*source, BrowserError::Timeout))
+            matches!(&result, Err(BrowserError::ProfileRetained { path, source }) if *path == profile && matches!(**source, BrowserError::Timeout)),
+            "{result:?}"
         );
-        assert!(path.is_dir());
-        std::fs::remove_dir_all(path).unwrap();
+        assert!(runtime.is_dir() && profile.is_dir());
     }
 }
