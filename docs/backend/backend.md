@@ -159,31 +159,63 @@ as a wrong password and its timing does not reveal which addresses have
 accounts.
 
 Setup and login are public entrances. Runner and pipe routes use device
-credentials instead of browser cookies. Public installer downloads contain no
-credential. The synchronization channel checks the session cookie itself,
-since the gate would renew the session and the channel never does
-([Browser synchronization](#browser-synchronization)). All other `/api`
-resources, unknown paths included, pass through the browser session gate, so
-an unauthenticated request for a path that does not exist answers 401, not
-404. Inaccessible user-owned objects return 404,
+credentials instead of browser cookies. Public installer downloads and the
+expose relay carry no credential. The synchronization channel checks the
+session cookie itself, since the gate would renew the session and the channel
+never does ([Browser synchronization](#browser-synchronization)). All other
+`/api` resources, unknown paths included, pass through the browser session
+gate, so an unauthenticated request for a path that does not exist answers
+401, not 404. [Authentication](../product/web-api.md#authentication) lists
+the routes of each kind. Inaccessible user-owned objects return 404,
 insufficient role returns 403, and missing authentication returns 401.
 
-A browser WebSocket also needs a page of the product. The browser keeps a
-script from reading another origin's `fetch` answers, but not from opening a
-WebSocket to another origin, and the `SameSite=Lax` cookie accompanies a
-request from every page of the product's site. An expose's page is such a
-page: `<id>.expose.demi.example` is on the site of `demi.example`
-([Host expose](../execution/expose.md#deployment)), and it may be another
-user's. Without a check, a page on an expose could open a signed-in
-visitor's conversation socket with the visitor's cookie, read the transcript
-and send messages. So every browser WebSocket route, the synchronization
-channel, a conversation's socket and a user stream, first checks the
-upgrade's `Origin`: it is the origin of the public URL
-(`DEMI_BACKEND_PUBLIC_URL`), or its host and port are those the request was
-sent to (the `Host` header), as when a development server passes the page's
-requests on. Any other origin, and a request without one, answers 403
-`forbidden_origin` before the route checks anything else. A runner's socket
-carries a device token rather than a cookie, so it has no such check.
+A request that could act with the user's session must come from a page of
+the product. The browser sends the `SameSite=Lax` cookie with a request from
+any page of the product's site, not only from the product's own pages. An
+expose's page is such a page: `<id>.expose.demi.example` is on the site of
+`demi.example` ([Host expose](../execution/expose.md#deployment)), and it may
+be another user's. The browser keeps such a page from reading the backend's
+answers, since the backend lets no other origin read them (it sends no CORS
+headers), but not from sending requests. For example, without a check, a
+script on an expose could pair its author's runner to a signed-in visitor's
+account with a `POST /api/devices/claim` whose JSON body it labels
+`text/plain`, which the browser sends without asking the backend first; or it
+could open the visitor's conversation socket, read the transcript and send
+messages.
+
+So the edge checks the `Origin` of each request to a browser route that could
+act: a request whose method is unsafe (any but GET, HEAD, OPTIONS and TRACE),
+and every upgrade, such as a WebSocket's. The browser's routes are setup,
+login and every route the session cookie authenticates; a runner's routes,
+public downloads and the expose relay have no such check, since no cookie
+authenticates them. The origin must be the public URL's
+(`DEMI_BACKEND_PUBLIC_URL`), or have the host and port the request was sent to
+(the `Host` header), as when a development server passes the page's requests
+on. Any other origin, `null` included, answers 403 `forbidden_origin` before
+anything else, the session gate included. The check stands in front of the
+browser's routes rather than in each of them, so a new browser route has it
+without asking.
+
+- **A request without `Origin` passes.** Browsers send `Origin` with every
+  request the check covers (the Fetch standard requires it), so only a
+  program that is not a browser leaves it out, such as `curl` calling the
+  setup API
+  ([Development and checks](../product/web-application.md#development-and-checks)).
+  Such a program holds any cookie it sends and could send any origin it
+  liked, so refusing it would protect nothing.
+- **WebSockets follow the same rule.** An upgrade is a GET, but the page that
+  opens a socket reads it and sends on it, so it acts as an unsafe request
+  does.
+- **Setup and login follow it too,** although they need no cookie: they set
+  one. A login from another page would sign the visitor's browser in to the
+  page author's account, where what the visitor did next would land: a device
+  paired from Settings would give that account a runner on the visitor's
+  computer. A setup from another page could take the master account of an
+  instance that the page's author cannot reach but the visitor's browser can,
+  such as one on `localhost`.
+- **Other GET, HEAD, OPTIONS and TRACE requests are not checked.** HTTP
+  defines these methods as safe, the product's routes use them only to read,
+  and another page cannot read their answers.
 
 The edge checks ownership before it hands a request to a shard: it resolves
 the caller from the cookie, loads the conversation, device, workspace or

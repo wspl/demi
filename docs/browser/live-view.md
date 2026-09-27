@@ -454,9 +454,10 @@ watches ([Activity](../execution/resource-lifecycle.md#activity)).
 ## Security
 
 - The stream operates a browser signed in to the user's sites. Its route
-  requires the session cookie, ownership of the conversation, and an `Origin`
-  of the product; the edge checks all three before the request reaches the
-  user's shard.
+  requires the session cookie and ownership of the conversation, and refuses
+  a page that is not the product's
+  ([Authentication and ownership](../backend/backend.md#authentication-and-ownership));
+  the edge checks all three before the request reaches the user's shard.
 - CDP stays on the Host. The page speaks only the live protocol.
 - The capture socket binds loopback, accepts only its environment's token, and
   decodes every message at entry.
