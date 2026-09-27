@@ -10,14 +10,13 @@ use demi_provider::{
     quota::MemorySnapshots,
     testing::{FixedClock, MockResponse, MockVendor, inference_request, next_event},
 };
-use demi_provider_codex::{CodexConfig, CodexProvider, TransportMode};
+use demi_provider_codex::{
+    CodexConfig, CodexProvider, TransportMode,
+    testing::{FakeWebSocket, Script, Step},
+};
 use serde_json::{Value, json};
 
-use crate::{
-    NOW, RESPONSES, completed,
-    fake_websocket::{FakeWebSocket, Script, Step},
-    fresh_token, pool_with, run, runtime_of, secret,
-};
+use crate::{NOW, RESPONSES, completed, fresh_token, pool_with, run, runtime_of, secret};
 
 fn address(vendor: &MockVendor) -> SocketAddr {
     vendor

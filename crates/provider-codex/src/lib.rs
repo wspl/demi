@@ -14,6 +14,8 @@ mod models;
 mod quota;
 mod request;
 mod run;
+#[cfg(feature = "testing")]
+pub mod testing;
 mod transport;
 
 use std::{

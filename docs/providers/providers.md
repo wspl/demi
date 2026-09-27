@@ -132,7 +132,10 @@ Subscription families talk to their vendors' own endpoints:
 | `claude-code` | The CLI's own traffic | `https://api.anthropic.com/api/oauth/usage` | None: the account is a setup token |
 
 Codex sends a request over a WebSocket to its Responses endpoint first, as one
-`response.create` message. If the socket fails before its first event (it
+`response.create` message: the message's type, then the fields of the body it
+would send over server-sent events, in the same bytes, so that a request
+extends the previous one whichever way each went
+([Prompt cache](#prompt-cache)). If the socket fails before its first event (it
 cannot connect, the handshake is refused, or it closes), the same request goes
 over server-sent events instead; a failure after the first event is the run's
 failure. A WebSocket that cannot connect at all, because its connection fails
