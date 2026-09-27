@@ -274,7 +274,12 @@ chooses:
 | Service tier | A tier the model lists, or null for the vendor's default |
 
 The backend turns an effort into the thinking setting `effort` with the
-model's default summary, and `disabled` into thinking off.
+model's default summary, and `disabled` into thinking off. A model that cannot
+turn thinking off has no null effort: when a change names none, the backend
+chooses the model's default effort, else the first effort it lists, and the
+catalog tells the page that effort, so the effort the page shows is the one the
+request sends. For example, a switch to a model that lists `low` to `max`,
+names no default and cannot turn thinking off records `low`.
 
 A change names the parts it changes, and the value keeps the others. For
 example, one tab turns Fast on while another raises the effort: the value ends
