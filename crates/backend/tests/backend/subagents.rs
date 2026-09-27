@@ -10,11 +10,10 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
-use demi_agent::testing::model_of;
 use demi_agent_protocol::JobPhase;
 use demi_backend::{FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry, ProviderFamily};
 use demi_core::{
-    AuthState, Block, ModelSelection, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
+    AuthState, Block, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
     RuntimeState, Timestamp,
 };
 use demi_provider::testing::event;
@@ -22,14 +21,13 @@ use demi_provider::{
     Capabilities, CatalogError, InferenceRequest, Provider, ProviderEvent, ProviderRun, ProviderRuntime, RuntimeEnv,
     RuntimeError,
 };
-use demi_web_api::conversations::ForkAnswer;
 use demi_web_api::providers::{CredentialKind, ProviderAnswer};
 use futures_util::future::{BoxFuture, LocalBoxFuture};
 use futures_util::{StreamExt as _, stream};
 use reqwest::StatusCode;
 use serde_json::json;
 
-use crate::conversations::{FIRST, SECOND, Socket, create, on_device, transcript};
+use crate::conversations::{FIRST, SECOND, Socket, choose, create, on_device, transcript};
 use crate::support::{Harness, Session, TestBackend};
 
 /// One scripted answer: the events of one request.
@@ -175,24 +173,31 @@ impl ProviderRuntime for TreeRuntime {
     }
 }
 
-/// A backend whose master has an entry of the scripted family, the model of
-/// that entry, and the conversation `FIRST` on a paired device's `work`
-/// directory; the harness holds the backend's data and the device.
-async fn tree(scripts: &Arc<Scripts>) -> (Harness, TestBackend, Session, ModelSelection, crate::support::Paired, String) {
+/// A backend whose master has an entry of the scripted family, and the
+/// conversation `FIRST` on the entry's model `m` and a paired device's
+/// `work` directory; the harness holds the backend's data and the device.
+async fn tree(scripts: &Arc<Scripts>) -> (Harness, TestBackend, Session, crate::support::Paired, String) {
     let harness = Harness::new().with_families(FamilyRegistry::builtin().with("tree", Tree(scripts.clone())));
     let (backend, master) = harness.start_set_up().await;
     let created = backend
         .post(
             "/api/providers",
             Some(&master),
-            json!({ "source": "custom", "providerType": "tree", "label": "Tree", "apiKey": "k" }),
+            json!({
+                "source": "custom", "providerType": "tree", "label": "Tree", "apiKey": "k",
+                "models": [{
+                    "id": "m", "displayName": "M", "contextWindow": 100000, "outputLimit": null,
+                    "thinkingEfforts": [], "acceptedExtensions": null, "fastTier": null
+                }]
+            }),
         )
         .await;
     assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
     let provider = created.json::<ProviderAnswer>().provider.id.as_str().to_owned();
     create(&backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "m").await;
     let (paired, root) = on_device(&harness, &backend, &master, FIRST).await;
-    (harness, backend, master, model_of(&provider, "m"), paired, root)
+    (harness, backend, master, paired, root)
 }
 
 /// The shell that waits until the file `go` appears where it works.
@@ -203,9 +208,9 @@ const WAIT: &str = "until [ -f go ]; do sleep 0.05; done";
 #[tokio::test]
 async fn a_child_works_in_its_parents_files_keeps_its_own_todos_and_runs_on_after_its_spawn() {
     let scripts = Arc::new(Scripts::default());
-    let (_harness, backend, master, model, _paired, root) = tree(&scripts).await;
+    let (_harness, backend, master, _paired, root) = tree(&scripts).await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    socket.open(&model).await;
+    socket.open().await;
 
     scripts.root(FIRST, vec![
         shell("t1", "printf 'the answer is 42\\n' > notes.md && demi todo add root-only"),
@@ -259,9 +264,9 @@ async fn a_child_works_in_its_parents_files_keeps_its_own_todos_and_runs_on_afte
 #[tokio::test]
 async fn a_fork_taken_while_a_child_runs_leaves_the_child_with_its_source() {
     let scripts = Arc::new(Scripts::default());
-    let (_harness, backend, master, model, _paired, root) = tree(&scripts).await;
+    let (_harness, backend, master, _paired, root) = tree(&scripts).await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    socket.open(&model).await;
+    socket.open().await;
     scripts.child(vec![shell("c1", WAIT), say("the child's result")]);
     scripts.root(FIRST, vec![
         shell("t1", "demi agent spawn --description worker <<< 'Wait for the file'"),
@@ -282,7 +287,6 @@ async fn a_fork_taken_while_a_child_runs_leaves_the_child_with_its_source() {
         )
         .await;
     assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
-    let forked = created.json::<ForkAnswer>();
     // The Fork keeps the call that spawned the child, and no child.
     let before = transcript(&backend, &master, SECOND).await;
     assert!(before.blocks.iter().any(|block| matches!(block, Block::ToolCall(_))), "{:?}", before.blocks);
@@ -297,7 +301,7 @@ async fn a_fork_taken_while_a_child_runs_leaves_the_child_with_its_source() {
 
     // The Fork's tree has no child to list.
     let mut fork = Socket::connect(&backend, &master, SECOND).await;
-    fork.open(&forked.model).await;
+    fork.open().await;
     scripts.root(SECOND, vec![shell("f1", "demi agent list"), say("an empty tree")]);
     fork.chat("m2", "Who works for you?").await;
     let asked = scripts.asked(|session| session == SECOND);

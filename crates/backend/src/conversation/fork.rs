@@ -10,7 +10,7 @@
 //! before its publication.
 
 use demi_agent::ForkError;
-use demi_core::{BlockId, ModelSelection};
+use demi_core::BlockId;
 use demi_web_api::conversations::ConversationTarget;
 use demi_web_api::ids::ConversationId;
 
@@ -27,8 +27,6 @@ use crate::storage::tree;
 pub(crate) struct Forked {
     pub(crate) record: ConversationRecord,
     pub(crate) created: bool,
-    /// The model selection the destination inherited.
-    pub(crate) model: ModelSelection,
 }
 
 /// Why a Fork was refused.
@@ -79,24 +77,21 @@ impl Shard {
         }
         if let Some(existing) = control.conversation(destination.clone()).await? {
             // A published destination, found again by a retry.
-            let operation = reserved.ok_or(ForkRefusal::Unavailable)?;
+            if reserved.is_none() {
+                return Err(ForkRefusal::Unavailable);
+            }
             return Ok(Forked {
                 record: existing,
                 created: false,
-                model: operation.metadata.model,
             });
         }
-        if let Some(operation) = &reserved {
+        if reserved.is_some() {
             // A retry of an attempt whose root committed before it was
             // published publishes it; one that did not commit starts again.
             let committed = services.conversations.read(&destination, tree::has_root).await?;
             if committed == Some(true) {
                 let record = control.publish_fork(destination).await?;
-                return Ok(Forked {
-                    record,
-                    created: false,
-                    model: operation.metadata.model.clone(),
-                });
+                return Ok(Forked { record, created: false });
             }
         }
         let mut seed = self
@@ -122,7 +117,9 @@ impl Shard {
                     metadata: ForkMetadata {
                         title: format!("{}{TITLE_SUFFIX}", source.title),
                         target,
-                        model: seed.state.model.clone(),
+                        // The destination inherits the source's model
+                        // settings, the selection its record holds.
+                        model: source.model.clone(),
                         created_at: services.clock.now(),
                         attached_hosts: control.attached_hosts(source.id.clone()).await?,
                     },
@@ -139,19 +136,18 @@ impl Shard {
             .changes
             .fork(&source.id, &destination, &seed.transcript)
             .await?;
-        // A retry creates the destination with the selection its attempt
-        // recorded.
-        seed.state.model = operation.metadata.model.clone();
+        // The destination's root starts with the selection its record will
+        // hold, the one the attempt recorded, which a retry repeats; a source
+        // without one leaves the seed its own.
+        if let Some(model) = &operation.metadata.model {
+            seed.state.model = model.clone();
+        }
         self.agent()
             .initialize_fork(&root_of(&destination), seed)
             .await
             .map_err(refused)?;
         let record = control.publish_fork(destination).await?;
-        Ok(Forked {
-            record,
-            created: true,
-            model: operation.metadata.model,
-        })
+        Ok(Forked { record, created: true })
     }
 }
 
@@ -196,7 +192,7 @@ mod tests {
     use crate::auth::sessions::TokenHash;
     use crate::storage::blobs::{BlobStores, UserBlobs};
     use crate::storage::control::testing;
-    use crate::storage::conversation_index::{AttachedHostRecord, ConversationModel, RecordChange};
+    use crate::storage::conversation_index::{AttachedHostRecord, RecordChange};
     use crate::storage::objects;
     use crate::storage::tree::SqliteTreeStore;
 
@@ -270,7 +266,7 @@ mod tests {
                 target: ConversationTarget::Cloud {
                     path: Some(format!("/home/demi/sessions/{source}")),
                 },
-                model: test_model(),
+                model: Some(test_model()),
                 created_at,
                 attached_hosts: attached.clone(),
             },
@@ -296,13 +292,7 @@ mod tests {
             (published.title.as_str(), &published.target, published.pinned, published.archived),
             ("New conversation (Fork)", &operation(&committed).metadata.target, false, false)
         );
-        assert_eq!(
-            published.model,
-            Some(ConversationModel {
-                provider: "stub".try_into().unwrap(),
-                model: "test-model".into(),
-            })
-        );
+        assert_eq!(published.model, Some(test_model()));
         assert_eq!(published.created_at, created_at);
         // The revoked device is left out; the other keeps its name and cwd.
         let kept: Vec<AttachedHostRecord> = attached.into_iter().filter(|host| host.device == devices[0]).collect();

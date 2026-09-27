@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::rc::Rc;
 
-use demi_gates::{ActivityGate, GateLease, Purpose};
+use demi_gates::{ActivityGate, GateLease, Purpose, SerialGate};
 use demi_host_remote::{Admission, RemoteHost};
 use demi_shell::{HostError, HostErrorKind, HostFs, MkdirOptions};
 use demi_web_api::devices::DeviceKind;
@@ -50,6 +50,11 @@ pub(crate) struct ConversationSlot {
     pub(crate) streams: ActivityGate,
     /// The open file transfers and user streams.
     pub(crate) transfers: Rc<TransferSet>,
+    /// Orders the changes of the conversation's model settings, one at a
+    /// time; an open of its tree takes the same turn, so it opens with the
+    /// selection the record holds (`web-api.md` § Sidebar mutations, read
+    /// state and page synchronization).
+    pub(crate) settings: SerialGate,
 }
 
 impl Conversations {
@@ -62,6 +67,7 @@ impl Conversations {
                     files: ActivityGate::new(),
                     streams: ActivityGate::new(),
                     transfers: TransferSet::new(),
+                    settings: SerialGate::new(),
                 })
             })
             .clone()
