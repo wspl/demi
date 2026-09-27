@@ -41,3 +41,10 @@ pub(crate) fn to_json<T: Serialize>(value: &T) -> String {
     // arrays and objects with string keys, which serde_json never refuses.
     serde_json::to_string(value).expect("a stored value serializes to JSON")
 }
+
+/// A count or index as the INTEGER column holds it, such as a block's index
+/// or a medium's place in its block; no transcript comes near `i64::MAX`
+/// rows.
+pub(crate) fn count(value: usize) -> i64 {
+    i64::try_from(value).expect("a count fits the column")
+}

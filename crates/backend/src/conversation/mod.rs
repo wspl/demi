@@ -103,6 +103,7 @@ pub(crate) fn conversation_parts(
         marks.clone(),
         services.conversation_tuning.titles,
     );
+    let disposals = shard.clone();
     let agent = AgentServer::new(ServerDeps {
         harness: Rc::new(conversation_harness(shard.clone(), &services.native)),
         providers,
@@ -111,7 +112,18 @@ pub(crate) fn conversation_parts(
         clock: services.clock.clone(),
         ids: Rc::new(RandomIds),
         config,
-        status_changed: Rc::new(move |root: &NodeId| marks.mark(Part::Conversation(conversation_of(root)))),
+        status_changed: Rc::new(move |root: &NodeId| {
+            let conversation = conversation_of(root);
+            marks.mark(Part::Conversation(conversation.clone()));
+            // A tree the server no longer holds was disposed, and its
+            // conversation's tool media may be retired now (`storage.md`
+            // § Retiring tool media).
+            if let Some(shard) = disposals.upgrade()
+                && shard.agent().tree(root).is_none()
+            {
+                shard.tree_disposed(&conversation);
+            }
+        }),
     });
     ConversationParts { agent, titles }
 }

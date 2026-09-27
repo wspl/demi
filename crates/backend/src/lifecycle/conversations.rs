@@ -171,6 +171,7 @@ mod tests {
         let lifecycle = LifecycleTuning {
             idle_window: WINDOW,
             idle_poll: Duration::from_millis(50),
+            ..LifecycleTuning::default()
         };
         let services = Services::start_for_tests_with_lifecycle(data, lifecycle).await;
         let control = services.control.clone();
