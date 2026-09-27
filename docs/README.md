@@ -15,7 +15,7 @@ layout and interaction; these documents do not repeat it.
 ## What can users do, and how does the browser talk to the backend?
 
 - [Product](product/product.md): users, roles and instance mode; conversations and projects; writing a message; attachments; provider management; Cloud settings.
-- [Web application](product/web-application.md): the browser's packages, work panel, backend communication, authentication, persistence and development loop.
+- [Web application](product/web-application.md): the browser's packages, work panel, backend communication, authentication, persistence, [drafts](product/web-application.md#drafts) and development loop.
 - [Web API](product/web-api.md): every HTTP and WebSocket route with its request, response, status and error codes.
 - [File previews](product/file-previews.md): preview kinds and viewer choice, the byte path, ending transfers, inert content, and [files named in messages](product/file-previews.md#files-named-in-messages).
 

@@ -159,9 +159,9 @@ turn. Every tab shows the same messages, output of running commands
 queue, pending steers and subagents; every tab can send, steer, queue, stop, edit,
 retry, switch the model and write to a running command; and what one tab does
 shows in all of them. Opening the conversation in another tab takes nothing
-over. A draft not yet sent stays in the tab it was typed in
-([Persistence and adapters](#persistence-and-adapters) says what a reload
-restores). A turn or save that fails shows its failure in every tab until the
+over. Every tab shows the conversation's one draft, and what one tab types
+reaches the others within a few seconds ([Drafts](#drafts)). A turn or save
+that fails shows its failure in every tab until the
 conversation starts its next action, whichever tab starts it; a refusal of one
 tab's own request shows in that tab alone. Each tab has its own socket,
 attached to the conversation's one live tree
@@ -212,17 +212,19 @@ its save state, and keeps failed input for a retry.
 
 ## Persistence and adapters
 
-The backend owns saved conversation state, ordering, preferences, and attachments.
-Per-user IndexedDB retains local drafts, pending edits, unconfirmed submissions,
-and attachment bytes. A draft is its Markdown, with a mark where each staged
-file's capsule sits, and those files in mark order; the draft of a new
-conversation also holds its model settings, which its first send writes to its
-record, and a conversation with a record keeps them only there. The tabs of one browser
-share this storage, one saved draft per conversation: a page saves only the
-drafts it changed since it last saved or restored them, so a tab never
-replaces a draft that another tab saved for a conversation it left alone, and
-a reload restores the draft saved last for its conversation, by whichever
-tab. Browser-local preferences
+The backend owns saved conversation state, ordering, preferences, attachments,
+and each conversation's draft ([Drafts](#drafts)). Per-user IndexedDB keeps
+what the backend does not have yet or does not keep: draft edits the backend
+has not confirmed, with the bytes of their files not yet uploaded;
+unconfirmed submissions; new conversations, with their model settings, until
+their first send writes them to the record; edits of sent messages in
+progress; and each conversation's scroll position. A conversation with a
+record keeps its model settings only there
+([page synchronization](web-api.md#sidebar-mutations-read-state-and-page-synchronization)).
+The tabs of one browser share this storage, and a page writes a
+conversation's record only for a change its own user made, so a tab never
+replaces what another tab wrote for a conversation it left alone.
+Browser-local preferences
 hold presentation-only choices. Work-panel width and per-conversation open/closed state use the same account-scoped
 local preferences. Refreshing restores whether the panel was open; a conversation
 without a saved choice starts closed. The panel's tabs and selection are saved
@@ -259,6 +261,83 @@ Gallery adapters use fixtures. Submitted operations and requests belong to the
 appropriate conversation or account lifetime and are released on its cleanup.
 A fixture demonstrates interface behavior; it does not establish persistence,
 authorization, native installation, or Cloud recovery.
+
+### Drafts
+
+For example, a user types "Fix the login" into the composer in a tab on their
+laptop and drops `trace.txt` into it. The file starts uploading at once. Half
+a second after the typing pauses, the tab saves the draft, and once the upload
+is done it saves it again with the file. A second tab and the user's phone,
+which show the same conversation, show the text and the file's capsule at
+their next state poll, a few seconds later, and the phone can send the message
+with the file. Once the backend accepts the message, from whichever page sent
+it, the composer is empty everywhere.
+
+The backend keeps the draft, its revision, and the version a save replaced
+([Conversation drafts](web-api.md#conversation-drafts)). A page:
+
+- **Saves** half a second after typing pauses, and when it is hidden or
+  closed. A save carries the revision the page's text was built on. A page
+  sends one request about a conversation's draft at a time, each after the
+  answer to the one before, so its own saves never replace each other unseen.
+  A save that does not reach the backend is tried again a few seconds later;
+  a refused one is reported, and the next change tries again.
+- **Stages files** by uploading each one as it is added. A file joins the
+  saved draft once its upload is done; until then the saved text leaves out
+  its mark, so other pages show the text without that capsule. A file on a
+  paired device joins at once.
+- **Follows** the draft: it reads it when it opens the conversation, and again
+  when the state snapshot, which it polls every few seconds, shows a higher
+  `draftRevision` for it
+  ([page synchronization](web-api.md#sidebar-mutations-read-state-and-page-synchronization)).
+  Its own save, restore or dismissal shows at once, from the answer.
+- **Keeps what its user types.** A page has an unsaved change from the moment
+  its user edits the draft until the backend confirms a save that holds the
+  edit. Without one, the composer shows each newer draft it reads. With one,
+  the composer keeps its text and never puts another page's draft in its
+  place: its save, due within half a second, is based on the older revision,
+  so it wins, and the draft it replaces becomes the replaced version.
+- **Offers the replaced version.** While the draft has one, every composer
+  that shows the conversation offers it by its first line, to restore with
+  one click or to dismiss. Restore exchanges it with the draft, so the text
+  it displaces is offered in its place and nothing is lost.
+- **Clears the draft on send.** A sent message leaves the composer at once and
+  shows as the pending submission, but the saved draft stays until the
+  backend accepts the message; until then the emptied composer is the page's
+  unsaved change. The page then saves an empty draft, based on the revision
+  the message was built on, so a change another page made meanwhile becomes
+  the replaced version. A page that closes before it sees the message
+  accepted clears the draft when it next confirms the submission, which
+  IndexedDB keeps.
+
+Two places that edit the draft at once, two tabs typing together or a device
+that edited offline, follow one rule: the save that reaches the backend last
+wins, and the version it replaced is offered for restore
+([Conversation drafts](web-api.md#conversation-drafts) has an example).
+
+**Offline.** Every change is written to IndexedDB as the user makes it, with
+the revision it was based on and the bytes of files not yet uploaded, and it
+stays there until the backend confirms a save that holds it. A page that
+cannot reach the backend goes on writing that record. When it can again, it
+uploads the waiting files and saves, and its save wins over what other places
+saved meanwhile, which is then offered for restore. An IndexedDB write still
+under way when the page closes can be lost, so a closing page also writes each
+unconfirmed composer's text to local storage, which the browser writes at
+once, and the next page of the conversation takes that text over the record.
+A page that opens with such a record shows it instead of the backend's draft
+and saves it, unless the backend's draft is that text already, as when the
+save on closing arrived; it then only takes the backend's revision. The tabs
+of one browser share the record, so the last edit written is the one kept, as
+the last save is.
+
+**A new conversation** has only its local UUID until the first send creates
+its backend record. Its draft stays in IndexedDB, in the browser it was
+started in: other tabs of that browser list it when they load, and other
+devices do not see it. The first send empties the draft, and every later
+draft of the conversation lives in the backend.
+
+An edit of a sent message ([Message editing](../agent/message-editing.md)) is
+not the draft: it stays in the browser that opened it.
 
 ## Development and checks
 

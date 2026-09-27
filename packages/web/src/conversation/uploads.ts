@@ -19,11 +19,16 @@ export function createConversationUploads(
   async function uploadFile(
     item: Extract<ProductAttachment, { kind: 'file' }>,
   ): Promise<void> {
+    const bytes = item.file
+    // A file another page uploaded has no bytes here, and needs none.
+    if (!bytes) {
+      return
+    }
     const ready = await uploads.start(
       item.id,
       async (signal, report) => {
-        const uploaded = await uploadAttachment(item.file, { signal, progress: report })
-        item.upload = { id: uploaded.id }
+        const uploaded = await uploadAttachment(bytes, { signal, progress: report })
+        item.upload = { id: uploaded.id, mediaType: uploaded.mediaType, sha256: uploaded.sha256 }
         // The capsule shows the opening the backend read, as the message will carry it.
         item.snippet = uploaded.snippet
       },
@@ -134,6 +139,27 @@ export function createConversationUploads(
     onChange()
   }
 
+  /**
+   * Makes `files` the message's, in their order, beside the files of a send
+   * not yet accepted, and lets every other file go: a draft shown from
+   * outside takes the place of what the composer held, its undo included.
+   */
+  function showFiles(conversation: Conversation, files: ProductAttachment[]): void {
+    const sending = new Set(conversation.pendingSend?.fileIds ?? [])
+    const shown = new Set(files.map((file) => file.id))
+    for (const file of conversation.files) {
+      if (!shown.has(file.id) && !sending.has(file.id)) {
+        releaseFile(file)
+      }
+    }
+    conversation.files = [
+      ...files,
+      ...conversation.files.filter((file) => sending.has(file.id) && !shown.has(file.id)),
+    ]
+    conversation.attachmentIds = files.map((file) => file.id)
+    onChange()
+  }
+
   function dispose(conversations: Conversation[]): void {
     uploads.cancelAll()
     for (const conversation of conversations) {
@@ -151,6 +177,7 @@ export function createConversationUploads(
     removeFile,
     releaseSpare,
     arrangeFiles,
+    showFiles,
     dispose,
   }
 }

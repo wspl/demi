@@ -61,6 +61,7 @@ impl Shard {
             cwd,
             status,
             revision: facts.revision,
+            draft_revision: record.draft_revision,
         })
     }
 }

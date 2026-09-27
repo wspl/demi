@@ -59,6 +59,8 @@ const props = withDefaults(
     messageEdit?: MessageEditState | null
     /** The uploads this composer and its edits send files through; its own stand-in without one. */
     upload?: UploadFile
+    /** A version of the draft that a later save replaced, which the composer offers to restore. */
+    replaced?: string
   }>(),
   {
     draft: '',
@@ -83,6 +85,17 @@ const draft = ref(props.draft)
 const attached = ref(props.attachments.map((item) => composerAttachment(item)))
 /** The files the message has, in the order of its capsules; the rest wait for an undo. */
 const carried = ref<string[]>(attached.value.map((item) => item.id))
+/** A draft's text and files, as the replaced version keeps them. */
+interface DraftVersion {
+  text: string
+  files: ComposerAttachment[]
+}
+/** The version a later save replaced, as the product's backend keeps it. */
+const replacedVersion = ref<DraftVersion | null>(
+  props.replaced ? { text: props.replaced, files: [] } : null,
+)
+/** Counts the drafts shown from outside, here the restored ones. */
+const shown = ref(0)
 const composer = ref<InstanceType<typeof SessionComposer>>()
 const uploads = new AttachmentUploadQueue()
 const host = galleryUploads()
@@ -242,6 +255,30 @@ function attachRemote(file: { host: string; path: string }) {
     composer.value?.insertCapsules([composerCapsule(item)])
   }
 }
+/**
+ * Exchanges the replaced version with the draft, as the product's restore
+ * does: the draft it displaces is offered in its place, unless it is empty,
+ * and what the composer held for an undo goes.
+ */
+function restoreReplaced() {
+  const restored = replacedVersion.value
+  if (!restored) {
+    return
+  }
+  const displaced: DraftVersion = {
+    text: draft.value,
+    files: carried.value.flatMap((id) => attached.value.filter((item) => item.id === id)),
+  }
+  for (const item of attached.value.filter((file) => !carried.value.includes(file.id))) {
+    forget(item.id, true)
+  }
+  replacedVersion.value = displaced.text.trim() || displaced.files.length ? displaced : null
+  attached.value = [...restored.files]
+  carried.value = restored.files.map((file) => file.id)
+  draft.value = restored.text
+  shown.value += 1
+}
+
 function changeModel(change: ModelSettingsChange) {
   settings.value = applyModelChange(settings.value, change)
 }
@@ -273,7 +310,11 @@ onBeforeUnmount(() => {
     :hold="hold"
     :model-settings="settings"
     :usage="props.usage ?? demoUsage"
+    :replaced="replacedVersion && { markdown: replacedVersion.text, fileNames: replacedVersion.files.map((file) => file.name) }"
+    :draft-shown="shown"
     remote-files
+    @restore-replaced="restoreReplaced"
+    @dismiss-replaced="replacedVersion = null"
     @submit="submit"
     @configure="emit('configure')"
     @restore="emit('restore')"
