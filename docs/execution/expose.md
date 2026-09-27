@@ -112,7 +112,10 @@ The backend answers every request whose `Host` header is `<id>.<expose
 domain>`. Such a request never reaches the product routes, and an expose
 hostname is never served on the product origin. Expose hostnames carry no
 Demi session and set no Demi cookie; the page and the visitor are anonymous
-to Demi.
+to Demi. An expose's page shares the product's site, so a signed-in
+visitor's browser would send the session cookie with the page's requests to
+the product; the product's WebSocket routes refuse such a page
+([Authentication and ownership](../backend/backend.md#authentication-and-ownership)).
 
 For each visitor request the backend:
 
@@ -259,13 +262,14 @@ at once. The button's icon carries a small green dot on its top-right corner,
 so a forgotten URL is visible without opening the menu. The devices settings
 do not list exposes.
 
-The `GET /api/state` snapshot carries the exposes and the domain, and the Web
-API adds create, renew and remove ([Web API](../product/web-api.md#exposes)).
+The page's [synchronization channel](../product/web-api.md#page-synchronization)
+carries the exposes and the domain, and the Web API adds create, renew and
+remove ([Web API](../product/web-api.md#exposes)).
 The agent prints the URL into the transcript, where it is a link; that link is
 where a URL is copied from.
 
 The behavior lives in `web-ui` with gallery specimens; `web` supplies the
-snapshot, the host names and the request handlers.
+exposes, the host names and the request handlers.
 
 ## Deployment
 
