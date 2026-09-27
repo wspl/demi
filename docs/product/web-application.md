@@ -124,23 +124,26 @@ they happen. An operation is never a message on a stream that some later
 message may or may not answer: a lost answer then looks exactly like a slow
 one, and nothing records that it failed.
 
-The browser uses same-origin cookie authentication. REST supplies account,
-conversation, project, device, provider, and preference data. The conversation
-WebSocket carries the [agent frames](../agent/runtime.md#frame-protocol) of one
-conversation: live transcript, queue, child-agent, and shell-job events. A live
-browser view uses its own [user stream](web-api.md#user-streams) WebSocket, so
-its pictures never delay those events.
+The browser uses same-origin cookie authentication. REST carries every
+operation, and what a page reads when it needs it, such as a transcript or a
+draft. The synchronization channel pushes the state a page shows around its
+conversations, as it changes ([Page synchronization](#page-synchronization)).
+The conversation WebSocket carries the
+[agent frames](../agent/runtime.md#frame-protocol) of one conversation: live
+transcript, queue, child-agent, and shell-job events. A live browser view uses
+its own [user stream](web-api.md#user-streams) WebSocket, so its pictures never
+delay those events.
 
-Every REST answer and conversation frame is checked against its generated
-schema before the page uses it. `web`'s API adapters check each REST response
-before applying it to state, and `AgentClient` checks every frame it receives,
+Every REST answer, synchronization message and conversation frame is checked
+against its generated schema before the page uses it. `web`'s API adapters
+check each REST response before applying it to state, the synchronization
+module checks each message, and `AgentClient` checks every frame it receives,
 with the transcript blocks and tool views inside it. [Web API](web-api.md)
 defines the HTTP contracts; [Authentication](#authentication) defines session
 integration.
 
-Account state uses conditional snapshots, refreshed periodically and when the
-page becomes visible. Model discovery uses one account-wide cache and shared
-pending request ([Catalog cache](../providers/models.md#catalog-cache)).
+Model discovery uses one account-wide cache and shared pending request
+([Catalog cache](../providers/models.md#catalog-cache)).
 Execution availability is derived separately for each conversation. History
 loading does not wait for model discovery.
 
@@ -160,8 +163,8 @@ queue, pending steers and subagents; every tab can send, steer, queue, stop, edi
 retry, switch the model and write to a running command; and what one tab does
 shows in all of them. Opening the conversation in another tab takes nothing
 over. Every tab shows the conversation's one draft, and what one tab types
-reaches the others within a few seconds ([Drafts](#drafts)). A turn or save
-that fails shows its failure in every tab until the
+reaches the others moments after it is saved ([Drafts](#drafts)). A turn or
+save that fails shows its failure in every tab until the
 conversation starts its next action, whichever tab starts it; a refusal of one
 tab's own request shows in that tab alone. Each tab has its own socket,
 attached to the conversation's one live tree
@@ -169,10 +172,57 @@ attached to the conversation's one live tree
 The conversation's model settings, its model, thinking effort and service
 tier, are one value its record holds: every tab and every device shows it, and
 a change made in any of them reaches all
-([page synchronization](web-api.md#sidebar-mutations-read-state-and-page-synchronization)).
+([Sidebar mutations and read state](web-api.md#sidebar-mutations-and-read-state)).
 A tab whose socket is lost, or whose tree another client disposed with
 `close`, opens the conversation again the same way and shows the tree as the
 backend then has it.
+
+### Page synchronization
+
+One module of `web`, the product state, holds the page's copy of the user's
+state and is the one place that follows it. It opens the
+[synchronization channel](web-api.md#page-synchronization) once the page is
+signed in, takes the channel's `snapshot` as its whole copy, and replaces one
+part of the copy with each later message. Nothing on the page asks for this
+state on a timer, or asks again after a write. For example, a user pins a
+conversation in one tab: the other tab moves it among the pinned ones when
+the summary and the order arrive on its channel, a few milliseconds after the
+pin committed, while it does nothing itself.
+
+Each synced state follows the copy with its own rule:
+
+| State | Follows | Its own rule |
+| --- | --- | --- |
+| The sidebar: titles, pins, archive, projects and order | Each summary, and `conversation_order` | A title the user typed shows from the moment it is typed until its write is answered |
+| Read state | Each summary's `readRevision` and `unread` | An acknowledgement only moves forward |
+| Model settings | Each summary's `model` | A change names only the part its user changed ([Sidebar mutations and read state](web-api.md#sidebar-mutations-and-read-state)) |
+| Drafts | Each summary's `draftRevision` | A page that shows the conversation reads the draft when the revision is higher than its own ([Drafts](#drafts)) |
+| Preferences | `preferences` | A change shows at once, and the part it changed stays as the user set it until its write is answered |
+| The account, workspaces, devices, exposes, providers and the Cloud | Their parts | The page shows what the backend holds |
+
+**A page's own writes.** A write's answer carries the state as the write left
+it, and the page applies it to its copy at once, through the same module,
+unless the channel has brought a value of that part since the page sent the
+write. That value may be newer than the answer; if it is older, the value the
+write causes is still to come on the channel, so dropping the answer loses
+nothing. For example, tab A renames a conversation, and tab B pins it just
+after the rename commits. A's channel brings the summary with both changes
+before A receives the answer to its rename: A keeps the summary and drops the
+answer, which lacks the pin. Writes whose answer carries no state, such as a
+reorder, show from the channel alone.
+
+**Connection.** A channel that closes connects again after a second, then
+after twice as long each time, up to 30 seconds, each wait shortened by a
+random part so that the pages of all users do not return at once after a
+restart. A page that becomes visible, or comes back online, connects at once.
+The new `snapshot` replaces the whole copy, and each state follows it as it
+follows any change. A channel that brings nothing for 75 seconds, two and a
+half heartbeats, is taken as broken and replaced. The browser does not say why
+an upgrade failed, so a page whose channel does not open asks
+`GET /api/auth/me`, whose 401 ends the session as any 401 does
+([Authentication](#authentication)). Until the first snapshot the page shows
+its loading state; a first connection that fails shows the failure with a
+retry, which connects at once.
 
 ## Authentication
 
@@ -196,8 +246,9 @@ form. Unmounting the form aborts its pending request, and a late answer cannot
 change the session state. The login request times out after 60 seconds, as
 ordinary API requests do.
 
-Account state polling and API answers detect an expired session: the page
-releases its account-scoped stores and transports and shows that the session
+The synchronization channel and API answers detect an ended session: a
+channel closed with `session_ended`, or an answer of 401, makes the page
+release its account-scoped stores and transports and show that the session
 ended. `POST /api/auth/logout` must succeed, or report a session that has
 already ended, before the page reloads to release account-scoped stores and
 drafts. A logout that fails leaves the account signed in and shows an error.
@@ -220,7 +271,7 @@ unconfirmed submissions; new conversations, with their model settings, until
 their first send writes them to the record; edits of sent messages in
 progress; and each conversation's scroll position. A conversation with a
 record keeps its model settings only there
-([page synchronization](web-api.md#sidebar-mutations-read-state-and-page-synchronization)).
+([Sidebar mutations and read state](web-api.md#sidebar-mutations-and-read-state)).
 The tabs of one browser share this storage, and a page writes a
 conversation's record only for a change its own user made, so a tab never
 replaces what another tab wrote for a conversation it left alone.
@@ -268,10 +319,11 @@ For example, a user types "Fix the login" into the composer in a tab on their
 laptop and drops `trace.txt` into it. The file starts uploading at once. Half
 a second after the typing pauses, the tab saves the draft, and once the upload
 is done it saves it again with the file. A second tab and the user's phone,
-which show the same conversation, show the text and the file's capsule at
-their next state poll, a few seconds later, and the phone can send the message
-with the file. Once the backend accepts the message, from whichever page sent
-it, the composer is empty everywhere.
+which show the same conversation, show the text and the file's capsule moments
+after each save, when their synchronization channels bring the conversation's
+new draft revision, and the phone can send the message with the file. Once
+the backend accepts the message, from whichever page sent it, the composer is
+empty everywhere.
 
 The backend keeps the draft, its revision, and the version a save replaced
 ([Conversation drafts](web-api.md#conversation-drafts)). A page:
@@ -287,9 +339,8 @@ The backend keeps the draft, its revision, and the version a save replaced
   its mark, so other pages show the text without that capsule. A file on a
   paired device joins at once.
 - **Follows** the draft: it reads it when it opens the conversation, and again
-  when the state snapshot, which it polls every few seconds, shows a higher
-  `draftRevision` for it
-  ([page synchronization](web-api.md#sidebar-mutations-read-state-and-page-synchronization)).
+  when its synchronization channel brings the conversation's summary with a
+  higher `draftRevision` ([Page synchronization](#page-synchronization)).
   Its own save, restore or dismissal shows at once, from the answer.
 - **Keeps what its user types.** A page has an unsaved change from the moment
   its user edits the draft until the backend confirms a save that holds the

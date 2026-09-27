@@ -279,7 +279,8 @@ next to the wire's types, so that a command program depends on one crate.
 #### `web-api`
 
 - **Owns:** every REST request and response body, such as `ProductState`,
-  `ConversationPatch` and `ProviderDto`; the error body (`ErrorBody`) and
+  `ConversationPatch` and `ProviderDto`; the messages of the page's
+  synchronization channel (`SyncEvent`); the error body (`ErrorBody`) and
   `ErrorCode`, the one list of every error code the browser can see; and the
   identifier and text types those bodies use. It reuses the runner's
   working-tree change types (`GitChanges`) and platform (`RunnerPlatform`, a
@@ -451,9 +452,10 @@ Each crate implements the provider contract for one vendor family.
   - the harness trait (`AgentHarness`) with its subagent profiles
     (`Profile`) and the Host its nodes' shell tools reach
     (`AgentHarness::Host`), where a session's provider runtimes come from
-    (`ProviderResolver`), and the tree store contract (`AgentTreeStore`,
-    `SessionStore`, with the node records and checkpoints they carry in
-    `store`);
+    (`ProviderResolver`), the notice to the product that a live tree started
+    or stopped working or was disposed (`ServerDeps::status_changed`), and
+    the tree store contract (`AgentTreeStore`, `SessionStore`, with the node
+    records and checkpoints they carry in `store`);
   - the resolution of the files a frame's content refers to, which the
     backend answers (`ContentResolver`);
   - the mapping of media between inline bytes and blob references
@@ -562,7 +564,12 @@ Each crate implements the provider contract for one vendor family.
   runners' hellos at one step (`HelloStep`: the token's lookup, or the shard's
   bind) for the scenarios that race a hello against its runner going away and
   against shutdown
-  ([Runner](../execution/runner.md#connection-and-identity)).
+  ([Runner](../execution/runner.md#connection-and-identity)), and
+  `Backend::hold_sync`, which holds the pages' synchronization channels at one
+  step (`SyncStep`: once registered, before a channel reads its snapshot; or
+  before it reads and sends the parts that changed) for the scenarios that
+  change the state while a channel waits
+  ([Browser synchronization](../backend/backend.md#browser-synchronization)).
   For suites that start the executable, the example program
   `scripted_machines` runs the scripted machine manager of its scenarios
   ([Browser-contract suite](../delivery/scenarios.md#browser-contract-suite)).
@@ -725,13 +732,15 @@ packages under `packages/`.
   owns chat state and containers; `targets/` environment selection;
   `settings/` settings containers; `auth/` cookie-session state and entry
   containers; `api/` validated HTTP and agent wire adapters and upload
-  requests; `state/` server snapshots, preferences and per-user local state;
+  requests; `state/` the product state its synchronization channel keeps,
+  preferences and per-user local state;
   `devices/` pairing and filesystem adapters. Reusable UI belongs to `web-ui`.
 - **Integration boundary:** authentication calls the backend over same-origin
-  HTTP; chat uses the agent client over WebSocket; resources and settings use
-  REST. [Web application](../product/web-application.md) owns state ownership
-  and operation contracts. The browser-contract suite in this package drives
-  the backend binary ([Scenarios](../delivery/scenarios.md)).
+  HTTP; the product state follows the synchronization channel, a WebSocket;
+  chat uses the agent client over WebSocket; operations on resources and
+  settings use REST. [Web application](../product/web-application.md) owns
+  state ownership and operation contracts. The browser-contract suite in this
+  package drives the backend binary ([Scenarios](../delivery/scenarios.md)).
 - **Public boundary:** `bun run web:dev` and the production build; no library
   API.
 - **Must not:** import `web-gallery`, or import Node outside the
