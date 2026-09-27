@@ -173,9 +173,32 @@ The conversation's model settings, its model, thinking effort and service
 tier, are one value its record holds: every tab and every device shows it, and
 a change made in any of them reaches all
 ([Sidebar mutations and read state](web-api.md#sidebar-mutations-and-read-state)).
-A tab whose socket is lost, or whose tree another client disposed with
-`close`, opens the conversation again the same way and shows the tree as the
-backend then has it.
+A tab whose socket is lost or taken as broken
+([Liveness and reconnection](#liveness-and-reconnection)), or whose tree
+another client disposed with `close`, opens the conversation again the same
+way and shows the tree as the backend then has it.
+
+### Liveness and reconnection
+
+A page holds two kinds of WebSocket to the backend: the synchronization
+channel, and a socket for each open conversation. Both follow one rule for
+telling a quiet socket from a dead one and for connecting again, and one
+module of `web-ui` implements it for both. For example, a laptop sleeps and
+its network drops without a close. Nothing tells the page: its sockets still
+look open, and a conversation would go on showing a turn as running. The
+backend sends a heartbeat on each socket that has sent nothing else for 30
+seconds ([Order and delivery](../agent/runtime.md#order-and-delivery),
+[Page synchronization](web-api.md#page-synchronization)), so a socket that
+brings nothing for 75 seconds, two and a half heartbeats, is broken: the page
+closes it and connects again.
+
+A socket that closes, is taken as broken, or cannot be made connects again
+after a second, then after twice as long each time, up to 30 seconds, each
+wait shortened by a random part so that the pages of all users do not return
+at once after a restart. The waits start over at a second once the socket
+works again: the channel when its snapshot arrives, a conversation when it
+opens. Meanwhile the page keeps the channel's copy as it was, and a
+conversation shows that it is connecting.
 
 ### Page synchronization
 
@@ -213,14 +236,11 @@ reorder, show from the channel alone; a flow that goes on with what its write
 made, such as opening a new provider entry's page, waits for the channel to
 bring it.
 
-**Connection.** A channel that closes connects again after a second, then
-after twice as long each time, up to 30 seconds, each wait shortened by a
-random part so that the pages of all users do not return at once after a
-restart. A page that becomes visible, or comes back online, connects at once.
+**Connection.** A channel that closes, or brings nothing for 75 seconds,
+connects again as [Liveness and reconnection](#liveness-and-reconnection)
+says; a page that becomes visible, or comes back online, connects at once.
 The new `snapshot` replaces the whole copy, and each state follows it as it
-follows any change. A channel that brings nothing for 75 seconds, two and a
-half heartbeats, is taken as broken and replaced. The browser does not say why
-an upgrade failed, so a page whose channel does not open asks
+follows any change. The browser does not say why an upgrade failed, so a page whose channel does not open asks
 `GET /api/auth/me`, whose 401 ends the session as any 401 does
 ([Authentication](#authentication)). Until the first snapshot the page shows
 its loading state; a first connection that fails shows the failure with a

@@ -167,6 +167,10 @@ pub enum ServerFrame {
     },
     /// The connection is detached.
     Closed,
+    /// Nothing: the connection sent no other frame for 30 seconds. The
+    /// backend's socket sends it, not the tree, so that a page can tell a
+    /// quiet connection from a dead one (`runtime.md` § Order and delivery).
+    Heartbeat,
 }
 
 /// How an edit ended.

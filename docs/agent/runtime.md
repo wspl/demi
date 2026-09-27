@@ -808,6 +808,7 @@ Host, with the handle checks of [Running shell tools](#running-shell-tools).
 | `rejected` | The refused command and the reason |
 | `subagent`, `subagent_transcript_reset`, `subagent_transcript_patch` | Subagent lifecycle and transcripts ([Protocol](subagents.md#protocol)) |
 | `closed` | The connection is detached: its tree was disposed, or it sent `close` while attached to none |
+| `heartbeat` | Nothing: the connection sent no other frame for 30 seconds ([Order and delivery](#order-and-delivery)) |
 
 `failures` is the backend's reading of the error blocks a frame carries,
 attached when the frame is sent and never stored
@@ -841,6 +842,15 @@ ended while no page watched shows as ended.
   the tree's other attachments go on as before; the client reconnects and
   adopts the running tree. A backend that shuts down closes its conversation
   sockets with 1001 `backend_closing` before it disposes the trees.
+- A connection that has sent no frame for 30 seconds is sent a `heartbeat`,
+  whether it is attached or not. The socket sends it, not the tree: it does
+  not go through the outbox and changes nothing the client holds. It lets a
+  page tell a quiet connection from a dead one. For example, a laptop sleeps
+  and its network drops without a close: nothing tells the page, whose socket
+  still looks open. A page that receives nothing on its connection for 75
+  seconds, two and a half heartbeats, takes the connection as broken, closes
+  it and opens the conversation again
+  ([Liveness and reconnection](../product/web-application.md#liveness-and-reconnection)).
 - The open handshake is one step: nothing can happen to the session between
   `opened` and `pending_steers`, so the snapshot frames agree with each other.
 - Each `transcript_patch` carries the revision one past the previous frame's.
@@ -885,7 +895,9 @@ connection B --+                    +--> B's outbox: events, and B's replies
   and the frames that answer `sync_transcript`.
 - A connection that closes only detaches. The tree's turns keep running, and
   the next `open` adopts the same live tree. Two concurrent opens of one
-  conversation share one tree.
+  conversation share one tree. A page that took its connection as broken for
+  its silence ([Order and delivery](#order-and-delivery)) opens a new one,
+  which adopts the tree the same way.
 - `open` names no model. The backend opens the tree with the model selection
   the conversation's record holds, and a live tree already follows that
   record, so an open changes no model
