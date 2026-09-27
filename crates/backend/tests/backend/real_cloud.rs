@@ -568,11 +568,11 @@ print("mapped", flush=True)
 time.sleep(600)
 "#;
 
-// Tens of seconds: the Cloud boots, Chrome starts in it, and the checkpoint
-// copies both images.
+// Tens of seconds: the Cloud boots, Chrome starts in it, the checkpoint copies
+// both images, and one conversation's idle window passes.
 #[tokio::test]
 #[ignore = "the Cloud suite: needs a machine manager and the suite's variables (scenarios.md § Cloud suite)"]
-async fn a_checkpoint_with_chrome_open_saves_both_images_with_what_a_mapping_wrote_and_keeps_every_process() {
+async fn a_checkpoint_with_chrome_open_saves_both_images_with_what_a_mapping_wrote_and_keeps_every_process_until_the_idle_conversations_release() {
     const TEST: &str = "checkpoint";
     let _one = one_at_a_time();
     let environment = Environment::read();
@@ -662,7 +662,32 @@ async fn a_checkpoint_with_chrome_open_saves_both_images_with_what_a_mapping_wro
     assert_eq!(listed.json::<BrowserTabs>().tabs.len(), 2);
     let alive = run(&mut first, "alive", "pgrep -f mapper.py > /dev/null && echo mapper-alive").await;
     assert!(alive.contains("mapper-alive"), "{alive}");
+
+    // A second conversation keeps the Cloud running while the first goes
+    // idle, its mapper ended: the first hears its release there, which
+    // closes its Chrome and removes its job output (`resource-lifecycle.md`
+    // § Conversation release).
+    let mut second = on_cloud(&backend, &master, &master, &vendor, SECOND, "/b").await;
+    let busy = backend.file_gate(&master, SECOND).await.enter(Purpose::Demand).await;
+    let ended = run(&mut first, "end", "pkill -f mapper.py; echo ended").await;
+    assert!(ended.contains("ended"), "{ended}");
+    let started = Instant::now();
     drop(working);
+    let deadline = Instant::now() + PATIENCE;
+    loop {
+        let listed = backend.get(&tabs, Some(&master)).await;
+        assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
+        if listed.json::<BrowserTabs>().tabs.is_empty() {
+            break;
+        }
+        assert!(Instant::now() < deadline, "the idle conversation's Chrome never closed");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    measured(TEST, "release of an idle conversation, window included", started.elapsed());
+    let held = run(&mut second, "held", "ls /var/lib/demi/jobs").await;
+    assert!(!held.contains(FIRST) && held.contains(SECOND), "{held}");
+    assert_eq!(status(&backend, &master).await.state, CloudState::Running);
+    drop(busy);
     backend.close().await;
 }
 
