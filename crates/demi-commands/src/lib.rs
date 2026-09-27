@@ -12,11 +12,21 @@ use demi_command_service::protocol::{Completion, Invocation};
 use demi_command_service::{ConversationContext, Handler, InvocationContext, ServiceError};
 use demi_gates::SerialGate;
 
-#[derive(Default)]
 pub struct DemiCommands {
     /// File mutations run one at a time.
     mutations: SerialGate,
     browsers: Arc<browser::Conversations>,
+}
+
+impl DemiCommands {
+    /// The service, whose browsers find or install the pinned Chrome in
+    /// `directories`: a Host's are [`browser::BrowserDirectories::host`].
+    pub fn new(directories: browser::BrowserDirectories) -> Self {
+        Self {
+            mutations: SerialGate::default(),
+            browsers: Arc::new(browser::Conversations::new(directories)),
+        }
+    }
 }
 
 impl Handler for DemiCommands {
