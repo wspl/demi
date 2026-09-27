@@ -1,5 +1,6 @@
 //! Transcript media by reference (`backend.md` § Media by reference): the
-//! blob route serves the caller's own blobs, inert and cached for good.
+//! blob route serves the caller's own blobs, inert and cached for good, and
+//! by byte range, so a player can play and seek a video.
 
 use demi_web_api::error::ErrorCode;
 use reqwest::StatusCode;
@@ -58,5 +59,32 @@ async fn a_blob_is_served_from_the_callers_namespace_inert_and_immutable() {
     }
     let anonymous = backend.get(&format!("/api/blobs/{name}"), None).await;
     assert_eq!(anonymous.refusal(), (StatusCode::UNAUTHORIZED, ErrorCode::Unauthenticated));
+    backend.close().await;
+}
+
+#[tokio::test]
+async fn a_blob_is_served_by_byte_range_so_a_player_can_play_and_seek_a_video() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    // Bytes that differ from their neighbours, so a misplaced range shows.
+    let bytes: Vec<u8> = (0..1000u32).map(|index| (index % 251) as u8).collect();
+    let name = store_blob(&harness, master.user.id.as_str(), &bytes);
+    let video = format!("/api/blobs/{name}?type=video%2Fmp4");
+
+    let whole = backend.get(&video, Some(&master)).await;
+    assert_eq!((whole.status, whole.body.as_slice()), (StatusCode::OK, bytes.as_slice()));
+    assert_eq!(whole.headers["accept-ranges"], "bytes");
+    // Safari asks for the first two bytes before it plays anything.
+    let probe = backend.get_with(&video, &master, &[("range", "bytes=0-1")]).await;
+    assert_eq!((probe.status, probe.body.as_slice()), (StatusCode::PARTIAL_CONTENT, &bytes[..2]));
+    assert_eq!(probe.headers["content-range"], "bytes 0-1/1000");
+    let seek = backend.get_with(&video, &master, &[("range", "bytes=600-")]).await;
+    assert_eq!((seek.status, seek.body.as_slice()), (StatusCode::PARTIAL_CONTENT, &bytes[600..]));
+    assert_eq!(seek.headers["content-range"], "bytes 600-999/1000");
+    assert_eq!(seek.headers["content-type"], "video/mp4");
+    assert_eq!(seek.headers["cache-control"], "private, max-age=31536000, immutable");
+    let past = backend.get_with(&video, &master, &[("range", "bytes=1000-")]).await;
+    assert_eq!((past.status, past.body.len()), (StatusCode::RANGE_NOT_SATISFIABLE, 0));
+    assert_eq!(past.headers["content-range"], "bytes */1000");
     backend.close().await;
 }
