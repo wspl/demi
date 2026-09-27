@@ -41,6 +41,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Working tree | `GET /conversations/:id/changes`, `GET /conversations/:id/changes/file?path=...`, `GET /conversations/:id/changes/raw?path=...&download=true\|false`, `GET /conversations/:id/commands/:commandId/changes/file?path=...&edit=...` |
 | User streams | `WS /conversations/:id/streams/:name` opens a declared [user stream](#user-streams) |
 | Work panel | `GET/PUT /conversations/:id/panel` reads and saves the [work panel's state](#work-panel-state) |
+| Conversation draft | `GET/PUT /conversations/:id/draft` reads and saves the [draft](#conversation-drafts); `POST /conversations/:id/draft/replaced { action, revision }` restores or dismisses the version a save replaced |
 | Conversation browser | `GET/POST /conversations/:id/browser/tabs`, `DELETE /conversations/:id/browser/tabs/:tab`, `POST /conversations/:id/browser/tabs/:tab/navigate { url }`, `POST /conversations/:id/browser/tabs/:tab/history { action }`; see [Conversation browser tabs](#conversation-browser-tabs) |
 | Device log | `GET /devices/:id/log?since=<cursor>&limit=<n>&source=<source>` reads the [Host's log](../execution/runner.md#host-log) |
 | Sidebar | `POST /sidebar/reorder { kind, id, beforeId }` |
@@ -164,12 +165,19 @@ gives it. A name that is not a SHA-256 in lowercase hexadecimal, or that the
 caller's namespace does not hold, answers 404 `not_found`, whoever else holds
 that name.
 
-Uploading alone stores a backend blob. A send, steer or edit frame names an
-upload in its content as `{ type: "upload", ref, fileName }`; the backend
-resolves the upload and writes the file to the selected Host's Demi
+Uploading alone stores a backend blob and the upload's record, which keeps
+the media type and the snippet the answer carried. A send, steer or edit frame
+names an upload in its content as `{ type: "upload", ref, fileName }`; the
+backend resolves the upload and writes the file to the selected Host's Demi
 attachment directory, which can require an available execution target. No
 frame carries a file's bytes. Media handling and failure behavior are defined
 in [Backend media handling](../backend/backend.md#media-by-reference).
+
+A [draft](#conversation-drafts) names an upload the same way, so every page
+shows the file's capsule from its record, and any of them can send it. An
+upload stays readable for as long as a draft names it: nothing deletes an
+upload's record or its bytes
+([Open decisions](../backend/storage.md#open-decisions)).
 
 ## Cloud
 
@@ -269,6 +277,72 @@ only bring back something older. Two pages open on one conversation each keep
 their own view of it, and the last to save decides what the next page reads.
 Archived conversations allow the read and refuse the save with 409
 `conversation_archived`.
+
+## Conversation drafts
+
+The backend keeps one draft per conversation: the message its composer holds
+before it is sent. For example, a user types "Fix the login" into the
+composer in one tab and drops `trace.txt` into it. Every other page that shows
+the conversation, in another tab or on the user's phone, shows the same text
+and the file's capsule within a few seconds, and any of them can send the
+message. [Drafts](web-application.md#drafts) says when a page saves and what
+it shows.
+
+A draft is `{ revision, text, files, replaced }`:
+
+| Field | Meaning |
+| --- | --- |
+| `revision` | How many times the draft changed: 0 before its first save, one more with every save, restore and dismissal |
+| `text` | The message's Markdown, with the attachment mark U+FFFC where each file's capsule stands |
+| `files` | The files in the order of their marks: an upload as `{ type: "upload", ref, fileName, mediaType, sha256, snippet? }`, the last three from its record, or a file on a paired device as `{ type: "remote_file", deviceId, path }` |
+| `replaced` | The version a save replaced without having been built on it, `{ revision, text, files }` with the revision it had as the draft, or null |
+
+`GET /api/conversations/:id/draft` answers `{ draft }`; a conversation that
+never saved one has revision 0, empty text, no files and no replaced version.
+
+`PUT` takes `{ base, text, files }` and answers `{ draft }` as saved. `base` is
+the revision the page's text was built on. The request names an upload as a
+frame does, `{ type: "upload", ref, fileName }`, and a remote file as the
+frame does; the backend adds the upload's media type, content hash and
+snippet from its record, and an upload the caller does not have answers 404
+`upload_not_found`. A text without exactly one mark per file answers 400
+`invalid_body`. The draft as stored, text and files, is at most 256 KiB; a
+larger one answers 413 `too_large`.
+
+A save always takes effect: the last save wins. When `base` is not the
+current revision, another page saved since this page's text was built, and
+the version the save replaces is kept as `replaced`, unless it is empty or
+the same as the saved one. Only one replaced version is kept, so an earlier
+one goes. For example, two tabs show revision 4, "Fix the login", and their
+users type at the same time:
+
+1. Tab A saves "Fix the login bug" with base 4, which becomes revision 5.
+2. Tab B saves "Fix the login test" with base 4. Its text was not built on
+   the current revision 5, so the backend keeps revision 5 as `replaced` and
+   saves B's text as revision 6.
+3. Every page shows "Fix the login test" and offers "Fix the login bug" for
+   restore.
+
+`POST /api/conversations/:id/draft/replaced { action, revision }` acts on the
+replaced version whose revision it names. `restore` exchanges it with the
+draft's text and files, so the version it displaces becomes the replaced one
+and nothing is lost: in the example, the draft becomes "Fix the login bug" as
+revision 7, and revision 6 is offered in its place. `dismiss` drops it. Each
+answers `{ draft }`; when the replaced version is no longer the one named,
+because another save or action changed it, the answer is 409 `draft_changed`.
+Otherwise the replaced version stays until a later save replaces a version:
+a send, an archive or a reload keeps it.
+
+Other pages learn of a change from the state snapshot they poll every few
+seconds, whose conversation summary carries the draft's revision as
+`draftRevision`
+([page synchronization](#sidebar-mutations-read-state-and-page-synchronization)),
+and read the draft only then. A page takes a draft only when its revision is
+higher than the one it holds, since a save's answer and a read can reach it
+in either order. An archived conversation reads its draft and refuses the
+other operations with 409 `conversation_archived`; after a restore it has the
+draft it had. A draft lasts as long as its conversation, and a Fork starts
+with an empty one ([Conversation Fork](../agent/conversation-fork.md)).
 
 ## Conversation browser tabs
 
@@ -568,8 +642,9 @@ conversation's socket or changes its model selection, so the `open` or
 `set_provider` it sends names the model another page chose last, never one
 that was replaced ([Connections and the live tree](../agent/runtime.md#connections-and-the-live-tree)).
 The thinking effort and the service tier are not part of the record: each page
-keeps its own for the model, saved with its draft, and the tree uses the ones
-named last.
+keeps its own for the model, saved in its browser
+([Persistence and adapters](web-application.md#persistence-and-adapters)), and
+the tree uses the ones named last.
 
 Archive and a target change are transitions: each holds the conversation while
 it runs, and neither waits for other work. Running root or child work refuses
@@ -617,7 +692,10 @@ tree, otherwise completed/error/stopped from its latest terminal block, or idle.
 An unfinished checkpoint without a live session is interrupted. `titleCurrent`
 says whether the title has read every message the user sent, when asking for a
 new one could say nothing new, and `titleGenerating` whether a title request is
-in flight.
+in flight. `draftRevision` is the revision of the conversation's
+[draft](#conversation-drafts), 0 before its first save: the page reads the
+draft itself only when this number is higher than the revision it holds, so a
+snapshot carries no draft's text.
 
 `POST /api/conversations/:id/title { model }` asks that model selection for a
 new title from every message the user sent and answers 202; the title arrives

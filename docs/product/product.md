@@ -79,8 +79,13 @@ choice becomes unavailable, the picker keeps it with a warning and requires an
 explicit replacement. With no saved choice, the first available model is used.
 
 The first send creates the backend record and starts its
-[title](#conversation-titles). Draft persistence and confirmation of
-uncertain sends belong to [Web architecture](web-application.md). Choosing a
+[title](#conversation-titles). From then on the backend keeps the
+conversation's draft, the message not yet sent: every tab and device that
+shows the conversation shows the same draft, a few seconds behind the one
+where it is typed, and a send empties it everywhere. When two places edit it
+at once, the last save wins, and the composer offers the version it replaced
+for a one-click restore. Draft persistence, offline editing and confirmation
+of uncertain sends belong to [Drafts](web-application.md#drafts). Choosing a
 project or device directory affects subsequent execution; target-switch admission
 and context announcements are defined in
 [Sessions and targets](../execution/sessions-and-targets.md).
@@ -378,9 +383,9 @@ What follows from that split:
   [Writing a message](#writing-a-message), `Compare `, then `before.png`,
   then ` with `, then `after.png`, then the rest. Providers pass content in
   order, so the model meets each file where the user put it.
-- A saved draft keeps the message's text with a mark where each capsule
-  stands and each file beside it under its id, so opening the draft builds
-  the same document again.
+- The saved draft keeps the message's text with a mark where each capsule
+  stands and, beside it, each file as its upload or its device and path, so
+  opening the draft on any page builds the same document again.
 
 Sending a file proceeds through three owners:
 
@@ -391,7 +396,8 @@ Composer file -> backend upload/blob -> selected Host attachment directory
                                                        in the agent message
 ```
 
-Files remain staged in the draft until send. The backend writes the file under the Host
+Files remain staged in the draft until send, each as its upload, so another
+device shows the file and can send it. The backend writes the file under the Host
 user's `~/.demi/attachments/<conversation>/`, adding a numeric suffix to avoid
 an existing name. It does not put attachment files in the project directory.
 A Cloud target may need to wake before this write.
