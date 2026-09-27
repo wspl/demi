@@ -10,6 +10,17 @@ use super::Result;
 #[cfg(unix)]
 const PROFILE_ENV: &str = "DEMI_BROWSER_PROFILE";
 
+/// The variable Chrome takes its temporary directory from, where it makes
+/// the directory of its process-singleton socket. Linux Chrome reads
+/// `TMPDIR` (Chromium 153's `base/files/file_util_posix.cc`, `GetTempDir`).
+/// macOS Chrome reads `MAC_CHROMIUM_TMPDIR` instead, and without it asks the
+/// system (`NSTemporaryDirectory()`; Chromium 153's
+/// `base/files/file_util_apple.mm`, `GetTempDir`).
+#[cfg(target_os = "macos")]
+const TEMPORARY_ENV: &str = "MAC_CHROMIUM_TMPDIR";
+#[cfg(all(unix, not(target_os = "macos")))]
+const TEMPORARY_ENV: &str = "TMPDIR";
+
 /// Own Chrome's Unix process group, including helpers left after the leader exits.
 pub(super) struct ChromeProcess {
     #[cfg(unix)]
@@ -74,7 +85,7 @@ impl ChromeProcess {
             // Chrome's temporary files, the directory of its process-singleton
             // socket among them, go with the profile however Chrome ends
             // (`browser.md` § Native driver).
-            command.env("TMPDIR", profile);
+            command.env(TEMPORARY_ENV, profile);
         }
         #[cfg(target_os = "linux")]
         {
