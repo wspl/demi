@@ -278,7 +278,7 @@ impl Sandbox {
         })
         .await?;
         fault::point("capacity-refreshed");
-        core.tools.run(Tool::Resize2fs, [loopdev::path(number)], None).await?;
+        ext4::grow_mounted(&core.tools, &loopdev::path(number)).await?;
         let capacity = blocking::run(move |off| -> Result<NonZeroU64, ext4::Ext4Error> {
             sync(off, &image)?;
             ext4::capacity(off, &image)

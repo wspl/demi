@@ -507,6 +507,15 @@ superblock, not merely the requested file size, before reporting success. A
 quota increase does not promise physical disk space; admission and monitoring
 must handle host `ENOSPC`. A sandbox cannot grow its own backing device.
 
+The kernel grows a mounted ext4 filesystem only for a caller with
+`CAP_SYS_RESOURCE` ([Linux requirements](setup.md#linux-requirements)), and
+`resize2fs` reports its refusal as a bare "Permission denied". When `resize2fs`
+fails and the capability is missing from the manager's bounding set, which its
+programs inherit, the growth fails with an error that names the capability
+instead. The manager logs that error, and the backend logs the refused growth
+with it and answers it to the Cloud's runner, which writes it to its
+[Host log](../execution/runner.md#host-log). The filesystem keeps its capacity.
+
 Archiving conversations or deleting project metadata never deletes Cloud data.
 Account-data destruction requires its own explicit retention/deletion policy.
 
@@ -732,7 +741,7 @@ suite runs; a run must show the following:
 | Tools | Installers run in the login shell (rustup, nvm), and later jobs find the tools they installed (cargo, node). |
 | Browser | Chrome opens with its own sandbox; the live view receives frames and delivers input. |
 | Checkpoint | A live checkpoint with a running browser publishes both images; the saved image contains pages a live process wrote through a writable mapping and never flushed. |
-| Growth and space | Online growth records the actual capacity; a full disk fails the operation and keeps working data. |
+| Growth and space | Online growth records the actual capacity; it needs `CAP_SYS_RESOURCE` ([Linux requirements](setup.md#linux-requirements)). A full disk fails the operation and keeps working data. |
 | Recovery | A restart at each publication boundary loses neither published nor newer working data; runtime and out-of-memory loss report a death. |
 | Manager recovery | After the manager is killed while a filesystem is frozen, the next start recovers through the saved namespace, and the backend reads the Cloud's files and wakes it without restarting itself. A service stop whose drain fails is completed by the stop-post recovery. |
 | Network | Public HTTPS works; private, metadata, and cross-user destinations are refused; the backend and DNS paths are permitted; IPv6 is off. |
