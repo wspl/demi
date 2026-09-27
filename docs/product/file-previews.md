@@ -65,6 +65,15 @@ a `<video>` fetches its own URL; the type the backend serves must match the
 viewer the page chose; and browsers must not guess a type on their own
 (`nosniff`).
 
+The table also names every type a model reads natively
+([Results and previews](../agent/runtime.md#results-and-previews)), and shows
+each in place: a tool's images and videos, and a message's, are served from
+their blobs by the same table
+([Media a tool returned](#media-a-tool-returned)), and one it did not show in
+place would download, so a player would play it only where the browser
+guessed its format. So `m4v` is `video/x-m4v`, the type a model receives M4V
+bytes as.
+
 A file whose content does not match its extension fails in its viewer and
 shows the card. So does media the browser cannot decode, such as HEVC video in
 a browser without that codec; the card then says the browser cannot play it.

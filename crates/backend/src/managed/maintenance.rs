@@ -60,8 +60,9 @@ impl Shard {
     /// the machine. Each is sent under the conversation's file gate: the stop
     /// holds the conversations that cannot work without the Cloud, and one
     /// that only has it attached is reserved for its release, or passed over
-    /// while work or a transition holds it. A release that fails is logged,
-    /// and the stop goes on: the Cloud's next hello names what it left.
+    /// while work or a transition holds it. A release that fails is logged
+    /// and the stop goes on (`release_on`): the Cloud's next hello names what
+    /// it left.
     async fn release_before_idle_stop(&self, device: &DeviceId, uses: &[(ConversationId, Role)]) {
         let due = uses.iter().filter(|(id, role)| role.is_host() && self.tracks_idle(id));
         let releases = due.filter_map(|(id, role)| {
@@ -71,9 +72,7 @@ impl Shard {
             };
             Some(async move {
                 let _held = attached;
-                if let Err(error) = self.release_on(id, device).await {
-                    tracing::warn!(device = %device, conversation = %id, "a release before the Cloud's idle stop failed: {error}");
-                }
+                self.release_on(id.as_str(), device).await;
             })
         });
         join_all(releases).await;

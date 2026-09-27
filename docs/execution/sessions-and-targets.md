@@ -319,7 +319,9 @@ follows normal busy admission and is not silently classified as a passive
 observer. After reserving conversation file admission, it sends the
 [conversation release](resource-lifecycle.md#conversation-release) through the
 conversation's host access to each device the change leaves, then commits the
-target/archive change. The old binding remains authoritative until commit.
+target/archive change, also when a release failed
+([A release that fails](resource-lifecycle.md#a-release-that-fails)). The old
+binding remains authoritative until commit.
 The release is a runner message, not Host IO: it needs no file gate, and it is
 skipped for a device whose runner is not connected, a stopped Cloud among
 them, because the connection loss or the stop has already ended the
