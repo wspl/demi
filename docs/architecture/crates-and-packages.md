@@ -730,9 +730,9 @@ packages under `packages/`.
   device pairing dialog over a host-provided claim adapter; the sign-in page;
   shared UI primitives, Markdown rendering and theme; the summary text of
   queued messages, derived from their content; and the liveness of a page's
-  WebSockets to the backend: the silence watch, which the synchronization
-  channel and the conversation sockets share, the waits before connecting
-  again, which live views share too, and the check of every socket when the
+  WebSockets to the backend: the silence watch and the waits before
+  connecting again, which the synchronization channel, the conversation
+  sockets and the live views share, and the check of every socket when the
   page comes back (`transport/liveness.ts`,
   [Liveness and reconnection](../product/web-application.md#liveness-and-reconnection)).
   It consumes an injected `AgentClient` and ships no control-plane transport

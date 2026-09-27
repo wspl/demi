@@ -2,9 +2,10 @@
  * One live view of the conversation's browser (`live-view.md` § The
  * stream): the page's side of the protocol. It keeps what the view shows,
  * hands pictures to a decoder, acknowledges what the viewer saw, and sends
- * the viewer's input while the stream is alive. A view that ends opens again
- * after the page's reconnect waits (`web-application.md` § Liveness and
- * reconnection).
+ * the viewer's input while the stream is alive. A view whose stream goes
+ * silent for as long as a page socket may is broken, and a view that ends
+ * opens again after the page's reconnect waits (`web-application.md`
+ * § Liveness and reconnection).
  */
 import {
   LIVE_CAPTURE_FAILED,
@@ -19,7 +20,7 @@ import {
 } from '@demicodes/protocol'
 import { reactive } from 'vue'
 import { reportError } from '../infra/errors'
-import { waitToReconnect, type ReconnectWait } from '../transport/liveness'
+import { waitToReconnect, watchSilence, type ReconnectWait, type SilenceWatch } from '../transport/liveness'
 import { LiveFrameReader, encodeFile, encodeMessage, type LiveBytes, type LiveFrame, type LiveVideoFrame } from './frames'
 import type { PanelSize } from './view'
 
@@ -48,6 +49,9 @@ export interface PictureSink {
 
 /** Why the page ended a view whose module sent a frame the protocol refuses. */
 export const REFUSED_FRAME = 'invalid_frame'
+
+/** Why the page ended a view whose stream brought nothing, heartbeats included, for as long as a page socket may. */
+export const SILENT_STREAM = 'silent'
 
 export type LiveConnection = 'opening' | 'live' | 'stalled' | 'ended'
 
@@ -103,6 +107,8 @@ export class LiveSession {
   })
 
   private stream: LiveStream | null = null
+  /** The watch over the stream's silence, while there is a stream. */
+  private silence: SilenceWatch | null = null
   private pictures: PictureSink | null = null
   private generation = 0
   private uploads = 0
@@ -112,8 +118,6 @@ export class LiveSession {
   private failures = 0
   private reopening: ReconnectWait | null = null
   private panelReport: { panel: PanelSize; ratio: number; screen: PanelSize } | null = null
-  /** The page closed this view; nothing reopens it. */
-  private done = false
 
   constructor(private readonly options: LiveSessionOptions) {
     this.received = this.time()
@@ -153,6 +157,9 @@ export class LiveSession {
       },
     })
     this.stream = stream
+    // The module speaks at least every quarter second, so the page's rule
+    // for a silent socket holds for the view as for the page's other sockets.
+    this.silence = watchSilence(() => this.end(SILENT_STREAM))
     this.send({ type: 'hello', platform: this.options.platform })
     // A view that opens again takes up where the page left off.
     if (this.panelReport) {
@@ -163,28 +170,29 @@ export class LiveSession {
     }
   }
 
+  /** The page is done with the view: nothing reopens it, and it has nothing to tell. */
   close(): void {
-    this.done = true
     this.reopening?.cancel()
     this.reopening = null
-    this.pictures?.stop()
-    this.stream?.close()
-    this.stream = null
+    this.dropStream()
+    this.state.connection = 'ended'
   }
 
-  private end(reason: string): void {
+  /** Lets the stream go, with its watch and its pictures: nothing it says afterwards reaches the view. */
+  private dropStream(): void {
+    this.silence?.stop()
+    this.silence = null
     this.pictures?.stop()
     const stream = this.stream
     this.stream = null
     stream?.close()
+  }
+
+  private end(reason: string): void {
+    this.dropStream()
     this.state.ended = reason
     this.state.dialog = null
     this.state.controls = []
-    // A view the page closed itself has nothing to tell, and none follows it.
-    if (this.done) {
-      this.state.connection = 'ended'
-      return
-    }
     this.options.onEnded?.(reason)
     this.failures += 1
     this.state.connection = 'opening'
@@ -220,6 +228,7 @@ export class LiveSession {
 
   private receive(reader: LiveFrameReader, bytes: Uint8Array): void {
     this.received = this.time()
+    this.silence?.heard()
     if (this.state.connection === 'stalled') {
       this.state.connection = 'live'
       // What the decoder missed while nothing arrived starts again.

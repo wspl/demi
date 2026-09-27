@@ -22,6 +22,15 @@ const segmentOptions = [
   { value: 'second', label: 'Second' },
   { value: 'third', label: 'Third' },
 ]
+// More segments than a narrow container holds, as the sign-in page's states on a phone.
+const step = ref('ended')
+const stepOptions = [
+  { value: 'form', label: 'Form' },
+  { value: 'busy', label: 'Signing in' },
+  { value: 'wrong', label: 'Wrong password' },
+  { value: 'locked', label: 'Locked' },
+  { value: 'ended', label: 'Session ended' },
+]
 // Icons alone, as the File view switches a document between Preview and Source.
 const view = ref('preview')
 const viewOptions = [
@@ -40,7 +49,7 @@ const surfaces = [
 <template>
   <GallerySection
     title="Control layout"
-    note="Production CSS checks: all input sizes, fixed and flexible widths, adornments, disabled and bare fields. A segmented control can show icons alone, each naming itself in a tooltip. Command text and copy controls share a vertical center."
+    note="Production CSS checks: all input sizes, fixed and flexible widths, adornments, disabled and bare fields. A segmented control can show icons alone, each naming itself in a tooltip. In a container narrower than its segments, it keeps every label whole and scrolls in its own box, with the chosen segment in view. Command text and copy controls share a vertical center."
   >
     <div class="mb-6 flex flex-wrap gap-4">
       <div
@@ -58,6 +67,11 @@ const surfaces = [
         <IconButton :icon="Search" variant="solid" circle aria-label="Solid icon button" />
       </div>
     </div>
+    <GallerySpecimen variant="segmented · 200px container" class="mb-6">
+      <div class="max-w-full" :style="{ width: '200px' }">
+        <Segmented v-model="step" :options="stepOptions" size="sm" />
+      </div>
+    </GallerySpecimen>
     <div class="flex flex-wrap items-start gap-6">
       <GallerySpecimen
         v-for="width in widths"
