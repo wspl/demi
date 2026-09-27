@@ -910,9 +910,12 @@ async fn a_retry_over_the_threshold_compacts_before_it_reruns_and_a_stop_during_
 }
 
 #[tokio::test(flavor = "local")]
-async fn a_resume_over_the_threshold_summarizes_the_stopped_progress_before_it_continues_and_a_stop_during_that_pass_leaves_no_boundary()
+async fn a_resume_over_the_threshold_keeps_the_stopped_message_after_the_summary_and_a_stop_during_that_pass_leaves_no_boundary()
  {
-    let question = format!("old question {}", "x".repeat(3_000));
+    let old_answer = format!("old answer {}", "a".repeat(1_200));
+    let question = format!("question {}", "q".repeat(2_400));
+        answer(&old_answer),
+        answer("summary one"),
     let partial = format!("partial answer {}", "y".repeat(300));
     let provider = ScriptedRuntime::new([
         partial_then_hang(&partial),
@@ -924,61 +927,157 @@ async fn a_resume_over_the_threshold_summarizes_the_stopped_progress_before_it_c
     ]);
     let store = MemoryTreeStore::new();
     let written = small_session_with(&provider, Vec::new(), &store, only_when_asked()).await;
-    let running = written.send(text(&question), turn("t1")).unwrap();
-    until(|| written.transcript().blocks.len() == 2).await;
+    written
+        .send(text("old question"), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
+    written.compact().unwrap().await.unwrap();
+    let running = written.send(text(&question), turn("t2")).unwrap();
+    until(|| written.transcript().blocks.len() == 7).await;
     written.abort().await;
     running.await.unwrap();
     let session = restore_compacting(&store, &provider);
 
     session.resume().unwrap().await.unwrap();
 
-    // No request was answered, so the summary holds the whole history,
-    // what the stopped turn wrote and the resume included, and the model
-    // continues from the summary.
+    // No request was answered since the last pass, so the window ends
+    // before the stopped message: the pass summarizes the summary and the
+    // answer kept with it, and the model reads the message as the user
+    // wrote it, what it wrote before the stop and the resume after the new
+    // summary.
     let requests = provider.requests();
-    let [summary, continuation] = &requests[1..] else {
+    let [summary, continuation] = &requests[3..] else {
         panic!("{requests:?}");
     };
     assert_eq!(
         summary.items.as_ref(),
         [
-            user_item(&question),
-            answer_item("small-model", &partial),
-            user_item(RESUME_TEXT),
+            summary_item("summary one"),
+            answer_item("small-model", &old_answer),
             user_item(COMPACTION_SUMMARY_INSTRUCTION),
         ]
     );
     assert_eq!(
         continuation.items.as_ref(),
-        [summary_item("resume summary")]
+        [
+            summary_item("resume summary"),
+            user_item(&question),
+            answer_item("small-model", &partial),
+            user_item(RESUME_TEXT),
+        ]
     );
     let blocks = session.transcript().blocks;
     assert_eq!(
+            "user",
+            "compaction_boundary",
+            "text",
+            "response",
+            "compaction_marker",
+            "compaction_boundary",
         kinds(&blocks),
         [
             "user",
             "text",
             "abort",
             "resume",
-            "compaction_boundary",
             "compaction_marker",
             "text",
             "response"
         ]
     );
-    assert!(matches!(&blocks[2], Block::Abort(abort) if abort.is_resumed));
+    assert!(matches!(&blocks[8], Block::Abort(abort) if abort.is_resumed));
 
     let stopped_session = restore_compacting(&store, &provider);
     let resuming = stopped_session.resume().unwrap();
-    until(|| provider.requests().len() == 4).await;
+    until(|| provider.requests().len() == 6).await;
     let stopped = stopped_session.abort().await;
 
     assert_eq!(stopped.target, Some(AbortTarget::ActiveCompaction));
     assert_eq!(resuming.await, Ok(ActionEnd::Aborted));
     let blocks = stopped_session.transcript().blocks;
-    assert_eq!(kinds(&blocks), ["user", "text", "abort", "resume", "abort"]);
-    assert!(matches!(&blocks[2], Block::Abort(abort) if abort.is_resumed));
-    assert_eq!(provider.requests().len(), 4);
+    assert_eq!(
+        kinds(&blocks),
+        [
+            "user",
+            "compaction_boundary",
+            "text",
+            "response",
+            "compaction_marker",
+            "user",
+            "text",
+            "abort",
+            "resume",
+            "abort"
+        ]
+    );
+    assert!(matches!(&blocks[7], Block::Abort(abort) if abort.is_resumed));
+    assert_eq!(provider.requests().len(), 6);
+}
+
+#[tokio::test(flavor = "local")]
+async fn input_too_large_for_the_model_on_its_own_is_never_summarized_and_its_refused_request_fails_the_turn()
+ {
+    let provider = ScriptedRuntime::new([
+        answer("first"),
+        answer("summary of one"),
+        too_long(),
+        answer("summary of the first answer"),
+        too_long(),
+    ]);
+    let store = MemoryTreeStore::new();
+    let session = small_session(&provider, Vec::new(), &store).await;
+    session.send(text("one"), turn("t1")).unwrap().await.unwrap();
+    // Twice the model's window.
+    let huge = "h".repeat(8_000);
+
+    let failed = session.send(text(&huge), turn("t2")).unwrap().await;
+
+    // The pass before the turn summarized what the first request carried;
+    // the pass after the refusal found no answered request since, and
+    // summarized what came before the message. Neither summary request
+    // carried the message; each request of the turn carried it after a
+    // summary, and the second refusal failed the turn.
+    assert_eq!(
+        failed.unwrap_err().code.as_deref(),
+        Some("context_length_exceeded")
+    );
+    let requests = provider.requests();
+    assert_eq!(requests.len(), 5, "{requests:?}");
+    let message = user_item(&huge);
+    assert!(
+        requests
+            .iter()
+            .filter(|request| is_copy(request))
+            .all(|request| !request.items.contains(&message))
+    );
+    assert_eq!(
+        requests[2].items.as_ref(),
+        [
+            summary_item("summary of one"),
+            answer_item("small-model", "first"),
+            message.clone()
+        ]
+    );
+    assert_eq!(
+        requests[4].items.as_ref(),
+        [summary_item("summary of the first answer"), message]
+    );
+    // The message stays where it was, before the failure.
+    assert_eq!(
+        kinds(&session.transcript().blocks),
+        [
+            "user",
+            "compaction_boundary",
+            "text",
+            "response",
+            "compaction_boundary",
+            "user",
+            "compaction_marker",
+            "compaction_marker",
+            "error"
+        ]
+    );
 }
 
 #[tokio::test(flavor = "local")]
@@ -1134,13 +1233,15 @@ async fn a_round_whose_usage_with_its_cache_reaches_the_threshold_summarizes_wha
 }
 
 #[tokio::test(flavor = "local")]
+        answer("first answer"),
+        answer("summary one"),
 async fn a_pass_with_nothing_to_summarize_but_the_last_summary_sends_no_request() {
     let provider = ScriptedRuntime::new([
         Turn::Events(vec![event::error(
             "the key expired",
             Some(ErrorCode::AuthExpired),
         )]),
-        answer("summary"),
+        answer("summary two"),
     ]);
     let store = MemoryTreeStore::new();
     let session = small_session(&provider, Vec::new(), &store).await;
@@ -1151,18 +1252,31 @@ async fn a_pass_with_nothing_to_summarize_but_the_last_summary_sends_no_request(
     assert!(session.transcript().blocks.is_empty());
     assert_eq!(session.phase(), SessionPhase::Idle);
 
-    // No request was answered, so a pass summarizes the whole history and
-    // keeps nothing after its boundary: the next pass's window would hold
-    // the last summary alone.
-    let failed = session.send(long_message(), turn("t1")).unwrap().await;
+    // A turn fails after a pass. With no request answered since, the next
+    // pass summarizes the summary and the answer kept with it, and keeps
+    // the failed message: the pass after it would hold the last summary
+    // alone.
+    session.send(text("one"), turn("t1")).unwrap().await.unwrap();
+    session.compact().unwrap().await.unwrap();
+    let failed = session.send(text("two"), turn("t2")).unwrap().await;
     assert!(failed.is_err());
     session.compact().unwrap().await.unwrap();
     session.compact().unwrap().await.unwrap();
 
-    assert_eq!(provider.requests().len(), 2);
+    assert_eq!(provider.requests().len(), 4);
     assert_eq!(
         kinds(&session.transcript().blocks),
-        ["user", "error", "compaction_boundary", "compaction_marker"]
+        [
+            "user",
+            "compaction_boundary",
+            "text",
+            "response",
+            "compaction_marker",
+            "compaction_boundary",
+            "user",
+            "error",
+            "compaction_marker"
+        ]
     );
 }
 

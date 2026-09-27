@@ -86,11 +86,20 @@ request after the pass.
    cut point, where that request's content ends
    ([Replay](runtime.md#replay) says which request that is). What came after
    it is kept: the model's answer to that request, the tool results and later
-   input. When no request has been answered since the last compaction, the
-   window runs to the end and nothing is kept. Because the window starts at the previous boundary, the
-   previous summary folds into the new one. A window that holds nothing but a
-   boundary and its marker is not compacted: summarizing a summary alone frees
-   nothing and only degrades it.
+   input. When no request has been answered since the last compaction, there
+   is no such request, and the window ends where the input that no request
+   has answered begins: at the last `user` block after the latest `response`
+   block, or, when no `user` block came after it, right after that
+   `response` block, never before the window's start. That input and what
+   followed it are kept, and reach the model after the summary as they were
+   written. For example, the user stops a turn before any answer, and later
+   continues it with `resume`: the pass summarizes what came before the
+   stopped message, and the next request carries the summary, the message,
+   what the model wrote before the stop and the `resume` block. Because the
+   window starts at the previous boundary, the previous summary folds into
+   the new one. A window that holds nothing but a boundary and its marker is
+   not compacted: summarizing a summary alone frees nothing and only degrades
+   it.
 3. A session copy receives the window and the summary instruction
    ([Session copy](#session-copy)). The text of its answer, trimmed, is the
    summary.
@@ -102,12 +111,12 @@ request after the pass.
 The summary request is a request the vendor has already taken with the
 instruction added, so it fits wherever that request did. When it does not,
 because the vendor refuses it as too large (`context_length_exceeded`), or
-because no request was answered since the last compaction and the whole
-history is too large, the pass retries with the first half of the window, halving
-again until one block is left; a previous boundary and its marker at the start
-of the window stay in it and do not count. Such a request no longer extends
-one the vendor cached, and the blocks after the cut are kept. Other outcomes
-leave the history unchanged:
+because no request was answered since the last compaction and the window is
+larger than any request the vendor took, the pass retries with the first half
+of the window, halving again until one block is left; a previous boundary and
+its marker at the start of the window stay in it and do not count. Such a
+request no longer extends one the vendor cached, and the blocks after the cut
+are kept. Other outcomes leave the history unchanged:
 
 - An empty summary compacts nothing.
 - A request that still exceeds the context with one block left, or another
@@ -117,6 +126,15 @@ leave the history unchanged:
 - Stop stops the copy and then the action.
 
 The copy is closed on every path.
+
+A pass never summarizes the input it keeps, so input that is too large for
+the model on its own cannot be made to fit. The pass summarizes what came
+before it, the request is refused as too large, and the turn fails with
+`context_length_exceeded` as any request does that the vendor refuses again
+after its pass, or whose pass compacted nothing
+([When compaction runs](#when-compaction-runs)). No pass is repeated for it,
+and the input stays in the history, where the user can edit it
+([Message editing](message-editing.md)).
 
 ### What the model receives afterward
 
@@ -293,7 +311,8 @@ a real model.
 | Situation | Required observation |
 | --- | --- |
 | A summary request, for each provider | Its body is the session's latest answered request, byte for byte, with the instruction after it, under the session's id; the blocks after that request are kept |
-| No request answered since the last boundary | The window runs to the end; nothing is kept |
+| No request answered since the last boundary, then `resume` over the threshold | The window ends before the stopped message; the next request carries the summary, then the message, the stopped answer and the `resume` block as written |
+| Input too large for the model on its own | No summary request carries it; the request after the pass carries it after the summary, and the turn fails with `context_length_exceeded` when that request is refused |
 | Screenshots accumulate toward a request limit, for each provider | The request that would reach 80% of the limit compacts first; no request is refused |
 | A request refused as too large (HTTP 413, or too many images) | One pass, then the request is sent again; a second refusal fails the turn |
 | The latest answer's reasoning is kept past a summary | The Anthropic provider leaves it out of every later request; the other providers replay it |
