@@ -614,9 +614,13 @@ The model receives the blocks from the last `compaction_boundary` onward, the
 replayed blocks, each as the table says. A long text is cut in the middle by
 the replay bound ([Text bounds](compaction.md#text-bounds)). Signed thinking
 and redacted data are replayed whole, because the vendor verifies them as they
-were sent. Each medium is replayed with the bytes the session holds for it
-([Media](#media)). A tool call's input is replayed as the JSON value the
-provider supplied, or as text when it is not valid JSON.
+were sent. Each medium is replayed with the bytes the session holds for it,
+and a tool's medium that is gone as its text ([Media](#media)). A message's
+reference is replayed as its text, and an attachment record
+([Attachments](../product/product.md#attachments)) as a tag that names the
+file, its media type, its size and its path, never its content. A tool
+call's input is replayed as the JSON value the provider supplied, or as text
+when it is not valid JSON.
 
 An image, video or document is replayed as a text that names it and says why
 it was not sent when the request's model does not accept its type
@@ -692,6 +696,15 @@ saves, patches, resets, syncs, other pages, edits, Forks:  the reference
 each provider request while the block is replayed:         the held bytes
 ```
 
+A medium has one form in each place, and each form is a type of its own, so
+a block cannot hold bytes and a provider cannot receive a reference:
+
+| Where | The medium |
+| --- | --- |
+| What a tool returns | Its bytes and media type |
+| Blocks, queued messages, pending steers, checkpoint rows and frames | A reference; a message's image or video may name a URL the vendor fetches instead |
+| A provider request's items | Its bytes and media type, or that URL |
+
 - **Storing.** A medium's bytes are stored when the medium enters, and never
   again; an image is fitted before that
   ([Images in the transcript](#images-in-the-transcript)). An upload is
@@ -703,21 +716,33 @@ each provider request while the block is replayed:         the held bytes
   before the result enters the transcript. The put computes the bytes'
   SHA-256, which names the blob, and sends no bytes for a blob the namespace
   holds already ([The object store](../backend/storage.md#the-object-store)).
-  A tool's medium whose put fails becomes the text
-  `[<kind> not stored: <reason>]` in its result, so the turn goes on and no
-  block names a blob that was not stored.
-- **Text in a medium's place.** A text that takes a tool medium's place in a
-  result, such as the one above or a retired medium's
-  ([Retired tool media](#retired-tool-media)), is a text part of its own that
-  starts with `[image` or `[video`, and no other text part of a tool result
-  starts so.
-  The page shows it where the medium was
+  A tool's medium whose put fails is gone from its result (below), so the
+  turn goes on and no block names a blob that was not stored.
+- **A medium that is gone.** A tool result's image or video that the result
+  no longer holds gives way, in its place, to a part of its own that says
+  what it was and why it is gone:
+  `{ type: "gone", kind, mediaType, cause }`, where `kind` is `image` or
+  `video` and `cause` is `{ type: "not_stored", error }` when its bytes could
+  not be stored, with the store's error, or `{ type: "retired", at }` when it
+  was retired, with the time ([Retired tool media](#retired-tool-media)). The
+  model reads the part as one line of text, which the agent renders in one
+  place:
+
+  | Why it is gone | The text the model reads |
+  | --- | --- |
+  | Its put failed | `[<kind> not stored: <reason>]` |
+  | Retired | `[<kind>:<media type>, removed on <date>: a tool result's images and videos are kept for 30 days]` |
+
+  The reason is the store's error, and the date is the UTC day of the
+  retirement, `YYYY-MM-DD`. The page shows the part where the medium was
   ([Media a tool returned](../product/file-previews.md#media-a-tool-returned)).
+  A message's media are never gone: an upload is stored before a message can
+  name it.
 - **References.** The transcript, the queued messages, the pending steers,
-  every checkpoint row and every frame hold media only by reference. Nothing
-  converts media when a block is saved or sent, a store refuses a checkpoint
-  that holds media bytes ([Saving](#saving)), and an edit or a Fork copies
-  references.
+  every checkpoint row and every frame hold media only by reference, or by
+  the URL a message's image or video names: their types have no place for
+  bytes. Nothing converts media when a block is saved or sent, and an edit or
+  a Fork copies references.
 - **Held bytes.** The session holds something only for the media that its
   replayed blocks or its waiting input (queued messages and pending steers)
   reference: the medium's bytes, or the fact that its blob is missing. A
@@ -729,16 +754,22 @@ each provider request while the block is replayed:         the held bytes
   live tree therefore holds, per live session, at most the media its next
   request sends and those of its waiting input.
 - **The model's view.** Replay, the token estimates and compaction read the
-  replayed blocks with each medium's held bytes in place of its reference
-  ([Replay](#replay), [Token estimates](compaction.md#token-estimates)); a
-  provider request is the only place a medium carries its bytes. Before the
-  session builds that view, it reads the blob of each replayed medium it
-  holds nothing for, which after a restore is every one, a few at a time
-  concurrently, since on S3 each read is a round trip. Opening a
+  replayed blocks together with what the session holds for each medium they
+  reference: its bytes, or the fact that its blob is missing
+  ([Replay](#replay), [Token estimates](compaction.md#token-estimates)).
+  Before the session builds that view, it reads the blob of each replayed
+  medium it holds nothing for, which after a restore is every one, a few at a
+  time concurrently, since on S3 each read is a round trip; it builds the
+  view only once it holds something for every replayed medium. Opening a
   conversation therefore reads no blob, a request never reads a blob the
   session holds, and no blob from before the last `compaction_boundary` is
-  read. A blob that is missing becomes the text `[missing <kind> blob <ref>]`
-  in the view, so the turn goes on; the transcript keeps the reference.
+  read.
+- **Requests.** Replay puts each medium's held bytes into the request's
+  items, and a medium whose blob is missing becomes the text
+  `[missing <kind> blob <ref>]` there, so the turn goes on; the transcript
+  keeps the reference. A provider request is the only place a medium carries
+  its bytes, and it carries no reference, so a provider never has one to
+  refuse.
 - **Stable requests.** Within a live tree, a medium reaches the model in one
   form for as long as it is replayed: its held bytes, or the missing text for
   a blob found missing. Bytes the session let go of and reads again are the
@@ -813,10 +844,11 @@ exists only for the user.
 
 A tool result's image or video stays in its block for 30 days. After that it
 is retired, once no request can send it while a vendor may still keep that
-request in its cache: it gives way, in its place in the result, to one line of
-text that says what it was and when it was removed. For example, a screenshot
-a command printed on 1 September, in history that compaction summarized on 3
-September, gives way at the first daily pass after 1 October to:
+request in its cache: it is gone from the result, and in its place a part
+says what it was and when it was removed ([Media](#media)). For example, a
+screenshot a command printed on 1 September, in history that compaction
+summarized on 3 September, is retired at the first daily pass after
+1 October, and the model then reads in its place:
 
 ```text
 [image:image/png, removed on 2026-10-01: a tool result's images and videos are kept for 30 days]
@@ -830,12 +862,12 @@ one of these holds:
 | Before its node's last `compaction_boundary`, and that boundary is more than 24 hours old | Replay starts at the boundary, so no request has sent the medium since the summary request, more than a day ago, and no vendor keeps a cache entry longer than 24 hours. An edit or a retry that removes the boundary later sends the text into a cache that has ended |
 | Anywhere in a conversation that has been idle for 30 days | No request of the conversation has been sent for 30 days ([Retiring tool media](../backend/storage.md#retiring-tool-media) says how the backend knows) |
 
-- The text is `[<kind>:<media type>, removed on <date>: a tool result's images
-  and videos are kept for 30 days]`. The kind is `image` or `video`, and the
-  date is the UTC day of the retirement, `YYYY-MM-DD`. The text replaces the
-  image or video part of the block's `output`; the result's other parts, its
-  `view`, and the block's id, time and status stay.
-- The model receives the text as any text part of a result. The backend
+- The retired part holds the medium's kind and media type and the time of
+  the retirement, and the model reads it as the text [Media](#media) gives a
+  retired medium. It replaces the image or video part of the block's
+  `output`; the result's other parts, its `view`, and the block's id, time
+  and status stay.
+- The model receives the text as any text of a result. The backend
   retires only conversations without a live tree
   ([Retiring tool media](../backend/storage.md#retiring-tool-media)), so
   within a live tree a medium reaches the model in one form for as long as it
@@ -843,8 +875,8 @@ one of these holds:
   previous one carried the image.
 - A message's images, videos and documents are never retired: they come from
   the user's uploads.
-- The page shows the text where the image or video was, as the model reads
-  it ([Media a tool returned](../product/file-previews.md#media-a-tool-returned)).
+- The page shows, where the image or video was, that it was removed and on
+  which day ([Media a tool returned](../product/file-previews.md#media-a-tool-returned)).
 - The agent owns the rule: which media are retired, when, and the text. The
   backend applies it to stored conversations
   ([Retention](../backend/storage.md#retention)).
@@ -892,7 +924,7 @@ with the command's own output and status.
 
 The images and videos a result carries are parts of its `output`, held by
 reference ([Media](#media)); the view never holds them. Each tool's rendering
-shows them with the call, and a text in a medium's place where the medium was
+shows them with the call, and a medium that is gone where it was
 ([Media a tool returned](../product/file-previews.md#media-a-tool-returned)).
 
 Live frames add to the transcript; they do not replace it:
@@ -1210,10 +1242,8 @@ atomic commits of the same store ([Persistence](subagents.md#persistence)).
   retained rows with the command state of the cut, then the session adopts them
   and publishes one `replace` patch.
 - A save writes its rows as they are. Their media are references whose blobs
-  were stored when the media entered ([Media](#media)), so a save stores no
-  blob. A store refuses a save, or a node's first checkpoint, in which a
-  block or a queued message holds media bytes instead of a reference: it
-  answers an error that names the block or the message, and writes nothing.
+  were stored when the media entered, and a block or a queued message has no
+  place for bytes ([Media](#media)), so a save stores no blob.
 
 ### Restoring
 
@@ -1259,11 +1289,11 @@ where a tool runs; no test calls a real model.
 | A client stops reading | The connection closes as lagging; a reconnect adopts the running tree and its turn completes |
 | Frames of an open | The handshake order above; patch revisions increase by one; a stale patch after a reset is ignored; a gap triggers `sync_transcript` |
 | Scripted tool events | Each of the five tools renders with its own component and its `description` title; updates replace the block in place; an unknown tool name renders as a generic card |
-| A tool's result carries an image, a video, or a text in a medium's place | The page shows each under the call's row, the media loaded from the blob route; a click on the image opens it large |
+| A tool's result carries an image, a video, or a medium that is gone | The page shows each under the call's row, the media loaded from the blob route and a gone medium as what it was and why it is gone; a click on the image opens it large |
 | Tool calls | Input refusals, the repeat guard, preview budgets, handle release and binary stdout verdicts match [Tools](#tools) |
 | A stored conversation with images is opened by two pages, and one asks for the transcript again after a gap | No blob is put: every frame carries the references its rows hold |
 | A restored conversation with images before and after its last `compaction_boundary` runs a turn of two requests | The first request reads the blob of each replayed medium once and none from before the boundary; the second reads none; both carry the replayed media's bytes |
-| A tool's medium cannot be stored | Its result holds `[<kind> not stored: <reason>]`, the model receives that text, and the turn goes on |
+| A tool's medium cannot be stored | Its result holds the medium as gone, not stored, with the store's error; the model receives `[<kind> not stored: <reason>]`, and the turn goes on |
 | A replayed medium's blob is missing | The model receives `[missing <kind> blob <ref>]` in its place, in every request of the live tree, and the turn goes on |
 | One scripted conversation with tools, images, thinking, a steer, a subagent's result and a yield, for each provider | Each request's body begins with the previous request's body, byte for byte apart from the Anthropic cache marks, which the vendor does not count as content; each exception of [The rule](../providers/providers.md#the-rule) changes only what that rule names |
 | A switch to a model that does not accept video | Every request to it carries the history's videos as the same text |
