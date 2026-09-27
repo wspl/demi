@@ -18,11 +18,12 @@ use super::{
     compaction,
     core::{TurnStage, with_request_id},
     input::Take,
+    media::model_view,
     persist,
     runtime::{ToolEffect, ToolInvocation, ToolOutcome},
 };
 use crate::{
-    store::BoundaryEdge,
+    store::{BoundaryEdge, media},
     transcript::{estimate::context_tokens, resume_point, tool_input},
 };
 
@@ -73,13 +74,11 @@ async fn run_turn(
         }
         let tools = run_tools(s, cancel, recover).await?;
         if recover && auto_compactions < MAX_AUTO_COMPACTIONS {
-            let estimate =
-                |s: &SessionShared| s.read(|core| context_tokens(core.transcript.blocks(), None));
-            let before_compaction = estimate(s);
+            let before_compaction = estimate(s, cancel).await?;
             let compacted = compaction::compacting(s, compaction::run_pass(s, cancel)).await?;
             // Looping on a pass that freed nothing would summarize its own
             // summaries and pile up `resume` blocks.
-            if compacted && estimate(s) < before_compaction {
+            if compacted && estimate(s, cancel).await? < before_compaction {
                 auto_compactions += 1;
                 s.update(|core| core.push_resume());
                 continue;
@@ -93,6 +92,13 @@ async fn run_turn(
             return Ok(());
         }
     }
+}
+
+/// The estimate of the next request over the replayed blocks, as the model
+/// receives them.
+async fn estimate(s: &SessionShared, cancel: &TurnCancel) -> Result<u64, TurnError> {
+    let view = model_view(s, cancel).await?;
+    Ok(context_tokens(&view.blocks, None))
 }
 
 /// Lands the recorded model switch: the history is first compacted to fit
@@ -220,8 +226,15 @@ async fn request(s: &SessionShared, cancel: &TurnCancel) -> Result<InferenceRequ
     let system_prompt = cancel.guard(s.runtime.system_prompt()).await?;
     let tools = s.runtime.tools();
     let request_id = s.ids.next_id();
+    let view = model_view(s, cancel).await?;
     Ok(s.read(|core| {
-        core.inference_request(system_prompt, tools, request_id, cancel.child_token())
+        core.inference_request(
+            &view.blocks,
+            system_prompt,
+            tools,
+            request_id,
+            cancel.child_token(),
+        )
     }))
 }
 
@@ -324,7 +337,13 @@ async fn run_tools(
             }
             None => outcome,
         };
-        s.update(|core| core.complete_tool_call(&call.tool_use_id, outcome));
+        // The result's media are stored before it enters the transcript, and
+        // the session holds their bytes (`runtime.md` § Media).
+        let (output, held) = media::store_result(outcome.output, s.store.blobs()).await;
+        s.update(|core| {
+            core.media.absorb(held);
+            core.complete_tool_call(&call.tool_use_id, ToolOutcome { output, ..outcome });
+        });
         if !defer_input {
             write_inputs_since(s, before).await?;
         }
