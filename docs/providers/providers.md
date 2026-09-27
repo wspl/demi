@@ -383,7 +383,7 @@ models offer it.
 | Family | How the vendor caches | What Demi sends |
 |---|---|---|
 | `anthropic` | At the blocks a request marks with `cache_control`; a mark finds an earlier entry at most 20 blocks before it | Up to three marks with a one-hour lifetime, below; none on a request that is no session's |
-| `openai`, Responses | By prefix, automatically; the key routes a session's requests together | `prompt_cache_key`, the session id |
+| `openai`, Responses | By prefix, automatically; the key routes a session's requests together, and a request finds an earlier entry at most 20 message endings back, below | `prompt_cache_key`, the session id |
 | `openai`, Chat Completions | As each vendor does: OpenAI and most compatible vendors cache by prefix, automatically | Nothing, since some compatible vendors refuse fields they do not know |
 | `google` | By prefix, automatically (implicit caching) | Nothing. An explicit cache is a stored resource with a storage price, a second copy of the history |
 | `codex` | By prefix, keyed by the session | `prompt_cache_key`, `session-id` and `thread-id`, the session id |
@@ -416,6 +416,20 @@ costs twice the input price on what each request adds, where a lost entry
 costs 1.25 times the input price on the whole history. A prefix shorter than
 the model's minimum, 512 to 4,096 tokens, is not cached, and the vendor
 reports no error.
+
+**OpenAI's lookback.** The Responses API places a request's breakpoint at
+the end of its latest eligible message, a user message or the last of
+consecutive tool results, and finds an earlier entry at most 20 such endings
+back. Replay puts each call's result right after its call, so each result of
+parallel calls is an ending of its own: a turn that adds more than 20 endings,
+such as 21 parallel calls, misses the previous request's entry, and the vendor
+processes and writes the whole history again once. Newer models also take an
+explicit breakpoint on a content block (`prompt_cache_breakpoint`), which would
+read that entry exactly, as Anthropic's second mark does. Demi does not send
+it: the API documents it as not supported on earlier models without saying
+that they ignore it, and sending it only to the models that take it would need
+a list of model ids. The Codex backend takes the same format and key; it
+documents no lookback.
 
 **Reasoning kept past a summary.** The vendor's newest models check each
 replayed thinking block against the history before it: when that history
