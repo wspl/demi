@@ -3,9 +3,9 @@
 //! model.
 
 use demi_core::{
-    Attachment, FileExtension, Model, ModelMediaKind, attachment_tag, file_extension_support,
-    is_blank, model_accepts_media_type, model_accepts_video, preview_media_type, shows_in_place,
-    sniff_model_media_type, trim,
+    Attachment, FileExtension, MODEL_MEDIA_TYPES, Model, ModelMediaKind, attachment_tag,
+    file_extension_support, is_blank, model_accepts_media_type, model_accepts_video,
+    preview_media_type, shows_in_place, sniff_model_media_type, trim,
 };
 use serde_json::Value;
 
@@ -35,6 +35,17 @@ fn a_file_is_known_by_its_extension_whatever_its_case_or_separator() {
 fn the_page_shows_media_in_place_and_renders_markdown_from_its_text() {
     for (media_type, expected) in file_type_cases("showsInPlace") {
         assert_eq!(shows_in_place(&media_type), expected.as_bool().unwrap(), "{media_type}");
+    }
+}
+
+#[test]
+fn every_medium_a_model_reads_is_served_for_the_page_to_show_in_place() {
+    // A tool's images and videos, and a message's, are known by the
+    // model-media table and served from their blobs by the file-type table:
+    // a type the second does not show in place downloads, and a player then
+    // plays it only where the browser guesses the format.
+    for entry in MODEL_MEDIA_TYPES {
+        assert!(shows_in_place(entry.media_type), "{}", entry.media_type);
     }
 }
 
