@@ -6,6 +6,7 @@ import AgentReceiptBlock from '@demicodes/web-ui/agent/blocks/AgentReceiptBlock.
 import { agentReceiptMessages } from '../fixtures/blocks'
 import ErrorBlock from '@demicodes/web-ui/agent/blocks/ErrorBlock.vue'
 import ToolShellBlock from '@demicodes/web-ui/agent/blocks/ToolShellBlock.vue'
+import ToolCallBlock from '@demicodes/web-ui/agent/blocks/ToolCallBlock.vue'
 import { parseToolInput } from '@demicodes/web-ui/agent/block-helpers'
 import ActivitySlot from '@demicodes/web-ui/agent/blocks/ActivitySlot.vue'
 import type { ActivityKind, HandoffBlock } from '@demicodes/web-ui/agent/activity-slot'
@@ -72,8 +73,14 @@ import {
   changesDemoBlocks,
   editingShellTool,
   fileChangeCases,
+  fullPageTool,
+  missingImageTool,
+  recordingTool,
+  removedImageTool,
   runningShellTool,
+  screenshotTool,
   shellTool,
+  statusImageTool,
   thinkingText,
   steerPrompt,
   transcriptDemoBlocks,
@@ -91,6 +98,7 @@ import { useLiveGalleryCommand } from '../live-command'
 import { useTurnFlow, type TurnFlowKind } from '../turn-flow'
 import GalleryComposer from '../components/GalleryComposer.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
+import GalleryPhoneToolMedia from '../components/GalleryPhoneToolMedia.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import GalleryTabStripDrive from '../components/GalleryTabStripDrive.vue'
@@ -507,6 +515,15 @@ const functionalExpanded = ref(true)
 const functionalTool = ref(false)
 const functionalShellExpanded = ref(true)
 const functionalShellLive = ref(true)
+/** Calls whose results carry media, as the transcript shows them. */
+const toolMediaSpecimens = [
+  { variant: 'shell · image', block: screenshotTool },
+  { variant: 'shell · tall image', block: fullPageTool },
+  { variant: 'shell · video', block: recordingTool },
+  { variant: 'status · image', block: statusImageTool },
+  { variant: 'shell · image removed', block: removedImageTool },
+  { variant: 'shell · image cannot load', block: missingImageTool },
+]
 const functionalShellFiles = ref(false)
 const changeCaseOpen = reactive<Record<string, boolean>>({})
 const functionalThinkingStartedAt = new Date().toISOString()
@@ -1245,6 +1262,36 @@ onBeforeUnmount(() => {
             </GallerySpecimen>
           </div>
         </div>
+      </GallerySection>
+
+      <GallerySection
+        title="Tool media"
+        note="The images and videos a call's result carries show under its row at one preview height, folded or open, in the order of the result. A click on an image opens it large over the dimmed page: fitted and never enlarged, a click toggles actual size, and Escape, the close control or a click on the dimmed page closes it. A video plays in the browser's player, whose full-screen control shows it large. A text that took a medium's place shows where the medium was, and a medium the page cannot show says so at the same height."
+      >
+        <div class="gallery-frame gallery-block-frame bg-surface">
+          <div class="specimen-stack [--agent-pad-x:0px]">
+            <GallerySpecimen
+              v-for="specimen in toolMediaSpecimens"
+              :key="specimen.variant"
+              :variant="specimen.variant"
+              wide
+            >
+              <ToolCallBlock
+                :block="specimen.block"
+                :is-streaming="false"
+              />
+            </GallerySpecimen>
+          </div>
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="Tool media · phone width"
+        note="The same calls at a phone's width: a preview fits the column, and an image opened large fills the screen, where a tap toggles actual size and the close control or a tap on the dimmed page closes it. A video plays in the browser's player, which an iPhone shows full screen."
+      >
+        <GalleryOverlayWell size="narrow">
+          <GalleryPhoneToolMedia :calls="[screenshotTool, fullPageTool, recordingTool]" />
+        </GalleryOverlayWell>
       </GallerySection>
 
       <GallerySection
