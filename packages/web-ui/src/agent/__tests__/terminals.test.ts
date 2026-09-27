@@ -49,9 +49,11 @@ test('running terminals are oldest first', () => {
   expect(firstRunningTerminalId(terminals)).toBe('c')
 })
 
-test('status follows the job phase', () => {
+test('a command\'s tab shows it running, done, or stopped', () => {
   expect(terminalStatus('running')).toBe('active')
   expect(terminalStatus('exited')).toBe('done')
+  // The user or the agent stopped it: it did not finish.
+  expect(terminalStatus('aborted')).toBe('aborted')
 })
 
 test('a running inspect lists every running job; an exited inspect is that job only', () => {

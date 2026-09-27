@@ -1,7 +1,8 @@
-import type { Block } from '@demicodes/protocol'
+import type { Block, ShellViewStatus } from '@demicodes/protocol'
 import type { ConversationStatus } from './conversation-status'
 
-export type TerminalPhase = 'running' | 'exited'
+/** Where a command is, as its frames and stored views say: running, exited, or stopped (`aborted`). */
+export type TerminalPhase = ShellViewStatus
 
 /**
  * A command as the page shows it: from the live frames of the
@@ -119,8 +120,15 @@ export function runningTerminals(
     .toSorted((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt))
 }
 
+/** A command's mark: running, done, or stopped; a stopped command is never shown as done. */
 export function terminalStatus(phase: TerminalPhase): ConversationStatus {
-  return phase === 'running' ? 'active' : 'done'
+  if (phase === 'running') {
+    return 'active'
+  }
+  if (phase === 'aborted') {
+    return 'aborted'
+  }
+  return 'done'
 }
 
 export function runningChipLabel(count: number): string {
