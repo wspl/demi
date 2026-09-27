@@ -90,8 +90,10 @@ next to the wire's types, so that a command program depends on one crate.
     `Resume` and `Abort`; provider output; `CompactionBoundary` and
     `CompactionMarker`;
   - user and tool content (`UserContentBlock`, `MediaSource`,
-    `ToolResultContentBlock`), the blob references stored media travels by
-    (`BlobRef`), the tag that names an attachment to a model
+    `DocumentSource`, `ToolResultContentBlock`, `ToolMediaSource`), whose
+    media are blob references (`BlobRef`), or a URL, and never bytes; a tool
+    result's medium that is gone, with why (`GoneCause`); the tag that names
+    an attachment to a model
     (`attachment_tag`), and the one test of a blank text with the trim that
     goes with it (`is_blank`, `trim`);
   - models and their selection (`Model`, `ModelSelection`, `ThinkingConfig`)
@@ -338,7 +340,10 @@ next to the wire's types, so that a command program depends on one crate.
     request (identity, capabilities, authentication status, models, failure
     reading, quota, accounts and `runtime`), and `ProviderRuntime`, one
     session's runtime (`run`, `fresh`, `close`, and its vendor's request
-    limits for a model, `RequestLimits`); `InferenceRequest`, with how it
+    limits for a model, `RequestLimits`); `InferenceRequest`, with the
+    transcript as it carries it (`InferenceItem`), whose parts hold each
+    medium's bytes, or a URL, and never a reference (`UserPart`, `ResultPart`,
+    `MediaBytes`; a tool returns its result as `ResultPart`s too), and how it
     extends the session's earlier requests (`PromptCache`), `ProviderEvent`,
     `ProviderFailure` and its `ErrorCode`;
   - the HTTP failure record and its standard reading (`HttpFailureRecord`,

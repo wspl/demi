@@ -411,8 +411,9 @@ A Cloud target may need to wake before this write.
 
 The agent message contains one `attachment` record with name, path, media type,
 size, and blob hash; a text file's record also carries its opening lines, which
-the capsule shows when pointed at. Providers render the record as an
-attachment tag so the model can read the file with tools. The complete text
+the capsule shows when pointed at. The model receives the record as a tag
+that names the file ([Replay](../agent/runtime.md#replay)), so it can read the
+file with tools. The complete text
 file is not duplicated into the message.
 
 Native media adds the corresponding image, video, audio, or document input beside

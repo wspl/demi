@@ -298,8 +298,8 @@ retention pass does the rest:
 ```text
 1 Sep   the screenshot enters: blobs/<user>/ab12…, referenced by a tool_call block
 3 Sep   compaction: the block now lies before the root's last boundary
-1 Oct   the pass retires it: the block holds a line of text in its place,
-        and ab12… is recorded as used on 1 Oct
+1 Oct   the pass retires it: in its place the block holds a part that says
+        it was removed, and ab12… is recorded as used on 1 Oct
 2 Oct   the pass collects: no row references ab12…, the object and its last
         use are older than 24 hours, so the blob is deleted
 ```
@@ -307,7 +307,7 @@ retention pass does the rest:
 | What | Kept | Then |
 |---|---|---|
 | An upload: its record and its blob | For as long as the account exists; the user set their retention aside | Removed with the account ([Account deletion](#account-deletion)) |
-| A tool result's image or video | 30 days, and longer while a request could still send it | Retired to a line of text ([Retired tool media](../agent/runtime.md#retired-tool-media)), then collected |
+| A tool result's image or video | 30 days, and longer while a request could still send it | Retired: a part that says it was removed takes its place ([Retired tool media](../agent/runtime.md#retired-tool-media)); then its blob is collected |
 | Any other blob, such as a tool's screenshot in history an edit removed | While a block, a queued message or a pending steer references it, and 24 hours after its last use | Collected ([Collecting blobs](#collecting-blobs)) |
 | A conversation, its rows and its change objects | For as long as the account exists | Removed with the account |
 | A shell job's output on a Host | Until the conversation's Host resources are released | Removed by the conversation release, or when a Cloud stops ([Conversation release](../execution/resource-lifecycle.md#conversation-release)) |
@@ -348,7 +348,7 @@ much history as the conversations hold. Per user and day:
 
 ### Retiring tool media
 
-The agent defines which images and videos are retired and the text that takes
+The agent defines which images and videos are retired and the part that takes
 their place ([Retired tool media](../agent/runtime.md#retired-tool-media)).
 The pass applies that rule to every node of each conversation whose tree is
 not live:

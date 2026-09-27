@@ -217,8 +217,7 @@ Zod source and z.infer types
 - **Tolerant values where the browser receives.** The same rule decides how
   closely a value's schema follows its Rust type. Where the browser only
   receives a value, its schema may accept more than the type holds, since the
-  backend never sends the difference: `z.base64()` accepts the nonzero
-  padding bits that `B64Bytes` refuses, a failure map's keys may be empty
+  backend never sends the difference: a failure map's keys may be empty
   where a block id cannot, and an email address may carry capitals, which
   `EmailAddress` lowercases. Where the browser sends a value, its schema
   refuses whatever the backend refuses: a name the backend trims is trimmed
