@@ -419,9 +419,7 @@ impl Shard {
         };
         let found = match (&named, &target) {
             (Some(host), _) => control.device(host.device.clone()).await?,
-            (None, ExecutionTarget::Cloud { .. }) if allocate => {
-                Some(control.managed_device_or_create(record.owner.clone()).await?)
-            }
+            (None, ExecutionTarget::Cloud { .. }) if allocate => Some(self.cloud_device().await?),
             (None, ExecutionTarget::Cloud { .. }) => {
                 Some(control.managed_device(record.owner.clone()).await?.ok_or(Refusal::Stopped)?)
             }

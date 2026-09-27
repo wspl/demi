@@ -257,6 +257,8 @@ impl Conversation {
             clock: Arc::new(SystemClock),
             ids: Rc::new(RandomIds),
             config,
+            // No product shows the conversations' statuses.
+            status_changed: Rc::new(|_| {}),
         });
         let mut client = TestClient::connect(&server, &root, &fixture.cwd);
         client.send(ClientFrame::Open {}).await;

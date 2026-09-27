@@ -146,6 +146,7 @@ pub(crate) async fn activate(
     if !selected {
         return Err(AccountRefusal::NotFound);
     }
+    assembly.vault().mark_changed(&entry.owner);
     assembly.invalidate(&entry.id).await?;
     Ok(account)
 }
@@ -170,6 +171,7 @@ pub(crate) async fn remove(
         .remove_credential(entry.id.clone(), account.clone())
         .await?;
     assembly.quotas().forget_account(&entry.id, &account);
+    assembly.vault().mark_changed(&entry.owner);
     assembly.invalidate(&entry.id).await?;
     Ok(())
 }

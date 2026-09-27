@@ -20,6 +20,7 @@ use super::error::ApiError;
 use super::gate::AuthUser;
 use crate::backend::Services;
 use crate::storage::drafts::{DraftRefusal, StagedFile};
+use crate::sync::Part;
 
 pub(super) async fn read(
     State(services): State<Arc<Services>>,
@@ -56,9 +57,11 @@ pub(super) async fn save(
         .collect::<Result<Vec<_>, _>>()?;
     let saved = services
         .control
-        .save_draft(record.id, user.id, save.base, save.text, files)
-        .await?;
-    Ok(Json(DraftAnswer { draft: saved.map_err(refused)? }))
+        .save_draft(record.id.clone(), user.id.clone(), save.base, save.text, files)
+        .await?
+        .map_err(refused)?;
+    services.sync.mark(&user.id, Part::Conversation(record.id));
+    Ok(Json(DraftAnswer { draft: saved }))
 }
 
 /// Restores or dismisses the replaced version the request names.
@@ -72,9 +75,11 @@ pub(super) async fn replaced(
     let JsonBody(request) = body?;
     let changed = services
         .control
-        .change_replaced_draft(record.id, request.action, request.revision)
-        .await?;
-    Ok(Json(DraftAnswer { draft: changed.map_err(refused)? }))
+        .change_replaced_draft(record.id.clone(), request.action, request.revision)
+        .await?
+        .map_err(refused)?;
+    services.sync.mark(&user.id, Part::Conversation(record.id));
+    Ok(Json(DraftAnswer { draft: changed }))
 }
 
 /// A draft's file as storage takes it: an upload or a file on a paired

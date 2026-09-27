@@ -32,8 +32,8 @@ mod query;
 mod runners;
 mod settings;
 mod sidebar;
-mod state;
 mod streams;
+mod sync;
 mod transfer;
 mod usage;
 mod users;
@@ -161,8 +161,9 @@ impl FromRef<AppState> for Shards {
 
 /// The routes. Every `/api` path, unknown paths included, passes the session
 /// gate first, except those outside `session_api`: the public entrances,
-/// setup and login, and the routes that authenticate with device
-/// credentials instead. The pipes stay outside the 503 of a closing backend,
+/// setup and login, the routes that authenticate with device credentials
+/// instead, and the synchronization channel, which checks the session
+/// without renewing it. The pipes stay outside the 503 of a closing backend,
 /// whose shutdown needs them, and outside the body limit, since their bodies
 /// have none.
 fn router(state: AppState, closing: CancellationToken, web_directory: Option<PathBuf>) -> Router {
@@ -174,6 +175,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/api/setup", get(auth::setup_status).post(auth::setup))
         .route("/api/auth/login", post(auth::login))
         .route("/api/runner", get(runners::socket))
+        .route("/api/sync", get(sync::channel))
         .method_not_allowed_fallback(no_route);
     let pipes = Router::new()
         .route("/api/pipes/{id}", put(runners::put).get(runners::get))
@@ -184,7 +186,6 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/auth/password", put(auth::change_password))
         .route("/auth/email", post(auth::start_email_change))
         .route("/auth/email/confirm", post(auth::confirm_email_change))
-        .route("/state", get(state::state))
         .route("/settings", get(settings::settings))
         .route(
             "/settings/preferences",

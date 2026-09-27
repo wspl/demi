@@ -31,6 +31,7 @@ use crate::conversation::titles::TitleRefusal;
 use crate::conversation::{ForkRefusal, failure_facts};
 use crate::storage::conversation_index::{ConversationRecord, Creation};
 use crate::storage::tree;
+use crate::sync::Part;
 
 fn not_found() -> ApiError {
     ApiError::new(StatusCode::NOT_FOUND, ErrorCode::ConversationNotFound, "No such conversation")
@@ -74,7 +75,12 @@ pub(super) async fn create(
 ) -> Result<(StatusCode, Json<ConversationAnswer>), ApiError> {
     let creation = state.services.control.create_conversation(user.id.clone(), id).await?;
     let (status, record) = match creation {
-        Creation::Created(record) => (StatusCode::CREATED, record),
+        Creation::Created(record) => {
+            let sync = &state.services.sync;
+            sync.mark(&user.id, Part::Conversation(record.id.clone()));
+            sync.mark(&user.id, Part::ConversationOrder);
+            (StatusCode::CREATED, record)
+        }
         Creation::Existing(record) => (StatusCode::OK, record),
         Creation::Unavailable => {
             return Err(ApiError::new(
@@ -284,7 +290,8 @@ pub(super) async fn read(
             "Cannot read beyond current output",
         ));
     }
-    services.control.mark_conversation_read(record.id, revision).await?;
+    services.control.mark_conversation_read(record.id.clone(), revision).await?;
+    services.sync.mark(&user.id, Part::Conversation(record.id));
     Ok(StatusCode::NO_CONTENT)
 }
 

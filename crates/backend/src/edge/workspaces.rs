@@ -18,6 +18,7 @@ use super::error::ApiError;
 use super::gate::AuthUser;
 use crate::backend::Services;
 use crate::storage::workspaces::{WorkspaceDeletion, new_workspace_id};
+use crate::sync::Part;
 
 pub(super) async fn list(
     State(services): State<Arc<Services>>,
@@ -40,7 +41,13 @@ pub(super) async fn create(
         CreateWorkspace::Device { device_id, path, name } => state
             .services
             .control
-            .create_workspace(new_workspace_id(), user.id, device_id, path.as_str().to_owned(), name.into_string())
+            .create_workspace(
+                new_workspace_id(),
+                user.id.clone(),
+                device_id,
+                path.as_str().to_owned(),
+                name.into_string(),
+            )
             .await?
             .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, ErrorCode::DeviceNotFound, "No such device"))?,
         CreateWorkspace::Cloud { name } => {
@@ -52,6 +59,7 @@ pub(super) async fn create(
                 .await??
         }
     };
+    state.services.sync.mark(&user.id, Part::Workspaces);
     Ok((
         StatusCode::CREATED,
         Json(WorkspaceAnswer {
@@ -69,9 +77,10 @@ pub(super) async fn rename(
     let id = workspace_id(id)?;
     let workspace = services
         .control
-        .rename_workspace(user.id, id, name.into_string())
+        .rename_workspace(user.id.clone(), id, name.into_string())
         .await?
         .ok_or_else(not_found)?;
+    services.sync.mark(&user.id, Part::Workspaces);
     Ok(Json(WorkspaceAnswer {
         workspace: workspace.dto(),
     }))
@@ -83,8 +92,11 @@ pub(super) async fn delete(
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let id = workspace_id(id)?;
-    match services.control.delete_workspace(user.id, id).await? {
-        WorkspaceDeletion::Deleted => Ok(StatusCode::NO_CONTENT),
+    match services.control.delete_workspace(user.id.clone(), id).await? {
+        WorkspaceDeletion::Deleted => {
+            services.sync.mark(&user.id, Part::Workspaces);
+            Ok(StatusCode::NO_CONTENT)
+        }
         WorkspaceDeletion::Missing => Err(not_found()),
         WorkspaceDeletion::InUse(conversations) => Err(ApiError::new(
             StatusCode::CONFLICT,

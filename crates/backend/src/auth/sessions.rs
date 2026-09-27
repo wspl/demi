@@ -26,6 +26,13 @@ pub(crate) const SESSION_POLICY: SessionPolicy = SessionPolicy {
     renew_below: SignedDuration::from_secs(15 * DAY_SECONDS),
 };
 
+/// The policy of a look that never renews: a synchronization channel's,
+/// which only requests renew (`backend.md` § Browser synchronization).
+const WITHOUT_RENEWAL: SessionPolicy = SessionPolicy {
+    renew_below: SignedDuration::ZERO,
+    ..SESSION_POLICY
+};
+
 /// The SHA-256 of a session or device token in lowercase hexadecimal: what
 /// storage keeps instead of the token (`storage.md` § Passwords and
 /// credentials at rest).
@@ -80,6 +87,12 @@ impl WebSessions {
         self.control
             .resolve_web_session(TokenHash::of(token), SESSION_POLICY)
             .await
+    }
+
+    /// The live session a token's hash names, as `resolve` finds it but
+    /// never renewed; `None` when it names no live session.
+    pub(crate) async fn check(&self, token: &TokenHash) -> Result<Option<ResolvedSession>, StorageError> {
+        self.control.resolve_web_session(token.clone(), WITHOUT_RENEWAL).await
     }
 
     pub(crate) async fn close(&self, token: &str) -> Result<(), StorageError> {

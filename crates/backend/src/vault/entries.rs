@@ -23,6 +23,7 @@ use super::seal::{self, VaultKey};
 use crate::storage::StorageError;
 use crate::storage::control::ControlService;
 use crate::storage::providers::{CredentialRow, CredentialWrite, NewProvider, ProviderRow};
+use crate::sync::{Part, SyncRegistry};
 
 /// The credential vault. Cloning it is cheap.
 #[derive(Clone)]
@@ -37,6 +38,8 @@ struct Shared {
     master: tokio::sync::OnceCell<UserId>,
     /// One refresh at a time for each account of every entry.
     gates: RefreshGates,
+    /// The pages' channels, on which each change of an entry is marked.
+    sync: SyncRegistry,
 }
 
 /// A provider entry, read and decoded.
@@ -122,13 +125,14 @@ impl ProviderEntry {
 }
 
 impl Vault {
-    pub(crate) fn new(control: ControlService, key: VaultKey, mode: InstanceMode) -> Self {
+    pub(crate) fn new(control: ControlService, key: VaultKey, mode: InstanceMode, sync: SyncRegistry) -> Self {
         Self(Arc::new(Shared {
             control,
             key,
             mode,
             master: tokio::sync::OnceCell::new(),
             gates: RefreshGates::new(),
+            sync,
         }))
     }
 
@@ -175,6 +179,36 @@ impl Vault {
         Ok(master.clone())
     }
 
+    /// Marks the providers changed on the channels of every user who infers
+    /// with the entries of `owner`: every user on a shared instance, the
+    /// owner alone on an isolated one.
+    pub(crate) fn mark_changed(&self, owner: &UserId) {
+        match self.0.mode {
+            InstanceMode::Shared => self.0.sync.mark_everyone(&Part::Providers),
+            InstanceMode::Isolated => self.0.sync.mark(owner, Part::Providers),
+        }
+    }
+
+    /// Marks the providers changed for every user who infers with the entry
+    /// `id`. A lookup that fails is logged: the pages then show the change
+    /// with the entry's next one.
+    pub(crate) async fn mark_entry_changed(&self, id: &ProviderId) {
+        if self.0.mode == InstanceMode::Shared {
+            self.0.sync.mark_everyone(&Part::Providers);
+            return;
+        }
+        match self.0.control.provider(id.clone()).await {
+            Ok(Some(row)) => self.0.sync.mark(&row.owner, Part::Providers),
+            // An entry deleted meanwhile marked its owner as it went.
+            Ok(None) => {}
+            Err(error) => tracing::warn!(
+                provider = %id,
+                error = &error as &dyn std::error::Error,
+                "a change of an entry was not marked on its owner's pages"
+            ),
+        }
+    }
+
     /// The entry `id` when it is one of `user`'s scope.
     pub(crate) async fn visible(&self, user: &UserId, id: &ProviderId) -> Result<Option<ProviderEntry>, StorageError> {
         let owner = self.owner_for(user).await?;
@@ -215,6 +249,7 @@ impl Vault {
         let row = self.0.control.insert_provider(provider, Vec::new()).await?;
         // An API-key entry is under no uniqueness rule.
         let row = row.expect("an API-key entry is always stored");
+        self.mark_changed(&row.owner);
         self.decode(row)
     }
 
@@ -263,6 +298,9 @@ impl Vault {
             active,
         };
         let row = self.0.control.insert_provider(provider, accounts).await?;
+        if let Some(row) = &row {
+            self.mark_changed(&row.owner);
+        }
         row.map(|row| self.decode(row)).transpose()
     }
 
@@ -276,12 +314,17 @@ impl Vault {
     ) -> Result<Option<ProviderEntry>, StorageError> {
         let sealed = config.map(|config| self.seal_config(&id, &config));
         let row = self.0.control.update_provider(id, label, sealed).await?;
+        if let Some(row) = &row {
+            self.mark_changed(&row.owner);
+        }
         row.map(|row| self.decode(row)).transpose()
     }
 
     /// Deletes the entry with its accounts and catalog record.
-    pub(crate) async fn delete(&self, id: ProviderId) -> Result<(), StorageError> {
-        self.0.control.delete_provider(id).await
+    pub(crate) async fn delete(&self, entry: &ProviderEntry) -> Result<(), StorageError> {
+        self.0.control.delete_provider(entry.id.clone()).await?;
+        self.mark_changed(&entry.owner);
+        Ok(())
     }
 
     /// The pool of entry `id`'s accounts, which can reach no other entry's.

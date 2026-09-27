@@ -22,7 +22,6 @@ use demi_web_api::devices::DeviceKind;
 use demi_web_api::error::ErrorCode;
 use demi_web_api::files::{Directory, FileText};
 use demi_web_api::hosts::AttachedHosts;
-use demi_web_api::state::ProductState;
 use reqwest::StatusCode;
 use serde_json::json;
 use tokio::sync::Notify;
@@ -63,11 +62,11 @@ pub(crate) async fn until_status(
     }
 }
 
-/// Whether the user's Cloud has a live runner, as the product state says.
+/// Whether the user's Cloud has a live runner, as the device list says.
 pub(crate) async fn cloud_online(backend: &TestBackend, session: &Session) -> bool {
-    let state: ProductState = backend.get("/api/state", Some(session)).await.json();
-    state
-        .devices
+    backend
+        .devices(session)
+        .await
         .iter()
         .any(|device| device.kind == DeviceKind::Managed && device.online)
 }

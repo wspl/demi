@@ -24,6 +24,7 @@ use crate::storage::StorageError;
 use crate::storage::control::ControlService;
 use crate::storage::conversation_index::ConversationRecord;
 use crate::storage::tree;
+use crate::sync::{Part, UserMarks};
 
 /// What one request reads, and the state it began from.
 pub(crate) struct TitleRequest {
@@ -45,6 +46,9 @@ struct InFlight {
 pub(crate) struct Titles {
     providers: Rc<ConversationProviders>,
     control: ControlService,
+    /// The user's pages, which show whether a request is in flight, and its
+    /// title.
+    marks: UserMarks,
     /// Off, no request starts: titles stay the ones the first messages give.
     enabled: bool,
     in_flight: Rc<RefCell<HashMap<ConversationId, InFlight>>>,
@@ -53,10 +57,16 @@ pub(crate) struct Titles {
 }
 
 impl Titles {
-    pub(super) fn new(providers: Rc<ConversationProviders>, control: ControlService, enabled: bool) -> Self {
+    pub(super) fn new(
+        providers: Rc<ConversationProviders>,
+        control: ControlService,
+        marks: UserMarks,
+        enabled: bool,
+    ) -> Self {
         Self {
             providers,
             control,
+            marks,
             enabled,
             in_flight: Rc::default(),
             started: Cell::new(0),
@@ -88,16 +98,25 @@ impl Titles {
                 cancel: cancel.clone(),
             },
         );
+        self.marks.mark(Part::Conversation(id.clone()));
         let providers = self.providers.clone();
         let control = self.control.clone();
+        let marks = self.marks.clone();
         let in_flight = self.in_flight.clone();
         tasks.spawn_local(async move {
             if let Err(failure) = generate(&providers, &control, &id, &selection, request, &cancel).await {
                 tracing::warn!(conversation = %id, %failure, "a title request wrote nothing");
             }
-            let mut in_flight = in_flight.borrow_mut();
-            if in_flight.get(&id).is_some_and(|request| request.request == number) {
-                in_flight.remove(&id);
+            let ended = {
+                let mut in_flight = in_flight.borrow_mut();
+                let ours = in_flight.get(&id).is_some_and(|request| request.request == number);
+                if ours {
+                    in_flight.remove(&id);
+                }
+                ours
+            };
+            if ended {
+                marks.mark(Part::Conversation(id));
             }
         });
     }
