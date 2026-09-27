@@ -3,11 +3,12 @@
 //! uses the browser's defaults.
 
 use demi_command_service::protocol::CommandLocale;
-use demi_core::Nullable;
 use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::{double_option, unwrap_or_skip};
+
+use crate::conversations::ModelSettings;
 
 /// Who configures providers, fixed for the instance's lifetime
 /// (`product.md` § Instance mode).
@@ -125,27 +126,6 @@ pub struct ShortcutsPatch {
     pub settings: Option<Option<String>>,
 }
 
-/// The model a new conversation starts with, as the user last chose it
-/// explicitly: existing conversations keep their own selection.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct LastModel {
-    #[garde(length(chars, min = 1))]
-    pub provider_id: String,
-    #[garde(length(chars, min = 1))]
-    pub model_id: String,
-    /// The thinking effort; null for the model's default.
-    #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<String>")]
-    #[garde(skip)]
-    pub thinking_effort: Option<String>,
-    /// The service tier; null for the vendor's default.
-    #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<String>")]
-    #[garde(skip)]
-    pub service_tier_id: Option<String>,
-}
-
 /// A user's saved preferences.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -154,10 +134,12 @@ pub struct Preferences {
     pub appearance: Appearance,
     #[garde(dive)]
     pub shortcuts: Shortcuts,
+    /// The model settings a new conversation starts with, as the user last
+    /// chose them; existing conversations keep their own.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-    #[schemars(with = "LastModel")]
+    #[schemars(with = "ModelSettings")]
     #[garde(dive)]
-    pub last_model: Option<LastModel>,
+    pub last_model: Option<ModelSettings>,
     /// The time zone and languages the browser last reported, which
     /// commands receive in their command context: a zone the backend knows,
     /// in its IANA spelling, and each language once as its canonical tag.
@@ -181,9 +163,9 @@ pub struct PreferencesPatch {
     #[garde(dive)]
     pub shortcuts: Option<ShortcutsPatch>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-    #[schemars(with = "LastModel")]
+    #[schemars(with = "ModelSettings")]
     #[garde(dive)]
-    pub last_model: Option<LastModel>,
+    pub last_model: Option<ModelSettings>,
     /// A time zone the backend does not know or a malformed language tag is
     /// refused.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]

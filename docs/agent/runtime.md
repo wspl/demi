@@ -806,9 +806,10 @@ connection B --+                    +--> B's outbox: events, and B's replies
   record, so an open changes no model
   ([page synchronization](../product/web-api.md#sidebar-mutations-read-state-and-page-synchronization)).
   An open of a conversation whose record has no model yet is answered with an
-  `error` whose code is `model_not_selected`. A runtime the tree needs for
-  that selection, such as a restored tree's, is built before the connection
-  attaches, and a failure leaves the connection unattached.
+  `error` whose code is `model_not_selected`, and one whose provider entry the
+  user may no longer use with `provider_not_found`. A runtime the tree needs
+  for that selection, such as a restored tree's, is built before the
+  connection attaches, and a failure leaves the connection unattached.
 - `close` disposes the whole tree. Every attached connection receives what the
   disposal changed, then `closed`, and is detached; a connection that sends
   `close` while attached to nothing receives `closed` alone.

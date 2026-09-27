@@ -14,14 +14,14 @@
 
 use std::time::Duration;
 
-use demi_agent::testing::{client_text, model_of};
+use demi_agent::testing::client_text;
 use demi_agent_protocol::{ClientFrame, EditOutcome, EditRequest, ServerFrame};
 use demi_core::{Block, SessionPhase, UserContentBlock};
 use demi_provider::testing::MockVendor;
 use serde_json::json;
 
 use crate::conversations::{
-    FIRST, Socket, anthropic, answer, create, on_device, send, tool_result, tool_use, transcript,
+    FIRST, Socket, anthropic, answer, choose, create, on_device, send, tool_result, tool_use, transcript,
 };
 use crate::support::Harness;
 
@@ -82,9 +82,9 @@ async fn an_edit_restores_the_todos_keeps_the_files_and_answers_its_receipt_on_a
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
     let (paired, root) = on_device(&harness, &backend, &master, FIRST).await;
-    let model = model_of(&provider, "claude-opus-4-8");
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    socket.open(&model).await;
+    socket.open().await;
     let shell = |id: &str, script: &str| {
         tool_use(id, "shell_exec", &json!({ "description": id, "script": script, "timeoutMs": 60_000 }))
     };
@@ -123,7 +123,7 @@ async fn an_edit_restores_the_todos_keeps_the_files_and_answers_its_receipt_on_a
     // answers its receipt there, and the old snapshot is refused, neither
     // asking the model.
     let mut second = Socket::connect(&backend, &master, FIRST).await;
-    second.open(&model).await;
+    second.open().await;
     assert_eq!(edit(&mut second, &repeated).await, accepted);
     assert!(matches!(edit(&mut second, &stale).await, EditOutcome::Rejected { .. }));
     drop((socket, second));
@@ -135,7 +135,7 @@ async fn an_edit_restores_the_todos_keeps_the_files_and_answers_its_receipt_on_a
     let backend = harness.start_at(address).await;
     backend.until_online(&master, paired.id(), true).await;
     let mut third = Socket::connect(&backend, &master, FIRST).await;
-    third.open(&model).await;
+    third.open().await;
     assert_eq!(edit(&mut third, &repeated).await, accepted);
     assert!(matches!(edit(&mut third, &stale).await, EditOutcome::Rejected { .. }));
     assert_eq!(vendor.requests().len(), asked + 1, "no edit asked the model again");
@@ -158,9 +158,9 @@ async fn an_edit_reaches_the_page_and_the_model_only_once_its_transaction_commit
     let (backend, master) = harness.start_set_up().await;
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
-    let model = model_of(&provider, "claude-opus-4-8");
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    socket.open(&model).await;
+    socket.open().await;
     vendor.respond(answer(&["answer-A-kept"], 1, 1));
     socket.chat("m1", "A-kept").await;
     vendor.respond(answer(&["answer-B-removed"], 1, 1));
@@ -207,9 +207,9 @@ async fn the_page_sees_a_turn_end_once_its_save_commits_and_an_edit_sent_then_is
     let (backend, master) = harness.start_set_up().await;
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
-    let model = model_of(&provider, "claude-opus-4-8");
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    socket.open(&model).await;
+    socket.open().await;
     vendor.respond(answer(&["answer-A"], 1, 1));
     socket.chat("m1", "A-kept").await;
 

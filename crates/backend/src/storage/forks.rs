@@ -15,8 +15,8 @@ use super::StorageError;
 use super::columns::{decode, json, to_json};
 use super::control::ControlService;
 use super::conversation_index::{
-    AttachedHostRecord, ConversationModel, ConversationRecord, NewConversation, TitleOrigin, conversation_by_id,
-    insert_attached_host, insert_conversation,
+    AttachedHostRecord, ConversationRecord, NewConversation, TitleOrigin, conversation_by_id, insert_attached_host,
+    insert_conversation,
 };
 
 /// One creation attempt.
@@ -39,9 +39,11 @@ pub(crate) struct ForkMetadata {
     pub(crate) title: String,
     #[garde(dive)]
     pub(crate) target: ConversationTarget,
-    /// The source's model selection, which the destination inherits.
+    /// The model selection the source's record held, which the destination
+    /// inherits; none when the source had none.
+    #[serde(deserialize_with = "Option::deserialize")]
     #[garde(dive)]
-    pub(crate) model: ModelSelection,
+    pub(crate) model: Option<ModelSelection>,
     #[garde(skip)]
     pub(crate) created_at: Timestamp,
     #[garde(dive)]
@@ -132,14 +134,6 @@ impl ControlService {
                 reason: format!("no Fork reserved {id}"),
             })?;
             let metadata = &operation.metadata;
-            let model = ConversationModel {
-                provider: decode(
-                    "conversation_fork_operations",
-                    "metadata",
-                    metadata.model.provider_id.as_str().try_into(),
-                )?,
-                model: metadata.model.model.id.clone(),
-            };
             let inserted = insert_conversation(
                 &transaction,
                 &NewConversation {
@@ -148,7 +142,7 @@ impl ControlService {
                     title: &metadata.title,
                     origin: TitleOrigin::User,
                     target: &metadata.target,
-                    model: Some(&model),
+                    model: metadata.model.as_ref(),
                     at: metadata.created_at,
                 },
             )?;

@@ -1,9 +1,10 @@
 //! Changes of a conversation (`web-api.md` § Sidebar mutations, read state
 //! and page synchronization; `sessions-and-targets.md` § Switch the main
 //! target, § Lifecycle access). Every change goes through one entry,
-//! `Shard::transition`. A rename, a pin or a model change waits while a
-//! transition holds the conversation, and is then applied as if it arrived
-//! afterwards. An archive, a restore, a target switch and a detach are
+//! `Shard::transition`. A rename, a pin or a change of the model settings
+//! waits while a transition holds the conversation, and is then applied as if
+//! it arrived afterwards; the model settings change one at a time
+//! (`settings.rs`). An archive, a restore, a target switch and a detach are
 //! transitions: each holds the conversation, with its idle tree reserved, its
 //! file transfers, user streams and the one-shot calls admitted like them
 //! ended, and its file gate reserved; sends the conversation release to the
@@ -18,12 +19,13 @@ use demi_web_api::error::ErrorCode;
 use demi_web_api::ids::ConversationId;
 
 use super::root_of;
+use super::settings::SettingsChange;
 use super::target::TargetSwitch;
 use super::transfer::TransfersClosed;
 use crate::shard::Shard;
 use crate::storage::StorageError;
 use crate::storage::conversation_index::{
-    ChangeOutcome, ConversationChange, ConversationModel, ConversationRecord, RecordChange, SwitchEnds,
+    ChangeOutcome, ConversationChange, ConversationRecord, RecordChange, SwitchEnds,
 };
 
 /// Why a change was not applied.
@@ -39,6 +41,17 @@ pub(crate) enum ChangeRefusal {
     TurnInFlight,
     #[error("No such provider")]
     ProviderNotFound,
+    /// The entry's catalog does not list the model.
+    #[error("The provider does not list that model")]
+    ModelNotFound,
+    #[error(transparent)]
+    SettingUnavailable(#[from] demi_core::UnavailableSetting),
+    /// An effort or a tier for a conversation without a model.
+    #[error("Choose a model for the conversation first")]
+    ModelNotSelected,
+    /// The live tree could not get a runtime for the new model.
+    #[error("The model cannot run: {0}")]
+    Runtime(String),
     #[error("No such workspace")]
     WorkspaceNotFound,
     /// The destination names a device the user did not pair.
@@ -71,13 +84,16 @@ impl ChangeRefusal {
             Self::Archived => (ErrorCode::ConversationArchived, 409),
             Self::TurnInFlight => (ErrorCode::TurnInFlight, 409),
             Self::ProviderNotFound => (ErrorCode::ProviderNotFound, 404),
+            Self::ModelNotFound => (ErrorCode::ModelNotFound, 404),
+            Self::SettingUnavailable(_) => (ErrorCode::SettingUnavailable, 409),
+            Self::ModelNotSelected => (ErrorCode::ModelNotSelected, 409),
             Self::WorkspaceNotFound => (ErrorCode::WorkspaceNotFound, 404),
             Self::DeviceNotFound => (ErrorCode::DeviceNotFound, 404),
             Self::Conflict => (ErrorCode::TargetConflict, 409),
             Self::HostIsMain => (ErrorCode::HostIsMain, 409),
             Self::NotAttached => (ErrorCode::HostNotAttached, 404),
             Self::NameTaken => (ErrorCode::NameTaken, 409),
-            Self::Release(_) | Self::Storage(_) => (ErrorCode::OperationFailed, 500),
+            Self::Release(_) | Self::Runtime(_) | Self::Storage(_) => (ErrorCode::OperationFailed, 500),
         }
     }
 }
@@ -112,17 +128,21 @@ impl Shard {
             return Err(ChangeRefusal::Archived);
         }
         match &change {
-            ConversationChange::Record(RecordChange::Model(Some(model))) => {
-                if services.vault.visible(self.user(), &model.provider).await?.is_none() {
-                    return Err(ChangeRefusal::ProviderNotFound);
-                }
-            }
             // The conversation's own target is no change.
             ConversationChange::Target(to) if record.target == *to => return Ok(()),
             ConversationChange::Target(to) => self.check_destination(&record, to).await?,
             _ => {}
         }
         let change = match change {
+            ConversationChange::Settings(change) => {
+                // A settings change waits while a transition holds the
+                // conversation, then takes its turn after the changes and
+                // opens that came first.
+                let slot = self.conversations().slot(&record.id);
+                let _admitted = slot.files.enter(Purpose::Demand).await;
+                let _turn = slot.settings.acquire().await;
+                return self.change_settings(&record.id, change).await;
+            }
             ConversationChange::Record(change) if !change_is_transition(&change) => {
                 // A field update waits while a transition holds the
                 // conversation, and applies as if it arrived afterwards.
@@ -161,6 +181,7 @@ impl Shard {
                 self.commit(&record.id, RecordChange::Detach(device)).await
             }
             ConversationChange::Record(change) => self.commit(&record.id, change).await,
+            ConversationChange::Settings(_) => unreachable!("a settings change is applied before the hold"),
         };
         drop(hold);
         committed
@@ -183,7 +204,7 @@ impl Shard {
     }
 
     /// Commits a change of the conversation's record.
-    async fn commit(&self, id: &ConversationId, change: RecordChange) -> Result<(), ChangeRefusal> {
+    pub(super) async fn commit(&self, id: &ConversationId, change: RecordChange) -> Result<(), ChangeRefusal> {
         match self.services().control.change_conversation(id.clone(), change).await? {
             ChangeOutcome::Applied => Ok(()),
             ChangeOutcome::Missing => Err(ChangeRefusal::NotFound),
@@ -301,33 +322,47 @@ impl Shard {
         if owned.is_none() {
             return Ok(None);
         }
-        let mut changes = Vec::new();
+        let mut changes: Vec<(Vec<PatchField>, ConversationChange)> = Vec::new();
         if let Some(archived) = patch.archived {
-            changes.push((PatchField::Archived, RecordChange::Archived(archived).into()));
+            changes.push((vec![PatchField::Archived], RecordChange::Archived(archived).into()));
         }
         if let Some(title) = patch.title {
-            changes.push((PatchField::Title, RecordChange::Title(title.into_string()).into()));
+            changes.push((vec![PatchField::Title], RecordChange::Title(title.into_string()).into()));
         }
         if let Some(pinned) = patch.pinned {
-            changes.push((PatchField::Pinned, RecordChange::Pinned(pinned).into()));
+            changes.push((vec![PatchField::Pinned], RecordChange::Pinned(pinned).into()));
         }
-        if let Some(model) = patch.model {
-            let model = model.map(|choice| ConversationModel {
-                provider: choice.provider_id,
-                model: choice.model_id,
-            });
-            changes.push((PatchField::Model, RecordChange::Model(model).into()));
+        // The model settings a patch names are one change, which each of its
+        // fields reports.
+        let settings_fields: Vec<PatchField> = [
+            (patch.model.is_some(), PatchField::Model),
+            (patch.thinking_effort.is_some(), PatchField::ThinkingEffort),
+            (patch.service_tier_id.is_some(), PatchField::ServiceTierId),
+        ]
+        .into_iter()
+        .filter_map(|(named, field)| named.then_some(field))
+        .collect();
+        if !settings_fields.is_empty() {
+            let change = SettingsChange {
+                model: patch.model,
+                thinking_effort: patch.thinking_effort,
+                service_tier_id: patch.service_tier_id,
+            };
+            changes.push((settings_fields, ConversationChange::Settings(change)));
         }
         if let Some(target) = patch.target {
-            changes.push((PatchField::Target, ConversationChange::Target(target)));
+            changes.push((vec![PatchField::Target], ConversationChange::Target(target)));
         }
         let mut results = Vec::new();
-        for (field, change) in changes {
-            let result = match self.transition(id, change).await {
-                Ok(()) => FieldResult::Applied { field },
-                Err(refusal) => failed(field, &refusal),
-            };
-            results.push(result);
+        for (fields, change) in changes {
+            let outcome = self.transition(id, change).await;
+            for field in fields {
+                let result = match &outcome {
+                    Ok(()) => FieldResult::Applied { field },
+                    Err(refusal) => failed(field, refusal),
+                };
+                results.push(result);
+            }
         }
         let Some(record) = control.conversation(id.clone()).await? else {
             return Ok(None);
