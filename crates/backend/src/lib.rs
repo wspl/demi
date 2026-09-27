@@ -45,6 +45,8 @@ pub use shard::ShardPlacement;
 pub use storage::conversations::CommitHold;
 #[cfg(feature = "testing")]
 pub use sync::SyncStep;
+#[cfg(feature = "testing")]
+pub use storage::objects::counting::{ObjectCounts, ObjectTally};
 pub use storage::objects::S3ConfigError;
 pub use vault::logins::LoginTiming;
 pub use vault::secret::{InstanceSecret, SecretError};

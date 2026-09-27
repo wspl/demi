@@ -23,11 +23,11 @@ use demi_shell::{Host, HostError, HostFs, HostIdentity, HostKey, HostProcess, Sh
 use crate::{
     AgentHarness, AgentServer, AgentTreeStore, Connection, ContentError, ContentResolver,
     EnvironmentScope, FileReference, FrameRx, IdSource, Outgoing, ProviderResolver, ResolveError,
-    SessionStore, ShellEnvironmentFactory,
+    ResolvedFiles, SessionStore, ShellEnvironmentFactory,
     store::{
         Checkpoint, CheckpointState, CheckpointUpdate, CommandStateSnapshot, CommitGuard,
         NodeClose, NodeRecord, StoreError,
-        media::{self, BlobStore},
+        media::{BlobStore, HeldMedia},
     },
 };
 
@@ -239,11 +239,12 @@ impl Clock for TokioClock {
     }
 }
 
-/// Uploads a test gave the blocks they resolve to; every other file
-/// reference is refused, as a backend refuses one it does not hold.
+/// Uploads a test gave the blocks they resolve to, with the bytes of their
+/// media; every other file reference is refused, as a backend refuses one
+/// it does not hold.
 #[derive(Debug, Default)]
 pub struct TestFiles {
-    uploads: RefCell<BTreeMap<String, Vec<UserContentBlock>>>,
+    uploads: RefCell<BTreeMap<String, (Vec<UserContentBlock>, HeldMedia)>>,
 }
 
 impl TestFiles {
@@ -251,11 +252,13 @@ impl TestFiles {
         Rc::new(Self::default())
     }
 
-    /// The upload `reference` resolves to `blocks`.
-    pub fn upload(&self, reference: &str, blocks: Vec<UserContentBlock>) {
+    /// The upload `reference` resolves to `blocks`, whose media reference
+    /// the blobs of `media`'s bytes, as [`upload_blocks`](crate::attachments::upload_blocks)
+    /// answers them.
+    pub fn upload(&self, reference: &str, (blocks, media): (Vec<UserContentBlock>, HeldMedia)) {
         self.uploads
             .borrow_mut()
-            .insert(reference.to_owned(), blocks);
+            .insert(reference.to_owned(), (blocks, media));
     }
 }
 
@@ -263,15 +266,15 @@ impl ContentResolver for TestFiles {
     fn resolve<'a>(
         &'a self,
         files: Vec<FileReference>,
-    ) -> LocalBoxFuture<'a, Result<Vec<Vec<UserContentBlock>>, ContentError>> {
+    ) -> LocalBoxFuture<'a, Result<ResolvedFiles, ContentError>> {
         let refused = |message: String| ContentError {
             message,
             code: Some("frame_delivery_failed".to_owned()),
         };
         Box::pin(async move {
-            let mut resolved = Vec::with_capacity(files.len());
+            let mut resolved = ResolvedFiles::default();
             for file in files {
-                let blocks = match file {
+                let (blocks, media) = match file {
                     FileReference::Upload { r#ref, .. } => {
                         let uploaded = self.uploads.borrow().get(&r#ref).cloned();
                         uploaded.ok_or_else(|| refused(format!("upload {ref} is not available")))?
@@ -280,7 +283,8 @@ impl ContentResolver for TestFiles {
                         return Err(refused(format!("device {device_id} is not paired")));
                     }
                 };
-                resolved.push(blocks);
+                resolved.blocks.push(blocks);
+                resolved.media.absorb(media);
             }
             Ok(resolved)
         })
@@ -354,25 +358,25 @@ impl StoreGate {
 }
 
 /// The in-memory tree store: the contract's semantics with nothing durable.
-/// One store may hold any number of trees, and it records every save. Given
-/// a blob namespace, it keeps media by reference as a product's store does.
-#[derive(Default)]
+/// One store may hold any number of trees, and it records every save. Its
+/// blob namespace is in memory too.
 pub struct MemoryTreeStore {
     stored: Rc<RefCell<Stored>>,
-    blobs: Option<Rc<dyn BlobStore>>,
+    blobs: Rc<dyn BlobStore>,
 }
 
 impl MemoryTreeStore {
+    /// A store with a blob namespace of its own.
     pub fn new() -> Rc<Self> {
-        Rc::new(Self::default())
+        Self::with_blobs(MemoryBlobs::new())
     }
 
-    /// A store that moves media into `blobs` before it saves a block and
-    /// puts the bytes back when it loads one.
+    /// A store whose blob namespace is `blobs`, which a test reads or makes
+    /// lose a blob.
     pub fn with_blobs(blobs: Rc<dyn BlobStore>) -> Rc<Self> {
         Rc::new(Self {
             stored: Rc::default(),
-            blobs: Some(blobs),
+            blobs,
         })
     }
 
@@ -390,8 +394,7 @@ impl MemoryTreeStore {
         self.stored.borrow().saves.clone()
     }
 
-    /// The node's checkpoint as the store keeps it: media by reference when
-    /// the store has a blob namespace.
+    /// The node's checkpoint as the store keeps it.
     pub fn checkpoint(&self, id: &NodeId) -> Option<Checkpoint> {
         load(&self.stored.borrow(), id).ok().flatten()
     }
@@ -492,22 +495,10 @@ fn apply_save(
     Ok(())
 }
 
-/// Moves the inline media of `update`'s blocks into `blobs`, when there are
-/// any.
-async fn externalized(
-    mut update: CheckpointUpdate,
-    blobs: Option<&dyn BlobStore>,
-) -> Result<CheckpointUpdate, StoreError> {
-    if let Some(blobs) = blobs {
-        media::externalize_update(&mut update, blobs).await?;
-    }
-    Ok(update)
-}
-
 /// One node's checkpoint store in a [`MemoryTreeStore`].
 struct MemorySessionStore {
     stored: Rc<RefCell<Stored>>,
-    blobs: Option<Rc<dyn BlobStore>>,
+    blobs: Rc<dyn BlobStore>,
     id: NodeId,
 }
 
@@ -518,7 +509,7 @@ impl SessionStore for MemorySessionStore {
         guard: &'a CommitGuard,
     ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
         Box::pin(async move {
-            let update = externalized(update, self.blobs.as_deref()).await?;
+            update.check_references()?;
             let hold = self.stored.borrow().save_hold.clone();
             if let Some(hold) = hold {
                 hold.pass().await;
@@ -536,14 +527,11 @@ impl SessionStore for MemorySessionStore {
     }
 
     fn load(&self) -> LocalBoxFuture<'_, Result<Option<Checkpoint>, StoreError>> {
-        Box::pin(async move {
-            let loaded = load(&self.stored.borrow(), &self.id)?;
-            let (Some(mut checkpoint), Some(blobs)) = (loaded.clone(), &self.blobs) else {
-                return Ok(loaded);
-            };
-            media::rehydrate_checkpoint(&mut checkpoint, &**blobs).await?;
-            Ok(Some(checkpoint))
-        })
+        Box::pin(async move { load(&self.stored.borrow(), &self.id) })
+    }
+
+    fn blobs(&self) -> &dyn BlobStore {
+        &*self.blobs
     }
 }
 
@@ -584,7 +572,7 @@ impl AgentTreeStore for MemoryTreeStore {
         initial: CheckpointUpdate,
     ) -> LocalBoxFuture<'_, Result<(), StoreError>> {
         Box::pin(async move {
-            let initial = externalized(initial, self.blobs.as_deref()).await?;
+            initial.check_references()?;
             let mut stored = self.stored.borrow_mut();
             if stored.nodes.contains_key(&record.id) {
                 return Err(StoreError::Failed(format!(
@@ -807,10 +795,12 @@ pub fn waiting_frames(outbox: &mut FrameRx) -> Vec<ServerFrame> {
     frames
 }
 
-/// The tree store contract's cases (`subagents.md` § Persistence), for any
-/// realization of [`AgentTreeStore`]: create queues the first message with
-/// the node, a save delivers the completions it carries, reopen and delete,
-/// and a completion of an earlier round marks nothing delivered. Each case
+/// The tree store contract's cases (`subagents.md` § Persistence,
+/// `runtime.md` § Tree store), for any realization of [`AgentTreeStore`]:
+/// create queues the first message with the node, a save delivers the
+/// completions it carries, reopen and delete, a completion of an earlier
+/// round marks nothing delivered, a checkpoint that holds media bytes is
+/// refused, and the blob namespace names bytes by their SHA-256. Each case
 /// takes a store that holds nothing yet and reads back only through the
 /// contract, so the agent's in-memory store and the backend's database pass
 /// the same cases.
@@ -828,7 +818,7 @@ pub mod store_contract {
         AgentTreeStore,
         store::{
             CheckpointState, CheckpointUpdate, ClosePhase, CommandStateSnapshot, NodeClose,
-            NodeRecord, PendingAgentInput, media::BlobStore,
+            NodeRecord, PendingAgentInput,
         },
     };
 
@@ -1149,59 +1139,91 @@ pub mod store_contract {
         assert!(delivered(store, "child").await);
     }
 
-    /// A store with the blob namespace `blobs` keeps a block's media there
-    /// and puts the bytes back when it loads it; a blob that `forget` lost
-    /// loads as the text that names it.
-    pub async fn media_travels_by_reference(
-        store: &dyn AgentTreeStore,
-        blobs: &dyn BlobStore,
-        forget: &dyn Fn(&BlobRef),
-    ) {
-        let bytes = B64Bytes::new(vec![0x89, b'P', b'N', b'G', 0, 1, 2, 3, 4, 5, 6, 7]);
-        let image = UserContentBlock::Image {
-            source: MediaSource::Binary {
-                data: bytes.clone(),
-                media_type: "image/png".into(),
-            },
-        };
-        let user = Block::User(UserBlock {
-            id: "u1".try_into().expect("a test block id is not empty"),
-            turn_id: TurnId::try_from("m1").expect("a test turn id is not empty"),
+    /// A message's image, holding its bytes or referencing their blob.
+    fn picture(block: &str, source: MediaSource) -> Block {
+        Block::User(UserBlock {
+            id: block.try_into().expect("a test block id is not empty"),
+            turn_id: TurnId::try_from(block).expect("a test turn id is not empty"),
             created_at: Timestamp::UNIX_EPOCH,
             model: test_model(),
-            content: vec![image.clone()],
+            content: vec![UserContentBlock::Image { source }],
             preamble: None,
-        });
+        })
+    }
+
+    /// A checkpoint holds media only by reference (`runtime.md` § Saving):
+    /// a node's first checkpoint or a save in which a block or a queued
+    /// message holds media bytes is refused, naming it, and nothing is
+    /// written.
+    pub async fn a_checkpoint_that_holds_media_bytes_is_refused(store: &dyn AgentTreeStore) {
+        let bytes = MediaSource::Binary {
+            data: B64Bytes::new(vec![0x89, b'P', b'N', b'G']),
+            media_type: "image/png".into(),
+        };
+        let refused = store
+            .create_node(
+                record("root", None, 1),
+                update(Vec::new(), vec![picture("u1", bytes.clone())]),
+            )
+            .await
+            .expect_err("a first checkpoint with media bytes is refused");
+        assert!(refused.to_string().contains("block u1"), "{refused}");
+        assert_eq!(stored(store, "root").await, None);
+
+        let blob = BlobRef::try_from("a".repeat(64)).expect("64 hexadecimal digits name a blob");
+        let by_reference = picture(
+            "u1",
+            MediaSource::Ref {
+                r#ref: blob,
+                media_type: "image/png".into(),
+            },
+        );
         create(
             store,
             record("root", None, 1),
-            update(Vec::new(), vec![user]),
+            update(Vec::new(), vec![by_reference.clone()]),
         )
         .await;
-        let content = |checkpoint: Option<crate::store::Checkpoint>| {
-            let checkpoint = checkpoint.expect("the node has a checkpoint");
-            match &checkpoint.transcript[0] {
-                Block::User(user) => user.content.clone(),
-                other => panic!("{other:?} is not the user block"),
-            }
-        };
         let root = store.session_store(&id("root"));
-        let loaded = root.load().await.expect("the store reads its checkpoints");
-        assert_eq!(content(loaded), [image]);
+        let before = root.load().await.expect("the store reads its checkpoints");
+        let with_bytes = update(Vec::new(), vec![by_reference, picture("u2", bytes.clone())]);
+        let refused = root
+            .save(with_bytes, &Default::default())
+            .await
+            .expect_err("a save with media bytes is refused");
+        assert!(refused.to_string().contains("block u2"), "{refused}");
+        let queued = QueuedMessage {
+            id: TurnId::try_from("m2").expect("a test turn id is not empty"),
+            content: vec![UserContentBlock::Image { source: bytes }],
+        };
+        let refused = root
+            .save(update(vec![queued], Vec::new()), &Default::default())
+            .await
+            .expect_err("a save whose queued message holds media bytes is refused");
+        assert!(refused.to_string().contains("queued message m2"), "{refused}");
+        assert_eq!(
+            root.load().await.expect("the store reads its checkpoints"),
+            before
+        );
+    }
+
+    /// A node's blob namespace names bytes by their SHA-256 and gives them
+    /// back; a blob it does not hold reads as none.
+    pub async fn the_blob_namespace_names_bytes_by_their_sha256(store: &dyn AgentTreeStore) {
+        let blobs = store.session_store(&id("root"));
+        let blobs = blobs.blobs();
+        let bytes = B64Bytes::new(vec![0x89, b'P', b'N', b'G', 0, 1, 2, 3]);
         let name = format!("{:x}", Sha256::digest(bytes.as_bytes()));
-        let blob = BlobRef::try_from(name).expect("a SHA-256 in hexadecimal names a blob");
+        let blob = blobs.put(bytes.clone()).await.expect("the namespace stores bytes");
+        assert_eq!(blob.as_str(), name);
         assert_eq!(
             blobs.get(&blob).await.expect("the namespace reads bytes"),
-            Some(bytes),
-            "the save published the bytes"
+            Some(bytes)
         );
-        forget(&blob);
-        let loaded = root.load().await.expect("the store reads its checkpoints");
+        let unknown = BlobRef::try_from("0".repeat(64)).expect("64 hexadecimal digits name a blob");
         assert_eq!(
-            content(loaded),
-            [UserContentBlock::Text {
-                text: format!("[missing image blob {blob}]")
-            }]
+            blobs.get(&unknown).await.expect("the namespace reads bytes"),
+            None
         );
     }
 

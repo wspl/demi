@@ -15,7 +15,8 @@ use std::time::Duration;
 
 use demi_backend::{
     AccountMail, Backend, BackendConfig, CloudTuning, ConversationTuning, ExposeDomain, ExposeTuning, FamilyRegistry,
-    LifecycleTuning, LoginTiming, MailError, NativeCatalog, PageTuning, RunnerTuning, VerificationMail, publish_native,
+    LifecycleTuning, LoginTiming, MailError, NativeCatalog, ObjectCounts, PageTuning, RunnerTuning,
+    VerificationMail, publish_native,
 };
 use demi_builtin_protocol::{Operation, PACKAGE as BUILTIN_PACKAGE};
 use demi_command_service::protocol::{PackageDescriptor, host_target};
@@ -233,6 +234,9 @@ pub struct Harness {
     pub native: Option<PathBuf>,
     expose_domain: Option<ExposeDomain>,
     pub exposes: ExposeTuning,
+    /// Counts what reaches the object store of every backend this harness
+    /// starts.
+    objects: Option<ObjectCounts>,
 }
 
 impl Harness {
@@ -274,7 +278,14 @@ impl Harness {
             native: None,
             expose_domain: None,
             exposes: ExposeTuning::default(),
+            objects: None,
         }
+    }
+
+    /// Backends whose object store counts what reaches it in `counts`.
+    pub fn with_object_counts(mut self, counts: &ObjectCounts) -> Self {
+        self.objects = Some(counts.clone());
+        self
     }
 
     /// Exposes under `domain`, whose hostnames the backend answers with the
@@ -437,6 +448,7 @@ impl Harness {
         config.conversations = self.conversations;
         config.pages = self.pages;
         config.public_url = self.public_url.clone();
+        config.object_counts = self.objects.clone();
         assert!(
             self.release.is_none() || self.native.is_none(),
             "a harness loads a workspace package or a native configuration, not both"
