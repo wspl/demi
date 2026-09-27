@@ -24,11 +24,12 @@ pub const TITLE_MAX_CHARS: usize = 80;
 const MESSAGE_MAX_CHARS: usize = 400;
 const INPUT_MAX_CHARS: usize = 4_000;
 
-/// Room for the lowest thinking effort and one line of text: a reasoning
-/// model counts its thinking against the limit, so a limit sized for the line
-/// alone can end before any text. A model whose own output limit is lower
-/// gets that one.
-const OUTPUT_LIMIT: NonZeroU32 = NonZeroU32::new(1_024).expect("the limit is not zero");
+/// A title request's cap on its output (`models.md` § Output limit). It
+/// leaves room for the lowest thinking effort and one line of text: a
+/// reasoning model counts its thinking against the limit, so a cap sized for
+/// the line alone can end before any text. A model whose own output limit is
+/// lower sends that one.
+const OUTPUT_CAP: NonZeroU32 = NonZeroU32::new(1_024).expect("the cap is not zero");
 
 /// The whole system prompt of a title request.
 pub const TITLE_INSTRUCTION: &str = "You are a title generator. You output ONLY a conversation title. Nothing else.
@@ -118,15 +119,6 @@ pub fn title_from_response(text: &str) -> Option<String> {
     (!title.is_empty()).then(|| title.to_owned())
 }
 
-/// A title request's output limit: [`OUTPUT_LIMIT`], or `model`'s own when
-/// that is lower.
-fn output_limit(model: &Model) -> NonZeroU32 {
-    match model.output_limit.and_then(NonZeroU32::new) {
-        Some(limit) => limit.min(OUTPUT_LIMIT),
-        None => OUTPUT_LIMIT,
-    }
-}
-
 /// The least thinking `model` offers: its lowest named effort. A budget
 /// model thinks only when asked, so no configuration is its least.
 pub fn lowest_thinking(model: &Model) -> Option<ThinkingConfig> {
@@ -188,7 +180,8 @@ pub async fn request_title<S: AsRef<str>>(
         turn_id: format!("title:{request_id}"),
         request_id,
         model_id: selection.model.id.clone(),
-        output_limit: Some(output_limit(&selection.model)),
+        output_limit: selection.model.output_limit.and_then(NonZeroU32::new),
+        output_cap: Some(OUTPUT_CAP),
         system_prompt: TITLE_INSTRUCTION.to_owned(),
         items: Arc::from([InferenceItem::UserMessage {
             content: vec![UserContentBlock::Text { text: input }],
@@ -363,8 +356,8 @@ mod tests {
             })
         );
         assert_eq!(request.service_tier_id, None);
-        assert_eq!(request.output_limit, Some(OUTPUT_LIMIT));
+        assert_eq!(request.max_output_tokens(), Some(OUTPUT_CAP));
         assert_eq!(request.turn_id, "title:r1");
-        assert_eq!(requests[1].output_limit, NonZeroU32::new(256));
+        assert_eq!(requests[1].max_output_tokens(), NonZeroU32::new(256));
     }
 }
