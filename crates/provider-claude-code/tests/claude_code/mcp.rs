@@ -2,8 +2,8 @@
 //! SDK MCP channel, § Tool-call batches).
 
 use bytes::Bytes;
-use demi_core::{B64Bytes, TokenUsage, ToolMediaSource, ToolResultContentBlock};
-use demi_provider::{InferenceItem, ProviderEvent, ToolCall};
+use demi_core::{B64Bytes, TokenUsage};
+use demi_provider::{InferenceItem, MediaBytes, ProviderEvent, ResultPart, ToolCall};
 use demi_shell::Signal;
 use serde_json::json;
 
@@ -198,15 +198,11 @@ async fn a_tool_result_goes_back_as_mcp_content_with_images_as_base64_and_errors
     second.push(InferenceItem::ToolResult {
         tool_use_id: held.tool_use_id.clone(),
         output: vec![
-            ToolResultContentBlock::Text {
-                text: "captured".into(),
-            },
-            ToolResultContentBlock::Image {
-                source: ToolMediaSource::Binary {
-                    data: B64Bytes::new(Bytes::from_static(&[1, 2, 3])),
-                    media_type: "image/png".into(),
-                },
-            },
+            ResultPart::Text("captured".into()),
+            ResultPart::Image(MediaBytes {
+                data: B64Bytes::new(Bytes::from_static(&[1, 2, 3])),
+                media_type: "image/png".into(),
+            }),
         ],
         is_error: true,
     });
@@ -340,9 +336,7 @@ async fn output_a_run_left_behind_belongs_to_no_request() {
     second.push(tool_use("toolu_1", "pwd"));
     second.push(tool_result("toolu_1", "/tmp"));
     second.push(InferenceItem::UserSteer {
-        content: vec![demi_core::UserContentBlock::Text {
-            text: "also list it".into(),
-        }],
+        content: vec![demi_provider::UserPart::Text("also list it".into())],
     });
     let (events, ()) = tokio::join!(all_events(runtime.run(request(second.clone()))), async {
         let steer = cli.read().await;

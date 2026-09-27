@@ -19,7 +19,7 @@ use axum::{
     extract::{Request, State},
     response::Response,
 };
-use demi_core::{AuthState, Clock, Model, RuntimeState, Timestamp, TokenUsage, UserContentBlock};
+use demi_core::{AuthState, Clock, Model, RuntimeState, Timestamp, TokenUsage};
 use futures_util::{
     Stream, StreamExt,
     future::LocalBoxFuture,
@@ -31,7 +31,7 @@ use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
 use crate::{
     InferenceItem, InferenceRequest, PromptCache, Provider, ProviderEvent, ProviderFailure,
-    ProviderRun, ProviderRuntime, RequestLimits, ToolCall,
+    ProviderRun, ProviderRuntime, RequestLimits, ToolCall, UserPart,
 };
 
 /// Builders of the events a scripted run yields.
@@ -87,9 +87,7 @@ pub fn inference_request() -> InferenceRequest {
         output_cap: None,
         system_prompt: String::new(),
         items: Arc::new([InferenceItem::UserMessage {
-            content: vec![UserContentBlock::Text {
-                text: "hello".into(),
-            }],
+            content: vec![UserPart::Text("hello".into())],
         }]),
         tools: Arc::new([]),
         thinking: None,

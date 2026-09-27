@@ -1,31 +1,43 @@
+import dayjs from 'dayjs'
 import type { ToolMediaSource, ToolResultContentBlock } from '@demicodes/protocol'
 
 /**
  * One thing a call shows under its row (`file-previews.md` § Media a tool
- * returned): an image or a video its result carries, or the text that took
- * a medium's place, as the model reads it.
+ * returned): an image or a video its result carries, or the line that says a
+ * medium is gone and why.
  */
 export type ToolMedium =
   | { kind: 'image' | 'video'; source: ToolMediaSource }
   | { kind: 'gone'; text: string }
 
+/** A part of a result that says its image or video is gone. */
+type GoneMedium = Extract<ToolResultContentBlock, { type: 'gone' }>
+
 /**
- * Whether a part of a result is the text that took a medium's place: a
- * medium that was not stored, or one retired after 30 days. Such a text is
- * a part of its own that starts with `[image` or `[video`, and no other part
- * of a tool result starts so (`runtime.md` § Media). The one place the page
- * decides it, until a medium that is gone has a part of its own.
+ * The line a medium that is gone shows in its place: that it was not stored,
+ * with the store's reason, or when it was removed, such as
+ * `Image removed on Oct 1, 2026`.
  */
-export function takesMediumPlace(part: ToolResultContentBlock): boolean {
-  return part.type === 'text' && (part.text.startsWith('[image') || part.text.startsWith('[video'))
+export function goneLine(part: GoneMedium): string {
+  const kind = part.kind === 'image' ? 'Image' : 'Video'
+  switch (part.cause.type) {
+    case 'not_stored':
+      return `${kind} not stored: ${part.cause.error}`
+    case 'retired':
+      return `${kind} removed on ${dayjs(part.cause.at).format('MMM D, YYYY')}`
+  }
 }
 
-/** What a call shows under its row, in the order of its result; its other text is the call's own. */
+/** What a call shows under its row, in the order of its result; its text is the call's own. */
 export function toolMedia(output: readonly ToolResultContentBlock[]): ToolMedium[] {
   return output.flatMap((part): ToolMedium[] => {
-    if (part.type !== 'text') {
-      return [{ kind: part.type, source: part.source }]
+    switch (part.type) {
+      case 'text':
+        return []
+      case 'gone':
+        return [{ kind: 'gone', text: goneLine(part) }]
+      default:
+        return [{ kind: part.type, source: part.source }]
     }
-    return takesMediumPlace(part) ? [{ kind: 'gone', text: part.text }] : []
   })
 }

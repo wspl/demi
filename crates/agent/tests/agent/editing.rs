@@ -18,10 +18,10 @@ use demi_agent_protocol::{
 };
 use demi_core::{
     Attachment, B64Bytes, BlobRef, Block, BlockId, DocumentSource, FileExtension, MediaSource,
-    NodeId, OperationId, SessionPhase, Timestamp, TurnId, UserContentBlock,
+    NodeId, OperationId, SessionPhase, Timestamp, TurnId, UserContentBlock, attachment_tag,
 };
 use demi_provider::{
-    InferenceItem,
+    InferenceItem, MediaBytes, Medium, UserPart,
     testing::{ScriptedRuntime, Turn, event},
 };
 use demi_shell::{PortError, Revision, StorageOp, StorageReply};
@@ -223,14 +223,14 @@ async fn an_edit_replaces_its_message_and_what_follows_once_and_infers_on_a_fres
         *request.items,
         [
             InferenceItem::UserMessage {
-                content: demi_agent::testing::text("A")
+                content: demi_agent::testing::sent_text("A")
             },
             InferenceItem::AssistantText {
                 model_id: "test-model".into(),
                 text: "answer A".into()
             },
             InferenceItem::UserMessage {
-                content: demi_agent::testing::text("B2")
+                content: demi_agent::testing::sent_text("B2")
             },
         ]
     );
@@ -468,33 +468,25 @@ async fn an_edit_keeps_the_files_its_message_holds_and_refuses_one_it_does_not()
     let png = B64Bytes::new(vec![0x89, b'P', b'N', b'G']);
     let mp4 = B64Bytes::new(b"\0\0\0\x18ftypmp42".to_vec());
     let pdf = B64Bytes::new(b"%PDF-1.7".to_vec());
-    let image = UserContentBlock::Image {
-        source: MediaSource::Binary {
-            data: png.clone(),
-            media_type: "image/png".into(),
-        },
+    let bytes = |data: &B64Bytes, media_type: &str| MediaBytes {
+        data: data.clone(),
+        media_type: media_type.into(),
     };
-    let video = UserContentBlock::Video {
-        source: MediaSource::Binary {
-            data: mp4.clone(),
-            media_type: "video/mp4".into(),
-        },
+    let image = UserPart::Image(Medium::Bytes(bytes(&png, "image/png")));
+    let video = UserPart::Video(Medium::Bytes(bytes(&mp4, "video/mp4")));
+    let document = UserPart::Document {
+        bytes: bytes(&pdf, "application/pdf"),
+        file_name: "paper.pdf".into(),
     };
-    let document = UserContentBlock::Document {
-        source: DocumentSource::Binary {
-            data: pdf.clone(),
-            media_type: "application/pdf".into(),
-            file_name: "paper.pdf".into(),
-        },
-    };
-    let record = UserContentBlock::Attachment(Attachment {
+    let attachment = Attachment {
         name: "chart.png".into(),
         path: "/home/demi/.demi/attachments/conversation/chart.png".into(),
         media_type: "image/png".into(),
         size_bytes: 4,
         sha256: BlobRef::try_from("a".repeat(64)).unwrap(),
         snippet: None,
-    });
+    };
+    let record = UserContentBlock::Attachment(attachment.clone());
     // The upload route stored each file: the message's medium references
     // its blob, and its bytes come along for the session to hold.
     let png_blob = blobs.put(png.clone()).await.unwrap();
@@ -636,7 +628,13 @@ async fn an_edit_keeps_the_files_its_message_holds_and_refuses_one_it_does_not()
     assert_eq!(
         script.requests()[1].items.first(),
         Some(&InferenceItem::UserMessage {
-            content: vec![again.clone(), image, video, document, record.clone()]
+            content: vec![
+                UserPart::Text("look again".into()),
+                image,
+                video,
+                document,
+                UserPart::Text(attachment_tag(&attachment)),
+            ]
         })
     );
     let stored = fixture.store.checkpoint(&conversation()).unwrap();
@@ -675,14 +673,14 @@ async fn a_fork_seed_keeps_the_history_through_a_completed_text_from_a_live_or_a
                 *request.items,
                 [
                     InferenceItem::UserMessage {
-                        content: demi_agent::testing::text("A")
+                        content: demi_agent::testing::sent_text("A")
                     },
                     InferenceItem::AssistantText {
                         model_id: "test-model".into(),
                         text: "answer A".into()
                     },
                     InferenceItem::UserMessage {
-                        content: demi_agent::testing::text("U3")
+                        content: demi_agent::testing::sent_text("U3")
                     },
                 ]
             );

@@ -5,14 +5,26 @@ import { toolMedia } from '../tool-media'
 // What a call shows under its row (`file-previews.md` § Media a tool
 // returned), read off its result as the transcript stores it: a shell
 // result's status and note stay the call's own, the media show in the order
-// of the result, and a text that took a medium's place shows where it was.
+// of the result, and a medium that is gone shows a line that says why where
+// it was.
 
 const shot: ToolMediaSource = { type: 'ref', ref: 'a'.repeat(64), mediaType: 'image/png' }
 const clip: ToolMediaSource = { type: 'ref', ref: 'b'.repeat(64), mediaType: 'video/mp4' }
 const status = { type: 'text', text: 'status: exited\nexitCode: 0\npreviewBudgetTokens: 10000\npreview:\n<binary stdout: 15822 bytes>' } as const
 const note = { type: 'text', text: 'Attached stdout as image/png (15822 bytes).' } as const
-const retired = '[image:image/png, removed on 2026-10-01: a tool result\'s images and videos are kept for 30 days]'
-const notStored = '[video not stored: the object store refused the write]'
+// Retired at noon UTC, which is Oct 1 wherever the test runs from UTC-12 to UTC+11.
+const retired: ToolResultContentBlock = {
+  type: 'gone',
+  kind: 'image',
+  mediaType: 'image/png',
+  cause: { type: 'retired', at: '2026-10-01T12:00:00.000Z' },
+}
+const notStored: ToolResultContentBlock = {
+  type: 'gone',
+  kind: 'video',
+  mediaType: 'video/mp4',
+  cause: { type: 'not_stored', error: 'the object store refused the write' },
+}
 
 const cases: { name: string; output: ToolResultContentBlock[]; shows: ReturnType<typeof toolMedia> }[] = [
   {
@@ -26,19 +38,19 @@ const cases: { name: string; output: ToolResultContentBlock[]; shows: ReturnType
     shows: [{ kind: 'video', source: clip }],
   },
   {
-    name: 'a screenshot retired after 30 days',
-    output: [status, { type: 'text', text: retired }, note],
-    shows: [{ kind: 'gone', text: retired }],
+    name: 'a screenshot retired after 30 days, with the day',
+    output: [status, retired, note],
+    shows: [{ kind: 'gone', text: 'Image removed on Oct 1, 2026' }],
   },
   {
-    name: 'a recording that was not stored',
-    output: [status, { type: 'text', text: notStored }, note],
-    shows: [{ kind: 'gone', text: notStored }],
+    name: 'a recording that was not stored, with the reason',
+    output: [status, notStored, note],
+    shows: [{ kind: 'gone', text: 'Video not stored: the object store refused the write' }],
   },
   {
     name: 'several, in the order of the result',
-    output: [{ type: 'video', source: clip }, { type: 'text', text: retired }, { type: 'image', source: shot }],
-    shows: [{ kind: 'video', source: clip }, { kind: 'gone', text: retired }, { kind: 'image', source: shot }],
+    output: [{ type: 'video', source: clip }, retired, { type: 'image', source: shot }],
+    shows: [{ kind: 'video', source: clip }, { kind: 'gone', text: 'Image removed on Oct 1, 2026' }, { kind: 'image', source: shot }],
   },
   {
     name: 'a result without media',

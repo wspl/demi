@@ -15,9 +15,9 @@ use std::{
 
 use demi_agent_protocol::AbortTarget;
 use demi_core::{
-    AgentMessage, BlobRef, Block, BlockId, Clock, FailureSource, ModelSelection, NodeId, PendingSteer,
-    ProviderErrorDiagnostics, QueuedMessage, SessionPhase, ToolResultContentBlock, TurnId,
-    UserContentBlock, WakeupId, WakeupPlacement,
+    AgentMessage, BlobRef, Block, BlockId, Clock, FailureSource, ModelSelection, NodeId,
+    PendingSteer, ProviderErrorDiagnostics, QueuedMessage, SessionPhase, ToolResultContentBlock,
+    ToolView, TurnId, UserContentBlock, WakeupId, WakeupPlacement,
 };
 use demi_provider::{
     InferenceRequest, PromptCache, ProviderEvent, ProviderFailure, ProviderRuntime, RequestLimits,
@@ -31,9 +31,7 @@ use super::{
     cancel::{CancelReason, TurnCancel},
     editing::{EditCheck, EditError, EditInFlight, EditSubmission},
     input::{Input, InputQueue, Take, Wakeups},
-    media::ModelView,
     persist::{PersistMarks, TakenMarks},
-    runtime::ToolOutcome,
     storage::Generation,
 };
 use crate::{
@@ -41,7 +39,7 @@ use crate::{
     store::{
         BoundaryEdge, CheckpointState, CheckpointUpdate, CommandStateHistory, CommandStateSnapshot,
         CommandStorageKey, CommandVersion, EditReceipt, PendingAgentInput, ScheduledWakeup,
-        media::{self, HeldMedia},
+        media::{self, HeldMedia, ModelView},
     },
     transcript::{
         INTERRUPTED_CODE, INTERRUPTED_TURN_MESSAGE, TranscriptLog, opens_input_turn, replay,
@@ -1231,13 +1229,17 @@ impl SessionCore {
         self.commit();
     }
 
-    pub(super) fn complete_tool_call(&mut self, tool_use_id: &str, outcome: ToolOutcome) {
-        self.transcript.complete_tool_call(
-            tool_use_id,
-            outcome.output,
-            outcome.is_error,
-            outcome.view,
-        );
+    /// Completes the call `tool_use_id` with its result as the transcript
+    /// holds it: its media by reference.
+    pub(super) fn complete_tool_call(
+        &mut self,
+        tool_use_id: &str,
+        output: Vec<ToolResultContentBlock>,
+        is_error: bool,
+        view: Option<ToolView>,
+    ) {
+        self.transcript
+            .complete_tool_call(tool_use_id, output, is_error, view);
         self.commit();
     }
 
@@ -1245,7 +1247,7 @@ impl SessionCore {
     /// replayed blocks ([`Self::model_view`]).
     pub(super) fn inference_request(
         &self,
-        view: &[Block],
+        view: &ModelView,
         system_prompt: String,
         tools: Arc<[ToolDefinition]>,
         request_id: String,
@@ -1319,20 +1321,13 @@ impl SessionCore {
         self.media.retain(&referenced);
     }
 
-    /// The blobs of the replayed media the session holds nothing for.
-    pub(super) fn unheld_media(&self) -> Vec<BlobRef> {
-        self.media.unheld(self.replayed())
-    }
-
-    /// The replayed blocks as the model receives them: each held medium's
-    /// bytes in the place of its reference.
-    pub(super) fn model_view(&self) -> ModelView {
+    /// The replayed blocks as the model receives them, with what the session
+    /// holds for their media; or, while it holds nothing for some of them,
+    /// their blobs.
+    pub(super) fn model_view(&self) -> Result<ModelView, Vec<BlobRef>> {
         let blocks = self.transcript.blocks();
         let start = replay_start(blocks);
-        ModelView {
-            start,
-            blocks: self.media.view(&blocks[start..]),
-        }
+        ModelView::of(start, &blocks[start..], &self.media)
     }
 
     /// Drains the transcript's patches into one event, marks their rows for

@@ -92,6 +92,7 @@ import {
   openaiOnlyProviders,
   usageAt,
 } from '../fixtures/catalog'
+import { galleryBlobs } from '../fixtures/blobs'
 import { gallerySubagents } from '../fixtures/subagents'
 import { galleryTerminals } from '../fixtures/terminals'
 import { useLiveGalleryCommand } from '../live-command'
@@ -422,8 +423,8 @@ const attachmentBubble: UserContentBlock[] = [
   {
     type: 'document',
     source: {
-      type: 'binary',
-      data: '',
+      type: 'ref',
+      ref: galleryBlobs.guide,
       mediaType: 'application/pdf',
       fileName: 'login-failure.pdf',
     },

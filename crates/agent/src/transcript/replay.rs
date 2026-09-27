@@ -1,19 +1,21 @@
 //! What the model receives of a transcript (`runtime.md` § Replay): the
 //! blocks from the last compaction boundary on, each as its inference item,
-//! with long texts cut in the middle (`compaction.md` § Text bounds), and
-//! each medium the request's model cannot take as a text that says why.
+//! with long texts cut in the middle (`compaction.md` § Text bounds), each
+//! medium with the bytes the session holds for it, and each medium the
+//! request's model cannot take as a text that says why.
 
 use std::borrow::Cow;
 
 use demi_core::{
-    AgentMessage, Block, DocumentSource, FileExtension, MediaSource, Model, ToolCallStatus,
-    ToolMediaSource, ToolResultContentBlock, UserContentBlock, WakeupPlacement,
-    file_extension_support, model_accepts_media_type,
+    AgentMessage, B64Bytes, BlobRef, Block, DocumentSource, FileExtension, MediaSource, Model,
+    ModelMediaKind, ToolCallStatus, ToolMediaSource, ToolResultContentBlock, UserContentBlock,
+    WakeupPlacement, attachment_tag, file_extension_support, model_accepts_media_type,
 };
-use demi_provider::{InferenceItem, RequestLimits};
+use demi_provider::{InferenceItem, MediaBytes, Medium, RequestLimits, ResultPart, UserPart};
 use serde_json::Value;
 
-use super::{RESUME_TEXT, WAKEUP_TEXT, latest_answer, replay_start};
+use super::{RESUME_TEXT, WAKEUP_TEXT, gone_text, latest_answer, replay_start};
+use crate::store::media::{Held, ModelView, missing_text};
 
 /// The scalar values a replayed text keeps from its start, and from its end,
 /// when it is longer than both together.
@@ -30,12 +32,14 @@ pub(crate) struct Replay {
 }
 
 /// What a request of `model`, whose vendor takes requests within `limits`,
-/// carries of `blocks`.
-pub(crate) fn replay(blocks: &[Block], model: &Model, limits: RequestLimits) -> Replay {
+/// carries of `view`, the model's view of the replayed blocks.
+pub(crate) fn replay(view: &ModelView, model: &Model, limits: RequestLimits) -> Replay {
+    let blocks = &view.blocks;
     let start = replay_start(blocks);
     let answer = latest_answer(blocks);
     let kept = kept_past_summary(blocks, start);
     let media = Media {
+        view,
         model,
         half_body: limits.body_bytes.map(|bytes| bytes / 2),
     };
@@ -48,33 +52,34 @@ pub(crate) fn replay(blocks: &[Block], model: &Model, limits: RequestLimits) -> 
         let kept_past_summary = kept.contains(&index);
         match block {
             Block::User(user) => {
-                let preamble = user
-                    .preamble
-                    .iter()
-                    .map(|text| UserContentBlock::Text { text: text.clone() });
-                let content = preamble.chain(user.content.iter().cloned()).collect();
+                let preamble = user.preamble.iter().map(|text| bounded(text));
+                let content = user.content.iter().map(|part| media.user_part(part));
                 items.push(InferenceItem::UserMessage {
-                    content: media.content(content),
+                    content: preamble.chain(content).collect(),
                 });
             }
             Block::Context(context) => items.push(InferenceItem::UserMessage {
-                content: vec![text(bound_text(&context.text).into_owned())],
+                content: vec![bounded(&context.text)],
             }),
             Block::Wakeup(wakeup) => {
-                let content = vec![text(WAKEUP_TEXT.to_owned())];
+                let content = vec![UserPart::Text(WAKEUP_TEXT.to_owned())];
                 items.push(match wakeup.placement {
                     WakeupPlacement::NewTurn => InferenceItem::UserMessage { content },
                     WakeupPlacement::Steer => InferenceItem::UserSteer { content },
                 });
             }
             Block::Steer(steer) => items.push(InferenceItem::UserSteer {
-                content: media.content(steer.content.clone()),
+                content: steer
+                    .content
+                    .iter()
+                    .map(|part| media.user_part(part))
+                    .collect(),
             }),
             Block::AgentMessage(receipt) => items.push(InferenceItem::UserSteer {
-                content: vec![text(agent_message_envelope(&receipt.message))],
+                content: vec![UserPart::Text(agent_message_envelope(&receipt.message))],
             }),
             Block::Resume(_) => items.push(InferenceItem::UserMessage {
-                content: vec![text(RESUME_TEXT.to_owned())],
+                content: vec![UserPart::Text(RESUME_TEXT.to_owned())],
             }),
             Block::Thinking(thinking) => {
                 // The vendor verifies signed reasoning as it was sent.
@@ -116,13 +121,10 @@ pub(crate) fn replay(blocks: &[Block], model: &Model, limits: RequestLimits) -> 
                 }
             }
             Block::CompactionBoundary(boundary) => items.push(InferenceItem::UserMessage {
-                content: vec![text(
-                    bound_text(&format!(
-                        "Previous conversation summary:\n{}",
-                        boundary.summary
-                    ))
-                    .into_owned(),
-                )],
+                content: vec![bounded(&format!(
+                    "Previous conversation summary:\n{}",
+                    boundary.summary
+                ))],
             }),
             Block::Abort(_) | Block::Response(_) | Block::Error(_) | Block::CompactionMarker(_) => {
             }
@@ -145,11 +147,14 @@ fn kept_past_summary(blocks: &[Block], start: usize) -> std::ops::Range<usize> {
     start + 1..marker
 }
 
-/// Which media a request's model takes (`runtime.md` § Replay): the types
-/// it reads natively, each within half of its vendor's request body limit.
-/// Any other medium reaches it as a text that names it and says why, the
+/// How the media of the model's view reach a request's model
+/// (`runtime.md` § Replay, § Media): each with the bytes the session holds
+/// for it, within the types the model reads natively, each within half of
+/// its vendor's request body limit. A medium whose blob is missing, and any
+/// medium the model cannot take, reaches it as a text that names it, the
 /// same text in every request to that model.
 struct Media<'a> {
+    view: &'a ModelView,
     model: &'a Model,
     /// Half of the body limit, the most base64 one medium may take; none
     /// when the vendor documents no limit.
@@ -157,95 +162,130 @@ struct Media<'a> {
 }
 
 impl Media<'_> {
-    /// A message's content as the model receives it: long texts bounded,
-    /// and each medium it cannot take as its text.
-    fn content(&self, content: Vec<UserContentBlock>) -> Vec<UserContentBlock> {
-        content
-            .into_iter()
-            .map(|part| match part {
-                UserContentBlock::Text { text } => UserContentBlock::Text {
-                    text: bound_text(&text).into_owned(),
-                },
-                part => match self.unsent_part(&part) {
-                    Some(text) => UserContentBlock::Text { text },
-                    None => part,
-                },
-            })
-            .collect()
-    }
-
-    /// The text of a message's medium the model cannot take; none for any
-    /// other part.
-    fn unsent_part(&self, part: &UserContentBlock) -> Option<String> {
+    /// A message's part as the model receives it: a long text bounded, a
+    /// reference as its text, an attachment record as its tag, and a medium
+    /// with its bytes or as its text.
+    fn user_part(&self, part: &UserContentBlock) -> UserPart {
         match part {
-            UserContentBlock::Image { source } => self.unsent_media("image", source),
-            UserContentBlock::Video { source } => self.unsent_media("video", source),
-            UserContentBlock::Document { source } => {
-                let (media_type, file_name, data) = match source {
-                    DocumentSource::Binary {
-                        data,
-                        media_type,
-                        file_name,
-                    } => (media_type, file_name, Some(data)),
+            UserContentBlock::Text { text } => bounded(text),
+            UserContentBlock::Reference { reference } => UserPart::Text(reference.clone()),
+            UserContentBlock::Attachment(attachment) => UserPart::Text(attachment_tag(attachment)),
+            UserContentBlock::Image { source } => {
+                match self.medium(ModelMediaKind::Image, source) {
+                    Ok(medium) => UserPart::Image(medium),
+                    Err(text) => UserPart::Text(text),
+                }
+            }
+            UserContentBlock::Video { source } => {
+                match self.medium(ModelMediaKind::Video, source) {
+                    Ok(medium) => UserPart::Video(medium),
+                    Err(text) => UserPart::Text(text),
+                }
+            }
+            UserContentBlock::Document {
+                source:
                     DocumentSource::Ref {
+                        r#ref,
                         media_type,
                         file_name,
-                        ..
-                    } => (media_type, file_name, None),
-                };
-                let reason = self.refusal(accepts_document(self.model, media_type), data)?;
-                Some(unsent("document", file_name, reason))
+                    },
+            } => {
+                let accepted = accepts_document(self.model, media_type);
+                match self.bytes("document", r#ref, media_type, file_name, accepted) {
+                    Ok(bytes) => UserPart::Document {
+                        bytes,
+                        file_name: file_name.clone(),
+                    },
+                    Err(text) => UserPart::Text(text),
+                }
             }
-            _ => None,
         }
     }
 
-    fn unsent_media(&self, kind: &str, source: &MediaSource) -> Option<String> {
-        let (media_type, data) = match source {
-            MediaSource::Binary { data, media_type } => (media_type, Some(data)),
-            MediaSource::Ref { media_type, .. } => (media_type, None),
-            // A URL names no type; the vendor fetches what it names.
-            MediaSource::Url { .. } => return None,
-        };
-        let reason = self.refusal(model_accepts_media_type(self.model, media_type), data)?;
-        Some(unsent(kind, media_type, reason))
+    /// A message's image or video: its URL, which names no type, since the
+    /// vendor fetches what it names; or its held bytes, or its text.
+    fn medium(&self, kind: ModelMediaKind, source: &MediaSource) -> Result<Medium, String> {
+        match source {
+            MediaSource::Url { url } => Ok(Medium::Url(url.clone())),
+            MediaSource::Ref { r#ref, media_type } => {
+                let accepted = model_accepts_media_type(self.model, media_type);
+                self.bytes(kind.name(), r#ref, media_type, media_type, accepted)
+                    .map(Medium::Bytes)
+            }
+        }
     }
 
-    /// A tool result's part as the model receives it: a text bounded, and a
-    /// medium the model cannot take as its text.
-    fn result(&self, part: &ToolResultContentBlock) -> ToolResultContentBlock {
-        let (kind, source) = match part {
+    /// A tool result's part as the model receives it: a text bounded, a
+    /// medium with its held bytes or as its text, and a medium that is gone
+    /// as its text.
+    fn result(&self, part: &ToolResultContentBlock) -> ResultPart {
+        match part {
             ToolResultContentBlock::Text { text } => {
-                return ToolResultContentBlock::Text {
-                    text: bound_text(text).into_owned(),
-                };
+                ResultPart::Text(bound_text(text).into_owned())
             }
-            ToolResultContentBlock::Image { source } => ("image", source),
-            ToolResultContentBlock::Video { source } => ("video", source),
-        };
-        let (media_type, data) = match source {
-            ToolMediaSource::Binary { data, media_type } => (media_type, Some(data)),
-            ToolMediaSource::Ref { media_type, .. } => (media_type, None),
-        };
-        match self.refusal(model_accepts_media_type(self.model, media_type), data) {
-            Some(reason) => ToolResultContentBlock::Text {
-                text: unsent(kind, media_type, reason),
-            },
-            None => part.clone(),
+            ToolResultContentBlock::Image { source } => {
+                match self.tool_medium(ModelMediaKind::Image, source) {
+                    Ok(bytes) => ResultPart::Image(bytes),
+                    Err(text) => ResultPart::Text(text),
+                }
+            }
+            ToolResultContentBlock::Video { source } => {
+                match self.tool_medium(ModelMediaKind::Video, source) {
+                    Ok(bytes) => ResultPart::Video(bytes),
+                    Err(text) => ResultPart::Text(text),
+                }
+            }
+            ToolResultContentBlock::Gone {
+                kind,
+                media_type,
+                cause,
+            } => ResultPart::Text(bound_text(&gone_text(*kind, media_type, cause)).into_owned()),
         }
     }
 
-    /// Why a medium is not sent: its type is not `accepted`, or its bytes,
-    /// when the session holds them, take more than half of the body limit as
-    /// base64.
-    fn refusal(&self, accepted: bool, data: Option<&demi_core::B64Bytes>) -> Option<&'static str> {
+    /// A tool result's image or video: its held bytes, or its text.
+    fn tool_medium(
+        &self,
+        kind: ModelMediaKind,
+        source: &ToolMediaSource,
+    ) -> Result<MediaBytes, String> {
+        let ToolMediaSource::Ref { r#ref, media_type } = source;
+        let accepted = model_accepts_media_type(self.model, media_type);
+        self.bytes(kind.name(), r#ref, media_type, media_type, accepted)
+    }
+
+    /// The bytes the session holds for the medium `blob` names, of
+    /// `media_type`; or the text it reaches the model as when its blob is
+    /// missing, or when the model does not take it (`accepted` says whether
+    /// it reads the type), with `name` naming it.
+    fn bytes(
+        &self,
+        kind: &str,
+        blob: &BlobRef,
+        media_type: &str,
+        name: &str,
+        accepted: bool,
+    ) -> Result<MediaBytes, String> {
+        let data = match self.view.held(blob) {
+            Held::Bytes(data) => data,
+            Held::Missing => return Err(missing_text(kind, blob)),
+        };
+        if let Some(reason) = self.refusal(accepted, data) {
+            return Err(unsent(kind, name, reason));
+        }
+        Ok(MediaBytes {
+            data: data.clone(),
+            media_type: media_type.to_owned(),
+        })
+    }
+
+    /// Why a medium is not sent: its type is not `accepted`, or its bytes
+    /// take more than half of the body limit as base64.
+    fn refusal(&self, accepted: bool, data: &B64Bytes) -> Option<&'static str> {
         if !accepted {
             return Some("the model does not accept it");
         }
-        let too_large = self
-            .half_body
-            .zip(data)
-            .is_some_and(|(half, data)| data.base64_len() > half);
+        let too_large = self.half_body.is_some_and(|half| data.base64_len() > half);
         too_large.then_some("too large for the model's requests")
     }
 }
@@ -310,19 +350,20 @@ pub(crate) fn char_offset(text: &str, chars: usize) -> usize {
         .map_or(text.len(), |(offset, _)| offset)
 }
 
-fn text(text: String) -> UserContentBlock {
-    UserContentBlock::Text { text }
+/// `text` as a message's text part, bounded.
+fn bounded(text: &str) -> UserPart {
+    UserPart::Text(bound_text(text).into_owned())
 }
 
 #[cfg(test)]
 mod tests {
     use demi_core::{
-        BlockId, CompactionBoundaryBlock, CompactionMarkerBlock, RedactedThinkingBlock,
-        ThinkingBlock, Timestamp,
+        Attachment, BlockId, CompactionBoundaryBlock, CompactionMarkerBlock, RedactedThinkingBlock,
+        ThinkingBlock, Timestamp, TurnId, UserBlock,
     };
 
     use super::*;
-    use crate::testing::test_model;
+    use crate::{store::media::HeldMedia, testing::test_model};
 
     #[test]
     fn reasoning_between_the_last_boundary_and_its_marker_is_marked_as_kept_past_a_summary() {
@@ -358,7 +399,8 @@ mod tests {
             compacted_tokens: 100,
         });
         let kept = |blocks: &[Block]| -> Vec<(String, bool)> {
-            replay(blocks, &model.model, RequestLimits::default())
+            let view = ModelView::of(0, blocks, &HeldMedia::default()).expect("no media to hold");
+            replay(&view, &model.model, RequestLimits::default())
                 .items
                 .into_iter()
                 .filter_map(|item| match item {
@@ -394,6 +436,45 @@ mod tests {
         );
         // Without a summary, nothing is kept past one.
         assert_eq!(kept(&compacted[5..]), [("after".to_owned(), false)]);
+    }
+
+    /// A reference names a file on a paired device; the model reads the
+    /// text that names it, and an attachment record as its tag.
+    #[test]
+    fn a_messages_reference_and_attachment_record_reach_the_model_as_their_text() {
+        let model = test_model();
+        let attachment = Attachment {
+            name: "notes.md".into(),
+            path: "/home/demi/.demi/attachments/c1/notes.md".into(),
+            media_type: "text/markdown".into(),
+            size_bytes: 82,
+            sha256: BlobRef::of(b"# Notes"),
+            snippet: Some("# Notes".into()),
+        };
+        let reference = "file:///home/demi/notes.md?host=laptop";
+        let message = Block::User(UserBlock {
+            id: BlockId::try_from("u1").unwrap(),
+            turn_id: TurnId::try_from("t1").unwrap(),
+            created_at: Timestamp::UNIX_EPOCH,
+            model: model.clone(),
+            content: vec![
+                UserContentBlock::Reference {
+                    reference: reference.into(),
+                },
+                UserContentBlock::Attachment(attachment.clone()),
+            ],
+            preamble: None,
+        });
+        let view = ModelView::of(0, &[message], &HeldMedia::default()).expect("no media to hold");
+        assert_eq!(
+            replay(&view, &model.model, RequestLimits::default()).items,
+            [InferenceItem::UserMessage {
+                content: vec![
+                    UserPart::Text(reference.into()),
+                    UserPart::Text(attachment_tag(&attachment)),
+                ]
+            }]
+        );
     }
 
     #[test]

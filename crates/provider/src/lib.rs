@@ -25,11 +25,11 @@ mod secret;
 pub mod testing;
 pub mod wire;
 
-pub use body::{UnloadedMedia, encode_body, json_body};
+pub use body::{encode_body, json_body};
 pub use contract::{
-    Capabilities, CatalogError, InferenceItem, InferenceRequest, PromptCache, Provider,
-    ProviderEvent, ProviderRun, ProviderRuntime, RequestLimits, RuntimeEnv, RuntimeError, ToolCall,
-    ToolDefinition,
+    Capabilities, CatalogError, InferenceItem, InferenceRequest, MediaBytes, Medium, PromptCache,
+    Provider, ProviderEvent, ProviderRun, ProviderRuntime, RequestLimits, ResultPart, RuntimeEnv,
+    RuntimeError, ToolCall, ToolDefinition, UserPart,
 };
 pub use endpoint::endpoint_url;
 pub use failure::{ErrorCode, FailureReader, ProviderFailure};

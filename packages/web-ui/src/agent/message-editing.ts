@@ -113,9 +113,6 @@ function sentEditContent(part: MessageEditContent): ClientContent {
       }
       return { type: 'media', media: { type: part.type, ref: part.source.ref, mediaType: part.source.mediaType } }
     case 'document':
-      if (part.source.type !== 'ref') {
-        throw new EditRejectedError(`${part.source.fileName} is not stored with the conversation, so an edit cannot keep it`)
-      }
       return {
         type: 'media',
         media: { type: 'document', ref: part.source.ref, mediaType: part.source.mediaType, fileName: part.source.fileName },

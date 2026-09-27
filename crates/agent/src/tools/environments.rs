@@ -10,7 +10,8 @@ use std::{
     time::Duration,
 };
 
-use demi_core::{CommandId, ShellId, ToolResultContentBlock, ToolView};
+use demi_core::{CommandId, ShellId, ToolView};
+use demi_provider::ResultPart;
 use demi_shell::{HostError, HostKey, PageView, ShellEnvironment};
 use futures_util::future::join_all;
 use tokio::{sync::OnceCell, time::Instant};
@@ -229,7 +230,7 @@ impl Slot {
         ]
         .join("\n");
         Some(ToolOutcome {
-            output: vec![ToolResultContentBlock::Text { text }],
+            output: vec![ResultPart::Text(text)],
             is_error: true,
             view: Some(ToolView::RepeatedShellExec {
                 script: script.to_owned(),

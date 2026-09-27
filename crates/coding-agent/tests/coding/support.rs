@@ -18,13 +18,13 @@ use demi_agent_protocol::{ClientFrame, ServerFrame};
 use demi_builtin_protocol::{Operation, PACKAGE};
 use demi_coding_agent::{CodingHarness, DemiOptions, HostResolver, demi_root};
 use demi_command_service::testing::built_program;
-use demi_core::{Block, CommandId, NodeId, SessionPhase, ToolResultContentBlock, ToolView, TurnId};
+use demi_core::{Block, CommandId, NodeId, SessionPhase, ToolView, TurnId};
 use demi_host_remote::{
     CommandCatalog, ContextSource, EnvironmentOptions, RemoteHost, RemoteShellEnvironmentFactory,
     testing::{FixtureOptions, NativeFixture, RunnerFixture},
 };
 use demi_provider::{
-    InferenceItem, InferenceRequest, ProviderEvent,
+    InferenceItem, InferenceRequest, ProviderEvent, ResultPart,
     testing::{ScriptedRuntime, Turn, event},
 };
 use demi_shell::{
@@ -301,9 +301,9 @@ pub fn last_result(request: &InferenceRequest) -> String {
         .expect("the request carries a tool result");
     output
         .iter()
-        .filter_map(|block| match block {
-            ToolResultContentBlock::Text { text } => Some(text.as_str()),
-            _ => None,
+        .filter_map(|part| match part {
+            ResultPart::Text(text) => Some(text.as_str()),
+            ResultPart::Image(_) | ResultPart::Video(_) => None,
         })
         .collect::<Vec<_>>()
         .join("\n")

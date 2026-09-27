@@ -6,9 +6,8 @@
 
 use std::borrow::Cow;
 
-use demi_core::{DocumentSource, MediaSource, UserContentBlock, attachment_tag};
 use demi_provider::openai_request::tool_output_text;
-use demi_provider::{InferenceItem, UnloadedMedia, json_body};
+use demi_provider::{InferenceItem, Medium, UserPart, json_body};
 use rmcp::model::ServerJsonRpcMessage;
 use serde::Serialize;
 
@@ -132,8 +131,8 @@ pub(crate) fn line(input: &Input<'_>) -> Vec<u8> {
 /// refuse the request; earlier reasoning is left out, since its signatures do
 /// not hold for a new process. A transcript of the user's input alone is
 /// written as that input.
-pub(crate) fn transcript(items: &[InferenceItem]) -> Result<Vec<u8>, UnloadedMedia> {
-    let mut parts = parts(items)?;
+pub(crate) fn transcript(items: &[InferenceItem]) -> Vec<u8> {
+    let mut parts = parts(items);
     let input_alone = matches!(parts.as_slice(), [only] if only.role == Role::User);
     let content = if input_alone {
         parts.pop().map(|part| part.content).unwrap_or_default()
@@ -144,17 +143,17 @@ pub(crate) fn transcript(items: &[InferenceItem]) -> Result<Vec<u8>, UnloadedMed
         role: Role::User,
         content,
     };
-    Ok(line(&Input::User { message }))
+    line(&Input::User { message })
 }
 
 /// The transcript's parts: the items of one speaker in a row, each as the
 /// content blocks it becomes, without the parts that become none.
-fn parts(items: &[InferenceItem]) -> Result<Vec<Message<'_>>, UnloadedMedia> {
+fn parts(items: &[InferenceItem]) -> Vec<Message<'_>> {
     let mut parts: Vec<Message<'_>> = Vec::new();
     for item in items {
         match item {
             InferenceItem::UserMessage { content } | InferenceItem::UserSteer { content } => {
-                append(&mut parts, Role::User, user_content(content)?);
+                append(&mut parts, Role::User, user_content(content));
             }
             InferenceItem::AssistantText { text, .. } if !text.is_empty() => {
                 append(&mut parts, Role::Assistant, vec![text_block(text)]);
@@ -188,7 +187,7 @@ fn parts(items: &[InferenceItem]) -> Result<Vec<Message<'_>>, UnloadedMedia> {
             | InferenceItem::AssistantRedactedThinking { .. } => {}
         }
     }
-    Ok(parts)
+    parts
 }
 
 /// `parts` as the content of one message: their text in order, each part
@@ -250,25 +249,20 @@ fn append<'a>(messages: &mut Vec<Message<'a>>, role: Role, blocks: Vec<Block<'a>
 
 /// The user messages of `items` after the first `sent`, which a kept
 /// process has not received yet: new messages and steers.
-pub(crate) fn new_user_messages(
-    items: &[InferenceItem],
-    sent: usize,
-) -> Result<Vec<u8>, UnloadedMedia> {
+pub(crate) fn new_user_messages(items: &[InferenceItem], sent: usize) -> Vec<u8> {
     let mut lines = Vec::new();
     for content in user_messages(items).skip(sent) {
         let message = Message {
             role: Role::User,
-            content: user_content(content)?,
+            content: user_content(content),
         };
         lines.extend(line(&Input::User { message }));
     }
-    Ok(lines)
+    lines
 }
 
 /// The content of every user message and steer of `items`, in order.
-pub(crate) fn user_messages(
-    items: &[InferenceItem],
-) -> impl Iterator<Item = &Vec<UserContentBlock>> {
+pub(crate) fn user_messages(items: &[InferenceItem]) -> impl Iterator<Item = &Vec<UserPart>> {
     items.iter().filter_map(|item| match item {
         InferenceItem::UserMessage { content } | InferenceItem::UserSteer { content } => {
             Some(content)
@@ -298,42 +292,28 @@ fn text_block(text: &str) -> Block<'_> {
 /// A user message's content as the Messages API reads it. The API has no
 /// video block, and the catalog marks video unsupported, so a video that
 /// reaches here anyway is named in text.
-fn user_content(content: &[UserContentBlock]) -> Result<Vec<Block<'_>>, UnloadedMedia> {
+fn user_content(content: &[UserPart]) -> Vec<Block<'_>> {
     content
         .iter()
-        .map(|block| {
-            Ok(match block {
-                UserContentBlock::Text { text } => text_block(text),
-                UserContentBlock::Image { source } => Block::Image {
-                    source: match source {
-                        MediaSource::Binary { data, media_type } => {
-                            ImageSource::Base64 { media_type, data }
-                        }
-                        MediaSource::Url { url } => ImageSource::Url { url },
-                        MediaSource::Ref { r#ref, .. } => {
-                            return Err(UnloadedMedia(r#ref.to_string()));
-                        }
+        .map(|part| match part {
+            UserPart::Text(text) => text_block(text),
+            UserPart::Image(medium) => Block::Image {
+                source: match medium {
+                    Medium::Bytes(bytes) => ImageSource::Base64 {
+                        media_type: &bytes.media_type,
+                        data: &bytes.data,
                     },
+                    Medium::Url(url) => ImageSource::Url { url },
                 },
-                UserContentBlock::Video { .. } => text_block("[video]"),
-                UserContentBlock::Document { source } => match source {
-                    DocumentSource::Binary {
-                        data,
-                        media_type,
-                        file_name,
-                    } => Block::Document {
-                        source: Base64 { media_type, data },
-                        title: file_name,
-                    },
-                    DocumentSource::Ref { r#ref, .. } => {
-                        return Err(UnloadedMedia(r#ref.to_string()));
-                    }
+            },
+            UserPart::Video(_) => text_block("[video]"),
+            UserPart::Document { bytes, file_name } => Block::Document {
+                source: Base64 {
+                    media_type: &bytes.media_type,
+                    data: &bytes.data,
                 },
-                UserContentBlock::Attachment(attachment) => Block::Text {
-                    text: attachment_tag(attachment).into(),
-                },
-                UserContentBlock::Reference { reference } => text_block(reference),
-            })
+                title: file_name,
+            },
         })
         .collect()
 }

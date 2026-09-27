@@ -9,15 +9,15 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use demi_core::{Clock, StreamKind, UserContentBlock};
+use demi_core::{Clock, StreamKind};
 use demi_provider::credentials::{AddAccount, MemoryCredentialPool};
 use demi_provider::models_dev::ModelsDevClient;
 use demi_provider::quota::MemorySnapshots;
 pub use demi_provider::testing::{all_events, next_event};
 use demi_provider::testing::{FixedClock, guarded, inference_request};
 use demi_provider::{
-    InferenceItem, InferenceRequest, Provider, ProviderRuntime, Secret,
-    ToolDefinition,
+    InferenceItem, InferenceRequest, Provider, ProviderRuntime, ResultPart, Secret, ToolDefinition,
+    UserPart,
 };
 use demi_provider_claude_code::{
     ClaudeCodeConfig, ClaudeCodeProvider, CliSite, Placement, StartError,
@@ -138,7 +138,7 @@ pub fn request_without_tools(items: Vec<InferenceItem>) -> InferenceRequest {
 
 pub fn user(text: &str) -> InferenceItem {
     InferenceItem::UserMessage {
-        content: vec![UserContentBlock::Text { text: text.into() }],
+        content: vec![UserPart::Text(text.into())],
     }
 }
 
@@ -154,7 +154,7 @@ pub fn tool_use(id: &str, script: &str) -> InferenceItem {
 pub fn tool_result(id: &str, text: &str) -> InferenceItem {
     InferenceItem::ToolResult {
         tool_use_id: id.into(),
-        output: vec![demi_core::ToolResultContentBlock::Text { text: text.into() }],
+        output: vec![ResultPart::Text(text.into())],
         is_error: false,
     }
 }

@@ -15,11 +15,12 @@ use demi_agent_protocol::{AbortTarget, TranscriptPatch};
 use demi_core::{
     AgentMessage, AgentMessageEvent, B64Bytes, BlobRef, Block, BlockId, DocumentSource,
     FailureSource, FileExtension, MediaSource, NodeId, OperationId, Sender, SessionPhase,
-    Timestamp, ToolCallStatus, ToolMediaSource, ToolResultContentBlock, TurnId, UserContentBlock,
+    Timestamp, ToolCallStatus, ToolResultContentBlock, TurnId, UserContentBlock,
 };
 use demi_gates::{ActivityGate, GateLease, Purpose};
 use demi_provider::{
-    ErrorCode, InferenceItem, PromptCache, ProviderEvent, RequestLimits, ToolDefinition,
+    ErrorCode, InferenceItem, MediaBytes, PromptCache, ProviderEvent, RequestLimits, ResultPart,
+    ToolDefinition, UserPart,
     testing::{FixedClock, ScriptedRuntime, Turn, event},
 };
 use futures_util::future::LocalBoxFuture;
@@ -29,7 +30,9 @@ use tokio::{sync::oneshot, task::JoinHandle};
 use super::*;
 use crate::{
     store::{AgentTreeStore, EditReceipt, NodeRecord, media::HeldMedia},
-    testing::{MemoryTreeStore, SequentialIds, model_of, model_reading, test_model, text},
+    testing::{
+        MemoryTreeStore, SequentialIds, model_of, model_reading, sent_text, test_model, text,
+    },
 };
 
 mod compaction;
@@ -110,9 +113,7 @@ where
 
 fn output(text: &str) -> ToolOutcome {
     ToolOutcome {
-        output: vec![ToolResultContentBlock::Text {
-            text: text.to_owned(),
-        }],
+        output: vec![ResultPart::Text(text.to_owned())],
         is_error: false,
         view: None,
         effect: None,
@@ -492,6 +493,14 @@ fn texts(output: &[&str]) -> Vec<ToolResultContentBlock> {
         .collect()
 }
 
+/// A tool result's texts as a request carries them.
+fn sent_texts(output: &[&str]) -> Vec<ResultPart> {
+    output
+        .iter()
+        .map(|text| ResultPart::Text((*text).to_owned()))
+        .collect()
+}
+
 /// Each call runs once the store holds it, and its result completes the call
 /// that waits for it: a model may reuse a tool-use id across requests, as
 /// the second round here does.
@@ -554,7 +563,7 @@ async fn each_tool_runs_after_its_call_is_saved_and_its_result_completes_the_cal
     );
     let result = |value: &str| InferenceItem::ToolResult {
         tool_use_id: "call-1".into(),
-        output: texts(&[&json!({ "value": value }).to_string()]),
+        output: sent_texts(&[&json!({ "value": value }).to_string()]),
         is_error: false,
     };
     let requests = provider.requests();
@@ -766,7 +775,7 @@ async fn stop_during_a_tool_drops_the_call_and_records_the_stop_before_it_answer
         request.items[2],
         InferenceItem::ToolResult {
             tool_use_id: "call-1".into(),
-            output: texts(&["Tool call aborted: slow"]),
+            output: sent_texts(&["Tool call aborted: slow"]),
             is_error: true,
         }
     );
@@ -1064,15 +1073,15 @@ fn media_parts(request: &demi_provider::InferenceRequest) -> Vec<String> {
         })
         .expect("the request has a tool result");
     let user = user.iter().map(|part| match part {
-        UserContentBlock::Text { text } => text.clone(),
-        UserContentBlock::Image { .. } => "<image>".to_owned(),
-        UserContentBlock::Document { .. } => "<document>".to_owned(),
-        other => format!("{other:?}"),
+        UserPart::Text(text) => text.clone(),
+        UserPart::Image(_) => "<image>".to_owned(),
+        UserPart::Video(_) => "<video>".to_owned(),
+        UserPart::Document { .. } => "<document>".to_owned(),
     });
     let result = result.iter().map(|part| match part {
-        ToolResultContentBlock::Text { text } => text.clone(),
-        ToolResultContentBlock::Image { .. } => "<image>".to_owned(),
-        ToolResultContentBlock::Video { .. } => "<video>".to_owned(),
+        ResultPart::Text(text) => text.clone(),
+        ResultPart::Image(_) => "<image>".to_owned(),
+        ResultPart::Video(_) => "<video>".to_owned(),
     });
     user.chain(result).collect()
 }
@@ -1113,12 +1122,10 @@ async fn a_medium_the_requests_model_cannot_take_reaches_it_as_the_same_text_in_
         images: None,
     });
     let record = tool("record", move |_| {
-        let video = ToolResultContentBlock::Video {
-            source: ToolMediaSource::Binary {
-                data: mp4.clone(),
-                media_type: "video/mp4".into(),
-            },
-        };
+        let video = ResultPart::Video(MediaBytes {
+            data: mp4.clone(),
+            media_type: "video/mp4".into(),
+        });
         Box::pin(async move {
             Ok(ToolOutcome {
                 output: vec![video],
