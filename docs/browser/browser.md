@@ -433,7 +433,7 @@ user's home, each one per user, not one per environment:
   unverified without a Mac).
 
 Helpers such as
-Crashpad can detach into another session; retirement tracks these by that marker
+Crashpad can detach into another session; retirement tracks these by the marker
 as well as the group. The marker is read only from processes whose executable
 lies inside the Chrome for Testing installation, so retirement never reads the
 environment of every process on the Host. Retirement closes Chrome, reaps its
