@@ -9,8 +9,9 @@
 //! file transfers, user streams and the one-shot calls admitted like them
 //! ended, and its file gate reserved; sends the conversation release to the
 //! devices it leaves; and commits, advancing the execution-context revision
-//! when the context changed. A transition waits for no other work: a
-//! conversation that is busy refuses it.
+//! when the context changed, whether the devices took the release or not
+//! (`resource-lifecycle.md` § A release that fails). A transition waits for
+//! no other work: a conversation that is busy refuses it.
 
 use demi_gates::{Purpose, Reservation};
 use demi_web_api::conversations::{ConversationPatch, ConversationTarget, ConversationUpdate, FieldResult, PatchField};
@@ -61,10 +62,6 @@ pub(crate) enum ChangeRefusal {
     /// Another switch changed the target first.
     #[error("Another target change came first")]
     Conflict,
-    /// A device the transition leaves did not take the conversation
-    /// release.
-    #[error("The conversation release failed: {0}")]
-    Release(String),
     /// The device to attach is the conversation's main Host.
     #[error("That device is the conversation's main host")]
     HostIsMain,
@@ -94,7 +91,7 @@ impl ChangeRefusal {
             Self::HostIsMain => (ErrorCode::HostIsMain, 409),
             Self::NotAttached => (ErrorCode::HostNotAttached, 404),
             Self::NameTaken => (ErrorCode::NameTaken, 409),
-            Self::Release(_) | Self::Runtime(_) | Self::Storage(_) => (ErrorCode::OperationFailed, 500),
+            Self::Runtime(_) | Self::Storage(_) => (ErrorCode::OperationFailed, 500),
         }
     }
 }
@@ -190,9 +187,7 @@ impl Shard {
             ConversationChange::Record(RecordChange::Detach(device)) => {
                 let attached = services.control.attached_hosts(record.id.clone()).await?;
                 if attached.iter().any(|host| host.device == device) {
-                    self.release_on(&record.id, &device)
-                        .await
-                        .map_err(|error| ChangeRefusal::Release(error.to_string()))?;
+                    self.release_on(record.id.as_str(), &device).await;
                 }
                 self.commit(&record.id, RecordChange::Detach(device)).await
             }
@@ -272,9 +267,7 @@ impl Shard {
         if let Some(device) = &departed
             && Some(device) != destination.device()
         {
-            self.release_on(&expected.id, device)
-                .await
-                .map_err(|error| ChangeRefusal::Release(error.to_string()))?;
+            self.release_on(expected.id.as_str(), device).await;
         }
         let ends = SwitchEnds {
             departed: departed.map(|device| (device, from.path().to_owned())),
@@ -292,19 +285,16 @@ impl Shard {
         Ok(())
     }
 
-    /// The conversation release on every Host the conversation reaches, for
-    /// an archive. Every device is asked; the first that failed fails the
-    /// archive.
-    pub(crate) async fn release_everywhere(&self, record: &ConversationRecord) -> Result<(), ChangeRefusal> {
+    /// The conversation release on every Host the conversation reaches, main
+    /// and attached, for an archive and for its idle watch. Only reading the
+    /// Hosts fails it: a Host that did not take the release hears it again
+    /// (`release_on`).
+    pub(crate) async fn release_everywhere(&self, record: &ConversationRecord) -> Result<(), StorageError> {
         let target = self.resolve_target(record).await?;
-        let hosts = self.reachable_hosts(record, &target).await?;
-        let mut failure = None;
-        for host in hosts {
-            if let Err(error) = self.release_on(&record.id, &host.device).await {
-                failure.get_or_insert_with(|| ChangeRefusal::Release(error.to_string()));
-            }
+        for host in self.reachable_hosts(record, &target).await? {
+            self.release_on(record.id.as_str(), &host.device).await;
         }
-        failure.map_or(Ok(()), Err)
+        Ok(())
     }
 
     /// Reserves the conversation's live tree while it does nothing by itself

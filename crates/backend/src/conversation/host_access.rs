@@ -505,17 +505,21 @@ impl Shard {
         Ok(hosts)
     }
 
-    /// Lifecycle access (§ Lifecycle access): the conversation release, sent
-    /// to `device` while its runner is connected, a paired device's or a
-    /// running Cloud's. It takes no file gate and wakes nothing: a device
-    /// whose runner is not connected, a stopped Cloud among them, lost the
-    /// conversation's services with its connection, and its next hello names
-    /// the job output it still holds (`resource-lifecycle.md` § A release
-    /// the device missed).
-    pub(crate) async fn release_on(&self, id: &ConversationId, device: &DeviceId) -> Result<(), HostAccessError> {
+    /// Lifecycle access (§ Lifecycle access): the release of `conversation`,
+    /// by the name the runner knows it by, sent to `device` while its runner
+    /// is connected, a paired device's or a running Cloud's. It takes no file
+    /// gate and wakes nothing: a device whose runner is not connected, a
+    /// stopped Cloud among them, lost the conversation's services with its
+    /// connection, and its next hello names the job output it still holds
+    /// (`resource-lifecycle.md` § A release the device missed). A release
+    /// that fails is logged with the Host and the reason, and fails nothing
+    /// that sent it, since the Host hears it again (§ A release that fails).
+    pub(crate) async fn release_on(&self, conversation: &str, device: &DeviceId) {
         let Some(link) = self.devices().link(device) else {
-            return Ok(());
+            return;
         };
-        Ok(link.release_conversation(id.as_str()).await?)
+        if let Err(error) = link.release_conversation(conversation).await {
+            tracing::warn!(device = %device, conversation, "the conversation release failed: {error}");
+        }
     }
 }
