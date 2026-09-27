@@ -5,7 +5,8 @@ Change view shows one changed file. Code and other text open in the code
 editor. This document owns what the two views show for everything else: which
 kinds of file they preview, how a view picks one, how the bytes reach the
 page, when a transfer ends, and what file content may do in the page. It also
-owns how a message shows the files it names. The routes belong to
+owns how a message shows the files it names, and how a tool call shows the
+images and videos its result carries. The routes belong to
 [Web API](web-api.md#file-text-and-working-tree-changes), the runner's byte
 transport to [Runner](../execution/runner.md#file-contents), and Host access
 to [Sessions and targets](../execution/sessions-and-targets.md#host-operations).
@@ -138,6 +139,75 @@ the conversation reaches does not show. Loading an image is a Host operation,
 so it wakes a stopped Cloud like any other
 ([Sessions and targets](../execution/sessions-and-targets.md#host-operations)).
 
+## Media a tool returned
+
+For example, the agent runs `demi browser screenshot 1`. The command prints a
+PNG, and the call's result attaches it as an image the model reads
+([Results and previews](../agent/runtime.md#results-and-previews)). The page
+shows the same picture under the call's row, whether the call is folded or
+open, and a click opens it large:
+
+```text
+▸ Take a screenshot of the login page    the call's row; its fold holds the
+                                         script and <binary stdout: ...>
+  ┌──────────────────────┐
+  │    the screenshot    │               what the model read; a click
+  │                      │               opens it large
+  └──────────────────────┘
+```
+
+- **Which calls.** A call shows the images and videos its own result carries,
+  so a picture shows where the model saw it. A `shell_exec` whose command
+  exits within the call's window with an image or a video on stdout carries
+  it. When the command exits after the call returned, the `shell_status`,
+  `shell_write` or `shell_abort` that reports the exit carries it instead. A
+  `yield` carries none. The generic tool card shows its result's media the
+  same way.
+- **Where.** Under the call's row, in the order of the result and above the
+  files the call changed. Every medium takes the preview's height before its
+  bytes arrive, so the transcript does not move when they load. The fold
+  still shows the command's own output, whose line
+  `<binary stdout: 412000 bytes; raw bytes at ...>` says where the original
+  bytes are.
+- **An image** is scaled down to fit the preview's height, its proportions
+  kept, and never enlarged or cropped. It is smaller than a message's image:
+  it is a step of the work, not something the agent chose to show. A click
+  opens it large over the dimmed page, as the File view shows an image:
+  scaled down to fit and never enlarged, a click toggles actual size,
+  transparency shows over a checkerboard, and its pixel size shows beneath
+  it. Escape, the close control or a click on the dimmed page closes it; it
+  stays open while the transcript changes beneath it.
+- **A video** plays in place, in the browser's own player at the preview's
+  height. The player's full-screen control shows it large.
+- **On a phone**, the preview fits the conversation's width. An image opened
+  large fills the screen: a tap toggles actual size, at actual size a drag
+  moves the picture, a pinch zooms as anywhere on the page, and the close
+  control closes it. A video plays in the browser's player, which an iPhone
+  shows full screen.
+- **A medium that is gone.** A result can hold a text in a medium's place,
+  such as `[image not stored: <reason>]` when the bytes could not be stored
+  ([Media](../agent/runtime.md#media)). The page shows that text where the
+  medium would be, as the model reads it.
+- **A medium that does not load.** When the page cannot load a medium's
+  bytes, because its blob is missing or the request failed, *Could not load
+  this image.* (or *video*) shows in its place, at the same height, and a
+  reload of the page tries again. A blob that a block references is never
+  deleted ([Media](../agent/runtime.md#media)), so this is a fault; a request
+  that replays the medium then carries `[missing image blob <ref>]` in its
+  place.
+- **The model's picture.** The page loads the blob the result references,
+  the same bytes the model receives, so it shows exactly the picture the
+  model saw: a blob is named by the hash of its bytes, and nothing changes
+  them. The original bytes stay in the command's retained output on the Host,
+  at the path the `<binary stdout: ...>` line names.
+
+The bytes come from the blob route
+([Media by reference](../backend/backend.md#media-by-reference)). The browser
+keeps its answers, so opening an image large loads nothing again. A player
+reads a video by byte range
+([Uploads and media](web-api.md#uploads-and-media)): Safari plays a video only
+from a server that answers ranges, and every player seeks with them.
+
 ## Changes
 
 In Uncommitted mode, a file with a preview shows its committed version beside
@@ -234,8 +304,8 @@ in the product's origin:
   The same pass rewrites link and image targets as [Markdown](#markdown)
   describes. Math renders after sanitizing, from its TeX text, because
   KaTeX's output depends on the inline styles sanitizing removes.
-- Uploaded blobs follow the same table and headers
-  ([Media by reference](../backend/backend.md#media-by-reference)).
+- Blobs, a message's uploads and a tool's media alike, follow the same table
+  and headers ([Media by reference](../backend/backend.md#media-by-reference)).
 
 ## Responsibilities
 
@@ -245,8 +315,8 @@ in the product's origin:
 | The Host contract and the backend's remote Host | Streamed reads, whole or by range, and writes, over pipes. |
 | The backend | The raw routes, their headers and ranges, and ending transfers. |
 | The `core` contract crate | The file-type table and its lookup, generated for the browser into `@demicodes/protocol`. |
-| `web-ui` | Choosing and showing previews, Markdown rendering and sanitizing, the side-by-side comparison, releasing transfers, resolving the files a message names. |
-| `web`, `web-gallery` | Raw URLs from the product's routes and the working directory messages resolve against; a fixture file for every kind. |
+| `web-ui` | Choosing and showing previews, Markdown rendering and sanitizing, the side-by-side comparison, releasing transfers, resolving the files a message names, showing the media a tool returned and opening an image large. |
+| `web`, `web-gallery` | Raw and blob URLs from the product's routes and the working directory messages resolve against; a fixture file for every kind, and fixture blobs for a tool's media. |
 
 [Crates and packages](../architecture/crates-and-packages.md) names the crate
 behind each role.
