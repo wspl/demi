@@ -36,7 +36,7 @@ export const demoModels: Record<string, ModelInfo[]> = {
       name: 'Claude Sonnet',
       reasoning: {
         efforts: ['low', 'medium', 'high', 'max'],
-        defaultEffort: 'medium',
+        unnamedEffort: null,
         canDisable: true,
       },
       serviceTiers: fastTier,
@@ -46,7 +46,7 @@ export const demoModels: Record<string, ModelInfo[]> = {
       name: 'Claude Opus',
       reasoning: {
         efforts: ['low', 'medium', 'high'],
-        defaultEffort: 'high',
+        unnamedEffort: 'high',
         canDisable: false,
       },
     }),

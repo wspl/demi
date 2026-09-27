@@ -73,7 +73,7 @@ function setFast(enabled: boolean) {
   emit('change', { serviceTierId: enabled ? tier.id : null })
 }
 
-function setEffort(next: string) {
+function setEffort(next: string | null) {
   emit('change', { thinkingEffort: next })
 }
 

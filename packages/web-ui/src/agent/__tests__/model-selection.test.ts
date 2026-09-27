@@ -51,7 +51,7 @@ test('new conversations keep independent complete choices including unavailable 
 function leveled(id: string, efforts: string[], options: { canDisable?: boolean; fast?: string } = {}): ModelInfo {
   return {
     ...model(id),
-    reasoning: { efforts, defaultEffort: null, canDisable: options.canDisable ?? true },
+    reasoning: { efforts, unnamedEffort: options.canDisable === false ? efforts[0]! : null, canDisable: options.canDisable ?? true },
     serviceTiers: options.fast ? [{ id: options.fast, label: 'Fast', fast: true }] : null,
   }
 }

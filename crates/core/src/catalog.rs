@@ -147,14 +147,20 @@ impl ProviderModel {
     /// conversation's model settings): an effort the model lists becomes its
     /// thinking setting at that effort, with the default summary;
     /// [`THINKING_OFF`] turns thinking off when the model can; none is no
-    /// setting, the model's default.
+    /// setting, the model's default, except on a model that cannot turn
+    /// thinking off, which thinks at its [`unnamed_effort`](Self::unnamed_effort).
     pub fn thinking_for(
         &self,
         effort: Option<&str>,
     ) -> Result<Option<ThinkingConfig>, UnavailableSetting> {
-        let Some(effort) = effort else {
-            return Ok(None);
+        let effort = match effort {
+            Some(effort) => effort.to_owned(),
+            None => match self.unnamed_effort() {
+                Some(effort) => effort,
+                None => return Ok(None),
+            },
         };
+        let effort = effort.as_str();
         let unavailable = || UnavailableSetting::Effort(effort.to_owned());
         let capabilities = self.thinking_capabilities();
         if effort == THINKING_OFF {
@@ -191,6 +197,31 @@ impl ProviderModel {
             })
             .map(Some)
             .ok_or_else(unavailable)
+    }
+
+    /// The thinking effort a conversation's model settings hold on this
+    /// model when a change names none (`models.md` § A conversation's model
+    /// settings). A model that cannot turn thinking off thinks at its default
+    /// effort when it lists it, else at the first it lists. A model that can
+    /// turn thinking off has none: its default is to send no thinking setting.
+    pub fn unnamed_effort(&self) -> Option<String> {
+        if self.can_disable_thinking != Some(false) {
+            return None;
+        }
+        self.thinking_capabilities().into_iter().find_map(|capability| match capability {
+            ThinkingCapability::Adaptive {
+                efforts,
+                default_effort,
+            }
+            | ThinkingCapability::Effort {
+                efforts,
+                default_effort,
+                ..
+            } => default_effort
+                .filter(|effort| efforts.contains(effort))
+                .or_else(|| efforts.into_iter().next()),
+            _ => None,
+        })
     }
 
     /// The service tier `tier` of a conversation's model settings on this

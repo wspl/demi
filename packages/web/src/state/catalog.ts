@@ -52,7 +52,7 @@ export function modelInfo(model: CatalogModel): ModelInfo {
     reasoning: model.supportedThinkingEfforts?.length
       ? {
           efforts: model.supportedThinkingEfforts,
-          defaultEffort: model.defaultThinkingEffort,
+          unnamedEffort: model.unnamedEffort,
           canDisable: model.canDisableThinking !== false,
         }
       : null,

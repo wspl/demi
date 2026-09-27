@@ -1202,6 +1202,40 @@ async fn a_change_of_the_model_settings_reaches_every_page_and_the_next_request(
     backend.close().await;
 }
 
+/// A model that cannot turn thinking off always thinks at an effort its
+/// settings name (`models.md` § A conversation's model settings): a choice
+/// that names none takes the model's default, else the first effort it
+/// lists, so what every page shows is what the request sends.
+#[tokio::test]
+async fn a_model_that_cannot_turn_thinking_off_shows_the_effort_its_requests_carry() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    // The provider's own directory: its models level their thinking, cannot
+    // turn it off, and name no default effort.
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    let chosen = choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
+    let effort = |summary: ConversationSummary| summary.model.and_then(|model| model.thinking_effort);
+    assert_eq!(effort(chosen).as_deref(), Some("low"));
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    vendor.respond(answer(&["one"], 1, 1));
+    socket.chat("m1", "first").await;
+    let sent = vendor.requests()[0].json();
+    assert_eq!(
+        (&sent["thinking"]["type"], &sent["output_config"]["effort"]),
+        (&json!("adaptive"), &json!("low"))
+    );
+
+    // Asking for the model's default names that effort again.
+    let path = format!("/api/conversations/{FIRST}");
+    backend.patch(&path, &master, json!({ "thinkingEffort": "high" })).await;
+    let reset = backend.patch(&path, &master, json!({ "thinkingEffort": null })).await;
+    assert_eq!(effort(reset.json::<ConversationUpdate>().conversation).as_deref(), Some("low"));
+    backend.close().await;
+}
+
 #[tokio::test]
 async fn an_archive_refuses_running_work_and_holds_the_open_socket_until_the_restore() {
     let vendor = MockVendor::start().await;
