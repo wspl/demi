@@ -798,7 +798,7 @@ impl ProviderRuntime for KeyedRuntime {
 }
 
 /// A configured model of `output` tokens at most.
-fn configured(output: u32) -> Value {
+pub(crate) fn configured(output: u32) -> Value {
     json!({
         "id": "m", "displayName": "M", "contextWindow": 100000, "outputLimit": output,
         "thinkingEfforts": [], "acceptedExtensions": null, "fastTier": null

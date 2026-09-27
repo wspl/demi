@@ -3,8 +3,9 @@ import {
   type ClientSessionEvent,
 } from '@demicodes/web-ui/transport/protocol'
 import type { Conversation } from '../state/types'
-import { transcriptTerminals } from './terminals'
+import { callScript, transcriptTerminals } from './terminals'
 import { isConversationActive } from '@demicodes/web-ui/agent/conversation-status'
+import { followLiveOutput, type TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 
 /** Map agent events to the product's child and terminal presentation records. */
 export function updateLiveStatus(conversation: Conversation): void {
@@ -28,13 +29,14 @@ export function applyConversationEvent(
   event: ClientSessionEvent,
 ): void {
   if (event.type === 'transcript_reset' || event.type === 'transcript_patch') {
-    // A stored end (`endedAt`) is final; a stored view of a running command only names it.
+    // A stored end (`endedAt`) is final, unless the page follows the command
+    // live and keeps its live view; otherwise a stored view only names it.
     const stored = transcriptTerminals(conversation.blocks)
     for (const terminal of stored) {
       const current = conversation.terminals.find((item) => item.id === terminal.id)
       if (!current) {
         conversation.terminals.push(terminal)
-      } else if (terminal.endedAt) {
+      } else if (terminal.endedAt && current.chars === undefined) {
         Object.assign(current, terminal)
       } else {
         current.name = terminal.name
@@ -79,27 +81,35 @@ export function applyConversationEvent(
       }
     }
   } else if (event.type === 'shell_output') {
-    const status = event.status
+    // A command's live view, the same for every page (`runtime.md` § Live
+    // output): what it adds to the output shown, under its call while the
+    // call runs and in the dock after.
+    const { subagentId, status } = event
     const current = conversation.terminals.find(
       (terminal) => terminal.id === status.commandId,
     )
-    const snapshot = {
+    const blocks = subagentId === undefined
+      ? conversation.blocks
+      : conversation.subagents.find((agent) => agent.id === subagentId)?.blocks ?? []
+    const record: TerminalRecord = {
       id: status.commandId,
       // The transcript names the command by its script; the shell id is the fallback.
-      name: current?.name ?? status.shellId,
-      phase:
-        status.status === 'running' ? ('running' as const) : ('exited' as const),
+      name: current?.name ?? callScript(blocks, status.toolUseId) ?? status.shellId,
+      phase: status.status === 'running' ? 'running' : 'exited',
       startedAt:
         current?.startedAt ?? new Date(Date.now() - status.runningMs).toISOString(),
-      ...(status.status !== 'running' ? { endedAt: new Date().toISOString() } : {}),
-      // The command's tail, which no page's reading changes, so every page
-      // shows the same output (`runtime.md` § Results and previews).
-      output: status.output.tail,
+      ...(status.status !== 'running'
+        ? { endedAt: current?.endedAt ?? new Date().toISOString() }
+        : {}),
+      output: followLiveOutput(current?.output ?? '', current?.chars, status.tail, status.chars),
+      chars: status.chars,
+      toolUseId: status.toolUseId,
+      ...(subagentId === undefined ? {} : { subagentId }),
     }
     if (current) {
-      Object.assign(current, snapshot)
+      Object.assign(current, record)
     } else {
-      conversation.terminals.push(snapshot)
+      conversation.terminals.push(record)
     }
   }
   updateLiveStatus(conversation)

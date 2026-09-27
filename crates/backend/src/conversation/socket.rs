@@ -414,7 +414,7 @@ fn blocks_added(patches: &[TranscriptPatch]) -> Vec<Block> {
         .flat_map(|patch| match patch {
             TranscriptPatch::Add { value, .. } | TranscriptPatch::ReplaceBlock { value, .. } => vec![value.clone()],
             TranscriptPatch::Replace { value } => value.clone(),
-            TranscriptPatch::Remove { .. } | TranscriptPatch::AppendText { .. } => Vec::new(),
+            TranscriptPatch::AppendText { .. } => Vec::new(),
         })
         .collect()
 }

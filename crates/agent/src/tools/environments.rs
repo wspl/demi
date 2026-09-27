@@ -11,7 +11,7 @@ use std::{
 };
 
 use demi_core::{CommandId, ShellId, ToolResultContentBlock, ToolView};
-use demi_shell::{HostError, HostKey, ShellEnvironment};
+use demi_shell::{HostError, HostKey, PageView, ShellEnvironment};
 use futures_util::future::join_all;
 use tokio::{sync::OnceCell, time::Instant};
 
@@ -132,8 +132,18 @@ impl Environments {
         }
     }
 
+    /// The pages' view of every command the environments made so far hold.
+    pub(crate) fn page_views(&self) -> Vec<PageView> {
+        self.slots
+            .borrow()
+            .iter()
+            .filter_map(|slot| slot.environment.get())
+            .flat_map(|environment| environment.page_views())
+            .collect()
+    }
+
     /// The environment that owns `command`, among those made.
-    pub(super) fn owning(&self, command: &CommandId) -> Option<Rc<dyn ShellEnvironment>> {
+    pub(crate) fn owning(&self, command: &CommandId) -> Option<Rc<dyn ShellEnvironment>> {
         self.slots
             .borrow()
             .iter()
@@ -235,7 +245,7 @@ mod tests {
     use std::cell::Cell;
 
     use bytes::Bytes;
-    use demi_shell::{CommandStatus, ExecRequest, Reader, ShellError};
+    use demi_shell::{CommandStatus, ExecRequest, ShellError};
     use futures_util::future::{LocalBoxFuture, join};
     use tokio_util::sync::CancellationToken;
 
@@ -258,7 +268,7 @@ mod tests {
             unreachable!("the environments never run a command")
         }
 
-        fn status(&self, command: &CommandId, _: Reader) -> Result<CommandStatus, ShellError> {
+        fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError> {
             Err(ShellError::UnknownCommand(command.clone()))
         }
 
@@ -266,17 +276,19 @@ mod tests {
             &'a self,
             command: &'a CommandId,
             _: Bytes,
-            _: Reader,
-        ) -> LocalBoxFuture<'a, Result<CommandStatus, ShellError>> {
+        ) -> LocalBoxFuture<'a, Result<(), ShellError>> {
             Box::pin(async move { Err(ShellError::UnknownCommand(command.clone())) })
         }
 
         fn abort<'a>(
             &'a self,
             command: &'a CommandId,
-            _: Reader,
-        ) -> LocalBoxFuture<'a, Result<CommandStatus, ShellError>> {
+        ) -> LocalBoxFuture<'a, Result<(), ShellError>> {
             Box::pin(async move { Err(ShellError::UnknownCommand(command.clone())) })
+        }
+
+        fn page_views(&self) -> Vec<PageView> {
+            Vec::new()
         }
 
         fn release_command<'a>(&'a self, _: &'a CommandId) -> LocalBoxFuture<'a, bool> {

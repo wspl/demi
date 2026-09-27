@@ -18,7 +18,7 @@ use demi_host_remote::{
 use demi_runner_protocol::wire::JobFileChange;
 use demi_core::{CommandId, EditedFile, ShellId};
 use demi_shell::{
-    CommandStatus, ExecRequest, Host, HostError, HostErrorKind, HostFs, HostKey, Reader, ShellEnvironment,
+    CommandStatus, ExecRequest, Host, HostError, HostErrorKind, HostFs, HostKey, PageView, ShellEnvironment,
     ShellError,
 };
 use demi_web_api::ids::{ConversationId, DeviceId};
@@ -131,7 +131,7 @@ impl ShellEnvironmentFactory<RemoteHost> for ShardShellEnvironments {
                     })
                 })
             };
-            let mut options = EnvironmentOptions::new((*host).clone(), context);
+            let mut options = EnvironmentOptions::new((*host).clone(), context, scope.feed.clone());
             options.access = Some(Rc::new(JobAccess {
                 shard: self.shard.clone(),
                 conversation: conversation.clone(),
@@ -220,16 +220,20 @@ impl ShellEnvironment for Registered {
         self.environment.exec(request, cancel)
     }
 
-    fn status(&self, command: &CommandId, reader: Reader) -> Result<CommandStatus, ShellError> {
-        self.environment.status(command, reader)
+    fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError> {
+        self.environment.status(command)
     }
 
-    fn write<'a>(&'a self, command: &'a CommandId, stdin: Bytes, reader: Reader) -> LocalBoxFuture<'a, Result<CommandStatus, ShellError>> {
-        self.environment.write(command, stdin, reader)
+    fn write<'a>(&'a self, command: &'a CommandId, stdin: Bytes) -> LocalBoxFuture<'a, Result<(), ShellError>> {
+        self.environment.write(command, stdin)
     }
 
-    fn abort<'a>(&'a self, command: &'a CommandId, reader: Reader) -> LocalBoxFuture<'a, Result<CommandStatus, ShellError>> {
-        self.environment.abort(command, reader)
+    fn abort<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Result<(), ShellError>> {
+        self.environment.abort(command)
+    }
+
+    fn page_views(&self) -> Vec<PageView> {
+        self.environment.page_views()
     }
 
     fn release_command<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, bool> {

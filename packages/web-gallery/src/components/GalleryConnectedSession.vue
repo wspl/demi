@@ -16,6 +16,7 @@ import { WORKSPACE_ROOT } from '../fixtures/workspace'
 import GalleryComposer from './GalleryComposer.vue'
 import { productWould } from '../product-would'
 import { demoExposes } from '../fixtures/settings'
+import { useLiveGalleryCommand } from '../live-command'
 import { useTurnFlow } from '../turn-flow'
 
 const props = withDefaults(defineProps<{ showActivity?: boolean }>(), { showActivity: true })
@@ -45,6 +46,7 @@ const flow = useTurnFlow({
   terminals: props.showActivity ? galleryTerminals() : [],
 })
 const session = flow.state
+useLiveGalleryCommand(session.terminals)
 const hosts = createGalleryFileHosts()
 const devices: HostDeviceOption[] = hosts.map((host) => ({
   id: host.id,

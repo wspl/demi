@@ -27,7 +27,9 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     ArtifactResolver, Link,
-    link::{Answer, Expected, JobEnd, JobEntry, JobOrigin, ServiceEntry, Shared, SpawnEntry},
+    link::{
+        Answer, Expected, JobEnd, JobEntry, JobOrigin, JobOutput, ServiceEntry, Shared, SpawnEntry,
+    },
     manifest::CommandSelection,
     pipes::{Pipe, PipeError, PipeReader},
 };
@@ -500,7 +502,7 @@ pub struct JobStart {
 #[derive(Clone)]
 pub struct RemoteJob {
     id: String,
-    shared: Rc<Shared<JobEnd>>,
+    shared: Rc<Shared<JobEnd, JobOutput>>,
     /// The connection it runs on; none when it ended before it started.
     link: Option<Link>,
 }
@@ -510,10 +512,26 @@ impl RemoteJob {
         &self.id
     }
 
-    /// The next chunk of the job's output view; none once the job ended and
-    /// every chunk was taken.
-    pub async fn next_output(&self) -> Option<ProcessOutput> {
+    /// The next message of the job's output views; none once the job ended
+    /// and every message was taken.
+    pub async fn next_output(&self) -> Option<JobOutput> {
         self.shared.next_output().await
+    }
+
+    /// Starts or stops the runner's sending of the job's output beyond each
+    /// stream's first `JOB_VIEW_BYTES` (`runner.md` § Pipes and output);
+    /// nothing once the job ended.
+    pub async fn follow(&self, follow: bool) -> Result<(), HostError> {
+        match live(&self.link, &self.shared) {
+            Some(link) => {
+                link.send(&Inbound::JobFollow {
+                    job_id: self.id.clone(),
+                    follow,
+                })
+                .await
+            }
+            None => Ok(()),
+        }
     }
 
     /// The guidance of the latest declared command running in the job that
@@ -572,7 +590,7 @@ impl RemoteJob {
 }
 
 /// The connection work runs on, while it runs.
-fn live<'a, E: Clone>(link: &'a Option<Link>, shared: &Shared<E>) -> Option<&'a Link> {
+fn live<'a, E: Clone, C>(link: &'a Option<Link>, shared: &Shared<E, C>) -> Option<&'a Link> {
     link.as_ref().filter(|_| shared.ended().is_none())
 }
 
@@ -1034,7 +1052,11 @@ impl HostProcess for RemoteHost {
 }
 
 /// A process's handle over its shared output and end.
-fn process(shared: Rc<Shared<ProcessEnd>>, link: Option<Link>, id: String) -> Process {
+fn process(
+    shared: Rc<Shared<ProcessEnd, ProcessOutput>>,
+    link: Option<Link>,
+    id: String,
+) -> Process {
     let output = futures_util::stream::unfold(shared.clone(), |shared| async move {
         shared.next_output().await.map(|chunk| (chunk, shared))
     })
@@ -1053,7 +1075,7 @@ fn process(shared: Rc<Shared<ProcessEnd>>, link: Option<Link>, id: String) -> Pr
 struct SpawnControl {
     link: Option<Link>,
     id: String,
-    shared: Rc<Shared<ProcessEnd>>,
+    shared: Rc<Shared<ProcessEnd, ProcessOutput>>,
 }
 
 impl Drop for SpawnControl {

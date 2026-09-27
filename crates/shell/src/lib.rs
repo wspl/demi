@@ -11,8 +11,10 @@
 //! - the shell-environment contract behind the `shell_*` tools
 //!   ([`ShellEnvironment`], [`ExecRequest`], [`CommandStatus`]) and the
 //!   record every environment keeps its commands in ([`CommandRecord`]),
-//!   which keeps one place in each command's output for the model and one for
-//!   the page ([`Reader`]).
+//!   which keeps the model's place in each command's output apart from the
+//!   pages' view of it ([`PageView`]), and the feed through which an
+//!   environment reports that view's changes and learns whether a page
+//!   watches ([`PageFeed`]).
 //!
 //! Everything here runs inside a user's shard, so nothing requires `Send`.
 
@@ -31,7 +33,7 @@ pub use commands::{CommandSet, Declared, RegisterError};
 pub use environment::{
     BinaryOutput, CommandState, CommandStatus, DEFAULT_BINARY_LIMIT_BYTES, DEFAULT_OBSERVATION,
     DEFAULT_OUTPUT_LIMIT_BYTES, EditedFiles, ExecRequest, JobCaller, MAX_OBSERVATION,
-    ObservationWindow, ShellEnvironment, ShellError, ShellTarget,
+    ObservationWindow, PageFeed, ShellEnvironment, ShellError, ShellTarget,
 };
 pub use host::{
     ByteRange, ByteStream, CpOptions, DirEntry, FileContents, FileKind, FileStat, Host, HostError,
@@ -39,7 +41,9 @@ pub use host::{
     ProcessControl, ProcessEnd, ProcessOutput, RmOptions, Signal, SpawnEnv, SpawnError,
     SpawnErrorKind, SpawnRequest, WriteOptions,
 };
-pub use record::{CommandRecord, Ending, Reader, TAIL_CHARS, final_stdout_boundary};
+pub use record::{
+    CommandRecord, Ending, PageState, PageView, TAIL_CHARS, final_stdout_boundary,
+};
 pub use reserved::{RESERVED_NAMES, is_reserved};
 pub use rpc::{
     PortError, PortRequest, PortResponse, PortTransport, RelayedPipes, Revision, RpcError,

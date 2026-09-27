@@ -84,6 +84,7 @@ pub fn inference_request() -> InferenceRequest {
         request_id: "request-1".into(),
         model_id: "model-1".into(),
         output_limit: None,
+        output_cap: None,
         system_prompt: String::new(),
         items: Arc::new([InferenceItem::UserMessage {
             content: vec![UserContentBlock::Text {

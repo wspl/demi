@@ -682,10 +682,12 @@ Patches and revisions follow the root's rules
 stream. `failures` is the backend's reading of the error blocks the frame
 carries, attached when the frame is sent and never stored; root transcript
 frames carry the same field ([Failure facts](../backend/backend.md#failure-facts)).
-A child's other session events, such as phase, queue, errors, and shell output,
-send no frames. `AgentClient` in `@demicodes/agent-client` mirrors the three
-frames as client events; its transcript events omit `revision`, as the root's
-do.
+A child's other session events, such as phase, queue and errors, send no
+frames; its commands' output reaches the browser as the root's does, in
+`shell_output` frames that name the child
+([Live output](runtime.md#live-output)). `AgentClient` in
+`@demicodes/agent-client` mirrors the three frames as client events; its
+transcript events omit `revision`, as the root's do.
 
 `parentSessionId` is the tree: the browser keys nested UI by it. Frames from any
 depth are flat on the connection; the protocol has no per-level nesting. A
@@ -754,7 +756,10 @@ user-facing reply.
 The dock's agents chip counts live children only and is hidden when none is
 live. Completed, aborted, and failed children remain available as history but
 do not count. A creation command exits independently and adds nothing to the
-Running terminal count for its child's lifetime.
+Running terminal count for its child's lifetime. The Running count and its
+panel hold every command of the tree that still runs after its call
+returned, a child's as well as the root's
+([Rendering boundary](runtime.md#rendering-boundary)).
 
 ## Layering
 

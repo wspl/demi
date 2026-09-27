@@ -141,11 +141,20 @@ async fn a_blank_system_prompt_no_tools_and_no_tier_are_left_out() {
 async fn a_reused_runtime_uses_the_output_limit_of_each_request() {
     let vendor = MockVendor::start().await;
     let mut runtime = runtime(&vendor);
-    for (model, limit) in [("a", Some(8_000)), ("b", Some(32_000)), ("c", None)] {
+    // A request's cap lowers the model's limit, and stands in for none.
+    let cases = [
+        ("a", Some(8_000), None),
+        ("b", Some(32_000), None),
+        ("c", None, None),
+        ("d", Some(8_000), Some(1_024)),
+        ("e", None, Some(1_024)),
+    ];
+    for (model, limit, cap) in cases {
         vendor.respond(stop());
         let mut request = inference_request();
         request.model_id = model.into();
         request.output_limit = limit.and_then(NonZeroU32::new);
+        request.output_cap = cap.and_then(NonZeroU32::new);
         run(runtime.as_mut(), request).await;
     }
     let sent: Vec<(Value, Value)> = vendor
@@ -158,7 +167,13 @@ async fn a_reused_runtime_uses_the_output_limit_of_each_request() {
         .collect();
     assert_eq!(
         sent,
-        [(json!("a"), json!(8_000)), (json!("b"), json!(32_000)), (json!("c"), json!(32_000))]
+        [
+            (json!("a"), json!(8_000)),
+            (json!("b"), json!(32_000)),
+            (json!("c"), json!(32_000)),
+            (json!("d"), json!(1_024)),
+            (json!("e"), json!(1_024))
+        ]
     );
 }
 

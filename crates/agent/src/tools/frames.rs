@@ -1,42 +1,30 @@
-//! The shell frames of a conversation's root (`runtime.md` § Frame
-//! protocol): a running shell tool's status reaches the client as
-//! `shell_output`, and so do the commands the transcript last saw running
-//! that the root still owns, when a client attaches or asks for a fresh
-//! transcript.
+//! The live view of a tree's commands as the pages receive it (`runtime.md`
+//! § Live output): each command's `shell_output`, and the commands a node's
+//! transcript last saw running, which a page that attaches or asks for a
+//! fresh transcript receives with the ones that run.
 
 use demi_agent_protocol::{CommandView, ServerFrame, ShellStatus};
-use demi_core::{Block, CommandId, ShellViewStatus, ToolView};
-use demi_shell::{CommandState, CommandStatus};
+use demi_core::{Block, CommandId, NodeId, ShellViewStatus, ToolView};
+use demi_shell::{PageState, PageView};
 
-/// The `shell_output` frame of `status`: binary stdout is described by its
-/// size, never sent.
-pub(crate) fn shell_output(status: &CommandStatus) -> ServerFrame {
+/// The `shell_output` frame of `view`, a command of the subagent `subagent`,
+/// or of the root when none.
+pub(crate) fn shell_output(subagent: Option<NodeId>, view: PageView) -> ServerFrame {
     let command = CommandView {
-        shell_id: status.shell_id.clone(),
-        command_id: status.command_id.clone(),
-        output_dir: status.output_dir.clone(),
-        stdout: status.stdout.clone(),
-        stderr: status.stderr.clone(),
-        output: status.output.clone(),
-        running_ms: status.running_ms,
-        idle_ms: status.idle_ms,
+        shell_id: view.shell_id,
+        command_id: view.command_id,
+        tool_use_id: view.tool_use_id,
+        tail: view.tail,
+        chars: view.chars,
+        running_ms: view.running_ms,
     };
-    let status = match &status.state {
-        CommandState::Running { hint } => ShellStatus::Running {
-            command,
-            running_hint: hint.clone(),
-        },
-        CommandState::Exited {
-            exit_code,
-            binary_stdout,
-        } => ShellStatus::Exited {
-            command,
-            exit_code: *exit_code,
-            binary_stdout: binary_stdout.as_ref().map(|binary| binary.info),
-        },
-        CommandState::Aborted => ShellStatus::Aborted { command },
+    let status = match view.state {
+        PageState::Running => ShellStatus::Running { command },
+        PageState::Exited { exit_code } => ShellStatus::Exited { command, exit_code },
+        PageState::Aborted => ShellStatus::Aborted { command },
     };
     ServerFrame::ShellOutput {
+        subagent_id: subagent,
         status: Box::new(status),
     }
 }

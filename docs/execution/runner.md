@@ -134,6 +134,14 @@ opens the file, seeks, replies, and uploads the bytes as the backend accepts
 them. When the user picks another file, the backend fails the pipe, and the
 runner's upload ends and the file closes.
 
+A write's temporary file is named `.demi-partial-` and six random characters,
+for example `.demi-partial-q7XkP2`, and so is the one a
+[file command](commands.md#file-commands) writes beside the file it replaces.
+Only a runner or a command stopped in the middle of a write, by a crash or a
+kill, leaves one behind, and nothing reads it again. Deleting one is always
+safe: the file it was written for keeps its contents, and a write still running
+when its temporary file goes fails instead of replacing the file.
+
 ### Working tree
 
 A `git_changes` request lists the uncommitted changes under a directory, and
@@ -547,9 +555,37 @@ Reconnecting the network does not itself change the backend's command set.
 
 ## Pipes and output
 
-Jobs retain full output in device-local files and send bounded views to the
-backend. `shell_status` returns output since the preceding view. A caller needing
-complete output reads the retained file or accumulates those views.
+A job writes each of its streams whole to a file of its own on the device and
+sends the backend views of it in `job_output` messages, each naming its stream
+and where its bytes start in the stream (`offset`):
+
+- The first 32 KiB of each stream (`JOB_VIEW_BYTES`), as the runner reads
+  them. The model's view of a running command comes from these
+  ([Results and previews](../agent/runtime.md#results-and-previews)).
+- While the backend follows the job, the output beyond them: at most one
+  message per stream every 250 ms (`JOB_LIVE_INTERVAL`), with the newest bytes
+  read since the previous one, at most 16 KiB (`JOB_LIVE_BYTES`, which holds
+  4,096 characters of up to four bytes each). A message whose `offset` lies
+  beyond the end of the stream's previous one says that the runner left the
+  bytes between out. When following starts, each stream that has passed its
+  first 32 KiB sends its newest bytes at once; while the job is followed, its
+  last output leaves before `job_exit`.
+- While the backend does not follow the job, only that a stream grows beyond
+  them: at most one message per stream every 2 seconds
+  (`JOB_GROWTH_INTERVAL`), without bytes, whose `offset` is the stream's
+  length. The model's idle time counts from it
+  ([Results and previews](../agent/runtime.md#results-and-previews)).
+- `job_exit` gives each stream's length, its last 32 KiB and its file's path.
+
+What goes beyond the first 32 KiB never slows the job: a message that finds
+the connection's queue full waits for the stream's next interval, and then
+carries the newest bytes.
+
+A job starts unfollowed. `job_follow { jobId, follow }` starts or stops the
+following; the backend follows a job while a page shows its conversation
+([Live output](../agent/runtime.md#live-output)). The model's `shell_status`
+shows the output since its previous look; a caller that needs the whole
+output reads the files.
 
 The runner owns its HTTP pipe transfers; the backend's pipe broker owns their
 rendezvous and lifetime. Binary payloads remain bytes. EOF ends input, while
