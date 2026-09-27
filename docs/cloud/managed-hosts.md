@@ -738,8 +738,26 @@ suite runs; a run must show the following:
 | Load | Several users' Clouds run on one manager at the same time. |
 | Resource limits | With the limits on, the sandbox's cgroup holds its CPU budget, memory limit, and PID limit, and the Cloud sees its memory limit as its total memory. With the limits off, a Cloud boots where no cgroup can be created. |
 
-How a start without the cgroup controllers fails, and what the log says with
-the limits off, are process tests of the manager (above).
+The [Cloud suite](../delivery/scenarios.md#cloud-suite) makes these
+observations with the resource limits off, except the ones that need what it
+does not have. Release acceptance checks those by hand:
+
+- the Resource limits row with the limits on, and the out-of-memory death of
+  the Recovery row: they need a host with the cgroup v2 controllers;
+- Tools, public HTTPS, and the DNS path: the sandbox must reach the internet;
+- Copies on XFS and btrfs; the suite's checkpoint shows ext4;
+- the live view's frames and input;
+- a full disk;
+- a restart at each publication boundary, Manager recovery, and Cleanup after
+  cancellation or an injected fault: they need a manager built with fault
+  injection and restarted under a live backend;
+- the phases inside the manager that the measurements below name (storage
+  setup, runsc start, runner authentication, and checkpoint pause), which the
+  manager does not report.
+
+Linux arm64 and arm64 Lima are acceptance environments of their own. How a
+start without the controllers fails, and what the log says with the limits off,
+are process tests of the manager (above).
 
 Inject faults after acquiring each resource: a manager built with fault
 injection aborts at a named point, and the next start must recover with nothing
