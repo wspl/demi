@@ -303,7 +303,11 @@ On Unix, the service first checks the pinned installation under `/opt/demi/brows
 otherwise it installs under the Host user's `.demi/browsers`. Both locations use
 the same receipt and executable integrity checks; an invalid installation fails
 without falling back to another location. An unsupported
-platform fails explicitly rather than using a different browser.
+platform fails explicitly rather than using a different browser. The service
+program fixes both directories when it starts, reading the user's home once,
+and the browser service takes them as configuration; nothing deeper looks for
+a home. The Chrome tests give it a temporary directory that already holds the
+release ([Validation](../delivery/builds-and-releases.md#validation)).
 
 ### Native driver
 

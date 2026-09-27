@@ -25,7 +25,7 @@ use tokio_util::{
 use super::{
     BrowserEnvironment, BrowserError, LaunchOptions, Result,
     actions::TabResult,
-    installation::Installation,
+    installation::{BrowserDirectories, Installation},
     output,
     protocol::{
         self, ActionProgress, BrowserErrorCode, BrowserFailure, BrowserOperation, CloseResult,
@@ -545,20 +545,6 @@ pub(crate) struct Conversations {
     tasks: TaskTracker,
 }
 
-impl Default for Conversations {
-    /// Starts the owner on the current Tokio runtime.
-    fn default() -> Self {
-        let (requests, receiver) = mpsc::channel(REQUESTS);
-        let tasks = TaskTracker::new();
-        tasks.spawn(serve(
-            receiver,
-            tasks.clone(),
-            Arc::new(Installation::default()),
-        ));
-        Self { requests, tasks }
-    }
-}
-
 /// The conversations' owner: it maps each conversation to its browser. It
 /// answers every request at once, so the runner's `status` never waits for
 /// a browser's start or retirement.
@@ -612,6 +598,19 @@ async fn serve(mut requests: mpsc::Receiver<Find>, tasks: TaskTracker, installat
 }
 
 impl Conversations {
+    /// Starts the owner on the current Tokio runtime; the browsers find or
+    /// install Chrome in `directories`.
+    pub(crate) fn new(directories: BrowserDirectories) -> Self {
+        let (requests, receiver) = mpsc::channel(REQUESTS);
+        let tasks = TaskTracker::new();
+        tasks.spawn(serve(
+            receiver,
+            tasks.clone(),
+            Arc::new(Installation::new(directories)),
+        ));
+        Self { requests, tasks }
+    }
+
     /// Asks the owner; none once the service has shut down.
     async fn ask<T>(&self, request: impl FnOnce(oneshot::Sender<T>) -> Find) -> Option<T> {
         let (reply, answer) = oneshot::channel();
