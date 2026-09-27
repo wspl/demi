@@ -288,15 +288,38 @@ export const statusImageTool = binaryStdoutCall(
   blobImage(galleryBlobs.chart),
 )
 
-/** A screenshot retired after 30 days: the text that took its place, as the model reads it. */
+/** A screenshot retired after 30 days: in its place, the part that says so and when. */
 export const removedImageTool = binaryStdoutCall(
   { id: 'tool-screenshot-removed', toolName: 'shell_exec', input: screenshotInput },
   'cmd-shot-old',
   15_822,
   'image/png',
   {
-    type: 'text',
-    text: '[image:image/png, removed on 2026-10-01: a tool result\'s images and videos are kept for 30 days]',
+    type: 'gone',
+    kind: 'image',
+    mediaType: 'image/png',
+    cause: { type: 'retired', at: '2026-10-01T12:00:00.000Z' },
+  },
+)
+
+/** A recording whose bytes could not be stored: in its place, the part that says so and why. */
+export const notStoredVideoTool = binaryStdoutCall(
+  {
+    id: 'tool-recording-not-stored',
+    toolName: 'shell_exec',
+    input: JSON.stringify({
+      script: 'cat out/checkout.webm',
+      description: 'Show the recording of the checkout flow',
+    }),
+  },
+  'cmd-record-lost',
+  23_336,
+  'video/webm',
+  {
+    type: 'gone',
+    kind: 'video',
+    mediaType: 'video/webm',
+    cause: { type: 'not_stored', error: 'the object store refused the write' },
   },
 )
 

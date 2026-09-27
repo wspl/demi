@@ -75,6 +75,7 @@ import {
   fileChangeCases,
   fullPageTool,
   missingImageTool,
+  notStoredVideoTool,
   recordingTool,
   removedImageTool,
   runningShellTool,
@@ -523,6 +524,7 @@ const toolMediaSpecimens = [
   { variant: 'shell · video', block: recordingTool },
   { variant: 'status · image', block: statusImageTool },
   { variant: 'shell · image removed', block: removedImageTool },
+  { variant: 'shell · video not stored', block: notStoredVideoTool },
   { variant: 'shell · image cannot load', block: missingImageTool },
 ]
 const functionalShellFiles = ref(false)
@@ -1267,7 +1269,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="Tool media"
-        note="The images and videos a call's result carries show under its row at one preview height, folded or open, in the order of the result. A click on an image opens it large over the dimmed page: fitted and never enlarged, a click toggles actual size, and Escape, the close control or a click on the dimmed page closes it. A video plays in the browser's player, whose full-screen control shows it large. A text that took a medium's place shows where the medium was, and a medium the page cannot show says so at the same height."
+        note="The images and videos a call's result carries show under its row at one preview height, folded or open, in the order of the result. A click on an image opens it large over the dimmed page: fitted and never enlarged, a click toggles actual size, and Escape, the close control or a click on the dimmed page closes it. A video plays in the browser's player, whose full-screen control shows it large. A medium that is gone shows one line where it was: that it was not stored, with the store's reason, or the day it was removed. A medium the page cannot show says so at the same height."
       >
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack [--agent-pad-x:0px]">
