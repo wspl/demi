@@ -150,7 +150,8 @@ terminating the manager service
 ([Startup and shutdown](../backend/backend.md#startup-and-shutdown)).
 
 The manager is a trusted, privileged Linux service because it prepares mounts,
-loop devices, network namespaces, firewall rules, and cgroups. Its private mount
+loop devices, network namespaces, firewall rules, and, with its
+[resource limits](#resource-limits) on, cgroups. Its private mount
 namespace contains the storage mounts. Its data directory, runtime bundles, and
 control files are inaccessible to ordinary host users. No sandbox receives these
 infrastructure privileges.
@@ -193,7 +194,9 @@ Before it serves a request, the manager:
    is refused, and the error names the path.
 3. Recovers a namespace saved by an earlier manager (below) and removes
    leftover storage probes.
-4. Enables the cgroup controllers it needs.
+4. With its [resource limits](#resource-limits) on, requires the cgroup v2
+   CPU, memory, and PID controllers and enables them for the sandboxes. With
+   the limits off, it skips this step and touches no cgroup.
 5. Stops and saves every device left behind: it removes staging directories,
    fences each recorded sandbox, and publishes each working pair.
 6. Installs the network policy and imports the configured base
@@ -208,7 +211,12 @@ that they stay reachable after a crash, the manager pins that namespace before
 mounting any working image: a root-only namespace handle under its runtime
 directory, registered in the execution host's mount namespace, with an owner
 record that names the state directory. If the manager dies, filesystems it
-froze or mounted stay reachable through the handle.
+froze or mounted stay reachable through the handle. The manager binds the
+handle from PID 1's mount namespace, on a service host systemd's initial one,
+because Linux binds a mount namespace only into one with a lower number, and
+Linux 6.18 numbers namespaces in per-CPU batches, so that only the initial
+namespace, numbered at boot before all others, is sure to be lower than the
+service's.
 
 The next manager recovers them before it publishes storage. The owner record
 must name its own state directory; otherwise startup stops and asks for the
@@ -324,7 +332,8 @@ mounts.
 
 The OCI process is a shipped minimal init (`tini`) running as `demi`, UID/GID
 1000, which starts the runner and reaps orphaned descendants. The manager
-supplies mounts, network configuration, and resource limits before start. The
+supplies mounts, network configuration, and, with its
+[resource limits](#resource-limits) on, the cgroup limits before start. The
 runner is an ordinary process; it does not mount a root filesystem, configure
 host networking, parse kernel boot arguments, or infer a boot mode from PID 1.
 
@@ -344,6 +353,14 @@ seconds, then deletes the runtime, kills whatever remains in the sandbox's
 cgroup, and waits for all Sentry and Gofer processes to exit before releasing
 storage. Orphaned Chrome, crashpad, native services, and sandbox helper
 processes cannot survive stop.
+
+With the resource limits off, the sandbox has no cgroup, and deleting the
+runtime is the whole fence: `runsc` kills the Sentry, whose PID namespace ends
+every process of the sandbox with it, and the Gofer, and waits for both. A
+runtime that `runsc` itself was killed while creating, before it recorded that
+runtime, is then invisible to a later stop or recovery; with the limits on, the
+cgroup kill finds it. Under systemd, the service's own cgroup still ends such a
+leftover when the service stops.
 
 ### Save a generation
 
@@ -468,7 +485,8 @@ across users; everything else about a user's Cloud lives in that user's shard.
 
 | Owner | Setting | Default |
 | --- | --- | --- |
-| Machine manager | CPU budget / memory limit per sandbox | 2 CPUs / 2 GiB |
+| Machine manager | [Resource limits](#resource-limits) | On |
+| Machine manager | CPU budget / memory limit per sandbox, with the limits on | 2 CPUs / 2 GiB |
 | Machine manager | Writable system / home initial capacity | 1 GiB / 1 GiB |
 | Machine manager | `/dev/shm` / `/tmp` / `/run` size limits | 256 MiB / 256 MiB / 256 MiB |
 | Backend policy | System / home maximum capacity | 16 GiB / 32 GiB |
@@ -477,15 +495,6 @@ across users; everything else about a user's Cloud lives in that user's shard.
 | Backend lifecycle | Runner connection after a boot or during recovery | 60 seconds |
 | Backend lifecycle | Runtime losses that stop automatic boots | 3 within 10 minutes |
 | Backend edge, across all users | Cloud machines booting, running, saving, or resetting | 16 |
-
-CPU is a cgroup scheduling budget, not a virtual CPU allocation. cgroup v2
-limits cover the complete sandbox, including Sentry and Gofer; temporary mounts
-count toward memory and do not create extra allowances. Disable sandbox swap.
-Set host `pids.max` to 1024 and the sandbox process soft/hard `RLIMIT_NPROC` to
-1024. These count different things: gVisor does not map each sandbox process to
-a host PID. The latter limits ordinary-user jobs, not sandbox root; CPU and
-memory remain the resource boundary for sudo workloads. Reserve capacity for
-the host and manager rather than treating 16 devices as safe on every VPS.
 
 Growth changes only one working filesystem: enlarge its sparse backing file,
 refresh the capacity of the loop device the sandbox holds, and grow the mounted
@@ -500,6 +509,51 @@ must handle host `ENOSPC`. A sandbox cannot grow its own backing device.
 
 Archiving conversations or deleting project metadata never deletes Cloud data.
 Account-data destruction requires its own explicit retention/deletion policy.
+
+### Resource limits
+
+The cgroup v2 CPU, memory, and PID limits are a capability of the manager that
+its operator turns on or off with one setting, `DEMI_MANAGED_LIMITS`
+([Configuration](setup.md#configuration)), on by default. The choice belongs
+to the execution host, not to the kind of deployment: a production host without
+the cgroup v2 controllers runs with the limits off, and a development VM that
+has them runs with them on. Only the setting decides; the manager never falls
+back from one mode to the other.
+
+With the limits on, each sandbox runs in a cgroup of its own,
+`demi-cloud/<sandbox>` under the cgroup v2 root, limited to the CPU budget and
+memory of the table above and a host `pids.max` of 1024. CPU is a cgroup
+scheduling budget, not a virtual CPU allocation. The limits cover the complete
+sandbox, including Sentry and Gofer; temporary mounts count toward memory and
+do not create extra allowances. The sandbox has no swap: its memory limit also
+bounds memory with swap. The sandbox sees its memory limit as its total memory.
+Before startup changes anything under `/sys/fs/cgroup`, it requires the CPU,
+memory, and PID controllers there. When any is missing, including when no
+cgroup v2 hierarchy is mounted there, startup fails with an error that names
+every missing controller and the setting that runs without them.
+
+With the limits off, the manager creates, changes, and reads no cgroup: its
+startup skips the controller check, the OCI configuration of a boot carries
+neither a cgroup path nor resources, and every `runsc` command adds
+`--ignore-cgroups`, without which `runsc` would still create a cgroup for each
+sandbox. A sandbox then shares the host's CPUs and memory without a bound, and
+sees the host's memory as its total. Stopping a sandbox relies on `runsc` alone
+([Container initialization](#container-initialization)). A CPU budget or memory
+limit configured together with the limits off is a configuration error, since
+nothing would apply it.
+
+The manager's log says which mode it runs in: with the limits off, a warning at
+startup, and in both modes the line that reports readiness. Nothing else
+reports the mode; the backend does not learn it.
+
+In both modes the sandbox process has soft and hard `RLIMIT_NPROC` of 1024 and
+`RLIMIT_NOFILE` of 65536, which gVisor enforces inside the sandbox without a
+cgroup. `RLIMIT_NPROC` and the host `pids.max` count different things: gVisor
+does not map each sandbox process to a host PID. `RLIMIT_NPROC` limits
+ordinary-user jobs, not sandbox root; CPU and memory remain the resource
+boundary for sudo workloads, and with the limits off there is none. Reserve
+capacity for the host and manager rather than treating 16 devices as safe on
+every VPS.
 
 ## System reset
 
@@ -542,7 +596,8 @@ or booting. Each agent node observes reset in its next persisted context.
 
 The isolation boundary is the gVisor sandbox, not a workspace, Docker namespace,
 or hardware VM. Each user gets a separate Sentry, filesystem view, network
-namespace, and resource group. Infrastructure still trusts the Linux kernel,
+namespace, and, with the [resource limits](#resource-limits) on, resource
+group. Infrastructure still trusts the Linux kernel,
 manager, runsc distribution, and image builder. The product supports ordinary
 Linux development and browsers, not arbitrary kernel features or privileged
 nested Docker. Unsupported operations return errors; they never widen
@@ -565,7 +620,9 @@ Runtime upgrades require the same acceptance matrix, but do not change user
 storage format.
 
 The runtime profile fixes `--platform=systrap`, `--network=sandbox`, and
-`--allow-suid=true`. OCI `noNewPrivileges` is false so sudo can work. The OCI
+`--allow-suid=true`, and adds `--ignore-cgroups` with the
+[resource limits](#resource-limits) off. OCI `noNewPrivileges` is false so sudo
+can work. The OCI
 bounding set is `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `FSETID`, `KILL`, `SETGID`,
 `SETUID`, `SETPCAP`, `NET_BIND_SERVICE`, `SYS_CHROOT`, and `SETFCAP` (all with
 the `CAP_` prefix). The initial UID 1000 process has empty effective,
@@ -653,9 +710,10 @@ The manager runs only on Linux. Its automated tests are built with the
 developer machine's own cross tools and run on Linux: inside the Lima VM on a
 Mac. Tests that need root create throwaway mount and network namespaces and run
 only when explicitly enabled. Tests of the manager as a process, such as a
-start after a crash, run the built executable in a stand-in execution host: the
-init of a throwaway PID namespace with its own `/run`, so the namespace handle
-they recover through is never the machine's.
+start after a crash or a start whose cgroup controllers are missing, run the
+built executable in a stand-in execution host: the init of a throwaway PID
+namespace with its own `/run` and cgroup root, so the namespace handle they
+recover through and the cgroups they look at are never the machine's.
 
 Real-machine acceptance runs the exact shipped runtime, image, storage, and
 network profile on Linux amd64 and arm64 without KVM, and on arm64 Lima, against
@@ -678,6 +736,10 @@ suite runs; a run must show the following:
 | Cleanup | No processes, mounts, loop devices, network rules, credentials, or listeners remain after success, failure, cancellation, or an injected fault. |
 | Copies | On XFS with reflinks, btrfs, and ext4, a copied image has the source's content and allocates no more blocks than `cp --reflink=auto --sparse=always` does. |
 | Load | Several users' Clouds run on one manager at the same time. |
+| Resource limits | With the limits on, the sandbox's cgroup holds its CPU budget, memory limit, and PID limit, and the Cloud sees its memory limit as its total memory. With the limits off, a Cloud boots where no cgroup can be created. |
+
+How a start without the cgroup controllers fails, and what the log says with
+the limits off, are process tests of the manager (above).
 
 Inject faults after acquiring each resource: a manager built with fault
 injection aborts at a named point, and the next start must recover with nothing

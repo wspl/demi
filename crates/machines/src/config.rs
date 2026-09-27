@@ -11,7 +11,7 @@ use std::{
     str::FromStr,
 };
 
-use clap::{CommandFactory, FromArgMatches};
+use clap::{CommandFactory, FromArgMatches, parser::ValueSource};
 use ipnet::Ipv4Net;
 
 /// Where the manager keeps its runtime bundles, locks and namespace handle.
@@ -59,10 +59,13 @@ struct Cli {
         value_parser = backend_url
     )]
     backend_url: url::Url,
-    /// The CPU budget of one sandbox.
+    /// Whether sandboxes run under cgroup v2 CPU, memory and PID limits.
+    #[arg(long, env = "DEMI_MANAGED_LIMITS", value_name = "DEMI_MANAGED_LIMITS", default_value = "on")]
+    limits: Switch,
+    /// The CPU budget of one sandbox, with the limits on.
     #[arg(long, env = "DEMI_MANAGED_CPUS", value_name = "DEMI_MANAGED_CPUS", default_value = "2", value_parser = decimal::<NonZeroU32>)]
     cpus: NonZeroU32,
-    /// The memory limit of one sandbox, in MiB.
+    /// The memory limit of one sandbox, in MiB, with the limits on.
     #[arg(long, env = "DEMI_MANAGED_MEM_MIB", value_name = "DEMI_MANAGED_MEM_MIB", default_value = "2048", value_parser = decimal::<NonZeroU32>)]
     mem_mib: NonZeroU32,
     /// A new system filesystem's capacity, in MiB.
@@ -89,6 +92,13 @@ struct Cli {
     dns: Vec<Ipv4Addr>,
 }
 
+/// A setting that is on or off.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum Switch {
+    On,
+    Off,
+}
+
 /// What the manager was started to do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
@@ -110,13 +120,28 @@ pub struct Config {
     pub runsc: PathBuf,
     pub image: PathBuf,
     pub backend_url: url::Url,
-    pub cpus: NonZeroU32,
-    pub memory_mib: NonZeroU32,
+    /// Each sandbox's cgroup limits; `None` with `DEMI_MANAGED_LIMITS=off`,
+    /// which runs sandboxes without cgroups.
+    pub limits: Option<Limits>,
     pub system_mib: NonZeroU32,
     pub home_mib: NonZeroU32,
     pub subnet: Ipv4Net,
     pub slots: u16,
     pub dns: Vec<Ipv4Addr>,
+}
+
+/// One sandbox's cgroup v2 limits (`managed-hosts.md` § Resource limits).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Limits {
+    pub cpus: NonZeroU32,
+    pub memory_mib: NonZeroU32,
+}
+
+impl Limits {
+    /// The memory limit in bytes.
+    pub fn memory_bytes(&self) -> NonZeroU64 {
+        mebibytes(self.memory_mib)
+    }
 }
 
 /// A setting that stops the manager from starting.
@@ -130,6 +155,8 @@ pub enum ConfigError {
     SlotsExceedSubnet,
     #[error("DEMI_MACHINES_SOCKET is required")]
     MissingSocket,
+    #[error("{0} applies only with DEMI_MANAGED_LIMITS=on")]
+    LimitsOff(&'static str),
 }
 
 impl Config {
@@ -163,6 +190,21 @@ impl Config {
         if mode == Mode::Serve && cli.socket.is_none() {
             return Err(ConfigError::MissingSocket);
         }
+        let limits = match cli.limits {
+            Switch::On => Some(Limits {
+                cpus: cli.cpus,
+                memory_mib: cli.mem_mib,
+            }),
+            Switch::Off => {
+                // A budget nothing would apply is refused, not ignored.
+                for (id, variable) in [("cpus", "DEMI_MANAGED_CPUS"), ("mem_mib", "DEMI_MANAGED_MEM_MIB")] {
+                    if matches.value_source(id) != Some(ValueSource::DefaultValue) {
+                        return Err(ConfigError::LimitsOff(variable));
+                    }
+                }
+                None
+            }
+        };
         Ok(Self {
             mode,
             socket: cli.socket,
@@ -170,8 +212,7 @@ impl Config {
             runsc: cli.runsc,
             image: cli.image,
             backend_url: cli.backend_url,
-            cpus: cli.cpus,
-            memory_mib: cli.mem_mib,
+            limits,
             system_mib: cli.system_mib,
             home_mib: cli.home_mib,
             subnet: cli.subnet,
@@ -203,11 +244,6 @@ impl Config {
     /// A new home filesystem's capacity in bytes.
     pub fn home_bytes(&self) -> NonZeroU64 {
         mebibytes(self.home_mib)
-    }
-
-    /// One sandbox's memory limit in bytes.
-    pub fn memory_bytes(&self) -> NonZeroU64 {
-        mebibytes(self.memory_mib)
     }
 }
 
@@ -341,8 +377,9 @@ mod tests {
         assert_eq!(config.backend_url.as_str(), "https://backend.example.com/");
         assert_eq!(config.data, PathBuf::from("/var/lib/demi-machines"));
         assert_eq!(config.working(), PathBuf::from("/var/lib/demi-machines/working"));
-        assert_eq!(config.cpus.get(), 2);
-        assert_eq!(config.memory_bytes().get(), 2 << 30);
+        let limits = config.limits.expect("the limits are on by default");
+        assert_eq!(limits.cpus.get(), 2);
+        assert_eq!(limits.memory_bytes().get(), 2 << 30);
         assert_eq!(config.system_bytes().get(), 1 << 30);
         assert_eq!(config.home_bytes().get(), 1 << 30);
         assert_eq!(config.subnet.to_string(), "172.30.0.0/16");
@@ -352,34 +389,43 @@ mod tests {
 
     #[test]
     fn obsolete_malformed_and_insufficient_settings_are_refused() {
-        for settings in [
-            [("DEMI_MANAGED_FIRECRACKER", "/old")],
-            [("DEMI_MANAGED_SUBNET", "172.30.1.0/16")],
-            [("DEMI_MANAGED_SUBNET", "172.30.0.0/31")],
-            [("DEMI_MANAGED_SUBNET", "10.0.0.0/7")],
-            [("DEMI_MANAGED_SLOTS", "2")],
-            [("DEMI_MANAGED_DNS", "127.0.0.1")],
-            [("DEMI_MANAGED_DNS", "0.1.2.3")],
-            [("DEMI_MANAGED_DNS", "224.0.0.1")],
-            [("DEMI_MANAGED_DNS", "255.255.255.255")],
-            [("DEMI_MANAGED_DNS", "1.1.1.1,")],
-            [("DEMI_MANAGED_CPUS", "0")],
-            [("DEMI_MANAGED_CPUS", "0x10")],
-            [("DEMI_MANAGED_MEM_MIB", "1e3")],
-            [("DEMI_MANAGED_SYSTEM_MIB", " 12 ")],
-            [("DEMI_MANAGED_HOME_MIB", "+12")],
-            [("DEMI_MANAGED_SLOTS", "16385")],
-            [("DEMI_MANAGED_RUNSC", "runsc")],
-            [("DEMI_MACHINES_DATA", "state")],
-            [("DEMI_MANAGED_BACKEND_URL", "file:///tmp/backend")],
-        ] {
-            let settings = if settings[0].0 == "DEMI_MANAGED_SLOTS" && settings[0].1 == "2" {
-                // Two slots need eight addresses; a /30 holds four.
-                vec![("DEMI_MANAGED_SUBNET", "172.30.0.0/30"), settings[0]]
-            } else {
-                settings.to_vec()
-            };
-            assert!(parse(&[], &settings).is_err(), "{settings:?} was accepted");
+        let refused: [&[(&str, &str)]; 20] = [
+            &[("DEMI_MANAGED_FIRECRACKER", "/old")],
+            &[("DEMI_MANAGED_SUBNET", "172.30.1.0/16")],
+            &[("DEMI_MANAGED_SUBNET", "172.30.0.0/31")],
+            &[("DEMI_MANAGED_SUBNET", "10.0.0.0/7")],
+            // Two slots need eight addresses; a /30 holds four.
+            &[("DEMI_MANAGED_SUBNET", "172.30.0.0/30"), ("DEMI_MANAGED_SLOTS", "2")],
+            &[("DEMI_MANAGED_DNS", "127.0.0.1")],
+            &[("DEMI_MANAGED_DNS", "0.1.2.3")],
+            &[("DEMI_MANAGED_DNS", "224.0.0.1")],
+            &[("DEMI_MANAGED_DNS", "255.255.255.255")],
+            &[("DEMI_MANAGED_DNS", "1.1.1.1,")],
+            &[("DEMI_MANAGED_CPUS", "0")],
+            &[("DEMI_MANAGED_CPUS", "0x10")],
+            &[("DEMI_MANAGED_MEM_MIB", "1e3")],
+            &[("DEMI_MANAGED_SYSTEM_MIB", " 12 ")],
+            &[("DEMI_MANAGED_HOME_MIB", "+12")],
+            &[("DEMI_MANAGED_SLOTS", "16385")],
+            &[("DEMI_MANAGED_RUNSC", "runsc")],
+            &[("DEMI_MACHINES_DATA", "state")],
+            &[("DEMI_MANAGED_BACKEND_URL", "file:///tmp/backend")],
+            &[("DEMI_MANAGED_LIMITS", "yes")],
+        ];
+        for settings in refused {
+            assert!(parse(&[], settings).is_err(), "{settings:?} was accepted");
+        }
+    }
+
+    #[test]
+    fn with_the_limits_off_sandboxes_have_none_and_a_budget_is_refused() {
+        let off = parse(&[], &[("DEMI_MANAGED_LIMITS", "off")]).expect("the limits off");
+        assert_eq!(off.limits, None);
+        for variable in ["DEMI_MANAGED_CPUS", "DEMI_MANAGED_MEM_MIB"] {
+            // The default value, written out, is still a budget nothing applies.
+            let value = if variable == "DEMI_MANAGED_CPUS" { "2" } else { "2048" };
+            let error = parse(&[], &[("DEMI_MANAGED_LIMITS", "off"), (variable, value)]).expect_err("refused");
+            assert_eq!(error.to_string(), format!("{variable} applies only with DEMI_MANAGED_LIMITS=on"));
         }
     }
 
@@ -453,7 +499,7 @@ mod tests {
             .arg(&release)
             .args(["--backend-url", "https://backend.example.com", "--dns", "1.1.1.1,8.8.8.8", "--data"])
             .arg(&data)
-            .args(["--slots", "16"])
+            .args(["--slots", "16", "--limits", "off"])
             .output()
             .unwrap();
         assert!(installed.status.success(), "{}", String::from_utf8_lossy(&installed.stderr));
@@ -504,6 +550,7 @@ mod tests {
         assert_eq!(config.backend_url.as_str(), "https://backend.example.com/");
         assert_eq!(config.dns, [Ipv4Addr::new(1, 1, 1, 1), Ipv4Addr::new(8, 8, 8, 8)]);
         assert_eq!(config.slots, 16);
+        assert_eq!(config.limits, None);
         assert!(config.runsc.starts_with("/opt/gvisor"), "{}", config.runsc.display());
         mount::unmount(&off, &data).unwrap();
     }

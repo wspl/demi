@@ -56,7 +56,7 @@ mod linux {
 
     impl Core {
         pub fn new(config: Config, tools: Tools) -> Self {
-            let runsc = Runsc::new(tools.clone(), config.runtime());
+            let runsc = Runsc::new(tools.clone(), config.runtime(), config.limits.is_some());
             let network = CloudNetwork::new(
                 config.subnet,
                 config.dns.clone(),
