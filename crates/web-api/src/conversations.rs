@@ -103,6 +103,11 @@ pub struct ConversationSummary {
     pub title_current: bool,
     /// Whether a title request of the conversation is in flight.
     pub title_generating: bool,
+    /// The revision of the conversation's draft, 0 before its first save
+    /// (`web-api.md` § Conversation drafts): a page reads the draft only when
+    /// this is higher than the revision it holds.
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub draft_revision: u64,
 }
 
 /// Where a conversation stands (`web-api.md` § Sidebar mutations, read state

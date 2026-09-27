@@ -130,6 +130,7 @@ beforeEach(async () => {
       if (rejectFork) {
         return Response.json({ code: 'internal_error', message: 'Fork unavailable' }, { status: 500 })
       }
+    draftRevision: 0,
       const created = records.find((item) => item.id === body.id) ?? {
         ...record(body.id), title: 'first (Fork)', providerId: 'stub', modelId: 'model',
         target: { kind: 'cloud' as const, path: '/home/demi/sessions/first' },

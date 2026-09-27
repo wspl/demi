@@ -102,12 +102,12 @@ input, which the multi-worker control service also relies on
   document, replaced whole by every save and deleted with its conversation.
   `conversation_drafts` stores each conversation's
   [draft](../product/web-api.md#conversation-drafts): its revision, its text
-  and files as one JSON document, and the replaced version as another, or
-  null. A save reads the revision and writes the row in one transaction, so
-  two saves never build on the same revision. The row stays when the draft is
-  emptied, so a revision is never used twice, and it is deleted with its
-  conversation; the conversation index reads the revision into each
-  conversation's summary.
+  and files as one JSON document with the revision they were written at, and
+  the replaced version as another, or null. A save reads the row and writes it
+  in one transaction, so two saves never build on the same revision. The row
+  stays when the draft is emptied, so a revision is never used twice, and it
+  is deleted with its conversation; the conversation index reads the revision
+  into each conversation's summary.
 - **Operations:** `conversation_fork_operations` reserves a destination ID and
   records source boundary, owner, target, full model selection, title,
   creation time, and attached hosts. `managed_operations` records reset intent

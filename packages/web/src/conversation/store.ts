@@ -470,6 +470,7 @@ export const useConversations = defineStore('conversations', () => {
     }
     try {
       const draft = saved ?? (await readDraft(session.user.id, conversation.id))
+          draftRevision: 0,
       signal.throwIfAborted()
       if (draft) {
         conversation.draft = draft.text
@@ -1009,6 +1010,7 @@ export const useConversations = defineStore('conversations', () => {
         pendingTitles.delete(id)
         const stored = product.snapshot?.conversations.find((item) => item.id === id)
         if (!renamed && conversation && stored) {
+      draftRevision: 0,
           conversation.title = stored.title
         }
       })

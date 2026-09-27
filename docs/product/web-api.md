@@ -309,17 +309,19 @@ snippet from its record, and an upload the caller does not have answers 404
 `invalid_body`. The draft as stored, text and files, is at most 256 KiB; a
 larger one answers 413 `too_large`.
 
-A save always takes effect: the last save wins. When `base` is not the
-current revision, another page saved since this page's text was built, and
-the version the save replaces is kept as `replaced`, unless it is empty or
-the same as the saved one. Only one replaced version is kept, so an earlier
-one goes. For example, two tabs show revision 4, "Fix the login", and their
-users type at the same time:
+A save always takes effect: the last save wins. When `base` is older than
+the revision at which the draft's text was written, the page never showed
+that text, and the save keeps it as `replaced`, unless it is empty or the
+same as the saved one. A dismissal, or a save that repeats the text, changes
+the revision and not the text, so it makes no page's next save replace
+anything. Only one replaced version is kept, so an earlier one goes. For
+example, two tabs show revision 4, "Fix the login", and their users type at
+the same time:
 
 1. Tab A saves "Fix the login bug" with base 4, which becomes revision 5.
-2. Tab B saves "Fix the login test" with base 4. Its text was not built on
-   the current revision 5, so the backend keeps revision 5 as `replaced` and
-   saves B's text as revision 6.
+2. Tab B saves "Fix the login test" with base 4, older than revision 5, at
+   which the draft's text was written, so the backend keeps revision 5 as
+   `replaced` and saves B's text as revision 6.
 3. Every page shows "Fix the login test" and offers "Fix the login bug" for
    restore.
 
