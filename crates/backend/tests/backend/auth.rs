@@ -1,17 +1,19 @@
-//! Setup, the session cookie and its gate, login and its lockout, and the
-//! caller's own account (`backend.md` § Authentication and ownership,
-//! `web-api.md` § Account API).
+//! Setup, the session cookie and its gate, the pages a request that could
+//! act may come from, login and its lockout, and the caller's own account
+//! (`backend.md` § Authentication and ownership, `web-api.md`
+//! § Authentication, § Account API).
 
 use std::sync::atomic::Ordering;
 
 use demi_web_api::auth::{EmailChangeStarted, Identity, Role, SetupStatus};
 use demi_web_api::error::ErrorCode;
+use demi_web_api::users::Users;
 use jiff::SignedDuration;
 use reqwest::{Method, StatusCode};
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::support::{
-    Answer, Harness, MASTER_EMAIL, MASTER_PASSWORD, SESSION_COOKIE, Session, TestBackend, session_from,
+    Answer, Harness, MASTER_EMAIL, MASTER_PASSWORD, SESSION_COOKIE, Session, TestBackend, answer, session_from,
 };
 
 fn days(count: i64) -> SignedDuration {
@@ -106,6 +108,87 @@ async fn every_other_api_path_wants_a_live_session() {
     let cleared = cookie_attributes(&forged.session_cookies()[0]);
     assert_eq!(cleared[0], format!("{SESSION_COOKIE}="));
     assert!(cleared.contains(&"max-age=0".to_owned()), "{cleared:?}");
+    backend.close().await;
+}
+
+/// A POST from a page at `origin`, or from a program that sends no origin,
+/// with its body typed `text/plain`, as a page of another site may send it
+/// without asking the backend first.
+async fn post_from(
+    backend: &TestBackend,
+    origin: Option<&str>,
+    path: &str,
+    session: Option<&Session>,
+    body: Option<Value>,
+) -> Answer {
+    let mut request = reqwest::Client::builder()
+        .no_proxy()
+        .build()
+        .unwrap()
+        .post(format!("{}{path}", backend.url));
+    if let Some(origin) = origin {
+        request = request.header("origin", origin);
+    }
+    if let Some(session) = session {
+        request = request.header("cookie", &session.cookie);
+    }
+    if let Some(body) = body {
+        request = request.header("content-type", "text/plain").body(body.to_string());
+    }
+    answer(request.send().await.unwrap()).await
+}
+
+/// The browser sends the session cookie from every page of the product's
+/// site, an expose's among them, so a page of another site or an expose may
+/// neither set the instance up, nor sign the browser in, nor act with its
+/// session. The product's page may, and so may a program that sends no
+/// origin, such as curl calling the setup API.
+#[tokio::test]
+async fn a_request_that_could_act_comes_from_a_page_of_the_product_or_from_no_page() {
+    let harness = Harness::new().with_expose_domain("expose.localhost");
+    let backend = harness.start().await;
+    let product = backend.url.clone();
+    // An expose's origin as the backend prints its URLs: the public URL's
+    // scheme and port under the expose domain.
+    let port = backend.url.rsplit(':').next().unwrap();
+    let expose = format!("http://a1b2c3d4e5.expose.localhost:{port}");
+    let others = ["https://elsewhere.example", expose.as_str(), "null"];
+    let forbidden = (StatusCode::FORBIDDEN, ErrorCode::ForbiddenOrigin);
+    let credentials = json!({ "email": MASTER_EMAIL, "password": MASTER_PASSWORD });
+
+    for origin in others {
+        let setup = post_from(&backend, Some(origin), "/api/setup", None, Some(credentials.clone())).await;
+        assert_eq!(setup.refusal(), forbidden, "{origin}");
+        assert!(setup.session_cookies().is_empty());
+    }
+    assert!(backend.get("/api/setup", None).await.json::<SetupStatus>().needed);
+    // The setup API as curl calls it.
+    let master = session_from(&post_from(&backend, None, "/api/setup", None, Some(credentials.clone())).await);
+
+    let login = post_from(&backend, Some(&expose), "/api/auth/login", None, Some(credentials.clone())).await;
+    assert_eq!(login.refusal(), forbidden);
+    assert!(login.session_cookies().is_empty());
+    let login = post_from(&backend, Some(&product), "/api/auth/login", None, Some(credentials)).await;
+    assert_eq!(login.status, StatusCode::OK);
+
+    // An administrator's request from another page creates no account, and a
+    // sign-out from another page ends no session.
+    let account = |email: &str| Some(json!({ "email": email, "password": "user-pass-1", "role": "user" }));
+    for origin in others {
+        let created = post_from(&backend, Some(origin), "/api/users", Some(&master), account("forged@example.test")).await;
+        assert_eq!(created.refusal(), forbidden, "{origin}");
+        let out = post_from(&backend, Some(origin), "/api/auth/logout", Some(&master), None).await;
+        assert_eq!(out.refusal(), forbidden, "{origin}");
+    }
+    let users = backend.get("/api/users", Some(&master)).await.json::<Users>().users;
+    let emails: Vec<&str> = users.iter().map(|user| user.email.as_str()).collect();
+    assert_eq!(emails, [MASTER_EMAIL]);
+    for (origin, email) in [(Some(product.as_str()), "page@example.test"), (None, "curl@example.test")] {
+        let created = post_from(&backend, origin, "/api/users", Some(&master), account(email)).await;
+        assert_eq!(created.status, StatusCode::CREATED, "{origin:?}: {}", String::from_utf8_lossy(&created.body));
+    }
+    let out = post_from(&backend, Some(&product), "/api/auth/logout", Some(&master), None).await;
+    assert_eq!(out.status, StatusCode::NO_CONTENT);
     backend.close().await;
 }
 
