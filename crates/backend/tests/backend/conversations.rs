@@ -28,7 +28,7 @@ use demi_web_api::conversations::{
     BatchAnswer, BatchResult, ConversationAnswer, ConversationStatus, ConversationSummary, ConversationUpdate,
     Conversations, FieldResult, ModelSettings, PatchField, Transcript,
 };
-use demi_web_api::error::ErrorCode;
+use demi_web_api::error::{ErrorBody, ErrorCode};
 use demi_web_api::providers::{CredentialKind, ProviderAnswer};
 use demi_web_api::state::ProductState;
 use demi_web_api::usage::UsageTotals;
@@ -73,19 +73,40 @@ impl Socket {
         }
     }
 
-    /// The socket, or the status the route answered instead of upgrading.
+    /// The socket, opened from a page of the product, or the status the
+    /// route answered instead of upgrading.
     pub(crate) async fn try_connect(backend: &TestBackend, session: &Session, conversation: &str) -> Result<Self, u16> {
+        Self::try_connect_from(backend, session, conversation, Some(&backend.url))
+            .await
+            .map_err(|(status, _)| status)
+    }
+
+    /// The socket, opened from a page at `origin` or from none, or the
+    /// status and error code the route answered instead of upgrading.
+    pub(crate) async fn try_connect_from(
+        backend: &TestBackend,
+        session: &Session,
+        conversation: &str,
+        origin: Option<&str>,
+    ) -> Result<Self, (u16, ErrorCode)> {
         let url = backend.ws_url(&format!("/api/conversations/{conversation}/stream"));
         let mut request = url.into_client_request().unwrap();
-        request
-            .headers_mut()
-            .insert("cookie", session.cookie.parse().unwrap());
+        let headers = request.headers_mut();
+        headers.insert("cookie", session.cookie.parse().unwrap());
+        if let Some(origin) = origin {
+            headers.insert("origin", origin.parse().unwrap());
+        }
         match tokio_tungstenite::connect_async(request).await {
             Ok((socket, _)) => Ok(Self {
                 socket,
                 patience: Duration::from_secs(10),
             }),
-            Err(tungstenite::Error::Http(response)) => Err(response.status().as_u16()),
+            Err(tungstenite::Error::Http(response)) => {
+                let body = response.body().as_deref().unwrap_or_default();
+                let error: ErrorBody = serde_json::from_slice(body)
+                    .unwrap_or_else(|error| panic!("{error}: {}", String::from_utf8_lossy(body)));
+                Err((response.status().as_u16(), error.code))
+            }
             Err(error) => panic!("the socket did not connect: {error}"),
         }
     }
@@ -782,6 +803,27 @@ fn configured(output: u32) -> Value {
         "id": "m", "displayName": "M", "contextWindow": 100000, "outputLimit": output,
         "thinkingEfforts": [], "acceptedExtensions": null, "fastTier": null
     })
+}
+
+/// A page on an expose shares the product's site, so the browser sends it the
+/// session cookie; the socket must still refuse it (`backend.md`
+/// § Authentication and ownership).
+#[tokio::test]
+async fn the_conversation_socket_opens_only_from_a_page_of_the_product() {
+    let harness = Harness::new().with_expose_domain("expose.localhost");
+    let (backend, master) = harness.start_set_up().await;
+    create(&backend, &master, FIRST).await;
+    // An expose's origin as the backend prints its URLs: the public URL's
+    // scheme and port under the expose domain.
+    let port = backend.url.rsplit(':').next().unwrap();
+    let expose = format!("http://a1b2c3d4e5.expose.localhost:{port}");
+    for origin in [Some("https://elsewhere.example"), Some(expose.as_str()), None] {
+        let refused = Socket::try_connect_from(&backend, &master, FIRST, origin).await.err();
+        assert_eq!(refused, Some((403, ErrorCode::ForbiddenOrigin)), "{origin:?}");
+    }
+    // The product's own page opens it.
+    Socket::connect(&backend, &master, FIRST).await;
+    backend.close().await;
 }
 
 #[tokio::test]
