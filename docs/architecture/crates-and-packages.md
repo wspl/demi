@@ -312,16 +312,17 @@ next to the wire's types, so that a command program depends on one crate.
 - **Owns:** verified download over HTTPS with a declared size and SHA-256
   (plain HTTP too for the runner's artifact cache, whose digests come from the
   pinned descriptor), and the measured download that establishes them when a
-  release is prepared; digests; durable atomic publication; release
+  release is prepared; digests; atomic publication, durable when asked; release
   publication (a directory of verified files and the record that describes
   them, published once and immutable); the install lock between processes;
   install receipts; and archive installation (a verified zip archive unpacked
   into a directory named by its SHA-256, with the receipt that checks it
   before each use), which installs Chrome for Testing on a paired device and
-  into the Cloud image. Every download-and-verify path and every durable
-  atomic write goes through it: the runner's artifact cache, the Chrome and
-  Claude Code installers, the machine manager's image store and `xtask`
-  release packaging.
+  into the Cloud image. Every download-and-verify path and every atomic
+  publication of a file, durable or not, goes through it: the runner's
+  artifact cache, the Chrome and Claude Code installers, the machine
+  manager's image store, the edit recorder's snapshots and journal in
+  `command-service`, and `xtask` release packaging.
 - **Public boundary:** the functions and types above. Its `testing` feature
   adds a fixture HTTP server on `127.0.0.1` that downloads can reach, the count
   of waits for install locks, and `install_unpacked`, which installs a release
@@ -798,7 +799,7 @@ A line names a workspace member by its directory.
 ```text
 core -> none
 agent-protocol -> core
-command-service -> none
+command-service -> artifact
 command-tree -> none
 builtin-protocol -> core
 claude-protocol -> none
