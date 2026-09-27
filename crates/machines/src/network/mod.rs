@@ -37,6 +37,10 @@ mod linux {
     /// The prefix of every host interface of a Cloud slot.
     const HOST_INTERFACES: &str = "demih";
 
+    /// The kernel's IPv6 settings, absent when it runs without IPv6, such as
+    /// when booted with `ipv6.disable=1`.
+    const IPV6_SETTINGS: &str = "/proc/sys/net/ipv6";
+
     #[derive(Debug, thiserror::Error)]
     pub enum NetworkError {
         #[error(transparent)]
@@ -140,7 +144,8 @@ mod linux {
 
         /// Creates `slot`'s namespace and veth pair, gives both ends their
         /// addresses with IPv6 off, routes the sandbox through the host end,
-        /// and admits the slot's pair to the firewall.
+        /// and admits the slot's pair to the firewall. A kernel without IPv6
+        /// has none to turn off on either end.
         pub async fn attach(&self, slot: &Slot) -> Result<(), NetworkError> {
             let namespace = slot.namespace();
             let host = slot.host_interface();
@@ -162,14 +167,22 @@ mod linux {
                 }
             })
             .await?;
-            blocking::run({
+            let ipv6 = blocking::run({
                 let host = host.clone();
-                move |_| fs_err::write(format!("/proc/sys/net/ipv6/conf/{host}/disable_ipv6"), "1")
+                move |_| -> io::Result<bool> {
+                    if !std::path::Path::new(IPV6_SETTINGS).try_exists()? {
+                        return Ok(false);
+                    }
+                    fs_err::write(format!("{IPV6_SETTINGS}/conf/{host}/disable_ipv6"), "1")?;
+                    Ok(true)
+                }
             })
             .await?;
             let address = slot.address;
             thread_ns::run(Namespace::Network(file), move |_| {
-                fs_err::write("/proc/sys/net/ipv6/conf/all/disable_ipv6", "1")?;
+                if ipv6 {
+                    fs_err::write(format!("{IPV6_SETTINGS}/conf/all/disable_ipv6"), "1")?;
+                }
                 let runtime = tokio::runtime::Builder::new_current_thread().enable_io().build()?;
                 runtime
                     .block_on(netlink::session(|handle| async move {
@@ -242,13 +255,17 @@ mod linux {
             let set = output("nft", &["list", "set", "inet", "demi_cloud", "slots"]);
             assert!(set.contains("\"demih3\" . 172.30.0.14"), "{set}");
             assert!(output("ip", &["-o", "addr", "show", "demih3"]).contains("172.30.0.13/30"));
-            assert_eq!(read("/proc/sys/net/ipv6/conf/demih3/disable_ipv6").trim(), "1");
             let inside = output("ip", &["-n", "demi-3", "-o", "addr", "show", "demip3"]);
             assert!(inside.contains("172.30.0.14/30"), "{inside}");
             let routes = output("ip", &["-n", "demi-3", "route"]);
             assert!(routes.contains("default via 172.30.0.13"), "{routes}");
-            let disabled = output("ip", &["netns", "exec", "demi-3", "cat", "/proc/sys/net/ipv6/conf/all/disable_ipv6"]);
-            assert_eq!(disabled.trim(), "1");
+            // IPv6 is off on both ends, unless the kernel runs without it.
+            if std::path::Path::new(IPV6_SETTINGS).exists() {
+                assert_eq!(read("/proc/sys/net/ipv6/conf/demih3/disable_ipv6").trim(), "1");
+                let disabled =
+                    output("ip", &["netns", "exec", "demi-3", "cat", "/proc/sys/net/ipv6/conf/all/disable_ipv6"]);
+                assert_eq!(disabled.trim(), "1");
+            }
 
             network.detach(&slot).await.unwrap();
             let set = output("nft", &["list", "set", "inet", "demi_cloud", "slots"]);
@@ -266,7 +283,9 @@ mod linux {
         async fn a_pool_that_overlaps_a_host_route_or_a_loopback_backend_is_refused() {
             isolate();
             output("ip", &["link", "set", "lo", "up"]);
-            output("ip", &["link", "add", "probe0", "type", "dummy"]);
+            // A veth pair, which the manager needs anyway: a kernel may lack
+            // the dummy driver.
+            output("ip", &["link", "add", "probe0", "type", "veth", "peer", "name", "probe1"]);
             output("ip", &["addr", "add", "172.30.5.1/24", "dev", "probe0"]);
             output("ip", &["link", "set", "probe0", "up"]);
             let nft = which::which("nft").unwrap();

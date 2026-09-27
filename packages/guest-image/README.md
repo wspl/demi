@@ -46,7 +46,13 @@ the Mac's home directory at the same path.
 immutable, so every build publishes a new one. The script builds the tree in
 `/var/tmp/demi-cloud-root`, or in the directory `--work` names, and removes it
 after a successful build. `--mirror` names an Ubuntu mirror other than the
-official one. The last line the build prints is the release's base version.
+official one, such as `https://archive.ubuntu.com/ubuntu` on a builder whose
+only way out is HTTPS. apt inside the tree runs with a cleared environment, so
+the build hands it two things of the builder's network. A builder that
+reaches the mirror only through an HTTPS proxy sets `https_proxy`, which apt
+inside the tree then uses as well. A builder whose proxy re-signs TLS names
+the bundle that holds the proxy's authority with `--ca FILE`, which apt inside
+the tree then trusts; the build removes the file from the tree. The last line the build prints is the release's base version.
 The build neither starts nor resets a Cloud device; see
 [Acceptance and local refresh](../../docs/cloud/images.md#acceptance-and-local-refresh).
 
