@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { attachedHostSchema, conversationSummarySchema } from '../api/generated/web-api'
 import { messageEditStateSchema } from '@demicodes/web-ui/agent/message-editing'
-import { modelIntentSchema } from '@demicodes/web-ui/agent/model-selection'
+import { modelSettingsSchema } from '@demicodes/web-ui/agent/model-selection'
 
 /** The upload the backend took: the attachment id a message names the file by. */
 const uploadSchema = z.object({ id: z.string() })
@@ -48,7 +48,8 @@ export const draftSchema = z.object({
     })
     .nullable(),
   text: z.string(),
-  model: modelIntentSchema,
+  /** The model settings of a conversation without a record; null for one with a record, which holds them. */
+  model: modelSettingsSchema.nullable(),
   files: z.array(z.union([fileSchema, remoteSchema])),
   scroll: z
     .object({
