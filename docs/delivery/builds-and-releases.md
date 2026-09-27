@@ -137,6 +137,12 @@ cargo xtask native build \
   --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
 ```
 
+A release build of the Linux targets prints `warning: linker stderr: ignoring
+deprecated linker optimization setting '1'` once per program. Nothing in the
+repository sets it: rustc passes `-O1` to a GNU-style linker at optimization
+levels 2 and 3, and Zig 0.12 to 0.16 ignores the flag and says so. It is
+harmless; cargo-zigbuild drops the flag in the first release after 0.23.4.
+
 `--container <image>` runs the same build inside the image the Dockerfile
 describes, for a machine without the tools. A bind-mounted checkout is slow
 there, and the container and the machine do not share a Cargo target
