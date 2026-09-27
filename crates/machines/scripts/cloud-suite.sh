@@ -181,14 +181,21 @@ cpus=$(taskset -pc $$ | sed 's/.*: //')
 cpu=${cpus%%[-,]*}
 
 # The stand-in host: its mounts are shared, as systemd's are; /run and the
-# cgroup root are its own. Its namespace is made on $cpu (above).
-taskset -c "$cpu" unshare --mount --pid --fork --mount-proc --kill-child -- sh -c '
+# cgroup root are its own. Its namespace is made on $cpu (above). Its init
+# reaps the processes it adopts, as a host's init does: runsc takes a dead
+# Sentry that nobody reaped for a running one, and could not stop it.
+taskset -c "$cpu" unshare --mount --pid --fork --mount-proc --kill-child -- bash -c '
   set -e
   mount --make-rshared /
   mount -t tmpfs -o mode=0755 tmpfs /run
   mount -t tmpfs -o ro,mode=0755 tmpfs /sys/fs/cgroup
   echo ready > "$1"
-  exec sleep infinity' stand-in "$work/stand-in.ready" &
+  # bash reaps every child that ends while it waits, adopted ones included;
+  # the loop outlives any one sleep.
+  while :; do
+    sleep 3600 &
+    wait $! || :
+  done' stand-in "$work/stand-in.ready" &
 stand_in=$!
 for _ in $(seq 100); do
   [ -e "$work/stand-in.ready" ] && break
