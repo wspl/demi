@@ -649,8 +649,10 @@ each provider request while the block is replayed:         the held bytes
   `[<kind> not stored: <reason>]` in its result, so the turn goes on and no
   block names a blob that was not stored.
 - **Text in a medium's place.** A text that takes a tool medium's place in a
-  result, such as the one above, is a text part of its own that starts with
-  `[image` or `[video`, and no other text part of a tool result starts so.
+  result, such as the one above or a retired medium's
+  ([Retired tool media](#retired-tool-media)), is a text part of its own that
+  starts with `[image` or `[video`, and no other text part of a tool result
+  starts so.
   The page shows it where the medium was
   ([Media a tool returned](../product/file-previews.md#media-a-tool-returned)).
 - **References.** The transcript, the queued messages, the pending steers,
@@ -747,10 +749,8 @@ one of these holds:
   previous one carried the image.
 - A message's images, videos and documents are never retired: they come from
   the user's uploads.
-- The page shows the call as before. The renderers of the five tools draw its
-  stored `view`, which never held the image
-  ([Rendering boundary](#rendering-boundary)), and the generic tool card shows
-  the text as it shows any text part.
+- The page shows the text where the image or video was, as the model reads
+  it ([Media a tool returned](../product/file-previews.md#media-a-tool-returned)).
 - The agent owns the rule: which media are retired, when, and the text. The
   backend applies it to stored conversations
   ([Retention](../backend/storage.md#retention)).
