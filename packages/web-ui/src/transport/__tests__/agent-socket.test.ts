@@ -1,70 +1,50 @@
-import { afterEach, expect, jest, test } from 'bun:test'
+import { afterEach, beforeEach, expect, jest, test } from 'bun:test'
 import { AgentSocketError, connectAgentClient } from '../agent-socket'
+import { playSockets } from './test-socket'
 
-const realSocket = globalThis.WebSocket
-class FakeSocket extends EventTarget {
-  static latest: FakeSocket
-  closed = false
-  sent: string[] = []
-  constructor(_url: string) {
-    super()
-    FakeSocket.latest = this
-  }
-  send(data: string): void {
-    this.sent.push(data)
-  }
-  close(): void {
-    if (this.closed) {
-      return
-    }
-    this.closed = true
-    this.dispatchEvent(new Event('close'))
-  }
-}
+let sockets: ReturnType<typeof playSockets>
+beforeEach(() => {
+  sockets = playSockets()
+})
 afterEach(() => {
-  globalThis.WebSocket = realSocket
+  sockets.restore()
 })
 
 test('a socket that opens carries the client from then on', async () => {
-  // The fake takes the socket's place for the code under test; it has no type of the DOM's.
-  globalThis.WebSocket = FakeSocket as unknown as typeof WebSocket
   const opening = connectAgentClient('ws://fixture')
-  const socket = FakeSocket.latest
-  socket.dispatchEvent(new Event('open'))
+  const socket = sockets.last()
+  socket.open()
   const client = await opening
   client.cancelPendingSteer('steer')
-  expect(socket.sent.map((data) => JSON.parse(data))).toEqual([{ type: 'cancel_pending_steer', steerId: 'steer' }])
+  expect(socket.sent).toEqual([{ type: 'cancel_pending_steer', steerId: 'steer' }])
   let disconnected = false
   client.subscribe((event) => {
     disconnected ||= event.type === 'disconnected'
   })
-  socket.close()
+  socket.end()
   expect(disconnected).toBe(true)
 })
 
 test('a socket that closes before it opens is a connection failure, which the runtime retries', async () => {
-  globalThis.WebSocket = FakeSocket as unknown as typeof WebSocket
   const result = connectAgentClient('ws://fixture').catch((error) => error)
-  FakeSocket.latest.close()
+  sockets.last().end()
   expect(await result).toBeInstanceOf(AgentSocketError)
 })
 
 test('canceling socket startup closes the transport without waiting for its timeout', async () => {
-  globalThis.WebSocket = FakeSocket as unknown as typeof WebSocket
   const controller = new AbortController()
   const result = connectAgentClient('ws://fixture', controller.signal).catch((error) => error)
   controller.abort()
   expect(await result).toBeInstanceOf(Error)
-  expect(FakeSocket.latest.closed).toBe(true)
+  expect(sockets.last().closed).toBe(true)
 })
 
 test('a socket that brings nothing for 75 seconds is let go as broken, and each message, a heartbeat included, starts the silence again', async () => {
-  globalThis.WebSocket = FakeSocket as unknown as typeof WebSocket
   jest.useFakeTimers()
   try {
     const opening = connectAgentClient('ws://fixture')
-    const socket = FakeSocket.latest
-    socket.dispatchEvent(new Event('open'))
+    const socket = sockets.last()
+    socket.open()
     const client = await opening
     const endings: unknown[] = []
     client.subscribe((event) => {
@@ -73,7 +53,7 @@ test('a socket that brings nothing for 75 seconds is let go as broken, and each 
       }
     })
     jest.advanceTimersByTime(30_000)
-    socket.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'heartbeat' }) }))
+    socket.receive({ type: 'heartbeat' })
     jest.advanceTimersByTime(74_999)
     expect(endings).toEqual([])
     expect(socket.closed).toBe(false)
