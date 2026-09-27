@@ -8,6 +8,7 @@ use std::fmt;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, OnceLock};
 
 use object_store::ObjectStore;
@@ -519,6 +520,7 @@ impl Backend {
             site: Arc::new(Site {
                 public_url: config.public_url,
                 runner_releases: config.runner_releases,
+                origin_dropped: AtomicBool::new(false),
             }),
         };
         let edge = match Edge::start(config.address, state, config.web_directory).await {

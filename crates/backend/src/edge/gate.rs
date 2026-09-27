@@ -4,11 +4,12 @@
 //! `/api` path except the public entrances.
 
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use axum::extract::{FromRequestParts, Request, State};
 use axum::http::header::{HOST, ORIGIN, SET_COOKIE, UPGRADE};
 use axum::http::request::Parts;
-use axum::http::{HeaderMap, HeaderValue, StatusCode};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum_extra::extract::CookieJar;
@@ -21,6 +22,9 @@ use super::cookies::{self, SESSION_COOKIE};
 use super::error::ApiError;
 use crate::backend::Services;
 
+/// Fetch Metadata's header that says where a browser's request comes from.
+const SEC_FETCH_SITE: HeaderName = HeaderName::from_static("sec-fetch-site");
+
 /// Refuses a request that could act with the user's session and comes from
 /// a page other than the product's, with 403 `forbidden_origin`, before any
 /// route sees it. The browser sends the session cookie from every page of
@@ -29,18 +33,37 @@ use crate::backend::Services;
 /// when its method is unsafe or it upgrades the connection, as a WebSocket
 /// does. One without `Origin` passes: every browser sends `Origin` with such
 /// a request, so it comes from a program that is not a browser, such as
-/// curl, which could send any origin it liked.
+/// curl, which could send any origin it liked. A browser's request without
+/// `Origin` lost it at a proxy, which turns the check off: it passes too,
+/// and the edge warns about the proxy once.
 pub(super) async fn product_pages(State(site): State<Arc<Site>>, request: Request, next: Next) -> Response {
-    let acts = !request.method().is_safe() || request.headers().contains_key(UPGRADE);
-    if acts && from_another_page(request.headers(), site.public_url.as_ref()) {
-        return ApiError::new(
-            StatusCode::FORBIDDEN,
-            ErrorCode::ForbiddenOrigin,
-            "Only a page of the product acts with its session",
-        )
-        .into_response();
+    let headers = request.headers();
+    let acts = !request.method().is_safe() || headers.contains_key(UPGRADE);
+    if acts {
+        if from_another_page(headers, site.public_url.as_ref()) {
+            return ApiError::new(
+                StatusCode::FORBIDDEN,
+                ErrorCode::ForbiddenOrigin,
+                "Only a page of the product acts with its session",
+            )
+            .into_response();
+        }
+        if lost_origin(headers) && !site.origin_dropped.swap(true, Ordering::Relaxed) {
+            tracing::warn!(
+                path = request.uri().path(),
+                "a proxy in front of the backend drops the Origin header, so the check against requests \
+                 from other sites is off: a browser's request came with Sec-Fetch-Site and without Origin"
+            );
+        }
     }
     next.run(request).await
+}
+
+/// Whether a browser sent the request and a proxy dropped its `Origin`.
+/// Every current browser sends Fetch Metadata (`Sec-Fetch-Site`) to an HTTPS
+/// site or `localhost`, and `Origin` with each request the check covers.
+fn lost_origin(headers: &HeaderMap) -> bool {
+    !headers.contains_key(ORIGIN) && headers.contains_key(SEC_FETCH_SITE)
 }
 
 /// Whether the request's `Origin` names a page other than the product's. A
