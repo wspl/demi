@@ -62,6 +62,8 @@ export const useConversations = defineStore('conversations', () => {
   const listStatus = computed(() => product.load)
   const writes = new SerialQueue()
   const restored = new Set<string>()
+  /** Each conversation's draft as this page last saved or restored it, in the shape `changedDraft` compares. */
+  const savedDrafts = new Map<string, string>()
   const uploads = createConversationUploads(saveDrafts, (error) =>
     report('Could not upload the attachment', error),
   )
@@ -155,6 +157,33 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
+  /**
+   * A synced conversation's model is the one its record names, whichever
+   * page chose it (`web-api.md` § Sidebar mutations, read state and page
+   * synchronization): a page takes a model another page chose, with the
+   * model's default thinking effort and service tier, as its own switch does.
+   */
+  function followRecordModel(
+    conversation: Conversation,
+    record: Pick<ConversationSummary, 'providerId' | 'modelId'>,
+  ): void {
+    if (!record.providerId || !record.modelId) {
+      return
+    }
+    if (
+      conversation.model.providerId === record.providerId &&
+      conversation.model.modelId === record.modelId
+    ) {
+      return
+    }
+    conversation.model = {
+      providerId: record.providerId,
+      modelId: record.modelId,
+      thinkingEffort: null,
+      serviceTierId: null,
+    }
+  }
+
   /** A local draft has no backend record yet, so no resolved `cwd`; the first send brings it. */
   function newConversation(record: Omit<ConversationSummary, 'cwd'> & { cwd?: string }): Conversation {
     return {
@@ -212,6 +241,7 @@ export const useConversations = defineStore('conversations', () => {
         const contextChanged = current.contextVersion !== record.contextVersion
         const archiveChanged = current.archived !== record.archived
         Object.assign(current, metadata(record))
+        followRecordModel(current, record)
         // A snapshot read before the rename reached the backend must not show the old title again.
         current.title = pendingTitles.get(current.id) ?? current.title
         // Nor may one read before the title request arrived stop its button spinning.
@@ -298,6 +328,12 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
+  /**
+   * Saves the drafts this page changed since it last saved or restored them.
+   * Other tabs of this browser save to the same storage, so a draft this page
+   * did not change may be another tab's newer one; writing this page's copy
+   * of it would replace that.
+   */
   function saveDrafts(): void {
     const userId = session.user?.id ?? product.snapshot?.user.id
     if (!userId) {
@@ -309,6 +345,7 @@ export const useConversations = defineStore('conversations', () => {
         id: item.id,
         draft: persisted(item),
       }))
+      .filter((entry) => changedDraft(entry.id, entry.draft))
     const current = lifetime
     // IndexedDB serializes readwrite transactions; issue them now, including on pagehide.
     for (const entry of drafts) {
@@ -320,11 +357,28 @@ export const useConversations = defineStore('conversations', () => {
           ? deleteDraft(userId, entry.id)
           : writeDraft(userId, entry.id, entry.draft)
       void operation.catch((error) => {
+        // A draft that did not reach storage counts as changed, so the next
+        // save tries it again.
+        savedDrafts.delete(entry.id)
         if (current === lifetime) {
           storageError(error)
         }
       })
     }
+  }
+
+  /**
+   * Whether `draft` differs from what this page last saved or restored for
+   * the conversation; it becomes what the page saved. A file is compared by
+   * its id, name and upload, as the draft names it.
+   */
+  function changedDraft(id: string, draft: SavedDraft): boolean {
+    const shape = JSON.stringify(draft)
+    if (savedDrafts.get(id) === shape) {
+      return false
+    }
+    savedDrafts.set(id, shape)
+    return true
   }
 
   async function restoreLocalDrafts(): Promise<void> {
@@ -425,7 +479,19 @@ export const useConversations = defineStore('conversations', () => {
           conversation.pendingSend.error =
             'Sending was interrupted. Retry to confirm delivery.'
         }
-        conversation.model = draft.model
+        // A synced conversation's record names its model; the draft keeps
+        // this page's thinking effort and service tier for that model.
+        const named =
+          conversation.persistence === 'synced' &&
+          conversation.model.providerId !== '' &&
+          conversation.model.modelId !== ''
+        if (
+          !named ||
+          (draft.model.providerId === conversation.model.providerId &&
+            draft.model.modelId === conversation.model.modelId)
+        ) {
+          conversation.model = draft.model
+        }
         conversation.scroll = draft.scroll
         conversation.files = draft.files.map((file) =>
           file.kind === 'reference'
@@ -444,6 +510,9 @@ export const useConversations = defineStore('conversations', () => {
       storageError(error)
     }
     restored.add(conversation.id)
+    // The page starts from what storage held: saving the restored draft
+    // unchanged could only replace a newer one another tab saved since.
+    changedDraft(conversation.id, persisted(conversation))
     for (const file of conversation.files) {
       if (isComposerFile(file) && !file.upload) {
         void uploadFile(file).catch((error) => report('Could not upload the attachment', error))
@@ -454,6 +523,17 @@ export const useConversations = defineStore('conversations', () => {
   async function prepareModel(
     conversation: Conversation,
   ): Promise<ModelSelection> {
+    if (conversation.persistence === 'synced') {
+      // The `open` or `set_provider` this prepares names the record's model,
+      // even when another page switched it since the last poll.
+      await refreshSnapshot()
+      const record = product.snapshot?.conversations.find(
+        (item) => item.id === conversation.id,
+      )
+      if (record) {
+        followRecordModel(conversation, record)
+      }
+    }
     const pick = composerModel(
       resources.providerInfos,
       resources.modelsFor(),
@@ -511,6 +591,7 @@ export const useConversations = defineStore('conversations', () => {
       saveDrafts()
       items.value = items.value.filter((item) => item !== previous)
       restored.delete(previous.id)
+      savedDrafts.delete(previous.id)
       cache.delete(previous.id)
     }
     product.activeConversationId = id
@@ -523,8 +604,8 @@ export const useConversations = defineStore('conversations', () => {
     }
     try {
       await cache.open(conversation.id, (entry) => loadConversation(conversation, entry))
-      // A different view may have taken over a cached attachment. Navigation
-      // is a user action that can reopen it without refetching REST history.
+      // Navigation retries a connection whose opening failed, without
+      // refetching REST history; an open one is kept as it is.
       await cache.get(conversation.id)?.runtime?.connect()
     } catch {
       // The failure is the conversation's load state: the pane or the
@@ -1297,6 +1378,7 @@ export const useConversations = defineStore('conversations', () => {
     uploads.dispose(items.value)
     items.value = []
     restored.clear()
+    savedDrafts.clear()
     storageErrorReported = false
   }
 
