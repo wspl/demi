@@ -3,7 +3,7 @@
 
 use std::{rc::Rc, sync::Arc};
 
-use demi_agent_protocol::TranscriptVersion;
+use demi_agent_protocol::{TranscriptPatch, TranscriptVersion};
 use demi_core::{
     AbortBlock, AgentMessage, AgentMessageBlock, Block, BlockId, Clock, CompactionBoundaryBlock,
     CompactionMarkerBlock, ContextBlock, ErrorBlock, ModelSelection, ProviderErrorDiagnostics,
@@ -14,7 +14,10 @@ use demi_core::{
 use demi_provider::ToolCall;
 use serde_json::Value;
 
-use super::{INTERRUPTED_CODE, PatchBatch, journal::Journal};
+use super::{
+    INTERRUPTED_CODE, PatchBatch,
+    journal::{DirtyRows, Journal},
+};
 use crate::IdSource;
 
 /// A tool call the provider requested that has no result yet.
@@ -70,13 +73,9 @@ impl TranscriptLog {
     /// The patches recorded since the last call, as one batch that advances
     /// the revision; none when nothing changed.
     pub(crate) fn take_patches(&mut self) -> Option<PatchBatch> {
-        let (patches, touched) = self.journal.take()?;
-        self.revision += 1;
-        Some(PatchBatch {
-            revision: self.revision,
-            patches,
-            touched,
-        })
+        let batch = self.journal.take(self.revision + 1)?;
+        self.revision = batch.revision;
+        Some(batch)
     }
 
     pub(crate) fn push_user(
@@ -189,10 +188,22 @@ impl TranscriptLog {
     }
 
     /// Replaces every block with `blocks`, as a history rewrite publishes
-    /// its retained history: one `replace` patch.
-    pub(crate) fn replace_all(&mut self, blocks: Vec<Block>) {
+    /// its retained history, and answers the batch that publishes it: one
+    /// `replace` patch. The changes recorded before it are superseded, and
+    /// the rewrite's own save wrote its rows, so the batch marks none.
+    pub(crate) fn replace_all(&mut self, blocks: Vec<Block>) -> PatchBatch {
+        self.journal = Journal::default();
+        self.revision += 1;
+        let patches = vec![TranscriptPatch::Replace {
+            value: blocks.clone(),
+        }];
         self.blocks = blocks;
-        self.journal.replace_all(&self.blocks);
+        PatchBatch {
+            revision: self.revision,
+            patches,
+            touched: Vec::new(),
+            rows: DirtyRows::default(),
+        }
     }
 
     /// Inserts compaction's summary at `index`, where the kept history
