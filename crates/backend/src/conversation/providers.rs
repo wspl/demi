@@ -17,7 +17,8 @@ use std::sync::Arc;
 use demi_agent::{ProviderResolver, ResolveError};
 use demi_core::{Model, ModelSelection, NodeId};
 use demi_provider::{
-    ErrorCode, InferenceRequest, Provider, ProviderEvent, ProviderFailure, ProviderRun, ProviderRuntime, RuntimeEnv,
+    ErrorCode, InferenceRequest, Provider, ProviderEvent, ProviderFailure, ProviderRun, ProviderRuntime, RequestLimits,
+    RuntimeEnv,
 };
 use demi_web_api::ids::{ConversationId, ProviderId, UserId};
 use futures_util::future::LocalBoxFuture;
@@ -299,5 +300,15 @@ impl ProviderRuntime for ConversationRuntime {
 
     fn close(&mut self) -> LocalBoxFuture<'_, ()> {
         Box::pin(self.close_current())
+    }
+
+    /// The limits of the runtime that serves the session's requests; none
+    /// once the entry is gone, since its requests then fail before any
+    /// vendor.
+    fn request_limits(&self, model: &Model) -> RequestLimits {
+        match &self.current {
+            Some(current) => current.runtime.request_limits(model),
+            None => RequestLimits::default(),
+        }
     }
 }

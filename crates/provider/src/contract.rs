@@ -5,8 +5,8 @@
 use std::{num::NonZeroU32, sync::Arc};
 
 use demi_core::{
-    AuthState, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList, RuntimeState,
-    ThinkingConfig, Timestamp, TokenUsage, ToolResultContentBlock, UserContentBlock,
+    AuthState, Model, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
+    RuntimeState, ThinkingConfig, Timestamp, TokenUsage, ToolResultContentBlock, UserContentBlock,
 };
 use futures_util::{
     future::{BoxFuture, LocalBoxFuture},
@@ -115,6 +115,44 @@ pub trait ProviderRuntime {
     /// dropped without closing still has its process killed, without
     /// waiting.
     fn close(&mut self) -> LocalBoxFuture<'_, ()>;
+
+    /// What the vendor accepts in one request of `model`, however few tokens
+    /// it holds (`models.md` § Request limits).
+    fn request_limits(&self, model: &Model) -> RequestLimits;
+}
+
+/// What a vendor accepts in one request (`models.md` § Request limits). A
+/// limit the vendor does not document is none: a request it refuses as too
+/// large still leads to compaction.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RequestLimits {
+    /// The most bytes of a request body, as the vendor receives it.
+    pub body_bytes: Option<u64>,
+    /// The most images one request carries.
+    pub images: Option<u32>,
+}
+
+impl RequestLimits {
+    /// The OpenAI API's, which Codex's backend shares.
+    pub const OPENAI: Self = Self {
+        body_bytes: Some(512_000_000),
+        images: Some(1_500),
+    };
+
+    /// The Anthropic Messages API's for `model`, which Claude Code's CLI
+    /// sends its history to: 32 MB, and 100 images when the model's context
+    /// window is at most 200,000 tokens or unknown, 600 otherwise.
+    pub fn anthropic_messages(model: &Model) -> Self {
+        let images = if model.context_window <= 200_000 {
+            100
+        } else {
+            600
+        };
+        Self {
+            body_bytes: Some(32_000_000),
+            images: Some(images),
+        }
+    }
 }
 
 /// The events of one run.

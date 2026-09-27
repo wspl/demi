@@ -17,12 +17,12 @@ mod run;
 use std::sync::Arc;
 
 use demi_core::{
-    AuthState, Clock, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
+    AuthState, Clock, Model, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
     RuntimeState, Timestamp,
 };
 use demi_provider::{
     Capabilities, CatalogError, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
-    RuntimeEnv, RuntimeError,
+    RequestLimits, RuntimeEnv, RuntimeError,
     credentials::{Accounts, CredentialPool, SubscriptionAccounts},
     endpoint_url,
     quota::{ProviderQuota, QuotaSnapshotStore},
@@ -198,5 +198,10 @@ impl ProviderRuntime for GrokRuntime {
 
     fn close(&mut self) -> LocalBoxFuture<'_, ()> {
         Box::pin(async {})
+    }
+
+    /// The Grok Build proxy documents none.
+    fn request_limits(&self, _model: &Model) -> RequestLimits {
+        RequestLimits::default()
     }
 }

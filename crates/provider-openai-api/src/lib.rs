@@ -11,12 +11,12 @@ mod run;
 use std::sync::Arc;
 
 use demi_core::{
-    AuthState, Clock, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
+    AuthState, Clock, Model, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
     RuntimeState, Timestamp, WireApi,
 };
 use demi_provider::{
     Capabilities, CatalogError, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
-    RuntimeEnv, RuntimeError, Secret, endpoint_url, read_http_failure,
+    RequestLimits, RuntimeEnv, RuntimeError, Secret, endpoint_url, read_http_failure,
 };
 use futures_util::{
     StreamExt,
@@ -160,5 +160,11 @@ impl ProviderRuntime for OpenAiRuntime {
 
     fn close(&mut self) -> LocalBoxFuture<'_, ()> {
         Box::pin(async {})
+    }
+
+    /// The OpenAI API's, on either wire; a compatible vendor that takes less
+    /// refuses a request as too large, which compaction answers.
+    fn request_limits(&self, _model: &Model) -> RequestLimits {
+        RequestLimits::OPENAI
     }
 }

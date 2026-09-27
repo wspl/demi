@@ -13,7 +13,7 @@ use demi_agent::{
 use demi_agent_protocol::{ClientFrame, ServerFrame};
 use demi_core::{Block, Clock, ModelSelection, NodeId, Timestamp, TurnId, UserContentBlock};
 use demi_provider::{
-    InferenceItem, InferenceRequest, ProviderRun, ProviderRuntime,
+    InferenceItem, InferenceRequest, ProviderRun, ProviderRuntime, RequestLimits,
     testing::{FixedClock, ScriptedRuntime, Turn},
 };
 use demi_shell::{
@@ -232,6 +232,10 @@ impl ProviderRuntime for Model {
 
     fn close(&mut self) -> LocalBoxFuture<'_, ()> {
         Box::pin(async {})
+    }
+
+    fn request_limits(&self, _model: &demi_core::Model) -> RequestLimits {
+        RequestLimits::default()
     }
 }
 

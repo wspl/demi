@@ -10,12 +10,12 @@ mod stream;
 use std::sync::Arc;
 
 use demi_core::{
-    AuthState, Clock, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
+    AuthState, Clock, Model, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
     RuntimeState, Timestamp,
 };
 use demi_provider::{
     Capabilities, CatalogError, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
-    RuntimeEnv, RuntimeError, Secret, endpoint_url, read_http_failure,
+    RequestLimits, RuntimeEnv, RuntimeError, Secret, endpoint_url, read_http_failure,
 };
 use futures_util::{
     StreamExt,
@@ -126,5 +126,9 @@ impl ProviderRuntime for AnthropicRuntime {
 
     fn close(&mut self) -> LocalBoxFuture<'_, ()> {
         Box::pin(async {})
+    }
+
+    fn request_limits(&self, model: &Model) -> RequestLimits {
+        RequestLimits::anthropic_messages(model)
     }
 }

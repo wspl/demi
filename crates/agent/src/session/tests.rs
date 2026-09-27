@@ -400,6 +400,10 @@ impl ProviderRuntime for NumberedRuntime {
         self.log.borrow_mut().closed.push(self.number);
         self.script.close()
     }
+
+    fn request_limits(&self, model: &demi_core::Model) -> demi_provider::RequestLimits {
+        self.script.request_limits(model)
+    }
 }
 
 /// A run that streams `partial` and then waits until it is stopped.

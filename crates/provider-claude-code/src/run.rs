@@ -10,8 +10,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use async_stream::stream;
+use demi_core::Model;
 use demi_provider::{
-    InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun, ProviderRuntime,
+    InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun, ProviderRuntime, RequestLimits,
 };
 use futures_util::StreamExt as _;
 use futures_util::future::LocalBoxFuture;
@@ -67,6 +68,11 @@ impl ProviderRuntime for ClaudeCodeRuntime {
                 live.close().await;
             }
         })
+    }
+
+    /// The Anthropic API's, which the CLI sends its history to.
+    fn request_limits(&self, model: &Model) -> RequestLimits {
+        RequestLimits::anthropic_messages(model)
     }
 }
 
