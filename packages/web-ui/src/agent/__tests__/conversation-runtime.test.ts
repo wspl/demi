@@ -1,4 +1,4 @@
-import { expect, jest, test } from 'bun:test'
+import { expect, jest, spyOn, test } from 'bun:test'
 import type { PendingSteer } from '@demicodes/protocol'
 import { deferred, waitFor } from '@demicodes/utils'
 import { computed } from 'vue'
@@ -177,24 +177,32 @@ test('a queued message sent now steers the running turn, and runs next without a
   }
 })
 
-test('a view whose tree another client disposed opens it again, as after a lost connection', async () => {
+test('a view whose tree another client disposed opens it again after the first wait, as after a lost connection', async () => {
   const harnesses = [clientHarness(), clientHarness()]
   const current = state()
   let connects = 0
   const runtime = new ConversationRuntime({
     state: current,
     connect: async () => harnesses[connects++]!.client,
-    reconnect: { baseMs: 1, maxMs: 4 },
   })
+  jest.useFakeTimers()
+  const random = spyOn(Math, 'random').mockReturnValue(0)
   try {
     await runtime.connect()
     harnesses[0]!.receive({ type: 'closed' })
     expect(current.load).toBe('reconnecting')
-    await waitFor(() => current.load === 'ready')
+    jest.advanceTimersByTime(999)
+    await turn()
+    expect(connects).toBe(1)
+    jest.advanceTimersByTime(1)
+    await turn()
+    expect(current.load).toBe('ready')
     expect(connects).toBe(2)
     expect(harnesses[1]!.sent.map((frame) => frame.type)).toEqual(['open'])
     expect(runtime.connected).toBe(true)
   } finally {
+    random.mockRestore()
+    jest.useRealTimers()
     runtime.dispose()
   }
 })
@@ -218,7 +226,7 @@ test('a failure the session reported is over once another tab starts the next ac
   }
 })
 
-test('a connection that cannot be made is retried with backoff, never told as a failure', async () => {
+test('a connection that cannot be made is tried again after the page\'s waits, never told as a failure', async () => {
   const h = clientHarness()
   const current = state()
   let connects = 0
@@ -231,18 +239,33 @@ test('a connection that cannot be made is retried with backoff, never told as a 
       }
       return h.client
     },
-    reconnect: { baseMs: 1, maxMs: 4 },
   })
+  jest.useFakeTimers()
+  // The random part at its most halves each wait: half a second, then a second.
+  const random = spyOn(Math, 'random').mockReturnValue(1)
   try {
     const opening = runtime.connect()
-    await waitFor(() => connects === 2)
+    await turn()
+    expect(connects).toBe(1)
     expect(current.load).toBe('reconnecting')
     expect(current.lastError).toBeNull()
+    jest.advanceTimersByTime(499)
+    await turn()
+    expect(connects).toBe(1)
+    jest.advanceTimersByTime(1)
+    await turn()
+    expect(connects).toBe(2)
+    jest.advanceTimersByTime(999)
+    await turn()
+    expect(connects).toBe(2)
+    jest.advanceTimersByTime(1)
     await opening
     expect(connects).toBe(3)
     expect(current.load).toBe('ready')
     expect(current.lastError).toBeNull()
   } finally {
+    random.mockRestore()
+    jest.useRealTimers()
     runtime.dispose()
   }
 })
@@ -257,7 +280,6 @@ test('a session that refuses to open is a failure told once', async () => {
       connects += 1
       return clientHarness({ type: 'error', message: refusal, code: 'model_not_selected' }).client
     },
-    reconnect: { baseMs: 1, maxMs: 4 },
   })
   await expect(runtime.connect()).rejects.toThrow(refusal)
   expect(current.load).toBe('failed')
@@ -274,7 +296,6 @@ test('disposing during the backoff wait ends the retries', async () => {
       connects += 1
       throw new AgentSocketError('Agent socket failed to connect')
     },
-    reconnect: { baseMs: 50, maxMs: 50 },
   })
   jest.useFakeTimers()
   try {
