@@ -45,7 +45,11 @@ binary.
 
 The authenticated local management endpoint exposes status and drain. Draining
 stops admission, waits for active work, and releases the installation lock so
-the next runner, such as a newer release, can start.
+the next runner, such as a newer release, can start. A runner that drains or
+stops ends its backend connection in order: it sends the messages it has
+queued, then a WebSocket close frame (going away), and waits up to five
+seconds for the backend's close frame, so the backend sees the runner leave
+rather than lose it.
 [External command clients](commands.md#external-command-clients) defines local
 endpoint access and installer verification.
 

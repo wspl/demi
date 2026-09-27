@@ -11,7 +11,10 @@ use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tokio::net::{TcpListener, TcpStream};
-use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
+use tokio_tungstenite::{
+    WebSocketStream,
+    tungstenite::{Message, protocol::frame::coding::CloseCode},
+};
 use tokio_util::sync::CancellationToken;
 
 #[derive(serde::Deserialize)]
@@ -199,7 +202,23 @@ async fn backend_job_invokes_same_binary_alias_and_drain_releases_installation()
         .unwrap();
         assert_eq!(completion.exit_code, 0);
         eprintln!("mode test: drain acknowledged");
-        running.await.unwrap().unwrap();
+        // The drained runner ends its connection with a close frame and waits
+        // for the backend's, which this side sends as it reads on.
+        let (ended, closing) = tokio::join!(running, async {
+            let mut messages = Vec::new();
+            while let Some(message) = socket.next().await {
+                messages.push(message);
+            }
+            messages
+        });
+        ended.unwrap().unwrap();
+        assert!(
+            matches!(
+                closing.as_slice(),
+                [Ok(Message::Close(Some(frame)))] if frame.code == CloseCode::Away
+            ),
+            "{closing:?}"
+        );
         log.close().await;
         assert!(!state_dir.join("active.json").exists());
         state.lock().unwrap().release().unwrap();
