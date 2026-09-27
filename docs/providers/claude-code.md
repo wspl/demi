@@ -281,7 +281,15 @@ calls, named without the `mcp__<server>__` prefix the CLI gives tools it
 reaches over MCP. The `result` line ends the request: the run ends with a
 response carrying the usage of the CLI's last API call (the result's own usage
 when it lists no calls), or with an error when the CLI reports one, shown as
-the CLI worded it. That error's usage is not recorded: a run that fails ends
+the CLI worded it. For a call the vendor refused, the CLI first prints a made-up
+`assistant` line that carries `error` and whose text repeats the failure; that
+line gives no events, so the failure shows once. When the `result` names the
+vendor's HTTP status (`api_error_status`), the failure's code comes from that
+status by the rules of an HTTP failure
+([Failures and recovery](../agent/failures-and-recovery.md)), because the CLI
+words every refused call `API Error: <status> …`, which its words alone would
+read as `overloaded`; otherwise its words decide. That error's usage is not
+recorded: a run that fails ends
 with its error and carries no usage, so the
 [usage ledger](usage-and-quota.md#usage-ledger) has no row for it, while the
 account's quota still shows what the vendor counted. An `error` line, a failure
