@@ -12,8 +12,8 @@ use std::{
 
 use demi_agent_protocol::{ClientContent, ClientFrame, ServerFrame};
 use demi_core::{
-    B64Bytes, BlobRef, Block, Clock, Model, ModelSelection, NodeId, QueuedMessage, Timestamp,
-    UserContentBlock,
+    B64Bytes, BlobRef, Block, Clock, FileExtension, Model, ModelSelection, NodeId, QueuedMessage,
+    Timestamp, UserContentBlock,
 };
 use demi_provider::{ProviderRuntime, testing::ScriptedRuntime};
 use futures_util::future::LocalBoxFuture;
@@ -112,6 +112,13 @@ pub fn model_of(provider: &str, model: &str) -> ModelSelection {
         thinking: None,
         service_tier_id: None,
     }
+}
+
+/// As [`model_of`], for a model that reads `extensions` natively.
+pub fn model_reading(provider: &str, model: &str, extensions: &[FileExtension]) -> ModelSelection {
+    let mut selection = model_of(provider, model);
+    selection.model.accepted_extensions = Some(extensions.to_vec());
+    selection
 }
 
 /// The selection of the model `test-model` of the provider `stub`.

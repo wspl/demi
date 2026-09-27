@@ -8,14 +8,14 @@ use std::{rc::Rc, time::Duration};
 use demi_agent::{
     ServerConfig, attachments,
     store::media::BlobStore,
-    testing::{MemoryBlobs, MemoryTreeStore, TestClient, TestFiles, model_of},
+    testing::{MemoryBlobs, MemoryTreeStore, TestClient, TestFiles, model_of, model_reading},
 };
 use demi_agent_protocol::{
     AbortResult, AbortTarget, ClientContent, ClientFrame, ServerFrame, TranscriptPatch,
 };
 use demi_core::{
-    B64Bytes, Block, FailureSource, MediaSource, ModelSelection, SessionPhase, ThinkingConfig,
-    UserContentBlock,
+    B64Bytes, Block, FailureSource, FileExtension, MediaSource, ModelSelection, SessionPhase,
+    ThinkingConfig, UserContentBlock,
 };
 use demi_provider::{
     ErrorCode, InferenceItem, ProviderEvent,
@@ -235,6 +235,9 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
     };
     let store = MemoryTreeStore::with_blobs(blobs.clone());
     let fixture = Fixture::with(&script, store, ServerConfig::default());
+    fixture
+        .resolver
+        .select(model_reading("stub", "test-model", &[FileExtension::Png]));
     let files = TestFiles::new();
     files.upload("upload-1", resolved);
     let mut client =

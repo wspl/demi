@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use demi_core::{ModelSelection, ToolResultContentBlock, ToolView};
 use demi_gates::{GateLease, Reservation};
-use demi_provider::ToolDefinition;
+use demi_provider::{RequestLimits, ToolDefinition};
 use futures_util::future::LocalBoxFuture;
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
@@ -67,6 +67,9 @@ pub(crate) struct ToolInvocation {
     /// sets a shell result's preview budget, and the media it accepts what a
     /// result may attach.
     pub(crate) model: ModelSelection,
+    /// What that model's vendor takes in one request, which bounds the video
+    /// a result may attach.
+    pub(crate) request_limits: RequestLimits,
     /// The node's command-storage generation now, which a job the call
     /// starts records.
     pub(crate) generation: u64,

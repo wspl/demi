@@ -132,6 +132,7 @@ struct Script {
     turns: VecDeque<Turn>,
     requests: Vec<InferenceRequest>,
     closes: usize,
+    limits: RequestLimits,
 }
 
 impl ScriptedRuntime {
@@ -141,8 +142,17 @@ impl ScriptedRuntime {
                 turns: turns.into_iter().collect(),
                 requests: Vec::new(),
                 closes: 0,
+                limits: RequestLimits::default(),
             })),
         }
+    }
+
+    /// The runtime of a vendor that takes requests within `limits`, for
+    /// every model; by default it refuses nothing for its size.
+    #[must_use]
+    pub fn with_limits(self, limits: RequestLimits) -> Self {
+        self.script.borrow_mut().limits = limits;
+        self
     }
 
     /// Every request run so far, in order.
@@ -190,9 +200,8 @@ impl ProviderRuntime for ScriptedRuntime {
         Box::pin(async {})
     }
 
-    /// A scripted vendor refuses nothing for its size.
     fn request_limits(&self, _model: &Model) -> RequestLimits {
-        RequestLimits::default()
+        self.script.borrow().limits
     }
 }
 

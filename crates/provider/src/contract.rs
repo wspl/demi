@@ -235,11 +235,18 @@ pub enum InferenceItem {
         model_id: String,
         text: String,
         signature: Option<String>,
+        /// Compaction kept it after a summary, which replaced the history it
+        /// followed (`runtime.md` § Replay): a provider whose vendor checks
+        /// reasoning against that history leaves it out (`providers.md`
+        /// § Per vendor).
+        kept_past_summary: bool,
     },
     /// Opaque reasoning data, replayed as received.
     AssistantRedactedThinking {
         model_id: String,
         data: String,
+        /// As for [`Self::AssistantThinking`].
+        kept_past_summary: bool,
     },
     ToolUse {
         model_id: String,

@@ -364,10 +364,18 @@ fn item_content(item: &InferenceItem) -> Result<Option<(Role, Vec<Content<'_>>)>
             }],
         ),
         InferenceItem::AssistantThinking {
-            text, signature, ..
+            text,
+            signature,
+            kept_past_summary,
+            ..
         } => {
             // Unsigned thinking and another vendor's signature cannot be
-            // sent back; the vendor needs only its own.
+            // sent back; the vendor needs only its own. Reasoning kept past
+            // a summary would fail the vendor's check of the history before
+            // it, and leaving it out at the start of the history is allowed.
+            if *kept_past_summary {
+                return Ok(None);
+            }
             let Some(signature) = signature.as_deref().and_then(own) else {
                 return Ok(None);
             };
@@ -379,8 +387,12 @@ fn item_content(item: &InferenceItem) -> Result<Option<(Role, Vec<Content<'_>>)>
                 }],
             )
         }
-        InferenceItem::AssistantRedactedThinking { data, .. } => {
-            let Some(data) = own(data) else {
+        InferenceItem::AssistantRedactedThinking {
+            data,
+            kept_past_summary,
+            ..
+        } => {
+            let Some(data) = own(data).filter(|_| !kept_past_summary) else {
                 return Ok(None);
             };
             (Role::Assistant, vec![Block::RedactedThinking { data }])

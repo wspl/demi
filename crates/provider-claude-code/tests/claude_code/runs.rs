@@ -344,6 +344,7 @@ async fn a_new_process_receives_the_transcript_as_one_user_message_that_names_ea
             model_id: "claude-test".into(),
             text: "thinking".into(),
             signature: Some("signed".into()),
+            kept_past_summary: false,
         },
         tool_use("tool-1", "pwd"),
         tool_result("tool-1", "/tmp"),

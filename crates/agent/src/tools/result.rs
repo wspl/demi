@@ -7,6 +7,7 @@ use demi_core::{
     ToolMediaSource, ToolResultContentBlock, ToolView, model_accepts_media_type,
     sniff_model_media_type,
 };
+use demi_provider::RequestLimits;
 use demi_shell::{BinaryOutput, CommandState, CommandStatus};
 
 use crate::session::ToolOutcome;
@@ -64,12 +65,14 @@ pub(super) fn handle_required(status: &CommandStatus, budget_tokens: u32) -> boo
 }
 
 /// A shell tool's outcome for `status`: its text, a binary stdout's media or
-/// the reason there is none, and its view.
+/// the reason there is none, and its view. `model` is the call's, and its
+/// vendor takes requests within `limits`.
 pub(super) fn shell_outcome(
     status: &CommandStatus,
     budget_tokens: u32,
     expose_handle: bool,
     model: &Model,
+    limits: RequestLimits,
 ) -> ToolOutcome {
     let mut output = vec![ToolResultContentBlock::Text {
         text: result_text(status, budget_tokens, expose_handle),
@@ -79,7 +82,7 @@ pub(super) fn shell_outcome(
         ..
     } = &status.state
     {
-        let (block, note) = binary_verdict(binary, status.stdout.path.as_deref(), model);
+        let (block, note) = binary_verdict(binary, status.stdout.path.as_deref(), model, limits);
         output.extend(block);
         output.push(ToolResultContentBlock::Text { text: note });
     }
@@ -154,11 +157,14 @@ fn preview_lines(lines: &mut Vec<String>, status: &CommandStatus, budget_tokens:
 /// What a binary final stdout becomes (`runtime.md` § Results and previews):
 /// attached as an image or a video only when it is whole, its bytes are a
 /// type of the model-media table, the model accepts that type, and it fits
-/// its kind's cap; otherwise a note says why not and where the bytes are.
+/// its kind's cap, and a video only when its base64 takes at most half of
+/// the body `limits` allow; otherwise a note says why not and where the
+/// bytes are.
 fn binary_verdict(
     binary: &BinaryOutput,
     raw_path: Option<&str>,
     model: &Model,
+    limits: RequestLimits,
 ) -> (Option<ToolResultContentBlock>, String) {
     let media = sniff_model_media_type(&binary.bytes);
     let total = binary.info.total_bytes;
@@ -204,8 +210,21 @@ fn binary_verdict(
             ),
         );
     }
+    let data = B64Bytes::new(binary.bytes.clone());
+    let half_body = limits.body_bytes.map(|bytes| bytes / 2);
+    if media.kind == ModelMediaKind::Video
+        && let Some(half) = half_body.filter(|half| data.base64_len() > *half)
+    {
+        return (
+            None,
+            format!(
+                "Binary stdout is {} ({total} bytes), whose base64 takes more than {half} bytes, half of what this model's requests may carry; it was not attached and {place}. Produce a smaller version, with fewer frames or a lower resolution, and re-run.",
+                media.media_type
+            ),
+        );
+    }
     let source = ToolMediaSource::Binary {
-        data: B64Bytes::new(binary.bytes.clone()),
+        data,
         media_type: media.media_type.to_owned(),
     };
     let block = match media.kind {
@@ -373,7 +392,7 @@ mod tests {
             files: Vec::new(),
             truncated: true,
         });
-        let outcome = shell_outcome(&edited, 1_000, false, &test_model().model);
+        let outcome = shell_outcome(&edited, 1_000, false, &test_model().model, RequestLimits::default());
         assert_eq!(
             text_of(&outcome),
             ["status: exited\nexitCode: 0\npreviewBudgetTokens: 1000\npreview:\ndone\n"]
@@ -388,7 +407,7 @@ mod tests {
 
         let long = exited(&format!("{}tail", "x".repeat(4_200)));
         assert!(handle_required(&long, 1_000));
-        let text = text_of(&shell_outcome(&long, 1_000, true, &test_model().model))[0].to_owned();
+        let text = text_of(&shell_outcome(&long, 1_000, true, &test_model().model, RequestLimits::default()))[0].to_owned();
         for line in [
             "shellId: shell-1",
             "commandId: cmd-1",
@@ -412,19 +431,19 @@ mod tests {
         running.state = CommandState::Running { hint: None };
         assert!(handle_required(&running, 1_000));
         let text =
-            text_of(&shell_outcome(&running, 1_000, true, &test_model().model))[0].to_owned();
+            text_of(&shell_outcome(&running, 1_000, true, &test_model().model, RequestLimits::default()))[0].to_owned();
         assert!(text.contains("preview: (empty)"));
         assert!(text.ends_with("next: command is still running; check again with shell_status, or call yield to end this turn and be woken later, or shell_abort to stop it."));
         running.state = CommandState::Running {
             hint: Some("waiting for input: answer with shell_write".into()),
         };
         let text =
-            text_of(&shell_outcome(&running, 1_000, true, &test_model().model))[0].to_owned();
+            text_of(&shell_outcome(&running, 1_000, true, &test_model().model, RequestLimits::default()))[0].to_owned();
         assert!(text.ends_with("\nwaiting for input: answer with shell_write"));
         let mut aborted = exited("");
         aborted.state = CommandState::Aborted;
         let text =
-            text_of(&shell_outcome(&aborted, 1_000, true, &test_model().model))[0].to_owned();
+            text_of(&shell_outcome(&aborted, 1_000, true, &test_model().model, RequestLimits::default()))[0].to_owned();
         assert!(text.ends_with("next: command was intentionally stopped."));
     }
 
@@ -435,7 +454,10 @@ mod tests {
         let opaque = Bytes::from_static(b"\xde\xad\xbe\xef\xff\xfe\0\x01\x02\x03\x04\x05");
         let mut model = test_model().model;
         model.accepted_extensions = Some(vec![FileExtension::Png]);
-        let verdict = |bytes: &Bytes, truncated: bool, total: u64| {
+        let mut video_model = test_model().model;
+        video_model.accepted_extensions = Some(vec![FileExtension::Mp4]);
+        let limits = RequestLimits::default();
+        let verdict_of = |model: &Model, limits: RequestLimits, bytes: &Bytes, truncated: bool, total: u64| {
             let mut status = exited("<binary stdout>\n");
             status.state = CommandState::Exited {
                 exit_code: 0,
@@ -448,8 +470,11 @@ mod tests {
                     },
                 }),
             };
-            let outcome = shell_outcome(&status, 1_000, true, &model);
+            let outcome = shell_outcome(&status, 1_000, true, model, limits);
             text_of(&outcome)[1..].join(" | ")
+        };
+        let verdict = |bytes: &Bytes, truncated: bool, total: u64| {
+            verdict_of(&model, limits, bytes, truncated, total)
         };
         let place = "the raw bytes remain readable at /out/cmd-1/stdout.txt";
         assert_eq!(
@@ -460,6 +485,22 @@ mod tests {
             verdict(&mp4, false, 14),
             format!(
                 "Binary stdout is video/mp4, which this model does not accept natively; {place}."
+            )
+        );
+        // A video within the cap is attached while its base64 takes at most
+        // half of the body limit: its 14 bytes are 20 as base64.
+        let body = |bytes| RequestLimits {
+            body_bytes: Some(bytes),
+            images: None,
+        };
+        assert_eq!(
+            verdict_of(&video_model, body(40), &mp4, false, 14),
+            "<video> | Attached stdout as video/mp4 (14 bytes)."
+        );
+        assert_eq!(
+            verdict_of(&video_model, body(39), &mp4, false, 14),
+            format!(
+                "Binary stdout is video/mp4 (14 bytes), whose base64 takes more than 19 bytes, half of what this model's requests may carry; it was not attached and {place}. Produce a smaller version, with fewer frames or a lower resolution, and re-run."
             )
         );
         assert_eq!(
