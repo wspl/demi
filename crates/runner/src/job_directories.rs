@@ -1,8 +1,10 @@
 //! The installation's job directories (`runner.md` § Pipes and output): each
 //! shell job keeps its whole output, its recorded edits and its scratch
-//! directory in `jobs/<conversation>/job-<random>/`, under the conversation
-//! its command context names, in lowercase. A job's directory outlives the
-//! job, so a tool result can name a file in it, until the conversation's
+//! directory in `<job root>/<conversation>/job-<random>/`, under the
+//! conversation its command context names, in lowercase. The job root is
+//! `jobs/` in a paired device's installation state, and `/var/lib/demi/jobs`
+//! on a Cloud's system image, which a stop keeps. A job's directory outlives
+//! the job, so a tool result can name a file in it, until the conversation's
 //! release removes the conversation's directories (`resource-lifecycle.md`
 //! § Conversation release). The runner's `hello` names the conversations it
 //! holds directories for.
@@ -14,7 +16,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use demi_command_service::protocol::conversation_name;
 
-/// The job directories under one installation's `jobs/`.
+/// The job directories under one installation's job root.
 pub struct JobDirectories {
     root: PathBuf,
     /// The directories of the jobs that run. A `std` mutex, held on a
@@ -46,7 +48,7 @@ impl Drop for Running {
 }
 
 impl JobDirectories {
-    /// The directories under `root`, the installation's `jobs/`.
+    /// The directories under `root`, the installation's job root.
     pub fn new(root: PathBuf) -> Arc<Self> {
         Arc::new(Self {
             root,
@@ -54,7 +56,7 @@ impl JobDirectories {
         })
     }
 
-    /// The installation's `jobs/`, where the edit lock lives too.
+    /// The installation's job root, where the edit lock lives too.
     pub fn root(&self) -> &Path {
         &self.root
     }
