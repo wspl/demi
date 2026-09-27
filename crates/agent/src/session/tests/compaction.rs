@@ -8,7 +8,8 @@ use demi_provider::{PromptCache, ProviderFailure, RequestLimits};
 use super::*;
 use crate::{
     session::compaction::COMPACTION_SUMMARY_INSTRUCTION,
-    transcript::{RESUME_TEXT, estimate::block_tokens},
+    store::media::ModelView,
+    transcript::{RESUME_TEXT, RequestView, estimate::block_tokens},
 };
 
 /// A model whose window makes 800 tokens the threshold.
@@ -205,13 +206,10 @@ async fn a_history_over_the_threshold_is_compacted_before_the_turn_by_a_copy_tha
         unreachable!();
     };
     assert_eq!(marker.boundary_id, boundary.id);
-    assert_eq!(
-        marker.compacted_tokens,
-        blocks[..1]
-            .iter()
-            .map(|block| block_tokens(block, &HeldMedia::default()))
-            .sum::<u64>()
-    );
+    let summarized = ModelView::of(0, &blocks[..1], &HeldMedia::default()).unwrap();
+    let model = small_model().model;
+    let request = RequestView::new(&summarized, &model, RequestLimits::default());
+    assert_eq!(marker.compacted_tokens, block_tokens(&blocks[0], &request));
     assert_eq!(
         second.items.as_ref(),
         [
@@ -914,10 +912,10 @@ async fn a_resume_over_the_threshold_keeps_the_stopped_message_after_the_summary
  {
     let old_answer = format!("old answer {}", "a".repeat(1_200));
     let question = format!("question {}", "q".repeat(2_400));
-        answer(&old_answer),
-        answer("summary one"),
     let partial = format!("partial answer {}", "y".repeat(300));
     let provider = ScriptedRuntime::new([
+        answer(&old_answer),
+        answer("summary one"),
         partial_then_hang(&partial),
         // The first restored session: the summary, then the continuation.
         answer("resume summary"),
@@ -969,14 +967,14 @@ async fn a_resume_over_the_threshold_keeps_the_stopped_message_after_the_summary
     );
     let blocks = session.transcript().blocks;
     assert_eq!(
+        kinds(&blocks),
+        [
             "user",
             "compaction_boundary",
             "text",
             "response",
             "compaction_marker",
             "compaction_boundary",
-        kinds(&blocks),
-        [
             "user",
             "text",
             "abort",
@@ -1233,10 +1231,10 @@ async fn a_round_whose_usage_with_its_cache_reaches_the_threshold_summarizes_wha
 }
 
 #[tokio::test(flavor = "local")]
-        answer("first answer"),
-        answer("summary one"),
 async fn a_pass_with_nothing_to_summarize_but_the_last_summary_sends_no_request() {
     let provider = ScriptedRuntime::new([
+        answer("first answer"),
+        answer("summary one"),
         Turn::Events(vec![event::error(
             "the key expired",
             Some(ErrorCode::AuthExpired),

@@ -31,18 +31,12 @@ pub(crate) struct Replay {
     pub(crate) answered: usize,
 }
 
-/// What a request of `model`, whose vendor takes requests within `limits`,
-/// carries of `view`, the model's view of the replayed blocks.
-pub(crate) fn replay(view: &ModelView, model: &Model, limits: RequestLimits) -> Replay {
-    let blocks = &view.blocks;
+/// What `request` carries of its model's view.
+pub(crate) fn replay(request: &RequestView) -> Replay {
+    let blocks = &request.view.blocks;
     let start = replay_start(blocks);
     let answer = latest_answer(blocks);
     let kept = kept_past_summary(blocks, start);
-    let media = Media {
-        view,
-        model,
-        half_body: limits.body_bytes.map(|bytes| bytes / 2),
-    };
     let mut items = Vec::new();
     let mut answered = 0;
     for (index, block) in blocks.iter().enumerate().skip(start) {
@@ -53,7 +47,7 @@ pub(crate) fn replay(view: &ModelView, model: &Model, limits: RequestLimits) -> 
         match block {
             Block::User(user) => {
                 let preamble = user.preamble.iter().map(|text| bounded(text));
-                let content = user.content.iter().map(|part| media.user_part(part));
+                let content = user.content.iter().map(|part| request.user_part(part));
                 items.push(InferenceItem::UserMessage {
                     content: preamble.chain(content).collect(),
                 });
@@ -72,7 +66,7 @@ pub(crate) fn replay(view: &ModelView, model: &Model, limits: RequestLimits) -> 
                 content: steer
                     .content
                     .iter()
-                    .map(|part| media.user_part(part))
+                    .map(|part| request.user_part(part))
                     .collect(),
             }),
             Block::AgentMessage(receipt) => items.push(InferenceItem::UserSteer {
@@ -115,7 +109,11 @@ pub(crate) fn replay(view: &ModelView, model: &Model, limits: RequestLimits) -> 
                 if call.status != ToolCallStatus::Executing {
                     items.push(InferenceItem::ToolResult {
                         tool_use_id: call.tool_use_id.clone(),
-                        output: call.output.iter().map(|part| media.result(part)).collect(),
+                        output: call
+                            .output
+                            .iter()
+                            .map(|part| request.result(part))
+                            .collect(),
                         is_error: call.status == ToolCallStatus::Error,
                     });
                 }
@@ -147,13 +145,15 @@ fn kept_past_summary(blocks: &[Block], start: usize) -> std::ops::Range<usize> {
     start + 1..marker
 }
 
-/// How the media of the model's view reach a request's model
-/// (`runtime.md` § Replay, § Media): each with the bytes the session holds
-/// for it, within the types the model reads natively, each within half of
-/// its vendor's request body limit. A medium whose blob is missing, and any
-/// medium the model cannot take, reaches it as a text that names it, the
-/// same text in every request to that model.
-struct Media<'a> {
+/// A request of one model over the model's view (`runtime.md` § Replay,
+/// § Media): the one owner of what each medium becomes in that request.
+/// Each medium goes with the bytes the session holds for it, within the
+/// types the model reads natively, each within half of its vendor's
+/// request body limit. A medium whose blob is missing, and any medium the
+/// model cannot take, goes as a text that names it, the same text in every
+/// request to that model. Replay puts that into the request's items, and
+/// the token estimates weigh it (`compaction.md` § Block estimates).
+pub struct RequestView<'a> {
     view: &'a ModelView,
     model: &'a Model,
     /// Half of the body limit, the most base64 one medium may take; none
@@ -161,7 +161,27 @@ struct Media<'a> {
     half_body: Option<u64>,
 }
 
-impl Media<'_> {
+impl<'a> RequestView<'a> {
+    /// A request of `model`, whose vendor takes requests within `limits`,
+    /// over `view`.
+    pub fn new(view: &'a ModelView, model: &'a Model, limits: RequestLimits) -> Self {
+        Self {
+            view,
+            model,
+            half_body: limits.body_bytes.map(|bytes| bytes / 2),
+        }
+    }
+
+    /// The replayed blocks the request carries.
+    pub(crate) fn blocks(&self) -> &'a [Block] {
+        &self.view.blocks
+    }
+
+    /// The request's model.
+    pub(crate) fn model(&self) -> &'a Model {
+        self.model
+    }
+
     /// A message's part as the model receives it: a long text bounded, a
     /// reference as its text, an attachment record as its tag, and a medium
     /// with its bytes or as its text.
@@ -182,29 +202,26 @@ impl Media<'_> {
                     Err(text) => UserPart::Text(text),
                 }
             }
-            UserContentBlock::Document {
-                source:
-                    DocumentSource::Ref {
-                        r#ref,
-                        media_type,
-                        file_name,
-                    },
-            } => {
-                let accepted = accepts_document(self.model, media_type);
-                match self.bytes("document", r#ref, media_type, file_name, accepted) {
-                    Ok(bytes) => UserPart::Document {
+            UserContentBlock::Document { source } => match self.document(source) {
+                Ok(bytes) => {
+                    let DocumentSource::Ref { file_name, .. } = source;
+                    UserPart::Document {
                         bytes,
                         file_name: file_name.clone(),
-                    },
-                    Err(text) => UserPart::Text(text),
+                    }
                 }
-            }
+                Err(text) => UserPart::Text(text),
+            },
         }
     }
 
     /// A message's image or video: its URL, which names no type, since the
     /// vendor fetches what it names; or its held bytes, or its text.
-    fn medium(&self, kind: ModelMediaKind, source: &MediaSource) -> Result<Medium, String> {
+    pub(crate) fn medium(
+        &self,
+        kind: ModelMediaKind,
+        source: &MediaSource,
+    ) -> Result<Medium, String> {
         match source {
             MediaSource::Url { url } => Ok(Medium::Url(url.clone())),
             MediaSource::Ref { r#ref, media_type } => {
@@ -213,6 +230,17 @@ impl Media<'_> {
                     .map(Medium::Bytes)
             }
         }
+    }
+
+    /// A message's document: its held bytes, or its text.
+    pub(crate) fn document(&self, source: &DocumentSource) -> Result<MediaBytes, String> {
+        let DocumentSource::Ref {
+            r#ref,
+            media_type,
+            file_name,
+        } = source;
+        let accepted = accepts_document(self.model, media_type);
+        self.bytes("document", r#ref, media_type, file_name, accepted)
     }
 
     /// A tool result's part as the model receives it: a text bounded, a
@@ -244,7 +272,7 @@ impl Media<'_> {
     }
 
     /// A tool result's image or video: its held bytes, or its text.
-    fn tool_medium(
+    pub(crate) fn tool_medium(
         &self,
         kind: ModelMediaKind,
         source: &ToolMediaSource,
@@ -400,23 +428,27 @@ mod tests {
         });
         let kept = |blocks: &[Block]| -> Vec<(String, bool)> {
             let view = ModelView::of(0, blocks, &HeldMedia::default()).expect("no media to hold");
-            replay(&view, &model.model, RequestLimits::default())
-                .items
-                .into_iter()
-                .filter_map(|item| match item {
-                    InferenceItem::AssistantThinking {
-                        text,
-                        kept_past_summary,
-                        ..
-                    } => Some((text, kept_past_summary)),
-                    InferenceItem::AssistantRedactedThinking {
-                        data,
-                        kept_past_summary,
-                        ..
-                    } => Some((data, kept_past_summary)),
-                    _ => None,
-                })
-                .collect()
+            replay(&RequestView::new(
+                &view,
+                &model.model,
+                RequestLimits::default(),
+            ))
+            .items
+            .into_iter()
+            .filter_map(|item| match item {
+                InferenceItem::AssistantThinking {
+                    text,
+                    kept_past_summary,
+                    ..
+                } => Some((text, kept_past_summary)),
+                InferenceItem::AssistantRedactedThinking {
+                    data,
+                    kept_past_summary,
+                    ..
+                } => Some((data, kept_past_summary)),
+                _ => None,
+            })
+            .collect()
         };
         let compacted = [
             thinking("summarized"),
@@ -467,7 +499,12 @@ mod tests {
         });
         let view = ModelView::of(0, &[message], &HeldMedia::default()).expect("no media to hold");
         assert_eq!(
-            replay(&view, &model.model, RequestLimits::default()).items,
+            replay(&RequestView::new(
+                &view,
+                &model.model,
+                RequestLimits::default()
+            ))
+            .items,
             [InferenceItem::UserMessage {
                 content: vec![
                     UserPart::Text(reference.into()),
