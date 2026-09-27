@@ -641,6 +641,8 @@ same text. For example, after a switch to a model without video, a tool
 result's video reaches that model as
 `[video:video/mp4, not sent: the model does not accept it]` in every request,
 and a switch back sends the video again.
+The token estimates for a model weigh such a medium as that text
+([Block estimates](compaction.md#block-estimates)).
 
 Reasoning between the last `compaction_boundary` and its marker, which
 compaction kept after the summary, is marked as kept past a summary: the

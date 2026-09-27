@@ -5,16 +5,14 @@
 use std::borrow::Cow;
 
 use demi_core::{
-    BlobRef, Block, DocumentSource, MediaSource, ToolMediaSource, ToolResultContentBlock,
-    UserContentBlock,
+    B64Bytes, Block, DocumentSource, ModelMediaKind, ToolResultContentBlock, UserContentBlock,
 };
-use demi_provider::{InferenceItem, Medium, ResultPart, UserPart};
+use demi_provider::{InferenceItem, MediaBytes, Medium, ResultPart, UserPart};
 
-use super::{RESUME_TEXT, WAKEUP_TEXT, gone_text, replay_start};
-use crate::store::media::{Held, HeldMedia, missing_text};
+use super::{RESUME_TEXT, WAKEUP_TEXT, gone_text, replay::RequestView, replay_start};
 
 /// An image with its bytes weighs at least this many tokens, as does an
-/// image the model fetches by URL, and one nothing is held for.
+/// image the model fetches by URL.
 const IMAGE_TOKENS: u64 = 1_600;
 /// Bytes per token of an image with its bytes.
 const IMAGE_BYTES_PER_TOKEN: u64 = 1_000;
@@ -27,28 +25,28 @@ pub fn text_tokens(text: &str) -> u64 {
     byte_count(text.len()).div_ceil(4)
 }
 
-/// A block's estimate: the estimate of its text plus the weight of its
-/// media, each with what `media` holds for it (`compaction.md` § Block
-/// estimates). A medium whose blob is missing counts as its text; one that
-/// nothing is held for, as in blocks read from frames, weighs what an
-/// image by URL weighs, and a document nothing.
-pub fn block_tokens(block: &Block, media: &HeldMedia) -> u64 {
-    text_tokens(&block_text(block, media)) + media_tokens(block, media)
+/// A block's estimate in `request`: the estimate of its text plus the
+/// weight of its media, each as the request carries it (`compaction.md`
+/// § Block estimates): with its bytes, weighed by them, or as the text that
+/// names it, which counts as text.
+pub fn block_tokens(block: &Block, request: &RequestView) -> u64 {
+    let (text, media) = block_estimate(block, request);
+    text_tokens(&text) + media
 }
 
-/// The estimate of the next request over `blocks`, whose media weigh what
-/// `media` holds for them. It is anchored on the latest usage a provider
-/// reported after the last compaction: that usage plus the estimates of the
-/// blocks after it. There is no anchor when a compaction came after that
-/// response, when the last compaction has no marker yet, or when the usage
-/// is larger than `context_window`, which one request's usage cannot be;
-/// then the estimate is the sum of the blocks from the last compaction
-/// boundary on.
-pub fn context_tokens(blocks: &[Block], media: &HeldMedia, context_window: Option<u32>) -> u64 {
-    let anchor = usage_anchor(blocks).filter(|(_, tokens)| {
-        context_window.is_none_or(|window| window == 0 || *tokens <= u64::from(window))
-    });
-    let estimate = |block: &Block| block_tokens(block, media);
+/// The estimate of `request`, the next request of its model. It is anchored
+/// on the latest usage a provider reported after the last compaction: that
+/// usage plus the estimates of the blocks after it. There is no anchor when
+/// a compaction came after that response, when the last compaction has no
+/// marker yet, or when the usage is larger than the model's context window,
+/// which one request's usage cannot be; then the estimate is the sum of the
+/// blocks from the last compaction boundary on.
+pub fn context_tokens(request: &RequestView) -> u64 {
+    let blocks = request.blocks();
+    let window = request.model().context_window;
+    let anchor =
+        usage_anchor(blocks).filter(|(_, tokens)| window == 0 || *tokens <= u64::from(window));
+    let estimate = |block: &Block| block_tokens(block, request);
     if let Some((index, tokens)) = anchor {
         return tokens + blocks[index + 1..].iter().map(estimate).sum::<u64>();
     }
@@ -181,11 +179,24 @@ fn usage_anchor(blocks: &[Block]) -> Option<(usize, u64)> {
     None
 }
 
-/// The text a block's estimate counts.
-fn block_text(block: &Block, media: &HeldMedia) -> String {
-    match block {
-        Block::User(user) => content_text(&user.content, media),
-        Block::Steer(steer) => content_text(&steer.content, media),
+/// The text a block's estimate counts, and the weight of its media.
+fn block_estimate(block: &Block, request: &RequestView) -> (String, u64) {
+    let text = match block {
+        Block::User(user) => return content_estimate(&user.content, request),
+        Block::Steer(steer) => return content_estimate(&steer.content, request),
+        Block::ToolCall(call) => {
+            let mut lines = vec![
+                Cow::Borrowed(call.tool_name.as_str()),
+                Cow::Borrowed(call.input.as_str()),
+            ];
+            let mut media = 0;
+            for part in &call.output {
+                let (line, weight) = result_estimate(part, request);
+                lines.push(line);
+                media += weight;
+            }
+            return (lines.join("\n"), media);
+        }
         Block::Wakeup(_) => WAKEUP_TEXT.to_owned(),
         Block::Context(context) => context.text.clone(),
         Block::AgentMessage(receipt) => {
@@ -195,27 +206,6 @@ fn block_text(block: &Block, media: &HeldMedia) -> String {
         Block::Thinking(thinking) => thinking.text.clone(),
         Block::RedactedThinking(redacted) => redacted.data.clone(),
         Block::Text(text) => text.text.clone(),
-        Block::ToolCall(call) => {
-            let mut lines = vec![
-                Cow::Borrowed(call.tool_name.as_str()),
-                Cow::Borrowed(call.input.as_str()),
-            ];
-            lines.extend(call.output.iter().map(|part| match part {
-                ToolResultContentBlock::Text { text } => Cow::Borrowed(text.as_str()),
-                ToolResultContentBlock::Image {
-                    source: ToolMediaSource::Ref { r#ref, media_type },
-                } => medium_line("image", r#ref, Cow::Borrowed(media_type), media),
-                ToolResultContentBlock::Video {
-                    source: ToolMediaSource::Ref { r#ref, media_type },
-                } => medium_line("video", r#ref, Cow::Borrowed(media_type), media),
-                ToolResultContentBlock::Gone {
-                    kind,
-                    media_type,
-                    cause,
-                } => Cow::Owned(gone_text(*kind, media_type, cause)),
-            }));
-            lines.join("\n")
-        }
         Block::Response(response) => {
             serde_json::to_string(&response.usage).expect("token usage serializes to JSON")
         }
@@ -223,126 +213,95 @@ fn block_text(block: &Block, media: &HeldMedia) -> String {
         Block::Abort(_) => "aborted".to_owned(),
         Block::CompactionBoundary(boundary) => boundary.summary.clone(),
         Block::CompactionMarker(marker) => marker.compacted_tokens.to_string(),
+    };
+    (text, 0)
+}
+
+/// A message's content: one line per part, and the weight of its media.
+fn content_estimate(content: &[UserContentBlock], request: &RequestView) -> (String, u64) {
+    let mut lines = Vec::with_capacity(content.len());
+    let mut media = 0;
+    for part in content {
+        let (line, weight) = content_part_estimate(part, request);
+        lines.push(line);
+        media += weight;
     }
+    (lines.join("\n"), media)
 }
 
-/// One line per part of a message's content.
-fn content_text(content: &[UserContentBlock], media: &HeldMedia) -> String {
-    content
-        .iter()
-        .map(|part| match part {
-            UserContentBlock::Text { text } => Cow::Borrowed(text.as_str()),
-            UserContentBlock::Image {
-                source: MediaSource::Ref { r#ref, media_type },
-            } => medium_line("image", r#ref, Cow::Borrowed(media_type), media),
-            UserContentBlock::Video {
-                source: MediaSource::Ref { r#ref, media_type },
-            } => medium_line("video", r#ref, Cow::Borrowed(media_type), media),
-            UserContentBlock::Image {
-                source: MediaSource::Url { url },
-            }
-            | UserContentBlock::Video {
-                source: MediaSource::Url { url },
-            } => Cow::Borrowed(url.as_str()),
-            UserContentBlock::Document {
-                source:
-                    DocumentSource::Ref {
-                        r#ref,
-                        media_type,
-                        file_name,
-                    },
-            } => medium_line(
-                "document",
-                r#ref,
-                Cow::Owned(format!("{file_name} {media_type}")),
-                media,
-            ),
-            UserContentBlock::Reference { reference } => Cow::Borrowed(reference.as_str()),
-            UserContentBlock::Attachment(attachment) => {
-                Cow::Owned(format!("{} {}", attachment.name, attachment.path))
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-/// The line of the medium of `kind` that `blob` names: `line`, or the
-/// medium's text when its blob is missing.
-fn medium_line<'a>(
-    kind: &str,
-    blob: &BlobRef,
-    line: Cow<'a, str>,
-    media: &HeldMedia,
-) -> Cow<'a, str> {
-    match media.get(blob) {
-        Some(Held::Missing) => Cow::Owned(missing_text(kind, blob)),
-        Some(Held::Bytes(_)) | None => line,
-    }
-}
-
-/// The weight of a block's images and documents; videos weigh nothing.
-fn media_tokens(block: &Block, media: &HeldMedia) -> u64 {
-    match block {
-        Block::User(user) => user
-            .content
-            .iter()
-            .map(|part| content_media_tokens(part, media))
-            .sum(),
-        Block::Steer(steer) => steer
-            .content
-            .iter()
-            .map(|part| content_media_tokens(part, media))
-            .sum(),
-        Block::ToolCall(call) => call
-            .output
-            .iter()
-            .map(|part| match part {
-                ToolResultContentBlock::Image {
-                    source: ToolMediaSource::Ref { r#ref, .. },
-                } => image_weight(r#ref, media),
-                ToolResultContentBlock::Text { .. }
-                | ToolResultContentBlock::Video { .. }
-                | ToolResultContentBlock::Gone { .. } => 0,
-            })
-            .sum(),
-        _ => 0,
-    }
-}
-
-fn content_media_tokens(part: &UserContentBlock, media: &HeldMedia) -> u64 {
+/// A message's part: its line, and the weight of the medium the request
+/// carries. An image or a video is its URL or media type, a document
+/// `<fileName> <mediaType>`, and a medium the request carries as text that
+/// text; videos weigh nothing.
+fn content_part_estimate<'a>(
+    part: &'a UserContentBlock,
+    request: &RequestView,
+) -> (Cow<'a, str>, u64) {
     match part {
-        UserContentBlock::Image {
-            source: MediaSource::Ref { r#ref, .. },
-        } => image_weight(r#ref, media),
-        UserContentBlock::Image {
-            source: MediaSource::Url { .. },
-        } => IMAGE_TOKENS,
-        UserContentBlock::Document {
-            source: DocumentSource::Ref { r#ref, .. },
-        } => match media.get(r#ref) {
-            Some(Held::Bytes(data)) => byte_count(data.len()).div_ceil(DOCUMENT_BYTES_PER_TOKEN),
-            Some(Held::Missing) | None => 0,
+        UserContentBlock::Text { text } => (Cow::Borrowed(text.as_str()), 0),
+        UserContentBlock::Reference { reference } => (Cow::Borrowed(reference.as_str()), 0),
+        UserContentBlock::Attachment(attachment) => (
+            Cow::Owned(format!("{} {}", attachment.name, attachment.path)),
+            0,
+        ),
+        UserContentBlock::Image { source } => match request.medium(ModelMediaKind::Image, source) {
+            Ok(Medium::Bytes(MediaBytes { data, media_type })) => {
+                (Cow::Owned(media_type), image_weight(&data))
+            }
+            Ok(Medium::Url(url)) => (Cow::Owned(url), IMAGE_TOKENS),
+            Err(text) => (Cow::Owned(text), 0),
         },
-        UserContentBlock::Text { .. }
-        | UserContentBlock::Video { .. }
-        | UserContentBlock::Reference { .. }
-        | UserContentBlock::Attachment(_) => 0,
+        UserContentBlock::Video { source } => match request.medium(ModelMediaKind::Video, source) {
+            Ok(Medium::Bytes(MediaBytes { media_type, .. })) => (Cow::Owned(media_type), 0),
+            Ok(Medium::Url(url)) => (Cow::Owned(url), 0),
+            Err(text) => (Cow::Owned(text), 0),
+        },
+        UserContentBlock::Document { source } => match request.document(source) {
+            Ok(MediaBytes { data, media_type }) => {
+                let DocumentSource::Ref { file_name, .. } = source;
+                (
+                    Cow::Owned(format!("{file_name} {media_type}")),
+                    byte_count(data.len()).div_ceil(DOCUMENT_BYTES_PER_TOKEN),
+                )
+            }
+            Err(text) => (Cow::Owned(text), 0),
+        },
     }
 }
 
-/// The weight of the image `blob` names: by its bytes, nothing when its
-/// blob is missing, since it counts as its text, and what an image by URL
-/// weighs when nothing is held for it.
-fn image_weight(blob: &BlobRef, media: &HeldMedia) -> u64 {
-    match media.get(blob) {
-        Some(Held::Bytes(data)) => {
-            IMAGE_TOKENS.max(byte_count(data.len()).div_ceil(IMAGE_BYTES_PER_TOKEN))
+/// A tool result's part: its line, and the weight of the medium the
+/// request carries. A medium is its media type, or the text the request
+/// carries in its place, and a medium that is gone is its text.
+fn result_estimate<'a>(
+    part: &'a ToolResultContentBlock,
+    request: &RequestView,
+) -> (Cow<'a, str>, u64) {
+    let (kind, source) = match part {
+        ToolResultContentBlock::Text { text } => return (Cow::Borrowed(text.as_str()), 0),
+        ToolResultContentBlock::Gone {
+            kind,
+            media_type,
+            cause,
+        } => return (Cow::Owned(gone_text(*kind, media_type, cause)), 0),
+        ToolResultContentBlock::Image { source } => (ModelMediaKind::Image, source),
+        ToolResultContentBlock::Video { source } => (ModelMediaKind::Video, source),
+    };
+    match request.tool_medium(kind, source) {
+        Ok(MediaBytes { data, media_type }) => {
+            let weight = match kind {
+                ModelMediaKind::Image => image_weight(&data),
+                ModelMediaKind::Video => 0,
+            };
+            (Cow::Owned(media_type), weight)
         }
-        Some(Held::Missing) => 0,
-        None => IMAGE_TOKENS,
+        Err(text) => (Cow::Owned(text), 0),
     }
 }
 
+/// The weight of an image the request carries with its bytes.
+fn image_weight(data: &B64Bytes) -> u64 {
+    IMAGE_TOKENS.max(byte_count(data.len()).div_ceil(IMAGE_BYTES_PER_TOKEN))
+}
 fn byte_count(bytes: usize) -> u64 {
     u64::try_from(bytes).expect("a length fits in 64 bits")
 }
@@ -350,12 +309,17 @@ fn byte_count(bytes: usize) -> u64 {
 #[cfg(test)]
 mod tests {
     use demi_core::{
-        B64Bytes, CompactionBoundaryBlock, CompactionMarkerBlock, ResponseBlock, TextBlock,
-        Timestamp, TokenUsage, TurnId, UserBlock,
+        BlobRef, CompactionBoundaryBlock, CompactionMarkerBlock, FileExtension, MediaSource, Model,
+        ResponseBlock, TextBlock, Timestamp, TokenUsage, ToolCallBlock, ToolCallStatus,
+        ToolMediaSource, TurnId, UserBlock,
     };
+    use demi_provider::RequestLimits;
 
     use super::*;
-    use crate::testing::test_model;
+    use crate::{
+        store::media::{HeldMedia, ModelView},
+        testing::{model_reading, test_model},
+    };
 
     fn user(id: &str, text: &str) -> Block {
         Block::User(UserBlock {
@@ -382,6 +346,15 @@ mod tests {
         })
     }
 
+    /// The estimate of the next request over `blocks`, which hold no media,
+    /// to a model whose context window is `window`.
+    fn estimate(blocks: &[Block], window: u32) -> u64 {
+        let view = ModelView::of(0, blocks, &HeldMedia::default()).expect("no media to hold");
+        let mut model = test_model().model;
+        model.context_window = window;
+        context_tokens(&RequestView::new(&view, &model, RequestLimits::default()))
+    }
+
     #[test]
     fn the_latest_usage_anchors_the_estimate_unless_it_exceeds_the_window() {
         let answer = Block::Text(TextBlock {
@@ -398,13 +371,12 @@ mod tests {
         ];
         // Anchored: the reported usage replaces the much larger estimate of
         // the text.
-        let none = HeldMedia::default();
-        assert_eq!(context_tokens(&blocks, &none, None), 1_384);
+        assert_eq!(estimate(&blocks, 1_000_000), 1_384);
         blocks.push(user("u2", &"y".repeat(4_000)));
-        assert_eq!(context_tokens(&blocks, &none, None), 1_384 + 1_000);
+        assert_eq!(estimate(&blocks, 1_000_000), 1_384 + 1_000);
         // A usage above the window is a provider reporting something else.
         blocks.push(response("r2", 2_000_000));
-        let unanchored = context_tokens(&blocks, &none, Some(1_000_000));
+        let unanchored = estimate(&blocks, 1_000_000);
         assert!(unanchored > 10_000 && unanchored < 20_000, "{unanchored}");
     }
 
@@ -432,14 +404,19 @@ mod tests {
         ];
         // Without the anchor: the boundary's summary, the user text, the
         // usage's JSON and the marker's count.
-        assert!(context_tokens(&blocks, &HeldMedia::default(), None) < 10_000);
+        assert!(estimate(&blocks, 1_000_000) < 10_000);
     }
 
+    /// A medium weighs what the request to its model carries: its bytes, by
+    /// them, or the text that names it, as text. A model that does not read
+    /// a type, or a vendor whose requests it would take more than half of,
+    /// gets the text.
     #[test]
-    fn images_and_documents_weigh_by_their_held_bytes() {
+    fn a_medium_weighs_what_the_request_to_its_model_carries() {
         let image = B64Bytes::from(vec![0; 3_000_000]);
         let document = B64Bytes::from(vec![1; 40_000]);
-        let user = Block::User(UserBlock {
+        let screenshot = B64Bytes::from(vec![2; 1_800_000]);
+        let message = Block::User(UserBlock {
             id: "u".try_into().unwrap(),
             turn_id: TurnId::try_from("turn").unwrap(),
             created_at: Timestamp::UNIX_EPOCH,
@@ -466,16 +443,79 @@ mod tests {
             ],
             preamble: None,
         });
+        let call = Block::ToolCall(ToolCallBlock {
+            id: "c".try_into().unwrap(),
+            created_at: Timestamp::UNIX_EPOCH,
+            model: test_model(),
+            tool_use_id: "call-1".into(),
+            tool_name: "shoot".into(),
+            input: "{}".into(),
+            status: ToolCallStatus::Completed,
+            output: vec![ToolResultContentBlock::Image {
+                source: ToolMediaSource::Ref {
+                    r#ref: BlobRef::of(&screenshot),
+                    media_type: "image/png".into(),
+                },
+            }],
+            view: None,
+        });
         let mut held = HeldMedia::default();
-        held.hold(BlobRef::of(&image), image);
-        held.hold(BlobRef::of(&document), document);
-        let text = text_tokens("image/png\nhttps://example.com/a.png\ndoc.pdf application/pdf");
-        assert_eq!(block_tokens(&user, &held), text + 3_000 + 1_600 + 10_000);
-        // Held by reference only, as blocks read from frames are: an image
-        // weighs what one by URL weighs, and a document nothing.
+        for bytes in [&image, &document, &screenshot] {
+            held.hold(BlobRef::of(bytes), bytes.clone());
+        }
+        let blocks = [message, call];
+        let view = ModelView::of(0, &blocks, &held).unwrap();
+        let reads = model_reading("stub", "reads", &[FileExtension::Png, FileExtension::Pdf]).model;
+        let blind = model_reading("stub", "blind", &[]).model;
+        let weigh = |model: &Model, limits| {
+            let request = RequestView::new(&view, model, limits);
+            blocks.each_ref().map(|block| block_tokens(block, &request))
+        };
+        let unlimited = RequestLimits::default();
+        let unread = |kind: &str, name: &str| {
+            format!("[{kind}:{name}, not sent: the model does not accept it]")
+        };
+
+        // Each with its bytes.
         assert_eq!(
-            block_tokens(&user, &HeldMedia::default()),
-            text + 1_600 + 1_600
+            weigh(&reads, unlimited),
+            [
+                text_tokens("image/png\nhttps://example.com/a.png\ndoc.pdf application/pdf")
+                    + 3_000
+                    + 1_600
+                    + 10_000,
+                text_tokens("shoot\n{}\nimage/png") + 1_800
+            ]
+        );
+        // A model that reads neither type: the texts, and the image it
+        // fetches by URL.
+        assert_eq!(
+            weigh(&blind, unlimited),
+            [
+                text_tokens(&format!(
+                    "{}\nhttps://example.com/a.png\n{}",
+                    unread("image", "image/png"),
+                    unread("document", "doc.pdf")
+                )) + 1_600,
+                text_tokens(&format!("shoot\n{{}}\n{}", unread("image", "image/png")))
+            ]
+        );
+        // Requests of 5 MB: the 3 MB image takes 4 MB as base64, over half,
+        // and the screenshot 2.4 MB.
+        let small = RequestLimits {
+            body_bytes: Some(5_000_000),
+            images: None,
+        };
+        let too_large = "[image:image/png, not sent: too large for the model's requests]";
+        assert_eq!(
+            weigh(&reads, small),
+            [
+                text_tokens(&format!(
+                    "{too_large}\nhttps://example.com/a.png\ndoc.pdf application/pdf"
+                )) + 1_600
+                    + 10_000,
+                text_tokens("shoot\n{}\nimage/png") + 1_800
+            ]
         );
     }
 }

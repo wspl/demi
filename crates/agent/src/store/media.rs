@@ -97,7 +97,7 @@ impl HeldMedia {
 /// the blocks as the transcript holds them, by reference, with what the
 /// session holds for each medium they reference. Replay, the token
 /// estimates and compaction read it.
-pub(crate) struct ModelView {
+pub struct ModelView {
     /// Where the blocks start in the transcript.
     pub(crate) start: usize,
     pub(crate) blocks: Vec<Block>,
@@ -108,7 +108,7 @@ impl ModelView {
     /// The view of `blocks`, which start at `start` in the transcript, with
     /// what `held` holds for their media. When nothing is held for some of
     /// them, there is no view yet: the blobs to read first.
-    pub(crate) fn of(
+    pub fn of(
         start: usize,
         blocks: &[Block],
         held: &HeldMedia,
