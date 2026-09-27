@@ -151,6 +151,22 @@ events. Context changes, archive changes, removal, retry, and account cleanup
 invalidate the appropriate entries. Disposing a browser runtime closes its
 attachment without stopping the backend task. Reload starts a new browser cache.
 
+A conversation open in several tabs or browsers is live and usable in each.
+For example, the user sends a message in one tab: a second tab shows the
+message, the reply as it streams and each tool call, and its Stop stops the
+turn. Every tab shows the same messages, running output, phase, queue,
+pending steers and subagents; every tab can send, steer, queue, stop, edit,
+retry, switch the model and write to a running command; and what one tab does
+shows in all of them. Opening the conversation in another tab takes nothing
+over. A draft not yet sent stays in the tab it was typed in. Each tab has its
+own socket, attached to the conversation's one live tree
+([Connections and the live tree](../agent/runtime.md#connections-and-the-live-tree)),
+and every tab names the model the conversation's record holds
+([page synchronization](web-api.md#sidebar-mutations-read-state-and-page-synchronization)).
+A tab whose socket is lost, or whose tree another client disposed with
+`close`, opens the conversation again the same way and shows the tree as the
+backend then has it.
+
 ## Authentication
 
 The page holds one session state: checking, signed out, or signed in with an

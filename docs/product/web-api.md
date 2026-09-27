@@ -557,6 +557,20 @@ up to 100 `{ id, patch }` items and returns 207 with an outcome per item:
 `{ id, status: "refused", code, message }` for a conversation the caller does
 not have.
 
+A conversation's model is the provider entry and model its record names. The
+page's model picker changes it with `PATCH model`, and the backend also
+records the model of every `open` and `set_provider` frame on the
+conversation's socket. Every page of the conversation shows that model: when
+a snapshot's record names another model than a page shows, the page takes it,
+with the model's default thinking effort and service tier, as a switch in that
+page would. A page reads the snapshot again right before it opens the
+conversation's socket or changes its model selection, so the `open` or
+`set_provider` it sends names the model another page chose last, never one
+that was replaced ([Connections and the live tree](../agent/runtime.md#connections-and-the-live-tree)).
+The thinking effort and the service tier are not part of the record: each page
+keeps its own for the model, saved with its draft, and the tree uses the ones
+named last.
+
 Archive and a target change are transitions: each holds the conversation while
 it runs, and neither waits for other work. Running root or child work refuses
 archive with 409 `turn_in_flight`, and so does another transition, an
