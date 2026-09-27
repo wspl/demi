@@ -126,12 +126,22 @@ export function waitToReconnect(failures: number, connect: () => void): Reconnec
  * broken at once, and each other one watched for the rest of that time by
  * the clock. Then each closed socket connects without waiting for the rest
  * of its wait, one just broken among them when its owner starts the wait as
- * the break reaches it.
+ * the break reaches it. An owner that learns of the break through a promise,
+ * as a conversation that still opens does, starts its wait once the promises
+ * due have run, so the closed sockets are swept once more when the task the
+ * return came in has ended.
  */
 export function pageReturned(): void {
   for (const check of [...watched]) {
     check()
   }
+  connectWaiting()
+  // Left to run: it only connects the sockets that wait by then.
+  setTimeout(connectWaiting, 0)
+}
+
+/** Connects each closed socket now instead of after the rest of its wait. */
+function connectWaiting(): void {
   for (const now of [...waiting]) {
     now()
   }
