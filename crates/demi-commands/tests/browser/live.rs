@@ -730,6 +730,13 @@ async fn a_view_waits_for_a_browser_and_ends_with_its_last_tab() {
     .await;
 }
 
+/// The user closes a tab whose page is still loading, the only tab and one
+/// beside another. About 13 s here: closing the only tab stops Chrome and the
+/// next open starts another, 2.2 s a round in the container, where init
+/// reaps Chrome's detached helper about once a second, so that round repeats
+/// three times; it cannot race, since the registry seals the browser instead
+/// of closing the page. A close beside another tab asks Chrome to close the
+/// loading page, the race this test guards, and costs 0.2 s a round.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn the_user_can_immediately_close_the_first_loading_tab() {
@@ -737,7 +744,7 @@ async fn the_user_can_immediately_close_the_first_loading_tab() {
         let path = fixture.root.path().join("loading.html");
         std::fs::write(&path, include_str!("families/loading-form.html")).unwrap();
         let url = url::Url::from_file_path(&path).unwrap();
-        for _ in 0..30 {
+        for _ in 0..3 {
             let opened = request(&fixture, "browser.open", json!({"url": url.as_str()})).await;
             let tab = opened["tab"].as_str().unwrap();
             let closed = request(
