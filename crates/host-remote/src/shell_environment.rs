@@ -366,10 +366,16 @@ impl RemoteShellEnvironment {
                     let Some(chunk) = chunk else {
                         break;
                     };
-                    let index = stream_index(chunk.stream);
-                    heads[index].extend_from_slice(&chunk.bytes);
-                    let text = texts[index].decode(&chunk.bytes);
-                    record.borrow_mut().append_output(chunk.stream, &text);
+                    if chunk.offset < wire::JOB_VIEW_BYTES as u64 {
+                        // A stream's first bytes, the model's view of it.
+                        let index = stream_index(chunk.stream);
+                        heads[index].extend_from_slice(&chunk.bytes);
+                        let text = texts[index].decode(&chunk.bytes);
+                        record.borrow_mut().append_output(chunk.stream, &text);
+                    } else {
+                        // Beyond them the stream still grows.
+                        record.borrow_mut().grew();
+                    }
                 }
                 () = &mut stopped, if !signalled => {
                     signalled = true;

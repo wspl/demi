@@ -201,20 +201,33 @@ struct Waiting {
     answer: oneshot::Sender<Result<Answer, HostError>>,
 }
 
-/// Output and an end that the connection delivers and one consumer takes.
-pub(crate) struct Shared<E> {
-    state: RefCell<SharedState<E>>,
+/// Output and an end that the connection delivers and one consumer takes: a
+/// job's [`JobOutput`], a raw process's [`ProcessOutput`].
+pub(crate) struct Shared<E, C> {
+    state: RefCell<SharedState<E, C>>,
     changed: watch::Sender<u64>,
 }
 
-struct SharedState<E> {
-    output: VecDeque<ProcessOutput>,
+struct SharedState<E, C> {
+    output: VecDeque<C>,
     end: Option<E>,
     /// The running declared commands' hints, first registered first.
     hints: Vec<(String, String)>,
 }
 
-impl<E: Clone> Shared<E> {
+/// One message of a job's output (`runner.md` § Pipes and output): the
+/// stream's bytes from `offset`. Beyond the stream's first `JOB_VIEW_BYTES`,
+/// an offset past the end of the stream's previous bytes says the runner
+/// left the bytes between out, and one without bytes says only that the
+/// stream is `offset` bytes long.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JobOutput {
+    pub stream: StreamKind,
+    pub offset: u64,
+    pub bytes: Bytes,
+}
+
+impl<E: Clone, C> Shared<E, C> {
     pub(crate) fn new() -> Rc<Self> {
         Rc::new(Self {
             state: RefCell::new(SharedState {
@@ -231,18 +244,12 @@ impl<E: Clone> Shared<E> {
             .send_modify(|count| *count = count.wrapping_add(1));
     }
 
-    fn push(&self, stream: OutputStream, bytes: Vec<u8>) {
+    fn push(&self, chunk: C) {
         let mut state = self.state.borrow_mut();
         if state.end.is_some() {
             return;
         }
-        state.output.push_back(ProcessOutput {
-            stream: match stream {
-                OutputStream::Stdout => StreamKind::Stdout,
-                OutputStream::Stderr => StreamKind::Stderr,
-            },
-            bytes: bytes.into(),
-        });
+        state.output.push_back(chunk);
         drop(state);
         self.bump();
     }
@@ -287,7 +294,7 @@ impl<E: Clone> Shared<E> {
 
     /// The next output chunk; none once the end came and every chunk was
     /// taken.
-    pub(crate) async fn next_output(&self) -> Option<ProcessOutput> {
+    pub(crate) async fn next_output(&self) -> Option<C> {
         let mut changed = self.changed.subscribe();
         loop {
             {
@@ -341,7 +348,7 @@ impl JobEnd {
 }
 
 pub(crate) struct JobEntry {
-    pub(crate) shared: Rc<Shared<JobEnd>>,
+    pub(crate) shared: Rc<Shared<JobEnd, JobOutput>>,
     pub(crate) origin: Rc<JobOrigin>,
     pub(crate) commands: Option<CommandSelection>,
     /// Cancelled when the job ends: its artifact resolutions stop.
@@ -351,7 +358,7 @@ pub(crate) struct JobEntry {
 }
 
 pub(crate) struct SpawnEntry {
-    pub(crate) shared: Rc<Shared<ProcessEnd>>,
+    pub(crate) shared: Rc<Shared<ProcessEnd, ProcessOutput>>,
     /// A retained process is no work: it is not counted.
     pub(crate) retained: bool,
     pub(crate) _lease: Option<GateLease>,
@@ -649,7 +656,10 @@ impl Link {
                 bytes,
             } => {
                 if let Some(spawn) = self.0.state.borrow().spawns.get(&spawn_id) {
-                    spawn.shared.push(stream, bytes.0);
+                    spawn.shared.push(ProcessOutput {
+                        stream: stream_kind(stream),
+                        bytes: bytes.0.into(),
+                    });
                 }
             }
             Outbound::SpawnExit {
@@ -668,10 +678,15 @@ impl Link {
             Outbound::JobOutput {
                 job_id,
                 stream,
+                offset,
                 bytes,
             } => {
                 if let Some(job) = self.0.state.borrow().jobs.get(&job_id) {
-                    job.shared.push(stream, bytes.0);
+                    job.shared.push(JobOutput {
+                        stream: stream_kind(stream),
+                        offset,
+                        bytes: bytes.0.into(),
+                    });
                 }
             }
             Outbound::JobRunningHint {
@@ -1202,6 +1217,13 @@ pub(crate) fn process_end(
 
 /// An fs failure the runner reports: `too_large` fails the request alone;
 /// any other code is the operating system's.
+fn stream_kind(stream: OutputStream) -> StreamKind {
+    match stream {
+        OutputStream::Stdout => StreamKind::Stdout,
+        OutputStream::Stderr => StreamKind::Stderr,
+    }
+}
+
 pub(crate) fn fs_error(code: Option<String>, message: String) -> HostError {
     match code.as_deref() {
         Some("too_large") => HostError::new(HostErrorKind::TooLarge, message),

@@ -21,8 +21,8 @@ use demi_host_remote::{
     testing::{CommandPolicy, TEST_DEVICE, TestDevice, TestLink},
 };
 use demi_runner_protocol::wire::{
-    ArtifactOwner, FsOk, FsResult, Inbound, JobArtifactOwner, JobFileChange, Outbound,
-    STDIN_CHUNK_BYTES, Signal, VolumeName, WireBytes,
+    ArtifactOwner, FsOk, FsResult, Inbound, JOB_VIEW_BYTES, JobArtifactOwner, JobFileChange,
+    Outbound, OutputStream, STDIN_CHUNK_BYTES, Signal, VolumeName, WireBytes,
 };
 use demi_shell::{
     Call, CommandSet, CommandState, ExecRequest, GroupBuilder, HostError, HostErrorKind,
@@ -707,6 +707,43 @@ async fn a_status_shows_the_latest_first_registered_hint_and_none_once_the_job_e
     link.close().await;
     assert!(matches!(job.end().await.status, ProcessEnd::Lost(_)));
     assert_eq!(job.running_hint(), None);
+}
+
+/// The model's idle time counts from the latest growth of a command's
+/// output, also beyond the runner's view of a stream, which the model's view
+/// does not hold (`runtime.md` § Results and previews).
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_stream_that_grows_beyond_its_view_keeps_its_command_from_idling() {
+    let device = device();
+    let mut link = device.connect(None);
+    let shell = environment(device.host("/work", Admission::Free));
+    let started = shell
+        .exec(exec("build"), CancellationToken::new())
+        .await
+        .unwrap();
+    let Inbound::JobStart { job_id, .. } = link.next().await else {
+        panic!("expected a job")
+    };
+    let output = |offset: u64, bytes: Vec<u8>| Outbound::JobOutput {
+        job_id: job_id.clone(),
+        stream: OutputStream::Stdout,
+        offset,
+        bytes: WireBytes(bytes),
+    };
+    link.send(output(0, vec![b'x'; JOB_VIEW_BYTES])).await;
+    drain(&mut link).await;
+    tokio::time::advance(Duration::from_secs(5)).await;
+    let status = shell.status(&started.command_id, Reader::Model).unwrap();
+    assert_eq!(status.idle_ms, 5000);
+
+    // The runner says the stream grew beyond its view: the command is not
+    // idle, and the model's view still holds the stream's first bytes.
+    link.send(output(JOB_VIEW_BYTES as u64 + 100, Vec::new())).await;
+    drain(&mut link).await;
+    let status = shell.status(&started.command_id, Reader::Model).unwrap();
+    assert_eq!(status.idle_ms, 0);
+    assert_eq!(status.stdout.tail.len(), 4096);
+    assert_eq!(status.stdout.bytes, JOB_VIEW_BYTES as u64);
 }
 
 #[tokio::test(flavor = "local")]
