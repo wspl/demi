@@ -93,7 +93,10 @@ snapshot() {
   pgrep -a -x demi-machines | sort > "$into/managers" || true
   awk '{ print $4, $5, $9, $10 }' /proc/self/mountinfo | sort > "$into/mounts"
   for backing in /sys/block/loop*/loop/backing_file; do
-    [ -e "$backing" ] && echo "$backing $(cat "$backing")"
+    # Without an attached loop device the pattern matches nothing.
+    if [ -e "$backing" ]; then
+      echo "$backing $(cat "$backing")"
+    fi
   done | sort > "$into/loop-devices"
   nft list tables | sort > "$into/nftables-tables"
   ip -o link show | awk -F': ' '{ print $2 }' | sort > "$into/links"
@@ -131,7 +134,7 @@ finish() {
   fi
   if [ -n "$stand_in_namespace" ]; then
     for _ in $(seq 100); do
-      ls -l /proc/[0-9]*/ns/pid 2> /dev/null | grep -q "$stand_in_namespace" || break
+      ls -l /proc/[0-9]*/ns/pid 2> /dev/null | grep -qF "$stand_in_namespace" || break
       sleep 0.1
     done
   fi
@@ -150,7 +153,7 @@ finish() {
       remains=1
     fi
   done
-  if [ -n "$stand_in_namespace" ] && ls -l /proc/[0-9]*/ns/pid 2> /dev/null | grep -q "$stand_in_namespace"; then
+  if [ -n "$stand_in_namespace" ] && ls -l /proc/[0-9]*/ns/pid 2> /dev/null | grep -qF "$stand_in_namespace"; then
     echo "cloud-suite: processes of the stand-in host remain" >&2
     remains=1
   fi
