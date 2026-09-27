@@ -353,13 +353,15 @@ async fn chrome_process_tree_and_profile_retire_together() {
 /// profile base anyway, so the socket's path keeps within its limit and
 /// Chrome starts (`browser.md` § Native driver). Under this directory of at
 /// least 90 characters the socket's path would take at least 155 bytes, past
-/// Linux's 107. About 5 s: the service's `TMPDIR` differs from this test
+/// Linux's 107. Chrome writes nothing of its own in the service's home but
+/// the user's certificate database: its crash reports go with the profile.
+/// About 5 s: the service's `TMPDIR` and home differ from this test
 /// process's only when the service runs as a program of its own, which finds
 /// Chrome only where it installs it (1.5 s); starting Chrome and opening a
 /// tab take 2 s, and retiring it 1.5 s.
 #[tokio::test]
-#[ignore = "requires DEMI_TEST_CHROME; starts the service program with a long TMPDIR"]
-async fn chrome_starts_whatever_the_services_temporary_directory() {
+#[ignore = "requires DEMI_TEST_CHROME; starts the service program with its own home and a long TMPDIR"]
+async fn chrome_starts_and_keeps_out_of_the_services_home_whatever_its_temporary_directory() {
     use demi_command_service::{
         protocol::{CommandCaller, CommandContext, CommandLocale, Invocation},
         testing::ServiceProcess,
@@ -428,6 +430,37 @@ async fn chrome_starts_whatever_the_services_temporary_directory() {
     })
     .await
     .unwrap();
+    // Besides the installation, only what Chrome keeps for the user, and the
+    // directories above it, are in the home (`browser.md` § Native driver):
+    // on Linux the certificate database, on macOS the crash reports.
+    let kept = if cfg!(target_os = "macos") {
+        [".demi", "Library/Application Support/Google/Chrome for Testing"]
+    } else {
+        [".demi", ".local/share/pki"]
+    };
+    let written: Vec<_> = walk(home.path())
+        .into_iter()
+        .filter(|path| {
+            !kept.iter().any(|kept| path.starts_with(kept) || std::path::Path::new(kept).starts_with(path))
+        })
+        .collect();
+    assert!(written.is_empty(), "Chrome wrote in the service's home: {written:?}");
+}
+
+/// Every file and directory under `root`, relative to it.
+fn walk(root: &std::path::Path) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    let mut pending = vec![root.to_owned()];
+    while let Some(directory) = pending.pop() {
+        for entry in std::fs::read_dir(&directory).unwrap() {
+            let path = entry.unwrap().path();
+            if path.symlink_metadata().unwrap().is_dir() {
+                pending.push(path.clone());
+            }
+            found.push(path.strip_prefix(root).unwrap().to_owned());
+        }
+    }
+    found
 }
 
 /// The profiles of the Chrome processes this test started, by main process.
