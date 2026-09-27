@@ -53,6 +53,11 @@ pub enum BrowserError {
     ProtectedValue,
     #[error("browser could not start: {0}")]
     Unavailable(String),
+    /// Chrome refused to start as root on Linux (`browser.md` § Native driver).
+    #[error(
+        "Chrome does not run as root on Linux with its sandbox, which Demi keeps: run the runner as an ordinary user"
+    )]
+    Root,
     /// Chrome for Testing could not be installed or found intact.
     #[error("Chrome for Testing {0}")]
     Installation(String),
@@ -279,7 +284,9 @@ impl BrowserError {
             Self::ResultTooLarge => BrowserErrorCode::ResultTooLarge,
             Self::UnsupportedCapability(_) => BrowserErrorCode::UnsupportedCapability,
             Self::ProtectedValue => BrowserErrorCode::ProtectedValue,
-            Self::Unavailable(_) | Self::Installation(_) => BrowserErrorCode::BrowserUnavailable,
+            Self::Unavailable(_) | Self::Installation(_) | Self::Root => {
+                BrowserErrorCode::BrowserUnavailable
+            }
             Self::Cancelled => BrowserErrorCode::Cancelled,
             Self::Timeout => BrowserErrorCode::Timeout,
             Self::Busy => BrowserErrorCode::TabBusy,
@@ -334,6 +341,14 @@ impl From<CdpError> for BrowserError {
                 Self::Connection(error.to_string())
             }
             CdpError::Timeout => Self::Timeout,
+            // Chrome says so only on its standard error, and exits: the
+            // launch sees the exit or the end of its output first.
+            CdpError::LaunchExit(_, ref stderr) | CdpError::LaunchIo(_, ref stderr)
+                if String::from_utf8_lossy(stderr.as_slice())
+                    .contains("Running as root without --no-sandbox is not supported") =>
+            {
+                Self::Root
+            }
             // Chrome provides only a message for a closed target session.
             CdpError::Chrome(ref error) if error.message == "Session with given id not found." => {
                 Self::TabNotFound
