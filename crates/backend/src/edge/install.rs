@@ -8,6 +8,7 @@
 //! installers answer 503 and the runner executables 404.
 
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 
 use axum::body::Body;
 use axum::extract::{Path, State};
@@ -27,7 +28,7 @@ use crate::runner::install::{backend_url, powershell_script, shell_script};
 
 /// How the backend is reached from outside, and what it serves besides the
 /// API.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 pub(crate) struct Site {
     /// The URL the product's pages and the runners reach the backend at;
     /// without it, a request's own origin.
@@ -36,6 +37,9 @@ pub(crate) struct Site {
     /// current one, and each release's directory holds its own and one
     /// executable per target.
     pub(crate) runner_releases: Option<PathBuf>,
+    /// Whether a request showed that a proxy in front of the backend drops
+    /// `Origin`, which the edge warns about once.
+    pub(crate) origin_dropped: AtomicBool,
 }
 
 const UNCONFIGURED: &str = "Runner releases are not configured on this backend.\n";
