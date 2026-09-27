@@ -74,20 +74,22 @@ pub(super) async fn upload(
         return Err(ApiError::invalid_body("An upload holds at least one byte"));
     }
     let media_type = upload_media_type(&sent, &bytes);
+    // The record keeps the opening, so a draft that names the upload shows
+    // it on every page (`web-api.md` § Conversation drafts).
+    let opening = is_text(&query.name, &media_type).then(|| snippet(&bytes));
     let sha256 = services.blobs.for_user(&user.id).put(bytes.clone()).await?;
     let size_bytes = bytes.len() as u64;
     let record = services
         .control
-        .create_attachment(user.id.clone(), media_type, size_bytes, sha256)
+        .create_attachment(user.id.clone(), media_type, size_bytes, sha256, opening)
         .await?;
-    let snippet = is_text(&query.name, &record.media_type).then(|| snippet(&bytes));
     let attachment = AttachmentDto {
         id: record.id,
         media_type: record.media_type,
         size_bytes: record.size_bytes,
         sha256: record.sha256,
         created_at: record.created_at,
-        snippet,
+        snippet: record.snippet,
     };
     Ok((StatusCode::CREATED, Json(AttachmentAnswer { attachment })))
 }
