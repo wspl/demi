@@ -15,7 +15,7 @@ use demi_core::{
 };
 use demi_provider::{
     Capabilities, CatalogError, InferenceItem, InferenceRequest, Provider, ProviderEvent, ProviderRun, ProviderRuntime,
-    RuntimeEnv, RuntimeError,
+    RequestLimits, RuntimeEnv, RuntimeError,
 };
 use demi_web_api::conversations::ConversationSummary;
 use demi_web_api::error::ErrorCode;
@@ -146,6 +146,10 @@ impl ProviderRuntime for TitlingRuntime {
 
     fn close(&mut self) -> LocalBoxFuture<'_, ()> {
         Box::pin(async {})
+    }
+
+    fn request_limits(&self, _model: &demi_core::Model) -> RequestLimits {
+        RequestLimits::default()
     }
 }
 

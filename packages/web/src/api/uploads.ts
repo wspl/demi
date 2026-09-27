@@ -1,6 +1,14 @@
 import type { UploadFile } from '@demicodes/web-ui/agent/message-input/attachments'
+import type { BlobUrl } from '@demicodes/web-ui/agent/media-source'
 import { apiError, apiUrl, invalidResponse } from './client'
 import { attachmentAnswerSchema } from './generated/web-api'
+
+/**
+ * Where the page loads a blob of the user's own, seen as `mediaType`
+ * (`web-api.md` § Uploads and media): a message's upload or a tool's medium.
+ */
+export const blobUrl: BlobUrl = (ref, mediaType) =>
+  apiUrl(`/blobs/${encodeURIComponent(ref)}?${new URLSearchParams({ type: mediaType })}`)
 
 /**
  * How long an upload may go without a byte moving before it fails, the

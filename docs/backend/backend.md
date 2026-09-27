@@ -369,9 +369,14 @@ socket validates the entire frame before changing metadata or granting
 attachments. It resolves upload references to caller-owned blobs and writes
 them under the selected Host's `~/.demi/attachments/<conversation>/`, outside
 the workspace. The agent receives an attachment record, with the same snippet
-for a text file, and any native media block it can consume, which references
-the upload's own blob; the socket hands the session the bytes it read to
-write the file, so the session holds them without reading the blob again. A
+for a text file, and the native media block of an image, a video or a PDF,
+which references the upload's own blob. An image enters fitted to what every
+provider accepts
+([Images in the transcript](../agent/runtime.md#images-in-the-transcript)):
+when fitting changes it, its block references the fitted image's blob, which
+the socket stores first. The socket hands the session the bytes of the
+block's medium, those it read to write the file or the fitted ones, so the
+session holds them without reading the blob again. A
 missing or inaccessible upload becomes an explicit attachment-unavailable text
 block.
 An edit's references to the files the edited message holds pass to the

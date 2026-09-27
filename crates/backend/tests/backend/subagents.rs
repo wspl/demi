@@ -18,8 +18,8 @@ use demi_core::{
 };
 use demi_provider::testing::event;
 use demi_provider::{
-    Capabilities, CatalogError, InferenceRequest, Provider, ProviderEvent, ProviderRun, ProviderRuntime, RuntimeEnv,
-    RuntimeError,
+    Capabilities, CatalogError, InferenceRequest, Provider, ProviderEvent, ProviderRun, ProviderRuntime, RequestLimits,
+    RuntimeEnv, RuntimeError,
 };
 use demi_web_api::providers::{CredentialKind, ProviderAnswer};
 use futures_util::future::{BoxFuture, LocalBoxFuture};
@@ -170,6 +170,10 @@ impl ProviderRuntime for TreeRuntime {
 
     fn close(&mut self) -> LocalBoxFuture<'_, ()> {
         Box::pin(async {})
+    }
+
+    fn request_limits(&self, _model: &demi_core::Model) -> RequestLimits {
+        RequestLimits::default()
     }
 }
 

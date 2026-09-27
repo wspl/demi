@@ -12,8 +12,8 @@ use std::{
 
 use demi_agent_protocol::{ClientContent, ClientFrame, ServerFrame};
 use demi_core::{
-    B64Bytes, BlobRef, Block, Clock, Model, ModelSelection, NodeId, QueuedMessage, Timestamp,
-    UserContentBlock,
+    B64Bytes, BlobRef, Block, Clock, FileExtension, Model, ModelSelection, NodeId, QueuedMessage,
+    Timestamp, UserContentBlock,
 };
 use demi_provider::{ProviderRuntime, testing::ScriptedRuntime};
 use futures_util::future::LocalBoxFuture;
@@ -112,6 +112,29 @@ pub fn model_of(provider: &str, model: &str) -> ModelSelection {
         thinking: None,
         service_tier_id: None,
     }
+}
+
+/// As [`model_of`], for a model that reads `extensions` natively.
+pub fn model_reading(provider: &str, model: &str, extensions: &[FileExtension]) -> ModelSelection {
+    let mut selection = model_of(provider, model);
+    selection.model.accepted_extensions = Some(extensions.to_vec());
+    selection
+}
+
+/// A PNG of `width` × `height` px whose pixels follow `seed`, for tests that
+/// send images: a real one, since an image is decoded as it enters a
+/// transcript (`runtime.md` § Images in the transcript).
+pub fn png(width: u32, height: u32, seed: u8) -> B64Bytes {
+    use image::{DynamicImage, Rgba, RgbaImage, codecs::png::PngEncoder};
+
+    let pixels = RgbaImage::from_fn(width, height, |x, y| {
+        Rgba([x as u8, y as u8, seed, 255])
+    });
+    let mut bytes = Vec::new();
+    DynamicImage::ImageRgba8(pixels)
+        .write_with_encoder(PngEncoder::new(&mut bytes))
+        .expect("a PNG encodes into memory");
+    B64Bytes::from(bytes)
 }
 
 /// The selection of the model `test-model` of the provider `stub`.

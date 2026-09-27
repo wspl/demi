@@ -640,7 +640,11 @@ async fn the_provider_test_sends_one_real_request_through_the_entrys_family() {
         (sent.uri.path(), sent.header("x-api-key")),
         ("/v1/messages", Some("sk-ant-test"))
     );
-    assert_eq!(sent.json()["system"], "Reply with the word ok.");
+    // No later request extends a connection test, so nothing in it is
+    // marked for the vendor's cache.
+    let body = sent.json();
+    assert_eq!(body["system"], json!([{ "type": "text", "text": "Reply with the word ok." }]));
+    assert!(!body.to_string().contains("cache_control"), "{body}");
 
     vendor.respond(
         MockResponse::status(401)

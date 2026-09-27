@@ -77,7 +77,7 @@ impl From<HostAccessError> for HostError {
         match error {
             HostAccessError::Host(error) => error,
             HostAccessError::Cancelled => HostError::new(HostErrorKind::Interrupted, error.to_string()),
-            HostAccessError::Storage(_) => HostError::failed(None, error.to_string()),
+            HostAccessError::Storage(_) | HostAccessError::Store(_) => HostError::failed(None, error.to_string()),
             HostAccessError::Missing
             | HostAccessError::Cloud(_)
             | HostAccessError::Refused(

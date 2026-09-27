@@ -27,8 +27,9 @@ pub mod wire;
 
 pub use body::{UnloadedMedia, encode_body, json_body};
 pub use contract::{
-    Capabilities, CatalogError, InferenceItem, InferenceRequest, Provider, ProviderEvent,
-    ProviderRun, ProviderRuntime, RuntimeEnv, RuntimeError, ToolCall, ToolDefinition,
+    Capabilities, CatalogError, InferenceItem, InferenceRequest, PromptCache, Provider,
+    ProviderEvent, ProviderRun, ProviderRuntime, RequestLimits, RuntimeEnv, RuntimeError, ToolCall,
+    ToolDefinition,
 };
 pub use endpoint::endpoint_url;
 pub use failure::{ErrorCode, FailureReader, ProviderFailure};

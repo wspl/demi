@@ -22,12 +22,12 @@ use std::{
 };
 
 use demi_core::{
-    AuthState, Clock, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
+    AuthState, Clock, Model, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
     RuntimeState, Timestamp,
 };
 use demi_provider::{
     Capabilities, CatalogError, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
-    RuntimeEnv, RuntimeError,
+    RequestLimits, RuntimeEnv, RuntimeError,
     credentials::{Accounts, CredentialPool, SubscriptionAccounts},
     quota::{ProviderQuota, QuotaSnapshotStore},
 };
@@ -280,5 +280,9 @@ impl ProviderRuntime for CodexRuntime {
 
     fn close(&mut self) -> LocalBoxFuture<'_, ()> {
         Box::pin(async {})
+    }
+
+    fn request_limits(&self, _model: &Model) -> RequestLimits {
+        RequestLimits::OPENAI
     }
 }

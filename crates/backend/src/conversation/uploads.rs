@@ -2,10 +2,10 @@
 //! an upload of the conversation's owner is written to the conversation's
 //! Host under `~/.demi/attachments/<conversation>/`, outside every working
 //! directory, and becomes its native media block, when it has one, then its
-//! attachment record; the medium references the upload's own blob, and the
-//! bytes read to write the file go to the session with it. An upload that is
-//! gone, another user's, or whose bytes are missing becomes the text that
-//! says it is not available.
+//! attachment record; the medium references the upload's own blob, or the
+//! blob of the image fitted from it, which is stored here, and its bytes go
+//! to the session with it. An upload that is gone, another user's, or whose
+//! bytes are missing becomes the text that says it is not available.
 
 use std::path::Path;
 
@@ -44,17 +44,19 @@ impl Shard {
         let Some(record) = record.filter(|record| record.owner == *self.user()) else {
             return not_available();
         };
-        let Some(bytes) = services.blobs.for_user(self.user()).get(&record.sha256).await? else {
+        let blobs = services.blobs.for_user(self.user());
+        let Some(bytes) = blobs.get(&record.sha256).await? else {
             return not_available();
         };
         let written = write_attachment(&host.host, id, file_name, bytes.clone()).await?;
-        Ok(upload_blocks(Upload {
+        let upload = Upload {
             name: &written.name,
             path: &written.path,
             media_type: &record.media_type,
             sha256: &record.sha256,
             bytes: &B64Bytes::from(bytes),
-        }))
+        };
+        Ok(upload_blocks(upload, &blobs).await?)
     }
 }
 

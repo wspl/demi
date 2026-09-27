@@ -3,7 +3,7 @@
 //! `compact` action, and the request prefix a provider caches.
 
 use demi_core::{BlockId, QueuedMessage, TokenUsage};
-use demi_provider::ProviderFailure;
+use demi_provider::{PromptCache, ProviderFailure, RequestLimits};
 
 use super::*;
 use crate::{
@@ -18,18 +18,13 @@ fn small_model() -> ModelSelection {
     model
 }
 
-/// A session whose model has a 1,000-token window and which keeps the last
-/// 100 estimated tokens.
+/// A session whose model has a 1,000-token window.
 async fn small_session(
     provider: &ScriptedRuntime,
     tools: Vec<(String, Invoke)>,
     store: &Rc<MemoryTreeStore>,
 ) -> AgentSession {
-    let compaction = CompactionConfig {
-        keep_recent_tokens: 100,
-        threshold_percent: Some(80),
-    };
-    small_session_with(provider, tools, store, compaction).await
+    small_session_with(provider, tools, store, CompactionConfig::default()).await
 }
 
 /// A session whose model has a 1,000-token window and which compacts as
@@ -54,30 +49,22 @@ async fn small_session_with(
     session
 }
 
-/// Compaction that keeps the last `keep_recent_tokens` and runs only when
-/// asked, so the history written with it can grow over any threshold.
-fn only_when_asked(keep_recent_tokens: u64) -> CompactionConfig {
+/// Compaction that runs only when asked, so the history written with it can
+/// grow over any threshold.
+fn only_when_asked() -> CompactionConfig {
     CompactionConfig {
-        keep_recent_tokens,
         threshold_percent: None,
     }
 }
 
 /// The node `root` restored from a copy of `store`, compacting at 80% of its
-/// model's window and keeping the last `keep_recent_tokens`: a history
-/// written without compaction meets a threshold it is over.
-fn restore_compacting(
-    store: &MemoryTreeStore,
-    provider: &ScriptedRuntime,
-    keep_recent_tokens: u64,
-) -> AgentSession {
+/// model's window: a history written without compaction meets a threshold it
+/// is over.
+fn restore_compacting(store: &MemoryTreeStore, provider: &ScriptedRuntime) -> AgentSession {
     let copy = store.copy();
     let checkpoint = copy.checkpoint(&root()).unwrap();
     let config = SessionConfig {
-        compaction: CompactionConfig {
-            keep_recent_tokens,
-            threshold_percent: Some(80),
-        },
+        compaction: CompactionConfig::default(),
         ..SessionConfig::default()
     };
     let (session, _) = restore_configured(
@@ -111,8 +98,12 @@ fn long_message() -> Vec<demi_core::UserContentBlock> {
     text(&"x".repeat(3_000))
 }
 
+/// Whether `request` is a summary request: it carries the summary
+/// instruction, which no request of the session does.
 fn is_copy(request: &demi_provider::InferenceRequest) -> bool {
-    request.session_id != "root"
+    request
+        .items
+        .contains(&user_item(COMPACTION_SUMMARY_INSTRUCTION))
 }
 
 /// How many items each summary request held, in order.
@@ -178,32 +169,35 @@ async fn a_history_over_the_threshold_is_compacted_before_the_turn_by_a_copy_tha
     let [first, summary, second] = requests.as_slice() else {
         panic!("{requests:?}");
     };
-    // The copy's request is the session's history up to the cut, as the
-    // session replays it, then the instruction; same system prompt, tools
-    // and model.
+    // The copy's request is the session's latest answered request, the
+    // first, as the session sent it, then the instruction; same system
+    // prompt, tools and model.
     assert!(is_copy(summary) && !is_copy(second));
+    // It carries the session's id, which keeps it with the session's
+    // requests at the vendor.
+    assert_eq!(summary.session_id, first.session_id);
     let mut expected = first.items.to_vec();
-    expected.push(answer_item("small-model", "first answer"));
     expected.push(user_item(COMPACTION_SUMMARY_INSTRUCTION));
     assert_eq!(summary.items.as_ref(), expected.as_slice());
     assert_eq!(summary.system_prompt, second.system_prompt);
     assert_eq!(summary.model_id, "small-model");
-    // The kept history begins with the boundary, and the marker ends it.
+    // The boundary stands where that request's content ends; the answer to
+    // it and the next message are kept, and the marker ends them.
     let blocks = session.transcript().blocks;
     assert_eq!(
         kinds(&blocks),
         [
             "user",
+            "compaction_boundary",
             "text",
             "response",
-            "compaction_boundary",
             "user",
             "compaction_marker",
             "text",
             "response"
         ]
     );
-    let Block::CompactionBoundary(boundary) = &blocks[3] else {
+    let Block::CompactionBoundary(boundary) = &blocks[1] else {
         unreachable!();
     };
     assert_eq!(boundary.summary, "summary of the first turn");
@@ -213,10 +207,16 @@ async fn a_history_over_the_threshold_is_compacted_before_the_turn_by_a_copy_tha
     assert_eq!(marker.boundary_id, boundary.id);
     assert_eq!(
         marker.compacted_tokens,
-        blocks[..3].iter().map(block_tokens).sum::<u64>()
+        blocks[..1].iter().map(block_tokens).sum::<u64>()
     );
-    assert_eq!(item_kinds(&second.items), ["user_message", "user_message"]);
-    assert_eq!(second.items[0], summary_item("summary of the first turn"));
+    assert_eq!(
+        second.items.as_ref(),
+        [
+            summary_item("summary of the first turn"),
+            answer_item("small-model", "first answer"),
+            user_item(&"y".repeat(400))
+        ]
+    );
     assert!(phases.borrow().contains(&SessionPhase::Compacting));
     // The copy saved nothing and its runtime was closed.
     assert!(store.saves().iter().all(|(node, _)| node == &root()));
@@ -237,7 +237,7 @@ async fn a_request_repeats_the_one_before_as_its_prefix_a_pass_restarts_it_at_it
     let store = MemoryTreeStore::new();
     let (note, _) = counted("note", "noted");
     let session =
-        small_session_with(&provider, vec![note.clone()], &store, only_when_asked(100)).await;
+        small_session_with(&provider, vec![note.clone()], &store, only_when_asked()).await;
     let question_b = "b".repeat(480);
     session.send(text("A"), turn("A")).unwrap().await.unwrap();
     session
@@ -263,7 +263,12 @@ async fn a_request_repeats_the_one_before_as_its_prefix_a_pass_restarts_it_at_it
     let [a, b, summary, c, d, d_again] = requests.as_slice() else {
         panic!("{requests:?}");
     };
-    assert!(is_copy(summary));
+    // The summary request is the latest answered request, b, with the
+    // instruction after it.
+    assert_eq!(
+        summary.items.as_ref(),
+        [b.items.to_vec(), vec![user_item(COMPACTION_SUMMARY_INSTRUCTION)]].concat()
+    );
     // Each request repeats the one before and its answer, with the same
     // system prompt and tools.
     assert_eq!(
@@ -281,13 +286,12 @@ async fn a_request_repeats_the_one_before_as_its_prefix_a_pass_restarts_it_at_it
         assert_eq!(request.system_prompt, a.system_prompt);
         assert_eq!(request.tools, a.tools);
     }
-    // A pass starts the prefix again at its summary, and the next request
-    // repeats that.
+    // A pass starts the prefix again at its summary, with the answer to b
+    // after it, and the next request repeats that.
     assert_eq!(
         c.items.as_ref(),
         [
             summary_item("summary of A"),
-            user_item(&question_b),
             answer_item("small-model", "answer B"),
             user_item("C")
         ]
@@ -299,6 +303,14 @@ async fn a_request_repeats_the_one_before_as_its_prefix_a_pass_restarts_it_at_it
             vec![answer_item("small-model", "answer C"), user_item("D")]
         ]
         .concat()
+    );
+    // Each request says how many of its items the latest answered request
+    // carried: none before the first answer, and none after a pass until the
+    // first answer after it.
+    assert_eq!(
+        [a, b, c, d].map(|request| request.prompt_cache),
+        [0, a.items.len(), 0, c.items.len()]
+            .map(|answered_items| PromptCache::Session { answered_items })
     );
     // What a request holds comes from the history alone.
     assert_eq!(
@@ -340,9 +352,10 @@ async fn a_summary_request_that_exceeds_the_context_is_retried_with_half_the_win
         .await
         .unwrap();
 
-    // The first summary request held six blocks' items and the instruction,
-    // the second the first half.
-    assert_eq!(summary_sizes(&provider), [5, 3]);
+    // The first summary request held what the second request carried, its
+    // three items, and the instruction; the second the first half of that
+    // window, two blocks.
+    assert_eq!(summary_sizes(&provider), [4, 3]);
     let blocks = session.transcript().blocks;
     let boundaries = blocks
         .iter()
@@ -350,7 +363,7 @@ async fn a_summary_request_that_exceeds_the_context_is_retried_with_half_the_win
         .count();
     assert_eq!(boundaries, 1);
     assert!(
-        matches!(&blocks[3], Block::CompactionBoundary(_)),
+        matches!(&blocks[2], Block::CompactionBoundary(_)),
         "{:?}",
         kinds(&blocks)
     );
@@ -465,7 +478,7 @@ async fn a_tool_the_copy_calls_runs_without_changing_the_session() {
             .iter()
             .any(|block| matches!(block, Block::ToolCall(_)))
     );
-    let Block::CompactionBoundary(boundary) = &blocks[3] else {
+    let Block::CompactionBoundary(boundary) = &blocks[1] else {
         panic!("{:?}", kinds(&blocks));
     };
     assert_eq!(boundary.summary, "summary after the tool");
@@ -525,10 +538,7 @@ async fn a_switch_to_a_smaller_window_compacts_with_the_model_before_it() {
     ]);
     let store = MemoryTreeStore::new();
     let config = SessionConfig {
-        compaction: CompactionConfig {
-            keep_recent_tokens: 100,
-            threshold_percent: Some(80),
-        },
+        compaction: CompactionConfig::default(),
         ..SessionConfig::default()
     };
     let session = start(&provider, Vec::new(), &store, config).await;
@@ -598,10 +608,7 @@ async fn a_switch_inside_a_turn_to_a_smaller_window_compacts_with_the_model_befo
     let store = MemoryTreeStore::new();
     let (slow, releases, started) = gated_tool("slow");
     let config = SessionConfig {
-        compaction: CompactionConfig {
-            keep_recent_tokens: 100,
-            threshold_percent: Some(80),
-        },
+        compaction: CompactionConfig::default(),
         ..SessionConfig::default()
     };
     let session = start(&provider, vec![slow], &store, config).await;
@@ -645,8 +652,8 @@ async fn a_switch_inside_a_turn_to_a_smaller_window_compacts_with_the_model_befo
             "user",
             "text",
             "response",
-            "compaction_boundary",
             "user",
+            "compaction_boundary",
             "tool_call:completed",
             "response",
             "compaction_marker",
@@ -658,13 +665,7 @@ async fn a_switch_inside_a_turn_to_a_smaller_window_compacts_with_the_model_befo
     let continuation = &requests[3];
     assert_eq!(
         item_kinds(&continuation.items),
-        [
-            "user_message",
-            "user_message",
-            "tool_use",
-            "tool_result",
-            "user_message"
-        ]
+        ["user_message", "tool_use", "tool_result", "user_message"]
     );
     assert_eq!(
         continuation.items.first(),
@@ -689,10 +690,7 @@ async fn the_compact_action_writes_a_steer_that_came_during_it_and_runs_a_turn_o
     ]);
     let store = MemoryTreeStore::new();
     let config = SessionConfig {
-        compaction: CompactionConfig {
-            keep_recent_tokens: 100,
-            threshold_percent: Some(80),
-        },
+        compaction: CompactionConfig::default(),
         ..SessionConfig::default()
     };
     let session = start(&provider, Vec::new(), &store, config).await;
@@ -759,15 +757,15 @@ async fn a_summary_that_exceeds_the_context_down_to_one_block_fails_the_action_a
         answer("recent answer"),
         too_long(),
         too_long(),
+        too_long(),
         answer("recovered"),
         answer("summary"),
         answer("fourth answer"),
         too_long(),
         too_long(),
-        too_long(),
     ]);
     let store = MemoryTreeStore::new();
-    let session = small_session_with(&provider, Vec::new(), &store, only_when_asked(100)).await;
+    let session = small_session_with(&provider, Vec::new(), &store, only_when_asked()).await;
     let errors = Rc::new(RefCell::new(Vec::new()));
     let _listener = session.subscribe({
         let errors = errors.clone();
@@ -791,12 +789,13 @@ async fn a_summary_that_exceeds_the_context_down_to_one_block_fails_the_action_a
 
     let failed = session.compact().unwrap().await;
 
-    // The window's three blocks, then its first alone: the overflow fails
-    // the action, reported once, and the history is as it was.
+    // What the second request carried, four blocks, then their first two,
+    // then the first alone: the overflow fails the action, reported once,
+    // and the history is as it was.
     let failure = failed.unwrap_err();
     assert_eq!(failure.code.as_deref(), Some("context_length_exceeded"));
     assert_eq!(*errors.borrow(), [*failure]);
-    assert_eq!(summary_sizes(&provider), [3, 2]);
+    assert_eq!(summary_sizes(&provider), [4, 3, 2]);
     assert_eq!(session.transcript(), before);
     // The session goes on.
     session
@@ -806,7 +805,7 @@ async fn a_summary_that_exceeds_the_context_down_to_one_block_fails_the_action_a
         .unwrap();
 
     // After a boundary, the window shrinks down to the boundary and the
-    // block after it, and then fails the same way.
+    // block after it, the kept answer, and then fails the same way.
     session.compact().unwrap().await.unwrap();
     session
         .send(text(&"z".repeat(400)), turn("t4"))
@@ -821,7 +820,7 @@ async fn a_summary_that_exceeds_the_context_down_to_one_block_fails_the_action_a
         failed.unwrap_err().code.as_deref(),
         Some("context_length_exceeded")
     );
-    assert_eq!(summary_sizes(&provider), [3, 2, 3, 6, 4, 3]);
+    assert_eq!(summary_sizes(&provider), [4, 3, 2, 6, 4, 3]);
     assert_eq!(session.transcript(), before);
 }
 
@@ -839,7 +838,7 @@ async fn a_retry_over_the_threshold_compacts_before_it_reruns_and_a_stop_during_
         Turn::pending(),
     ]);
     let store = MemoryTreeStore::new();
-    let written = small_session_with(&provider, Vec::new(), &store, only_when_asked(1)).await;
+    let written = small_session_with(&provider, Vec::new(), &store, only_when_asked()).await;
     written
         .send(text(&question), turn("t1"))
         .unwrap()
@@ -850,12 +849,13 @@ async fn a_retry_over_the_threshold_compacts_before_it_reruns_and_a_stop_during_
         .unwrap()
         .await
         .unwrap();
-    let session = restore_compacting(&store, &provider, 1);
+    let session = restore_compacting(&store, &provider);
 
     session.retry().unwrap().await.unwrap();
 
     // Rewound to its message, the history is over the threshold: the pass
-    // runs before the rerun, whose request starts with the summary.
+    // summarizes what the first request carried before the rerun, whose
+    // request starts with the summary and that request's answer.
     let requests = provider.requests();
     let [summary, rerun] = &requests[2..] else {
         panic!("{requests:?}");
@@ -864,22 +864,25 @@ async fn a_retry_over_the_threshold_compacts_before_it_reruns_and_a_stop_during_
         summary.items.as_ref(),
         [
             user_item(&question),
-            answer_item("small-model", "old answer"),
             user_item(COMPACTION_SUMMARY_INSTRUCTION),
         ]
     );
     assert_eq!(
         rerun.items.as_ref(),
-        [summary_item("retry summary"), user_item("retry this")]
+        [
+            summary_item("retry summary"),
+            answer_item("small-model", "old answer"),
+            user_item("retry this")
+        ]
     );
     assert_eq!(rerun.turn_id, "t2");
     assert_eq!(
         kinds(&session.transcript().blocks),
         [
             "user",
+            "compaction_boundary",
             "text",
             "response",
-            "compaction_boundary",
             "user",
             "compaction_marker",
             "text",
@@ -887,7 +890,7 @@ async fn a_retry_over_the_threshold_compacts_before_it_reruns_and_a_stop_during_
         ]
     );
 
-    let stopped_session = restore_compacting(&store, &provider, 1);
+    let stopped_session = restore_compacting(&store, &provider);
     let retrying = stopped_session.retry().unwrap();
     until(|| provider.requests().len() == 5).await;
     let stopped = stopped_session.abort().await;
@@ -917,17 +920,18 @@ async fn a_resume_over_the_threshold_summarizes_the_stopped_progress_before_it_c
         Turn::pending(),
     ]);
     let store = MemoryTreeStore::new();
-    let written = small_session_with(&provider, Vec::new(), &store, only_when_asked(1)).await;
+    let written = small_session_with(&provider, Vec::new(), &store, only_when_asked()).await;
     let running = written.send(text(&question), turn("t1")).unwrap();
     until(|| written.transcript().blocks.len() == 2).await;
     written.abort().await;
     running.await.unwrap();
-    let session = restore_compacting(&store, &provider, 1);
+    let session = restore_compacting(&store, &provider);
 
     session.resume().unwrap().await.unwrap();
 
-    // The summary holds what the stopped turn wrote, and the model continues
-    // after it.
+    // No request was answered, so the summary holds the whole history,
+    // what the stopped turn wrote and the resume included, and the model
+    // continues from the summary.
     let requests = provider.requests();
     let [summary, continuation] = &requests[1..] else {
         panic!("{requests:?}");
@@ -937,12 +941,13 @@ async fn a_resume_over_the_threshold_summarizes_the_stopped_progress_before_it_c
         [
             user_item(&question),
             answer_item("small-model", &partial),
+            user_item(RESUME_TEXT),
             user_item(COMPACTION_SUMMARY_INSTRUCTION),
         ]
     );
     assert_eq!(
         continuation.items.as_ref(),
-        [summary_item("resume summary"), user_item(RESUME_TEXT)]
+        [summary_item("resume summary")]
     );
     let blocks = session.transcript().blocks;
     assert_eq!(
@@ -951,8 +956,8 @@ async fn a_resume_over_the_threshold_summarizes_the_stopped_progress_before_it_c
             "user",
             "text",
             "abort",
-            "compaction_boundary",
             "resume",
+            "compaction_boundary",
             "compaction_marker",
             "text",
             "response"
@@ -960,7 +965,7 @@ async fn a_resume_over_the_threshold_summarizes_the_stopped_progress_before_it_c
     );
     assert!(matches!(&blocks[2], Block::Abort(abort) if abort.is_resumed));
 
-    let stopped_session = restore_compacting(&store, &provider, 1);
+    let stopped_session = restore_compacting(&store, &provider);
     let resuming = stopped_session.resume().unwrap();
     until(|| provider.requests().len() == 4).await;
     let stopped = stopped_session.abort().await;
@@ -985,7 +990,7 @@ async fn a_resume_with_a_pending_switch_to_a_smaller_window_unwinds_then_compact
     ]);
     let store = MemoryTreeStore::new();
     let config = SessionConfig {
-        compaction: only_when_asked(1),
+        compaction: only_when_asked(),
         ..SessionConfig::default()
     };
     let written = start(&provider, Vec::new(), &store, config).await;
@@ -998,7 +1003,7 @@ async fn a_resume_with_a_pending_switch_to_a_smaller_window_unwinds_then_compact
     until(|| written.transcript().blocks.len() == 5).await;
     written.abort().await;
     running.await.unwrap();
-    let session = restore_compacting(&store, &provider, 1);
+    let session = restore_compacting(&store, &provider);
     session
         .update_model(ModelSwitch {
             model: small_model(),
@@ -1018,20 +1023,26 @@ async fn a_resume_with_a_pending_switch_to_a_smaller_window_unwinds_then_compact
     assert_eq!(continuation.model_id, "small-model");
     assert_eq!(
         continuation.items.as_ref(),
-        [summary_item("switch summary"), user_item(RESUME_TEXT)]
+        [
+            summary_item("switch summary"),
+            answer_item("test-model", "old answer"),
+            user_item("follow-up"),
+            answer_item("test-model", "partial answer"),
+            user_item(RESUME_TEXT)
+        ]
     );
-    // The unwind kept the stop, the switch's pass summarized what came
-    // before it, and the one `resume` block follows the marker.
+    // The unwind kept the stop, the switch's pass summarized what the first
+    // request carried, and the one `resume` block follows the marker.
     let blocks = session.transcript().blocks;
     assert_eq!(
         kinds(&blocks),
         [
             "user",
+            "compaction_boundary",
             "text",
             "response",
             "user",
             "text",
-            "compaction_boundary",
             "abort",
             "compaction_marker",
             "resume",
@@ -1040,7 +1051,7 @@ async fn a_resume_with_a_pending_switch_to_a_smaller_window_unwinds_then_compact
         ]
     );
     let (Block::CompactionBoundary(boundary), Block::CompactionMarker(marker)) =
-        (&blocks[5], &blocks[7])
+        (&blocks[1], &blocks[7])
     else {
         unreachable!();
     };
@@ -1049,7 +1060,7 @@ async fn a_resume_with_a_pending_switch_to_a_smaller_window_unwinds_then_compact
 }
 
 #[tokio::test(flavor = "local")]
-async fn a_round_whose_usage_with_its_cache_reaches_the_threshold_is_summarized_whole_and_its_tool_never_runs_again()
+async fn a_round_whose_usage_with_its_cache_reaches_the_threshold_summarizes_what_its_request_carried_and_its_tool_never_runs_again()
  {
     let provider = ScriptedRuntime::new([
         Turn::Events(vec![
@@ -1067,11 +1078,7 @@ async fn a_round_whose_usage_with_its_cache_reaches_the_threshold_is_summarized_
     ]);
     let store = MemoryTreeStore::new();
     let (count, runs) = counted("count", "counted");
-    let compaction = CompactionConfig {
-        keep_recent_tokens: 1,
-        threshold_percent: Some(80),
-    };
-    let session = small_session_with(&provider, vec![count], &store, compaction).await;
+    let session = small_session(&provider, vec![count], &store).await;
 
     session
         .send(text("use the tool"), turn("t1"))
@@ -1084,27 +1091,33 @@ async fn a_round_whose_usage_with_its_cache_reaches_the_threshold_is_summarized_
     let [_, summary, continuation] = requests.as_slice() else {
         panic!("{requests:?}");
     };
-    // The round is summarized whole: the call with its result.
+    // The pass summarizes what the round's request carried; the call and its
+    // result are kept, and the model continues after them.
     assert_eq!(
-        item_kinds(&summary.items),
+        summary.items.as_ref(),
+        [
+            user_item("use the tool"),
+            user_item(COMPACTION_SUMMARY_INSTRUCTION)
+        ]
+    );
+    assert_eq!(
+        item_kinds(&continuation.items),
         ["user_message", "tool_use", "tool_result", "user_message"]
     );
+    assert_eq!(continuation.items[0], summary_item("tool summary"));
     assert!(matches!(
-        &summary.items[2],
+        &continuation.items[2],
         InferenceItem::ToolResult { output, .. } if *output == texts(&["counted"])
     ));
-    assert_eq!(
-        continuation.items.as_ref(),
-        [summary_item("tool summary"), user_item(RESUME_TEXT)]
-    );
+    assert_eq!(continuation.items[3], user_item(RESUME_TEXT));
     let blocks = session.transcript().blocks;
     assert_eq!(
         kinds(&blocks),
         [
             "user",
+            "compaction_boundary",
             "tool_call:completed",
             "response",
-            "compaction_boundary",
             "compaction_marker",
             "resume",
             "text",
@@ -1113,13 +1126,19 @@ async fn a_round_whose_usage_with_its_cache_reaches_the_threshold_is_summarized_
     );
     // The usage is recorded with its cache, and no request carries it.
     assert!(
-        matches!(&blocks[2], Block::Response(response) if response.usage.cache_write_tokens == 850)
+        matches!(&blocks[3], Block::Response(response) if response.usage.cache_write_tokens == 850)
     );
 }
 
 #[tokio::test(flavor = "local")]
 async fn a_pass_with_nothing_to_summarize_but_the_last_summary_sends_no_request() {
-    let provider = ScriptedRuntime::new([answer("first"), answer("summary"), answer("second")]);
+    let provider = ScriptedRuntime::new([
+        Turn::Events(vec![event::error(
+            "the key expired",
+            Some(ErrorCode::AuthExpired),
+        )]),
+        answer("summary"),
+    ]);
     let store = MemoryTreeStore::new();
     let session = small_session(&provider, Vec::new(), &store).await;
 
@@ -1129,33 +1148,18 @@ async fn a_pass_with_nothing_to_summarize_but_the_last_summary_sends_no_request(
     assert!(session.transcript().blocks.is_empty());
     assert_eq!(session.phase(), SessionPhase::Idle);
 
-    session
-        .send(long_message(), turn("t1"))
-        .unwrap()
-        .await
-        .unwrap();
-    session
-        .send(text(&"y".repeat(400)), turn("t2"))
-        .unwrap()
-        .await
-        .unwrap();
-    // The pass keeps the message after the boundary, so its window would
-    // hold the last summary alone.
+    // No request was answered, so a pass summarizes the whole history and
+    // keeps nothing after its boundary: the next pass's window would hold
+    // the last summary alone.
+    let failed = session.send(long_message(), turn("t1")).unwrap().await;
+    assert!(failed.is_err());
+    session.compact().unwrap().await.unwrap();
     session.compact().unwrap().await.unwrap();
 
-    assert_eq!(provider.requests().len(), 3);
+    assert_eq!(provider.requests().len(), 2);
     assert_eq!(
         kinds(&session.transcript().blocks),
-        [
-            "user",
-            "text",
-            "response",
-            "compaction_boundary",
-            "user",
-            "compaction_marker",
-            "text",
-            "response"
-        ]
+        ["user", "error", "compaction_boundary", "compaction_marker"]
     );
 }
 
@@ -1193,22 +1197,34 @@ async fn a_second_pass_folds_the_first_summary_in_and_a_restored_session_replays
     // The second window starts at the first boundary: the first summary
     // folds into the second, and nothing before it is summarized again.
     let requests = provider.requests();
-    let [.., second_summary, third_request] = requests.as_slice() else {
+    let [.., second_request, second_summary, third_request] = requests.as_slice() else {
         panic!("{requests:?}");
     };
     assert!(is_copy(second_summary));
     assert_eq!(
         second_summary.items.as_ref(),
         [
+            second_request.items.to_vec(),
+            vec![user_item(COMPACTION_SUMMARY_INSTRUCTION)]
+        ]
+        .concat()
+    );
+    assert_eq!(
+        second_summary.items.as_ref(),
+        [
             summary_item("summary one"),
+            answer_item("small-model", "first answer"),
             user_item(&second),
-            answer_item("small-model", "second answer"),
             user_item(COMPACTION_SUMMARY_INSTRUCTION),
         ]
     );
     assert_eq!(
         third_request.items.as_ref(),
-        [summary_item("summary two"), user_item(&third)]
+        [
+            summary_item("summary two"),
+            answer_item("small-model", "second answer"),
+            user_item(&third)
+        ]
     );
 
     // Restored from its checkpoint, the session replays from the last
@@ -1232,6 +1248,7 @@ async fn a_second_pass_folds_the_first_summary_in_and_a_restored_session_replays
         requests.last().unwrap().items.as_ref(),
         [
             summary_item("summary two"),
+            answer_item("small-model", "second answer"),
             user_item(&third),
             answer_item("small-model", "third answer"),
             user_item("after the restore"),
@@ -1292,7 +1309,7 @@ async fn input_that_arrives_during_a_pass_waits_outside_the_summary_for_the_firs
     let requests = provider.requests();
     assert_eq!(
         item_kinds(&requests[1].items),
-        ["user_message", "assistant_text", "user_message"]
+        ["user_message", "user_message"]
     );
     let steer = InferenceItem::UserSteer {
         content: text("mind the tests"),
@@ -1301,6 +1318,7 @@ async fn input_that_arrives_during_a_pass_waits_outside_the_summary_for_the_firs
         requests[2].items.as_ref(),
         [
             summary_item("summary one"),
+            answer_item("small-model", "first answer"),
             user_item(&second),
             steer.clone()
         ]
@@ -1309,6 +1327,7 @@ async fn input_that_arrives_during_a_pass_waits_outside_the_summary_for_the_firs
         requests[3].items.as_ref(),
         [
             summary_item("summary one"),
+            answer_item("small-model", "first answer"),
             user_item(&second),
             steer,
             answer_item("small-model", "second answer"),
@@ -1331,7 +1350,6 @@ async fn input_that_arrives_during_a_pass_waits_outside_the_summary_for_the_firs
         provider.requests()[5].items.as_ref(),
         [
             summary_item("summary two"),
-            user_item(&third),
             answer_item("small-model", "third answer"),
             user_item("after the pass"),
         ]
@@ -1349,16 +1367,16 @@ async fn an_edit_before_or_after_compaction_boundaries_replays_only_the_summarie
     let provider = ScriptedRuntime::new([
         answer("answer A"),
         answer("answer B"),
-        answer("summary A"),
+        answer("summary one"),
         answer("answer C"),
-        answer("summary A B"),
+        answer("summary two"),
         // One answer for each replacement, in the order below.
         answer("replaced A"),
         answer("replaced B"),
         answer("replaced C"),
     ]);
     let store = MemoryTreeStore::new();
-    let written = small_session_with(&provider, Vec::new(), &store, only_when_asked(100)).await;
+    let written = small_session_with(&provider, Vec::new(), &store, only_when_asked()).await;
     for name in ["A", "B"] {
         written
             .send(text(&question(name)), turn(name))
@@ -1373,6 +1391,9 @@ async fn an_edit_before_or_after_compaction_boundaries_replays_only_the_summarie
         .await
         .unwrap();
     written.compact().unwrap().await.unwrap();
+    // Each boundary stands where the content of the request before it
+    // ended, so a message comes before the boundary of the pass that
+    // followed its answer.
     let before = written.transcript().blocks;
     assert_eq!(
         kinds(&before),
@@ -1380,13 +1401,13 @@ async fn an_edit_before_or_after_compaction_boundaries_replays_only_the_summarie
             "user",
             "text",
             "response",
-            "compaction_boundary",
             "user",
+            "compaction_boundary",
             "text",
             "response",
             "compaction_marker",
-            "compaction_boundary",
             "user",
+            "compaction_boundary",
             "text",
             "response",
             "compaction_marker"
@@ -1395,10 +1416,24 @@ async fn an_edit_before_or_after_compaction_boundaries_replays_only_the_summarie
 
     for (name, index, kept) in [
         ("A", 0, Vec::new()),
-        ("B", 4, vec![summary_item("summary A")]),
-        ("C", 9, vec![summary_item("summary A B")]),
+        (
+            "B",
+            3,
+            vec![
+                user_item(&question("A")),
+                answer_item("small-model", "answer A"),
+            ],
+        ),
+        (
+            "C",
+            8,
+            vec![
+                summary_item("summary one"),
+                answer_item("small-model", "answer B"),
+            ],
+        ),
     ] {
-        let session = restore_compacting(&store, &provider, 100);
+        let session = restore_compacting(&store, &provider);
         let replacement = format!("{name}2");
 
         session
@@ -1407,8 +1442,8 @@ async fn an_edit_before_or_after_compaction_boundaries_replays_only_the_summarie
             .unwrap();
         session.settled().await;
 
-        // The summaries after the message went with it; the one before it
-        // stands for what it summarized.
+        // The summaries after the message went with it; one before it stands
+        // for what it summarized.
         let blocks = session.transcript().blocks;
         assert_eq!(blocks[..index], before[..index], "editing {name}");
         assert_eq!(kinds(&blocks[index..]), ["user", "text", "response"]);
@@ -1427,19 +1462,26 @@ async fn an_edit_that_cuts_a_marker_anchors_no_estimate_on_a_usage_measured_befo
         answer("answer A"),
         // Measured over the whole history, before the summary replaced A.
         Turn::Events(vec![event::text("answer B"), event::response(900, 0)]),
-        answer("answer C"),
-        answer("summary A"),
+        Turn::Events(vec![event::error(
+            "the key expired",
+            Some(ErrorCode::AuthExpired),
+        )]),
+        answer("summary one"),
         answer("replaced C"),
     ]);
     let store = MemoryTreeStore::new();
-    let written = small_session_with(&provider, Vec::new(), &store, only_when_asked(200)).await;
-    for name in ["A", "B", "C"] {
+    let written = small_session_with(&provider, Vec::new(), &store, only_when_asked()).await;
+    for name in ["A", "B"] {
         written
             .send(text(&question(name)), turn(name))
             .unwrap()
             .await
             .unwrap();
     }
+    let failed = written.send(text(&question("C")), turn("C")).unwrap().await;
+    assert!(failed.is_err());
+    // C was never answered: the pass summarizes what B's request carried,
+    // and keeps B's answer and C after the boundary.
     written.compact().unwrap().await.unwrap();
     assert_eq!(
         kinds(&written.transcript().blocks),
@@ -1447,17 +1489,16 @@ async fn an_edit_that_cuts_a_marker_anchors_no_estimate_on_a_usage_measured_befo
             "user",
             "text",
             "response",
+            "user",
             "compaction_boundary",
-            "user",
             "text",
             "response",
             "user",
-            "text",
-            "response",
+            "error",
             "compaction_marker"
         ]
     );
-    let session = restore_compacting(&store, &provider, 200);
+    let session = restore_compacting(&store, &provider);
 
     session
         .edit_and_send(edit_of(&session, "C", "op1", "C2"))
@@ -1467,12 +1508,11 @@ async fn an_edit_that_cuts_a_marker_anchors_no_estimate_on_a_usage_measured_befo
 
     // The marker went with C, and B's usage, over the threshold of 800,
     // stays invalid: no pass runs before the replacement's turn.
-    assert_eq!(summary_sizes(&provider), [3]);
+    assert_eq!(summary_sizes(&provider), [4]);
     assert_eq!(
         provider.requests().last().unwrap().items.as_ref(),
         [
-            summary_item("summary A"),
-            user_item(&question("B")),
+            summary_item("summary one"),
             answer_item("small-model", "answer B"),
             user_item("C2"),
         ]
@@ -1490,7 +1530,7 @@ async fn a_pass_after_an_edit_summarizes_only_the_history_the_edit_kept() {
         answer("replaced B"),
     ]);
     let store = MemoryTreeStore::new();
-    let written = small_session_with(&provider, Vec::new(), &store, only_when_asked(1)).await;
+    let written = small_session_with(&provider, Vec::new(), &store, only_when_asked()).await;
     written
         .send(text(&first), turn("A"))
         .unwrap()
@@ -1499,7 +1539,7 @@ async fn a_pass_after_an_edit_summarizes_only_the_history_the_edit_kept() {
     for name in ["B", "C"] {
         written.send(text(name), turn(name)).unwrap().await.unwrap();
     }
-    let session = restore_compacting(&store, &provider, 1);
+    let session = restore_compacting(&store, &provider);
 
     session
         .edit_and_send(edit_of(&session, "B", "op1", "B2"))
@@ -1507,8 +1547,9 @@ async fn a_pass_after_an_edit_summarizes_only_the_history_the_edit_kept() {
         .unwrap();
     session.settled().await;
 
-    // What the edit kept is over the threshold: the pass summarizes it, and
-    // no request holds an answer the edit removed.
+    // What the edit kept is over the threshold: the pass summarizes what
+    // the request of A carried, and no request holds an answer the edit
+    // removed.
     let requests = provider.requests();
     let [summary, replacement] = &requests[3..] else {
         panic!("{requests:?}");
@@ -1517,12 +1558,248 @@ async fn a_pass_after_an_edit_summarizes_only_the_history_the_edit_kept() {
         summary.items.as_ref(),
         [
             user_item(&first),
-            answer_item("small-model", "answer A"),
             user_item(COMPACTION_SUMMARY_INSTRUCTION),
         ]
     );
     assert_eq!(
         replacement.items.as_ref(),
-        [summary_item("summary of A"), user_item("B2")]
+        [
+            summary_item("summary of A"),
+            answer_item("small-model", "answer A"),
+            user_item("B2")
+        ]
+    );
+}
+
+/// The images `request` carries, in messages and tool results.
+fn images(request: &demi_provider::InferenceRequest) -> usize {
+    crate::transcript::estimate::request_size("", &request.items).images as usize
+}
+
+#[tokio::test(flavor = "local")]
+async fn screenshots_toward_the_vendors_image_limit_compact_before_a_request_would_reach_it() {
+    // The vendor takes five images a request, so a request of four reaches
+    // its threshold. Each call returns a screenshot.
+    let shot = |call: &str| {
+        Turn::Events(vec![
+            event::tool_call(call, "shoot", json!({})),
+            event::response(1, 1),
+        ])
+    };
+    let provider = ScriptedRuntime::new([
+        shot("shot-1"),
+        shot("shot-2"),
+        shot("shot-3"),
+        shot("shot-4"),
+        answer("the screen so far"),
+        answer("done"),
+    ])
+    .with_limits(RequestLimits {
+        body_bytes: None,
+        images: Some(5),
+    });
+    let png = B64Bytes::from(b"\x89PNG\r\n\x1a\n\0\0\0\x01".to_vec());
+    let shoot = tool("shoot", move |_| {
+        let image = ToolResultContentBlock::Image {
+            source: ToolMediaSource::Binary {
+                data: png.clone(),
+                media_type: "image/png".into(),
+            },
+        };
+        Box::pin(async move {
+            Ok(ToolOutcome {
+                output: vec![image],
+                ..output("")
+            })
+        })
+    });
+    let store = MemoryTreeStore::new();
+    let session = start(&provider, vec![shoot], &store, SessionConfig::default()).await;
+    session
+        .update_model(ModelSwitch {
+            model: model_reading("stub", "test-model", &[FileExtension::Png]),
+            runtime: None,
+        })
+        .unwrap();
+
+    session
+        .send(text("watch the screen"), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
+
+    // No request reaches four images: the fifth would have carried four, so
+    // the pass before it summarizes what the fourth carried, whose request
+    // it extends, and the turn goes on after the last screenshot.
+    let requests = provider.requests();
+    assert_eq!(
+        requests.iter().map(images).collect::<Vec<_>>(),
+        [0, 1, 2, 3, 3, 1]
+    );
+    let (fourth, summary, fifth) = (&requests[3], &requests[4], &requests[5]);
+    assert_eq!(
+        summary.items.as_ref(),
+        [
+            fourth.items.to_vec(),
+            vec![user_item(COMPACTION_SUMMARY_INSTRUCTION)]
+        ]
+        .concat()
+    );
+    assert_eq!(
+        item_kinds(&fifth.items),
+        ["user_message", "tool_use", "tool_result", "user_message"]
+    );
+    assert_eq!(fifth.items[0], summary_item("the screen so far"));
+    assert_eq!(fifth.items[3], user_item(RESUME_TEXT));
+}
+
+#[tokio::test(flavor = "local")]
+async fn a_request_refused_as_too_large_compacts_once_and_goes_again_and_a_second_refusal_fails_the_turn()
+ {
+    let provider = ScriptedRuntime::new([
+        answer("first"),
+        too_long(),
+        answer("summary of the first message"),
+        answer("second"),
+        too_long(),
+        answer("summary of the second message"),
+        too_long(),
+    ]);
+    let store = MemoryTreeStore::new();
+    let session = small_session(&provider, Vec::new(), &store).await;
+    let retries = Rc::new(Cell::new(0));
+    let _listener = session.subscribe({
+        let retries = retries.clone();
+        move |event| {
+            if let SessionEvent::RetryScheduled { .. } = event {
+                retries.set(retries.get() + 1);
+            }
+        }
+    });
+    session.send(text("one"), turn("t1")).unwrap().await.unwrap();
+
+    session.send(text("two"), turn("t2")).unwrap().await.unwrap();
+
+    // The refused request left nothing behind; the pass summarized what the
+    // first request carried, and the request went again from the summary.
+    let requests = provider.requests();
+    let [first, refused, summary, again] = &requests[..4] else {
+        panic!("{requests:?}");
+    };
+    assert_eq!(
+        summary.items.as_ref(),
+        [first.items.to_vec(), vec![user_item(COMPACTION_SUMMARY_INSTRUCTION)]].concat()
+    );
+    assert_eq!(
+        refused.items.as_ref(),
+        [user_item("one"), answer_item("small-model", "first"), user_item("two")]
+    );
+    assert_eq!(
+        again.items.as_ref(),
+        [
+            summary_item("summary of the first message"),
+            answer_item("small-model", "first"),
+            user_item("two")
+        ]
+    );
+    assert_eq!(retries.get(), 0);
+    assert!(!kinds(&session.transcript().blocks).contains(&"error".to_owned()));
+
+    // Refused again after its pass, the request fails the turn.
+    let failed = session.send(text("three"), turn("t3")).unwrap().await;
+
+    assert_eq!(
+        failed.unwrap_err().code.as_deref(),
+        Some("context_length_exceeded")
+    );
+    assert_eq!(provider.remaining(), 0);
+    assert_eq!(
+        kinds(&session.transcript().blocks).last().map(String::as_str),
+        Some("error")
+    );
+}
+
+#[tokio::test(flavor = "local")]
+async fn a_switch_to_a_vendor_that_takes_fewer_images_compacts_with_the_model_before_it() {
+    let shot = |call: &str| {
+        Turn::Events(vec![
+            event::tool_call(call, "shoot", json!({})),
+            event::response(1, 1),
+        ])
+    };
+    let first = ScriptedRuntime::new([
+        shot("shot-1"),
+        shot("shot-2"),
+        shot("shot-3"),
+        answer("three shots"),
+        answer("summary of the shots"),
+    ]);
+    // The new model's vendor takes four images a request: three reach its
+    // threshold.
+    let second = ScriptedRuntime::new([answer("after the switch")]).with_limits(RequestLimits {
+        body_bytes: None,
+        images: Some(4),
+    });
+    let png = B64Bytes::from(b"\x89PNG\r\n\x1a\n\0\0\0\x01".to_vec());
+    let shoot = tool("shoot", move |_| {
+        let image = ToolResultContentBlock::Image {
+            source: ToolMediaSource::Binary {
+                data: png.clone(),
+                media_type: "image/png".into(),
+            },
+        };
+        Box::pin(async move {
+            Ok(ToolOutcome {
+                output: vec![image],
+                ..output("")
+            })
+        })
+    });
+    let store = MemoryTreeStore::new();
+    let session = start(&first, vec![shoot], &store, SessionConfig::default()).await;
+    let reads = [FileExtension::Png];
+    session
+        .update_model(ModelSwitch {
+            model: model_reading("stub", "model-a", &reads),
+            runtime: None,
+        })
+        .unwrap();
+    session
+        .send(text("take three"), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
+    session
+        .update_model(ModelSwitch {
+            model: model_reading("other", "model-b", &reads),
+            runtime: Some(Box::new(second.clone())),
+        })
+        .unwrap();
+
+    session
+        .send(text("and now?"), turn("t2"))
+        .unwrap()
+        .await
+        .unwrap();
+
+    // The model before the switch summarized what its last request carried,
+    // and the new model's request holds no image.
+    let requests = first.requests();
+    let [.., last, summary] = requests.as_slice() else {
+        panic!("{requests:?}");
+    };
+    assert_eq!(images(last), 3);
+    assert_eq!(summary.model_id, "model-a");
+    assert_eq!(
+        summary.items.as_ref(),
+        [last.items.to_vec(), vec![user_item(COMPACTION_SUMMARY_INSTRUCTION)]].concat()
+    );
+    assert_eq!(
+        second.requests()[0].items.as_ref(),
+        [
+            summary_item("summary of the shots"),
+            answer_item("model-a", "three shots"),
+            user_item("and now?")
+        ]
     );
 }

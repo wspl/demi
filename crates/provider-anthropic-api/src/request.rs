@@ -1,6 +1,7 @@
 //! The Messages API request body (`models.md` § Request parameters): the
 //! transcript as alternating user and assistant messages, the tools, the
-//! output limit, thinking and the service tier.
+//! output limit, thinking, the service tier, and the marks where the vendor
+//! caches a session's requests (`providers.md` § Per vendor).
 
 use std::borrow::Cow;
 
@@ -8,7 +9,9 @@ use demi_core::{
     B64Bytes, DocumentSource, MediaSource, ThinkingConfig, ThinkingSummary, ToolMediaSource,
     ToolResultContentBlock, UserContentBlock, attachment_tag, is_blank,
 };
-use demi_provider::{InferenceItem, InferenceRequest, ToolDefinition, UnloadedMedia, json_body};
+use demi_provider::{
+    InferenceItem, InferenceRequest, PromptCache, ToolDefinition, UnloadedMedia, json_body,
+};
 use serde::Serialize;
 
 /// The prefix this provider puts on the signatures and redacted data it
@@ -24,6 +27,18 @@ const DEFAULT_MAX_TOKENS: u32 = 32_000;
 /// keeps below `max_tokens`.
 const MIN_THINKING_BUDGET: u32 = 1_024;
 
+/// How long the vendor keeps an entry after the request that wrote or last
+/// read it: an hour, because a session's requests are often more than five
+/// minutes apart, while a tool runs or the user reads.
+const CACHE_LIFETIME: &str = "1h";
+
+/// A mark on the block where the vendor writes a cache entry, and where a
+/// later request reads it back.
+const CACHE_MARK: CacheControl = CacheControl {
+    kind: "ephemeral",
+    ttl: CACHE_LIFETIME,
+};
+
 /// The JSON body of `request`.
 pub(crate) fn encode(request: &InferenceRequest) -> Result<Vec<u8>, UnloadedMedia> {
     Ok(json_body(&body(request)?))
@@ -35,8 +50,9 @@ struct Body<'a> {
     messages: Vec<Message<'a>>,
     max_tokens: u32,
     stream: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    system: Option<&'a str>,
+    /// The system prompt as one text block, which can carry a mark.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    system: Vec<Content<'a>>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     tools: Vec<Tool<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -50,7 +66,46 @@ struct Body<'a> {
 #[derive(Serialize)]
 struct Message<'a> {
     role: Role,
-    content: Vec<Block<'a>>,
+    content: Vec<Content<'a>>,
+}
+
+/// A block's place in the messages: its message's index and its own.
+type Position = (usize, usize);
+
+/// A content block with the cache mark it may carry.
+#[derive(Serialize)]
+struct Content<'a> {
+    #[serde(flatten)]
+    block: Block<'a>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cache_control: Option<CacheControl>,
+}
+
+impl<'a> From<Block<'a>> for Content<'a> {
+    fn from(block: Block<'a>) -> Self {
+        Self {
+            block,
+            cache_control: None,
+        }
+    }
+}
+
+impl Content<'_> {
+    /// Whether the API takes a mark on this block: it takes none on
+    /// reasoning.
+    fn can_mark(&self) -> bool {
+        !matches!(
+            self.block,
+            Block::Thinking { .. } | Block::RedactedThinking { .. }
+        )
+    }
+}
+
+#[derive(Clone, Copy, Serialize)]
+struct CacheControl {
+    #[serde(rename = "type")]
+    kind: &'static str,
+    ttl: &'static str,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize)]
@@ -124,6 +179,8 @@ struct Tool<'a> {
     name: &'a str,
     description: &'a str,
     input_schema: &'a serde_json::Map<String, serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cache_control: Option<CacheControl>,
 }
 
 impl<'a> From<&'a ToolDefinition> for Tool<'a> {
@@ -132,6 +189,7 @@ impl<'a> From<&'a ToolDefinition> for Tool<'a> {
             name: &tool.name,
             description: &tool.description,
             input_schema: &tool.input_schema,
+            cache_control: None,
         }
     }
 }
@@ -163,17 +221,76 @@ fn body(request: &InferenceRequest) -> Result<Body<'_>, UnloadedMedia> {
         .max_output_tokens()
         .map_or(DEFAULT_MAX_TOKENS, |limit| limit.get());
     let (thinking, output_config) = thinking(request.thinking.as_ref(), max_tokens);
+    let mut system = Vec::new();
+    if !is_blank(&request.system_prompt) {
+        let prompt = Block::Text {
+            text: Cow::Borrowed(&request.system_prompt),
+        };
+        system.push(Content::from(prompt));
+    }
+    let mut tools: Vec<Tool<'_>> = request.tools.iter().map(Tool::from).collect();
+    let messages = match request.prompt_cache {
+        PromptCache::Off => messages(&request.items, 0)?.0,
+        PromptCache::Session { answered_items } => {
+            let (mut messages, answered_end) = messages(&request.items, answered_items)?;
+            mark_shared_prefix(&mut system, &mut tools);
+            let request_end = last_position(&messages);
+            for position in [answered_end, request_end].into_iter().flatten() {
+                mark_at(&mut messages, position);
+            }
+            messages
+        }
+    };
     Ok(Body {
         model: &request.model_id,
-        messages: messages(&request.items)?,
+        messages,
         max_tokens,
         stream: true,
-        system: (!is_blank(&request.system_prompt)).then_some(request.system_prompt.as_str()),
-        tools: request.tools.iter().map(Tool::from).collect(),
+        system,
+        tools,
         thinking,
         output_config,
         service_tier: request.service_tier_id.as_deref(),
     })
+}
+
+/// Marks the end of what the nodes of one harness and profile share: the
+/// system prompt, or the last tool when the prompt is blank. Its entry serves
+/// a conversation's first request and each request after a summary.
+fn mark_shared_prefix(system: &mut [Content<'_>], tools: &mut [Tool<'_>]) {
+    if let Some(prompt) = system.last_mut() {
+        prompt.cache_control = Some(CACHE_MARK);
+    } else if let Some(tool) = tools.last_mut() {
+        tool.cache_control = Some(CACHE_MARK);
+    }
+}
+
+/// Marks the block at `position`, or the nearest block before it that can
+/// carry a mark.
+fn mark_at(messages: &mut [Message<'_>], position: Position) {
+    let (last_message, last_block) = position;
+    for index in (0..=last_message).rev() {
+        let content = &mut messages[index].content;
+        let end = if index == last_message {
+            last_block + 1
+        } else {
+            content.len()
+        };
+        if let Some(block) = content[..end]
+            .iter_mut()
+            .rev()
+            .find(|block| block.can_mark())
+        {
+            block.cache_control = Some(CACHE_MARK);
+            return;
+        }
+    }
+}
+
+/// The position of the last block of `messages`; every message holds one.
+fn last_position(messages: &[Message<'_>]) -> Option<Position> {
+    let last = messages.last()?;
+    Some((messages.len() - 1, last.content.len() - 1))
 }
 
 /// The thinking setting as the Messages API takes it: a budget as a budget,
@@ -213,80 +330,112 @@ fn thinking(
 
 /// The transcript as messages: consecutive items of one role share a
 /// message, so a turn's text, thinking and tool uses form one assistant
-/// message and the tool results that answer them one user message.
-fn messages(items: &[InferenceItem]) -> Result<Vec<Message<'_>>, UnloadedMedia> {
+/// message and the tool results that answer them one user message. Also the
+/// position of the last block of the first `answered` items, none while they
+/// have no block.
+fn messages(
+    items: &[InferenceItem],
+    answered: usize,
+) -> Result<(Vec<Message<'_>>, Option<Position>), UnloadedMedia> {
     let mut messages: Vec<Message<'_>> = Vec::new();
-    for item in items {
-        let (role, content) = match item {
-            InferenceItem::UserMessage { content } | InferenceItem::UserSteer { content } => {
-                (Role::User, user_content(content)?)
-            }
-            InferenceItem::AssistantText { text, .. } => (
-                Role::Assistant,
-                vec![Block::Text {
-                    text: Cow::Borrowed(text),
-                }],
-            ),
-            InferenceItem::AssistantThinking {
-                text, signature, ..
-            } => {
-                // Unsigned thinking and another vendor's signature cannot be
-                // sent back; the vendor needs only its own.
-                let Some(signature) = signature.as_deref().and_then(own) else {
-                    continue;
-                };
-                (
-                    Role::Assistant,
-                    vec![Block::Thinking {
-                        thinking: text,
-                        signature,
-                    }],
-                )
-            }
-            InferenceItem::AssistantRedactedThinking { data, .. } => {
-                let Some(data) = own(data) else {
-                    continue;
-                };
-                (Role::Assistant, vec![Block::RedactedThinking { data }])
-            }
-            InferenceItem::ToolUse {
-                tool_use_id,
-                tool_name,
-                input,
-                ..
-            } => {
-                let input = match input {
-                    serde_json::Value::Null => Cow::Owned(serde_json::Value::Object(Default::default())),
-                    input => Cow::Borrowed(input),
-                };
-                (
-                    Role::Assistant,
-                    vec![Block::ToolUse {
-                        id: tool_use_id,
-                        name: tool_name,
-                        input,
-                    }],
-                )
-            }
-            InferenceItem::ToolResult {
-                tool_use_id,
-                output,
-                is_error,
-            } => (
-                Role::User,
-                vec![Block::ToolResult {
-                    tool_use_id,
-                    content: tool_result_content(output)?,
-                    is_error: *is_error,
-                }],
-            ),
-        };
-        append(&mut messages, role, content);
+    let mut answered_end = None;
+    for (count, item) in (1..).zip(items) {
+        if let Some((role, content)) = item_content(item)? {
+            append(&mut messages, role, content);
+        }
+        if count == answered {
+            answered_end = last_position(&messages);
+        }
     }
-    Ok(messages)
+    Ok((messages, answered_end))
 }
 
-fn append<'a>(messages: &mut Vec<Message<'a>>, role: Role, mut content: Vec<Block<'a>>) {
+/// What one item adds to the messages: its role and blocks, or nothing for
+/// reasoning this provider cannot send back.
+fn item_content(item: &InferenceItem) -> Result<Option<(Role, Vec<Content<'_>>)>, UnloadedMedia> {
+    let (role, blocks) = match item {
+        InferenceItem::UserMessage { content } | InferenceItem::UserSteer { content } => {
+            (Role::User, user_content(content)?)
+        }
+        InferenceItem::AssistantText { text, .. } => (
+            Role::Assistant,
+            vec![Block::Text {
+                text: Cow::Borrowed(text),
+            }],
+        ),
+        InferenceItem::AssistantThinking {
+            text,
+            signature,
+            kept_past_summary,
+            ..
+        } => {
+            // Unsigned thinking and another vendor's signature cannot be
+            // sent back; the vendor needs only its own. Reasoning kept past
+            // a summary would fail the vendor's check of the history before
+            // it, and leaving it out at the start of the history is allowed.
+            if *kept_past_summary {
+                return Ok(None);
+            }
+            let Some(signature) = signature.as_deref().and_then(own) else {
+                return Ok(None);
+            };
+            (
+                Role::Assistant,
+                vec![Block::Thinking {
+                    thinking: text,
+                    signature,
+                }],
+            )
+        }
+        InferenceItem::AssistantRedactedThinking {
+            data,
+            kept_past_summary,
+            ..
+        } => {
+            let Some(data) = own(data).filter(|_| !kept_past_summary) else {
+                return Ok(None);
+            };
+            (Role::Assistant, vec![Block::RedactedThinking { data }])
+        }
+        InferenceItem::ToolUse {
+            tool_use_id,
+            tool_name,
+            input,
+            ..
+        } => {
+            let input = match input {
+                serde_json::Value::Null => {
+                    Cow::Owned(serde_json::Value::Object(Default::default()))
+                }
+                input => Cow::Borrowed(input),
+            };
+            (
+                Role::Assistant,
+                vec![Block::ToolUse {
+                    id: tool_use_id,
+                    name: tool_name,
+                    input,
+                }],
+            )
+        }
+        InferenceItem::ToolResult {
+            tool_use_id,
+            output,
+            is_error,
+        } => (
+            Role::User,
+            vec![Block::ToolResult {
+                tool_use_id,
+                content: tool_result_content(output)?,
+                is_error: *is_error,
+            }],
+        ),
+    };
+    let content = blocks.into_iter().map(Content::from).collect();
+    Ok(Some((role, content)))
+}
+
+fn append<'a>(messages: &mut Vec<Message<'a>>, role: Role, mut content: Vec<Content<'a>>) {
     if content.is_empty() {
         return;
     }
@@ -339,7 +488,9 @@ fn user_content(content: &[UserContentBlock]) -> Result<Vec<Block<'_>>, Unloaded
                         source: Base64::new(media_type, data),
                         title: file_name,
                     },
-                    DocumentSource::Ref { r#ref, .. } => return Err(UnloadedMedia(r#ref.to_string())),
+                    DocumentSource::Ref { r#ref, .. } => {
+                        return Err(UnloadedMedia(r#ref.to_string()));
+                    }
                 },
             })
         })
@@ -371,7 +522,9 @@ fn tool_result_content(
                     ToolMediaSource::Binary { data, media_type } => ResultBlock::Image {
                         source: Base64::new(media_type, data),
                     },
-                    ToolMediaSource::Ref { r#ref, .. } => return Err(UnloadedMedia(r#ref.to_string())),
+                    ToolMediaSource::Ref { r#ref, .. } => {
+                        return Err(UnloadedMedia(r#ref.to_string()));
+                    }
                 },
             })
         })

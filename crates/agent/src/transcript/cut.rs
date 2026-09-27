@@ -6,7 +6,7 @@
 
 use demi_core::{Block, BlockId, ToolCallStatus, TurnId, is_blank};
 
-use super::{estimate::block_tokens, opens_input_turn, replay_start};
+use super::{latest_answer, opens_input_turn, replay_start};
 
 /// Where re-inference restarts after a turn failed to finish.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -156,35 +156,23 @@ pub(crate) fn through_assistant<'a>(
     Ok(prefix)
 }
 
-/// The blocks compaction summarizes: from the last `compaction_boundary`,
-/// or the first block, to the cut, before which counting back from the end
-/// the kept history reaches `keep_recent_tokens`.
+/// The blocks compaction summarizes (`compaction.md` § One pass): what the
+/// session's latest answered request carried, from the last
+/// `compaction_boundary`, or the first block, to the cut, where that
+/// request's answer begins. With no request answered since the last
+/// compaction, the window runs to the end.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CompactionWindow {
     pub(crate) start: usize,
     pub(crate) cut: usize,
 }
 
-/// The window of the next pass; none when the history is too short to keep
-/// `keep_recent_tokens`. A cut that lands on a `response` falls after it, so
-/// a request's usage stays with the history it measured.
-pub(crate) fn compaction_window(
-    blocks: &[Block],
-    keep_recent_tokens: u64,
-) -> Option<CompactionWindow> {
-    let start = replay_start(blocks);
-    let mut recent = 0;
-    for index in (start + 1..blocks.len()).rev() {
-        recent += block_tokens(&blocks[index]);
-        if recent >= keep_recent_tokens {
-            let cut = match blocks[index] {
-                Block::Response(_) => index + 1,
-                _ => index,
-            };
-            return Some(CompactionWindow { start, cut });
-        }
+/// The window of the next pass over `blocks`.
+pub(crate) fn compaction_window(blocks: &[Block]) -> CompactionWindow {
+    CompactionWindow {
+        start: replay_start(blocks),
+        cut: latest_answer(blocks).unwrap_or(blocks.len()),
     }
-    None
 }
 
 /// The text of the last `text` block from `since` on; empty when there is

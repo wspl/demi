@@ -9,8 +9,10 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use demi_core::TokenUsage;
-use demi_provider::{ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun, ProviderRuntime};
+use demi_core::{Model, TokenUsage};
+use demi_provider::{
+    ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun, ProviderRuntime, RequestLimits,
+};
 use demi_web_api::ids::{ConversationId, ProviderId, UserId};
 use futures_util::future::LocalBoxFuture;
 use futures_util::{StreamExt, stream};
@@ -113,6 +115,10 @@ impl ProviderRuntime for MeteredRuntime {
 
     fn close(&mut self) -> LocalBoxFuture<'_, ()> {
         self.inner.close()
+    }
+
+    fn request_limits(&self, model: &Model) -> RequestLimits {
+        self.inner.request_limits(model)
     }
 }
 

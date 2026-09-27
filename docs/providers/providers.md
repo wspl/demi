@@ -189,9 +189,11 @@ ends with no further event.
 
 A request carries the session, turn and request IDs, the model and its output
 limit, the system prompt, the transcript as inference items, the tools, the
-thinking setting, the service tier and a cancellation token.
+thinking setting, the service tier, how it extends the session's earlier
+requests ([Prompt cache](#prompt-cache)) and a cancellation token.
 [Request parameters](models.md#request-parameters) defines what those
-parameters mean for each vendor.
+parameters mean for each vendor. A runtime also states its vendor's request
+limits for a model ([Request limits](models.md#request-limits)).
 
 A run yields these events:
 
@@ -307,6 +309,173 @@ a response, with zero usage.
 A request body that carries media is serialized off the user's shard, because
 megabytes of base64 would hold up every conversation of that user
 ([Blocking work](../architecture/concurrency.md#blocking-work)).
+
+## Prompt cache
+
+A vendor bills the part of a request it has cached at a fraction of the input
+price, and it finds that part only when the request begins with exactly what
+an earlier request sent. For example, a turn on the Anthropic API sends
+request 1: the tools, the system prompt and the user's message. The model
+calls `shell_exec`. Request 2 is request 1 unchanged, then the model's call
+and its result. The vendor reads request 1's part of request 2 from its cache
+at a tenth of the input price or less, and processes only what follows. Had
+request 2 changed one byte of request 1, the vendor would have processed all
+of it again and written it to its cache again, at more than the full price.
+
+### The rule
+
+Each request of a session begins with the session's previous request,
+unchanged, in the provider's own format: the same tool definitions, the same
+system prompt and the same messages, byte for byte. Only new content follows
+it: the model's answer to the previous request, tool results, input that
+arrived, and, in a summary request, the summary instruction. Demi never
+rewrites what it has sent.
+
+Only these change what a session has already sent:
+
+| Exception | What changes | Why |
+|---|---|---|
+| Compaction ([Compaction](../agent/compaction.md)) | The messages from the summary on | The history is too large for the next request |
+| A model switch ([Model switch](../agent/runtime.md#model-switch)) | Everything | A vendor keeps one cache per model, and the new model's provider sends the history in its own format |
+| An edit ([Message editing](../agent/message-editing.md)) | The messages from the edited message on | The user replaced that message |
+| A change of the thinking setting | What the vendor renders the setting into: the messages on the Anthropic API; everything on the OpenAI API, whose reasoning instructions come first | The user chose it, as with a model switch |
+| An edit of a configured model's accepted file types | The messages from the first medium whose replay the edit changes | Replay sends each medium as the request's model accepts it ([Replay](../agent/runtime.md#replay)) |
+| A new Demi release | The system prompt, the tools or the request format the release changed | Once per conversation |
+| A retired tool medium ([Retired tool media](../agent/runtime.md#retired-tool-media)) | The messages from the first result whose image or video became text | Only where no vendor can still hold a request that sent the medium: before a summary more than a day old, or after 30 idle days |
+
+`retry` and `resume` are not exceptions: they cut the history back, so their
+request is an earlier request of the session, or begins with one. A medium
+whose blob is lost is replayed as text ([Media](../agent/runtime.md#media));
+that is lost data, not a change the rule allows.
+
+Each request sends the thinking setting the user chose for it. Some vendors
+can take a changed effort inside the history on some of their models, which
+would keep the prefix; Demi does not use that, because no catalog states which
+models offer it.
+
+### What keeps it
+
+- **The system prompt and the tools** follow from the node's harness, profile
+  and commands, rendered once when the node is assembled. They hold no time,
+  id, Host or state. The tools are the five standard tools in one order
+  ([Tools](../agent/runtime.md#tools)).
+- **The items** come from replay, which reads only what the blocks hold for
+  the model, keeps each block in its place and never changes what a block
+  replays once a request has carried it; new input joins at the end
+  ([Replay](../agent/runtime.md#replay)).
+- **The body** follows from the request alone: fields in the order their
+  types declare them, JSON objects in the order they were written or read,
+  media as the base64 of the stored bytes, and no request id or time. Request
+  and turn ids travel only in headers, which are not part of the prompt.
+- **The session id** groups a session's requests at the vendor: it is the
+  OpenAI and Codex `prompt_cache_key`, the Codex `session-id` and `thread-id`
+  headers, and the Grok Build `x-grok-conv-id` header. A summary request
+  carries its session's id
+  ([Session copy](../agent/compaction.md#session-copy)).
+- **Where the previous request ends.** A request says whether it is one of a
+  session's, which a title request and a connection test are not: no later
+  request extends them, and they extend none. A session's request also says
+  how many of its leading items the session's latest answered request carried
+  ([Replay](../agent/runtime.md#replay)). A vendor that caches only where a
+  request marks it needs both.
+
+### Per vendor
+
+| Family | How the vendor caches | What Demi sends |
+|---|---|---|
+| `anthropic` | At the blocks a request marks with `cache_control`; a mark finds an earlier entry at most 20 blocks before it | Up to three marks with a one-hour lifetime, below; none on a request that is no session's |
+| `openai`, Responses | By prefix, automatically; the key routes a session's requests together, and a request finds an earlier entry at most 20 message endings back, below | `prompt_cache_key`, the session id |
+| `openai`, Chat Completions | As each vendor does: OpenAI and most compatible vendors cache by prefix, automatically | Nothing, since some compatible vendors refuse fields they do not know |
+| `google` | By prefix, automatically (implicit caching) | Nothing. An explicit cache is a stored resource with a storage price, a second copy of the history |
+| `codex` | By prefix, keyed by the session | `prompt_cache_key`, `session-id` and `thread-id`, the session id |
+| `grok-build` | By prefix; the header routes a conversation's requests to one server | `x-grok-conv-id`, the session id |
+| `claude-code` | The CLI marks its own requests | A kept process continues its own history ([Process lifetime](claude-code.md#process-lifetime)). A new process starts from the transcript as text, which is a new prefix; so does a compaction summary, whose fresh runtime starts one |
+
+**Anthropic's marks.** The Messages API writes a cache entry only at a block
+marked with `cache_control`, and a mark finds an earlier entry only within the
+20 blocks that end at it. A turn can add more than that, such as ten parallel
+tool calls with their results or a message with twenty images, and one mark at
+the end would then miss the previous request's entry. A session's request,
+a summary request included, therefore carries up to three marks:
+
+1. The system prompt, sent as one text block, or the last tool when the
+   prompt is blank. Nodes of the same harness and profile share their tools
+   and system prompt, so this entry serves each conversation's first request
+   and each request after a summary.
+2. The last block of what the session's latest answered request carried: its
+   entry is read exactly.
+3. The request's last block, which the next request reads.
+
+A mark meant for a block that cannot carry one, such as a thinking block, goes
+to the nearest block before it that can. The marks are the block form, not the
+top-level automatic form, which compatible endpoints do not all accept. Each
+has a one-hour lifetime (`"ttl": "1h"`), because an entry lives from the start
+of the request that wrote or last read it, and Demi's requests are often more
+than five minutes apart: `shell_exec` watches a command for up to ten minutes,
+`yield` waits up to ten, and a user reads an answer before replying. The hour
+costs twice the input price on what each request adds, where a lost entry
+costs 1.25 times the input price on the whole history. A prefix shorter than
+the model's minimum, 512 to 4,096 tokens, is not cached, and the vendor
+reports no error.
+
+**OpenAI's lookback.** The Responses API places a request's breakpoint at
+the end of its latest eligible message, a user message or the last of
+consecutive tool results, and finds an earlier entry at most 20 such endings
+back. Replay puts each call's result right after its call, so each result of
+parallel calls is an ending of its own: a turn that adds more than 20 endings,
+such as 21 parallel calls, misses the previous request's entry, and the vendor
+processes and writes the whole history again once. Newer models also take an
+explicit breakpoint on a content block (`prompt_cache_breakpoint`), which would
+read that entry exactly, as Anthropic's second mark does. Demi does not send
+it: the API documents it as not supported on earlier models without saying
+that they ignore it, and sending it only to the models that take it would need
+a list of model ids. The Codex backend takes the same format and key; it
+documents no lookback.
+
+**Reasoning kept past a summary.** The vendor's newest models check each
+replayed thinking block against the history before it: when that history
+changed, they refuse the request or drop the block, depending on the account.
+After compaction, the latest answer's reasoning follows a summary instead of
+the history it was produced after, so the Anthropic provider leaves out the
+reasoning that replay marks as kept past a summary
+([Replay](../agent/runtime.md#replay)); leaving blocks out at the start of the
+history is allowed. Reasoning the model produces afterwards follows the
+summary and is replayed. The other vendors document no such check, and their
+providers replay the marked reasoning as before.
+
+### Usage
+
+A response's usage says what the vendor cached. `inputTokens` is the part the
+vendor processed in full, `cacheReadTokens` the part it read from its cache
+and `cacheWriteTokens` the part it wrote to it, so the three add up to the
+request's tokens; `outputTokens` is the answer's. Each provider maps its vendor's
+fields:
+
+| Family | Read | Written | Input |
+|---|---|---|---|
+| `anthropic`, `claude-code` | `cache_read_input_tokens` | `cache_creation_input_tokens` | `input_tokens` |
+| `openai` and `codex`, Responses | `input_tokens_details.cached_tokens` | `input_tokens_details.cache_write_tokens` | `input_tokens` less the read and the written |
+| `openai` and `grok-build`, Chat Completions | `prompt_tokens_details.cached_tokens` | None | `prompt_tokens` less the read |
+| `google` | `cachedContentTokenCount` | None | `promptTokenCount` less the read, which it includes |
+
+The usage ledger keeps all four counts per request
+([Usage ledger](usage-and-quota.md#usage-ledger)), so the cache hits of each
+model can be read there, and the context estimate anchors on their sum
+([Context estimate](../agent/compaction.md#context-estimate)).
+
+### Acceptance
+
+Tests use scripted vendors that record each request's body; no test calls a
+real vendor. The conversation-wide checks are in
+[Agent runtime](../agent/runtime.md#acceptance) and
+[Compaction](../agent/compaction.md#acceptance).
+
+| Situation | Required observation |
+| --- | --- |
+| An Anthropic request of a session, with parallel tool calls | It marks the system prompt, the last block of the latest answered request's content and its own last block, each with `"ttl": "1h"` |
+| An Anthropic title request | It carries no mark |
+| Reasoning kept past a summary | The Anthropic body leaves it out; the OpenAI Responses, Codex and Gemini bodies replay it |
+| A response that reports cache reads and writes, for each provider | Its usage has the counts the table above maps, and a Gemini response's input count excludes the read |
 
 ## Inference admission and runtime ownership
 

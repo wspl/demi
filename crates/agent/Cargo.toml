@@ -26,6 +26,9 @@ demi-provider = { path = "../provider" }
 demi-shell = { path = "../shell" }
 futures-util.workspace = true
 garde.workspace = true
+# Fits an image as it enters a transcript (`runtime.md` § Images in the
+# transcript): only the codecs of the types a model reads, and no threads.
+image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
 jiff.workspace = true
 rand = "0.9"
 schemars.workspace = true
@@ -46,11 +49,17 @@ uuid = { version = "1", features = ["v4"] }
 # runtimes.
 demi-agent = { path = ".", features = ["testing"] }
 demi-provider = { path = "../provider", features = ["testing"] }
+# Each provider's format of a session's requests (`session/tests/requests.rs`,
+# `providers.md` § The rule).
+demi-provider-anthropic-api = { path = "../provider-anthropic-api" }
+demi-provider-codex = { path = "../provider-codex" }
+demi-provider-google = { path = "../provider-google" }
+demi-provider-grok-build = { path = "../provider-grok-build" }
 tokio = { workspace = true, features = ["test-util"] }
 # The compaction fixture's harness (`fixtures/compaction/README.md`) talks
 # to a real model. It is an example, so every build of the one selection
 # compiles it and no test runs it; its provider is a dev-dependency, so the
-# library never links one.
+# library never links one. The requests' tests use it too.
 demi-provider-openai-api = { path = "../provider-openai-api" }
 flate2 = "1"
 reqwest = { version = "0.12", default-features = false }

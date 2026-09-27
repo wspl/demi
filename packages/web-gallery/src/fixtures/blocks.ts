@@ -1,6 +1,7 @@
-import type { AgentMessage, Block, ModelSelection, TokenUsage, UserContentBlock } from '@demicodes/protocol'
+import type { AgentMessage, Block, ModelSelection, TokenUsage, ToolResultContentBlock, UserContentBlock } from '@demicodes/protocol'
 import { encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { ShellToolView as ShellView, ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
+import { galleryBlobs, missingBlob } from './blobs'
 
 export type { ShellView }
 
@@ -186,6 +187,128 @@ export const editingShellTool = toolCall({
   }),
 })
 
+/** Where a command's binary stdout stays on the Host, as its output names it. */
+function binaryLine(commandId: string, bytes: number): string {
+  return `<binary stdout: ${bytes} bytes; raw bytes at /home/demi/.demi/commands/${commandId}/stdout.txt>\n`
+}
+
+/**
+ * A shell call whose command printed an image or a video (`runtime.md`
+ * § Results and previews): the result the model reads, with the medium, or
+ * the text that took its place, between its status and its note, and the
+ * view whose output names the binary stdout.
+ */
+function binaryStdoutCall(
+  partial: Pick<ToolCallBlock, 'id' | 'toolName' | 'input'>,
+  commandId: string,
+  bytes: number,
+  mediaType: string,
+  medium: ToolResultContentBlock,
+  files?: ShellView['files'],
+): ToolCallBlock {
+  return toolCall({
+    ...partial,
+    status: 'completed',
+    output: [
+      {
+        type: 'text',
+        text: `status: exited\nexitCode: 0\npreviewBudgetTokens: 10000\npreview:\n${binaryLine(commandId, bytes)}`,
+      },
+      medium,
+      { type: 'text', text: `Attached stdout as ${mediaType} (${bytes} bytes).` },
+    ],
+    view: shellView({
+      commandId,
+      chunks: [{ stream: 'stdout', text: binaryLine(commandId, bytes) }],
+      ...(files ? { files } : {}),
+    }),
+  })
+}
+
+function blobImage(ref: string): ToolResultContentBlock {
+  return { type: 'image', source: { type: 'ref', ref, mediaType: 'image/png' } }
+}
+
+const screenshotInput = JSON.stringify({
+  script: 'demi browser screenshot 1',
+  description: 'Take a screenshot of the login page',
+})
+
+/** A screenshot the agent took, under its call (`file-previews.md` § Media a tool returned). */
+export const screenshotTool = binaryStdoutCall(
+  { id: 'tool-screenshot', toolName: 'shell_exec', input: screenshotInput },
+  'cmd-shot',
+  15_822,
+  'image/png',
+  blobImage(galleryBlobs.screenshot),
+)
+
+/** A capture of a whole page: taller than wide, shown whole, never cropped. */
+export const fullPageTool = binaryStdoutCall(
+  {
+    id: 'tool-full-page',
+    toolName: 'shell_exec',
+    input: JSON.stringify({
+      script: 'demi browser screenshot 1 --full-page',
+      description: 'Capture the whole login page',
+    }),
+  },
+  'cmd-full-page',
+  8_035,
+  'image/png',
+  blobImage(galleryBlobs.fullPage),
+)
+
+/** A recording the agent printed: it plays in the browser's player. */
+export const recordingTool = binaryStdoutCall(
+  {
+    id: 'tool-recording',
+    toolName: 'shell_exec',
+    input: JSON.stringify({
+      script: 'cat out/checkout.webm',
+      description: 'Show the recording of the checkout flow',
+    }),
+  },
+  'cmd-record',
+  23_336,
+  'video/webm',
+  { type: 'video', source: { type: 'ref', ref: galleryBlobs.recording, mediaType: 'video/webm' } },
+)
+
+/** A command that exited after its call returned: the status call that saw the exit carries the picture. */
+export const statusImageTool = binaryStdoutCall(
+  {
+    id: 'tool-status-image',
+    toolName: 'shell_status',
+    input: JSON.stringify({ commandId: 'cmd-chart', description: 'Check the latency chart' }),
+  },
+  'cmd-chart',
+  16_078,
+  'image/png',
+  blobImage(galleryBlobs.chart),
+)
+
+/** A screenshot retired after 30 days: the text that took its place, as the model reads it. */
+export const removedImageTool = binaryStdoutCall(
+  { id: 'tool-screenshot-removed', toolName: 'shell_exec', input: screenshotInput },
+  'cmd-shot-old',
+  15_822,
+  'image/png',
+  {
+    type: 'text',
+    text: '[image:image/png, removed on 2026-10-01: a tool result\'s images and videos are kept for 30 days]',
+  },
+)
+
+/** A screenshot whose blob the page cannot load. */
+export const missingImageTool = binaryStdoutCall(
+  { id: 'tool-screenshot-missing', toolName: 'shell_exec', input: screenshotInput },
+  'cmd-shot-lost',
+  15_822,
+  'image/png',
+  blobImage(missingBlob),
+)
+
 function fileChangeCase(
   id: string,
   description: string,
@@ -322,6 +445,24 @@ export function changesDemoBlocks(): Block[] {
     caseBlock('long names'),
     caseBlock('append only, not new'),
     text('changes-text-2', 60_000, 'Every widget compiles and the snapshots match. Applying the same codemod to the docs examples.'),
+    binaryStdoutCall(
+      {
+        id: 'changes-snapshot-diff',
+        toolName: 'shell_exec',
+        input: JSON.stringify({
+          script: 'bun scripts/snapshot-diff.ts login && cat out/login-diff.png',
+          description: 'Compare the login snapshot before and after',
+        }),
+      },
+      'cmd-snapshot-diff',
+      16_078,
+      'image/png',
+      blobImage(galleryBlobs.chart),
+      [
+        { path: 'out/login-diff.png', kind: 'added', added: 0, removed: 0, edits: [{ kept: false }] },
+        { path: 'scripts/snapshot-diff.ts', kind: 'modified', added: 4, removed: 1, edits: [{ kept: true }] },
+      ],
+    ),
     caseBlock('still running'),
   ]
 }
@@ -444,6 +585,7 @@ export function transcriptDemoBlocks(): Block[] {
       signature: null,
     },
     shellTool as Block,
+    screenshotTool as Block,
     ...agentReceiptMessages.slice(0, 2).map((message): Block => ({
       type: 'agent_message', id: message.id, turnId: 'turn-1',
       createdAt: message.timestamp, model: demoModel, message,

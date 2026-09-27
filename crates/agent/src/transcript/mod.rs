@@ -43,6 +43,41 @@ pub(crate) fn replay_start(blocks: &[Block]) -> usize {
         .unwrap_or(0)
 }
 
+/// Where the answer to the session's latest answered request begins
+/// (`runtime.md` § Replay): that request's `response` block comes last,
+/// after the last `compaction_marker`, and its answer is the run of
+/// thinking, text and tool-call blocks directly before that `response`
+/// block. What the blocks before the answer replay is what the request
+/// carried. None when no request was answered since the last compaction.
+/// A boundary whose marker an edit cut counts as the last compaction.
+pub(crate) fn latest_answer(blocks: &[Block]) -> Option<usize> {
+    let floor = blocks
+        .iter()
+        .rposition(|block| {
+            matches!(
+                block,
+                Block::CompactionBoundary(_) | Block::CompactionMarker(_)
+            )
+        })
+        .map_or(0, |compaction| compaction + 1);
+    let response = floor
+        + blocks[floor..]
+            .iter()
+            .rposition(|block| matches!(block, Block::Response(_)))?;
+    let before_answer = blocks[floor..response]
+        .iter()
+        .rposition(|block| !is_answer(block));
+    Some(before_answer.map_or(floor, |index| floor + index + 1))
+}
+
+/// Whether a block is part of a model's answer.
+fn is_answer(block: &Block) -> bool {
+    matches!(
+        block,
+        Block::Thinking(_) | Block::RedactedThinking(_) | Block::Text(_) | Block::ToolCall(_)
+    )
+}
+
 /// Whether a block opens an input turn (`runtime.md` § Block types): recovery
 /// treats it as the start of its turn, and its `before_user` command-state
 /// boundary is recorded.

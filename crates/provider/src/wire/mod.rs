@@ -39,20 +39,26 @@ pub struct Vendor {
     pub clock: Arc<dyn Clock>,
 }
 
-/// The usage an OpenAI-shaped API reports, whose input count includes the
-/// cached prefix: Demi keeps the two apart, so the cached tokens leave the
-/// input count. An absent count is zero.
+/// The usage an OpenAI-shaped API reports, whose input count includes what
+/// it read from its cache and what it wrote to it: Demi keeps the three
+/// apart, so both leave the input count (`providers.md` § Usage). An absent
+/// count is zero.
 pub(crate) fn usage_with_cached_input(
     input: Option<u64>,
     output: Option<u64>,
-    cached: Option<u64>,
+    read: Option<u64>,
+    written: Option<u64>,
 ) -> TokenUsage {
-    let cache_read_tokens = cached.unwrap_or(0);
+    let cache_read_tokens = read.unwrap_or(0);
+    let cache_write_tokens = written.unwrap_or(0);
     TokenUsage {
-        input_tokens: input.unwrap_or(0).saturating_sub(cache_read_tokens),
+        input_tokens: input
+            .unwrap_or(0)
+            .saturating_sub(cache_read_tokens)
+            .saturating_sub(cache_write_tokens),
         output_tokens: output.unwrap_or(0),
         cache_read_tokens,
-        cache_write_tokens: 0,
+        cache_write_tokens,
     }
 }
 

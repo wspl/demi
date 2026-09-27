@@ -13,12 +13,13 @@ use std::{
 
 use demi_agent_protocol::{AbortTarget, TranscriptPatch};
 use demi_core::{
-    AgentMessage, AgentMessageEvent, Block, BlockId, FailureSource, NodeId, OperationId, Sender,
-    SessionPhase, Timestamp, ToolCallStatus, ToolResultContentBlock, TurnId, UserContentBlock,
+    AgentMessage, AgentMessageEvent, B64Bytes, BlobRef, Block, BlockId, DocumentSource,
+    FailureSource, FileExtension, MediaSource, NodeId, OperationId, Sender, SessionPhase,
+    Timestamp, ToolCallStatus, ToolMediaSource, ToolResultContentBlock, TurnId, UserContentBlock,
 };
 use demi_gates::{ActivityGate, GateLease, Purpose};
 use demi_provider::{
-    ErrorCode, InferenceItem, ProviderEvent, ToolDefinition,
+    ErrorCode, InferenceItem, PromptCache, ProviderEvent, RequestLimits, ToolDefinition,
     testing::{FixedClock, ScriptedRuntime, Turn, event},
 };
 use futures_util::future::LocalBoxFuture;
@@ -27,14 +28,15 @@ use tokio::{sync::oneshot, task::JoinHandle};
 
 use super::*;
 use crate::{
-    store::{AgentTreeStore, EditReceipt, NodeRecord},
-    testing::{MemoryTreeStore, SequentialIds, model_of, test_model, text},
+    store::{AgentTreeStore, EditReceipt, NodeRecord, media::HeldMedia},
+    testing::{MemoryTreeStore, SequentialIds, model_of, model_reading, test_model, text},
 };
 
 mod compaction;
 mod editing;
 mod input;
 mod recovery;
+mod requests;
 
 type Invoke =
     Rc<dyn Fn(ToolInvocation) -> LocalBoxFuture<'static, Result<ToolOutcome, ToolFailure>>>;
@@ -399,6 +401,10 @@ impl ProviderRuntime for NumberedRuntime {
     fn close(&mut self) -> LocalBoxFuture<'_, ()> {
         self.log.borrow_mut().closed.push(self.number);
         self.script.close()
+    }
+
+    fn request_limits(&self, model: &demi_core::Model) -> demi_provider::RequestLimits {
+        self.script.request_limits(model)
     }
 }
 
@@ -1038,6 +1044,157 @@ async fn a_message_queued_while_a_tool_runs_is_saved_without_a_transcript_change
     assert_eq!(update.state.queue[0].id, turn("t2"));
 }
 
+/// The parts of the first user message and of the tool result in `request`,
+/// with each medium as its kind and type and each text as written.
+fn media_parts(request: &demi_provider::InferenceRequest) -> Vec<String> {
+    let user = request
+        .items
+        .iter()
+        .find_map(|item| match item {
+            InferenceItem::UserMessage { content } => Some(content),
+            _ => None,
+        })
+        .expect("the request has a user message");
+    let result = request
+        .items
+        .iter()
+        .find_map(|item| match item {
+            InferenceItem::ToolResult { output, .. } => Some(output),
+            _ => None,
+        })
+        .expect("the request has a tool result");
+    let user = user.iter().map(|part| match part {
+        UserContentBlock::Text { text } => text.clone(),
+        UserContentBlock::Image { .. } => "<image>".to_owned(),
+        UserContentBlock::Document { .. } => "<document>".to_owned(),
+        other => format!("{other:?}"),
+    });
+    let result = result.iter().map(|part| match part {
+        ToolResultContentBlock::Text { text } => text.clone(),
+        ToolResultContentBlock::Image { .. } => "<image>".to_owned(),
+        ToolResultContentBlock::Video { .. } => "<video>".to_owned(),
+    });
+    user.chain(result).collect()
+}
+
+#[tokio::test(flavor = "local")]
+async fn a_medium_the_requests_model_cannot_take_reaches_it_as_the_same_text_in_every_request() {
+    // Model a reads images, PDFs and video, and model b only images. Model c
+    // reads all three on a vendor that takes 6,000 bytes a request, so one
+    // medium may take 3,000 bytes of base64: the video's 3,000 bytes are
+    // 4,000.
+    let a = model_reading(
+        "stub",
+        "model-a",
+        &[FileExtension::Png, FileExtension::Pdf, FileExtension::Mp4],
+    );
+    let b = model_reading("stub", "model-b", &[FileExtension::Png]);
+    let c = model_reading(
+        "small",
+        "model-c",
+        &[FileExtension::Png, FileExtension::Pdf, FileExtension::Mp4],
+    );
+    let png = B64Bytes::from(b"\x89PNG\r\n\x1a\n\0\0\0\x01".to_vec());
+    let pdf = B64Bytes::from(b"%PDF-1.7".to_vec());
+    let mp4 = B64Bytes::from([b"\0\0\0\x18ftypisom".as_slice(), &[0; 2_988]].concat());
+    let answer = |text: &str| Turn::Events(vec![event::text(text), event::response(1, 1)]);
+    let first = ScriptedRuntime::new([
+        Turn::Events(vec![
+            event::tool_call("call-1", "record", json!({})),
+            event::response(1, 1),
+        ]),
+        answer("recorded"),
+        answer("seen"),
+        answer("seen again"),
+        answer("back"),
+    ]);
+    let small = ScriptedRuntime::new([answer("small")]).with_limits(RequestLimits {
+        body_bytes: Some(6_000),
+        images: None,
+    });
+    let record = tool("record", move |_| {
+        let video = ToolResultContentBlock::Video {
+            source: ToolMediaSource::Binary {
+                data: mp4.clone(),
+                media_type: "video/mp4".into(),
+            },
+        };
+        Box::pin(async move {
+            Ok(ToolOutcome {
+                output: vec![video],
+                ..output("")
+            })
+        })
+    });
+    let store = MemoryTreeStore::new();
+    let session = start(&first, vec![record], &store, SessionConfig::default()).await;
+    let switch = |model: &ModelSelection, runtime: Option<&ScriptedRuntime>| {
+        session
+            .update_model(ModelSwitch {
+                model: model.clone(),
+                runtime: runtime.map(|runtime| Box::new(runtime.clone()) as Box<dyn ProviderRuntime>),
+            })
+            .unwrap();
+    };
+    let mut held = HeldMedia::default();
+    held.hold(BlobRef::of(&png), png.clone());
+    held.hold(BlobRef::of(&pdf), pdf.clone());
+    session.hold_media(held);
+    let message = vec![
+        UserContentBlock::Text {
+            text: "record it".into(),
+        },
+        UserContentBlock::Image {
+            source: MediaSource::Ref {
+                r#ref: BlobRef::of(&png),
+                media_type: "image/png".into(),
+            },
+        },
+        UserContentBlock::Document {
+            source: DocumentSource::Ref {
+                r#ref: BlobRef::of(&pdf),
+                media_type: "application/pdf".into(),
+                file_name: "spec.pdf".into(),
+            },
+        },
+    ];
+
+    switch(&a, None);
+    session.send(message, turn("t1")).unwrap().await.unwrap();
+    switch(&b, None);
+    session.send(text("look"), turn("t2")).unwrap().await.unwrap();
+    session.send(text("look again"), turn("t3")).unwrap().await.unwrap();
+    switch(&c, Some(&small));
+    session.send(text("small"), turn("t4")).unwrap().await.unwrap();
+    switch(&a, Some(&first));
+    session.send(text("back"), turn("t5")).unwrap().await.unwrap();
+
+    let sent = ["record it", "<image>", "<document>", "<video>"];
+    let requests = first.requests();
+    assert_eq!(media_parts(&requests[1]), sent);
+    // Every request to b carries the same text for what b does not read.
+    let unread = [
+        "record it",
+        "<image>",
+        "[document:spec.pdf, not sent: the model does not accept it]",
+        "[video:video/mp4, not sent: the model does not accept it]",
+    ];
+    assert_eq!(media_parts(&requests[2]), unread);
+    assert_eq!(media_parts(&requests[3]), unread);
+    assert_eq!(requests[3].items[..requests[2].items.len()], requests[2].items[..]);
+    assert_eq!(
+        media_parts(&small.requests()[0]),
+        [
+            "record it",
+            "<image>",
+            "<document>",
+            "[video:video/mp4, not sent: too large for the model's requests]"
+        ]
+    );
+    // A switch back sends the media again.
+    assert_eq!(media_parts(&requests[4]), sent);
+}
+
 #[tokio::test(flavor = "local")]
 async fn a_switch_to_another_provider_continues_the_running_turn_on_the_new_runtime() {
     let first = ScriptedRuntime::new([Turn::Events(vec![
@@ -1153,10 +1310,12 @@ async fn the_stream_becomes_blocks_and_each_delta_one_patch() {
                 model_id: "test-model".into(),
                 text: "private notes".into(),
                 signature: Some("anthropic:sig".into()),
+                kept_past_summary: false,
             },
             InferenceItem::AssistantRedactedThinking {
                 model_id: "test-model".into(),
                 data: "opaque".into(),
+                kept_past_summary: false,
             },
         ]
     );
@@ -1175,6 +1334,63 @@ async fn the_stream_becomes_blocks_and_each_delta_one_patch() {
         .collect();
     // A thinking start and its first text open the block in one patch.
     assert_eq!(appends, ["notes", "world"]);
+}
+
+#[tokio::test(flavor = "local")]
+async fn each_request_says_how_many_of_its_items_the_latest_answered_request_carried() {
+    let provider = ScriptedRuntime::new([
+        Turn::Events(vec![
+            ProviderEvent::ThinkingStart,
+            event::thinking("plan"),
+            event::text("Looking twice"),
+            event::tool_call("call-1", "look", json!({})),
+            event::tool_call("call-2", "look", json!({})),
+            event::response(1, 1),
+        ]),
+        Turn::Events(vec![event::text("done"), event::response(1, 1)]),
+        Turn::Events(vec![event::text("done again"), event::response(1, 1)]),
+    ]);
+    let store = MemoryTreeStore::new();
+    let (look, _) = counted("look", "seen");
+    let session = start(&provider, vec![look], &store, SessionConfig::default()).await;
+
+    session
+        .send(text("look twice"), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
+    session
+        .send(text("again"), turn("t2"))
+        .unwrap()
+        .await
+        .unwrap();
+
+    let requests = provider.requests();
+    let [first, after_calls, next_turn] = requests.as_slice() else {
+        panic!("{requests:?}");
+    };
+    // The request after the calls adds the answer to the first one, the
+    // calls and their results; the next turn's adds the last answer and the
+    // user's message. Each begins with what the one answered before it
+    // carried, and says how much that was.
+    assert_eq!(
+        item_kinds(&after_calls.items),
+        [
+            "user_message",
+            "assistant_thinking",
+            "assistant_text",
+            "tool_use",
+            "tool_result",
+            "tool_use",
+            "tool_result"
+        ]
+    );
+    assert_eq!(after_calls.items[..1], first.items[..]);
+    assert_eq!(next_turn.items[..7], after_calls.items[..]);
+    assert_eq!(
+        [first, after_calls, next_turn].map(|request| request.prompt_cache),
+        [0, 1, 7].map(|answered_items| PromptCache::Session { answered_items })
+    );
 }
 
 #[tokio::test(flavor = "local")]

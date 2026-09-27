@@ -273,7 +273,8 @@ struct FunctionCallPart {
 }
 
 /// Token counts: whole numbers, or absent. Thinking is billed apart from the
-/// answer, and both are output.
+/// answer, and both are output. The prompt count includes what the vendor
+/// read from its cache.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct UsageMetadata {
@@ -289,11 +290,15 @@ struct UsageMetadata {
 
 impl UsageMetadata {
     fn token_usage(&self) -> TokenUsage {
+        let cache_read_tokens = self.cached_content_token_count.unwrap_or(0);
         TokenUsage {
-            input_tokens: self.prompt_token_count.unwrap_or(0),
+            input_tokens: self
+                .prompt_token_count
+                .unwrap_or(0)
+                .saturating_sub(cache_read_tokens),
             output_tokens: self.candidates_token_count.unwrap_or(0)
                 + self.thoughts_token_count.unwrap_or(0),
-            cache_read_tokens: self.cached_content_token_count.unwrap_or(0),
+            cache_read_tokens,
             cache_write_tokens: 0,
         }
     }

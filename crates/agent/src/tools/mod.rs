@@ -17,7 +17,7 @@ use std::{
 
 use bytes::Bytes;
 use demi_core::{CommandId, ModelSelection, NodeId};
-use demi_provider::ToolDefinition;
+use demi_provider::{RequestLimits, ToolDefinition};
 use demi_shell::{
     CommandSet, CommandStatus, ExecRequest, Host, HostError, JobCaller, ObservationWindow,
     PageFeed, ShellEnvironment, ShellError, ShellTarget,
@@ -195,10 +195,15 @@ impl<H: AgentHarness> ShellAccess<'_, H> {
             tool_use_id,
             input,
             model,
+            request_limits,
             generation,
             cancel,
             ..
         } = call;
+        let called = Called {
+            model: &model,
+            limits: request_limits,
+        };
         Ok(match tool {
             StandardTool::Yield => {
                 let input: YieldInput = parse(name, input).map_err(CallError::Refused)?;
@@ -233,19 +238,19 @@ impl<H: AgentHarness> ShellAccess<'_, H> {
                     tool_use_id,
                 };
                 let status = environment.exec(request, cancel).await?;
-                finish(environment.as_ref(), status, &model).await
+                finish(environment.as_ref(), status, called).await
             }
             StandardTool::ShellStatus => {
                 let input: CommandInput = parse(name, input).map_err(CallError::Refused)?;
                 let (_, environment) = self.environment(Handle::Command(&input.command_id)).await?;
                 let status = environment.status(&input.command_id)?;
-                finish(environment.as_ref(), status, &model).await
+                finish(environment.as_ref(), status, called).await
             }
             StandardTool::ShellWrite => {
                 let input: ShellWriteInput = parse(name, input).map_err(CallError::Refused)?;
                 let environment = self.write(&input.command_id, input.stdin.0).await?;
                 let status = environment.status(&input.command_id)?;
-                finish(environment.as_ref(), status, &model).await
+                finish(environment.as_ref(), status, called).await
             }
             StandardTool::ShellAbort => {
                 let input: CommandInput = parse(name, input).map_err(CallError::Refused)?;
@@ -254,7 +259,7 @@ impl<H: AgentHarness> ShellAccess<'_, H> {
                 // A stop the model asked for is never an error.
                 ToolOutcome {
                     is_error: false,
-                    ..finish(environment.as_ref(), status, &model).await
+                    ..finish(environment.as_ref(), status, called).await
                 }
             }
         })
@@ -307,17 +312,25 @@ impl From<ShellError> for CallError {
     }
 }
 
+/// The model of the request that asked for a call, and what its vendor
+/// takes in one request.
+#[derive(Clone, Copy)]
+struct Called<'a> {
+    model: &'a ModelSelection,
+    limits: RequestLimits,
+}
+
 /// A shell tool's outcome, with the preview budget of the call's model; a
 /// command whose result showed everything has its handle released.
 async fn finish(
     environment: &dyn ShellEnvironment,
     status: CommandStatus,
-    model: &ModelSelection,
+    called: Called<'_>,
 ) -> ToolOutcome {
-    let model = &model.model;
+    let model = &called.model.model;
     let budget = result::preview_budget_tokens(model.context_window);
     let expose = result::handle_required(&status, budget);
-    let outcome = result::shell_outcome(&status, budget, expose, model);
+    let outcome = result::shell_outcome(&status, budget, expose, model, called.limits).await;
     if !expose {
         // A command the environment already forgot has nothing to release.
         environment.release_command(&status.command_id).await;

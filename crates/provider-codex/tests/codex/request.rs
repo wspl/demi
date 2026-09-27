@@ -75,6 +75,7 @@ async fn a_body_replays_the_transcript_with_codexs_items_tools_and_reasoning() {
             model_id: "gpt-5.4".into(),
             text: "private".into(),
             signature: Some(format!("codex:{reasoning}")),
+            kept_past_summary: false,
         },
         InferenceItem::AssistantText {
             model_id: "gpt-5.4".into(),
@@ -131,11 +132,13 @@ async fn thinking_signed_by_another_vendor_is_skipped_and_tool_images_ride_insid
             model_id: "gpt-5.4".into(),
             text: "unsigned".into(),
             signature: None,
+            kept_past_summary: false,
         },
         InferenceItem::AssistantThinking {
             model_id: "gpt-5.4".into(),
             text: "openai".into(),
             signature: Some(format!("openai:{item}")),
+            kept_past_summary: false,
         },
         InferenceItem::ToolResult {
             tool_use_id: "call_1|fc_1".into(),

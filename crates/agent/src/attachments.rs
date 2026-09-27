@@ -5,9 +5,19 @@
 //! backend's upload route and its content resolution both use these rules;
 //! the agent never reads a file's bytes itself.
 
-use demi_core::{Attachment, B64Bytes, BlobRef, DocumentSource, MediaSource, UserContentBlock};
+use demi_core::{
+    Attachment, B64Bytes, BlobRef, DocumentSource, MediaSource, ModelMediaKind, UserContentBlock,
+    sniff_model_media_type,
+};
 
-use crate::{store::media::HeldMedia, transcript::char_offset};
+use crate::{
+    images,
+    store::{
+        StoreError,
+        media::{BlobStore, HeldMedia},
+    },
+    transcript::char_offset,
+};
 
 /// How much of a text file's opening a record keeps, in Unicode scalar
 /// values.
@@ -75,8 +85,14 @@ pub struct Upload<'a> {
 /// natively when it is an image, a video or a PDF, then the file's record,
 /// with its opening when it is text. The medium references the upload's own
 /// blob, and its bytes come with the blocks, for the session to hold
-/// (`runtime.md` § Media).
-pub fn upload_blocks(upload: Upload<'_>) -> (Vec<UserContentBlock>, HeldMedia) {
+/// (`runtime.md` § Media). An image enters fitted (`runtime.md` § Images in
+/// the transcript): one that fitting changed references the fitted image's
+/// blob, which is put into `blobs` first, and one no provider can take
+/// stays the record alone, which the model reads by path.
+pub async fn upload_blocks(
+    upload: Upload<'_>,
+    blobs: &dyn BlobStore,
+) -> Result<(Vec<UserContentBlock>, HeldMedia), StoreError> {
     let record = UserContentBlock::Attachment(Attachment {
         name: upload.name.to_owned(),
         path: upload.path.to_owned(),
@@ -85,31 +101,49 @@ pub fn upload_blocks(upload: Upload<'_>) -> (Vec<UserContentBlock>, HeldMedia) {
         sha256: upload.sha256.clone(),
         snippet: is_text(upload.name, upload.media_type).then(|| snippet(upload.bytes)),
     });
-    let medium = match demi_core::sniff_model_media_type(upload.bytes) {
+    let mut held = HeldMedia::default();
+    let medium = match sniff_model_media_type(upload.bytes) {
+        Some(media) if media.kind == ModelMediaKind::Image => {
+            match images::fit(upload.bytes.clone(), media.media_type).await {
+                Ok(fitted) => {
+                    let blob = if fitted.reencoded {
+                        blobs.put(fitted.data.clone()).await?
+                    } else {
+                        upload.sha256.clone()
+                    };
+                    held.hold(blob.clone(), fitted.data);
+                    Some(UserContentBlock::Image {
+                        source: MediaSource::Ref {
+                            r#ref: blob,
+                            media_type: fitted.media_type.to_owned(),
+                        },
+                    })
+                }
+                Err(_) => None,
+            }
+        }
         Some(media) => {
-            let source = MediaSource::Ref {
-                r#ref: upload.sha256.clone(),
-                media_type: media.media_type.to_owned(),
-            };
-            Some(match media.kind {
-                demi_core::ModelMediaKind::Image => UserContentBlock::Image { source },
-                demi_core::ModelMediaKind::Video => UserContentBlock::Video { source },
+            held.hold(upload.sha256.clone(), upload.bytes.clone());
+            Some(UserContentBlock::Video {
+                source: MediaSource::Ref {
+                    r#ref: upload.sha256.clone(),
+                    media_type: media.media_type.to_owned(),
+                },
             })
         }
-        None if is_pdf(upload.media_type, upload.bytes) => Some(UserContentBlock::Document {
-            source: DocumentSource::Ref {
-                r#ref: upload.sha256.clone(),
-                media_type: PDF.to_owned(),
-                file_name: upload.name.to_owned(),
-            },
-        }),
+        None if is_pdf(upload.media_type, upload.bytes) => {
+            held.hold(upload.sha256.clone(), upload.bytes.clone());
+            Some(UserContentBlock::Document {
+                source: DocumentSource::Ref {
+                    r#ref: upload.sha256.clone(),
+                    media_type: PDF.to_owned(),
+                    file_name: upload.name.to_owned(),
+                },
+            })
+        }
         None => None,
     };
-    let mut held = HeldMedia::default();
-    if medium.is_some() {
-        held.hold(upload.sha256.clone(), upload.bytes.clone());
-    }
-    (medium.into_iter().chain([record]).collect(), held)
+    Ok((medium.into_iter().chain([record]).collect(), held))
 }
 
 fn is_pdf(media_type: &str, bytes: &[u8]) -> bool {
@@ -126,14 +160,11 @@ pub fn unavailable(reference: &str) -> UserContentBlock {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testing::MemoryBlobs;
 
     const PNG: [u8; 12] = [
         0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe, 0x01,
     ];
-
-    fn blob() -> BlobRef {
-        BlobRef::try_from("b".repeat(64)).unwrap()
-    }
 
     fn upload<'a>(
         name: &'a str,
@@ -172,15 +203,27 @@ mod tests {
         assert_eq!(snippet(long.as_bytes()), "字".repeat(160));
     }
 
-    #[test]
-    fn an_upload_becomes_its_native_medium_then_its_record() {
-        let sha256 = blob();
-        let png = B64Bytes::from(PNG.to_vec());
-        let (image, image_bytes) = upload_blocks(upload("tiny.png", "image/png", &png, &sha256));
+    #[tokio::test]
+    async fn an_upload_becomes_its_native_medium_then_its_record() {
+        let blobs = MemoryBlobs::new();
+        let png = crate::testing::png(4, 3, 1);
+        let sha256 = BlobRef::of(&png);
+        let (image, image_bytes) =
+            upload_blocks(upload("tiny.png", "image/png", &png, &sha256), &*blobs)
+                .await
+                .unwrap();
         let pdf_bytes = B64Bytes::from(b"%PDF-1.7".to_vec());
-        let (pdf, _) = upload_blocks(upload("paper.pdf", "application/pdf", &pdf_bytes, &sha256));
+        let (pdf, _) = upload_blocks(
+            upload("paper.pdf", "application/pdf", &pdf_bytes, &sha256),
+            &*blobs,
+        )
+        .await
+        .unwrap();
         let notes = B64Bytes::from(b"\n hello".to_vec());
-        let (text, text_bytes) = upload_blocks(upload("notes.txt", "text/plain", &notes, &sha256));
+        let (text, text_bytes) =
+            upload_blocks(upload("notes.txt", "text/plain", &notes, &sha256), &*blobs)
+                .await
+                .unwrap();
 
         let kinds = |blocks: &[UserContentBlock]| -> Vec<String> {
             blocks
@@ -232,5 +275,46 @@ mod tests {
                 text: "[attachment upload-9 is not available]".into()
             }
         );
+    }
+
+    #[tokio::test]
+    async fn an_uploaded_image_enters_fitted_and_one_that_does_not_decode_stays_its_record() {
+        let blobs = MemoryBlobs::new();
+        // Wider than 2,000 px: the message's image is the fitted one, stored
+        // under its own blob; the record keeps the original.
+        let wide = crate::testing::png(2_400, 10, 1);
+        let wide_blob = BlobRef::of(&wide);
+        let (blocks, held) =
+            upload_blocks(upload("wide.png", "image/png", &wide, &wide_blob), &*blobs)
+                .await
+                .unwrap();
+        let UserContentBlock::Image {
+            source: MediaSource::Ref { r#ref, media_type },
+        } = &blocks[0]
+        else {
+            panic!("{blocks:?}");
+        };
+        assert_ne!(r#ref, &wide_blob);
+        assert_eq!(media_type, "image/png");
+        let fitted = blobs.get(r#ref).await.unwrap().expect("the fitted image is stored");
+        let mut expected = HeldMedia::default();
+        expected.hold(r#ref.clone(), fitted);
+        assert_eq!(held, expected);
+        let UserContentBlock::Attachment(record) = &blocks[1] else {
+            panic!("{blocks:?}");
+        };
+        assert_eq!(
+            (record.size_bytes, &record.sha256),
+            (wide.len() as u64, &wide_blob)
+        );
+        // Bytes that only start like a PNG: the model reads the file by path.
+        let broken = B64Bytes::from(PNG.to_vec());
+        let broken_blob = BlobRef::of(&broken);
+        let (blocks, held) =
+            upload_blocks(upload("shot.png", "image/png", &broken, &broken_blob), &*blobs)
+                .await
+                .unwrap();
+        assert!(matches!(blocks.as_slice(), [UserContentBlock::Attachment(_)]));
+        assert_eq!(held, HeldMedia::default());
     }
 }

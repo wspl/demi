@@ -17,6 +17,7 @@
 pub mod attachments;
 mod harness;
 mod ids;
+mod images;
 mod node;
 mod server;
 mod session;

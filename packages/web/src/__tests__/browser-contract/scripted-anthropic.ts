@@ -9,12 +9,21 @@ export type ScriptedBlock =
   | { type: 'tool_use'; name: string; input: Record<string, unknown> }
 
 /**
+ * A system prompt as the Messages API takes it, a string or text blocks
+ * (which the backend sends, so that a block can carry a cache mark), read as
+ * its text.
+ */
+const systemSchema = z
+  .union([z.string(), z.array(z.object({ type: z.literal('text'), text: z.string() }))])
+  .transform((system) => (typeof system === 'string' ? system : system.map((block) => block.text).join('')))
+
+/**
  * The parts of a Messages API request the suite reads (the backend's
  * Anthropic provider writes the rest).
  */
 const messagesRequestSchema = z.object({
   model: z.string(),
-  system: z.string().optional(),
+  system: systemSchema.optional(),
   messages: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.unknown() })),
   stream: z.literal(true),
 })

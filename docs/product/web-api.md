@@ -189,7 +189,10 @@ determined.
 headers [Media by reference](../backend/backend.md#media-by-reference)
 gives it. A name that is not a SHA-256 in lowercase hexadecimal, or that the
 caller's namespace does not hold, answers 404 `not_found`, whoever else holds
-that name.
+that name. Byte ranges are answered as `fs/raw` answers them: one range in
+`Range` answers 206 with that range, several answer the whole blob with 200,
+and a range that starts past the end answers 416, so a player can play and
+seek a video ([Media a tool returned](file-previews.md#media-a-tool-returned)).
 
 Uploading alone stores a backend blob and the upload's record, which keeps
 the media type and the snippet the answer carried. A send, steer or edit frame
