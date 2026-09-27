@@ -156,12 +156,17 @@ consumed. It does not compare the live transcript with the cold one; tests for
 content, media, queue, and command-state correctness assert those values
 explicitly on the cold transcript.
 
-For explicitly paired devices, the world totals `job_output` bytes per job
-from the wire frames, checks them against the bound the runner wire derives
-from `JOB_VIEW_BYTES`, and reconciles job starts with exit reports or
-intentionally lost jobs. It also checks named pipe ends against `pipe_done`
-reports, allowing losses only for intentionally stopped runners. These are
-count and byte checks, not a complete proof of job ownership or every
+The world does not bound the `job_output` bytes a job sends. The runner's wire
+test pins them where the runner sends them
+(`crates/runner/tests/runner/tasks.rs`): the first 32 KiB of each stream, and
+beyond them, while the backend follows the job, at most 16 KiB of the newest
+bytes per stream and interval, the last before `job_exit`
+([Pipes and output](../execution/runner.md#pipes-and-output)).
+
+For explicitly paired devices, the world reconciles job starts with exit
+reports or intentionally lost jobs. It also checks named pipe ends against
+`pipe_done` reports, allowing losses only for intentionally stopped runners.
+These are count checks, not a complete proof of job ownership or every
 wire-frame limit. Runners that the fake machine manager starts are not paired
 devices, so their equivalent coverage needs separate assertions.
 
