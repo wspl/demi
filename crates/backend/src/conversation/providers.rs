@@ -62,6 +62,22 @@ impl ConversationProviders {
 }
 
 impl ProviderResolver for ConversationProviders {
+    /// The model selection the record of `root`'s conversation holds; a
+    /// socket opens only a conversation that has one.
+    fn selection<'a>(&'a self, root: &'a NodeId) -> LocalBoxFuture<'a, Result<ModelSelection, ResolveError>> {
+        Box::pin(async move {
+            let record = self
+                .services
+                .control
+                .conversation(conversation_of(root))
+                .await
+                .map_err(|error| ResolveError::Failed(error.to_string()))?;
+            record
+                .and_then(|record| record.model)
+                .ok_or_else(|| ResolveError::Failed("The conversation has no model yet".into()))
+        })
+    }
+
     /// A runtime for a session of `root`'s conversation that infers with
     /// `model`: an entry outside the user's scope is unknown, and one that
     /// cannot run fails now, before the session relies on it.

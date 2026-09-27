@@ -1,50 +1,31 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import type { ThinkingConfig } from '@demicodes/protocol'
+import { ref } from 'vue'
 import ModelSelector from '@demicodes/web-ui/agent/ModelSelector.vue'
 import {
-  initialModelIntent,
-  intentThinkingConfig,
+  applyModelChange,
+  initialModelSettings,
+  type ModelSettingsChange,
 } from '@demicodes/web-ui/agent/model-selection'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import { demoModels, demoProviders } from '../fixtures/catalog'
 
 // The gallery adapter substitutes an in-memory record for backend preferences.
-const saved = ref(initialModelIntent({
+const saved = ref(initialModelSettings({
   providerId: 'anthropic',
   modelId: 'claude-sonnet',
   thinkingEffort: 'high',
   serviceTierId: 'priority',
 }))
-const conversation = ref(initialModelIntent(saved.value))
-const thinking = computed(() => intentThinkingConfig(conversation.value))
+const conversation = ref(initialModelSettings(saved.value))
 const generation = ref(1)
 
-function remember(): void {
+function change(next: ModelSettingsChange): void {
+  conversation.value = applyModelChange(conversation.value, next)
   saved.value = { ...conversation.value }
 }
 
-function selectModel(providerId: string, modelId: string): void {
-  conversation.value = {
-    providerId, modelId, thinkingEffort: null, serviceTierId: null,
-  }
-  remember()
-}
-
-function setThinking(config: ThinkingConfig): void {
-  conversation.value.thinkingEffort = config.type === 'disabled'
-    ? 'disabled'
-    : config.type === 'effort' || config.type === 'adaptive' ? config.effort : null
-  remember()
-}
-
-function setTier(tier: string | null): void {
-  conversation.value.serviceTierId = tier
-  remember()
-}
-
 function create(): void {
-  conversation.value = initialModelIntent(saved.value)
+  conversation.value = initialModelSettings(saved.value)
   generation.value += 1
 }
 </script>
@@ -55,13 +36,8 @@ function create(): void {
     <ModelSelector
       :providers="demoProviders"
       :models="demoModels"
-      :selected-provider-id="conversation.providerId"
-      :selected-model-id="conversation.modelId"
-      :thinking-config="thinking"
-      :service-tier-id="conversation.serviceTierId"
-      @select-model="selectModel"
-      @change-thinking="setThinking"
-      @change-service-tier="setTier"
+      :settings="conversation"
+      @change="change"
     />
     <Button size="sm" @click="create">New conversation with saved choice</Button>
   </div>

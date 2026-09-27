@@ -11,7 +11,7 @@ use std::{
     time::Duration,
 };
 
-use demi_agent_protocol::{AbortTarget, ModelSwitchApply, TranscriptPatch};
+use demi_agent_protocol::{AbortTarget, TranscriptPatch};
 use demi_core::{
     AgentMessage, AgentMessageEvent, Block, BlockId, FailureSource, NodeId, OperationId, Sender,
     SessionPhase, Timestamp, ToolCallStatus, ToolResultContentBlock, TurnId, UserContentBlock,
@@ -1035,7 +1035,7 @@ async fn a_message_queued_while_a_tool_runs_is_saved_without_a_transcript_change
 }
 
 #[tokio::test(flavor = "local")]
-async fn an_immediate_switch_to_another_provider_continues_the_turn_on_the_new_runtime() {
+async fn a_switch_to_another_provider_continues_the_running_turn_on_the_new_runtime() {
     let first = ScriptedRuntime::new([Turn::Events(vec![
         event::tool_call("call-1", "slow", json!({})),
         event::response(1, 1),
@@ -1054,7 +1054,6 @@ async fn an_immediate_switch_to_another_provider_continues_the_turn_on_the_new_r
         .update_model(ModelSwitch {
             model: model_of("other", "model-b"),
             runtime: Some(Box::new(second.clone())),
-            apply: ModelSwitchApply::Immediate,
         })
         .unwrap();
     releases.borrow_mut().remove(0).send(()).unwrap();

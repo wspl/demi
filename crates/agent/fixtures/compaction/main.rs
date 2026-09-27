@@ -164,13 +164,23 @@ impl AgentHarness for FixtureHarness {
     }
 }
 
-/// Every runtime is DeepSeek's.
+/// Every runtime is DeepSeek's, and the conversation opens with the model
+/// the fixture starts from.
 struct DeepSeek {
     provider: Rc<OpenAiProvider>,
     http: reqwest::Client,
+    selection: ModelSelection,
 }
 
 impl ProviderResolver for DeepSeek {
+    fn selection<'a>(
+        &'a self,
+        _root: &'a NodeId,
+    ) -> LocalBoxFuture<'a, Result<ModelSelection, ResolveError>> {
+        let selection = self.selection.clone();
+        Box::pin(async move { Ok(selection) })
+    }
+
     fn runtime<'a>(
         &'a self,
         _root: &'a NodeId,
@@ -203,6 +213,7 @@ impl Conversation {
         let deepseek = Rc::new(DeepSeek {
             provider,
             http: reqwest::Client::new(),
+            selection: model.clone(),
         });
         let root = NodeId::try_from("compaction-fixture").expect("the id is not empty");
         let store = MemoryTreeStore::new();
@@ -248,7 +259,7 @@ impl Conversation {
             config,
         });
         let mut client = TestClient::connect(&server, &root, &fixture.cwd);
-        client.send(ClientFrame::Open { model }).await;
+        client.send(ClientFrame::Open {}).await;
         client
             .next_until(|frame| matches!(frame, ServerFrame::PendingSteers { .. }))
             .await;
@@ -483,11 +494,15 @@ async fn switch(fixture: Fixture) -> Result<bool, String> {
 }
 
 impl Conversation {
-    /// Switches the model from the next turn on.
+    /// Switches the model from the next request on, as the backend does.
     async fn act_switch(&mut self, model: ModelSelection) {
-        self.client
-            .send(ClientFrame::SetProvider { model, apply: None })
-            .await;
+        let switch = self
+            .server
+            .prepare_switch(&self.root, model)
+            .await
+            .expect("DeepSeek's runtime is built")
+            .expect("the conversation is open");
+        self.server.switch_model(&self.root, switch).await;
     }
 }
 

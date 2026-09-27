@@ -7,8 +7,9 @@
 //! [`Connection`] handles the decoded frames of one conversation socket,
 //! which the backend owns.
 //!
-//! A product supplies the harness ([`AgentHarness`]), the provider runtimes
-//! ([`ProviderResolver`]) and a tree store per conversation. Everything here
+//! A product supplies the harness ([`AgentHarness`]), each conversation's
+//! model selection and the provider runtimes ([`ProviderResolver`]) and a
+//! tree store per conversation. Everything here
 //! runs on the user's shard, a single-threaded runtime: nothing is `Send`,
 //! and shared state sits in `Rc` and `RefCell` behind synchronous methods, so
 //! no borrow crosses an await (`concurrency.md` § The user shard).
@@ -34,7 +35,8 @@ pub use server::{
     ProviderResolver, ResolveError, ServerConfig, ServerDeps, Tree, TreeStores,
 };
 pub use session::{
-    AgentSession, CompactionConfig, ForkError, RetryPolicy, SessionConfig, TranscriptSnapshot,
+    AgentSession, CompactionConfig, ForkError, ModelSwitch, RetryPolicy, SessionConfig,
+    TranscriptSnapshot,
 };
 pub use store::{AgentTreeStore, SessionStore};
 pub use tools::{EnvironmentScope, ShellEnvironmentFactory};

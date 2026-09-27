@@ -7,8 +7,7 @@ use std::{cell::RefCell, collections::VecDeque, rc::Rc, sync::Arc};
 use demi_agent::{
     AgentHarness, AgentServer, AgentTreeStore, Profile, PromptContext, ServerConfig, ServerDeps,
     testing::{
-        MemoryTreeStore, NoHost, NoShells, ScriptedProviders, SequentialIds, TestClient,
-        TokioClock, test_model,
+        MemoryTreeStore, NoHost, NoShells, ScriptedProviders, SequentialIds, TestClient, TokioClock,
     },
 };
 use demi_agent_protocol::{ClientFrame, ServerFrame};
@@ -480,7 +479,7 @@ impl Fixture {
     /// A client that opened the conversation and read its handshake.
     pub async fn opened(&self) -> TestClient<TestHarness> {
         let mut client = self.client();
-        client.send(open(test_model())).await;
+        client.send(open()).await;
         let handshake = client.next_until(is_pending_steers).await;
         assert_eq!(
             handshake.first(),
@@ -559,8 +558,20 @@ pub fn turn(id: &str) -> TurnId {
     TurnId::try_from(id).unwrap()
 }
 
-pub fn open(model: ModelSelection) -> ClientFrame {
-    ClientFrame::Open { model }
+pub fn open() -> ClientFrame {
+    ClientFrame::Open {}
+}
+
+/// Switches the conversation's live tree to `model`, as the backend does
+/// once the conversation's record holds it.
+pub async fn switch(fixture: &Fixture, model: ModelSelection) {
+    let prepared = fixture
+        .server
+        .prepare_switch(&conversation(), model)
+        .await
+        .expect("the model's provider resolves")
+        .expect("the tree is live");
+    fixture.server.switch_model(&conversation(), prepared).await;
 }
 
 pub fn send(id: &str, message: &str) -> ClientFrame {

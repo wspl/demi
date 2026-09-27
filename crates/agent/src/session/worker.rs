@@ -13,7 +13,7 @@ use super::{
     ActionEnd, ErrorReport, SessionEvent, SessionShared, Settle, TurnError,
     cancel::{CancelReason, TurnCancel},
     compaction,
-    core::{ActionKind, StartedAction, SwitchPoint},
+    core::{ActionKind, StartedAction},
     editing::{self, EditError},
     input::Take,
     persist, turn,
@@ -149,7 +149,7 @@ async fn execute(
             // The version current when the turn started, before its hooks
             // and commands run.
             let revision = s.read(|core| core.commands.revision());
-            turn::apply_switch(s, SwitchPoint::ActionStart, cancel).await?;
+            turn::apply_switch(s, cancel).await?;
             let preamble = cancel.guard(s.runtime.preamble()).await?;
             s.update(|core| {
                 let turn = core.turn();
@@ -159,7 +159,7 @@ async fn execute(
             turn::run(s, cancel).await
         }
         ActionKind::Continue => {
-            turn::apply_switch(s, SwitchPoint::ActionStart, cancel).await?;
+            turn::apply_switch(s, cancel).await?;
             let Some(agent_message) = s.update(|core| core.open_continuation()) else {
                 // What woke it was taken by an earlier action.
                 return Ok(());
@@ -215,7 +215,7 @@ async fn retry(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<(), TurnErr
     persist::commit_rewrite(s, rewind.retained, revision).await?;
     s.update(|core| core.take_over_turn(turn));
     cancel.check()?;
-    turn::apply_switch(s, SwitchPoint::ActionStart, cancel).await?;
+    turn::apply_switch(s, cancel).await?;
     compaction::preflight(s, cancel).await?;
     turn::run(s, cancel).await
 }
@@ -235,7 +235,7 @@ async fn resume(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<(), TurnEr
     // rewrite, and no `resume` block without a turn is left.
     cancel.check()?;
     s.update(|core| core.mark_abort_resumed());
-    turn::apply_switch(s, SwitchPoint::ActionStart, cancel).await?;
+    turn::apply_switch(s, cancel).await?;
     s.update(|core| core.push_resume());
     compaction::preflight(s, cancel).await?;
     turn::run(s, cancel).await

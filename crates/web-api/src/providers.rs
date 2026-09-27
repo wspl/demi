@@ -527,10 +527,18 @@ pub struct CatalogProvider {
 /// A catalog model with the selection the backend built from it, so the
 /// browser never converts one itself.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct CatalogModel {
     #[serde(flatten)]
     pub model: ProviderModel,
     pub selection: ModelSelection,
+    /// The thinking effort a conversation's model settings hold on this
+    /// model when a change names none: null, no thinking setting, for a
+    /// model that can turn thinking off (`models.md` § A conversation's
+    /// model settings).
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<String>")]
+    pub unnamed_effort: Option<String>,
 }
 
 /// Whether the entry's models can be used now, from its health.

@@ -8,9 +8,8 @@
 //! cannot be stored reaches the page as an error, and the frames after it
 //! still arrive. No test calls a real model.
 
-use demi_agent::testing::model_of;
 use demi_agent_protocol::{ClientContent, ClientFrame, EditOutcome, EditRequest, MediaRef, ServerFrame, SteerOutcome};
-use demi_core::{Block, BlockId, FileExtension, MediaSource, SessionPhase, TurnId, UserContentBlock};
+use demi_core::{Block, BlockId, MediaSource, SessionPhase, TurnId, UserContentBlock};
 use demi_provider::testing::MockVendor;
 use demi_web_api::attachments::{ATTACHMENT_MAX_BYTES, AttachmentAnswer, AttachmentDto};
 use demi_web_api::auth::Role;
@@ -19,7 +18,9 @@ use reqwest::{Method, StatusCode};
 use serde_json::json;
 use sha2::{Digest as _, Sha256};
 
-use crate::conversations::{FIRST, Socket, anthropic, answer, create, on_device, send, tool_use, transcript};
+use crate::conversations::{
+    FIRST, Socket, anthropic, answer, choose, create, on_device, send, tool_use, transcript,
+};
 use crate::support::{Answer, Harness, Session, TestBackend, answer as read};
 
 /// A PNG image's first bytes, from which the backend reads its type.
@@ -105,8 +106,9 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
         assert_eq!(refused.refusal(), refusal, "{query} {media_type:?}");
     }
 
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    socket.open(&model_of(&provider, "claude-opus-4-8")).await;
+    socket.open().await;
     vendor.respond(answer(&["Seen."], 1, 1));
     socket
         .send(&with_upload("m1", "Look", &[(&image, "shot.png"), (&notes, "notes.log"), (&hers, "hers.txt")]))
@@ -231,10 +233,10 @@ async fn a_frame_whose_media_cannot_be_stored_reaches_the_page_as_an_error_and_t
     let blobs = harness.data_dir().join("blobs");
     std::fs::create_dir_all(&blobs).unwrap();
     std::fs::write(blobs.join(master.user.id.as_str()), "").unwrap();
+    // The directory's model reads PNG.
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    let mut model = model_of(&provider, "claude-opus-4-8");
-    model.model.accepted_extensions = Some(vec![FileExtension::Png]);
-    socket.open(&model).await;
+    socket.open().await;
 
     // The shell's stdout is a picture, which the tool's result carries to a
     // model that reads PNG.

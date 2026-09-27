@@ -169,6 +169,8 @@ pub(crate) enum TitleRefusal {
     Archived,
     #[error("No such provider")]
     ProviderNotFound,
+    #[error("Choose a model for the conversation first")]
+    ModelNotSelected,
     #[error("The conversation has no message to title")]
     NoMessages,
     #[error(transparent)]
@@ -178,8 +180,8 @@ pub(crate) enum TitleRefusal {
 impl Shard {
     /// Titles the user's conversation `record` after its first message, when
     /// its title is still the placeholder: the message's start at once, and
-    /// a request beside the first turn to the model the conversation's
-    /// session infers with. `seen` counts the message.
+    /// a request beside the first turn to the conversation's model. `seen`
+    /// counts the message.
     pub(crate) async fn title_first_message(
         &self,
         record: &ConversationRecord,
@@ -203,23 +205,22 @@ impl Shard {
             .control
             .title_from_first_message(record.id.clone(), title.clone())
             .await?;
-        let tree = self.agent().tree(&root_of(&record.id));
-        if let (true, Some(tree)) = (titled, tree) {
+        if let (true, Some(selection)) = (titled, &record.model) {
             let request = TitleRequest {
                 messages: vec![text.to_owned()],
                 from: title,
                 seen,
             };
             self.titles()
-                .start(self.tasks(), record.id.clone(), tree.root().session().model(), request);
+                .start(self.tasks(), record.id.clone(), selection.clone(), request);
         }
         Ok(())
     }
 
-    /// Asks `selection`'s model for a new title of the user's conversation
-    /// `id` from every message the user sent (`POST
+    /// Asks the conversation's model for a new title of the user's
+    /// conversation `id` from every message the user sent (`POST
     /// /conversations/:id/title`); a request in flight is joined.
-    pub(crate) async fn ask_title(&self, id: &ConversationId, selection: ModelSelection) -> Result<(), TitleRefusal> {
+    pub(crate) async fn ask_title(&self, id: &ConversationId) -> Result<(), TitleRefusal> {
         let services = self.services();
         let record = services.control.conversation(id.clone()).await?;
         let Some(record) = record.filter(|record| record.owner == *self.user()) else {
@@ -228,6 +229,7 @@ impl Shard {
         if record.archived {
             return Err(TitleRefusal::Archived);
         }
+        let selection = record.model.clone().ok_or(TitleRefusal::ModelNotSelected)?;
         let provider = ProviderId::try_from(selection.provider_id.as_str()).map_err(|_| TitleRefusal::ProviderNotFound)?;
         if services.vault.visible(self.user(), &provider).await?.is_none() {
             return Err(TitleRefusal::ProviderNotFound);

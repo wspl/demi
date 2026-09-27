@@ -35,7 +35,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Users | `GET/POST /users`, `PATCH /users/:id`; role hierarchy restricts administration |
 | Application state | `GET /state`; conditional snapshot with private ETag |
 | Settings | `GET /settings` returns fixed instance mode; `GET/PATCH /settings/preferences` |
-| Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id }`, `PATCH /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }`, `POST /conversations/:id/title { model }` requests a [generated title](product.md#conversation-titles) |
+| Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id }`, `PATCH /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }`, `POST /conversations/:id/title` requests a [generated title](product.md#conversation-titles) |
 | Conversation history | `GET /conversations/:id/transcript` returns root blocks and subagent histories, each with the [failure facts](../backend/backend.md#failure-facts) of its error blocks; `WS /conversations/:id/stream` carries the [agent frames](../agent/runtime.md#frame-protocol) of that one conversation |
 | Conversation files | `GET/POST /conversations/:id/fs`, `DELETE /conversations/:id/fs?path=...`, `GET /conversations/:id/fs/file?path=...`, `GET /conversations/:id/fs/raw?path=...&version=...&download=true\|false`, `PUT /conversations/:id/fs/raw?path=...&replace=true\|false` with raw bytes, `GET/POST /conversations/:id/hosts/:deviceId/fs` |
 | Working tree | `GET /conversations/:id/changes`, `GET /conversations/:id/changes/file?path=...`, `GET /conversations/:id/changes/raw?path=...&download=true\|false`, `GET /conversations/:id/commands/:commandId/changes/file?path=...&edit=...` |
@@ -95,10 +95,11 @@ owner returns the existing record (200 instead of 201). Both answer
 another user or reserved for a Fork returns 409 `id_unavailable`.
 
 `POST /conversations/:id/fork` takes a destination UUID and an assistant block ID.
-It copies a history boundary into a new conversation and returns `{ conversation,
-model }`, with 201 on creation and 200 for a completed retry. It does not mutate
-the source. The operation reserves the destination and records its metadata so
-publication can recover after interruption. A source the caller does not own
+It copies a history boundary into a new conversation and returns
+`{ conversation }`, with 201 on creation and 200 for a completed retry; the
+destination's model settings are the source record's at the time of the Fork.
+It does not mutate the source. The operation reserves the destination and
+records its metadata so publication can recover after interruption. A source the caller does not own
 answers 404 `conversation_not_found`; the destination UUID of another creation
 attempt, with another source or block, 409 `fork_conflict`; a UUID another
 conversation holds, 409 `id_unavailable`; and a block that is not a completed
@@ -463,9 +464,14 @@ for the signed-in user. These objects contain saved overrides; absent values use
 the browser host's defaults. `PATCH` accepts any subset of appearance fields
 (`theme`, `tone`, `accent`, `fontSize`) and shortcut keys (`new`, `sidebar`,
 `settings`). A null shortcut removes that override. `lastModel` stores the explicit new-conversation
-default as `{ providerId, modelId, thinkingEffort, serviceTierId }`, with nullable
-thinking and tier. Choosing a model in an unsent draft saves this preference;
-existing conversations keep their own selection. `locale` stores the time
+default as model settings, `{ providerId, modelId, thinkingEffort, serviceTierId }`
+([A conversation's model settings](../providers/models.md#a-conversations-model-settings)).
+Every explicit choice of a model, an effort or a tier saves it, in an unsent
+draft or in an existing conversation. A new conversation starts with it, and
+its first send writes it to the new conversation's record, each part the model
+no longer offers replaced by the model's default. From then on the
+conversation has its own settings, which a later change of the preference does
+not touch. `locale` stores the time
 zone and languages the user's browser last reported, as
 `{ timeZone, languages }` with an IANA zone name and BCP 47 tags in preference
 order; the product sends it whenever either changes. A time zone the backend
@@ -521,9 +527,14 @@ from that health, and whether its transport is a process. `availability` is
 credential is missing or refused, `{ type: "unavailable", reason: "runtime",
 message }` with the runtime's message while the provider cannot run, and
 `{ type: "available" }` otherwise, unknown health included. Each model carries
-the `selection` the backend built from it. One provider's catalog failure does
-not remove the other providers or saved models. A static catalog, or one never
-fetched, reports the Unix epoch as `sourceFetchedAt`. `refresh=true` waits for
+the `selection` the backend built from it, and `unnamedEffort`, the thinking
+effort a conversation's model settings hold on the model when a change names
+none: null for a model that can turn thinking off, whose default sends no
+thinking setting
+([A conversation's model settings](../providers/models.md#a-conversations-model-settings)).
+One provider's catalog failure does not remove the other providers or saved
+models. A static catalog, or one never fetched, reports the Unix epoch as
+`sourceFetchedAt`. `refresh=true` waits for
 a shared forced refresh; how catalogs are cached and refreshed is defined in
 [Catalog cache](../providers/models.md#catalog-cache). The route does not wake
 Cloud or execute a model. The browser combines each provider's health with the
@@ -619,9 +630,10 @@ vendor login of the machine it runs on.
 
 The backend applies the fields of `PATCH /api/conversations/:id` independently:
 `title` (trimmed, 1 to 256 characters), `archived`, `pinned`, `target`, and
-`model`, the provider entry and model as `{ providerId, modelId }` or null to
-clear both. A patch whose only field fails answers that field's status with
-`{ code, message }`; otherwise the answer is the current conversation with
+the model settings: `model`, the provider entry and model as
+`{ providerId, modelId }`, `thinkingEffort` and `serviceTierId`. A patch whose
+only field fails answers that field's status with `{ code, message }`;
+otherwise the answer is the current conversation with
 `results: [{ field, status, code?, message?, httpStatus? }]`, 200 when every
 field applied and 207 when any was refused. Unexpected operation failures are
 reported as 500 field results. Applied fields remain applied. Archive is
@@ -633,20 +645,49 @@ up to 100 `{ id, patch }` items and returns 207 with an outcome per item:
 `{ id, status: "refused", code, message }` for a conversation the caller does
 not have.
 
-A conversation's model is the provider entry and model its record names. The
-page's model picker changes it with `PATCH model`, and the backend also
-records the model of every `open` and `set_provider` frame on the
-conversation's socket. Every page of the conversation shows that model: when
-a snapshot's record names another model than a page shows, the page takes it,
-with the model's default thinking effort and service tier, as a switch in that
-page would. A page reads the snapshot again right before it opens the
-conversation's socket or changes its model selection, so the `open` or
-`set_provider` it sends names the model another page chose last, never one
-that was replaced ([Connections and the live tree](../agent/runtime.md#connections-and-the-live-tree)).
-The thinking effort and the service tier are not part of the record: each page
-keeps its own for the model, saved in its browser
-([Persistence and adapters](web-application.md#persistence-and-adapters)), and
-the tree uses the ones named last.
+A conversation's model settings are one value, the model selection its record
+holds ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)).
+The conversation lists carry the settings as `model`,
+`{ providerId, modelId, thinkingEffort, serviceTierId }`, or null while the
+conversation has no model yet; the record also keeps the model's facts. Only a
+patch changes the value, and each of its three fields changes one part:
+`model` switches to that model, with the effort and the tier the same patch
+names and the new model's defaults for a part it leaves out; `thinkingEffort`
+and `serviceTierId` set their part for the conversation's model. The backend
+applies one conversation's changes one at a time, in the order they arrive,
+each to the value the one before left:
+
+1. It checks each part against the entry's catalog. An entry outside the
+   caller's scope answers 404 `provider_not_found`, a model the catalog does
+   not list 404 `model_not_found`, an effort or a tier the model does not
+   offer 409 `setting_unavailable`, and an effort or a tier for a
+   conversation without a model 409 `model_not_selected`.
+2. When the conversation's tree is live and the new model belongs to another
+   provider entry, it builds the tree's runtime for that entry first, so a
+   model that cannot run is refused and changes nothing.
+3. It commits the record.
+4. It switches the live tree to the new selection, which the tree's next
+   provider request uses, inside a running turn too
+   ([Model switch](../agent/runtime.md#model-switch)).
+
+A crash before the commit changes nothing. A crash after it leaves the change
+in the record, and the tree takes it when it is next opened. A page whose
+connection broke before the answer shows the outcome from its next snapshot,
+whichever it was. Opening the conversation's socket names no model, and the
+backend opens a tree only with the record's selection, so an open never
+changes the settings, whatever the opening page last saw
+([Connections and the live tree](../agent/runtime.md#connections-and-the-live-tree)).
+
+Every page shows the record's value. The page that made a change shows it from
+the patch's answer at once, and every other page, in another tab or on another
+device, from its next snapshot. A page keeps no model settings of its own for a
+conversation with a record, and never sends the value back: a change names only
+the part its user changed, so a page that has not yet seen another page's
+change cannot undo it. Two changes of one part end with the one applied last,
+and changes of different parts both stay. A new conversation keeps its
+settings in its browser until its first send writes them to its record
+([User preferences](#user-preferences)), and a change on a page of a
+conversation whose record has no model yet writes the whole value.
 
 Archive and a target change are transitions: each holds the conversation while
 it runs, and neither waits for other work. Running root or child work refuses
@@ -699,11 +740,13 @@ in flight. `draftRevision` is the revision of the conversation's
 draft itself only when this number is higher than the revision it holds, so a
 snapshot carries no draft's text.
 
-`POST /api/conversations/:id/title { model }` asks that model selection for a
-new title from every message the user sent and answers 202; the title arrives
-with the conversation's summary once written. A conversation without message
-text answers 409 `no_messages`, an archived one 409 `conversation_archived`, and
-a provider outside the caller's scope 404 `provider_not_found`.
+`POST /api/conversations/:id/title`, without a body, asks the conversation's
+model selection for a new title from every message the user sent and answers
+202; the title arrives with the conversation's summary once written. A
+conversation without message text answers 409 `no_messages`, one without a
+model 409 `model_not_selected`, an archived one 409 `conversation_archived`,
+and one whose provider is no longer in the caller's scope 404
+`provider_not_found`.
 
 A conversation is running while its tree will go on working without the user: an
 agent of the tree is acting, or a child is still open. An agent acts until the

@@ -12,13 +12,13 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use demi_agent::testing::{field, model_of, preview};
+use demi_agent::testing::{field, preview};
 use demi_core::{Block, EditedFile, ToolView};
 use demi_provider::testing::{MockResponse, MockVendor};
 use reqwest::StatusCode;
 use serde_json::{Value, json};
 
-use crate::conversations::{Socket, anthropic_at, answer, create, kinds, tool_use, transcript};
+use crate::conversations::{Socket, anthropic_at, answer, choose, create, kinds, tool_use, transcript};
 use crate::support::{Harness, Paired, Session, TestBackend};
 
 /// The conversation ids the scenarios create.
@@ -92,8 +92,9 @@ impl<'a> Driven<'a> {
     }
 
     async fn connect(backend: &TestBackend, master: &Session, id: &str, provider: &str) -> Socket {
+        choose(backend, master, id, provider, "claude-opus-4-8").await;
         let mut socket = Socket::connect(backend, master, id).await;
-        socket.open(&model_of(provider, "claude-opus-4-8")).await;
+        socket.open().await;
         socket
     }
 

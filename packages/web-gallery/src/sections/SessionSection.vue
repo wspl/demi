@@ -60,7 +60,8 @@ import GalleryUserMessageLengths from '../components/GalleryUserMessageLengths.v
 import { submitMessageEdit, type MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import { callTerminal, firstRunningTerminalId } from '@demicodes/web-ui/agent/terminals'
 import { provideLiveCalls } from '@demicodes/web-ui/agent/live-calls'
-import type { ThinkingConfig, UserContentBlock } from '@demicodes/protocol'
+import type { UserContentBlock } from '@demicodes/protocol'
+import { applyModelChange, type ModelSettings, type ModelSettingsChange } from '@demicodes/web-ui/agent/model-selection'
 import { composerAttachment, encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/attachments'
 import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
@@ -80,7 +81,6 @@ import {
 import {
   demoModels,
   demoProviders,
-  mediumThinking,
   offlineProviders,
   openaiOnlyProviders,
   usageAt,
@@ -378,23 +378,25 @@ function playTurn(kind: TurnFlowKind): void {
   turnFlow.play(kind)
 }
 
-const selectorProvider = ref('anthropic')
-const selectorModel = ref('claude-sonnet')
-const selectorThinking = ref<ThinkingConfig>(mediumThinking)
-const selectorTier = ref<string | null>(null)
-const fastProvider = ref('anthropic')
-const fastModel = ref('claude-sonnet')
-const fastThinking = ref<ThinkingConfig>(mediumThinking)
-const fastTier = ref<string | null>('priority')
+const selectorSettings = ref<ModelSettings>({
+  providerId: 'anthropic',
+  modelId: 'claude-sonnet',
+  thinkingEffort: 'medium',
+  serviceTierId: null,
+})
+const fastSettings = ref<ModelSettings>({
+  providerId: 'anthropic',
+  modelId: 'claude-sonnet',
+  thinkingEffort: 'medium',
+  serviceTierId: 'priority',
+})
 
-function onSelectSelectorModel(providerId: string, modelId: string): void {
-  selectorProvider.value = providerId
-  selectorModel.value = modelId
+function changeSelector(change: ModelSettingsChange): void {
+  selectorSettings.value = applyModelChange(selectorSettings.value, change)
 }
 
-function onSelectFastModel(providerId: string, modelId: string): void {
-  fastProvider.value = providerId
-  fastModel.value = modelId
+function changeFast(change: ModelSettingsChange): void {
+  fastSettings.value = applyModelChange(fastSettings.value, change)
 }
 const pastedSnippet = `2026-09-12T10:41:02Z INFO  auth  session cookie renamed sid -> session
 2026-09-12T10:41:02Z WARN  auth  legacy cookie still read by login test
@@ -963,26 +965,16 @@ onBeforeUnmount(() => {
             <ModelSelector
               :providers="demoProviders"
               :models="demoModels"
-              :selected-provider-id="selectorProvider"
-              :selected-model-id="selectorModel"
-              :thinking-config="selectorThinking"
-              :service-tier-id="selectorTier"
-              @select-model="onSelectSelectorModel"
-              @change-thinking="selectorThinking = $event"
-              @change-service-tier="selectorTier = $event"
+              :settings="selectorSettings"
+              @change="changeSelector"
             />
           </GallerySpecimen>
           <GallerySpecimen variant="fast">
             <ModelSelector
               :providers="demoProviders"
               :models="demoModels"
-              :selected-provider-id="fastProvider"
-              :selected-model-id="fastModel"
-              :thinking-config="fastThinking"
-              :service-tier-id="fastTier"
-              @select-model="onSelectFastModel"
-              @change-thinking="fastThinking = $event"
-              @change-service-tier="fastTier = $event"
+              :settings="fastSettings"
+              @change="changeFast"
             />
           </GallerySpecimen>
           <GalleryOverlayWell size="wide">
@@ -990,13 +982,8 @@ onBeforeUnmount(() => {
               <ModelMenu
                 :providers="demoProviders"
                 :models="demoModels"
-                :selected-provider-id="selectorProvider"
-                :selected-model-id="selectorModel"
-                :thinking-config="selectorThinking"
-                :service-tier-id="selectorTier"
-                @select-model="onSelectSelectorModel"
-                @change-thinking="selectorThinking = $event"
-                @change-service-tier="selectorTier = $event"
+                :settings="selectorSettings"
+                @change="changeSelector"
               />
             </GallerySpecimen>
           </GalleryOverlayWell>

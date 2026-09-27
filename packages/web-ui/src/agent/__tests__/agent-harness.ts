@@ -24,10 +24,10 @@ export function userBlock(id: string, turnId: string, text: string): Extract<Blo
 
 /**
  * A client over a transport the test drives, as a conversation socket that
- * answers `open` with `opened`: what the client sent, and a way to deliver
- * what the server would send.
+ * answers `open` with `opened`, or with `answer`: what the client sent, and a
+ * way to deliver what the server would send.
  */
-export function clientHarness() {
+export function clientHarness(answer: ServerFrame = { type: 'opened' }) {
   const sent: ClientFrame[] = []
   let deliver: (frame: unknown) => void = () => {}
   let closes = 0
@@ -35,7 +35,7 @@ export function clientHarness() {
     send(frame) {
       sent.push(frame)
       if (frame.type === 'open') {
-        deliver({ type: 'opened' })
+        deliver(answer)
       }
     },
     onFrame(handler) {

@@ -1,20 +1,6 @@
 [
   {
-    "type": "open",
-    "model": {
-      "providerId": "stub",
-      "model": {
-        "id": "stub-model",
-        "name": "Stub",
-        "contextWindow": 1000,
-        "inputLimit": null,
-        "outputLimit": null,
-        "thinking": [],
-        "acceptedExtensions": []
-      },
-      "thinking": null,
-      "serviceTierId": null
-    }
+    "type": "open"
   },
   {
     "type": "send",
@@ -120,41 +106,6 @@
   },
   {
     "type": "clear_message_queue"
-  },
-  {
-    "type": "set_provider",
-    "model": {
-      "providerId": "stub",
-      "model": {
-        "id": "stub-model",
-        "name": "Stub",
-        "contextWindow": 1000,
-        "inputLimit": null,
-        "outputLimit": null,
-        "thinking": [],
-        "acceptedExtensions": []
-      },
-      "thinking": null,
-      "serviceTierId": null
-    },
-    "apply": "immediate"
-  },
-  {
-    "type": "set_provider",
-    "model": {
-      "providerId": "stub",
-      "model": {
-        "id": "stub-model",
-        "name": "Stub",
-        "contextWindow": 1000,
-        "inputLimit": null,
-        "outputLimit": null,
-        "thinking": [],
-        "acceptedExtensions": []
-      },
-      "thinking": null,
-      "serviceTierId": null
-    }
   },
   {
     "type": "abort"

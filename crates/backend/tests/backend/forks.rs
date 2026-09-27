@@ -5,7 +5,6 @@
 //! id, while the source runs on and after the backend no longer holds the
 //! source. No test calls a real model.
 
-use demi_agent::testing::model_of;
 use demi_core::{Block, BlockId, ToolView};
 use demi_web_api::files::ChangeSides;
 use demi_provider::testing::{MockResponse, MockVendor};
@@ -15,7 +14,7 @@ use reqwest::StatusCode;
 use serde_json::{Value, json};
 
 use crate::conversations::{
-    FIRST, SECOND, Socket, THIRD, anthropic, answer, create, kinds, last_text, on_device, send, summaries,
+    FIRST, SECOND, Socket, THIRD, anthropic, answer, choose, create, kinds, last_text, on_device, send, summaries,
     tool_result, tool_use, transcript,
 };
 use crate::support::{Harness, MASTER_EMAIL, MASTER_PASSWORD};
@@ -46,9 +45,11 @@ async fn a_fork_keeps_the_history_through_the_chosen_text_while_the_source_runs_
     create(&backend, &master, FIRST).await;
     let source_path = format!("/api/conversations/{FIRST}");
     backend.patch(&source_path, &master, json!({ "title": "Build" })).await;
-    let model = model_of(&provider, "claude-opus-4-8");
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
+    let raised = backend.patch(&source_path, &master, json!({ "thinkingEffort": "high" })).await;
+    let settings = raised.json::<demi_web_api::conversations::ConversationUpdate>().conversation.model;
     let mut source = Socket::connect(&backend, &master, FIRST).await;
-    source.open(&model).await;
+    source.open().await;
     vendor.respond(answer(&["A1"], 1, 1));
     source.chat("m1", "U1").await;
     vendor.respond(answer(&["A2"], 1, 1));
@@ -72,7 +73,7 @@ async fn a_fork_keeps_the_history_through_the_chosen_text_while_the_source_runs_
         (SECOND, "Build (Fork)", false, false)
     );
     assert_eq!(destination.status, ConversationStatus::Idle);
-    assert_eq!(forked.model, model, "the destination inherits the source's model");
+    assert_eq!(destination.model, settings, "the destination inherits the source's model settings");
     // A Cloud destination shares the source's directory.
     let directory = format!("/home/demi/sessions/{FIRST}");
     assert_eq!(serde_json::to_value(&destination.target).unwrap(), json!({ "kind": "cloud", "path": directory }));
@@ -118,7 +119,7 @@ async fn a_fork_keeps_the_history_through_the_chosen_text_while_the_source_runs_
     // the history it kept.
     source.stop().await;
     let mut destination = Socket::connect(&backend, &master, SECOND).await;
-    destination.open(&forked.model).await;
+    destination.open().await;
     vendor.respond(answer(&["A3"], 1, 1));
     destination.chat("m4", "U4").await;
     let replayed = vendor.requests()[3].json();
@@ -141,9 +142,9 @@ async fn a_fork_of_a_conversation_the_backend_no_longer_holds_reads_its_stored_h
     let (backend, master) = harness.start_set_up().await;
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
-    let model = model_of(&provider, "claude-opus-4-8");
+    let settings = choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await.model;
     let mut source = Socket::connect(&backend, &master, FIRST).await;
-    source.open(&model).await;
+    source.open().await;
     vendor.respond(answer(&["A1"], 1, 1));
     source.chat("m1", "U1").await;
     vendor.respond(answer(&["A2"], 1, 1));
@@ -159,7 +160,7 @@ async fn a_fork_of_a_conversation_the_backend_no_longer_holds_reads_its_stored_h
     assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
     let forked = created.json::<ForkAnswer>();
     // The first message titled the source.
-    assert_eq!((forked.conversation.title.as_str(), &forked.model), ("U1 (Fork)", &model));
+    assert_eq!((forked.conversation.title.as_str(), &forked.conversation.model), ("U1 (Fork)", &settings));
     // The history through the latest text, without the response after it.
     assert_eq!(transcript(&backend, &master, SECOND).await.blocks, stored[..5]);
     let again = backend.post(&path, Some(&master), fork(SECOND, &second_text)).await;
@@ -179,8 +180,9 @@ async fn a_fork_keeps_the_edits_its_history_made_in_a_copy_of_its_own() {
     create(&backend, &master, FIRST).await;
     // The runner lives as long as its device binding.
     let (_paired, _root) = on_device(&harness, &backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
     let mut source = Socket::connect(&backend, &master, FIRST).await;
-    source.open(&model_of(&provider, "claude-opus-4-8")).await;
+    source.open().await;
     let script = "printf 'hello\\n' | demi file create notes.txt";
     vendor.respond(tool_use(
         "toolu_1",
@@ -231,8 +233,9 @@ async fn a_fork_keeps_the_todos_its_history_had() {
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
     let (_paired, _root) = on_device(&harness, &backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
     let mut source = Socket::connect(&backend, &master, FIRST).await;
-    source.open(&model_of(&provider, "claude-opus-4-8")).await;
+    source.open().await;
     let shell = |id: &str, script: &str| {
         tool_use(id, "shell_exec", &json!({ "description": id, "script": script, "timeoutMs": 60_000 }))
     };
@@ -253,9 +256,8 @@ async fn a_fork_keeps_the_todos_its_history_had() {
             .post(&format!("/api/conversations/{FIRST}/fork"), Some(&master), fork(destination, &text))
             .await;
         assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
-        let forked = created.json::<ForkAnswer>();
         let mut socket = Socket::connect(&backend, &master, destination).await;
-        socket.open(&forked.model).await;
+        socket.open().await;
         let before = vendor.requests().len();
         vendor.respond(shell("toolu_list", "demi todo list --json"));
         vendor.respond(answer(&["Listed."], 1, 1));

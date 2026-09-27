@@ -8,7 +8,6 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::Output;
 
-use demi_agent::testing::model_of;
 use demi_command_service::protocol::{TARGETS, VERSION, host_target};
 use demi_host_remote::testing::{PAIRING_CODE, runner_binary};
 use demi_provider::testing::MockVendor;
@@ -18,7 +17,7 @@ use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::conversations::{FIRST, Socket, anthropic, create, tool_result, tool_use};
+use crate::conversations::{FIRST, Socket, anthropic, choose, create, tool_result, tool_use};
 use crate::support::{Harness, TestBackend, answer, eventually};
 
 fn sha(bytes: &[u8]) -> String {
@@ -281,8 +280,9 @@ async fn an_installed_runner_works_with_the_mask_of_the_shell_that_ran_the_insta
     let target = json!({ "target": { "kind": "device", "deviceId": device.id.as_str(), "path": home } });
     let moved = backend.patch(&format!("/api/conversations/{FIRST}"), &master, target).await;
     assert_eq!(moved.status, StatusCode::OK, "{}", String::from_utf8_lossy(&moved.body));
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    socket.open(&model_of(&provider, "claude-opus-4-8")).await;
+    socket.open().await;
     let script = "umask; echo made > made.txt";
     vendor.respond(tool_use("mask", "shell_exec", &json!({ "script": script, "timeoutMs": 60_000 })));
     vendor.respond(crate::conversations::answer(&["done"], 1, 1));

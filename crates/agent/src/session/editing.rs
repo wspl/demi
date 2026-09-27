@@ -197,7 +197,7 @@ pub(super) async fn run(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<()
     drop(reservation);
     cancel.check()?;
     compaction::preflight(s, cancel).await?;
-    turn::run(s, cancel).await
+    turn::run_replacement(s, cancel).await
 }
 
 /// An edit's replacement history, prepared beside the accepted one.
@@ -258,7 +258,7 @@ impl Candidate {
                     submission.target
                 ))
             })?;
-        let model = core.latest_selection().clone();
+        let model = core.landing_selection().clone();
         let turn = core.turn();
         let mut candidate = TranscriptLog::new(prefix, s.ids.clone(), core.clock());
         let user = candidate.push_user(turn.clone(), &model, content, preamble);

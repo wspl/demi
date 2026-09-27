@@ -648,7 +648,7 @@ async fn abort_closes_the_subtree_and_dispose_detaches_it_for_the_next_open() {
     );
 
     let mut reopened = fixture.client();
-    reopened.send(open(test_model())).await;
+    reopened.send(open()).await;
     let handshake = reopened.received();
     let frames = frames_until(&mut reopened, is_idle).await;
 
@@ -813,7 +813,7 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
         ServerConfig::default(),
     );
     let mut client = fixture.client();
-    client.send(open(test_model())).await;
+    client.send(open()).await;
 
     until(|| root_receipts(&fixture).len() == 3).await;
     let tree = fixture.server.tree(&root()).unwrap();
@@ -1195,7 +1195,7 @@ async fn profiles_and_the_spawn_restriction_shape_a_childs_prompt_and_commands()
         },
     );
     let mut refused_client = refusing.client();
-    refused_client.send(open(test_model())).await;
+    refused_client.send(open()).await;
     assert_eq!(
         refused_client.received(),
         [ServerFrame::Error {
@@ -1225,7 +1225,7 @@ async fn a_detached_tree_with_a_live_child_is_not_evicted_and_one_without_is() {
     assert!(fixture.server.tree(&root()).is_none());
 
     let reopened = fixture.client();
-    reopened.send(open(test_model())).await;
+    reopened.send(open()).await;
     let listed = agent(&fixture.server, &root(), "list", json!({})).await;
     assert_eq!(
         listed.stdout,
@@ -1501,7 +1501,7 @@ async fn a_reopened_tree_restores_a_childs_own_children_before_the_child_can_set
     let opening = tokio::task::spawn_local({
         let reopened = fixture.client();
         async move {
-            reopened.send(open(test_model())).await;
+            reopened.send(open()).await;
             reopened
         }
     });

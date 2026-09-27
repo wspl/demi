@@ -7,10 +7,12 @@
 //! failure facts of the error blocks it brings. A frame the
 //! backend refuses before the agent sees it is answered with an `error`
 //! frame: one that is not a valid frame (`invalid_frame`), one sent while the
-//! conversation is archived (`conversation_archived`), one naming a provider
-//! the user may not use (`provider_not_found`), and one that storage failed
-//! to prepare (`frame_delivery_failed`); a message that is not JSON closes
-//! the socket.
+//! conversation is archived (`conversation_archived`), an `open` of a
+//! conversation that has no model yet (`model_not_selected`) or whose
+//! provider the user may no longer use (`provider_not_found`), and one that
+//! storage failed to prepare (`frame_delivery_failed`); a message that is not
+//! JSON closes the socket. An `open` takes the conversation's settings order,
+//! so the tree opens with the model selection the record holds.
 
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
@@ -34,7 +36,7 @@ use super::remote_files::RemoteFile;
 use super::{failure_facts, root_of};
 use crate::shard::Shard;
 use crate::storage::StorageError;
-use crate::storage::conversation_index::{ConversationModel, ConversationRecord};
+use crate::storage::conversation_index::ConversationRecord;
 
 /// The close code of a socket whose page fell a full outbox behind; the page
 /// reconnects and adopts the running tree.
@@ -186,9 +188,10 @@ impl Shard {
 
     /// Decodes one message and hands the frame to the conversation's agent
     /// connection, unless the backend refuses it first: a frame that is not
-    /// valid, one sent while the conversation is archived, a provider the
-    /// user may not use, or a frame storage failed to prepare. A refused edit
-    /// answers its `edit_result`.
+    /// valid, one sent while the conversation is archived, an `open` of a
+    /// conversation without a model or whose provider the user may not use,
+    /// or a frame storage failed to prepare. A refused edit answers its
+    /// `edit_result`.
     async fn handle_message(
         &self,
         conversation: &ConversationId,
@@ -223,6 +226,13 @@ impl Shard {
         } else {
             Admission::Files(self.conversations().slot(conversation).files.enter(Purpose::Demand).await)
         };
+        // An open takes its turn among the changes of the model settings: the
+        // tree opens with the selection the record holds, never with one a
+        // change is about to replace.
+        let _settings = match &frame {
+            ClientFrame::Open {} => Some(self.conversations().slot(conversation).settings.acquire().await),
+            _ => None,
+        };
         let handled = match self.prepare_frame(conversation, &frame).await {
             Ok(Prepared::Deliver) => {
                 connection.handle(frame).await;
@@ -240,10 +250,9 @@ impl Shard {
 
     /// What the backend does before the agent sees `frame` (`web-api.md`
     /// § Sidebar mutations, read state and page synchronization): the
-    /// conversation must not be archived, except to close it; an `open` or
-    /// a `set_provider` names a provider of the user's scope, and the
-    /// conversation records the selection; a `send` is activity in the
-    /// conversation.
+    /// conversation must not be archived, except to close it; an `open` needs
+    /// the model the conversation's record holds, of a provider of the user's
+    /// scope; a `send` is activity in the conversation.
     async fn prepare_frame(&self, conversation: &ConversationId, frame: &ClientFrame) -> Result<Prepared, StorageError> {
         let services = self.services();
         let record = services.control.conversation(conversation.clone()).await?;
@@ -257,19 +266,20 @@ impl Shard {
             ));
         }
         match frame {
-            ClientFrame::Open { model } | ClientFrame::SetProvider { model, .. } => {
+            ClientFrame::Open {} => {
+                let Some(model) = &record.model else {
+                    return Ok(Prepared::Refused(
+                        ErrorCode::ModelNotSelected,
+                        "Choose a model for the conversation before opening it".into(),
+                    ));
+                };
                 let visible = match ProviderId::try_from(model.provider_id.as_str()) {
-                    Ok(provider) => services.vault.visible(self.user(), &provider).await?.map(|_| provider),
-                    Err(_) => None,
+                    Ok(provider) => services.vault.visible(self.user(), &provider).await?.is_some(),
+                    Err(_) => false,
                 };
-                let Some(provider) = visible else {
+                if !visible {
                     return Ok(Prepared::Refused(ErrorCode::ProviderNotFound, "No such provider".into()));
-                };
-                let selected = ConversationModel {
-                    provider,
-                    model: model.model.id.clone(),
-                };
-                services.control.set_conversation_model(record.id, Some(selected)).await?;
+                }
             }
             ClientFrame::Send { content, .. } => {
                 // Every message the user sends makes a generated title older

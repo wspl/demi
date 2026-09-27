@@ -1,15 +1,16 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
-import type { ThinkingConfig } from '@demicodes/protocol'
+import { computed } from 'vue'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
-import {
-  buildReasoningState,
-  reasoningOptionConfig,
-  reasoningOptionIndex,
-  reasoningOptionLabel,
-} from './reasoning'
+import { buildReasoningState, reasoningOptionIndex, reasoningOptionLabel } from './reasoning'
 import { fastServiceTier, isFastMode } from './fast-mode'
-import { availableProviders, composerModel, resolveSelectedModel } from './model-selection'
+import {
+  availableProviders,
+  composerModel,
+  modelSwitch,
+  resolveSelectedModel,
+  type ModelSettings,
+  type ModelSettingsChange,
+} from './model-selection'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
 import MenuGroup from '@demicodes/web-ui/ui/MenuGroup.vue'
@@ -19,16 +20,13 @@ import Switch from '@demicodes/web-ui/ui/Switch.vue'
 const props = defineProps<{
   providers: ProviderInfo[]
   models: Record<string, ModelInfo[]>
-  selectedProviderId?: string | null
-  selectedModelId?: string | null
-  thinkingConfig?: ThinkingConfig
-  serviceTierId?: string | null
+  /** The conversation's model settings; none while nothing is chosen. */
+  settings?: ModelSettings | null
 }>()
 
 const emit = defineEmits<{
-  selectModel: [providerId: string, modelId: string]
-  changeThinking: [config: ThinkingConfig]
-  changeServiceTier: [serviceTierId: string | null]
+  /** One change of the model settings, naming only the parts it changes. */
+  change: [change: ModelSettingsChange]
 }>()
 
 const providersWithModels = computed(() => availableProviders(props.providers, props.models))
@@ -36,31 +34,32 @@ const selected = computed(
   () => resolveSelectedModel(
     props.providers,
     props.models,
-    props.selectedProviderId,
-    props.selectedModelId
+    props.settings?.providerId,
+    props.settings?.modelId,
   )
 )
 const selectedModelLabel = computed(
   () => selected.value?.model.name ?? composerModel(
     props.providers,
     props.models,
-    props.selectedProviderId,
-    props.selectedModelId
+    props.settings?.providerId,
+    props.settings?.modelId,
   ).label
 )
 
+const effort = computed(() => props.settings?.thinkingEffort ?? null)
 const reasoningState = computed(() => buildReasoningState(selected.value?.model ?? null))
 const fastTier = computed(() => fastServiceTier(selected.value?.model))
-const fast = computed(() => isFastMode(selected.value?.model, props.serviceTierId))
+const fast = computed(() => isFastMode(selected.value?.model, props.settings?.serviceTierId))
 
 const reasoningIndex = computed(() => {
   const state = reasoningState.value
-  return state ? reasoningOptionIndex(state, props.thinkingConfig) : 0
+  return state ? reasoningOptionIndex(state, effort.value) : 0
 })
 
 const reasoningLabel = computed(() => {
   const state = reasoningState.value
-  return state ? reasoningOptionLabel(state, props.thinkingConfig) : ''
+  return state ? reasoningOptionLabel(state, effort.value) : ''
 })
 
 function isSelectedModel(providerId: string, modelId: string): boolean {
@@ -71,39 +70,19 @@ function setFast(enabled: boolean) {
   const tier = fastTier.value
   if (!tier)
     return
-  emit('changeServiceTier', enabled ? tier.id : null)
+  emit('change', { serviceTierId: enabled ? tier.id : null })
 }
 
-function setReasoningIndex(index: number) {
-  const state = reasoningState.value
-  if (!state)
+function setEffort(next: string | null) {
+  emit('change', { thinkingEffort: next })
+}
+
+// A switch is one change: the menu decides what of the settings the new model keeps.
+function selectModel(providerId: string, model: ModelInfo) {
+  if (isSelectedModel(providerId, model.id))
     return
-  emit('changeThinking', reasoningOptionConfig(state, index))
+  emit('change', modelSwitch(props.settings, selected.value?.model, providerId, model))
 }
-
-function selectModel(providerId: string, modelId: string) {
-  const wasFast = fast.value
-  emit('selectModel', providerId, modelId)
-  // The switch clears the tier; keep Fast Mode on when the new model has a Fast tier of its own.
-  const nextFast = fastServiceTier(
-    (props.models[providerId] ?? []).find((model) => model.id === modelId)
-  )
-  if (wasFast && nextFast)
-    emit('changeServiceTier', nextFast.id)
-}
-
-// A persisted "disabled" config on a model that cannot disable thinking is coerced to the
-// model's default on mount as well as on later changes, so the chip and the session agree.
-watch(
-  () => [reasoningState.value, props.thinkingConfig] as const,
-  ([state, config]) => {
-    if (!state || state.canDisable)
-      return
-    if (config?.type === 'disabled')
-      emit('changeThinking', state.defaultConfig)
-  },
-  { immediate: true },
-)
 </script>
 
 <template>
@@ -135,7 +114,7 @@ watch(
             :label="option.label"
             choice
             :is-selected="reasoningIndex === index"
-            @select="setReasoningIndex(index)"
+            @select="setEffort(option.effort)"
           />
         </Menu>
       </template>
@@ -155,7 +134,7 @@ watch(
               :label="model.name"
               choice
               :is-selected="isSelectedModel(provider.id, model.id)"
-              @select="selectModel(provider.id, model.id)"
+              @select="selectModel(provider.id, model)"
             />
           </MenuGroup>
         </Menu>

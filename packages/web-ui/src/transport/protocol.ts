@@ -10,7 +10,12 @@ export interface ProviderInfo {
 
 export interface ModelReasoning {
   efforts: string[]
-  defaultEffort: string | null
+  /**
+   * The effort a conversation's settings hold on this model when they name
+   * none: null, no thinking setting, when the model can turn thinking off.
+   * The host takes it from its backend, which decides it.
+   */
+  unnamedEffort: string | null
   /** Whether thinking can be turned off entirely. When false, the UI offers only effort levels and
    *  no "No reasoning" option (e.g. Claude Code, which can level thinking but never disable it). */
   canDisable: boolean
