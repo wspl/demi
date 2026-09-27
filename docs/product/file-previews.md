@@ -184,10 +184,12 @@ open, and a click opens it large:
   moves the picture, a pinch zooms as anywhere on the page, and the close
   control closes it. A video plays in the browser's player, which an iPhone
   shows full screen.
-- **A medium that is gone.** A result can hold a text in a medium's place,
-  such as `[image not stored: <reason>]` when the bytes could not be stored
-  ([Media](../agent/runtime.md#media)). The page shows that text where the
-  medium would be, as the model reads it.
+- **A medium that is gone.** A result can hold a text in a medium's place:
+  `[image not stored: <reason>]` when the bytes could not be stored
+  ([Media](../agent/runtime.md#media)), or, 30 days on,
+  `[image:image/png, removed on 2026-10-01: a tool result's images and videos are kept for 30 days]`
+  ([Retired tool media](../agent/runtime.md#retired-tool-media)). The page
+  shows that text where the medium was, as the model reads it.
 - **A medium that cannot be shown.** When the page cannot show a medium,
   because its blob is missing, the request failed or the browser cannot
   decode it, *Could not show this image.* (or *video*) shows in its place, at
