@@ -12,27 +12,31 @@ struct Process {
     group: i32,
 }
 
-/// Snapshot OS process relationships independently of the browser's cleanup implementation.
+/// Snapshot OS process relationships independently of the browser's cleanup
+/// implementation: every process, without its threads, from the process
+/// table as sysinfo reads it.
 fn processes() -> Vec<Process> {
-    let output = std::process::Command::new("ps")
-        .args(["-axo", "pid=,ppid=,pgid="])
-        .output()
-        .unwrap();
-    assert!(output.status.success());
-    String::from_utf8(output.stdout)
-        .unwrap()
-        .lines()
-        .map(|line| {
-            let values: Vec<i32> = line
-                .split_whitespace()
-                .map(|value| value.parse().unwrap())
-                .collect();
-            assert_eq!(values.len(), 3);
-            Process {
-                pid: values[0],
-                parent: values[1],
-                group: values[2],
-            }
+    let mut system = System::new();
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::nothing().without_tasks(),
+    );
+    system
+        .processes()
+        .values()
+        .filter_map(|process| {
+            let pid = i32::try_from(process.pid().as_u32()).unwrap();
+            // sysinfo does not report a process's group; the system call
+            // does, and fails only for a process that has ended since.
+            let group = unsafe { libc::getpgid(pid) };
+            (group != -1).then(|| Process {
+                pid,
+                parent: process
+                    .parent()
+                    .map_or(0, |parent| i32::try_from(parent.as_u32()).unwrap()),
+                group,
+            })
         })
         .collect()
 }
