@@ -13,7 +13,10 @@ use tokio::sync::Notify;
 #[derive(Default)]
 struct Fixture {
     conversations: Arc<Mutex<BTreeSet<String>>>,
-    /// Told when a status taken while `stall` is held waits to answer.
+    /// The conversations whose release never ends by itself.
+    stalling: Arc<Mutex<BTreeSet<String>>>,
+    /// Told when a status taken while `stall` is held, or a release of a
+    /// stalling conversation, waits to answer.
     stalled: Arc<Notify>,
     /// Lets that status answer, with what it held when it was asked.
     proceed: Arc<Notify>,
@@ -32,12 +35,12 @@ impl Handler for Fixture {
         &self,
         mut context: InvocationContext,
     ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
-        let conversations = self.conversations.clone();
+        let (conversations, stalling) = (self.conversations.clone(), self.stalling.clone());
         let (stalled, proceed) = (self.stalled.clone(), self.proceed.clone());
         Box::pin(async move {
             let mut exit_code = 0;
             match context.request.operation.as_str() {
-                // Ends once a status waits to answer.
+                // Ends once a status or a release waits to answer.
                 "stalled" => stalled.notified().await,
                 "proceed" => proceed.notify_one(),
                 "retain" => {
@@ -45,6 +48,15 @@ impl Handler for Fixture {
                         .lock()
                         .unwrap()
                         .insert(context.request.context.conversation);
+                }
+                // Holds the conversation as `retain` does, and its release
+                // then never ends by itself, as one that a lost connection
+                // cuts off: it ends with the runner's connection to the
+                // service.
+                "stall_release" => {
+                    let conversation = context.request.context.conversation;
+                    conversations.lock().unwrap().insert(conversation.clone());
+                    stalling.lock().unwrap().insert(conversation);
                 }
                 // What the service holds, as its status answers it, for a
                 // test that watches a release end a conversation's state.
@@ -122,9 +134,16 @@ impl Handler for Fixture {
         &self,
         context: ConversationContext,
     ) -> Pin<Box<dyn Future<Output = Result<Completion, ServiceError>> + Send>> {
-        let conversations = self.conversations.clone();
+        let (conversations, stalling) = (self.conversations.clone(), self.stalling.clone());
         let (stalled, proceed) = (self.stalled.clone(), self.proceed.clone());
         Box::pin(async move {
+            if let ConversationRequest::Release { conversation } = &context.request
+                && stalling.lock().unwrap().contains(conversation)
+            {
+                stalled.notify_one();
+                context.cancellation.cancelled().await;
+                return Err(ServiceError::Cancelled);
+            }
             let (value, stall) = {
                 let mut held = conversations.lock().unwrap();
                 match &context.request {
