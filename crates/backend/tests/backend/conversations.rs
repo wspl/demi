@@ -75,26 +75,24 @@ impl Socket {
     /// The socket, opened from a page of the product, or the status the
     /// route answered instead of upgrading.
     pub(crate) async fn try_connect(backend: &TestBackend, session: &Session, conversation: &str) -> Result<Self, u16> {
-        Self::try_connect_from(backend, session, conversation, Some(&backend.url))
+        Self::try_connect_from(backend, session, conversation, &backend.url)
             .await
             .map_err(|(status, _)| status)
     }
 
-    /// The socket, opened from a page at `origin` or from none, or the
-    /// status and error code the route answered instead of upgrading.
+    /// The socket, opened from a page at `origin`, or the status and error
+    /// code the route answered instead of upgrading.
     pub(crate) async fn try_connect_from(
         backend: &TestBackend,
         session: &Session,
         conversation: &str,
-        origin: Option<&str>,
+        origin: &str,
     ) -> Result<Self, (u16, ErrorCode)> {
         let url = backend.ws_url(&format!("/api/conversations/{conversation}/stream"));
         let mut request = url.into_client_request().unwrap();
         let headers = request.headers_mut();
         headers.insert("cookie", session.cookie.parse().unwrap());
-        if let Some(origin) = origin {
-            headers.insert("origin", origin.parse().unwrap());
-        }
+        headers.insert("origin", origin.parse().unwrap());
         match tokio_tungstenite::connect_async(request).await {
             Ok((socket, _)) => Ok(Self {
                 socket,
@@ -819,9 +817,9 @@ async fn the_conversation_socket_opens_only_from_a_page_of_the_product() {
     // scheme and port under the expose domain.
     let port = backend.url.rsplit(':').next().unwrap();
     let expose = format!("http://a1b2c3d4e5.expose.localhost:{port}");
-    for origin in [Some("https://elsewhere.example"), Some(expose.as_str()), None] {
+    for origin in ["https://elsewhere.example", expose.as_str()] {
         let refused = Socket::try_connect_from(&backend, &master, FIRST, origin).await.err();
-        assert_eq!(refused, Some((403, ErrorCode::ForbiddenOrigin)), "{origin:?}");
+        assert_eq!(refused, Some((403, ErrorCode::ForbiddenOrigin)), "{origin}");
     }
     // The product's own page opens it.
     Socket::connect(&backend, &master, FIRST).await;

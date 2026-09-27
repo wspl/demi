@@ -1,13 +1,14 @@
-//! The session gate over every `/api` path except the public entrances, and
-//! the product's origin that every browser WebSocket route requires
-//! (`backend.md` § Authentication and ownership).
+//! What stands in front of the browser's routes (`backend.md` § Authentication
+//! and ownership): the check that a request that could act comes from a page
+//! of the product, over every browser route, and the session gate over every
+//! `/api` path except the public entrances.
 
 use std::sync::Arc;
 
 use axum::extract::{FromRequestParts, Request, State};
-use axum::http::header::{HOST, ORIGIN, SET_COOKIE};
+use axum::http::header::{HOST, ORIGIN, SET_COOKIE, UPGRADE};
 use axum::http::request::Parts;
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum_extra::extract::CookieJar;
@@ -15,37 +16,46 @@ use demi_web_api::auth::{Role, UserDto};
 use demi_web_api::error::ErrorCode;
 use url::Url;
 
-use super::AppState;
+use super::Site;
 use super::cookies::{self, SESSION_COOKIE};
 use super::error::ApiError;
 use crate::backend::Services;
 
-/// An upgrade from a page of the product. Every browser WebSocket route
-/// takes it first: the browser lets any page open a WebSocket to the
-/// product, and sends the session cookie from every page of its site, an
-/// expose's among them. Any other origin, or none, answers 403
-/// `forbidden_origin`.
-pub(super) struct ProductPage;
-
-impl FromRequestParts<AppState> for ProductPage {
-    type Rejection = ApiError;
-
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, ApiError> {
-        if !from_product(&parts.headers, state.site.public_url.as_ref()) {
-            return Err(ApiError::new(
-                StatusCode::FORBIDDEN,
-                ErrorCode::ForbiddenOrigin,
-                "A WebSocket of the product opens only from a page of the product",
-            ));
-        }
-        Ok(Self)
+/// Refuses a request that could act with the user's session and comes from
+/// a page other than the product's, with 403 `forbidden_origin`, before any
+/// route sees it. The browser sends the session cookie from every page of
+/// the product's site, an expose's among them, and lets such a page send a
+/// POST or open a WebSocket without asking the backend. A request could act
+/// when its method is unsafe or it upgrades the connection, as a WebSocket
+/// does. One without `Origin` passes: every browser sends `Origin` with such
+/// a request, so it comes from a program that is not a browser, such as
+/// curl, which could send any origin it liked.
+pub(super) async fn product_pages(State(site): State<Arc<Site>>, request: Request, next: Next) -> Response {
+    let acts = !request.method().is_safe() || request.headers().contains_key(UPGRADE);
+    if acts && from_another_page(request.headers(), site.public_url.as_ref()) {
+        return ApiError::new(
+            StatusCode::FORBIDDEN,
+            ErrorCode::ForbiddenOrigin,
+            "Only a page of the product acts with its session",
+        )
+        .into_response();
     }
+    next.run(request).await
 }
 
-/// Whether the request comes from a page of the product: its `Origin` is
-/// the public URL's origin, or names the host the request was sent to.
-fn from_product(headers: &HeaderMap, public_url: Option<&Url>) -> bool {
-    let Some(origin) = headers.get(ORIGIN).and_then(|origin| origin.to_str().ok()) else {
+/// Whether the request's `Origin` names a page other than the product's. A
+/// request without `Origin` names no page.
+fn from_another_page(headers: &HeaderMap, public_url: Option<&Url>) -> bool {
+    headers
+        .get(ORIGIN)
+        .is_some_and(|origin| !is_product(origin, headers, public_url))
+}
+
+/// Whether `origin` is the product's: the public URL's origin, or the host
+/// and port the request was sent to, as when a development server passes
+/// the page's requests on.
+fn is_product(origin: &HeaderValue, headers: &HeaderMap, public_url: Option<&Url>) -> bool {
+    let Ok(origin) = origin.to_str() else {
         return false;
     };
     if public_url.is_some_and(|url| url.origin().ascii_serialization() == origin) {
@@ -138,32 +148,36 @@ fn sets_session_cookie(response: &Response) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use axum::http::HeaderValue;
-
     use super::*;
 
     #[test]
     fn a_page_of_the_product_is_on_the_public_origin_or_on_the_host_asked() {
-        let headers = |origin: Option<&str>, host: &str| {
+        let headers = |origin: Option<HeaderValue>, host: &str| {
             let mut headers = HeaderMap::new();
             if let Some(origin) = origin {
-                headers.insert(ORIGIN, HeaderValue::from_str(origin).unwrap());
+                headers.insert(ORIGIN, origin);
             }
             headers.insert(HOST, HeaderValue::from_str(host).unwrap());
             headers
         };
+        let origin = |origin: &str| Some(HeaderValue::from_str(origin).unwrap());
         let public: Url = "https://demi.example.com/".parse().unwrap();
-        assert!(from_product(&headers(Some("https://demi.example.com"), "10.0.0.2:3271"), Some(&public)));
-        assert!(from_product(&headers(Some("http://127.0.0.1:3271"), "127.0.0.1:3271"), None));
-        assert!(from_product(&headers(Some("https://demi.example.com"), "demi.example.com"), None));
-        for (origin, host) in [
-            (Some("https://elsewhere.example"), "127.0.0.1:3271"),
-            (Some("https://a1b2.expose.demi.example.com"), "demi.example.com"),
-            (Some("http://127.0.0.1:9999"), "127.0.0.1:3271"),
-            (Some("null"), "127.0.0.1:3271"),
-            (None, "127.0.0.1:3271"),
+        for (origin, host, public_url) in [
+            (origin("https://demi.example.com"), "10.0.0.2:3271", Some(&public)),
+            (origin("http://127.0.0.1:3271"), "127.0.0.1:3271", None),
+            (origin("https://demi.example.com"), "demi.example.com", None),
         ] {
-            assert!(!from_product(&headers(origin, host), Some(&public)), "{origin:?}");
+            assert!(!from_another_page(&headers(origin.clone(), host), public_url), "{origin:?}");
+        }
+        for (origin, host) in [
+            (origin("https://elsewhere.example"), "127.0.0.1:3271"),
+            (origin("https://a1b2.expose.demi.example.com"), "demi.example.com"),
+            (origin("http://127.0.0.1:9999"), "127.0.0.1:3271"),
+            (origin("null"), "127.0.0.1:3271"),
+            // An origin that is there but unreadable is not a missing one.
+            (Some(HeaderValue::from_bytes(b"https://demi.example.com\xff").unwrap()), "demi.example.com"),
+        ] {
+            assert!(from_another_page(&headers(origin.clone(), host), Some(&public)), "{origin:?}");
         }
     }
 }

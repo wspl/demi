@@ -159,23 +159,24 @@ impl FromRef<AppState> for Shards {
     }
 }
 
-/// The routes. Every `/api` path, unknown paths included, passes the session
-/// gate first, except those outside `session_api`: the public entrances,
-/// setup and login, the routes that authenticate with device credentials
-/// instead, and the synchronization channel, which checks the session
-/// without renewing it. The pipes stay outside the 503 of a closing backend,
-/// whose shutdown needs them, and outside the body limit, since their bodies
-/// have none.
+/// The routes. The browser's routes, the entrances that sign a browser in
+/// and every route the session cookie authenticates, refuse a request that
+/// could act from a page other than the product's before anything else.
+/// Every `/api` path, unknown paths included, passes the session gate,
+/// except those outside `session_api`: the entrances, setup and login, the
+/// routes that authenticate with device credentials instead, and the
+/// synchronization channel, which checks the session without renewing it.
+/// The pipes stay outside the 503 of a closing backend, whose shutdown needs
+/// them, and outside the body limit, since their bodies have none.
 fn router(state: AppState, closing: CancellationToken, web_directory: Option<PathBuf>) -> Router {
-    let entrances = Router::new()
+    // What no session cookie authenticates: the public downloads, and the
+    // runner's socket, which carries a device token.
+    let runners_and_downloads = Router::new()
         .route("/install.sh", get(install::shell))
         .route("/install.ps1", get(install::powershell))
         .route("/runner-artifacts/{release}/{target}/{file}", get(install::artifact))
         .route(&format!("{}/{{sha256}}", local_store::ROUTE), get(install::native_artifact))
-        .route("/api/setup", get(auth::setup_status).post(auth::setup))
-        .route("/api/auth/login", post(auth::login))
         .route("/api/runner", get(runners::socket))
-        .route("/api/sync", get(sync::channel))
         .method_not_allowed_fallback(no_route);
     let pipes = Router::new()
         .route("/api/pipes/{id}", put(runners::put).get(runners::get))
@@ -271,7 +272,16 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .method_not_allowed_fallback(no_route)
         // After the fallbacks, so the gate covers them too.
         .layer(middleware::from_fn_with_state(state.services.clone(), gate::session));
-    let app = Router::new().merge(entrances).nest("/api", session_api);
+    let browser_routes = Router::new()
+        .route("/api/setup", get(auth::setup_status).post(auth::setup))
+        .route("/api/auth/login", post(auth::login))
+        .route("/api/sync", get(sync::channel))
+        .method_not_allowed_fallback(no_route)
+        .nest("/api", session_api)
+        // After the nest, so the check covers every browser route, the
+        // unknown paths under `/api` included.
+        .layer(middleware::from_fn_with_state(state.site.clone(), gate::product_pages));
+    let app = Router::new().merge(runners_and_downloads).merge(browser_routes);
     let app = match web_directory {
         Some(directory) => assets::serve(app, directory),
         None => app.fallback(no_route),

@@ -75,16 +75,14 @@ async fn received(socket: &mut Socket) -> (Vec<u8>, u16, String) {
 }
 
 /// How the route answers an upgrade before upgrading, from `origin`.
-async fn refusal(backend: &TestBackend, session: &Session, name: &str, origin: Option<&str>) -> (StatusCode, ErrorCode) {
-    let mut headers = vec![
+async fn refusal(backend: &TestBackend, session: &Session, name: &str, origin: &str) -> (StatusCode, ErrorCode) {
+    let headers = [
         ("upgrade", "websocket"),
         ("connection", "Upgrade"),
         ("sec-websocket-version", "13"),
         ("sec-websocket-key", "MDEyMzQ1Njc4OWFiY2RlZg=="),
+        ("origin", origin),
     ];
-    if let Some(origin) = origin {
-        headers.push(("origin", origin));
-    }
     answer(backend.response(Method::GET, &path(CONVERSATION, name), session, &headers, None).await)
         .await
         .refusal()
@@ -145,22 +143,16 @@ async fn the_route_refuses_a_foreign_origin_an_unknown_stream_an_archived_conver
     let harness = Harness::new().with_native_fixture();
     let (backend, master, mut laptop) = conversation(&harness).await;
     let product = backend.url.clone();
-    let foreign = refusal(&backend, &master, "echo", Some("https://elsewhere.example")).await;
+    let foreign = refusal(&backend, &master, "echo", "https://elsewhere.example").await;
     assert_eq!(foreign, (StatusCode::FORBIDDEN, ErrorCode::ForbiddenOrigin));
-    let unnamed = refusal(&backend, &master, "echo", None).await;
-    assert_eq!(unnamed, (StatusCode::FORBIDDEN, ErrorCode::ForbiddenOrigin));
-    let unknown = refusal(&backend, &master, "browser", Some(&product)).await;
+    let unknown = refusal(&backend, &master, "browser", &product).await;
     assert_eq!(unknown, (StatusCode::NOT_FOUND, ErrorCode::UnknownStream));
     let plain = backend.get(&path(CONVERSATION, "echo"), Some(&master)).await;
-    assert_eq!(plain.refusal(), (StatusCode::FORBIDDEN, ErrorCode::ForbiddenOrigin));
-    let request = backend
-        .response(Method::GET, &path(CONVERSATION, "echo"), &master, &[("origin", &product)], None)
-        .await;
-    assert_eq!(answer(request).await.refusal(), (StatusCode::UPGRADE_REQUIRED, ErrorCode::UpgradeRequired));
+    assert_eq!(plain.refusal(), (StatusCode::UPGRADE_REQUIRED, ErrorCode::UpgradeRequired));
 
     laptop.runner.kill().await;
     backend.until_online(&master, laptop.id(), false).await;
-    let offline = refusal(&backend, &master, "echo", Some(&product)).await;
+    let offline = refusal(&backend, &master, "echo", &product).await;
     assert_eq!(offline, (StatusCode::CONFLICT, ErrorCode::DeviceOffline));
     laptop.runner.start_again();
     backend.until_online(&master, laptop.id(), true).await;
@@ -169,7 +161,7 @@ async fn the_route_refuses_a_foreign_origin_an_unknown_stream_an_archived_conver
         .patch(&format!("/api/conversations/{CONVERSATION}"), &master, json!({ "archived": true }))
         .await;
     assert_eq!(archived.status, StatusCode::OK, "{}", String::from_utf8_lossy(&archived.body));
-    let refused = refusal(&backend, &master, "echo", Some(&product)).await;
+    let refused = refusal(&backend, &master, "echo", &product).await;
     assert_eq!(refused, (StatusCode::CONFLICT, ErrorCode::ConversationArchived));
     backend.close().await;
 }
