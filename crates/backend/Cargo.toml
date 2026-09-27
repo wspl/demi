@@ -13,8 +13,9 @@ doctest = false
 [features]
 # A hold on the commits of the conversations' checkpoints (`CommitHold`), for
 # the scenarios that stop a save at its commit, and a conversation's file gate
-# with the view of the entrants waiting at it (`Backend::file_gate`).
-testing = ["demi-gates/testing"]
+# with the view of the entrants waiting at it (`Backend::file_gate`), and an
+# object store that counts what reaches it (`ObjectCounts`).
+testing = ["demi-gates/testing", "dep:async-trait"]
 
 [dependencies]
 demi-agent = { path = "../agent" }
@@ -43,6 +44,8 @@ aes-gcm = "0.10"
 # `std` for `password_hash::Error` as a `std::error::Error`; `password-hash`'s
 # `getrandom` gives `SaltString::generate` its operating-system RNG.
 argon2 = { version = "0.5", features = ["std"] }
+# Implements `object_store`'s trait for the counting store of `testing`.
+async-trait = { version = "0.1", optional = true }
 axum = { version = "0.8", features = ["ws"] }
 axum-extra = { version = "0.12", features = ["cookie", "typed-header"] }
 bytes.workspace = true

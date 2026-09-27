@@ -173,7 +173,8 @@ close to the provider's own count.
 ### Block estimates
 
 A block's estimate is the token estimate of its text plus the weight of its
-media.
+media, read from the replayed blocks as the model receives them, with each
+medium's held bytes ([Media](runtime.md#media)).
 
 | Block | Text |
 | --- | --- |
@@ -265,12 +266,13 @@ its only use.
 | --- | --- |
 | Id | The session's, which its requests carry, so the vendor keeps them with the session's ([Prompt cache](../providers/providers.md#prompt-cache)) |
 | Transcript | A copy of the window |
+| Held media | The bytes the session holds for the window's media ([Media](runtime.md#media)), so the summary request reads no blob |
 | Model selection, working directory, retry policy | The session's |
 | System prompt, tools, thinking | The session's, through the same harness |
 | Provider runtime | A fresh runtime from the same provider: the same configuration and credentials, none of the session's execution state, such as a retained CLI process or a pending tool call ([Providers](../providers/providers.md)) |
 | Command state | A copy of the versions the window refers to, with the session's current version |
 | Compaction | Never; the copy does not compact itself |
-| Store | None; nothing of the copy is saved |
+| Store | None; nothing of the copy is saved, and a medium its tool returns is named by its SHA-256 and held, never stored |
 | Admission | None of its own; it runs inside the session's action |
 
 Closing the copy closes its provider runtime and never touches the session's.

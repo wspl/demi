@@ -10,6 +10,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
+use object_store::ObjectStore;
 use tokio_util::task::AbortOnDropHandle;
 use url::Url;
 
@@ -23,7 +24,7 @@ use crate::auth::email_change::{AccountMail, EmailChanges};
 use crate::auth::login_limiter::LoginLimiter;
 use crate::auth::passwords::{HashError, PasswordHasher};
 use crate::auth::sessions::WebSessions;
-use crate::config::{BackendConfig, ConversationTuning, ExposeTuning, LifecycleTuning, RunnerTuning};
+use crate::config::{BackendConfig, ConversationTuning, ExposeTuning, LifecycleTuning, PageTuning, RunnerTuning};
 use crate::conversation::stream::UserStreams;
 use crate::edge::{AppState, Edge, Site};
 use crate::expose::ExposeDomain;
@@ -80,6 +81,8 @@ pub(crate) struct Services {
     pub(crate) claims: PendingClaims,
     pub(crate) runners: RunnerTuning,
     pub(crate) conversation_tuning: ConversationTuning,
+    /// How the sockets to a page are timed.
+    pub(crate) pages: PageTuning,
     /// The native packages each shard's catalog is built from.
     pub(crate) native: NativeCatalog,
     /// The user streams a page may open.
@@ -167,14 +170,16 @@ struct Storage {
 }
 
 impl Storage {
-    /// The databases in `data_dir`, and the object store: the S3 bucket `s3`
-    /// names, or the data directory.
-    async fn open(data_dir: &Path, clock: Arc<dyn demi_core::Clock>, s3: Option<&S3Config>) -> Result<Self, StorageError> {
+    /// The databases in `data_dir`, beside the object store `objects`.
+    async fn open(
+        data_dir: &Path,
+        clock: Arc<dyn demi_core::Clock>,
+        objects: Arc<dyn ObjectStore>,
+    ) -> Result<Self, StorageError> {
         let control = ControlService::open(&data_dir.join(CONTROL_DATABASE), clock).await?;
         let rest = async {
             let conversations =
                 ConversationStores::open(data_dir.join(CONVERSATION_DATABASES), conversations::MAX_WRITERS).await?;
-            let objects = objects::open(data_dir, s3).await?;
             Ok::<_, StorageError>((conversations, BlobStores::new(objects.clone()), ChangeStore::new(objects)))
         }
         .await;
@@ -227,6 +232,7 @@ impl Services {
         providers: ProviderSetup,
         runners: RunnerTuning,
         conversation_tuning: ConversationTuning,
+        pages: PageTuning,
         native: NativeCatalog,
         user_streams: &BTreeMap<String, NativeOperation>,
         cloud: CloudServices,
@@ -280,6 +286,7 @@ impl Services {
             claims: PendingClaims::new(runners.claims_per_minute),
             runners,
             conversation_tuning,
+            pages,
             user_streams: UserStreams::new(user_streams, &native),
             native,
             cloud,
@@ -316,7 +323,8 @@ impl Services {
         lifecycle: LifecycleTuning,
     ) -> Arc<Self> {
         let clock: Arc<dyn demi_core::Clock> = Arc::new(demi_core::SystemClock);
-        let storage = Storage::open(data, clock.clone(), None).await.unwrap();
+        let objects = objects::open(data, None).await.unwrap();
+        let storage = Storage::open(data, clock.clone(), objects).await.unwrap();
         let secret = InstanceSecret::load_or_create(data).await.unwrap();
         let providers = ProviderSetup {
             families: FamilyRegistry::builtin(),
@@ -335,6 +343,7 @@ impl Services {
             providers,
             RunnerTuning::default(),
             ConversationTuning::default(),
+            PageTuning::default(),
             NativeCatalog::unpublished(),
             &BTreeMap::new(),
             CloudServices::new(machines, crate::config::CloudTuning::default()),
@@ -430,7 +439,15 @@ impl Backend {
             Some(path) => Some(S3Config::read(path).await.map_err(StartError::ChangeStore)?),
             None => None,
         };
-        let storage = Storage::open(&data_dir, config.clock.clone(), s3.as_ref()).await?;
+        // The object store: the S3 bucket the configuration names, or the
+        // data directory.
+        let objects = objects::open(&data_dir, s3.as_ref()).await?;
+        #[cfg(feature = "testing")]
+        let objects = match &config.object_counts {
+            Some(counts) => counts.observe(objects),
+            None => objects,
+        };
+        let storage = Storage::open(&data_dir, config.clock.clone(), objects).await?;
         let started = Self::serve(config, storage.clone(), &secret).await;
         if started.is_err() {
             for failure in storage.close().await {
@@ -460,6 +477,7 @@ impl Backend {
             providers,
             config.runners,
             config.conversations,
+            config.pages,
             config.native,
             &config.user_streams,
             CloudServices::new(machines, config.cloud),
