@@ -244,12 +244,16 @@ async fn runner(cli: Cli, shell: demi_runner::shell::ShellRuntime) -> io::Result
             .map(|_| true)
             .or_else(|| managed.map(|value| !value.is_empty())),
     };
-    // A managed guest's state is temporary; its log stays on the system
-    // layer (`runner.md` § Host log).
-    let log_directory = if boot.is_some() {
-        PathBuf::from("/var/log/demi")
+    // A managed guest's state is temporary; its log and its job output stay
+    // on the system layer, which a stop keeps (`runner.md` § Host log,
+    // § Pipes and output).
+    let (log_directory, jobs) = if boot.is_some() {
+        (
+            PathBuf::from("/var/log/demi"),
+            PathBuf::from("/var/lib/demi/jobs"),
+        )
     } else {
-        directory.join("log")
+        (directory.join("log"), directory.join("jobs"))
     };
     let (log, layer) = host_log::open(log_directory).await?;
     tracing_subscriber::registry()
@@ -273,6 +277,7 @@ async fn runner(cli: Cli, shell: demi_runner::shell::ShellRuntime) -> io::Result
         backend,
         log: log.reader(),
         directory,
+        jobs,
         executable: std::env::current_exe()?,
         cwd: std::env::current_dir()?,
         env,
