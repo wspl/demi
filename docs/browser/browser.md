@@ -389,7 +389,26 @@ under 108 bytes on Linux and at most 253 on macOS, and a longer one stops
 Chrome as it starts. That is why profiles live in the short, fixed `/tmp`
 rather than in the service's own temporary directory, which the user can set
 to any length (a Mac's is about 49 characters): in `/tmp` the path stays under
-80 bytes. Helpers such as
+80 bytes.
+
+Linux Chrome's crash reports go with the profile too. Chrome keeps them in its
+default user data directory whatever `--user-data-dir` says, under the user's
+`~/.config` unless `CHROME_CONFIG_HOME`, a variable only Chrome reads, names
+another place; the environment names the profile. Two stores stay in the
+user's home, each one per user, not one per environment:
+
+- On Linux, the user's NSS certificate database: `~/.pki/nssdb` when it
+  exists, otherwise `~/.local/share/pki/nssdb`, which Chrome creates once and
+  the user's own Chrome shares. Only `XDG_DATA_HOME` or `HOME` would move it,
+  and Chrome's font configuration reads `XDG_DATA_HOME` too: pages would lose
+  the fonts the user installed in `~/.local/share/fonts`.
+- On macOS, Chrome's crash reports, in
+  `~/Library/Application Support/Google/Chrome for Testing/Crashpad`: Chrome
+  finds that directory through the system's Application Support directory,
+  which no variable that only Chrome reads moves (read from Chromium's source;
+  unverified without a Mac).
+
+Helpers such as
 Crashpad can detach into another session; retirement tracks these by that marker
 as well as the group. The marker is read only from processes whose executable
 lies inside the Chrome for Testing installation, so retirement never reads the
