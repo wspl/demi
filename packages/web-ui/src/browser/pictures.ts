@@ -3,11 +3,12 @@
  * Delivery): WebCodecs decodes the Host's H.264, the page shows the newest
  * frame it has, and tells the module what it showed.
  */
+import { reportError } from '../infra/errors'
 import type { LiveVideoFrame } from './frames'
 import type { PictureSink } from './session'
 
-/** H.264 High 4:2:0, as the Host's extension encodes it. */
-const CODEC = 'avc1.640033'
+/** H.264 High 4:2:0, as the Host's extension encodes it, decoded with the least delay. */
+const DECODER: VideoDecoderConfig = { codec: 'avc1.640033', optimizeForLatency: true }
 /** Beyond this the page is behind: it drops the stream and asks for a key frame. */
 const DECODE_QUEUE = 12
 
@@ -18,9 +19,23 @@ export interface PictureHandlers {
   lost(): void
 }
 
-/** Whether this browser can show a live view at all. */
-export function picturesSupported(): boolean {
-  return typeof VideoDecoder === 'function'
+/**
+ * Whether this browser can show a live view: its WebCodecs must decode the
+ * Host's H.264 (`live-view.md` § A browser tab in the panel). A Chromium
+ * built without proprietary codecs has a `VideoDecoder`, but not for H.264.
+ */
+export async function picturesSupported(): Promise<boolean> {
+  if (typeof VideoDecoder !== 'function') {
+    return false
+  }
+  try {
+    const { supported } = await VideoDecoder.isConfigSupported(DECODER)
+    return supported === true
+  } catch (error) {
+    // A browser refuses to consider only a config it takes for malformed: this page's defect, and no view either way.
+    reportError('The live view asked about a decoder config the browser refuses', error)
+    return false
+  }
 }
 
 export class CanvasPictures implements PictureSink {
@@ -61,7 +76,7 @@ export class CanvasPictures implements PictureSink {
           this.handlers.lost()
         },
       })
-      this.decoder.configure({ codec: CODEC, optimizeForLatency: true })
+      this.decoder.configure(DECODER)
     }
     if (this.decoder.decodeQueueSize > DECODE_QUEUE) {
       this.release()

@@ -11,6 +11,7 @@ import { z } from 'zod'
 import type { BrowserCreatedBy } from '@demicodes/protocol'
 import { viewerClipboard } from './clipboard'
 import { viewerPlatform } from './input'
+import { picturesSupported } from './pictures'
 import { LiveSession, type OpenLiveStream } from './session'
 
 /** What a new tab shows before the user goes anywhere. */
@@ -72,6 +73,16 @@ export interface BrowserPanelTabs {
 /** Answers that will not change by asking again. */
 const FINAL_CODES = new Set(['conversation_not_found', 'conversation_archived'])
 
+/** Whether this browser can show the view's pictures, once it has answered. */
+export type PictureSupport = 'checking' | 'supported' | 'unsupported'
+
+export interface BrowserTabsOptions {
+  /** The page's visibility; the document's own unless a test supplies one. */
+  visibility?: Readonly<Ref<DocumentVisibilityState>>
+  /** Resolves whether this browser can decode the view's pictures; WebCodecs' answer unless the gallery or a test supplies one. */
+  pictures?: () => Promise<boolean>
+}
+
 /** Whether the page is visible: one listener, for the page's lifetime, that every controller shares. */
 const pageVisibility = useDocumentVisibility()
 
@@ -87,6 +98,12 @@ export class BrowserTabsController {
   readonly listError: ShallowRef<BrowserTabsError | null> = shallowRef(null)
   readonly session: ShallowRef<LiveSession | null> = shallowRef(null)
   /**
+   * Whether this browser can show the pictures, asked once. One that cannot
+   * opens no view, so it is no viewer (`live-view.md` § A browser tab in the
+   * panel).
+   */
+  readonly pictures: ShallowRef<PictureSupport> = shallowRef('checking')
+  /**
    * The browser tab this page opened for each panel tab. A panel tab that
    * lost its binding, to a stale read of the saved panel for one, gets its own
    * tab back instead of a second one.
@@ -99,16 +116,24 @@ export class BrowserTabsController {
   /** The browser tab whose content is shown, which the view watches while the page is visible. */
   private shown: string | null = null
   private closing: ReturnType<typeof setTimeout> | null = null
+  private readonly visibility: Readonly<Ref<DocumentVisibilityState>>
   private readonly stopVisibility: WatchHandle
   private disposed = false
 
   constructor(
     readonly api: BrowserTabsApi,
     private readonly panel: BrowserPanelTabs,
-    /** The page's visibility; the document's own unless a test supplies one. */
-    private readonly visibility: Readonly<Ref<DocumentVisibilityState>> = pageVisibility,
+    options: BrowserTabsOptions = {},
   ) {
-    this.stopVisibility = watch(visibility, (state) => this.visibilityChanged(state), { flush: 'sync' })
+    this.visibility = options.visibility ?? pageVisibility
+    this.stopVisibility = watch(this.visibility, (state) => this.visibilityChanged(state), { flush: 'sync' })
+    void (options.pictures ?? picturesSupported)().then((supported) => {
+      if (this.disposed) {
+        return
+      }
+      this.pictures.value = supported ? 'supported' : 'unsupported'
+      this.watchShown()
+    })
   }
 
   /**
@@ -220,7 +245,8 @@ export class BrowserTabsController {
 
   /**
    * A shown content watches its tab on the page's one view, opening the view
-   * when there is none. A hidden page opens none until it is shown.
+   * when there is none. A hidden page opens none until it is shown, and a
+   * browser that cannot show the pictures none at all.
    */
   show(tab: string): void {
     this.shown = tab
@@ -228,9 +254,7 @@ export class BrowserTabsController {
       clearTimeout(this.closing)
       this.closing = null
     }
-    if (this.visibility.value === 'visible') {
-      this.view().watch(tab)
-    }
+    this.watchShown()
   }
 
   /**
@@ -266,11 +290,17 @@ export class BrowserTabsController {
       this.closeView()
       return
     }
-    if (this.shown !== null) {
-      this.view().watch(this.shown)
-    }
+    this.watchShown()
     // A list that cannot be read is kept in `listError`; refresh never rejects.
     void this.refresh()
+  }
+
+  /** The shown tab on the page's one view, while someone can see its pictures. */
+  private watchShown(): void {
+    if (this.shown === null || this.visibility.value !== 'visible' || this.pictures.value !== 'supported') {
+      return
+    }
+    this.view().watch(this.shown)
   }
 
   /** The page's one view, opened when there is none. */
