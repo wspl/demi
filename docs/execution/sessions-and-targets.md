@@ -419,10 +419,12 @@ shutdown; reset preserves home. Archiving a conversation does not delete its
 session directory or Cloud machine. Workspace deletion requires no referencing
 conversations and deletes metadata, not its directory.
 
-Full shell output stays on the execution device. Cloud runner output under
-`/run/demi` is temporary and can disappear on shutdown or reset. Durable results
-must be written to persistent directories; the backend transcript retains only
-the recorded output view.
+Full shell output stays on the execution device until the conversation's Host
+resources are released: a paired device removes it at the
+[conversation release](resource-lifecycle.md#conversation-release), and a
+Cloud keeps it under `/run/demi`, which a stop or a reset removes. Durable
+results must be written to persistent directories; the backend transcript
+retains only the recorded output view.
 
 ## Implementation ownership and checks
 

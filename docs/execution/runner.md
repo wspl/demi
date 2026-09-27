@@ -28,7 +28,9 @@ registrations do not share their authorization context.
 A paired device stores its device token in private installation state. A managed
 guest receives a token at boot and keeps temporary state. The backend owns device
 claiming and user ownership. The runner opens an outbound WebSocket and sends its
-`hello` first; the backend closes a connection that has sent nothing within 30
+`hello` first, which names the conversations it holds job output for
+([A release the device missed](resource-lifecycle.md#a-release-the-device-missed));
+the backend closes a connection that has sent nothing within 30
 seconds of opening. The backend looks a hello's token up while it watches the
 connection, and lets a runner that goes away meanwhile go without adopting it.
 It answers a known token with `hello_ok` once it has bound the connection to
@@ -580,6 +582,33 @@ and where its bytes start in the stream (`offset`):
 What goes beyond the first 32 KiB never slows the job: a message that finds
 the connection's queue full waits for the stream's next interval, and then
 carries the newest bytes.
+
+The files live in the job's directory, which the runner makes when the job
+starts, private to its user, under the conversation that the job's
+[command context](native-runtime.md#command-context) names:
+
+```text
+<installation state>/jobs/
+  edits.lock                        the installation's edit lock (Edit tracking)
+  <conversation>/                   one per conversation, its id in lowercase
+    job-<random>/
+      stdout.txt, stderr.txt        each stream, whole
+      changes/                      what the job's edits recorded
+      .work-<random>/               the scratch directory TMPDIR names; goes when the job ends
+```
+
+The installation state is `~/.demi/instances/<backend>/` on a paired device,
+or the directory `DEMI_HOME` names, and `/run/demi` on a Cloud
+([Connection and identity](#connection-and-identity)). A job's directory
+outlives the job, so that the backend reads what it needs when the command
+completes and a tool result can name a file for the model to read later
+(`raw bytes at <path>`). It goes with its conversation's Host resources: the
+[conversation release](resource-lifecycle.md#conversation-release) removes the
+conversation's directory on a paired device, and a Cloud loses its whole
+installation state when it stops. Keeping one directory per conversation lets
+a release remove that conversation's jobs and no other's, and lets the runner
+name, after a restart, the conversations it still holds output for
+([A release the device missed](resource-lifecycle.md#a-release-the-device-missed)).
 
 A job starts unfollowed. `job_follow { jobId, follow }` starts or stops the
 following; the backend follows a job while a page shows its conversation

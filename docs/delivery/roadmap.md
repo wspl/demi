@@ -111,9 +111,10 @@ reverse proxy pins each user to one backend worker
   ([Browser synchronization](../backend/backend.md#browser-synchronization));
   how it reaches the pages of users on other workers is undecided.
 - **Retention.** Define how long disks and blobs are kept after an explicit
-  account or data deletion, and when an unreferenced blob is removed. Removing
-  project metadata must never implicitly delete the user's Cloud machine or
-  files.
+  account or data deletion; [Account deletion](../backend/storage.md#account-deletion)
+  names the objects it must remove. When an unreferenced blob goes is decided
+  ([Retention](../backend/storage.md#retention)). Removing project metadata
+  must never implicitly delete the user's Cloud machine or files.
 - **Resource profiles.** Choose resource profiles and unattended lifetime from
   measured memory, startup, and storage costs. Add transport prioritization or
   batching only for demonstrated contention, without changing job attribution

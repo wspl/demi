@@ -55,11 +55,11 @@ over the manager's Unix socket.
 | `sync` | The pages' synchronization channels: the product state, the parts that changed, and the registry that marks changes on each user's channels | [Browser synchronization](#browser-synchronization) |
 | `conversation` | Agent-tree hosting, frame scoping, attachment and remote-file references, history and Fork, summaries and titles, target resolution and transitions, the conversation's host access, file transfers and user streams | [Sessions and targets](../execution/sessions-and-targets.md) |
 | `runner` | Pairing, device links and runner connections, the rpc relay and each session's commands, the product's `demi host` group, installer scripts, native artifact publication and the development store | [Runner](../execution/runner.md), [Commands](../execution/commands.md), [Native runtime](../execution/native-runtime.md#backend-deployment-configuration) |
-| `lifecycle` | The conversation idle clock and the conversation release | [Conversation idle and Host resource release](../execution/resource-lifecycle.md) |
+| `lifecycle` | The conversation idle clock, the conversation release, and the daily retention pass that retires expired tool media and collects blobs | [Conversation idle and Host resource release](../execution/resource-lifecycle.md), [Retention](storage.md#retention) |
 | `managed` | Cloud policy and capacity, machine transitions, reset and recovery, the machine manager's client | [Managed hosts](../cloud/managed-hosts.md) |
 | `expose` | Expose records and their lifetime, live relay connections, the `demi host expose` leaves | [Host expose](../execution/expose.md) |
 | `llm`, `vault`, `usage` | Provider assembly and model catalogs; credential records, scope and login flows; metering and the request rate limit | [Providers](../providers/providers.md), [Models](../providers/models.md), [Usage and quota](../providers/usage-and-quota.md) |
-| `storage` | The control service, conversation databases and the tree store, the object store | [Storage](storage.md) |
+| `storage` | The control service, conversation databases and the tree store with its `media` index, the object store with its record of blob uses | [Storage](storage.md) |
 
 These are modules of one backend, not independently deployed services.
 [Crates and packages](../architecture/crates-and-packages.md#crates) names the
