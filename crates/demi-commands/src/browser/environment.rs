@@ -77,11 +77,24 @@ impl BrowserHandle {
     }
 }
 
-/// A browser profile's directory name starts with this, in the system's
-/// temporary directory.
+/// A browser profile's directory name starts with this, in the
+/// [`profile_base`].
 const PROFILE_PREFIX: &str = "demi-browser-";
 /// The file a profile's lock is held on while its environment exists.
 const PROFILE_LOCK: &str = "demi-profile.lock";
+
+/// Where browser profiles live, and where the orphan sweep looks: `/tmp` on
+/// Unix, whatever the service's own temporary directory is, and the
+/// system's temporary directory on Windows. Chrome makes its
+/// process-singleton socket inside the profile, and a long `TMPDIR` would
+/// take the socket's path past its limit (`browser.md` § Native driver).
+pub fn profile_base() -> PathBuf {
+    if cfg!(unix) {
+        PathBuf::from("/tmp")
+    } else {
+        std::env::temp_dir()
+    }
+}
 
 /// The caller supplies the installed, verified release executable, never a PATH lookup.
 pub struct LaunchOptions {
@@ -137,7 +150,12 @@ where
             "Chrome executable must be absolute".into(),
         ));
     }
-    let mut profile = tempfile::Builder::new().prefix(PROFILE_PREFIX).tempdir()?;
+    let mut profile = tempfile::Builder::new();
+    profile.prefix(PROFILE_PREFIX);
+    // Only its user may read it: every user shares `/tmp`.
+    #[cfg(unix)]
+    profile.permissions(std::os::unix::fs::PermissionsExt::from_mode(0o700));
+    let mut profile = profile.tempdir_in(profile_base())?;
     // Held until the profile is removed, however this service ends; a later
     // service's sweep takes it only once this one is gone.
     let profile_lock = std::fs::File::create_new(profile.path().join(PROFILE_LOCK))?;
@@ -297,7 +315,7 @@ where
 /// processes end the way retirement ends them, then the profile goes. A
 /// profile whose lock is held, or that has no lock yet, is left alone.
 pub async fn sweep_orphans(directories: &super::BrowserDirectories) {
-    sweep_orphans_in(&std::env::temp_dir(), directories.roots()).await;
+    sweep_orphans_in(&profile_base(), directories.roots()).await;
 }
 
 async fn sweep_orphans_in(directory: &std::path::Path, installations: Vec<PathBuf>) {
