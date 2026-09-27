@@ -45,10 +45,9 @@ const FILLER_PROMPT: &str = "忽略下列填充并只回复 ok。";
 /// The recall check's window, and the extra compactions it forces.
 const RECALL_WINDOW: u32 = 200_000;
 const EXTRA_GENERATIONS: usize = 3;
-/// The history each forced compaction keeps; small, so that a little
-/// filler gives it something to summarize.
-const RECALL_KEEP_RECENT: u64 = 1_000;
-const SWITCH_KEEP_RECENT: u64 = 4_000;
+/// The history the switch check grows on the large window before it
+/// switches, so that the pass has more than the kept answer to summarize.
+const SWITCH_MIN_CONTEXT: u64 = 8_000;
 
 /// How long one turn of the real model may take.
 const TURN_TIMEOUT: Duration = Duration::from_secs(600);
@@ -204,11 +203,7 @@ struct Conversation {
 }
 
 impl Conversation {
-    async fn open(
-        fixture: Fixture,
-        model: ModelSelection,
-        keep_recent: u64,
-    ) -> Result<Self, String> {
+    async fn open(fixture: Fixture, model: ModelSelection) -> Result<Self, String> {
         let provider = deepseek()?;
         let deepseek = Rc::new(DeepSeek {
             provider,
@@ -240,7 +235,6 @@ impl Conversation {
         let config = ServerConfig {
             session: SessionConfig {
                 compaction: CompactionConfig {
-                    keep_recent_tokens: keep_recent,
                     threshold_percent: Some(80),
                 },
                 ..SessionConfig::default()
@@ -383,13 +377,12 @@ fn uuid() -> String {
 /// followed by recall; it fails once recall drops below 3/3.
 async fn recall(fixture: Fixture) -> Result<bool, String> {
     println!(
-        "loaded fixture: total≈{} tokens, {} blocks, {} generations (extra={EXTRA_GENERATIONS}, keepRecent={RECALL_KEEP_RECENT})",
+        "loaded fixture: total≈{} tokens, {} blocks, {} generations (extra={EXTRA_GENERATIONS})",
         fixture.built_tokens,
         fixture.blocks.len(),
         fixture.generations
     );
-    let mut conversation =
-        Conversation::open(fixture, flash(RECALL_WINDOW), RECALL_KEEP_RECENT).await?;
+    let mut conversation = Conversation::open(fixture, flash(RECALL_WINDOW)).await?;
     let baseline = conversation.generations();
     println!("\n── baseline recall");
     let mut rows = vec![(conversation.generations(), conversation.recall().await?)];
@@ -434,7 +427,7 @@ async fn switch(fixture: Fixture) -> Result<bool, String> {
     let small_window = window("COMPACTION_FIXTURE_SMALL_WINDOW", 8_000)?;
     let large_window = window("COMPACTION_FIXTURE_LARGE_WINDOW", 400_000)?;
     let (small, large) = (flash(small_window), flash(large_window));
-    let mut conversation = Conversation::open(fixture, small.clone(), SWITCH_KEEP_RECENT).await?;
+    let mut conversation = Conversation::open(fixture, small.clone()).await?;
     println!(
         "loaded: {} blocks, ctx≈{} replayable tokens, {} generations; windows small={small_window} large={large_window}",
         conversation.blocks().len(),
@@ -453,7 +446,7 @@ async fn switch(fixture: Fixture) -> Result<bool, String> {
     let threshold = u64::from(small_window) * 8 / 10;
     let mut turns = 0;
     while conversation.context(small_window) < threshold
-        || conversation.context(large_window) < 2 * SWITCH_KEEP_RECENT
+        || conversation.context(large_window) < SWITCH_MIN_CONTEXT
     {
         conversation.grow(&format!("FILLER-{turns}"), 8_000).await?;
         turns += 1;
