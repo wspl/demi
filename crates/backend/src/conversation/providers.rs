@@ -162,9 +162,10 @@ fn refused(message: impl Into<String>, code: Option<ErrorCode>) -> ProviderFailu
 impl ConversationRuntime {
     /// Resolves the entry for `request` (`providers.md` § Inference admission
     /// and runtime ownership): the entry must still be in the user's scope,
-    /// and a subscription entry must have an account. Answers the request's
+    /// and a subscription entry must have an account. Answers the model's
     /// output limit, which the entry's configured model decides when it has
-    /// a configured list.
+    /// a configured list; the request's own cap is not the model's, and
+    /// stays (`models.md` § Output limit).
     async fn admit(&mut self, request: &InferenceRequest) -> Result<Option<NonZeroU32>, ProviderFailure> {
         let scope = self.scope.clone();
         let read = scope.services.vault.visible(&scope.user, &scope.provider).await;
