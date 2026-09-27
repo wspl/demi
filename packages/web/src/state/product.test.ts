@@ -249,20 +249,25 @@ test('a page that returns connects its closed channel at once instead of waiting
   }
 })
 
-test('a page back from sleep replaces a channel silent for 75 seconds at once, and keeps one silent for less', () => {
+test('a page back from sleep replaces a channel silent for 75 seconds at once, and one silent for less when its 75 seconds are up by the clock', () => {
   jest.useFakeTimers()
   started()
   const slept = channels.last()
-  const heard = Date.now()
   // The laptop sleeps: the clock goes on, the watch's timer does not, and
   // no close reaches the page.
-  jest.setSystemTime(heard + 74_000)
-  pageReturned()
-  expect(slept.closed).toBe(false)
-  jest.setSystemTime(heard + 75_000)
+  jest.setSystemTime(Date.now() + 75_000)
   pageReturned()
   expect(slept.closed).toBe(true)
-  expect(channels.last()).not.toBe(slept)
+  const next = channels.last()
+  expect(next).not.toBe(slept)
+  next.connect(productState())
+  jest.setSystemTime(Date.now() + 74_000)
+  pageReturned()
+  expect(next.closed).toBe(false)
+  jest.advanceTimersByTime(999)
+  expect(next.closed).toBe(false)
+  jest.advanceTimersByTime(1)
+  expect(next.closed).toBe(true)
 })
 
 test('vendor readers share one request and reopening uses cached data', async () => {
