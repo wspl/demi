@@ -387,14 +387,14 @@ async fn an_interrupt_stops_the_running_turn_and_holds_the_queued_message_until_
     let tree = fixture.server.tree(&conversation()).unwrap();
     let held = tree.interrupt().await;
     // The running turn stopped as a Stop stops it; the queued message waits
-    // while the tree is held, and runs once it is let go.
+    // at the held admission, having asked the model nothing, and runs once
+    // the tree is let go.
     assert_eq!(
         kinds(&tree.root().session().transcript().blocks),
         ["user", "abort"]
     );
-    for _ in 0..200 {
-        tokio::task::yield_now().await;
-    }
+    let waiting = tree.admission().waiting();
+    until(|| *waiting.borrow() == 1 || script.requests().len() > 1).await;
     assert_eq!(script.requests().len(), 1);
     drop(held);
     until(|| script.requests().len() == 2).await;
