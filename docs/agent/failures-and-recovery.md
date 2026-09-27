@@ -16,7 +16,7 @@ decisions read, and diagnostics, which the user and support read:
 | `rate_limited` | The backend's own request rate limit refused the attempt before it reached the vendor ([Rate limit](../providers/usage-and-quota.md#rate-limit)) | No |
 | `overloaded` | A transient failure: HTTP 5xx, a timeout, a network or socket failure | Yes |
 | An authentication code | A missing, invalid or expired credential, or one that could not be refreshed | No |
-| `context_length_exceeded` | The request is larger than the model accepts | No |
+| `context_length_exceeded` | The request is larger than the model or the vendor accepts | Once, after compaction ([Retries](#retries)) |
 | A vendor's own code | Any other failure the vendor named | No |
 | None | A failure Demi found in the vendor's answer: a frame it cannot decode, or a stream that breaks the vendor's protocol | No |
 
@@ -25,8 +25,11 @@ provider contract ([Providers](../providers/providers.md)).
 
 An HTTP failure gets its code from its status: 401 and 403 are
 `auth_expired`, 429 is `rate_limit`, 408, 409, 425 and every 5xx are
-`overloaded`, and a 400 whose text mentions `context`, `too long` or `token` is
-`context_length_exceeded`. A failure the vendor reports inside a response, such
+`overloaded`, and 413 is `context_length_exceeded`, as is a 400 whose text
+mentions `context`, `too long`, `token`, `too large`, `too many images` or
+`many-image`. The last two are the Anthropic API's refusals of a request with
+more images than it takes, or with more than 20 images when one exceeds its
+size for many images. A failure the vendor reports inside a response, such
 as an error event in a stream, gets its code from the vendor's own code and
 message, read as lowercase words with every other character, `_` and `-`
 included, separating them. The first row that matches decides, and without a
@@ -34,7 +37,7 @@ match the vendor's own code stands:
 
 | Words | Code |
 | --- | --- |
-| `context`, `too long`, or a word starting with `max` followed later by `token` or `tokens` | `context_length_exceeded` |
+| `context`, `too long`, `too large`, `too many images`, `many image`, or a word starting with `max` followed later by `token` or `tokens` | `context_length_exceeded` |
 | `rate`, a word starting with `ratelimit`, `quota`, `usage limit`, `billing`, `balance` | `rate_limit` |
 | `auth`, `authentication`, `authorization`, or `invalid` or `expired` before or after an API, access or auth key or token | `auth_expired` |
 | a word starting with `overload`, `unavailable`, `server error`, `internal error`, `api error`, `timeout`, `timed out`, `fetch failed`, `network`, `socket`, a word starting with `econn` | `overloaded` |
@@ -169,10 +172,23 @@ streaming stage while it waits, so steers keep being accepted, and Stop ends
 the wait. The product shows the whole wait as one Requesting row
 ([Recovering an unfinished turn](../product/product.md#recovering-an-unfinished-turn)).
 
+A request refused as too large (`context_length_exceeded`) is never sent
+again as it was: the same request would be refused again. Its turn runs one
+compaction pass and, when the pass compacted, sends the request again, built
+from the compacted history
+([When compaction runs](compaction.md#when-compaction-runs)). The attempt left
+nothing in the transcript, since a refusal comes before any output; the client
+sees the phase `compacting`, and no `retry_scheduled`. A pass that compacts
+nothing, or a second refusal of the turn's request, is terminal. For example,
+an Anthropic-compatible endpoint that takes less than the Anthropic API
+refuses a request of 20 MB with HTTP 413; the pass summarizes the history's
+screenshots away, and the request goes through.
+
 When the agent does not retry, the failure is written as an `error` block and
 the action fails with it. The turn is unfinished, and `resume` can continue
-it. Compaction's summary requests follow the same policy
-([Compaction](compaction.md#one-pass)).
+it. Compaction's summary requests follow the same policy, except that one
+refused as too large is asked again for half its window
+([One pass](compaction.md#one-pass)).
 
 ## Recovery is one mechanism
 
@@ -252,3 +268,4 @@ injected clock; no test calls a real model.
 | A vendor wait longer than 30 seconds | The failure is terminal at once |
 | A failure after a completed tool call, then `resume` | The tool does not run again; the model continues after its result |
 | `resume` after a failure before any output | The turn reruns from its input, with no `resume` block |
+| An HTTP 413, or a 400 that says a request has too many images or too large ones | The code is `context_length_exceeded`; the turn compacts once and sends the request again, and a second refusal is terminal |

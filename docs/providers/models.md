@@ -372,10 +372,41 @@ as `serviceTierId`; there is no separate Fast flag. The product offers only the
 tiers the model's catalog lists, because a request field that can carry a tier
 does not mean every vendor supports tiers.
 
+A changed thinking setting makes the vendor process a conversation's history
+again, which the user's choice allows
+([The rule](providers.md#the-rule)). No vendor's cache documentation counts
+the output limit or the service tier as part of the cached prefix, so a change
+of either keeps the cache.
+
 ### Context window
 
 The selected model's context window sets the conversation's automatic
 compaction threshold ([Compaction](../agent/compaction.md#compaction)).
+
+### Request limits
+
+A vendor refuses a request that is too large, however few tokens it holds:
+for example, 60 screenshots of 400 KB reach the Anthropic API's 32 MB before
+they fill a large context window. Each runtime states its vendor's limits for
+a model, and compaction keeps every request under them
+([When compaction runs](../agent/compaction.md#when-compaction-runs)):
+
+| Family | Body, as sent | Images per request |
+|---|---|---|
+| `anthropic`, `claude-code` | 32 MB | 100 for a model whose context window is at most 200,000 tokens, 600 otherwise |
+| `openai`, `codex` | 512 MB | 1,500 |
+| `google` | 20 MB, since media travel inline | 3,600 |
+| `grok-build` | Not documented | Not documented |
+
+A megabyte here is 1,000,000 bytes. Claude Code's CLI sends its history to the
+Anthropic API, so its limits are that API's. A compatible vendor of a family
+may set lower limits, and a limit that is not documented is none: a request
+refused as too large still leads to compaction
+([Retries](../agent/failures-and-recovery.md#retries)). Every image has
+already been fitted to what each vendor accepts of one image
+([Images in the transcript](../agent/runtime.md#images-in-the-transcript)),
+and a medium whose base64 takes more than half of the body limit is sent as
+text ([Replay](../agent/runtime.md#replay)).
 
 ### Accepted attachment types
 
@@ -410,3 +441,6 @@ applies when it explains why a file was not sent. For example, a shell command
 whose output is a PNG image returns the image to the model only when the model
 accepts `png` ([Tools](../agent/runtime.md#tools)). Native media beside a
 message's attachment follows [Attachments](../product/product.md#attachments).
+After a model switch, the history can hold media the new model does not
+accept; each request replays those as text
+([Replay](../agent/runtime.md#replay)).
