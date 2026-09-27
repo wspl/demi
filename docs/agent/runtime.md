@@ -662,7 +662,7 @@ before that `response` block, and its content is what the blocks before its
 answer replay. Compaction summarizes that content
 ([One pass](compaction.md#one-pass)), and a vendor reads its cache entry at its
 end. Before any request is answered after the last compaction, the request
-says none. A title request says instead that no later request extends it
+says none. A title request says instead that it is no session's
 ([Conversation titles](../product/product.md#conversation-titles)).
 
 ### Images in the transcript

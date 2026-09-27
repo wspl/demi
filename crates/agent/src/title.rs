@@ -9,7 +9,7 @@
 use std::{num::NonZeroU32, sync::Arc};
 
 use demi_core::{Model, ModelSelection, ThinkingCapability, ThinkingConfig, UserContentBlock};
-use demi_provider::{InferenceItem, InferenceRequest, ProviderEvent, ProviderRuntime};
+use demi_provider::{InferenceItem, InferenceRequest, PromptCache, ProviderEvent, ProviderRuntime};
 use futures_util::StreamExt;
 use tokio_util::sync::CancellationToken;
 
@@ -189,6 +189,8 @@ pub async fn request_title<S: AsRef<str>>(
         tools: Arc::from([]),
         thinking: lowest_thinking(&selection.model),
         service_tier_id: None,
+        // A title request is no session's: nothing extends it.
+        prompt_cache: PromptCache::Off,
         cancel: cancel.clone(),
     };
     let mut events = runtime.run(request);
@@ -356,6 +358,7 @@ mod tests {
             })
         );
         assert_eq!(request.service_tier_id, None);
+        assert_eq!(request.prompt_cache, PromptCache::Off);
         assert_eq!(request.max_output_tokens(), Some(OUTPUT_CAP));
         assert_eq!(request.turn_id, "title:r1");
         assert_eq!(requests[1].max_output_tokens(), NonZeroU32::new(256));
