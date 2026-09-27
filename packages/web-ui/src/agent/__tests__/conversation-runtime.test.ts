@@ -189,28 +189,44 @@ test('a queued message sent now steers the running turn, and runs next without a
   }
 })
 
-test('server takeover does not start a reconnect fight between views', async () => {
-  const h = clientHarness()
+test('a view whose tree another client disposed opens it again, as after a lost connection', async () => {
+  const harnesses = [clientHarness(), clientHarness()]
+  const current = state()
   let connects = 0
   const runtime = new ConversationRuntime({
-    state: state(),
+    state: current,
     prepareModel: async () => model,
-    connect: async () => {
-      connects += 1
-      return h.client
-    },
+    connect: async () => harnesses[connects++]!.client,
+    reconnect: { baseMs: 1, maxMs: 4 },
   })
-  await runtime.connect()
-  jest.useFakeTimers()
   try {
-    h.receive({ type: 'closed' })
-    // Whatever timer the takeover set fires now, however long its wait: none opens a connection.
-    jest.runAllTimers()
-    await turn()
-    expect(connects).toBe(1)
-    expect(runtime.connected).toBe(false)
+    await runtime.connect()
+    harnesses[0]!.receive({ type: 'closed' })
+    expect(current.load).toBe('reconnecting')
+    await waitFor(() => current.load === 'ready')
+    expect(connects).toBe(2)
+    expect(harnesses[1]!.sent.map((frame) => frame.type)).toEqual(['open'])
+    expect(runtime.connected).toBe(true)
   } finally {
-    jest.useRealTimers()
+    runtime.dispose()
+  }
+})
+
+test('a failure the session reported is over once another tab starts the next action', async () => {
+  const h = clientHarness()
+  const current = state()
+  const runtime = new ConversationRuntime({ state: current, prepareModel: async () => model, connect: async () => h.client })
+  try {
+    await runtime.connect()
+    h.receive({ type: 'phase', phase: 'running' })
+    h.receive({ type: 'error', message: 'The provider failed', code: 'provider_error' })
+    h.receive({ type: 'phase', phase: 'idle' })
+    expect(current.lastError).toBe('The provider failed')
+    // Another tab sends: this tab hears only the session start the next action.
+    h.receive({ type: 'phase', phase: 'running' })
+    expect(current.lastError).toBeNull()
+    expect(h.sent.map((frame) => frame.type)).toEqual(['open'])
+  } finally {
     runtime.dispose()
   }
 })

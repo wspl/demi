@@ -43,11 +43,11 @@ const OPEN_TIMEOUT_MS = 30_000
 /**
  * Owns one reconnectable client. Disposing a view leaves its server task alive.
  *
- * A connection that cannot be made or is lost is never a failure the reader
- * is told about: on a weak network it comes and goes, so the runtime keeps
- * `load` at `reconnecting` (the transcript's tail row says Connecting, the
- * composer stays) and retries with backoff until the socket is back or the
- * view is disposed. An action taken meanwhile waits for the connection.
+ * A connection that cannot be made or is lost, or whose tree another client
+ * disposed, is never a failure the reader is told about: on a weak network
+ * it comes and goes, so the runtime keeps `load` at `reconnecting` (the
+ * transcript's tail row says Connecting, the composer stays) and retries
+ * with backoff until the socket is back or the view is disposed. An action taken meanwhile waits for the connection.
  * Only the session refusing to open is a failure, told once through `load`
  * `failed` and `lastError`.
  */
@@ -352,6 +352,12 @@ export class ConversationRuntime {
         state.failures = event.failures
         break
       case 'phase':
+        // A failure the session reported is over once the session starts
+        // another action, whichever tab started it; a tab that did not
+        // start it would otherwise keep showing it.
+        if (state.phase === 'idle' && event.phase !== 'idle') {
+          state.lastError = null
+        }
         state.phase = event.phase
         this.settlePendingAction()
         break
@@ -368,12 +374,11 @@ export class ConversationRuntime {
         state.lastError = event.reason
         this.settlePendingAction()
         break
+      // A view never sends `close`, so a `closed` means another client
+      // disposed the tree: the view opens it again, as after a lost
+      // connection, and the backend restores it (`runtime.md` § Connections
+      // and the live tree).
       case 'closed':
-        // Another view can take over the server attachment. Reconnect only on
-        // a user action; automatic reconnect here would make the views fight.
-        this.releaseConnection()
-        state.load = 'ready'
-        break
       case 'disconnected':
         this.releaseConnection()
         if (!this.disposed) {

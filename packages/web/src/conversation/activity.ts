@@ -92,7 +92,9 @@ export function applyConversationEvent(
       startedAt:
         current?.startedAt ?? new Date(Date.now() - status.runningMs).toISOString(),
       ...(status.status !== 'running' ? { endedAt: new Date().toISOString() } : {}),
-      output: status.output.tail || status.output.text,
+      // The command's tail, which no page's reading changes, so every page
+      // shows the same output (`runtime.md` § Results and previews).
+      output: status.output.tail,
     }
     if (current) {
       Object.assign(current, snapshot)

@@ -211,10 +211,9 @@ impl<H: AgentHarness> Connection<H> {
         self.send(ServerFrame::SteerResult { steer_id, outcome });
     }
 
-    /// Attaches the connection to the conversation's tree, restoring the
-    /// tree when it is not live; a second `open` on one connection is
-    /// refused. Opening a tree another connection is attached to takes it
-    /// over.
+    /// Attaches the connection to the conversation's tree beside any other,
+    /// restoring the tree when it is not live; a second `open` on one
+    /// connection is refused.
     async fn open(&self, model: ModelSelection) {
         if self.attached().is_some() {
             self.reject(
@@ -251,14 +250,16 @@ impl<H: AgentHarness> Connection<H> {
         }
     }
 
-    /// Disposes the tree this connection is attached to, then answers
-    /// `closed`, even when nothing was attached.
+    /// Disposes the tree this connection is attached to, which sends every
+    /// attached connection `closed`; a connection attached to none is
+    /// answered `closed` alone.
     async fn close(&self) {
         if self.attached().is_some() {
             let _turn = self.server.opening.acquire(self.root.clone()).await;
-            // Another connection may have taken the tree over meanwhile.
+            // Another connection's close may have disposed the tree meanwhile.
             if let Some(tree) = self.attached() {
                 self.server.dispose_tree(&self.root, &tree).await;
+                return;
             }
         }
         self.send(ServerFrame::Closed);
@@ -346,7 +347,11 @@ impl<H: AgentHarness> Connection<H> {
                 let result = session.abort().await;
                 self.send(ServerFrame::AbortResult { result });
             }
-            ClientFrame::SyncTranscript {} => tree.sync(self.id),
+            ClientFrame::SyncTranscript {} => {
+                for frame in tree.fresh_transcripts() {
+                    self.send(frame);
+                }
+            }
             // The `closed` frames report what these stopped.
             ClientFrame::AbortSubagents {} => tree.abort_children_of(tree.root().id()).await,
             ClientFrame::AbortSubagent { subagent_id } => {
@@ -380,10 +385,13 @@ impl<H: AgentHarness> Connection<H> {
                     outcome,
                 });
             }
+            // The command's status is an event of the tree: every attached
+            // connection shows it. Only the write's acknowledgement is a
+            // reply.
             ClientFrame::ShellWrite { command_id, stdin } => {
                 match tree.root().shell_write(&command_id, stdin).await {
                     Ok(status) => {
-                        self.send(tools::shell_output(&status));
+                        tree.sink().emit(tools::shell_output(&status));
                         self.send(ServerFrame::ShellWriteResult { command_id });
                     }
                     Err(error) => self.error(error),
@@ -391,7 +399,7 @@ impl<H: AgentHarness> Connection<H> {
             }
             ClientFrame::ShellAbort { command_id } => {
                 match tree.root().shell_abort(&command_id).await {
-                    Ok(status) => self.send(tools::shell_output(&status)),
+                    Ok(status) => tree.sink().emit(tools::shell_output(&status)),
                     Err(error) => self.error(error),
                 }
             }

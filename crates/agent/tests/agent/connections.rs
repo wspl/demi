@@ -1,21 +1,30 @@
 //! Connections to a conversation's live tree: the open handshake, two opens
-//! at once, the refusals of frames that need a session, a connection dropped
-//! with its socket, and the eviction of a tree left detached and quiescent.
-//! The backend's scenarios show a takeover and a client that falls behind
-//! over the real socket.
+//! at once, several connections of one tree with their events, replies and
+//! lag, connections acting at once, the refusals of frames that need a
+//! session, a connection dropped with its socket, and the eviction of a tree
+//! left detached and quiescent. The backend's scenarios show two sockets of
+//! one conversation and a client that falls behind over the real socket.
 
 use std::time::Duration;
 
 use demi_agent::{
-    Outgoing,
-    testing::{TestFiles, model_of, test_model},
+    Outgoing, ServerConfig,
+    testing::{MemoryTreeStore, TestFiles, client_text, model_of, test_model},
 };
-use demi_agent_protocol::{ClientFrame, ClientFrameKind, ServerFrame, SteerOutcome};
-use demi_core::{BlockId, NodeId, SessionPhase};
-use demi_provider::testing::{ScriptedRuntime, Turn, event};
+use demi_agent_protocol::{ClientFrame, ClientFrameKind, EditOutcome, ServerFrame, SteerOutcome};
+use demi_core::{Block, BlockId, CommandId, NodeId, SessionPhase};
+use demi_provider::{
+    ProviderEvent,
+    testing::{ScriptedRuntime, Turn, event},
+};
+use futures_util::{StreamExt as _, stream};
 
-use crate::support::{
-    Fixture, conversation, frame_type, is_idle, is_pending_steers, kinds, open, send, turn, until,
+use crate::{
+    editing::{edit, edit_outcome, said, user_block},
+    support::{
+        Fixture, Gate, conversation, frame_type, frames_until, held, is_idle, is_pending_steers,
+        kinds, open, send, session_of, turn, until,
+    },
 };
 
 fn rejected(command: ClientFrameKind, reason: &str) -> ServerFrame {
@@ -82,12 +91,231 @@ async fn two_opens_of_one_conversation_at_once_build_one_tree() {
     let second_frames = second.received();
     assert_eq!(first_frames.first(), Some(&ServerFrame::Opened));
     assert_eq!(second_frames.first(), Some(&ServerFrame::Opened));
-    // The one that opened first was taken over.
-    let closed = [&first_frames, &second_frames]
+    // Neither open took the tree from the other.
+    assert!(
+        !first_frames
+            .iter()
+            .chain(&second_frames)
+            .any(|frame| *frame == ServerFrame::Closed)
+    );
+}
+
+/// The queue's messages by id.
+fn queued(frame: &ServerFrame) -> Option<Vec<String>> {
+    match frame {
+        ServerFrame::Queue { queue } => Some(
+            queue
+                .iter()
+                .map(|message| message.id.to_string())
+                .collect(),
+        ),
+        _ => None,
+    }
+}
+
+// Two tabs of one conversation: every event of the tree reaches both, a
+// reply only the tab that asked, and a close disposes the tree for both.
+#[tokio::test(flavor = "local")]
+async fn two_connections_of_one_tree_receive_its_events_and_each_its_own_replies() {
+    let script = ScriptedRuntime::new([Turn::Events(vec![
+        event::text("a"),
+        event::text("b"),
+        event::response(1, 1),
+    ])]);
+    let fixture = Fixture::new(&script);
+    let mut first = fixture.opened().await;
+    let mut second = fixture.opened().await;
+
+    first.send(send("m1", "hi")).await;
+    let seen_by_first = frames_until(&mut first, is_idle).await;
+    let seen_by_second = frames_until(&mut second, is_idle).await;
+    assert_eq!(seen_by_first, seen_by_second);
+    assert!(
+        seen_by_second
+            .iter()
+            .any(|frame| matches!(frame, ServerFrame::TranscriptPatch { .. })),
+        "{seen_by_second:?}"
+    );
+
+    second
+        .send(ClientFrame::Steer {
+            steer_id: BlockId::try_from("s1").unwrap(),
+            content: client_text("too late"),
+        })
+        .await;
+    second.send(ClientFrame::Abort {}).await;
+    second.send(ClientFrame::SyncTranscript {}).await;
+    second
+        .send(ClientFrame::ShellWrite {
+            command_id: CommandId::try_from("no-such-command").unwrap(),
+            stdin: "y\n".into(),
+        })
+        .await;
+    let replies: Vec<String> = second.received().iter().map(frame_type).collect();
+    assert_eq!(
+        replies,
+        ["steer_result", "abort_result", "transcript_reset", "error"]
+    );
+    assert_eq!(first.received(), []);
+
+    first.send(ClientFrame::Close {}).await;
+    let closed = |frames: &[ServerFrame]| {
+        frames
+            .iter()
+            .filter(|frame| **frame == ServerFrame::Closed)
+            .count()
+    };
+    let first_end = first.received();
+    let second_end = second.received();
+    assert_eq!(first_end.last(), Some(&ServerFrame::Closed));
+    assert_eq!(closed(&first_end), 1, "{first_end:?}");
+    assert_eq!(second_end.last(), Some(&ServerFrame::Closed));
+    assert!(fixture.server.tree(&conversation()).is_none());
+}
+
+// A tab that stops reading is closed as lagging; the other tab of the
+// conversation receives the whole turn. The run yields after each delta, as
+// a vendor's stream does, so the reading tab empties its outbox as the turn
+// streams.
+#[tokio::test(flavor = "local")]
+async fn a_connection_that_falls_behind_is_closed_alone_and_the_other_receives_the_turn() {
+    let deltas: Vec<ProviderEvent> = (0..40)
+        .map(|index| event::text(&format!("{index} ")))
+        .chain([event::response(1, 1)])
+        .collect();
+    let script = ScriptedRuntime::new([Turn::Stream(Box::new(move |_| {
+        stream::iter(deltas)
+            .then(|event| async move {
+                tokio::task::yield_now().await;
+                event
+            })
+            .boxed_local()
+    }))]);
+    let config = ServerConfig {
+        outbox_frames: 16,
+        ..ServerConfig::default()
+    };
+    let fixture = Fixture::with(&script, MemoryTreeStore::new(), config);
+    let mut reading = fixture.opened().await;
+    let mut stalled = fixture.opened().await;
+
+    reading.send(send("m1", "count")).await;
+    let turn = frames_until(&mut reading, is_idle).await;
+
+    let patches = turn
         .iter()
-        .filter(|frames| frames.last() == Some(&ServerFrame::Closed))
+        .filter(|frame| matches!(frame, ServerFrame::TranscriptPatch { .. }))
         .count();
-    assert_eq!(closed, 1);
+    assert!(patches > 16, "the turn outgrew one outbox: {patches} patches");
+    let mut held = 0;
+    let end = loop {
+        match stalled.outgoing().await {
+            Outgoing::Frame(_) => held += 1,
+            end => break end,
+        }
+    };
+    assert_eq!(end, Outgoing::Lagged);
+    assert!(held <= 16, "{held}");
+    let text: String = session_of(&fixture)
+        .transcript()
+        .blocks
+        .iter()
+        .filter_map(|block| match block {
+            Block::Text(text) => Some(text.text.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(text.ends_with("39 "), "{text}");
+    assert!(fixture.server.tree(&conversation()).unwrap().is_attached());
+}
+
+// Two tabs acting at once need no rule of their own: two sends queue in the
+// order they arrive, a send while the other tab's edit is prepared is
+// refused, and so is an edit while the other tab's send runs.
+#[tokio::test(flavor = "local")]
+async fn connections_acting_at_once_are_decided_by_the_rules_of_one() {
+    let first_turn = Gate::new();
+    let busy_turn = Gate::new();
+    let script = ScriptedRuntime::new([
+        held(&first_turn, vec![event::text("one"), event::response(1, 1)]),
+        said("two"),
+        said("three"),
+        said("one again"),
+        held(&busy_turn, vec![event::text("busy"), event::response(1, 1)]),
+    ]);
+    let fixture = Fixture::new(&script);
+    let mut first = fixture.opened().await;
+    let mut second = fixture.opened().await;
+
+    first.send(send("m1", "one")).await;
+    second.send(send("m2", "two")).await;
+    first.send(send("m3", "three")).await;
+    first_turn.open();
+    let seen_by_first = frames_until(&mut first, is_idle).await;
+    let seen_by_second = frames_until(&mut second, is_idle).await;
+    let queues: Vec<Vec<String>> = seen_by_second.iter().filter_map(queued).collect();
+    assert!(
+        queues.contains(&vec!["m2".to_owned(), "m3".to_owned()]),
+        "{queues:?}"
+    );
+    assert_eq!(seen_by_first, seen_by_second);
+    let turns: Vec<String> = session_of(&fixture)
+        .transcript()
+        .blocks
+        .iter()
+        .filter_map(|block| match block {
+            Block::User(user) => Some(user.turn_id.to_string()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(turns, ["m1", "m2", "m3"]);
+
+    // The second tab sends while the first tab's edit waits for its save.
+    let target = user_block(&fixture, "m1");
+    let version = session_of(&fixture).transcript().version;
+    let saves = fixture.store.hold_saves();
+    {
+        let (connection, _) = first.split();
+        let editing = connection.handle(edit("op1", &target, &version, client_text("one again")));
+        tokio::pin!(editing);
+        while saves.waiting() == 0 {
+            assert!(futures_util::poll!(editing.as_mut()).is_pending());
+            tokio::task::yield_now().await;
+        }
+        second.send(send("m4", "during the edit")).await;
+        saves.release();
+        editing.await;
+    }
+    let refused = frames_until(&mut second, is_idle).await;
+    assert!(
+        refused.contains(&ServerFrame::Rejected {
+            command: ClientFrameKind::Send,
+            reason: "A message edit is being prepared".into(),
+        }),
+        "{refused:?}"
+    );
+    let edited = frames_until(&mut first, is_idle).await;
+    let EditOutcome::Accepted { turn_id } = edit_outcome(&edited) else {
+        panic!("{edited:?}");
+    };
+
+    // The first tab edits while the second tab's send runs.
+    let target = user_block(&fixture, turn_id.as_str());
+    second.send(send("m5", "busy")).await;
+    until(|| script.requests().len() == 5).await;
+    let version = session_of(&fixture).transcript().version;
+    first
+        .send(edit("op2", &target, &version, client_text("not now")))
+        .await;
+    let answer = first.received();
+    busy_turn.open();
+    assert_eq!(
+        edit_outcome(&answer),
+        EditOutcome::Rejected {
+            reason: "Message editing requires a settled session with no pending work".into(),
+        }
+    );
+    frames_until(&mut second, is_idle).await;
 }
 
 #[tokio::test(flavor = "local")]

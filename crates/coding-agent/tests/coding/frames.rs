@@ -1,6 +1,7 @@
 //! The shell frames (`runtime.md` § Frame protocol): a client sees the
 //! root's running commands, writes to them and stops them, and finds the
-//! ones still owned when it attaches or asks for a fresh transcript.
+//! ones still owned when it attaches or asks for a fresh transcript; a
+//! command's status reaches every client of the conversation.
 
 use std::{cell::RefCell, rc::Rc, time::Duration};
 
@@ -98,8 +99,10 @@ async fn a_client_sees_the_roots_live_commands_writes_to_them_and_stops_them() {
         let frames = turn(&mut client, "message-2", "Sleep.").await;
         let long = command_of(&shell_outputs(&frames)[0]).clone();
 
-        // A client that attaches finds, after the snapshot, each command the
-        // transcript last saw running that the root still owns, in order.
+        // A second client that attaches beside the first finds, after the
+        // snapshot, each command the transcript last saw running that the
+        // root still owns, in order, each with its tail: the reader's whole
+        // output, though the first client has read it all.
         let mut second = fixture.attach().await;
         let handshake = second.received();
         let outputs = shell_outputs(&handshake);
@@ -113,14 +116,17 @@ async fn a_client_sees_the_roots_live_commands_writes_to_them_and_stops_them() {
             "{outputs:?}"
         );
         assert_eq!(command_of(&outputs[0]), &reader);
+        assert_eq!(outputs[0].command().output.tail, "hello Alice\n");
         assert!(
             matches!(outputs[1], ShellStatus::Running { .. }),
             "{outputs:?}"
         );
         assert_eq!(command_of(&outputs[1]), &long);
+        assert_eq!(client.received(), []);
 
-        // A stop answers the stopped command's status; a write to a command
-        // that no longer runs answers an error.
+        // A stop answers the stopped command's status, which both clients
+        // receive; a write to a command that no longer runs answers an
+        // error to the client that wrote.
         second
             .send(ClientFrame::ShellAbort {
                 command_id: long.clone(),
@@ -135,6 +141,7 @@ async fn a_client_sees_the_roots_live_commands_writes_to_them_and_stops_them() {
             "{status:?}"
         );
         assert_eq!(command_of(status), &long);
+        assert_eq!(client.received(), answer);
         second
             .send(ClientFrame::ShellWrite {
                 command_id: long.clone(),
@@ -146,6 +153,7 @@ async fn a_client_sees_the_roots_live_commands_writes_to_them_and_stops_them() {
             matches!(&answer[..], [ServerFrame::Error { .. }]),
             "{answer:?}"
         );
+        assert_eq!(client.received(), []);
 
         // Closing the conversation stops the commands its shells still run:
         // the sleeper's process ends. The turn ends when the exec's window
@@ -166,6 +174,7 @@ async fn a_client_sees_the_roots_live_commands_writes_to_them_and_stops_them() {
         };
         second.send(ClientFrame::Close {}).await;
         assert_eq!(second.received().last(), Some(&ServerFrame::Closed));
+        assert_eq!(client.received().last(), Some(&ServerFrame::Closed));
         let ended = tokio::time::timeout(Duration::from_secs(10), async {
             while rustix::process::test_kill_process(sleeper).is_ok() {
                 tokio::time::sleep(Duration::from_millis(10)).await;
