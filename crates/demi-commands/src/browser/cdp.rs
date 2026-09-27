@@ -1124,113 +1124,32 @@ fn object_schema(properties: &[Shape], domain: &str) -> std::result::Result<Valu
     )
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use chromiumoxide::cdp::browser_protocol::target::GetTargetsParams;
-    use demi_command_service::protocol::CommandLocale;
-    use futures_util::FutureExt;
-    use std::{path::PathBuf, time::Duration};
-
-    /// Inject extension failure through a private CDP connection; the public
-    /// tab-scoped debugger deliberately cannot address this worker.
-    #[tokio::test]
-    #[ignore = "requires pinned real Chrome for Testing"]
-    async fn capture_extension_reload_preserves_pages_and_recreates_its_worker() {
-        let executable = PathBuf::from(std::env::var_os("DEMI_TEST_CHROME").unwrap());
-        let options = super::super::LaunchOptions::pinned(
-            executable,
-            CommandLocale {
-                time_zone: "UTC".into(),
-                languages: vec!["en-US".into()],
-            },
-        )
-        .unwrap();
-        let exercise = |environment: BrowserEnvironment| async move {
-            let work = async move {
-                let cancel = CancellationToken::new();
-                let timeout = Duration::from_secs(30);
-                let tab = environment.open("about:blank", &cancel, timeout).await?;
-                let address = environment.browser.call()?.websocket_address().clone();
-                let mut socket = Connection::<WireEvent>::connect(address).await?;
-                let worker_url = format!(
-                    "chrome-extension://{}/background.js",
-                    super::super::launch::CAPTURE_EXTENSION_ID
-                );
-                let mut previous = None;
-                for round in 0..4 {
-                    let target = tokio::time::timeout(timeout, async {
-                        loop {
-                            let targets = environment
-                                .browser
-                                .call()?
-                                .execute(GetTargetsParams::default())
-                                .await?;
-                            // Target discovery precedes worker initialization. The
-                            // offscreen document proves its startup code has run.
-                            if !targets.result.target_infos.iter().any(|target| {
-                                target.url == worker_url.replace("background.js", "offscreen.html")
-                            }) {
-                                tokio::time::sleep(Duration::from_millis(50)).await;
-                                continue;
-                            }
-                            if let Some(target) =
-                                targets.result.target_infos.into_iter().find(|target| {
-                                    target.url == worker_url
-                                        && previous.as_ref() != Some(&target.target_id)
-                                })
-                            {
-                                return Ok::<_, BrowserError>(target.target_id);
-                            }
-                            tokio::time::sleep(Duration::from_millis(50)).await;
-                        }
-                    })
-                    .await
-                    .expect("the capture worker returns after every reload")?;
-                    assert_eq!(environment.tabs(&cancel, timeout).await?.len(), 1);
-                    assert_eq!(
-                        tab.read_only("document.URL", &cancel, timeout).await?,
-                        json!("about:blank")
-                    );
-                    if round == 3 {
-                        break;
-                    }
-                    let attached = roundtrip(
-                        &mut socket,
-                        "Target.attachToTarget",
-                        json!({"targetId":target,"flatten":true}),
-                        None,
-                    )
-                    .await?;
-                    let attached: AttachToTargetReturns = serde_json::from_value(attached).unwrap();
-                    let evaluated = roundtrip(
-                        &mut socket,
-                        "Runtime.evaluate",
-                        json!({
-                            "expression": "setTimeout(() => chrome.runtime.reload(), 100); true",
-                            "returnByValue": true,
-                        }),
-                        Some(attached.session_id),
-                    )
-                    .await?;
-                    assert_eq!(evaluated["result"]["value"], true, "{evaluated}");
-                    previous = Some(target);
-                }
-                Ok::<(), BrowserError>(())
-            };
-            // Join Chrome retirement before reporting an assertion or deadline.
-            Ok(
-                std::panic::AssertUnwindSafe(tokio::time::timeout(Duration::from_secs(60), work))
-                    .catch_unwind()
-                    .await,
-            )
-        };
-        let outcome = super::super::with_browser(options, CancellationToken::new(), exercise)
-            .await
-            .unwrap();
-        match outcome {
-            Ok(result) => result.expect("extension reload deadline").unwrap(),
-            Err(panic) => std::panic::resume_unwind(panic),
-        }
-    }
+/// Evaluates `expression` in `target` over a CDP connection of its own, for
+/// the Chrome tests: the public tab-scoped debugger deliberately cannot
+/// address a target such as the capture extension's worker.
+#[cfg(feature = "testing")]
+pub(super) async fn evaluate_in(
+    browser: &BrowserHandle,
+    target: chromiumoxide::cdp::browser_protocol::target::TargetId,
+    expression: &str,
+) -> Result<Value> {
+    let address = browser.call()?.websocket_address().clone();
+    let mut socket = Connection::<WireEvent>::connect(address).await?;
+    let attached = roundtrip(
+        &mut socket,
+        "Target.attachToTarget",
+        json!({"targetId": target, "flatten": true}),
+        None,
+    )
+    .await?;
+    let attached: AttachToTargetReturns = serde_json::from_value(attached)
+        .map_err(|error| BrowserError::InvalidResult(error.to_string()))?;
+    let evaluated = roundtrip(
+        &mut socket,
+        "Runtime.evaluate",
+        json!({"expression": expression, "returnByValue": true}),
+        Some(attached.session_id),
+    )
+    .await?;
+    Ok(evaluated["result"]["value"].clone())
 }

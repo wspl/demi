@@ -11,7 +11,7 @@ use super::Result;
 
 /// The capture extension's ID, fixed by the public key in its manifest so that
 /// tab capture can allowlist it (`live-view.md` § Capture).
-pub(super) const CAPTURE_EXTENSION_ID: &str = "ekadkclcinpnbbdeloemlmaimcklplko";
+pub const CAPTURE_EXTENSION_ID: &str = "ekadkclcinpnbbdeloemlmaimcklplko";
 
 const CAPTURE_EXTENSION: &[(&str, &str)] = &[
     ("manifest.json", include_str!("capture/manifest.json")),
