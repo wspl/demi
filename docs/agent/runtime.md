@@ -842,9 +842,10 @@ ended while no page watched shows as ended.
   the tree's other attachments go on as before; the client reconnects and
   adopts the running tree. A backend that shuts down closes its conversation
   sockets with 1001 `backend_closing` before it disposes the trees.
-- A connection that has sent no frame for 30 seconds is sent a `heartbeat`,
-  whether it is attached or not. The socket sends it, not the tree: it does
-  not go through the outbox and changes nothing the client holds. It lets a
+- The backend sends a `heartbeat` on a connection it has sent nothing else
+  on for 30 seconds, whether the connection is attached or not. The socket
+  sends it, not the tree: it does not go through the outbox and changes
+  nothing the client holds. It lets a
   page tell a quiet connection from a dead one. For example, a laptop sleeps
   and its network drops without a close: nothing tells the page, whose socket
   still looks open. A page that receives nothing on its connection for 75
