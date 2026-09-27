@@ -19,7 +19,7 @@ use axum::{
     extract::{Request, State},
     response::Response,
 };
-use demi_core::{AuthState, Clock, RuntimeState, Timestamp, TokenUsage, UserContentBlock};
+use demi_core::{AuthState, Clock, Model, RuntimeState, Timestamp, TokenUsage, UserContentBlock};
 use futures_util::{
     Stream, StreamExt,
     future::LocalBoxFuture,
@@ -31,7 +31,7 @@ use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
 use crate::{
     InferenceItem, InferenceRequest, Provider, ProviderEvent, ProviderFailure, ProviderRun,
-    ProviderRuntime, ToolCall,
+    ProviderRuntime, RequestLimits, ToolCall,
 };
 
 /// Builders of the events a scripted run yields.
@@ -187,6 +187,11 @@ impl ProviderRuntime for ScriptedRuntime {
     fn close(&mut self) -> LocalBoxFuture<'_, ()> {
         self.script.borrow_mut().closes += 1;
         Box::pin(async {})
+    }
+
+    /// A scripted vendor refuses nothing for its size.
+    fn request_limits(&self, _model: &Model) -> RequestLimits {
+        RequestLimits::default()
     }
 }
 
