@@ -337,7 +337,8 @@ message can be edited from its block type alone, as the backend does
 
 Product adapters connect shared file interfaces to device filesystem APIs,
 the working-tree change routes, the raw file routes behind
-[file previews](file-previews.md), and uploads; the live browser view's source
+[file previews](file-previews.md), the blob route behind a transcript's media,
+and uploads; the live browser view's source
 to the user stream route; and shared account interfaces to provider, pairing,
 and Cloud APIs. The main composer and the edit composer add a file through the
 same upload adapter ([Attachments](product.md#attachments)); no message
