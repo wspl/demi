@@ -304,10 +304,12 @@ not block readable history ([Models](../providers/models.md#catalog-cache)).
 
 ## Media by reference
 
-Transcript media sent to the browser uses blob references instead of inline
-bulk bytes. The conversation socket externalizes inline media in root and
-subagent reset and patch frames, preserving frame order. The browser retrieves
-the referenced bytes through the cookie-authenticated blob route in its user's
+Transcript blocks hold their media by blob reference
+([Media](../agent/runtime.md#media)), so the frames that carry them carry
+references, and the conversation socket sends each frame as the agent wrote
+it: it neither stores nor reads media. A blob is stored before the first frame
+that names it, so the browser can fetch every reference a frame carries, when
+the frame arrives, through the cookie-authenticated blob route in its user's
 namespace.
 
 Only the media types [file previews](../product/file-previews.md#keeping-file-content-inert)
@@ -330,8 +332,11 @@ socket validates the entire frame before changing metadata or granting
 attachments. It resolves upload references to caller-owned blobs and writes
 them under the selected Host's `~/.demi/attachments/<conversation>/`, outside
 the workspace. The agent receives an attachment record, with the same snippet
-for a text file, and any native media block it can consume. A missing or
-inaccessible upload becomes an explicit attachment-unavailable text block.
+for a text file, and any native media block it can consume, which references
+the upload's own blob; the socket hands the session the bytes it read to
+write the file, so the session holds them without reading the blob again. A
+missing or inaccessible upload becomes an explicit attachment-unavailable text
+block.
 An edit's references to the files the edited message holds pass to the
 agent as they came, and the session resolves them from that message
 ([Files the edit keeps](../agent/message-editing.md#files-the-edit-keeps)).
@@ -343,14 +348,11 @@ Its contents can change before that read.
 [Web API](../product/web-api.md#device-files-and-remote-references) defines
 the wire shape.
 
-Resolving uploads and externalizing media keep the socket's frame order
+Resolving uploads keeps the socket's frame order
 ([Order and delivery](../agent/runtime.md#order-and-delivery)). A frame whose
 resolution fails reports an error without affecting the frames behind it, and
-closing the socket stops resolution that has not reached the session yet. An
-outgoing transcript frame whose media cannot be stored is sent as an `error`
-frame (`frame_send_failed`) instead, and the frames behind it still arrive; the
-page asks for the transcript again at the revision gap. The underlying
-persistence and blob ownership are defined in [Storage](storage.md).
+closing the socket stops resolution that has not reached the session yet. The
+underlying persistence and blob ownership are defined in [Storage](storage.md).
 
 ## Failure facts
 

@@ -34,7 +34,7 @@ conversation's host access; they are not conversation database content.
 |---|---|---|
 | `control.sqlite` | Accounts, auth sessions, preferences, devices, workspaces, exposes, conversation index, providers, model catalogs, usage, attachment metadata, operation records | The control service, on its database thread |
 | Conversation database | Root and subagent nodes, checkpoint state, transcript blocks, command history | The shard of the user who owns the conversation |
-| User blob namespace | Uploaded bytes and transcript media addressed by content hash | Upload and media persistence |
+| User blob namespace | Uploaded bytes and transcript media addressed by content hash | The upload route, and a session when a tool's medium enters its transcript |
 | Change store | Both sides of every file a command edited, bound to the conversation ([Edit tracking](../execution/edit-tracking.md#the-change-store)) | Command completion |
 
 Both kinds of database are SQLite, reached through rusqlite with SQLite
@@ -179,7 +179,8 @@ node ([Persistence](../agent/subagents.md#persistence)), is one transaction on
 the conversation's writer connection. Deleting a node cascades to its
 descendants and their dependent rows.
 
-A save publishes the checkpoint's media before its transaction
+A save writes its rows as they are: a block holds its media by reference,
+and each blob was stored when its medium entered the transcript
 ([Attachment and transcript media](#attachment-and-transcript-media)). The
 transaction commits the block rows, the state and the command state together
 or rolls all three back, so a crash at any moment leaves one complete
@@ -216,19 +217,24 @@ owner's, which the user's shard knows. A content hash identifies bytes only
 within that namespace. Knowing another user's hash grants no access to their
 blob.
 
-The tree store moves the inline media of root and subagent blocks into the
-owner's namespace before it saves them, and puts the bytes back when a session
-loads for inference; cold browser history keeps the references. The agent
-defines that mapping, including what a missing blob becomes
+Root and subagent blocks hold their media by reference in every row and every
+frame, so the conversation database holds no media bytes. A medium is stored
+once, when it enters: an upload by the upload route, and a tool's medium by
+the session, through its tree store, before the tool's result enters the
+transcript. A session reads back, through the same store, only the media its
+provider requests send, and cold browser history reads none. The agent
+defines these rules, including what a missing blob becomes
 ([Media](../agent/runtime.md#media)); the backend decides where the bytes go.
 Browser delivery and uploaded attachment resolution are defined in
 [Backend media handling](backend.md#media-by-reference).
 
-Blob publication precedes the database checkpoint that references it. A
-database failure can leave an unreferenced blob; it must not leave a committed
-block pointing at an incompletely published upload. There is no transaction
-spanning SQLite and the object store. Nothing reclaims an unreferenced blob;
-when one may go is an open decision ([Open decisions](#open-decisions)).
+A blob is published before any row or frame that references it: an upload
+is stored before a message can name it, and a tool's medium enters the
+transcript only once its put has succeeded. A database failure can leave an
+unreferenced blob; it never leaves a committed block pointing at unpublished
+bytes. There is no transaction spanning SQLite and the object store. Nothing
+reclaims an unreferenced blob; when one may go is an open decision
+([Open decisions](#open-decisions)).
 
 ## The object store
 
@@ -248,10 +254,16 @@ creation and checksums come from the library.
 the change store holds and when it is written.
 
 A blob put hashes the bytes with SHA-256 on the blocking pool, since a 25 MiB
-upload would hold an async thread for tens of milliseconds, and then creates
-the object only if its key does not exist. Finding the key already present is
-success: the same key always names the same bytes, so repeated uploads of one
-file store it once. A get of a malformed hash or of a missing object returns
+upload would hold an async thread for tens of milliseconds, and then asks
+whether the key exists: a HEAD request on S3, the file's metadata locally. A
+key that exists is success, and no bytes are sent: the same key always names
+the same bytes, so repeated uploads of one file store it once. Otherwise the
+put creates the object only if its key does not exist, and a key that another
+put created meanwhile is success too. On S3 a new blob therefore costs a HEAD
+and a PUT, one round trip more than the PUT alone, and a blob that exists
+costs the HEAD alone, where a conditional PUT would send the whole body, up to
+25 MiB, before S3 refused it; locally, a put of a blob that exists writes no
+staged copy of it. A get of a malformed hash or of a missing object returns
 absent; any other error propagates.
 
 `DEMI_CHANGE_STORE_CONFIG` names a JSON file with `bucket`, `region`, an
@@ -428,7 +440,7 @@ deployment, and the [Roadmap](../delivery/roadmap.md#decisions-before-expanding-
 lists them with its other decisions; this section describes what each one
 means for stored data.
 
-- **Local object durability.** A save writes an uploaded image into the local
+- **Local object durability.** A session writes a tool's image into the local
   object store, then commits the checkpoint that references it. If power fails
   after the commit but before the operating system has written the object's
   data, the committed block can point at a missing or truncated object,
@@ -442,8 +454,13 @@ means for stored data.
   Multi-worker recovery needs a definition of how the stale worker is fenced
   and of when a replicated checkpoint is ready for the destination to open.
 - **Retention.** Nothing deletes a blob that no block references, such as an
-  attachment edited out of history or one published by a save that then
-  failed, or the blobs and change objects of a deleted account. A retention
-  policy must say when such data may go, and a collector must not race a save
-  that has published a blob but not yet committed the checkpoint that
-  references it.
+  attachment edited out of history or a tool's medium stored for a result that
+  was never saved, or the blobs and change objects of a deleted account. A
+  retention policy must say when such data may go. Whatever it decides, a
+  collector never deletes a blob that a block, a queued message or a pending
+  steer references, since a live session reads the bytes of a replayed medium
+  again after it let go of them and must find the same bytes
+  ([Media](../agent/runtime.md#media)). It waits a grace period before it
+  deletes a blob that nothing references, so it does not race a medium that
+  is stored but whose block is not yet committed, or a pending steer, which
+  lives only in its session.
