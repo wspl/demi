@@ -7,6 +7,8 @@ use tokio::process::{Child, Command};
 
 use super::Result;
 
+/// The variable that marks Chrome's processes with the environment they
+/// belong to, named by its runtime directory.
 #[cfg(unix)]
 const PROFILE_ENV: &str = "DEMI_BROWSER_PROFILE";
 
@@ -45,7 +47,8 @@ pub(super) struct ChromeProcess {
 }
 
 impl ChromeProcess {
-    pub fn new(profile: &Path, executable: &Path) -> Self {
+    /// The Chrome of the environment whose runtime directory is `runtime`.
+    pub fn new(runtime: &Path, executable: &Path) -> Self {
         // macOS helpers live in the app's Frameworks directory; Linux helpers
         // live beside the main Chrome executable.
         let installation = executable
@@ -54,17 +57,18 @@ impl ChromeProcess {
             .or_else(|| executable.parent())
             .expect("absolute Chrome executable has a parent")
             .to_owned();
-        Self::marked(profile, vec![installation])
+        Self::marked(runtime, vec![installation])
     }
 
-    /// The processes marked with `profile` whose executable lies under one
-    /// of `installations`: a browser's own, or those an orphaned browser left
-    /// when its service ended without retiring it.
-    pub fn marked(profile: &Path, installations: Vec<std::path::PathBuf>) -> Self {
+    /// The processes marked with the environment whose runtime directory is
+    /// `runtime`, whose executable lies under one of `installations`: a
+    /// browser's own, or those an orphaned browser left when its service
+    /// ended without retiring it.
+    pub fn marked(runtime: &Path, installations: Vec<std::path::PathBuf>) -> Self {
         #[cfg(unix)]
         {
             let mut marker = std::ffi::OsString::from(format!("{PROFILE_ENV}="));
-            marker.push(profile);
+            marker.push(runtime);
             Self {
                 group: None,
                 marker,
@@ -74,34 +78,37 @@ impl ChromeProcess {
         }
         #[cfg(not(unix))]
         {
-            let _ = (profile, installations);
+            let _ = (runtime, installations);
             Self {}
         }
     }
 
-    pub fn spawn(&mut self, command: &mut Command) -> io::Result<Child> {
+    /// Starts Chrome with `command`, whose profile is `profile`.
+    pub fn spawn(&mut self, command: &mut Command, profile: &Path) -> io::Result<Child> {
         #[cfg(unix)]
         {
             command.process_group(0);
             // Crashpad deliberately creates another session. This inherited,
             // environment-owned marker also identifies helpers outside our group.
-            let (_, profile) = self
+            let (_, runtime) = self
                 .marker
                 .as_encoded_bytes()
                 .split_at(PROFILE_ENV.len() + 1);
             use std::os::unix::ffi::OsStrExt;
-            let profile = std::ffi::OsStr::from_bytes(profile);
-            command.env(PROFILE_ENV, profile);
+            let runtime = std::ffi::OsStr::from_bytes(runtime);
+            command.env(PROFILE_ENV, runtime);
             // Chrome's temporary files, the directory of its process-singleton
-            // socket among them, go with the profile however Chrome ends
-            // (`browser.md` § Native driver).
-            command.env(TEMPORARY_ENV, profile);
-            // So do its crash reports on Linux.
+            // socket among them, go with the environment's runtime directory
+            // however Chrome ends (`browser.md` § Native driver).
+            command.env(TEMPORARY_ENV, runtime);
+            // Its crash reports go with the profile on Linux.
             #[cfg(target_os = "linux")]
             {
                 command.env(CONFIG_ENV, profile);
             }
         }
+        #[cfg(not(target_os = "linux"))]
+        let _ = profile;
         #[cfg(target_os = "linux")]
         {
             // The kernel ends Chrome's leader when the thread that started it
@@ -339,7 +346,7 @@ mod tests {
         let profile = tempfile::tempdir().unwrap();
         let mut owner = ChromeProcess::new(profile.path(), &std::env::current_exe().unwrap());
         let mut leader = owner
-            .spawn(Command::new("sleep").arg("60").kill_on_drop(true))
+            .spawn(Command::new("sleep").arg("60").kill_on_drop(true), profile.path())
             .unwrap();
         let mut helper_command = Command::new(std::env::current_exe().unwrap());
         helper_command
