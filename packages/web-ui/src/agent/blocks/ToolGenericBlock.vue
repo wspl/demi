@@ -2,10 +2,11 @@
 import { computed } from 'vue'
 import { Zap } from '@lucide/vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
-import ContentMedia from '../ContentMedia.vue'
 import FunctionalBlock from './FunctionalBlock.vue'
+import ToolMedia from './ToolMedia.vue'
 import type { ToolCallBlock } from '../block-types'
 import { getToolErrorText } from '../block-helpers'
+import { takesMediumPlace } from '../tool-media'
 import { trimToolSummary } from '../tool-rendering'
 
 const props = defineProps<{
@@ -26,6 +27,10 @@ const summary = computed(() => {
     })
     .join(' ')
 })
+// The result's own text; its media, and a text in a medium's place, show under the row.
+const texts = computed(() =>
+  props.block.output.flatMap((part) => part.type === 'text' && !takesMediumPlace(part) ? [part.text] : []),
+)
 const errorText = computed(() => getToolErrorText(props.block))
 const detail = computed(() => {
   const text = errorText.value
@@ -41,30 +46,21 @@ const detail = computed(() => {
     :tone="block.status === 'error' ? 'danger' : undefined"
   >
     <template
-      v-if="block.output.length"
+      v-if="texts.length > 0"
       #body
     >
       <div class="space-y-2 py-2">
-        <template
-          v-for="(part, index) in block.output"
+        <pre
+          v-for="(text, index) in texts"
           :key="index"
+          class="whitespace-pre-wrap break-words text-chrome"
+          >{{ text }}</pre
         >
-          <pre
-            v-if="part.type === 'text'"
-            class="whitespace-pre-wrap break-words text-chrome"
-            >{{ part.text }}</pre
-          >
-          <ContentMedia
-            v-else-if="part.type === 'image' || part.type === 'video'"
-            :kind="part.type"
-            :source="part.source"
-            :name="`${part.type} ${index + 1}`"
-          />
-        </template>
       </div>
     </template>
     <template #icon>
       <Zap :size="ICON_PX.in28" />
     </template>
   </FunctionalBlock>
+  <ToolMedia :output="block.output" :title="block.toolName" />
 </template>

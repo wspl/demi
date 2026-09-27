@@ -9,6 +9,9 @@ import { useAppShortcuts } from '@demicodes/web-ui/composables/useAppShortcuts'
 import type { SidebarReorder } from '@demicodes/web-ui/sidebar/types'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import ToastHost from '@demicodes/web-ui/ui/ToastHost.vue'
+import ImageViewer from '@demicodes/web-ui/files/ImageViewer.vue'
+import { provideBlobUrl } from '@demicodes/web-ui/agent/media-source'
+import { provideImageViewer } from '@demicodes/web-ui/files/image-viewer'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
 import { useDevicePairing } from '@demicodes/web-ui/devices/pairing'
 import SettingsDialog from './settings/SettingsDialog.vue'
@@ -19,6 +22,9 @@ import { useWorkPanel } from './conversation/work'
 import { useResources } from './state/resources'
 import { useSession } from './auth/session'
 import { claimDevice, useDeviceInstallation } from './devices/pairing'
+import { blobUrl } from './api/uploads'
+provideBlobUrl(blobUrl)
+const imageViewer = provideImageViewer()
 const session = useSession()
 const conversations = useConversations()
 const resources = useResources()
@@ -204,4 +210,5 @@ useAppShortcuts(
     <RouterView />
   </div>
   <ToastHost />
+  <ImageViewer :viewer="imageViewer" />
 </template>
