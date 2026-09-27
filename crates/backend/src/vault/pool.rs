@@ -83,7 +83,11 @@ impl CredentialPool for VaultCredentialPool {
                 .set_active_credential(self.provider.clone(), account)
                 .await
                 .map_err(store)?;
-            if selected { Ok(()) } else { Err(not_found()) }
+            if !selected {
+                return Err(not_found());
+            }
+            self.vault.mark_entry_changed(&self.provider).await;
+            Ok(())
         })
     }
 
@@ -106,11 +110,11 @@ impl CredentialPool for VaultCredentialPool {
                 .write_credential(self.provider.clone(), account)
                 .await
                 .map_err(store)?;
-            if stored {
-                Ok(())
-            } else {
-                Err(PoolError::Store("the provider entry no longer exists".into()))
+            if !stored {
+                return Err(PoolError::Store("the provider entry no longer exists".into()));
             }
+            self.vault.mark_entry_changed(&self.provider).await;
+            Ok(())
         })
     }
 
@@ -132,7 +136,9 @@ impl CredentialPool for VaultCredentialPool {
                 .control()
                 .remove_credential(self.provider.clone(), account)
                 .await
-                .map_err(store)
+                .map_err(store)?;
+            self.vault.mark_entry_changed(&self.provider).await;
+            Ok(())
         })
     }
 }
@@ -187,11 +193,16 @@ impl AccountDocument for VaultDocument {
                 return Ok(false);
             };
             let sealed = self.vault.seal_secret(&self.provider, account, &text);
-            self.vault
+            let replaced = self
+                .vault
                 .control()
                 .replace_credential_secret(self.provider.clone(), account.clone(), sealed, version)
                 .await
-                .map_err(store)
+                .map_err(store)?;
+            if replaced {
+                self.vault.mark_entry_changed(&self.provider).await;
+            }
+            Ok(replaced)
         })
     }
 
@@ -247,7 +258,12 @@ mod tests {
             .await
             .unwrap();
         let master = testing::master(&control).await;
-        let vault = Vault::new(control.clone(), VaultKey::new([3; 32]), InstanceMode::Isolated);
+        let vault = Vault::new(
+            control.clone(),
+            VaultKey::new([3; 32]),
+            InstanceMode::Isolated,
+            crate::sync::SyncRegistry::default(),
+        );
         let staged = MemoryCredentialPool::new();
         let entry = vault
             .create_subscription(master.id.clone(), "codex".into(), "Codex".into(), &staged)
@@ -335,7 +351,7 @@ mod tests {
         pool.set_active("b").await.unwrap();
         pool.remove("b").await.unwrap();
         assert_eq!(pool.active().await, Ok(None));
-        vault.delete(entry.id.clone()).await.unwrap();
+        vault.delete(&entry).await.unwrap();
         assert_eq!(control.credentials(entry.id.clone()).await.unwrap(), Vec::new());
         control.close().await.unwrap();
     }

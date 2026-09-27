@@ -25,6 +25,7 @@ use super::policy::ShardPolicy;
 use crate::shard::Shard;
 use crate::storage::control::ControlService;
 use crate::storage::devices::DeviceRecord;
+use crate::sync::{Part, UserMarks};
 
 /// Why a revoked device's connection ended; its runner hears it and stops.
 const REVOKED: &str = "device revoked";
@@ -247,8 +248,9 @@ impl Shard {
         slot.link.send_replace(DeviceLink::Online(link.clone()));
         tracing::info!(device = %device, "runner connected");
         let control = self.services().control.clone();
+        let marks = self.services().sync.of(self.user());
         let seen = device.clone();
-        self.tasks().spawn_local(async move { touch_seen(&control, seen).await });
+        self.tasks().spawn_local(async move { touch_seen(&control, &marks, seen).await });
         Some(Serving {
             slot: slot.clone(),
             device: device.clone(),
@@ -256,6 +258,7 @@ impl Shard {
             link,
             driver,
             control: self.services().control.clone(),
+            marks: self.services().sync.of(self.user()),
         })
     }
 
@@ -265,6 +268,7 @@ impl Shard {
     pub(crate) async fn revoke_device(&self, device: DeviceId) -> Result<(), crate::storage::StorageError> {
         self.destroy_exposes_on(&device).await;
         self.services().control.delete_device(device.clone()).await?;
+        self.mark(Part::Devices);
         self.devices().disconnect(&device, REVOKED);
         Ok(())
     }
@@ -347,6 +351,8 @@ struct Serving {
     link: Link,
     driver: demi_host_remote::LinkDriver,
     control: ControlService,
+    /// The owner's pages, which show whether the device is online.
+    marks: UserMarks,
 }
 
 impl Serving {
@@ -360,6 +366,7 @@ impl Serving {
             link,
             driver,
             control,
+            marks,
         } = self;
         let (mut outgoing, incoming) = socket.split();
         let incoming = incoming.filter_map(|message| {
@@ -396,14 +403,17 @@ impl Serving {
         // The connection is over whether or not the close reaches the runner.
         let _ = outgoing.send(Message::Close(None)).await;
         slot.went_offline(&link, identity);
-        touch_seen(&control, device).await;
+        touch_seen(&control, &marks, device).await;
     }
 }
 
-/// Records that the device's runner was connected just now.
-async fn touch_seen(control: &ControlService, device: DeviceId) {
+/// Records that the device's runner was connected just now, which its
+/// owner's pages show with whether it is online: a connection records it
+/// as it starts and as it ends.
+async fn touch_seen(control: &ControlService, marks: &UserMarks, device: DeviceId) {
     if let Err(error) = control.touch_device_seen(device.clone()).await {
         // The time is shown to the user and decides nothing.
         tracing::warn!(device = %device, error = &error as &dyn std::error::Error, "last-seen time not recorded");
     }
+    marks.mark(Part::Devices);
 }

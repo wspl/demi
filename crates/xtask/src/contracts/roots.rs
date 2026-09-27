@@ -82,6 +82,7 @@ pub fn web() -> Vec<Root> {
         receives::<auth::EmailChangeStarted>(),
         sends::<auth::EmailChangeConfirm>(),
         receives::<state::ProductState>(),
+        receives::<state::SyncEvent>(),
         receives::<settings::Settings>(),
         receives::<settings::UserPreferences>(),
         sends::<settings::PreferencesPatch>(),

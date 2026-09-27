@@ -1,6 +1,6 @@
 //! Conversation drafts (`web-api.md` § Conversation drafts): the backend
 //! keeps one draft per conversation, which every session of its user
-//! follows through the draft revision of the state snapshot. A save always
+//! follows through the draft revision its channel brings. A save always
 //! takes effect; one built on an older revision keeps the version it
 //! replaced, which a session restores or dismisses. An upload the draft
 //! names is readable from every session, with the opening its record keeps.
@@ -8,25 +8,23 @@
 use demi_web_api::attachments::AttachmentAnswer;
 use demi_web_api::drafts::{ConversationDraft, DraftAnswer, DraftFile, ReplacedDraft};
 use demi_web_api::error::ErrorCode;
+use demi_web_api::state::SyncEvent;
 use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};
 
-use crate::support::{Answer, Harness, MASTER_EMAIL, MASTER_PASSWORD, Session, TestBackend, answer};
+use crate::support::{Answer, Harness, MASTER_EMAIL, MASTER_PASSWORD, Session, SyncChannel, TestBackend, answer};
 
 /// The mark a draft's text holds where a file's capsule stands.
 const MARK: char = '\u{FFFC}';
 
-/// The draft revision the state snapshot shows `session` for the
-/// conversation.
-async fn draft_revision(backend: &TestBackend, session: &Session, id: &str) -> u64 {
-    let state: Value = backend.get("/api/state", Some(session)).await.json();
-    let conversation = state["conversations"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|conversation| conversation["id"] == id)
-        .unwrap();
-    conversation["draftRevision"].as_u64().unwrap()
+/// Waits until the page's channel brings the conversation's summary with
+/// the draft revision `revision`.
+async fn until_draft(page: &mut SyncChannel, id: &str, revision: u64) {
+    page.until(|event| {
+        matches!(event, SyncEvent::Conversation { conversation }
+            if conversation.id.as_str() == id && conversation.draft_revision == revision)
+    })
+    .await;
 }
 
 async fn read(backend: &TestBackend, session: &Session, id: &str) -> ConversationDraft {
@@ -62,7 +60,8 @@ async fn a_draft_reaches_every_session_and_a_save_built_on_an_older_revision_kee
     let created = backend.post("/api/conversations", Some(&laptop), json!({ "id": id })).await;
     assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
     assert_eq!(read(&backend, &phone, &id).await, ConversationDraft::empty());
-    assert_eq!(draft_revision(&backend, &phone, &id).await, 0);
+    let mut phone_page = backend.sync(&phone).await;
+    assert_eq!(phone_page.snapshot().await.conversations[0].draft_revision, 0);
 
     // The laptop stages a text file, and a file on a device, and saves the
     // draft that names them.
@@ -107,9 +106,9 @@ async fn a_draft_reaches_every_session_and_a_save_built_on_an_older_revision_kee
         }
     );
 
-    // The phone learns of it from the snapshot and reads it: the text, the
+    // The phone learns of it from its channel and reads it: the text, the
     // file with what its record holds, and the file's bytes.
-    assert_eq!(draft_revision(&backend, &phone, &id).await, 1);
+    until_draft(&mut phone_page, &id, 1).await;
     assert_eq!(read(&backend, &phone, &id).await, first);
     let bytes = backend.get(&format!("/api/blobs/{}", upload.sha256.as_str()), Some(&phone)).await;
     assert_eq!(bytes.body, notes);
@@ -125,7 +124,7 @@ async fn a_draft_reaches_every_session_and_a_save_built_on_an_older_revision_kee
         files: stored.clone(),
     };
     assert_eq!((bug.revision, bug.text.as_str(), &bug.replaced), (3, text(" bug").as_str(), &Some(tested.clone())));
-    assert_eq!(draft_revision(&backend, &phone, &id).await, 3);
+    until_draft(&mut phone_page, &id, 3).await;
     assert_eq!(read(&backend, &phone, &id).await, bug);
     // A save on the current revision keeps the replaced version, and so
     // does one built on an older revision that saves what the draft holds.

@@ -13,6 +13,7 @@ use super::error::ApiError;
 use super::gate::AuthUser;
 use crate::backend::Services;
 use crate::settings;
+use crate::sync::Part;
 
 pub(super) async fn settings(State(services): State<Arc<Services>>) -> Json<Settings> {
     Json(Settings { mode: services.mode })
@@ -34,6 +35,7 @@ pub(super) async fn patch_preferences(
     JsonBody(patch): JsonBody<PreferencesPatch>,
 ) -> Result<Json<UserPreferences>, ApiError> {
     let patch = settings::check(patch).map_err(|error| ApiError::invalid_body(error.to_string()))?;
-    let preferences = services.control.patch_preferences(user.id, patch).await?;
+    let preferences = services.control.patch_preferences(user.id.clone(), patch).await?;
+    services.sync.mark(&user.id, Part::Preferences);
     Ok(Json(UserPreferences { preferences }))
 }

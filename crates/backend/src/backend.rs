@@ -43,6 +43,7 @@ use crate::storage::objects::{S3Config, S3ConfigError};
 use crate::storage::control::ControlService;
 use crate::storage::conversations::{self, ConversationStores};
 use crate::storage::{StorageError, objects};
+use crate::sync::SyncRegistry;
 use crate::vault::entries::Vault;
 use crate::vault::logins::{LoginFlows, LoginTiming};
 use crate::vault::operations::ProviderOperations;
@@ -94,9 +95,16 @@ pub(crate) struct Services {
     pub(crate) expose_domain: Option<ExposeDomain>,
     /// How the public relay treats its connections.
     pub(crate) expose_tuning: ExposeTuning,
+    /// Each user's open synchronization channels, which every change a
+    /// page shows marks.
+    pub(crate) sync: SyncRegistry,
     /// The step a test holds runners' hellos at (`Backend::hold_hellos`).
     #[cfg(feature = "testing")]
-    pub(crate) hellos: crate::runner::hold::HelloHolds,
+    pub(crate) hellos: crate::holds::StepHolds<crate::HelloStep>,
+    /// The step a test holds the synchronization channels at
+    /// (`Backend::hold_sync`).
+    #[cfg(feature = "testing")]
+    pub(crate) syncs: crate::holds::StepHolds<crate::SyncStep>,
 }
 
 /// Where runners, Cloud guests and expose visitors reach this backend:
@@ -237,13 +245,14 @@ impl Services {
         let edge = tokio::runtime::Handle::current();
         // The shared services' own client; each shard thread builds its own.
         let http = reqwest::Client::builder().build().map_err(StartError::Http)?;
-        let vault = Vault::new(control.clone(), secret.vault_key(), mode);
+        let sync = SyncRegistry::default();
+        let vault = Vault::new(control.clone(), secret.vault_key(), mode, sync.clone());
         let models_dev = ModelsDevClient::new(http.clone(), providers.models_dev_url, providers.clock.clone());
         let claude_releases = ClaudeReleases::new(&providers.claude_releases, edge.clone()).map_err(StartError::Http)?;
         let assembly = Arc::new(ProviderAssembly::new(
             vault.clone(),
             providers.families,
-            AccountQuotas::new(control.clone(), edge.clone()),
+            AccountQuotas::new(vault.clone(), edge.clone()),
             ModelCatalogCache::new(control.clone(), providers.clock.clone(), edge),
             VendorCatalog::new(models_dev),
             http,
@@ -278,8 +287,11 @@ impl Services {
             lifecycle,
             expose_domain,
             expose_tuning,
+            sync,
             #[cfg(feature = "testing")]
-            hellos: crate::runner::hold::HelloHolds::default(),
+            hellos: crate::holds::StepHolds::default(),
+            #[cfg(feature = "testing")]
+            syncs: crate::holds::StepHolds::default(),
         })
     }
 
@@ -527,8 +539,15 @@ impl Backend {
     /// Holds every runner's hello at `step` from now on, until the hold is
     /// released.
     #[cfg(feature = "testing")]
-    pub fn hold_hellos(&self, step: crate::HelloStep) -> crate::HelloHold {
+    pub fn hold_hellos(&self, step: crate::HelloStep) -> crate::StepHold {
         self.services.hellos.hold(step)
+    }
+
+    /// Holds every page's synchronization channel at `step` from now on,
+    /// until the hold is released.
+    #[cfg(feature = "testing")]
+    pub fn hold_sync(&self, step: crate::SyncStep) -> crate::StepHold {
+        self.services.syncs.hold(step)
     }
 
     /// The file gate of the user's conversation `conversation`: every

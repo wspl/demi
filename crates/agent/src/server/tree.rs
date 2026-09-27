@@ -74,6 +74,8 @@ pub struct Tree<H: AgentHarness> {
     _frames: Subscription,
     /// Disposes the tree once it has stayed detached and quiescent.
     _eviction: AbortOnDropHandle<()>,
+    /// Tells the product when the tree starts or stops working.
+    _working: AbortOnDropHandle<()>,
     /// Sends the commands' new output to the attached connections.
     _live: AbortOnDropHandle<()>,
 }
@@ -258,9 +260,14 @@ impl<H: AgentHarness> Tree<H> {
         }
         let frames = session.subscribe({
             let sink = sink.clone();
+            let status_changed = deps.status_changed.clone();
+            let root = root.clone();
             move |event| {
                 if let Some(frame) = frame_of(event) {
                     sink.emit(frame);
+                }
+                if let SessionEvent::PhaseChanged { .. } = event {
+                    status_changed(&root);
                 }
             }
         });
@@ -273,6 +280,12 @@ impl<H: AgentHarness> Tree<H> {
                 sink.attachments.subscribe(),
                 session.status_watch(),
                 changes.subscribe(),
+            ));
+            let working = tokio::task::spawn_local(report_working(
+                tree.clone(),
+                session.status_watch(),
+                changes.subscribe(),
+                deps.status_changed.clone(),
             ));
             let sending = tokio::task::spawn_local(live::send_changes(live.clone()));
             Self {
@@ -294,6 +307,7 @@ impl<H: AgentHarness> Tree<H> {
                 live,
                 _frames: frames,
                 _eviction: AbortOnDropHandle::new(eviction),
+                _working: AbortOnDropHandle::new(working),
                 _live: AbortOnDropHandle::new(sending),
             }
         });
@@ -555,6 +569,35 @@ fn frame_of(event: &SessionEvent) -> Option<ServerFrame> {
 /// Whether a root in this status does nothing by itself.
 fn quiescent(status: &Status) -> bool {
     status.settle == Settle::Settled && !status.wakeups
+}
+
+/// Tells the product, through `status_changed`, that the tree opened, and
+/// each time it starts or stops working by itself: whenever whether it is
+/// quiescent changes.
+async fn report_working<H: AgentHarness>(
+    tree: Weak<Tree<H>>,
+    mut status: watch::Receiver<Status>,
+    mut changes: watch::Receiver<u64>,
+    status_changed: Rc<dyn Fn(&NodeId)>,
+) {
+    let mut reported = None;
+    loop {
+        status.mark_unchanged();
+        changes.mark_unchanged();
+        let Some(live) = tree.upgrade() else {
+            return;
+        };
+        let working = !live.is_quiescent();
+        if reported != Some(working) {
+            reported = Some(working);
+            status_changed(live.root.id());
+        }
+        drop(live);
+        tokio::select! {
+            changed = status.changed() => if changed.is_err() { return },
+            changed = changes.changed() => if changed.is_err() { return },
+        }
+    }
 }
 
 /// Waits until the tree has been detached and quiescent for `idle` without

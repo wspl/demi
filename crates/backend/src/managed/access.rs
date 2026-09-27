@@ -9,7 +9,9 @@ use demi_host_remote::RemoteHost;
 use super::machine::{CloudAdmission, CloudError};
 use crate::runner::{HostOwner, host_key};
 use crate::shard::Shard;
+use crate::storage::StorageError;
 use crate::storage::devices::DeviceRecord;
+use crate::sync::Part;
 
 /// The user's Cloud, running, and a Host on it that starts in its home;
 /// the Cloud stays admitted while this is held.
@@ -22,13 +24,22 @@ pub(crate) struct MachineAccess {
 }
 
 impl Shard {
+    /// The user's Cloud device, made on its first use, which the user's
+    /// pages then show among the devices and as the Cloud.
+    pub(crate) async fn cloud_device(&self) -> Result<DeviceRecord, StorageError> {
+        let control = &self.services().control;
+        if let Some(device) = control.managed_device(self.user().clone()).await? {
+            return Ok(device);
+        }
+        let device = control.managed_device_or_create(self.user().clone()).await?;
+        self.mark(Part::Devices);
+        self.mark(Part::Cloud);
+        Ok(device)
+    }
+
     /// The user's Cloud, made on its first use and woken when it is stopped.
     pub(crate) async fn machine_access(&self) -> Result<MachineAccess, CloudError> {
-        let device = self
-            .services()
-            .control
-            .managed_device_or_create(self.user().clone())
-            .await?;
+        let device = self.cloud_device().await?;
         let admission = self.admit_cloud(&device).await?;
         let home = self
             .devices()

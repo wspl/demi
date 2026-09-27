@@ -37,6 +37,7 @@ use super::{failure_facts, root_of};
 use crate::shard::Shard;
 use crate::storage::StorageError;
 use crate::storage::conversation_index::ConversationRecord;
+use crate::sync::Part;
 
 /// The close code of a socket whose page fell a full outbox behind; the page
 /// reconnects and adopts the running tree.
@@ -286,10 +287,12 @@ impl Shard {
                 // than the conversation.
                 let seen = services.control.count_user_message(record.id.clone()).await?;
                 self.title_first_message(&record, content, seen).await?;
-                services.control.touch_conversation(record.id).await?;
+                services.control.touch_conversation(record.id.clone()).await?;
+                self.mark(Part::Conversation(record.id));
             }
             ClientFrame::Steer { .. } | ClientFrame::EditAndSend { .. } => {
-                services.control.count_user_message(record.id).await?;
+                services.control.count_user_message(record.id.clone()).await?;
+                self.mark(Part::Conversation(record.id));
             }
             _ => {}
         }

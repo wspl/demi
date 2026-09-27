@@ -27,12 +27,16 @@ use demi_web_api::auth::{Identity, Role, UserDto};
 use demi_web_api::devices::{ClaimedDevice, DeviceDto, Devices};
 use demi_web_api::error::{ErrorBody, ErrorCode};
 use demi_web_api::settings::InstanceMode;
+use demi_web_api::state::{ProductState, SyncEvent};
+use futures_util::{SinkExt as _, StreamExt as _};
 use jiff::{SignedDuration, Timestamp};
 use reqwest::header::{COOKIE, HeaderMap, SET_COOKIE};
 use reqwest::{Method, StatusCode};
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use tokio::sync::OnceCell;
+use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest as _;
 use tokio_util::sync::CancellationToken;
 
 use crate::machines::ScriptedManager;
@@ -470,6 +474,72 @@ pub struct TestBackend {
     http: reqwest::Client,
 }
 
+/// A page's synchronization channel (`web-api.md` § Page synchronization).
+pub struct SyncChannel {
+    socket: tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+}
+
+impl SyncChannel {
+    /// The next message, a heartbeat included.
+    pub async fn next(&mut self) -> SyncEvent {
+        loop {
+            let message = tokio::time::timeout(PATIENCE, self.socket.next())
+                .await
+                .unwrap_or_else(|_| panic!("the channel sends within {PATIENCE:?}"));
+            match message {
+                Some(Ok(Message::Text(text))) => {
+                    return serde_json::from_str(text.as_str()).unwrap_or_else(|error| panic!("{error}: {text}"));
+                }
+                Some(Ok(Message::Close(close))) => panic!("the channel closed: {close:?}"),
+                Some(Ok(_)) => {}
+                other => panic!("the channel ended: {other:?}"),
+            }
+        }
+    }
+
+    /// The product state, the channel's first message.
+    pub async fn snapshot(&mut self) -> ProductState {
+        match self.next().await {
+            SyncEvent::Snapshot { state } => *state,
+            other => panic!("the channel's first message is not the snapshot: {other:?}"),
+        }
+    }
+
+    /// The messages up to and including the first that `done` accepts.
+    pub async fn until(&mut self, done: impl Fn(&SyncEvent) -> bool) -> Vec<SyncEvent> {
+        let mut received = Vec::new();
+        loop {
+            let event = self.next().await;
+            let last = done(&event);
+            received.push(event);
+            if last {
+                return received;
+            }
+        }
+    }
+
+    /// The code and reason the backend closed the channel with, after the
+    /// messages still on their way.
+    pub async fn closed(&mut self) -> (u16, String) {
+        loop {
+            let message = tokio::time::timeout(PATIENCE, self.socket.next())
+                .await
+                .unwrap_or_else(|_| panic!("the channel closes within {PATIENCE:?}"));
+            match message {
+                Some(Ok(Message::Close(Some(close)))) => return (close.code.into(), close.reason.to_string()),
+                Some(Ok(Message::Close(None))) => panic!("the channel closed without a code"),
+                Some(Ok(_)) => {}
+                other => panic!("the channel ended without a close: {other:?}"),
+            }
+        }
+    }
+
+    /// Sends the backend a text message, which a page never does.
+    pub async fn send_text(&mut self, text: &str) {
+        self.socket.send(Message::Text(text.into())).await.unwrap();
+    }
+}
+
 /// An HTTP answer, read whole.
 pub struct Answer {
     pub status: StatusCode,
@@ -542,8 +612,25 @@ impl TestBackend {
 
     /// Holds every runner's hello at `step` from now on, until the hold is
     /// released or dropped.
-    pub fn hold_hellos(&self, step: demi_backend::HelloStep) -> demi_backend::HelloHold {
+    pub fn hold_hellos(&self, step: demi_backend::HelloStep) -> demi_backend::StepHold {
         self.backend.hold_hellos(step)
+    }
+
+    /// Holds every page's synchronization channel at `step` from now on,
+    /// until the hold is released or dropped.
+    pub fn hold_sync(&self, step: demi_backend::SyncStep) -> demi_backend::StepHold {
+        self.backend.hold_sync(step)
+    }
+
+    /// The session's synchronization channel, opened from a page of the
+    /// product; its first message is the snapshot.
+    pub async fn sync(&self, session: &Session) -> SyncChannel {
+        let mut request = self.ws_url("/api/sync").into_client_request().unwrap();
+        let headers = request.headers_mut();
+        headers.insert("cookie", session.cookie.parse().unwrap());
+        headers.insert("origin", self.url.parse().unwrap());
+        let (socket, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+        SyncChannel { socket }
     }
 
     /// The file gate of `session`'s user's conversation `conversation`.

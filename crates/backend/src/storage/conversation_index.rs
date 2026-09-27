@@ -112,6 +112,10 @@ pub(crate) enum Creation {
 /// (`product.md` § Conversation titles).
 const PLACEHOLDER_TITLE: &str = "New conversation";
 
+/// The sidebar's order within the active or the archived conversations:
+/// pinned first, then by the user's order.
+const SIDEBAR_ORDER: &str = "pinned DESC, sort_order, id";
+
 const CONVERSATION_COLUMNS: &str = "id, user_id, title, archived, pinned, read_revision, target_kind, target_device_id,
      target_path, target_workspace_id, context_version, model, user_messages, titled_messages,
      created_at, updated_at,
@@ -222,7 +226,7 @@ impl ControlService {
     }
 
     /// The owner's conversations that are archived, or that are not, in
-    /// sidebar order: pinned first, then by the user's order.
+    /// sidebar order.
     pub(crate) async fn conversations(
         &self,
         owner: UserId,
@@ -231,7 +235,7 @@ impl ControlService {
         self.call(move |connection, _| {
             let mut statement = connection.prepare(&format!(
                 "SELECT {CONVERSATION_COLUMNS} FROM conversations WHERE user_id = ?1 AND archived = ?2
-                 ORDER BY pinned DESC, sort_order, id"
+                 ORDER BY {SIDEBAR_ORDER}"
             ))?;
             let mut rows = statement.query(params![owner.as_str(), archived])?;
             let mut conversations = Vec::new();
@@ -239,6 +243,23 @@ impl ControlService {
                 conversations.push(conversation_row(row)?);
             }
             Ok(conversations)
+        })
+        .await
+    }
+
+    /// The ids of the owner's conversations in the order the product state
+    /// lists them: the active ones in sidebar order, then the archived ones.
+    pub(crate) async fn conversation_order(&self, owner: UserId) -> Result<Vec<ConversationId>, StorageError> {
+        self.call(move |connection, _| {
+            let mut statement = connection.prepare(&format!(
+                "SELECT id FROM conversations WHERE user_id = ?1 ORDER BY archived, {SIDEBAR_ORDER}"
+            ))?;
+            let mut rows = statement.query([owner.as_str()])?;
+            let mut ids = Vec::new();
+            while let Some(row) = rows.next()? {
+                ids.push(decode("conversations", "id", ConversationId::try_from(row.get::<_, String>(0)?))?);
+            }
+            Ok(ids)
         })
         .await
     }

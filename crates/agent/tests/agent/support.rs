@@ -463,6 +463,8 @@ impl Fixture {
             clock,
             ids: Rc::new(SequentialIds::new("id")),
             config,
+            // No product shows the conversations' statuses.
+            status_changed: Rc::new(|_| {}),
         });
         Self {
             server,

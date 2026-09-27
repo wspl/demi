@@ -18,6 +18,7 @@ use super::ExposeDomain;
 use crate::shard::Shard;
 use crate::storage::StorageError;
 use crate::storage::exposes::ExposeRecord;
+use crate::sync::Part;
 
 /// How long an expose lives from its creation or its last renewal.
 pub(super) const LIFETIME: SignedDuration = SignedDuration::from_hours(1);
@@ -95,6 +96,7 @@ impl Shard {
             .control
             .create_expose(new_expose_id(), self.user().clone(), device.clone(), address, LIFETIME)
             .await?;
+        self.mark(Part::Exposes);
         Ok(self.expose_dto(created, domain))
     }
 
@@ -127,6 +129,7 @@ impl Shard {
             .renew_expose(id.clone(), self.user().clone(), LIFETIME)
             .await?
             .ok_or_else(not_found)?;
+        self.mark(Part::Exposes);
         Ok(self.expose_dto(renewed, domain))
     }
 
@@ -163,6 +166,7 @@ impl Shard {
     /// connections end.
     async fn destroy_expose(&self, id: &ExposeId) -> Result<(), StorageError> {
         self.services().control.delete_expose(id.clone()).await?;
+        self.mark(Part::Exposes);
         self.exposes().end([id]);
         Ok(())
     }
@@ -173,7 +177,12 @@ impl Shard {
     /// records expire within the hour.
     pub(crate) async fn destroy_exposes_on(&self, device: &DeviceId) {
         match self.services().control.delete_device_exposes(device.clone()).await {
-            Ok(ids) => self.exposes().end(&ids),
+            Ok(ids) => {
+                if !ids.is_empty() {
+                    self.mark(Part::Exposes);
+                }
+                self.exposes().end(&ids);
+            }
             Err(error) => tracing::error!(device = %device, "the exposes of a device could not be destroyed: {error}"),
         }
     }

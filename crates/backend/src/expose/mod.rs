@@ -17,9 +17,10 @@ use std::rc::{Rc, Weak};
 use std::str::FromStr;
 use std::time::Duration;
 
-use demi_core::Timestamp;
+use demi_core::{Clock, Timestamp};
 use demi_host_remote::{PipeReader, PipeWriter};
 use demi_shell::HostErrorKind;
+use demi_web_api::exposes::ExposeDto;
 use demi_web_api::ids::ExposeId;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::AbortOnDropHandle;
@@ -303,6 +304,16 @@ async fn expire_when_due(shard: Weak<Shard>, id: ExposeId, mut expires_at: Times
             }
         }
     }
+}
+
+/// Resolves once the first of `exposes` expires by `clock`'s time, as a
+/// page that shows them must learn (`web-api.md` § Page synchronization);
+/// never while there is none.
+pub(crate) async fn first_expiry(clock: &dyn Clock, exposes: &[ExposeDto]) {
+    let Some(first) = exposes.iter().map(|expose| expose.expires_at).min() else {
+        return std::future::pending().await;
+    };
+    tokio::time::sleep(until(clock.now(), first)).await;
 }
 
 /// How long from `now` until `at`, none once it passed.

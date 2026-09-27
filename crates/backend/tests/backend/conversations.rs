@@ -30,7 +30,6 @@ use demi_web_api::conversations::{
 };
 use demi_web_api::error::{ErrorBody, ErrorCode};
 use demi_web_api::providers::{CredentialKind, ProviderAnswer};
-use demi_web_api::state::ProductState;
 use demi_web_api::usage::UsageTotals;
 use futures_util::future::{BoxFuture, LocalBoxFuture};
 use futures_util::{SinkExt as _, StreamExt as _, stream};
@@ -458,7 +457,7 @@ async fn a_conversation_is_created_once_under_the_id_the_browser_chose_and_liste
     assert!(archived.json::<Conversations>().conversations.is_empty());
     let malformed = backend.get("/api/conversations?archived=1", Some(&master)).await;
     assert_eq!(malformed.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidQuery));
-    let state = backend.get("/api/state", Some(&master)).await.json::<ProductState>();
+    let state = backend.sync(&master).await.snapshot().await;
     assert_eq!(state.conversations, [second, created]);
     assert!(transcript(&backend, &master, FIRST).await.blocks.is_empty());
 

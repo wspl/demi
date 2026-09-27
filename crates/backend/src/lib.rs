@@ -8,6 +8,8 @@ mod config;
 mod conversation;
 mod edge;
 mod expose;
+#[cfg(feature = "testing")]
+mod holds;
 mod lifecycle;
 mod llm;
 mod managed;
@@ -32,12 +34,16 @@ pub use llm::families::{
     SubscriptionArgs,
 };
 #[cfg(feature = "testing")]
-pub use runner::hold::{HelloHold, HelloStep};
+pub use holds::StepHold;
+#[cfg(feature = "testing")]
+pub use runner::hold::HelloStep;
 pub use runner::native::NativeCatalog;
 pub use runner::publication::{PublicationError, publish_native};
 pub use shard::ShardPlacement;
 #[cfg(feature = "testing")]
 pub use storage::conversations::CommitHold;
+#[cfg(feature = "testing")]
+pub use sync::SyncStep;
 pub use storage::objects::S3ConfigError;
 pub use vault::logins::LoginTiming;
 pub use vault::secret::{InstanceSecret, SecretError};

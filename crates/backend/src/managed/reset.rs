@@ -40,7 +40,7 @@ impl Shard {
             return Err(CloudError::Closed);
         }
         let services = self.services();
-        let device = services.control.managed_device_or_create(self.user().clone()).await?;
+        let device = self.cloud_device().await?;
         let machine = self.cloud_machine(&device).await?;
         if let Some(running) = self.running_reset(&machine, &id)? {
             return Ok(running);
@@ -200,7 +200,7 @@ impl Shard {
             .control
             .put_managed_operation(machine.device.id.clone(), operation.clone())
             .await;
-        machine.operation.replace(Some(operation));
+        machine.record_operation(operation);
         recorded?;
         Ok(())
     }

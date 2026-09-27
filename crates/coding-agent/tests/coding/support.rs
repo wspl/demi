@@ -118,6 +118,8 @@ impl Fixture {
             clock: Arc::new(TokioClock::new("2026-09-24T12:00:00Z".parse().unwrap())),
             ids: Rc::new(SequentialIds::new("id")),
             config,
+            // No product shows the conversations' statuses.
+            status_changed: Rc::new(|_| {}),
         });
         Self {
             runner,

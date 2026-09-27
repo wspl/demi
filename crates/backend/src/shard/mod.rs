@@ -80,6 +80,9 @@ pub(crate) struct Shard {
     /// The conversation sockets being served, which the close ends before
     /// the agent shuts down, so no frame reaches it after.
     conversation_sockets: TaskTracker,
+    /// The pages' synchronization channels being served, which the close
+    /// ends first, so no page is sent what the steps after it change.
+    sync_channels: TaskTracker,
     /// Fork requests, one at a time per destination id in lowercase.
     forks: KeyedSerialGate<String>,
     /// The user's Cloud machine.
@@ -115,6 +118,7 @@ impl Shard {
             agent,
             titles,
             conversation_sockets: TaskTracker::new(),
+            sync_channels: TaskTracker::new(),
             forks: KeyedSerialGate::new(),
             cloud: Cloud::default(),
             idle_watches: ConversationWatches::default(),
@@ -199,12 +203,17 @@ impl Shard {
         &self.conversation_sockets
     }
 
+    pub(crate) fn sync_channels(&self) -> &TaskTracker {
+        &self.sync_channels
+    }
+
     pub(crate) fn forks(&self) -> &KeyedSerialGate<String> {
         &self.forks
     }
 
     /// Ends the user's work in order (`backend.md` § Startup and shutdown):
-    /// the idle watches stop, and a retirement already running finishes;
+    /// the synchronization channels close; the idle watches stop, and a
+    /// retirement already running finishes;
     /// title requests are aborted and relayed expose connections end; the
     /// conversation sockets end; open file transfers and user streams end,
     /// and stay closed; the agent turns are aborted while their runners are
@@ -213,6 +222,8 @@ impl Shard {
     /// fail. The answer says why the Cloud was not saved, when it was not.
     async fn close(&self) -> Option<String> {
         self.closing.cancel();
+        self.sync_channels.close();
+        self.sync_channels.wait().await;
         self.stop_idle_watches();
         self.cloud.stop();
         self.titles.abort_all();

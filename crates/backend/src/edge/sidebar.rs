@@ -13,6 +13,7 @@ use super::body::JsonBody;
 use super::error::ApiError;
 use super::gate::AuthUser;
 use crate::backend::Services;
+use crate::sync::Part;
 
 pub(super) async fn reorder(
     State(services): State<Arc<Services>>,
@@ -20,9 +21,15 @@ pub(super) async fn reorder(
     JsonBody(request): JsonBody<SidebarReorder>,
 ) -> Result<StatusCode, ApiError> {
     let control = &services.control;
-    let moved = match request {
-        SidebarReorder::Conversation { id, before_id } => control.reorder_conversations(user.id, id, before_id).await?,
-        SidebarReorder::Workspace { id, before_id } => control.reorder_workspaces(user.id, id, before_id).await?,
+    let (moved, changed) = match request {
+        SidebarReorder::Conversation { id, before_id } => (
+            control.reorder_conversations(user.id.clone(), id, before_id).await?,
+            Part::ConversationOrder,
+        ),
+        SidebarReorder::Workspace { id, before_id } => (
+            control.reorder_workspaces(user.id.clone(), id, before_id).await?,
+            Part::Workspaces,
+        ),
     };
     if !moved {
         return Err(ApiError::new(
@@ -31,5 +38,6 @@ pub(super) async fn reorder(
             "Rows must belong to the same project and pin partition",
         ));
     }
+    services.sync.mark(&user.id, changed);
     Ok(StatusCode::NO_CONTENT)
 }

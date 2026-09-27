@@ -22,6 +22,7 @@ use crate::storage::conversation_index::ConversationRecord;
 use crate::storage::conversations::ConversationStores;
 use crate::storage::forks::{ForkMetadata, ForkOperation};
 use crate::storage::tree;
+use crate::sync::Part;
 
 /// A Fork's destination, and whether this request created it.
 pub(crate) struct Forked {
@@ -91,6 +92,7 @@ impl Shard {
             let committed = services.conversations.read(&destination, tree::has_root).await?;
             if committed == Some(true) {
                 let record = control.publish_fork(destination).await?;
+                self.published(&record);
                 return Ok(Forked { record, created: false });
             }
         }
@@ -147,7 +149,14 @@ impl Shard {
             .await
             .map_err(refused)?;
         let record = control.publish_fork(destination).await?;
+        self.published(&record);
         Ok(Forked { record, created: true })
+    }
+
+    /// Shows a Fork's destination, just published, on the user's pages.
+    fn published(&self, record: &ConversationRecord) {
+        self.mark(Part::Conversation(record.id.clone()));
+        self.mark(Part::ConversationOrder);
     }
 }
 
@@ -219,7 +228,7 @@ mod tests {
             changed_blocks: Vec::new(),
             block_count: 0,
         };
-        SqliteTreeStore::new(stores.db(id), blobs.clone())
+        SqliteTreeStore::new(stores.db(id), blobs.clone(), std::rc::Rc::new(|_: &demi_core::NodeId| {}))
             .create_node(NodeRecord::root(root_of(id), at), initial)
             .await
             .unwrap();
