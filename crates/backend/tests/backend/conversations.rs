@@ -976,7 +976,10 @@ impl StalledPage {
         // its 64-bit length.
         let opened = br#"{"type":"opened"}"#;
         let mut head = [0; 2 + 17 + 10];
-        self.socket.get_mut().read_exact(&mut head).await.unwrap();
+        tokio::time::timeout(PATIENCE, self.socket.get_mut().read_exact(&mut head))
+            .await
+            .expect("the backend sends the handshake")
+            .unwrap();
         assert_eq!(head[..2], [0x81, 17]);
         assert_eq!(&head[2..19], opened);
         assert_eq!(head[19..21], [0x81, 127]);
@@ -988,7 +991,7 @@ impl StalledPage {
 /// shutdown no longer than the close frame's bound (`backend.md` § Startup
 /// and shutdown): the backend is in the middle of sending a transcript
 /// larger than any socket buffer when it shuts down. The 8 MiB message that
-/// makes the transcript so large costs most of the test's 1.9 s: a smaller
+/// makes the transcript so large costs most of the test's 2 s: a smaller
 /// one can fit the send buffer, whose limit is 4 MiB on Linux and macOS.
 #[tokio::test]
 async fn a_page_that_stopped_reading_does_not_hold_up_shutdown() {
