@@ -21,6 +21,16 @@ const TEMPORARY_ENV: &str = "MAC_CHROMIUM_TMPDIR";
 #[cfg(all(unix, not(target_os = "macos")))]
 const TEMPORARY_ENV: &str = "TMPDIR";
 
+/// The variable Linux Chrome takes its default user data directory from,
+/// where it keeps its crash reports whatever `--user-data-dir` says
+/// (Chromium 153's `chrome/common/chrome_paths.cc`, `DIR_CRASH_DUMPS`).
+/// Without it Chrome takes `$XDG_CONFIG_HOME`, or else the user's
+/// `~/.config` (`chrome/common/chrome_paths_linux.cc`,
+/// `GetDefaultUserDataDirectory`); it is Chrome's own variable, which no
+/// other library in its process reads.
+#[cfg(target_os = "linux")]
+const CONFIG_ENV: &str = "CHROME_CONFIG_HOME";
+
 /// Own Chrome's Unix process group, including helpers left after the leader exits.
 pub(super) struct ChromeProcess {
     #[cfg(unix)]
@@ -86,6 +96,11 @@ impl ChromeProcess {
             // socket among them, go with the profile however Chrome ends
             // (`browser.md` § Native driver).
             command.env(TEMPORARY_ENV, profile);
+            // So do its crash reports on Linux.
+            #[cfg(target_os = "linux")]
+            {
+                command.env(CONFIG_ENV, profile);
+            }
         }
         #[cfg(target_os = "linux")]
         {
