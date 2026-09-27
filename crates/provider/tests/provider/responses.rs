@@ -72,7 +72,7 @@ async fn a_stream_maps_thinking_text_tool_calls_and_usage() {
         json!({ "type": "response.function_call_arguments.delta", "item_id": "fc_1", "delta": "{\"script\":" }),
         json!({ "type": "response.function_call_arguments.done", "item_id": "fc_1", "arguments": "{\"script\":\"pwd\"}" }),
         json!({ "type": "response.output_item.done", "item": { "type": "function_call", "id": "fc_1", "call_id": "call_1", "name": "shell_exec" } }),
-        json!({ "type": "response.completed", "response": { "usage": { "input_tokens": 100, "output_tokens": 7, "input_tokens_details": { "cached_tokens": 60 } } } }),
+        json!({ "type": "response.completed", "response": { "usage": { "input_tokens": 100, "output_tokens": 7, "input_tokens_details": { "cached_tokens": 60, "cache_write_tokens": 25 } } } }),
         json!("[DONE]"),
     ])
     .await;
@@ -92,11 +92,13 @@ async fn a_stream_maps_thinking_text_tool_calls_and_usage() {
             input: json!({ "script": "pwd" }),
         })
     );
+    // The input count includes what the API read from its cache and what
+    // it wrote to it; Demi keeps the three apart.
     let usage = TokenUsage {
-        input_tokens: 40,
+        input_tokens: 15,
         output_tokens: 7,
         cache_read_tokens: 60,
-        cache_write_tokens: 0,
+        cache_write_tokens: 25,
     };
     assert_eq!(response, &ProviderEvent::Response(usage));
 }
