@@ -1,9 +1,10 @@
 //! A session's runtime and its runs (`claude-code.md` § Requests over
 //! stream-json, § Tool-call batches, § Process lifetime). The runtime keeps
 //! at most one CLI process. A run takes it, or starts a new one, and hands it
-//! back only where the conversation can go on in it: after the turn's
-//! `result`, and after a batch of tool calls whose results the next run
-//! delivers. Every other end closes it, or drops it, which kills it.
+//! back only where the conversation can go on in it: at the turn's `result`,
+//! and at a batch of tool calls whose results the next run delivers. It hands
+//! it back before the run's last event, since the agent stops reading a run
+//! at its failure. Every other end closes it, or drops it, which kills it.
 
 use std::rc::Rc;
 use std::sync::Arc;
@@ -159,8 +160,8 @@ fn run(
                     }
                     live.collecting.clear();
                     live.held = vec![call.clone()];
-                    yield ProviderEvent::ToolCall(call);
                     runtime.live = Some(live);
+                    yield ProviderEvent::ToolCall(call);
                     return;
                 }
                 Next::Line(text, line) => (text, line),
@@ -209,10 +210,11 @@ fn run(
                             return;
                         }
                         live.held = std::mem::take(&mut live.collecting);
-                        for call in live.held.clone() {
+                        let batch = live.held.clone();
+                        runtime.live = Some(live);
+                        for call in batch {
                             yield ProviderEvent::ToolCall(call);
                         }
-                        runtime.live = Some(live);
                         return;
                     }
                     for event in event.events() {
@@ -228,6 +230,7 @@ fn run(
                 }
                 Some(Line::Result(line)) => {
                     live.collecting.clear();
+                    runtime.live = Some(live);
                     match line.end() {
                         TurnEnd::Answered(usage) => yield ProviderEvent::Response(usage),
                         TurnEnd::Failed { message, code, status } => {
@@ -241,7 +244,6 @@ fn run(
                             yield ProviderEvent::Error(failure);
                         }
                     }
-                    runtime.live = Some(live);
                     return;
                 }
                 Some(Line::Error(line)) => {
