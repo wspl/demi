@@ -220,7 +220,7 @@ without asking.
 A reverse proxy in front of the backend passes each request's `Origin` and
 `Host` headers to it unchanged, since the check reads both. A proxy that
 drops `Origin` turns the check off: every request then passes, as a request
-from `curl` does. The backend tells when a browser's request lost its
+from `curl` does. The backend notices a browser's request that lost its
 `Origin` on the way. Every current browser sends Fetch Metadata
 (`Sec-Fetch-Site`) with each request to an HTTPS site or to `localhost`, and
 `Origin` with each request the check covers, so such a request that has
