@@ -7,7 +7,7 @@ use demi_core::{
     ToolMediaSource, ToolResultContentBlock, TokenUsage, UserContentBlock,
 };
 use demi_provider::{
-    InferenceItem, ProviderEvent, Provider, RuntimeEnv, ToolDefinition,
+    InferenceItem, PromptCache, ProviderEvent, Provider, RuntimeEnv, ToolDefinition,
     testing::{MockVendor, inference_request},
 };
 use serde_json::{Value, json};
@@ -115,12 +115,106 @@ async fn the_body_groups_turns_and_carries_the_tools_system_prompt_and_tier() {
             ],
             "max_tokens": 8192,
             "stream": true,
-            "system": "system instructions",
+            "system": [{ "type": "text", "text": "system instructions" }],
             "tools": [{ "name": "read_file", "description": "Read a file", "input_schema": schema }],
             "thinking": { "type": "enabled", "budget_tokens": 1024 },
             "service_tier": "standard_only",
         })
     );
+}
+
+/// Every cache mark of `body`: where it sits, as a JSON pointer, and what it
+/// says, in the order of the pointers.
+fn marks(body: &Value) -> Vec<(String, Value)> {
+    fn visit(value: &Value, path: &str, found: &mut Vec<(String, Value)>) {
+        match value {
+            Value::Object(fields) => {
+                for (key, value) in fields {
+                    if key == "cache_control" {
+                        found.push((path.to_owned(), value.clone()));
+                    } else {
+                        visit(value, &format!("{path}/{key}"), found);
+                    }
+                }
+            }
+            Value::Array(values) => {
+                for (index, value) in values.iter().enumerate() {
+                    visit(value, &format!("{path}/{index}"), found);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut found = Vec::new();
+    visit(body, "", &mut found);
+    found.sort_by(|a, b| a.0.cmp(&b.0));
+    found
+}
+
+#[tokio::test]
+async fn a_session_request_marks_its_shared_prefix_the_latest_answered_request_and_its_end_for_an_hour() {
+    // The latest answered request carried the user's message. The model
+    // then called a tool twelve times at once, and this request adds its
+    // answer, each call with its result, and a steer: more than the 20 blocks
+    // a mark looks back over for an earlier entry.
+    let model = || "model-a".to_owned();
+    let mut items = vec![
+        InferenceItem::UserMessage { content: text("check every file") },
+        InferenceItem::AssistantThinking { model_id: model(), text: "plan".into(), signature: Some("anthropic:sig-1".into()) },
+        InferenceItem::AssistantText { model_id: model(), text: "Reading them all".into() },
+    ];
+    for call in 0..12 {
+        let id = format!("toolu-{call}");
+        items.push(InferenceItem::ToolUse {
+            model_id: model(),
+            tool_use_id: id.clone(),
+            tool_name: "read_file".into(),
+            input: json!({ "path": format!("{call}.ts") }),
+        });
+        items.push(InferenceItem::ToolResult {
+            tool_use_id: id,
+            output: vec![ToolResultContentBlock::Text { text: "contents".into() }],
+            is_error: false,
+        });
+    }
+    items.push(InferenceItem::UserSteer { content: text("also check b.ts") });
+    let hour = json!({ "type": "ephemeral", "ttl": "1h" });
+    // Messages: the user's (0), the answer with the first call (1), then
+    // each result and the next call in turn, and the last result with the
+    // steer (24).
+    let the_end = ("/messages/24/content/1".to_owned(), hour.clone());
+    let the_question = ("/messages/0/content/0".to_owned(), hour.clone());
+    let cases = [
+        // The system prompt, the latest answered request's last block, and
+        // the request's own last block.
+        ("system", PromptCache::Session { answered_items: 1 }, vec![the_question.clone(), the_end.clone(), ("/system/0".to_owned(), hour.clone())]),
+        // Without a system prompt, the tools end the shared prefix.
+        (" ", PromptCache::Session { answered_items: 1 }, vec![the_question.clone(), the_end.clone(), ("/tools/0".to_owned(), hour.clone())]),
+        // A thinking block takes no mark: the nearest block before it does.
+        ("system", PromptCache::Session { answered_items: 2 }, vec![the_question.clone(), the_end.clone(), ("/system/0".to_owned(), hour.clone())]),
+        // Before any answer, only the shared prefix and the end.
+        ("system", PromptCache::Session { answered_items: 0 }, vec![the_end.clone(), ("/system/0".to_owned(), hour.clone())]),
+        // A request no later request extends, such as a title request.
+        ("system", PromptCache::Off, Vec::new()),
+    ];
+    for (system_prompt, prompt_cache, expected) in cases {
+        let vendor = MockVendor::start().await;
+        vendor.respond(stop());
+        let mut request = inference_request();
+        request.model_id = model();
+        request.system_prompt = system_prompt.into();
+        request.tools = Arc::new([ToolDefinition {
+            name: "read_file".into(),
+            description: "Read a file".into(),
+            input_schema: serde_json::Map::new(),
+        }]);
+        request.items = items.clone().into();
+        request.prompt_cache = prompt_cache;
+        run(runtime(&vendor).as_mut(), request).await;
+        let body = vendor.requests()[0].json();
+        assert_eq!(body["messages"][24]["content"][1]["text"], "also check b.ts");
+        assert_eq!(marks(&body), expected, "{prompt_cache:?} {system_prompt:?}");
+    }
 }
 
 #[tokio::test]

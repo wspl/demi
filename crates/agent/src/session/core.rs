@@ -14,7 +14,7 @@ use demi_core::{
     UserContentBlock, WakeupId, WakeupPlacement,
 };
 use demi_provider::{
-    InferenceRequest, ProviderEvent, ProviderFailure, ProviderRuntime, ToolDefinition,
+    InferenceRequest, PromptCache, ProviderEvent, ProviderFailure, ProviderRuntime, ToolDefinition,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -1210,6 +1210,7 @@ impl SessionCore {
         request_id: String,
         cancel: CancellationToken,
     ) -> InferenceRequest {
+        let replayed = replay(self.transcript.blocks());
         InferenceRequest {
             session_id: self.id.to_string(),
             turn_id: self.turn().to_string(),
@@ -1218,10 +1219,13 @@ impl SessionCore {
             output_limit: self.model.model.output_limit.and_then(NonZeroU32::new),
             output_cap: None,
             system_prompt,
-            items: replay(self.transcript.blocks()).into(),
+            items: replayed.items.into(),
             tools,
             thinking: self.model.thinking.clone(),
             service_tier_id: self.model.service_tier_id.clone(),
+            prompt_cache: PromptCache::Session {
+                answered_items: replayed.answered,
+            },
             cancel,
         }
     }

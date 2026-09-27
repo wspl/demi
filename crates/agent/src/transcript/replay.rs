@@ -17,14 +17,28 @@ use super::{RESUME_TEXT, WAKEUP_TEXT};
 const HEAD_CHARS: usize = 8_000;
 const TAIL_CHARS: usize = 8_000;
 
-/// The inference items of `blocks`, in order.
-pub(crate) fn replay(blocks: &[Block]) -> Vec<InferenceItem> {
+/// What a request carries of a transcript.
+pub(crate) struct Replay {
+    /// The inference items of the blocks, in order.
+    pub(crate) items: Vec<InferenceItem>,
+    /// How many leading items the latest answered request carried: those of
+    /// the blocks before its answer.
+    pub(crate) answered: usize,
+}
+
+/// What a request carries of `blocks`.
+pub(crate) fn replay(blocks: &[Block]) -> Replay {
     let start = blocks
         .iter()
         .rposition(|block| matches!(block, Block::CompactionBoundary(_)))
         .unwrap_or(0);
+    let answer = latest_answer(blocks);
     let mut items = Vec::new();
-    for block in &blocks[start..] {
+    let mut answered = 0;
+    for (index, block) in blocks.iter().enumerate().skip(start) {
+        if Some(index) == answer {
+            answered = items.len();
+        }
         match block {
             Block::User(user) => {
                 let preamble = user
@@ -105,7 +119,35 @@ pub(crate) fn replay(blocks: &[Block]) -> Vec<InferenceItem> {
             }
         }
     }
-    items
+    Replay { items, answered }
+}
+
+/// Where the answer to the latest answered request begins: the request whose
+/// `response` block comes last, after the last `compaction_marker`, whose
+/// answer is the run of thinking, text and tool-call blocks directly before
+/// that `response` block. None when no request was answered since the last
+/// compaction.
+fn latest_answer(blocks: &[Block]) -> Option<usize> {
+    let floor = blocks
+        .iter()
+        .rposition(|block| matches!(block, Block::CompactionMarker(_)))
+        .map_or(0, |marker| marker + 1);
+    let response = floor
+        + blocks[floor..]
+            .iter()
+            .rposition(|block| matches!(block, Block::Response(_)))?;
+    let before_answer = blocks[floor..response]
+        .iter()
+        .rposition(|block| !is_answer(block));
+    Some(before_answer.map_or(floor, |index| floor + index + 1))
+}
+
+/// Whether a block is part of a model's answer.
+fn is_answer(block: &Block) -> bool {
+    matches!(
+        block,
+        Block::Thinking(_) | Block::RedactedThinking(_) | Block::Text(_) | Block::ToolCall(_)
+    )
 }
 
 /// A tool call's input as the JSON value the provider supplied, or its text

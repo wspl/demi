@@ -371,9 +371,10 @@ models offer it.
   headers, and the Grok Build `x-grok-conv-id` header. A summary request
   carries its session's id
   ([Session copy](../agent/compaction.md#session-copy)).
-- **Where the previous request ends.** A request says whether later requests
-  extend it, which a title request and a connection test do not, and how many
-  of its leading items the session's latest answered request carried
+- **Where the previous request ends.** A request says whether it is one of a
+  session's, which a title request and a connection test are not: no later
+  request extends them, and they extend none. A session's request also says
+  how many of its leading items the session's latest answered request carried
   ([Replay](../agent/runtime.md#replay)). A vendor that caches only where a
   request marks it needs both.
 
@@ -381,7 +382,7 @@ models offer it.
 
 | Family | How the vendor caches | What Demi sends |
 |---|---|---|
-| `anthropic` | At the blocks a request marks with `cache_control`; a mark finds an earlier entry at most 20 blocks before it | Up to three marks with a one-hour lifetime, below; none on a request no later request extends |
+| `anthropic` | At the blocks a request marks with `cache_control`; a mark finds an earlier entry at most 20 blocks before it | Up to three marks with a one-hour lifetime, below; none on a request that is no session's |
 | `openai`, Responses | By prefix, automatically; the key routes a session's requests together | `prompt_cache_key`, the session id |
 | `openai`, Chat Completions | As each vendor does: OpenAI and most compatible vendors cache by prefix, automatically | Nothing, since some compatible vendors refuse fields they do not know |
 | `google` | By prefix, automatically (implicit caching) | Nothing. An explicit cache is a stored resource with a storage price, a second copy of the history |
@@ -393,8 +394,8 @@ models offer it.
 marked with `cache_control`, and a mark finds an earlier entry only within the
 20 blocks that end at it. A turn can add more than that, such as ten parallel
 tool calls with their results or a message with twenty images, and one mark at
-the end would then miss the previous request's entry. A request that later
-requests extend therefore carries up to three marks:
+the end would then miss the previous request's entry. A session's request,
+a summary request included, therefore carries up to three marks:
 
 1. The system prompt, sent as one text block, or the last tool when the
    prompt is blank. Nodes of the same harness and profile share their tools

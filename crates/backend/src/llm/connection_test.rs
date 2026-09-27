@@ -10,7 +10,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use demi_core::UserContentBlock;
-use demi_provider::{InferenceItem, InferenceRequest, Provider, ProviderEvent, RuntimeEnv};
+use demi_provider::{InferenceItem, InferenceRequest, PromptCache, Provider, ProviderEvent, RuntimeEnv};
 use demi_web_api::ids::CredentialId;
 use demi_web_api::providers::TestResult;
 use futures_util::StreamExt;
@@ -86,6 +86,8 @@ impl Shard {
             tools: Arc::new([]),
             thinking: None,
             service_tier_id: None,
+            // A connection test is no session's: nothing extends it.
+            prompt_cache: PromptCache::Off,
             cancel: request_cancel.clone(),
         };
         // The first event decides: a failure is the provider's refusal, and

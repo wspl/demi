@@ -180,9 +180,27 @@ pub struct InferenceRequest {
     pub tools: Arc<[ToolDefinition]>,
     pub thinking: Option<ThinkingConfig>,
     pub service_tier_id: Option<String>,
+    /// How the request extends the session's earlier requests, for a vendor
+    /// that caches only where a request marks it.
+    pub prompt_cache: PromptCache,
     /// Cancels the run: it stops its work at once and ends without a further
     /// event.
     pub cancel: CancellationToken,
+}
+
+/// How a request extends the session's earlier requests (`providers.md`
+/// § Prompt cache).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PromptCache {
+    /// A request that is no session's, such as a title request or a
+    /// connection test: no later request extends it, and it extends none, so
+    /// nothing is cached for it.
+    Off,
+    /// A request of a session, a summary request included. Its first
+    /// `answered_items` items are what the session's latest answered request
+    /// carried; none when no request was answered since the last compaction
+    /// (`runtime.md` § Replay).
+    Session { answered_items: usize },
 }
 
 impl InferenceRequest {

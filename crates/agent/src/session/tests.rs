@@ -18,7 +18,7 @@ use demi_core::{
 };
 use demi_gates::{ActivityGate, GateLease, Purpose};
 use demi_provider::{
-    ErrorCode, InferenceItem, ProviderEvent, ToolDefinition,
+    ErrorCode, InferenceItem, PromptCache, ProviderEvent, ToolDefinition,
     testing::{FixedClock, ScriptedRuntime, Turn, event},
 };
 use futures_util::future::LocalBoxFuture;
@@ -1175,6 +1175,63 @@ async fn the_stream_becomes_blocks_and_each_delta_one_patch() {
         .collect();
     // A thinking start and its first text open the block in one patch.
     assert_eq!(appends, ["notes", "world"]);
+}
+
+#[tokio::test(flavor = "local")]
+async fn each_request_says_how_many_of_its_items_the_latest_answered_request_carried() {
+    let provider = ScriptedRuntime::new([
+        Turn::Events(vec![
+            ProviderEvent::ThinkingStart,
+            event::thinking("plan"),
+            event::text("Looking twice"),
+            event::tool_call("call-1", "look", json!({})),
+            event::tool_call("call-2", "look", json!({})),
+            event::response(1, 1),
+        ]),
+        Turn::Events(vec![event::text("done"), event::response(1, 1)]),
+        Turn::Events(vec![event::text("done again"), event::response(1, 1)]),
+    ]);
+    let store = MemoryTreeStore::new();
+    let (look, _) = counted("look", "seen");
+    let session = start(&provider, vec![look], &store, SessionConfig::default()).await;
+
+    session
+        .send(text("look twice"), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
+    session
+        .send(text("again"), turn("t2"))
+        .unwrap()
+        .await
+        .unwrap();
+
+    let requests = provider.requests();
+    let [first, after_calls, next_turn] = requests.as_slice() else {
+        panic!("{requests:?}");
+    };
+    // The request after the calls adds the answer to the first one, the
+    // calls and their results; the next turn's adds the last answer and the
+    // user's message. Each begins with what the one answered before it
+    // carried, and says how much that was.
+    assert_eq!(
+        item_kinds(&after_calls.items),
+        [
+            "user_message",
+            "assistant_thinking",
+            "assistant_text",
+            "tool_use",
+            "tool_result",
+            "tool_use",
+            "tool_result"
+        ]
+    );
+    assert_eq!(after_calls.items[..1], first.items[..]);
+    assert_eq!(next_turn.items[..7], after_calls.items[..]);
+    assert_eq!(
+        [first, after_calls, next_turn].map(|request| request.prompt_cache),
+        [0, 1, 7].map(|answered_items| PromptCache::Session { answered_items })
+    );
 }
 
 #[tokio::test(flavor = "local")]
