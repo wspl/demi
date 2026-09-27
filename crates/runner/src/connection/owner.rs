@@ -25,6 +25,7 @@ use crate::{
     },
     host::HostServer,
     host_log::{self, HostLogReader},
+    job_directories::JobDirectories,
     management::{Management, Phase},
     pipes::PipeClient,
     services::ServiceHandle,
@@ -82,6 +83,8 @@ struct Owner<'r> {
     registered: &'r Registered,
     handle: ConnectionHandle,
     jobs: JobTable,
+    /// Where the jobs keep their output, by conversation.
+    directories: Arc<JobDirectories>,
     contexts: ContextTable,
     /// The manifest jobs see, and the leases of the one installed.
     installation: watch::Sender<Installation>,
@@ -101,11 +104,13 @@ pub async fn serve(registered: &Registered, mut transport: Transport) -> io::Res
     let (handle, mut requests) =
         ConnectionHandle::new(transport.control.clone(), transport.cancellation());
     let (installation, installations) = watch::channel(Installation::Absent);
+    let directories = JobDirectories::new(registered.state.root.join("jobs"));
     let mut owner = Owner {
         registered,
+        directories: directories.clone(),
         jobs: JobTable::new(JobConfig {
             output: transport.output.clone(),
-            output_dir: registered.state.root.join("jobs"),
+            directories,
             pipes: registered.pipes.clone(),
             shell: registered.shell.clone(),
             commands: Some(Commands {
@@ -161,10 +166,12 @@ impl Owner<'_> {
         transport: &mut Transport,
         requests: &mut mpsc::Receiver<Request>,
     ) -> io::Result<End> {
+        let conversations = self.held_conversations().await;
         let hello = wire::encode(&wire::Outbound::Hello {
             protocol: wire::VERSION,
             device_token: self.registered.token.borrow().clone(),
             runner: self.registered.runner.clone(),
+            conversations,
         })
         .map_err(io::Error::other)?;
         self.send(hello).await?;
@@ -205,6 +212,24 @@ impl Owner<'_> {
                     }
                     None => return Ok(End::Disconnected),
                 },
+            }
+        }
+    }
+
+    /// The conversations whose job output this runner holds, for its hello
+    /// (`resource-lifecycle.md` § A release the device missed). A Cloud's
+    /// runner names none: its output goes when the Cloud stops. One that
+    /// cannot read its directories names none this time, and connects all
+    /// the same.
+    async fn held_conversations(&self) -> Vec<String> {
+        if self.registered.runner.managed == Some(true) {
+            return Vec::new();
+        }
+        match self.directories.conversations().await {
+            Ok(conversations) => conversations,
+            Err(error) => {
+                tracing::warn!("the job directories could not be listed: {error}");
+                Vec::new()
             }
         }
     }
@@ -348,12 +373,21 @@ impl Owner<'_> {
                 conversation_id,
             } => {
                 let services = self.registered.services.clone();
+                let directories = self.directories.clone();
                 let control = self.handle.control.clone();
                 let closed = self.handle.closed().clone();
                 self.work.spawn(async move {
+                    // The services end what they hold, then the conversation's
+                    // job directories go; a directory that stays is logged
+                    // and the release succeeds, since nothing of the
+                    // conversation runs here any more.
                     let result = tokio::select! {
                         _ = closed.cancelled() => return Work::Done,
-                        result = services.release_conversation(&conversation_id) => result,
+                        result = async {
+                            let released = services.release_conversation(&conversation_id).await;
+                            directories.release(&conversation_id).await;
+                            released
+                        } => result,
                     };
                     match wire::encode(&wire::Outbound::ConversationReleased {
                         id,
@@ -531,6 +565,7 @@ impl Owner<'_> {
                     cwd: PathBuf::from(cwd),
                     env: values,
                     command: TaskCommand::Shell {
+                        conversation: context.conversation.clone(),
                         script: script.clone(),
                         stdin: stdin.clone(),
                         stdout: stdout.clone(),

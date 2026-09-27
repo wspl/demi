@@ -6,8 +6,9 @@
 //! its storage. It records every call, and a test can hold a reset, fail
 //! one, keep a wake from starting its runner, or kill a runner as a crash
 //! would, which the manager reports as a death to every connection. It
-//! mounts no image and isolates nothing: a reset clears the runner's state
-//! and keeps its home.
+//! mounts no image and isolates nothing: a stop clears the runner's state
+//! but its log, as a Cloud's `/run/demi` goes with it while its system layer
+//! stays; a reset clears the log too; both keep its home.
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -175,6 +176,18 @@ impl ScriptedManager {
             .get_mut(device)
             .and_then(|guest| guest.runner.as_mut())
             .is_some_and(RunnerProcess::running)
+    }
+
+    /// The runner's installation state, `/run/demi` on a real Cloud.
+    pub fn state(&self, device: &str) -> std::path::PathBuf {
+        self.shared
+            .lock()
+            .guests
+            .get(device)
+            .and_then(|guest| guest.runner.as_ref())
+            .expect("the device has a runner")
+            .state_dir()
+            .to_owned()
     }
 
     /// The home the device's runner reports, where the Cloud's files are.
@@ -399,6 +412,7 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
             stop_runner(shared, &device).await;
             let taken = shared.lock().guests.get_mut(&device).and_then(|guest| guest.runner.take());
             if let Some(mut runner) = taken {
+                // A reset replaces the system layer, the log with it.
                 runner.clear_state();
                 shared.lock().guests.get_mut(&device).unwrap().runner = Some(runner);
             }
@@ -417,14 +431,16 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
     }
 }
 
-/// Stops the device's runner, if it runs; the caller holds the device's
-/// turn.
+/// Stops the device's runner, if it runs, and clears its state but its
+/// log, as a stop takes a Cloud's temporary mounts and keeps its system
+/// layer; the caller holds the device's turn.
 async fn stop_runner(shared: &Shared, device: &str) {
     let taken = shared.lock().guests.get_mut(device).and_then(|guest| guest.runner.take());
     let Some(mut runner) = taken else {
         return;
     };
     runner.stop().await;
+    runner.clear_run_state();
     if let Some(guest) = shared.lock().guests.get_mut(device) {
         guest.runner = Some(runner);
     }

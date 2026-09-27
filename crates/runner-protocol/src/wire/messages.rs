@@ -5,7 +5,8 @@
 use std::collections::BTreeMap;
 
 use demi_command_service::protocol::{
-    ArtifactLocation, CommandContext, EditCopies, EditKind, PackageDescriptor, digest, without_nul,
+    ArtifactLocation, CommandContext, EditCopies, EditKind, PackageDescriptor, conversation_name, digest,
+    without_nul,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -24,9 +25,12 @@ use crate::values::DeviceToken;
 )]
 #[garde(allow_unvalidated)]
 pub enum Inbound {
+    /// Ends what the runner and its services hold for the conversation, its
+    /// job directories included (`resource-lifecycle.md` § Conversation
+    /// release).
     ConversationRelease {
         id: String,
-        #[garde(length(min = 1))]
+        #[garde(custom(conversation_name))]
         conversation_id: String,
     },
     HelloOk {
@@ -402,6 +406,11 @@ pub enum Outbound {
         device_token: Option<DeviceToken>,
         #[garde(dive)]
         runner: RunnerInfo,
+        /// The conversations the runner holds job directories for, which the
+        /// backend releases or watches (`resource-lifecycle.md` § A release
+        /// the device missed); none from a Cloud's runner.
+        #[garde(inner(custom(conversation_name)))]
+        conversations: Vec<String>,
     },
     /// Liveness, with the count of running jobs the idle rule reads.
     Pong {
