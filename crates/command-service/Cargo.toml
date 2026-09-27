@@ -17,6 +17,7 @@ testing = []
 
 [dependencies]
 bytes.workspace = true
+demi-artifact = { path = "../artifact" }
 futures-util.workspace = true
 garde.workspace = true
 h2.workspace = true
@@ -33,7 +34,6 @@ serde_with.workspace = true
 sync_wrapper = "1"
 sha2 = "0.10"
 serde_json_canonicalizer = "0.3"
-tempfile = "3"
 url = "2"
 
 [target.'cfg(unix)'.dependencies]
@@ -46,4 +46,5 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation"] }
 # The crate's own tests count its pauses (`testing::pauses`) and run on a
 # paused clock.
 demi-command-service = { path = ".", features = ["testing"] }
+tempfile = "3"
 tokio = { workspace = true, features = ["test-util"] }
