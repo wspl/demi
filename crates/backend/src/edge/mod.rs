@@ -15,6 +15,7 @@ mod content;
 mod conversations;
 mod cookies;
 mod devices;
+mod drafts;
 mod error;
 mod expose;
 mod exposes;
@@ -227,6 +228,8 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/conversations/{id}/stream", get(conversations::stream))
         .route("/conversations/{id}/streams/{name}", get(streams::open))
         .route("/conversations/{id}/panel", get(panel::read).put(panel::save))
+        .route("/conversations/{id}/draft", get(drafts::read).put(drafts::save))
+        .route("/conversations/{id}/draft/replaced", post(drafts::replaced))
         .route("/conversations/{id}/browser/tabs", get(browser::list).post(browser::open))
         .route("/conversations/{id}/browser/tabs/{tab}", delete(browser::close))
         .route("/conversations/{id}/browser/tabs/{tab}/navigate", post(browser::navigate))

@@ -100,6 +100,14 @@ input, which the multi-worker control service also relies on
   `conversation_panels` stores each conversation's
   [work panel state](../product/web-api.md#work-panel-state) as one JSON
   document, replaced whole by every save and deleted with its conversation.
+  `conversation_drafts` stores each conversation's
+  [draft](../product/web-api.md#conversation-drafts): its revision, its text
+  and files as one JSON document with the revision they were written at, and
+  the replaced version as another, or null. A save reads the row and writes it
+  in one transaction, so two saves never build on the same revision. The row
+  stays when the draft is emptied, so a revision is never used twice, and it
+  is deleted with its conversation; the conversation index reads the revision
+  into each conversation's summary.
 - **Operations:** `conversation_fork_operations` reserves a destination ID and
   records source boundary, owner, target, full model selection, title,
   creation time, and attached hosts. `managed_operations` records reset intent
@@ -125,8 +133,9 @@ input, which the multi-worker control service also relies on
   provider, model, token counts, and observation time; when a row is written
   and what the ledger promises are defined in
   [Usage and quota](../providers/usage-and-quota.md#usage-ledger).
-  `attachments` stores owner, media type, byte length, content hash, and
-  creation time. Neither table contains the attachment bytes.
+  `attachments` stores owner, media type, byte length, content hash, a text
+  file's snippet, and creation time. Neither table contains the attachment
+  bytes.
 
 Conversation and workspace `sort_order` represent explicit user ordering;
 activity timestamps do not reorder them. A read acknowledgement advances

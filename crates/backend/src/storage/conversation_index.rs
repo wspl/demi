@@ -41,6 +41,8 @@ pub(crate) struct ConversationRecord {
     pub(crate) titled_messages: u64,
     pub(crate) created_at: Timestamp,
     pub(crate) updated_at: Timestamp,
+    /// The revision of the conversation's draft, 0 before its first save.
+    pub(crate) draft_revision: u64,
 }
 
 /// The provider entry and model a conversation selected.
@@ -113,7 +115,8 @@ const PLACEHOLDER_TITLE: &str = "New conversation";
 
 const CONVERSATION_COLUMNS: &str = "id, user_id, title, archived, pinned, read_revision, target_kind, target_device_id,
      target_path, target_workspace_id, context_version, provider_id, model_id, user_messages, titled_messages,
-     created_at, updated_at";
+     created_at, updated_at,
+     COALESCE((SELECT revision FROM conversation_drafts WHERE conversation_id = conversations.id), 0) AS draft_revision";
 
 /// A target as its typed columns: the kind and what the kind names.
 pub(crate) struct TargetColumns {
@@ -539,6 +542,11 @@ fn conversation_row(row: &Row<'_>) -> Result<ConversationRecord, StorageError> {
         titled_messages: decode(TABLE, "titled_messages", u64::try_from(row.get::<_, i64>("titled_messages")?))?,
         created_at: instant(row, TABLE, "created_at")?,
         updated_at: instant(row, TABLE, "updated_at")?,
+        draft_revision: decode(
+            "conversation_drafts",
+            "revision",
+            u64::try_from(row.get::<_, i64>("draft_revision")?),
+        )?,
     })
 }
 

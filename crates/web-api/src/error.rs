@@ -220,6 +220,11 @@ pub enum ErrorCode {
     InvalidForkTarget,
     /// The conversation has no message with text to title.
     NoMessages,
+    /// The caller has no upload of that id.
+    UploadNotFound,
+    /// The draft's replaced version is not the one the request names any
+    /// more: a save or another page's action changed it.
+    DraftChanged,
 }
 
 serde_plain::derive_display_from_serialize!(ErrorCode);

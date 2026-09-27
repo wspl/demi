@@ -14,10 +14,11 @@ import { hasAcceptedSubmission } from '@demicodes/web-ui/agent/submission'
 import {
   attachmentsReady,
   composerAttachmentFromFile,
+  composerRemoteAttachment,
   isComposerFile,
 } from '@demicodes/web-ui/agent/message-input/attachments'
 import { connectAgentClient } from '@demicodes/web-ui/transport/agent-socket'
-import { apiRequest, jsonBody, readResponse } from '../api/client'
+import { apiRequest, apiUrl, jsonBody, readResponse } from '../api/client'
 import {
   attachedHostsSchema,
   batchAnswerSchema,
@@ -26,10 +27,12 @@ import {
   transcriptSchema,
   type AttachHost,
   type ConversationBatch,
+  type ConversationDraft,
   type ConversationPatch,
   type ConversationStatus,
   type ConversationSummary,
   type CreateConversation,
+  type DraftFile,
   type ReadRequest,
   type RenameHost,
   type SidebarReorder,
@@ -41,15 +44,19 @@ import { useResources } from '../state/resources'
 import { useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
 import { useSession } from '../auth/session'
-import type { Conversation } from '../state/types'
+import type { Conversation, ProductAttachment } from '../state/types'
 import { applyConversationEvent, updateLiveStatus } from './activity'
+import { createDraftSync, hasUnsavedDraft } from './draft-sync'
 import { transcriptTerminals } from './terminals'
 import {
   deleteDraft,
   readDraft,
   readLocalDrafts,
+  takeLastWords,
   writeDraft,
+  writeLastWords,
   type SavedDraft,
+  type SavedFile,
 } from './drafts'
 
 export const useConversations = defineStore('conversations', () => {
@@ -68,6 +75,10 @@ export const useConversations = defineStore('conversations', () => {
     report('Could not upload the attachment', error),
   )
   const { uploadFile, addFiles, removeFile, releaseSpare, arrangeFiles, retryFile } = uploads
+  const draftSync = createDraftSync({
+    apply: showDraft,
+    report,
+  })
   let lifetime = new AbortController()
   const cache = new ConversationCache()
   let storageErrorReported = false
@@ -202,6 +213,9 @@ export const useConversations = defineStore('conversations', () => {
       },
       lastError: null,
       draft: '',
+      savedDraft: null,
+      draftBase: null,
+      draftShown: 0,
       files: [],
       attachmentIds: [],
       submission: 'idle',
@@ -250,6 +264,10 @@ export const useConversations = defineStore('conversations', () => {
         if (!cached?.runtime?.connected) {
           current.status = summaryStatus(record.status)
         }
+        // Another page saved the draft since this one read it.
+        if (current.savedDraft && record.draftRevision > current.savedDraft.revision) {
+          void draftSync.read(current).catch((error) => report('Could not read the draft', error))
+        }
         if (
           revisionChanged &&
           cached &&
@@ -283,6 +301,15 @@ export const useConversations = defineStore('conversations', () => {
   )
 
   function persisted(conversation: Conversation): SavedDraft {
+    const local = conversation.persistence !== 'synced'
+    // The browser keeps the composer's text only while the backend does not
+    // have it: a new conversation's, or a change not yet confirmed.
+    const unsaved = local || hasUnsavedDraft(conversation)
+    const sending = new Set(conversation.pendingSend?.fileIds ?? [])
+    const files = [
+      ...(unsaved ? messageFiles(conversation) : []),
+      ...conversation.files.filter((file) => sending.has(file.id)),
+    ]
     return {
       messageEdit: conversation.messageEdit
         ? structuredClone(toRaw(conversation.messageEdit))
@@ -308,15 +335,16 @@ export const useConversations = defineStore('conversations', () => {
                 updatedAt: conversation.updatedAt,
               },
             },
-      text: conversation.draft,
+      base: !local && unsaved ? conversation.draftBase ?? 0 : null,
+      text: unsaved ? conversation.draft : '',
       model: { ...conversation.model },
-      files: messageFiles(conversation).map((file) =>
+      files: files.map((file) =>
         isComposerFile(file)
           ? {
               kind: 'file',
               id: file.id,
               name: file.name,
-              file: toRaw(file.file),
+              file: file.file ? toRaw(file.file) : null,
               upload: file.upload ? { ...file.upload } : null,
               ...(file.snippet ? { snippet: file.snippet } : {}),
             }
@@ -339,16 +367,22 @@ export const useConversations = defineStore('conversations', () => {
     if (!userId) {
       return
     }
-    const drafts = items.value
+    const changed = items.value
       .filter((item) => restored.has(item.id))
       .map((item) => ({
+        conversation: item,
         id: item.id,
         draft: persisted(item),
       }))
       .filter((entry) => changedDraft(entry.id, entry.draft))
+    for (const entry of changed) {
+      if (entry.conversation.persistence === 'synced') {
+        draftSync.changed(entry.conversation)
+      }
+    }
     const current = lifetime
     // IndexedDB serializes readwrite transactions; issue them now, including on pagehide.
-    for (const entry of drafts) {
+    for (const entry of changed) {
       const operation =
         entry.draft.local?.phase === 'draft' &&
         !entry.draft.pendingSend &&
@@ -364,6 +398,27 @@ export const useConversations = defineStore('conversations', () => {
           storageError(error)
         }
       })
+    }
+  }
+
+  /**
+   * Writes, as the page closes, each composer's text the backend does not
+   * have yet where the browser writes it at once; the IndexedDB writes still
+   * under way may be lost with the page.
+   */
+  function keepLastWords(): void {
+    const userId = session.user?.id
+    if (!userId) {
+      return
+    }
+    for (const item of items.value) {
+      if (restored.has(item.id) && (item.persistence !== 'synced' || hasUnsavedDraft(item))) {
+        writeLastWords(userId, item.id, {
+          base: item.persistence === 'synced' ? item.draftBase ?? 0 : null,
+          text: item.draft,
+          attachmentIds: [...item.attachmentIds],
+        })
+      }
     }
   }
 
@@ -415,6 +470,7 @@ export const useConversations = defineStore('conversations', () => {
           // A conversation the backend has not seen has no message to title.
           titleCurrent: true,
           titleGenerating: false,
+          draftRevision: 0,
           status: 'idle',
           contextVersion: 0,
           revision: 0,
@@ -472,7 +528,6 @@ export const useConversations = defineStore('conversations', () => {
       const draft = saved ?? (await readDraft(session.user.id, conversation.id))
       signal.throwIfAborted()
       if (draft) {
-        conversation.draft = draft.text
         conversation.pendingSend = draft.pendingSend
         conversation.messageEdit = restoreMessageEdit(draft.messageEdit ?? null)
         if (conversation.pendingSend && !conversation.pendingSend.error) {
@@ -493,17 +548,28 @@ export const useConversations = defineStore('conversations', () => {
           conversation.model = draft.model
         }
         conversation.scroll = draft.scroll
-        conversation.files = draft.files.map((file) =>
-          file.kind === 'reference'
-            ? file
-            : {
-                ...composerAttachmentFromFile(file.file),
-                ...file,
-                phase: file.upload ? 'ready' : 'uploading',
-              },
+        // The composer's text is here only when the backend does not have
+        // it; a synced conversation's composer shows the backend's draft
+        // otherwise, once read.
+        conversation.draft = draft.text
+        conversation.draftBase = draft.base
+        conversation.files = draft.files.map(savedAttachment)
+        // The files of the message, in the order of its capsules; the rest
+        // are those of the send not yet accepted.
+        const sending = new Set(draft.pendingSend?.fileIds ?? [])
+        conversation.attachmentIds = conversation.files
+          .filter((file) => !sending.has(file.id))
+          .map((file) => file.id)
+      }
+      // What a page of the conversation held as it closed is newer than the
+      // record, whose last writes may not have made it.
+      const words = takeLastWords(session.user.id, conversation.id)
+      if (words) {
+        conversation.draft = words.text
+        conversation.draftBase = words.base
+        conversation.attachmentIds = words.attachmentIds.filter((id) =>
+          conversation.files.some((file) => file.id === id),
         )
-        // A saved draft keeps the files its message has, in the order of its capsules.
-        conversation.attachmentIds = conversation.files.map((file) => file.id)
       }
     } catch (error) {
       signal.throwIfAborted()
@@ -518,6 +584,65 @@ export const useConversations = defineStore('conversations', () => {
         void uploadFile(file).catch((error) => report('Could not upload the attachment', error))
       }
     }
+  }
+
+  /** A file of a draft this browser kept, as the composer carries it. */
+  function savedAttachment(file: SavedFile | Extract<ProductAttachment, { kind: 'reference' }>): ProductAttachment {
+    if (file.kind === 'reference') {
+      return file
+    }
+    return {
+      ...(file.file ? composerAttachmentFromFile(file.file) : { src: file.upload ? blobPicture(file.upload) : undefined }),
+      ...file,
+      phase: file.upload ? 'ready' : 'uploading',
+    }
+  }
+
+  /** Where an uploaded picture loads from, for a file whose bytes this browser does not have. */
+  function blobPicture(upload: { mediaType: string; sha256: string }): string | undefined {
+    return upload.mediaType.startsWith('image/')
+      ? apiUrl(`/blobs/${upload.sha256}?${new URLSearchParams({ type: upload.mediaType })}`)
+      : undefined
+  }
+
+  /**
+   * A file of a draft the backend holds, as the composer carries it: the one
+   * the composer already has for the same upload or remote file, or a new
+   * one known by its upload alone.
+   */
+  function draftAttachment(conversation: Conversation, file: DraftFile): ProductAttachment {
+    if (file.type === 'upload') {
+      const carried = conversation.files.find(
+        (item) => isComposerFile(item) && item.upload?.id === file.ref,
+      )
+      const upload = { id: file.ref, mediaType: file.mediaType, sha256: file.sha256 }
+      return carried ?? {
+        kind: 'file',
+        id: file.ref,
+        name: file.fileName,
+        src: blobPicture(upload),
+        phase: 'ready',
+        ...(file.snippet ? { snippet: file.snippet } : {}),
+        file: null,
+        upload,
+      }
+    }
+    const carried = conversation.files.find(
+      (item) => item.kind === 'reference' && item.deviceId === file.deviceId && item.path === file.path,
+    )
+    const host =
+      conversation.attachedHosts.find((attached) => attached.deviceId === file.deviceId)?.name ??
+      resources.deviceById(file.deviceId)?.name ??
+      file.deviceId
+    return carried ?? { ...composerRemoteAttachment({ host, path: file.path }), deviceId: file.deviceId }
+  }
+
+  /** Shows a draft from outside, another page's or a restored one, in the conversation's composer. */
+  function showDraft(conversation: Conversation, draft: ConversationDraft): void {
+    const files = draft.files.map((file) => draftAttachment(conversation, file))
+    conversation.draft = draft.text
+    uploads.showFiles(conversation, files)
+    conversation.draftShown += 1
   }
 
   async function prepareModel(
@@ -633,12 +758,17 @@ export const useConversations = defineStore('conversations', () => {
       // Model load errors belong to the composer, not transcript restoration.
       const modelsLoaded = product.loadModels().catch(() => {})
       controller.signal.throwIfAborted()
+      // Read beside the history; a submission it confirms clears the draft after it.
+      const draftRead = draftSync.read(conversation)
+      // Its failure fails the load below, unless an earlier one did.
+      draftRead.catch(() => {})
       await loadHosts(conversation, controller.signal)
       const response = await apiRequest(
         `/conversations/${encodeURIComponent(conversation.id)}/transcript`,
         { signal: controller.signal },
       )
       const transcript = await readResponse(response, transcriptSchema)
+      await draftRead
       controller.signal.throwIfAborted()
       conversation.blocks = transcript.blocks
       conversation.failures = transcript.failures ?? {}
@@ -880,6 +1010,7 @@ export const useConversations = defineStore('conversations', () => {
       unread: false,
       titleCurrent: true,
       titleGenerating: false,
+      draftRevision: 0,
       createdAt: now,
       updatedAt: now,
       providerId: null,
@@ -1347,6 +1478,9 @@ export const useConversations = defineStore('conversations', () => {
     // The message is gone: what its composer still held for an undo goes with it.
     releaseSpare(conversation)
     saveDrafts()
+    // The backend accepted the message: the draft it was written in goes too,
+    // everywhere, and a change another page made meanwhile stays to restore.
+    void draftSync.save(conversation).catch((error) => report('Could not clear the draft', error))
   }
 
   function reconcileSubmission(conversation: Conversation): void {
@@ -1373,6 +1507,7 @@ export const useConversations = defineStore('conversations', () => {
   function stopAll(): void {
     pendingChanges.value = []
     cache.clear()
+    draftSync.stop()
     lifetime.abort()
     lifetime = new AbortController()
     uploads.dispose(items.value)
@@ -1445,6 +1580,13 @@ export const useConversations = defineStore('conversations', () => {
     arrangeFiles,
     retryFile,
     saveDrafts,
+    keepLastWords,
+    /** Saves the drafts that wait for typing to pause: when the page is hidden, or, with `keepalive`, closes. */
+    flushDrafts: (keepalive = false) => draftSync.flush(items.value, keepalive),
+    restoreReplaced: (conversation: Conversation) =>
+      void draftSync.act(conversation, 'restore').catch((error) => report('Could not restore the draft', error)),
+    dismissReplaced: (conversation: Conversation) =>
+      void draftSync.act(conversation, 'dismiss').catch((error) => report('Could not dismiss the draft', error)),
     initialize,
     stopAll,
     abortSubagents: (conversation: Conversation) =>
