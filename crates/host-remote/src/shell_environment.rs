@@ -1,9 +1,11 @@
 //! `RemoteShellEnvironment`: the shell behind the `shell_*` tools on a Host
 //! reached through its runner (`runner.md` § Shell jobs). Every exec is one
 //! job; the record holds the model's view of its output, the head while it
-//! runs and the tail at its end, and the whole output stays in the files the
-//! runner wrote. The directory a script ends in carries into the shell's next
-//! exec; nothing else of the shell's state does.
+//! runs and the tail at its end, and the pages' view, which also holds the
+//! newest output the runner sends while a page watches and the job is
+//! therefore followed (`runtime.md` § Live output). The whole output stays in
+//! the files the runner wrote. The directory a script ends in carries into
+//! the shell's next exec; nothing else of the shell's state does.
 
 use std::{
     cell::{Cell, RefCell},
@@ -22,14 +24,16 @@ use demi_runner_protocol::{
 use demi_shell::{
     CommandRecord, CommandSet, CommandStatus, DEFAULT_BINARY_LIMIT_BYTES,
     DEFAULT_OUTPUT_LIMIT_BYTES, EditedFiles, Ending, ExecRequest, Host, HostError, HostKey,
-    JobCaller, ProcessEnd, Reader, ShellEnvironment, ShellError, ShellTarget, SpawnErrorKind,
-    final_stdout_boundary,
+    JobCaller, PageFeed, PageView, ProcessEnd, ShellEnvironment, ShellError, ShellTarget,
+    SpawnErrorKind, final_stdout_boundary,
 };
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::watch;
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
-use crate::{CommandCatalog, JobEnd, JobStart, RemoteHost, RemoteJob, manifest::CommandSelection};
+use crate::{
+    CommandCatalog, JobEnd, JobOutput, JobStart, RemoteHost, RemoteJob, manifest::CommandSelection,
+};
 
 /// How long an abort waits for the runner to report the job's end after
 /// each signal.
@@ -69,6 +73,9 @@ pub struct EnvironmentOptions {
     /// commands.
     pub commands: Option<CommandSelection>,
     pub context: ContextSource,
+    /// Where the pages' views of its commands go, and whether a page
+    /// watches, which its jobs follow.
+    pub feed: Rc<dyn PageFeed>,
     pub access: Option<Rc<dyn HostAccess>>,
     pub retain: Option<Rc<dyn RetainEdits>>,
     /// The variables every shell starts with, above the device's own.
@@ -80,11 +87,12 @@ pub struct EnvironmentOptions {
 }
 
 impl EnvironmentOptions {
-    pub fn new(host: RemoteHost, context: ContextSource) -> Self {
+    pub fn new(host: RemoteHost, context: ContextSource, feed: Rc<dyn PageFeed>) -> Self {
         Self {
             host,
             commands: None,
             context,
+            feed,
             access: None,
             retain: None,
             initial_env: BTreeMap::new(),
@@ -213,6 +221,7 @@ impl RemoteShellEnvironment {
         let record = Rc::new(RefCell::new(CommandRecord::new(
             shell_id.clone(),
             command.clone(),
+            request.tool_use_id,
         )));
         let running = Rc::new(Running {
             stop: cancel.child_token(),
@@ -228,6 +237,8 @@ impl RemoteShellEnvironment {
         state.records.insert(command.clone(), record.clone());
         state.running.insert(command.clone(), running.clone());
         drop(state);
+        // The pages learn of the command before its first output.
+        self.report(&record);
         let environment = self.clone();
         let task_running = running.clone();
         let task_command = command.clone();
@@ -257,6 +268,11 @@ impl RemoteShellEnvironment {
             },
         );
         id
+    }
+
+    /// Tells the pages that `record`'s view changed.
+    fn report(&self, record: &Rc<RefCell<CommandRecord>>) {
+        self.0.options.feed.changed(record);
     }
 
     /// Runs one command to its end, inside the product's host access when
@@ -294,13 +310,19 @@ impl RemoteShellEnvironment {
         };
         let failure = access.err().or_else(|| failure.into_inner());
         if let Some(message) = failure {
-            let mut record = record.borrow_mut();
-            if running.stop.is_cancelled() {
-                record.mark_aborted();
-            } else if record.is_running() {
+            let ended = if running.stop.is_cancelled() {
+                record.borrow_mut().mark_aborted()
+            } else if record.borrow().is_running() {
+                let mut record = record.borrow_mut();
                 let stdout = record.text(StreamKind::Stdout).to_owned();
-                let stderr = format!("{}{message}\n", record.text(StreamKind::Stderr));
-                record.settle(Ending::Exited(127), stdout, stderr, None);
+                let reason = format!("{message}\n");
+                let stderr = format!("{}{reason}", record.text(StreamKind::Stderr));
+                record.settle(Ending::Exited(127), stdout, stderr, None, &reason)
+            } else {
+                false
+            };
+            if ended {
+                self.report(&record);
             }
         }
         let mut state = self.0.state.borrow_mut();
@@ -323,7 +345,7 @@ impl RemoteShellEnvironment {
         script: String,
         caller: JobCaller,
         running: &Running,
-        record: &RefCell<CommandRecord>,
+        record: &Rc<RefCell<CommandRecord>>,
     ) -> Result<(), String> {
         let context = (self.0.options.context)()
             .await
@@ -355,27 +377,38 @@ impl RemoteShellEnvironment {
             .await
             .map_err(|error| error.message)?;
         *running.job.borrow_mut() = Some(job.clone());
-        let mut heads = [Vec::new(), Vec::new()];
-        let mut texts = [Utf8Stream::default(), Utf8Stream::default()];
+        let mut streams = [Received::default(), Received::default()];
+        // The job is followed while a page watches; it starts unfollowed.
+        let mut watching = self.0.options.feed.watching();
+        let mut watch_open = true;
+        let mut followed = false;
         let stopped = running.stop.cancelled();
         tokio::pin!(stopped);
         let mut signalled = false;
         loop {
+            let follow = watch_open && *watching.borrow_and_update();
+            if follow != followed {
+                followed = follow;
+                if let Err(error) = job.follow(followed).await {
+                    // The job's end or the connection's loss says what
+                    // happened; a following that could not change is
+                    // diagnostic.
+                    tracing::debug!(%command, "could not change the job's following: {error}");
+                }
+            }
             tokio::select! {
                 chunk = job.next_output() => {
                     let Some(chunk) = chunk else {
                         break;
                     };
-                    if chunk.offset < wire::JOB_VIEW_BYTES as u64 {
-                        // A stream's first bytes, the model's view of it.
-                        let index = stream_index(chunk.stream);
-                        heads[index].extend_from_slice(&chunk.bytes);
-                        let text = texts[index].decode(&chunk.bytes);
-                        record.borrow_mut().append_output(chunk.stream, &text);
-                    } else {
-                        // Beyond them the stream still grows.
-                        record.borrow_mut().grew();
+                    let stream = &mut streams[stream_index(chunk.stream)];
+                    if stream.receive(record, chunk) {
+                        self.report(record);
                     }
+                }
+                changed = watching.changed(), if watch_open => {
+                    // A feed that is gone has no page.
+                    watch_open = changed.is_ok();
                 }
                 () = &mut stopped, if !signalled => {
                     signalled = true;
@@ -388,21 +421,22 @@ impl RemoteShellEnvironment {
             }
         }
         let end = job.end().await;
-        self.finish(shell, command, running, record, end, heads)
+        self.finish(shell, command, running, record, end, streams)
             .await;
         Ok(())
     }
 
-    /// Settles the record from the job's end: its edits, its directory, and
-    /// its streams as the model sees them.
+    /// Settles the record from the job's end: its edits, its directory, its
+    /// streams as the model sees them, and what the end adds to the pages'
+    /// view.
     async fn finish(
         &self,
         shell: &ShellId,
         command: &CommandId,
         running: &Running,
-        record: &RefCell<CommandRecord>,
+        record: &Rc<RefCell<CommandRecord>>,
         end: JobEnd,
-        heads: [Vec<u8>; 2],
+        streams: [Received; 2],
     ) {
         if !end.files.is_empty() {
             let unavailable = || end.files.iter().map(unkept).collect::<Vec<_>>();
@@ -428,7 +462,7 @@ impl RemoteShellEnvironment {
         {
             shell.cwd = cwd;
         }
-        let [stdout_head, stderr_head] = heads;
+        let [stdout_received, stderr_received] = streams;
         let exit_code = match &end.status {
             ProcessEnd::NotStarted(error) => {
                 // A job the runner could not run names why; any other kind is
@@ -437,10 +471,20 @@ impl RemoteShellEnvironment {
                     (SpawnErrorKind::Other, Some(detail)) => detail.clone(),
                     _ => format!("bash: {}", error.kind),
                 };
-                return self.never_ran(record, &stdout_head, &stderr_head, &reason);
+                return self.never_ran(
+                    record,
+                    &stdout_received.head,
+                    &stderr_received.head,
+                    &reason,
+                );
             }
             ProcessEnd::Lost(reason) => {
-                return self.never_ran(record, &stdout_head, &stderr_head, reason);
+                return self.never_ran(
+                    record,
+                    &stdout_received.head,
+                    &stderr_received.head,
+                    reason,
+                );
             }
             ProcessEnd::Exited(code) => *code,
             ProcessEnd::Signalled(signal) if matches!(signal.as_str(), "SIGTERM" | "SIGKILL") => {
@@ -450,7 +494,7 @@ impl RemoteShellEnvironment {
         };
         let output = end.output;
         let stdout = stream_text(
-            &stdout_head,
+            &stdout_received.head,
             output.as_ref().map(|output| {
                 (
                     output.stdout_bytes,
@@ -460,7 +504,7 @@ impl RemoteShellEnvironment {
             }),
         );
         let stderr = stream_text(
-            &stderr_head,
+            &stderr_received.head,
             output.as_ref().map(|output| {
                 (
                     output.stderr_bytes,
@@ -497,33 +541,56 @@ impl RemoteShellEnvironment {
         } else {
             Ending::Exited(exit_code)
         };
-        let mut record = record.borrow_mut();
-        if let Some(output) = &output {
-            // The runner names where its tee wrote: the output files are the
-            // target's.
-            if let Some((directory, _)) = output.stdout_path.rsplit_once('/') {
-                record.set_output_dir(directory.to_owned());
+        // The pages' view gets the end of each stream it had not received,
+        // or a binary stdout's description.
+        let retained = |stream: StreamKind| {
+            output.as_ref().map(|output| match stream {
+                StreamKind::Stdout => (output.stdout_bytes, output.stdout_tail.0.as_slice()),
+                StreamKind::Stderr => (output.stderr_bytes, output.stderr_tail.0.as_slice()),
+            })
+        };
+        let mut page_end = match &binary {
+            Some(_) => stdout_text.clone(),
+            None => stdout_received.rest(StreamKind::Stdout, retained(StreamKind::Stdout)),
+        };
+        page_end.push_str(&stderr_received.rest(StreamKind::Stderr, retained(StreamKind::Stderr)));
+        let ended = {
+            let mut record = record.borrow_mut();
+            if let Some(output) = &output {
+                // The runner names where its tee wrote: the output files are
+                // the target's.
+                if let Some((directory, _)) = output.stdout_path.rsplit_once('/') {
+                    record.set_output_dir(directory.to_owned());
+                }
             }
-        }
-        record.settle(ending, stdout_text, stderr.text, binary);
-        if let Some(output) = &output {
-            record.set_host_bytes(output.stdout_bytes, output.stderr_bytes);
+            let ended = record.settle(ending, stdout_text, stderr.text, binary, &page_end);
+            if let Some(output) = &output {
+                record.set_host_bytes(output.stdout_bytes, output.stderr_bytes);
+            }
+            ended
+        };
+        if ended {
+            self.report(record);
         }
     }
 
     /// A job that never ran its script: exit 127, and why, on stderr.
     fn never_ran(
         &self,
-        record: &RefCell<CommandRecord>,
+        record: &Rc<RefCell<CommandRecord>>,
         stdout: &[u8],
         stderr: &[u8],
         reason: &str,
     ) {
         let stdout = String::from_utf8_lossy(stdout).into_owned();
-        let stderr = format!("{}{reason}\n", String::from_utf8_lossy(stderr));
-        record
+        let reason = format!("{reason}\n");
+        let stderr = format!("{}{reason}", String::from_utf8_lossy(stderr));
+        let ended = record
             .borrow_mut()
-            .settle(Ending::Exited(127), stdout, stderr, None);
+            .settle(Ending::Exited(127), stdout, stderr, None, &reason);
+        if ended {
+            self.report(record);
+        }
     }
 
     fn record(&self, command: &CommandId) -> Result<Rc<RefCell<CommandRecord>>, ShellError> {
@@ -536,7 +603,8 @@ impl RemoteShellEnvironment {
             .ok_or_else(|| ShellError::UnknownCommand(command.clone()))
     }
 
-    fn view(&self, command: &CommandId, reader: Reader) -> Result<CommandStatus, ShellError> {
+    /// The model's status of `command`.
+    fn view(&self, command: &CommandId) -> Result<CommandStatus, ShellError> {
         let record = self.record(command)?;
         let hint = self
             .0
@@ -553,7 +621,7 @@ impl RemoteShellEnvironment {
             });
         let mut record = record.borrow_mut();
         let hint = if record.is_running() { hint } else { None };
-        Ok(record.status(reader, self.0.options.output_limit, hint))
+        Ok(record.status(self.0.options.output_limit, hint))
     }
 
     /// Stops a running command: asks it to end, and ends it when it does not.
@@ -574,7 +642,10 @@ impl RemoteShellEnvironment {
                 tracing::debug!(%command, "could not kill the job: {error}");
             }
             if !running.settled_within(ABORT_GRACE).await {
-                record.borrow_mut().mark_aborted();
+                let ended = record.borrow_mut().mark_aborted();
+                if ended {
+                    self.report(&record);
+                }
             }
         }
         Ok(())
@@ -609,20 +680,19 @@ impl ShellEnvironment for RemoteShellEnvironment {
             let window = request.window.duration();
             let (command, running) = self.start(request, cancel)?;
             running.settled_within(window).await;
-            self.view(&command, Reader::Model)
+            self.view(&command)
         })
     }
 
-    fn status(&self, command: &CommandId, reader: Reader) -> Result<CommandStatus, ShellError> {
-        self.view(command, reader)
+    fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError> {
+        self.view(command)
     }
 
     fn write<'a>(
         &'a self,
         command: &'a CommandId,
         stdin: Bytes,
-        reader: Reader,
-    ) -> LocalBoxFuture<'a, Result<CommandStatus, ShellError>> {
+    ) -> LocalBoxFuture<'a, Result<(), ShellError>> {
         Box::pin(async move {
             let record = self.record(command)?;
             let running = self.0.state.borrow().running.get(command).cloned();
@@ -638,19 +708,22 @@ impl ShellEnvironment for RemoteShellEnvironment {
                 .clone()
                 .ok_or_else(|| ShellError::Starting(command.clone()))?;
             job.write_stdin(stdin).await?;
-            self.view(command, reader)
+            Ok(())
         })
     }
 
-    fn abort<'a>(
-        &'a self,
-        command: &'a CommandId,
-        reader: Reader,
-    ) -> LocalBoxFuture<'a, Result<CommandStatus, ShellError>> {
-        Box::pin(async move {
-            self.stop_command(command).await?;
-            self.view(command, reader)
-        })
+    fn abort<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Result<(), ShellError>> {
+        Box::pin(self.stop_command(command))
+    }
+
+    fn page_views(&self) -> Vec<PageView> {
+        self.0
+            .state
+            .borrow()
+            .records
+            .values()
+            .map(|record| record.borrow().page_view())
+            .collect()
     }
 
     fn release_command<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, bool> {
@@ -770,6 +843,74 @@ fn stream_text(head: &[u8], retained: Option<(u64, &Vec<u8>, &str)>) -> StreamTe
     }
 }
 
+/// What the backend received of one stream of a job (`runner.md` § Pipes
+/// and output).
+#[derive(Default)]
+struct Received {
+    /// The stream's first bytes, the model's view of it.
+    head: Vec<u8>,
+    /// Where the stream's next bytes start.
+    next: u64,
+    text: Utf8Stream,
+}
+
+impl Received {
+    /// Adds one message of the job's output to `record`: a stream's first
+    /// bytes to both views, its newest bytes beyond them to the pages' view,
+    /// and a message without bytes as growth alone. True when the pages'
+    /// view changed.
+    fn receive(&mut self, record: &RefCell<CommandRecord>, chunk: JobOutput) -> bool {
+        if chunk.offset < wire::JOB_VIEW_BYTES as u64 {
+            self.head.extend_from_slice(&chunk.bytes);
+            self.next = chunk.offset + chunk.bytes.len() as u64;
+            let text = self.text.decode(&chunk.bytes);
+            return record.borrow_mut().append_output(chunk.stream, &text);
+        }
+        if chunk.bytes.is_empty() {
+            record.borrow_mut().grew();
+            return false;
+        }
+        let mut text = String::new();
+        // The runner left out what lies between the previous bytes and these.
+        let left_out = chunk.offset.saturating_sub(self.next);
+        if left_out > 0 {
+            text.push_str(&self.text.finish());
+            text.push_str(&left_out_note(chunk.stream, left_out));
+        }
+        text.push_str(&self.text.decode(&chunk.bytes));
+        self.next = chunk.offset + chunk.bytes.len() as u64;
+        record.borrow_mut().append_page_output(&text)
+    }
+
+    /// What the job's end adds to the pages' view of the stream: its bytes
+    /// past those received, from `retained`, the stream's length and last
+    /// bytes, and the rest of a character the last bytes split.
+    fn rest(mut self, stream: StreamKind, retained: Option<(u64, &[u8])>) -> String {
+        let mut text = String::new();
+        if let Some((length, tail)) = retained
+            && length > self.next
+        {
+            let missing = length - self.next;
+            let kept = tail.len() as u64;
+            if missing <= kept {
+                let from = usize::try_from(kept - missing).expect("within the tail");
+                text.push_str(&self.text.decode(&tail[from..]));
+            } else {
+                text.push_str(&self.text.finish());
+                text.push_str(&left_out_note(stream, missing - kept));
+                text.push_str(&self.text.decode(tail));
+            }
+        }
+        text.push_str(&self.text.finish());
+        text
+    }
+}
+
+/// The pages' note where the runner left out `bytes` of a stream.
+fn left_out_note(stream: StreamKind, bytes: u64) -> String {
+    format!("\n[... {bytes} bytes of {stream} not shown ...]\n")
+}
+
 /// Decodes one stream's bytes as they arrive: a character split across
 /// chunks waits for its rest, and bytes that are not UTF-8 read as U+FFFD,
 /// as a lossy decode of the whole stream would. The standard library decodes
@@ -811,6 +952,13 @@ impl Utf8Stream {
         }
         self.pending = rest.to_vec();
         text
+    }
+
+    /// The end of the bytes: a character they split reads as U+FFFD.
+    fn finish(&mut self) -> String {
+        let rest = String::from_utf8_lossy(&self.pending).into_owned();
+        self.pending.clear();
+        rest
     }
 }
 
