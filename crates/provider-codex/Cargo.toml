@@ -12,6 +12,11 @@ rust-version.workspace = true
 doctest = false
 test = false
 
+[features]
+# A scripted Codex backend WebSocket, for the tests of this provider and of
+# what sends its requests.
+testing = []
+
 [dependencies]
 demi-core = { path = "../core" }
 demi-provider = { path = "../provider" }
@@ -28,5 +33,6 @@ tokio-util.workspace = true
 
 [dev-dependencies]
 demi-provider = { path = "../provider", features = ["testing"] }
+demi-provider-codex = { path = ".", features = ["testing"] }
 # The device login's lifetime is tested on a paused clock.
 tokio = { workspace = true, features = ["test-util"] }

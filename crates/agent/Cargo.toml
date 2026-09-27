@@ -52,7 +52,7 @@ demi-provider = { path = "../provider", features = ["testing"] }
 # Each provider's format of a session's requests (`session/tests/requests.rs`,
 # `providers.md` § The rule).
 demi-provider-anthropic-api = { path = "../provider-anthropic-api" }
-demi-provider-codex = { path = "../provider-codex" }
+demi-provider-codex = { path = "../provider-codex", features = ["testing"] }
 demi-provider-google = { path = "../provider-google" }
 demi-provider-grok-build = { path = "../provider-grok-build" }
 tokio = { workspace = true, features = ["test-util"] }

@@ -1714,6 +1714,7 @@ dependencies = [
  "bytes",
  "demi-core",
  "demi-provider",
+ "demi-provider-codex",
  "futures-util",
  "http",
  "reqwest 0.12.28",
