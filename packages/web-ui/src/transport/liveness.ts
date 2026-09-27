@@ -1,17 +1,17 @@
 /**
  * The liveness of a page's WebSockets to the backend: the synchronization
  * channel, each conversation socket and each live browser view
- * (`web-application.md` § Liveness and reconnection). The backend sends a
- * heartbeat on a socket that has sent nothing else for 30 seconds, so a
- * socket that brings nothing for much longer died without a close, as when a
- * laptop slept and its network dropped. A socket that closes, breaks or
- * cannot be made is tried again after waits that double. Timers stop while a
- * laptop sleeps, so when the page becomes visible again or comes back online,
- * this module checks every socket at once.
+ * (`web-application.md` § Liveness and reconnection). The far end of each
+ * sends a heartbeat on a socket that has sent nothing else for a while, 30
+ * seconds at most, so a socket that brings nothing for much longer died
+ * without a close, as when a laptop slept and its network dropped. A socket
+ * that closes, breaks or cannot be made is tried again after waits that
+ * double. Timers stop while a laptop sleeps, so when the page becomes visible
+ * again or comes back online, this module checks every socket at once.
  */
 import { defaultDocument, defaultWindow, useEventListener } from '@vueuse/core'
 
-/** Two and a half of the backend's 30-second heartbeats: a socket silent this long is broken. */
+/** Two and a half of the longest heartbeat, the backend's 30 seconds: a socket silent this long is broken. */
 const SILENCE_MS = 75_000
 /** The first wait before a socket connects again; each later one doubles, up to the longest. */
 const FIRST_WAIT_MS = 1_000
@@ -126,12 +126,22 @@ export function waitToReconnect(failures: number, connect: () => void): Reconnec
  * broken at once, and each other one watched for the rest of that time by
  * the clock. Then each closed socket connects without waiting for the rest
  * of its wait, one just broken among them when its owner starts the wait as
- * the break reaches it.
+ * the break reaches it. An owner that learns of the break through a promise,
+ * as a conversation that still opens does, starts its wait once the promises
+ * due have run, so the closed sockets are swept once more when the task the
+ * return came in has ended.
  */
 export function pageReturned(): void {
   for (const check of [...watched]) {
     check()
   }
+  connectWaiting()
+  // Left to run: it only connects the sockets that wait by then.
+  setTimeout(connectWaiting, 0)
+}
+
+/** Connects each closed socket now instead of after the rest of its wait. */
+function connectWaiting(): void {
   for (const now of [...waiting]) {
     now()
   }
