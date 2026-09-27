@@ -71,6 +71,7 @@ async fn backend_job_invokes_same_binary_alias_and_drain_releases_installation()
             backend: backend.parse().unwrap(),
             directory: state_dir.clone(),
             log: log.reader(),
+            jobs: state_dir.join("jobs"),
             executable: env!("CARGO_BIN_EXE_demi-runner").into(),
             cwd: directory.path().into(),
             env: BTreeMap::from([("HOME".into(), home.clone())]),

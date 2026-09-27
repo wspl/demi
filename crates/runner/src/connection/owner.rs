@@ -58,6 +58,8 @@ pub struct Registered {
     pub paths: ContextPaths,
     pub pipes: PipeClient,
     pub log: HostLogReader,
+    /// The job root (`runner.md` § Pipes and output).
+    pub jobs: PathBuf,
     pub shell: ShellRuntime,
     /// The local endpoint command clients reach.
     pub endpoint: String,
@@ -104,7 +106,7 @@ pub async fn serve(registered: &Registered, mut transport: Transport) -> io::Res
     let (handle, mut requests) =
         ConnectionHandle::new(transport.control.clone(), transport.cancellation());
     let (installation, installations) = watch::channel(Installation::Absent);
-    let directories = JobDirectories::new(registered.state.root.join("jobs"));
+    let directories = JobDirectories::new(registered.jobs.clone());
     let mut owner = Owner {
         registered,
         directories: directories.clone(),
@@ -217,14 +219,10 @@ impl Owner<'_> {
     }
 
     /// The conversations whose job output this runner holds, for its hello
-    /// (`resource-lifecycle.md` § A release the device missed). A Cloud's
-    /// runner names none: its output goes when the Cloud stops. One that
-    /// cannot read its directories names none this time, and connects all
-    /// the same.
+    /// (`resource-lifecycle.md` § A release the device missed), on a Cloud
+    /// as on a paired device. One that cannot read its directories names
+    /// none this time, and connects all the same.
     async fn held_conversations(&self) -> Vec<String> {
-        if self.registered.runner.managed == Some(true) {
-            return Vec::new();
-        }
         match self.directories.conversations().await {
             Ok(conversations) => conversations,
             Err(error) => {
