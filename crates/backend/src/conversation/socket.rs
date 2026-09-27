@@ -27,14 +27,14 @@ use demi_core::{Block, UserContentBlock};
 use demi_gates::{GateLease, Purpose};
 use demi_web_api::error::ErrorCode;
 use demi_web_api::ids::{ConversationId, ProviderId};
+use futures_util::StreamExt as _;
 use futures_util::future::LocalBoxFuture;
-use futures_util::{SinkExt as _, StreamExt as _};
 use tokio_util::sync::CancellationToken;
 
 use super::host_access::{Admitted, ConversationHost, Waits};
 use super::remote_files::RemoteFile;
 use super::{failure_facts, root_of};
-use crate::shard::Shard;
+use crate::shard::{PageSocket, Shard};
 use crate::storage::StorageError;
 use crate::storage::conversation_index::ConversationRecord;
 use crate::sync::Part;
@@ -94,7 +94,9 @@ fn refusal(code: ErrorCode, message: impl Into<String>) -> ServerFrame {
 impl Shard {
     /// Serves a socket of `conversation` until either end closes it or the
     /// shard closes. A frame the socket has handed to the agent is handled to
-    /// its end; while it is, the outbox's frames keep flowing to the page.
+    /// its end; while it is, the outbox's frames keep flowing to the page. A
+    /// socket that has sent nothing for the heartbeat interval sends a
+    /// `heartbeat`.
     pub(crate) async fn serve_conversation_socket(self: Rc<Self>, conversation: ConversationRecord, socket: WebSocket) {
         // Counted before any wait, so the shard's close waits for this
         // socket; one adopted as the close begins ends at once.
@@ -120,10 +122,11 @@ impl Shard {
             host: RefCell::new(None),
         });
         let (connection, mut frames) = self.agent().connect(root_of(&id), cwd, resolver.clone());
-        let (mut sink, mut stream) = socket.split();
+        let (sink, mut stream) = socket.split();
+        let mut page = PageSocket::new(sink, self.services().pages);
         let mut handling: Option<LocalBoxFuture<'_, Handled>> = None;
         let mut closing = false;
-        let ending = loop {
+        let ending = 'relay: loop {
             if closing && handling.is_none() {
                 break Ending::Closing;
             }
@@ -136,15 +139,10 @@ impl Shard {
                         Handled::Replies(replies) => replies,
                         Handled::NotJson => break Ending::NotJson,
                     };
-                    let mut sent = true;
                     for reply in replies {
-                        sent = self.send_frame(&mut sink, reply).await;
-                        if !sent {
-                            break;
+                        if !self.send_frame(&mut page, reply).await {
+                            break 'relay Ending::Gone;
                         }
-                    }
-                    if !sent {
-                        break Ending::Gone;
                     }
                 }
                 message = stream.next(), if handling.is_none() && !closing => match message {
@@ -164,13 +162,18 @@ impl Shard {
                 },
                 outgoing = frames.recv() => match outgoing {
                     Outgoing::Frame(frame) => {
-                        if !self.send_frame(&mut sink, frame).await {
+                        if !self.send_frame(&mut page, frame).await {
                             break Ending::Gone;
                         }
                     }
                     Outgoing::Lagged => break Ending::Lagged,
                     Outgoing::Closed => break Ending::Gone,
                 },
+                () = page.silent() => {
+                    if page.send(to_text(&ServerFrame::Heartbeat)).await.is_err() {
+                        break Ending::Gone;
+                    }
+                }
                 () = self.closed(), if !closing => closing = true,
             }
         };
@@ -180,8 +183,7 @@ impl Shard {
             handled.await;
         }
         if let Some(close) = ending.close() {
-            // The page may be gone already; the socket closes either way.
-            let _ = sink.send(Message::Close(Some(close))).await;
+            page.close(close).await;
         }
         // Dropping the connection, last, detaches it from its tree, whose
         // turns go on.
@@ -301,12 +303,12 @@ impl Shard {
 
     /// Sends one server frame, presented as the page receives it; false when
     /// the socket is gone.
-    async fn send_frame(&self, sink: &mut futures_util::stream::SplitSink<WebSocket, Message>, frame: ServerFrame) -> bool {
+    async fn send_frame(&self, page: &mut PageSocket, frame: ServerFrame) -> bool {
         let frame = self.present(frame).await;
         let Some(text) = serialize(frame).await else {
             return false;
         };
-        sink.send(Message::Text(text.into())).await.is_ok()
+        page.send(text).await.is_ok()
     }
 
     /// A server frame as the page receives it: the media of the blocks a

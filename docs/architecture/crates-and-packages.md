@@ -554,6 +554,7 @@ Each crate implements the provider contract for one vendor family.
   the arguments a family builds a provider from, or, for a provider that needs
   a process, its session runtime over a placement), the login timing
   (`LoginTiming`), the conversations' bounds (`ConversationTuning`), the
+  times of a page's sockets (`PageTuning`), the
   Cloud's and the idle clock's times and limits (`CloudTuning`,
   `LifecycleTuning`), the native command packages their commands bind to
   (`NativeCatalog`, which the executable and the scenarios make with
@@ -717,9 +718,14 @@ packages under `packages/`.
   selection; the live browser view over an injected stream source; file
   previews; the settings surface as presentation over host-mapped models; the
   device pairing dialog over a host-provided claim adapter; the sign-in page;
-  shared UI primitives, Markdown rendering and theme; and the summary text of
-  queued messages, derived from their content. It consumes an injected
-  `AgentClient` and ships no control-plane transport of its own.
+  shared UI primitives, Markdown rendering and theme; the summary text of
+  queued messages, derived from their content; and the liveness of a page's
+  WebSockets to the backend, the silence watch and the waits before connecting
+  again, which the synchronization channel and the conversation sockets share
+  (`transport/liveness.ts`,
+  [Liveness and reconnection](../product/web-application.md#liveness-and-reconnection)).
+  It consumes an injected `AgentClient` and ships no control-plane transport
+  of its own.
 - **Public boundary:** source-path exports (`./*`) consumed by `web` and
   `web-gallery`.
 - **Must not:** import Node, `web` or `web-gallery`.
