@@ -48,7 +48,7 @@ over the manager's Unix socket.
 | Module | Responsibility | Design contract |
 |---|---|---|
 | `edge` | The listener and router, the session gate, request extractors and body limits, error codes, installer, native artifact and browser-asset routes, and the byte copies of file transfers, pipes, user streams and the expose relay | [Web API](../product/web-api.md) |
-| `shard` | Shard threads, each user's shard, calls into it, socket adoption, leases | [Runtime model](#runtime-model) |
+| `shard` | Shard threads, each user's shard, calls into it, socket adoption and the page socket both of a page's sockets are served through, leases | [Runtime model](#runtime-model) |
 | `config` | The typed configuration, validated at startup | [Configuration](#configuration) |
 | `auth` | Accounts, password hashing, web sessions, login lockout, email-change delivery | [Authentication and ownership](#authentication-and-ownership), [Product](../product/product.md#user-system) |
 | `settings` | Per-user preferences | [Web API](../product/web-api.md#user-preferences) |
@@ -295,6 +295,11 @@ sends current values, which it can merge, so it never closes a slow page. On
 one shared socket, a conversation that lagged would close the page's channel
 and every other conversation with it, and a transcript's handshake or a burst
 of command output would hold back the sidebar's changes behind it.
+
+Both kinds of socket send a heartbeat once they have sent nothing else for 30
+seconds, so that a page can tell a quiet socket from one that died without a
+close ([Liveness and reconnection](../product/web-application.md#liveness-and-reconnection)).
+The shard serves both through one page socket, which owns that interval.
 
 How the browser consumes both, with its adapters, its synchronization and
 its session handling, is defined in

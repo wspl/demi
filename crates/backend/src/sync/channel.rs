@@ -1,30 +1,26 @@
 //! A page's synchronization channel in the user's shard (`backend.md`
 //! § Browser synchronization): registered for changes before it reads the
 //! product state, it sends that state, then waits for marks and sends each
-//! marked part as it is when the channel takes it, and a heartbeat after 30
-//! seconds of silence. It ends with its session, at shutdown, when the page
-//! sends anything, and when a part cannot be read.
+//! marked part as it is when the channel takes it, and a heartbeat once its
+//! page socket has been silent for the heartbeat interval. It ends with its
+//! session, at shutdown, when the page sends anything, and when a part cannot
+//! be read.
 
 use std::convert::Infallible;
 use std::rc::Rc;
-use std::time::Duration;
 
 use axum::extract::ws::{CloseFrame, Message, Utf8Bytes, WebSocket, close_code};
 use demi_core::Timestamp;
 use demi_web_api::auth::UserDto;
 use demi_web_api::exposes::ExposeDto;
 use demi_web_api::state::SyncEvent;
-use futures_util::stream::{SplitSink, SplitStream};
-use futures_util::{SinkExt as _, StreamExt as _};
-use tokio::time::Instant;
+use futures_util::StreamExt as _;
+use futures_util::stream::SplitStream;
 
 use super::{Part, Registration};
 use crate::auth::sessions::TokenHash;
 use crate::expose::first_expiry;
-use crate::shard::Shard;
-
-/// How long a channel stays silent before it sends a heartbeat.
-const HEARTBEAT: Duration = Duration::from_secs(30);
+use crate::shard::{PageGone, PageSocket, Shard};
 
 /// The close code of a channel whose session ended.
 const SESSION_ENDED: u16 = 4002;
@@ -84,16 +80,16 @@ impl Shard {
         // Counted before any wait, so the shard's close waits for this
         // channel; one adopted as the close begins ends at once.
         let _channel = self.sync_channels().token();
-        let (mut to_page, mut from_page) = socket.split();
+        let (to_page, mut from_page) = socket.split();
+        let mut page = PageSocket::new(to_page, self.services().pages);
         let end = if self.is_closing() {
             End::BackendClosing
         } else {
             let mut channel = Channel {
                 registration: self.services().sync.register(self.user(), session.token.clone()),
                 shard: &self,
-                to_page: &mut to_page,
+                page: &mut page,
                 session,
-                sent_at: Instant::now(),
                 exposes: Vec::new(),
             };
             tokio::select! {
@@ -107,9 +103,7 @@ impl Shard {
             }
         };
         if let Some(frame) = end.close() {
-            // A page that went meanwhile hears nothing, which is what the
-            // close tells it.
-            let _ = to_page.send(Message::Close(Some(frame))).await;
+            page.close(frame).await;
         }
     }
 }
@@ -120,10 +114,8 @@ struct Channel<'a> {
     /// registration on reach it.
     registration: Registration,
     shard: &'a Shard,
-    to_page: &'a mut SplitSink<WebSocket, Message>,
+    page: &'a mut PageSocket,
     session: ChannelSession,
-    /// When the channel last sent a message.
-    sent_at: Instant,
     /// The exposes the page was last sent, for their expiry.
     exposes: Vec<ExposeDto>,
 }
@@ -145,7 +137,7 @@ impl Channel<'_> {
                 let clock = &*self.shard.services().clock;
                 tokio::select! {
                     () = self.registration.marked() => Woke::Marked,
-                    () = tokio::time::sleep_until(self.sent_at + HEARTBEAT) => Woke::Heartbeat,
+                    () = self.page.silent() => Woke::Heartbeat,
                     () = first_expiry(clock, &self.exposes) => Woke::ExposeExpired,
                 }
             };
@@ -210,12 +202,7 @@ impl Channel<'_> {
         // numbers, arrays and objects with string keys, which serde_json
         // never refuses.
         let text = serde_json::to_string(event).expect("a synchronization message serializes to JSON");
-        self.to_page
-            .send(Message::Text(text.into()))
-            .await
-            .map_err(|_| End::PageGone)?;
-        self.sent_at = Instant::now();
-        Ok(())
+        self.page.send(text).await.map_err(|PageGone| End::PageGone)
     }
 }
 
