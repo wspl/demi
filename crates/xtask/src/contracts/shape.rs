@@ -78,8 +78,6 @@ pub enum StringFormat {
     /// An `http` or `https` URL, as web-api's `EndpointUrl` reads it (format
     /// `http-url`).
     HttpUrl,
-    /// Bytes as core's `B64Bytes` writes them.
-    Base64,
 }
 
 /// A bound of a number, and whether the bound itself is excluded.
@@ -260,26 +258,15 @@ fn read_string(schema: &Map<String, Value>, at: &str) -> Result<Shape, Unsupport
         only(schema, at, &["type", "enum"])?;
         return Ok(Shape::Enum(strings(values, at)?));
     }
-    only(
-        schema,
-        at,
-        &["type", "minLength", "maxLength", "pattern", "format", "contentEncoding"],
-    )?;
-    let format = match (
-        schema.get("format").and_then(Value::as_str),
-        schema.get("contentEncoding").and_then(Value::as_str),
-    ) {
-        (None, None) => StringFormat::Text,
-        (Some("trimmed"), None) => StringFormat::Trimmed,
-        (Some("date-time"), None) => StringFormat::DateTime,
-        (Some("email"), None) => StringFormat::Email,
-        (Some("http-url"), None) => StringFormat::HttpUrl,
-        (None, Some("base64")) => StringFormat::Base64,
-        (format, encoding) => {
-            return Err(unsupported(
-                at,
-                format!("the string format {format:?} with the encoding {encoding:?}"),
-            ));
+    only(schema, at, &["type", "minLength", "maxLength", "pattern", "format"])?;
+    let format = match schema.get("format").and_then(Value::as_str) {
+        None => StringFormat::Text,
+        Some("trimmed") => StringFormat::Trimmed,
+        Some("date-time") => StringFormat::DateTime,
+        Some("email") => StringFormat::Email,
+        Some("http-url") => StringFormat::HttpUrl,
+        Some(format) => {
+            return Err(unsupported(at, format!("the string format {format:?}")));
         }
     };
     let pattern = match schema.get("pattern") {
