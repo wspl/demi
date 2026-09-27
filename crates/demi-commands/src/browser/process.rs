@@ -69,7 +69,12 @@ impl ChromeProcess {
                 .as_encoded_bytes()
                 .split_at(PROFILE_ENV.len() + 1);
             use std::os::unix::ffi::OsStrExt;
-            command.env(PROFILE_ENV, std::ffi::OsStr::from_bytes(profile));
+            let profile = std::ffi::OsStr::from_bytes(profile);
+            command.env(PROFILE_ENV, profile);
+            // Chrome's temporary files, the directory of its process-singleton
+            // socket among them, go with the profile however Chrome ends
+            // (`browser.md` § Native driver).
+            command.env("TMPDIR", profile);
         }
         #[cfg(target_os = "linux")]
         {

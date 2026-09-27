@@ -156,6 +156,9 @@ async fn chrome_process_tree_and_profile_retire_together() {
                     .remove(&leader)
                     .expect("the test owns Chrome's profile");
                 assert!(profile.is_dir());
+                // Chrome links its process-singleton socket from the profile.
+                let socket = std::fs::read_link(profile.join("SingletonSocket"))
+                    .expect("Chrome links its socket from the profile");
                 let snapshot = processes();
                 assert_eq!(
                     snapshot
@@ -213,7 +216,7 @@ async fn chrome_process_tree_and_profile_retire_together() {
                     descendants.len() > 1,
                     "Chrome must have spawned helpers on {mode}"
                 );
-                *observation = Some((leader, descendants, profile));
+                *observation = Some((leader, descendants, profile, socket));
                 match mode {
                     "failure" => Err(BrowserError::Configuration("injected work failure".into())),
                     "cancel" => {
@@ -245,7 +248,7 @@ async fn chrome_process_tree_and_profile_retire_together() {
             ),
             _ => unreachable!(),
         }
-        let (leader, descendants, profile) = observed.unwrap();
+        let (leader, descendants, profile, socket) = observed.unwrap();
         let remaining = processes();
         assert!(
             !remaining
@@ -257,6 +260,12 @@ async fn chrome_process_tree_and_profile_retire_together() {
             !profile.exists(),
             "profile survived {mode}: {}",
             profile.display()
+        );
+        let socket_directory = socket.parent().unwrap();
+        assert!(
+            !socket_directory.exists(),
+            "Chrome's socket directory survived {mode}: {}",
+            socket_directory.display()
         );
     }
 }
