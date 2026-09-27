@@ -303,8 +303,8 @@ hard links where the system allows them, and give the service that directory
 ([Browser distribution](../browser/browser.md#browser-distribution)): no test
 downloads Chrome or needs the home. The live view tests decode the H.264
 pictures the view streams with WebCodecs in the Chrome under test, as the page
-does, so the suite needs no other program. On Linux it needs an ordinary user:
-Chrome for Testing refuses to start as root with its sandbox, which Demi keeps
+does. On Linux the Chrome tests need an ordinary user: Chrome for Testing
+refuses to start as root with its sandbox, which Demi keeps
 ([Native driver](../browser/browser.md#native-driver)). The machine manager builds only for Linux, so
 on a Mac its tests are cross-built with cargo-zigbuild and run in the Lima VM
 ([Verification](../cloud/managed-hosts.md#verification)). The tests that need
