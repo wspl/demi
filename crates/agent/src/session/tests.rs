@@ -1008,6 +1008,10 @@ impl SessionStore for SlowStore {
     fn load(&self) -> LocalBoxFuture<'_, Result<Option<Checkpoint>, StoreError>> {
         self.inner.load()
     }
+
+    fn blobs(&self) -> &dyn crate::store::media::BlobStore {
+        self.inner.blobs()
+    }
 }
 
 #[tokio::test(flavor = "local", start_paused = true)]

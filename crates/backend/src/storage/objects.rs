@@ -257,8 +257,7 @@ pub mod counting {
 
 /// An S3-compatible service in memory, for the tests of what reaches the
 /// object store: puts, conditional creation, reads with their metadata, and
-/// deletes of one bucket's objects, and puts it refuses once a test asks. It
-/// checks no signature.
+/// deletes of one bucket's objects. It checks no signature.
 #[cfg(test)]
 pub(crate) mod fake_s3 {
     use std::collections::HashMap;
@@ -281,13 +280,11 @@ pub(crate) mod fake_s3 {
         metadata: Vec<(HeaderName, HeaderValue)>,
     }
 
-    /// The bucket's objects, the keys of the objects created, in order, and
-    /// whether puts are refused.
+    /// The bucket's objects, and the keys of the objects created, in order.
     #[derive(Default)]
     struct Bucket {
         objects: HashMap<String, Object>,
         written: Vec<String>,
-        refusing: bool,
     }
 
     type Objects = Arc<Mutex<Bucket>>;
@@ -362,11 +359,6 @@ pub(crate) mod fake_s3 {
             bucket.objects.get(key).map(|object| object.bytes.clone())
         }
 
-        /// Refuses every put from now on, as a bucket the backend lost the
-        /// right to write does; reads go on.
-        pub(crate) fn refuse_puts(&self) {
-            self.objects.lock().unwrap().refusing = true;
-        }
     }
 
     fn error(status: StatusCode, code: &str) -> Response {
@@ -385,10 +377,6 @@ pub(crate) mod fake_s3 {
         match method {
             Method::PUT => {
                 let mut bucket = objects.lock().unwrap();
-                // Access denied is final: the client does not retry it.
-                if bucket.refusing {
-                    return error(StatusCode::FORBIDDEN, "AccessDenied");
-                }
                 let create = headers.get("if-none-match").is_some_and(|value| value == "*");
                 if create && bucket.objects.contains_key(&key) {
                     return error(StatusCode::PRECONDITION_FAILED, "PreconditionFailed");

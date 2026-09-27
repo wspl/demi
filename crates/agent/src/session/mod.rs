@@ -12,6 +12,7 @@ mod compaction;
 mod core;
 mod editing;
 mod input;
+mod media;
 mod persist;
 mod retry;
 mod runtime;
@@ -64,7 +65,7 @@ use crate::{
     IdSource,
     store::{
         Checkpoint, CheckpointUpdate, CommandStateError, CommandStateHistory, SessionStore,
-        StoreError,
+        StoreError, media::HeldMedia,
     },
     transcript::{TranscriptLog, last_assistant_text},
 };
@@ -490,6 +491,7 @@ impl AgentSession {
             model: init.model,
             provider: init.runtime,
             transcript,
+            media: HeldMedia::default(),
             commands: CommandStateHistory::new(),
             inputs: InputQueue::default(),
             wakeups: Wakeups::default(),
@@ -558,6 +560,7 @@ impl AgentSession {
             model: state.model,
             provider: runtime,
             transcript,
+            media: HeldMedia::default(),
             commands,
             inputs: InputQueue::restored(state.agent_inputs),
             wakeups,
@@ -672,6 +675,14 @@ impl AgentSession {
     pub(crate) fn last_assistant_text(&self) -> String {
         self.shared
             .read(|core| last_assistant_text(core.transcript.blocks(), 0).to_owned())
+    }
+
+    /// Holds the bytes the backend read of the media a frame's content
+    /// references, for the send, steer or edit that follows it
+    /// (`runtime.md` § Media); what nothing references by the next request
+    /// is let go.
+    pub(crate) fn hold_media(&self, media: HeldMedia) {
+        self.shared.update(|core| core.media.absorb(media));
     }
 
     /// Submits a message (`runtime.md` § Messages and the queue).

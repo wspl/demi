@@ -2,14 +2,17 @@
 //! an upload of the conversation's owner is written to the conversation's
 //! Host under `~/.demi/attachments/<conversation>/`, outside every working
 //! directory, and becomes its native media block, when it has one, then its
-//! attachment record. An upload that is gone, another user's, or whose bytes
-//! are missing becomes the text that says it is not available.
+//! attachment record; the medium references the upload's own blob, and the
+//! bytes read to write the file go to the session with it. An upload that is
+//! gone, another user's, or whose bytes are missing becomes the text that
+//! says it is not available.
 
 use std::path::Path;
 
 use bytes::Bytes;
 use demi_agent::attachments::{Upload, unavailable, upload_blocks};
-use demi_core::UserContentBlock;
+use demi_agent::store::media::HeldMedia;
+use demi_core::{B64Bytes, UserContentBlock};
 use demi_host_remote::RemoteHost;
 use demi_shell::{FileContents, Host as _, HostError, WriteOptions};
 use demi_web_api::ids::{AttachmentId, ConversationId};
@@ -24,15 +27,15 @@ const ATTACHMENTS_DIR: &str = ".demi/attachments";
 impl Shard {
     /// The blocks the upload `reference` becomes in a message of the user's
     /// conversation `id`, written under `file_name` on `host`, the Host the
-    /// frame was admitted on.
+    /// frame was admitted on, with the bytes of its medium.
     pub(crate) async fn resolve_upload(
         &self,
         id: &ConversationId,
         host: &ConversationHost,
         reference: &str,
         file_name: &str,
-    ) -> Result<Vec<UserContentBlock>, HostAccessError> {
-        let not_available = || Ok(vec![unavailable(reference)]);
+    ) -> Result<(Vec<UserContentBlock>, HeldMedia), HostAccessError> {
+        let not_available = || Ok((vec![unavailable(reference)], HeldMedia::default()));
         let Ok(attachment) = AttachmentId::try_from(reference) else {
             return not_available();
         };
@@ -50,7 +53,7 @@ impl Shard {
             path: &written.path,
             media_type: &record.media_type,
             sha256: &record.sha256,
-            bytes: &bytes,
+            bytes: &B64Bytes::from(bytes),
         }))
     }
 }

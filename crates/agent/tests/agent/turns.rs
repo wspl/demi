@@ -7,7 +7,7 @@ use std::{rc::Rc, time::Duration};
 
 use demi_agent::{
     ServerConfig, attachments,
-    store::media::{BlobStore, externalize_frame},
+    store::media::BlobStore,
     testing::{MemoryBlobs, MemoryTreeStore, TestClient, TestFiles, model_of},
 };
 use demi_agent_protocol::{
@@ -226,17 +226,19 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
             vec![event::text(answer), event::response(1, 1)]
         }))
     };
+    // The upload route stored the file: its blob holds the bytes.
     let blobs = MemoryBlobs::new();
-    let uploaded = blobs.put(B64Bytes::new(PNG.to_vec())).await.unwrap();
+    let png = B64Bytes::new(PNG.to_vec());
+    let uploaded = blobs.put(png.clone()).await.unwrap();
     let path = "/home/demi/.demi/attachments/conversation/tiny.png";
-    let blocks = attachments::upload_blocks(attachments::Upload {
+    let resolved = attachments::upload_blocks(attachments::Upload {
         name: "tiny.png",
         path,
         media_type: "image/png",
         sha256: &uploaded,
-        bytes: &PNG,
+        bytes: &png,
     });
-    let record = blocks[1].clone();
+    let record = resolved.0[1].clone();
     let text = UserContentBlock::Text {
         text: "describe this".into(),
     };
@@ -263,7 +265,7 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
     let store = MemoryTreeStore::with_blobs(blobs.clone());
     let fixture = Fixture::with(&script, store, ServerConfig::default());
     let files = TestFiles::new();
-    files.upload("upload-1", blocks);
+    files.upload("upload-1", resolved);
     let mut client =
         TestClient::connect_with(&fixture.server, &conversation(), "/workspace", files);
     client.send(open()).await;
@@ -299,12 +301,11 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
         user.content,
         [text.clone(), by_reference.clone(), record.clone()]
     );
-    let mut added = frames
+    let added = frames
         .into_iter()
         .find(|frame| matches!(frame, ServerFrame::TranscriptPatch { patches, .. }
             if patches.iter().any(|patch| matches!(patch, TranscriptPatch::Add { value: Block::User(_), .. }))))
         .unwrap();
-    externalize_frame(&mut added, &*blobs).await.unwrap();
     let ServerFrame::TranscriptPatch { patches, .. } = &added else {
         unreachable!()
     };

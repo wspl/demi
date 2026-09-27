@@ -91,9 +91,10 @@ impl UserBlobs {
     }
 }
 
-/// The namespace as the agent's media mapping reaches it: the conversation
-/// owner's, where a tree store keeps a block's media and the socket the
-/// media of the frames it sends (`runtime.md` § Media).
+/// The namespace as a session reaches it through its tree store: the
+/// conversation owner's, where a tool's medium is stored as its result enters
+/// the transcript and the replayed media are read back (`runtime.md`
+/// § Media).
 impl BlobStore for UserBlobs {
     fn put(&self, bytes: B64Bytes) -> LocalBoxFuture<'_, Result<BlobRef, StoreError>> {
         Box::pin(async move {

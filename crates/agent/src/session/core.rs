@@ -5,11 +5,17 @@
 //! Every method here is synchronous; the worker and the turn loop await
 //! between calls, never inside one.
 
-use std::{collections::VecDeque, mem, num::NonZeroU32, rc::Rc, sync::Arc};
+use std::{
+    collections::{HashSet, VecDeque},
+    mem,
+    num::NonZeroU32,
+    rc::Rc,
+    sync::Arc,
+};
 
 use demi_agent_protocol::AbortTarget;
 use demi_core::{
-    AgentMessage, Block, BlockId, Clock, FailureSource, ModelSelection, NodeId, PendingSteer,
+    AgentMessage, BlobRef, Block, BlockId, Clock, FailureSource, ModelSelection, NodeId, PendingSteer,
     ProviderErrorDiagnostics, QueuedMessage, SessionPhase, ToolResultContentBlock, TurnId,
     UserContentBlock, WakeupId, WakeupPlacement,
 };
@@ -24,6 +30,7 @@ use super::{
     cancel::{CancelReason, TurnCancel},
     editing::{EditCheck, EditError, EditInFlight, EditSubmission},
     input::{Input, InputQueue, Take, Wakeups},
+    media::ModelView,
     persist::{PersistMarks, TakenMarks},
     runtime::ToolOutcome,
     storage::Generation,
@@ -33,9 +40,11 @@ use crate::{
     store::{
         BoundaryEdge, CheckpointState, CheckpointUpdate, CommandStateHistory, CommandStateSnapshot,
         CommandStorageKey, CommandVersion, EditReceipt, PendingAgentInput, ScheduledWakeup,
+        media::{self, HeldMedia},
     },
     transcript::{
         INTERRUPTED_CODE, INTERRUPTED_TURN_MESSAGE, TranscriptLog, opens_input_turn, replay,
+        replay_start,
     },
 };
 
@@ -58,6 +67,9 @@ pub(crate) struct SessionCore {
     /// when the next switch lands or at dispose.
     pub(super) retired: Vec<Box<dyn ProviderRuntime>>,
     pub(super) transcript: TranscriptLog,
+    /// What the session holds for the media its replayed blocks and its
+    /// waiting input reference (`runtime.md` § Media).
+    pub(super) media: HeldMedia,
     pub(super) commands: CommandStateHistory,
     /// The command-storage generation of the jobs started now: a history
     /// rewrite or dispose cancels it, so that a storage message of an older
@@ -218,6 +230,9 @@ pub(super) struct CoreParts {
     pub(super) model: ModelSelection,
     pub(super) provider: Box<dyn ProviderRuntime>,
     pub(super) transcript: TranscriptLog,
+    /// The bytes held for the transcript's media: none for a new or restored
+    /// session, the window's for a session copy.
+    pub(super) media: HeldMedia,
     pub(super) commands: CommandStateHistory,
     pub(super) inputs: InputQueue,
     pub(super) wakeups: Wakeups,
@@ -239,6 +254,7 @@ impl SessionCore {
             waiting_switch: None,
             retired: Vec::new(),
             transcript: parts.transcript,
+            media: parts.media,
             commands: parts.commands,
             generation: Generation::first(),
             pending: VecDeque::new(),
@@ -593,6 +609,7 @@ impl SessionCore {
         self.editing = None;
         self.inputs.discard_steers();
         self.wakeups.arm(self.clock.now());
+        self.release_media();
     }
 
     /// Dispose stopped the running action, and the worker ends with it. An
@@ -1203,8 +1220,11 @@ impl SessionCore {
         self.commit();
     }
 
+    /// The next request, whose items replay `view`, the model's view of the
+    /// replayed blocks ([`Self::model_view`]).
     pub(super) fn inference_request(
         &self,
+        view: &[Block],
         system_prompt: String,
         tools: Arc<[ToolDefinition]>,
         request_id: String,
@@ -1218,11 +1238,62 @@ impl SessionCore {
             output_limit: self.model.model.output_limit.and_then(NonZeroU32::new),
             output_cap: None,
             system_prompt,
-            items: replay(self.transcript.blocks()).into(),
+            items: replay(view).into(),
             tools,
             thinking: self.model.thinking.clone(),
             service_tier_id: self.model.service_tier_id.clone(),
             cancel,
+        }
+    }
+
+    // Media.
+
+    /// The blocks replay sends: from the last compaction boundary on.
+    fn replayed(&self) -> &[Block] {
+        let blocks = self.transcript.blocks();
+        &blocks[replay_start(blocks)..]
+    }
+
+    /// The blobs the replayed blocks and the waiting input reference: the
+    /// queued messages and the pending steers.
+    fn referenced_media(&self) -> HashSet<BlobRef> {
+        let mut referenced: HashSet<BlobRef> = self
+            .replayed()
+            .iter()
+            .flat_map(media::references)
+            .cloned()
+            .collect();
+        for action in &self.pending {
+            if let ActionKind::Send { content } = &action.kind {
+                referenced.extend(media::content_references(content).cloned());
+            }
+        }
+        for steer in self.inputs.pending_steers() {
+            referenced.extend(media::content_references(&steer.content).cloned());
+        }
+        referenced
+    }
+
+    /// Lets go of the media nothing references any more (`runtime.md`
+    /// § Media).
+    pub(super) fn release_media(&mut self) {
+        let referenced = self.referenced_media();
+        self.media.retain(&referenced);
+    }
+
+    /// The blobs of the replayed media the session holds nothing for.
+    pub(super) fn unheld_media(&self) -> Vec<BlobRef> {
+        self.media.unheld(self.replayed())
+    }
+
+    /// The replayed blocks as the model receives them: each held medium's
+    /// bytes in the place of its reference.
+    pub(super) fn model_view(&self) -> ModelView {
+        let blocks = self.transcript.blocks();
+        let start = replay_start(blocks);
+        ModelView {
+            start,
+            blocks: self.media.view(&blocks[start..]),
         }
     }
 

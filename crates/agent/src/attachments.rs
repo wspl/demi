@@ -7,7 +7,7 @@
 
 use demi_core::{Attachment, B64Bytes, BlobRef, DocumentSource, MediaSource, UserContentBlock};
 
-use crate::transcript::char_offset;
+use crate::{store::media::HeldMedia, transcript::char_offset};
 
 /// How much of a text file's opening a record keeps, in Unicode scalar
 /// values.
@@ -68,13 +68,15 @@ pub struct Upload<'a> {
     /// The media type it was recorded with ([`upload_media_type`]).
     pub media_type: &'a str,
     pub sha256: &'a BlobRef,
-    pub bytes: &'a [u8],
+    pub bytes: &'a B64Bytes,
 }
 
 /// The blocks an upload becomes in a message: the medium a model reads
 /// natively when it is an image, a video or a PDF, then the file's record,
-/// with its opening when it is text.
-pub fn upload_blocks(upload: Upload<'_>) -> Vec<UserContentBlock> {
+/// with its opening when it is text. The medium references the upload's own
+/// blob, and its bytes come with the blocks, for the session to hold
+/// (`runtime.md` § Media).
+pub fn upload_blocks(upload: Upload<'_>) -> (Vec<UserContentBlock>, HeldMedia) {
     let record = UserContentBlock::Attachment(Attachment {
         name: upload.name.to_owned(),
         path: upload.path.to_owned(),
@@ -83,10 +85,10 @@ pub fn upload_blocks(upload: Upload<'_>) -> Vec<UserContentBlock> {
         sha256: upload.sha256.clone(),
         snippet: is_text(upload.name, upload.media_type).then(|| snippet(upload.bytes)),
     });
-    let media = match demi_core::sniff_model_media_type(upload.bytes) {
+    let medium = match demi_core::sniff_model_media_type(upload.bytes) {
         Some(media) => {
-            let source = MediaSource::Binary {
-                data: B64Bytes::new(upload.bytes.to_vec()),
+            let source = MediaSource::Ref {
+                r#ref: upload.sha256.clone(),
                 media_type: media.media_type.to_owned(),
             };
             Some(match media.kind {
@@ -95,15 +97,19 @@ pub fn upload_blocks(upload: Upload<'_>) -> Vec<UserContentBlock> {
             })
         }
         None if is_pdf(upload.media_type, upload.bytes) => Some(UserContentBlock::Document {
-            source: DocumentSource::Binary {
-                data: B64Bytes::new(upload.bytes.to_vec()),
+            source: DocumentSource::Ref {
+                r#ref: upload.sha256.clone(),
                 media_type: PDF.to_owned(),
                 file_name: upload.name.to_owned(),
             },
         }),
         None => None,
     };
-    media.into_iter().chain([record]).collect()
+    let mut held = HeldMedia::default();
+    if medium.is_some() {
+        held.hold(upload.sha256.clone(), upload.bytes.clone());
+    }
+    (medium.into_iter().chain([record]).collect(), held)
 }
 
 fn is_pdf(media_type: &str, bytes: &[u8]) -> bool {
@@ -132,7 +138,7 @@ mod tests {
     fn upload<'a>(
         name: &'a str,
         media_type: &'a str,
-        bytes: &'a [u8],
+        bytes: &'a B64Bytes,
         sha256: &'a BlobRef,
     ) -> Upload<'a> {
         Upload {
@@ -169,9 +175,12 @@ mod tests {
     #[test]
     fn an_upload_becomes_its_native_medium_then_its_record() {
         let sha256 = blob();
-        let image = upload_blocks(upload("tiny.png", "image/png", &PNG, &sha256));
-        let pdf = upload_blocks(upload("paper.pdf", "application/pdf", b"%PDF-1.7", &sha256));
-        let text = upload_blocks(upload("notes.txt", "text/plain", b"\n hello", &sha256));
+        let png = B64Bytes::from(PNG.to_vec());
+        let (image, image_bytes) = upload_blocks(upload("tiny.png", "image/png", &png, &sha256));
+        let pdf_bytes = B64Bytes::from(b"%PDF-1.7".to_vec());
+        let (pdf, _) = upload_blocks(upload("paper.pdf", "application/pdf", &pdf_bytes, &sha256));
+        let notes = B64Bytes::from(b"\n hello".to_vec());
+        let (text, text_bytes) = upload_blocks(upload("notes.txt", "text/plain", &notes, &sha256));
 
         let kinds = |blocks: &[UserContentBlock]| -> Vec<String> {
             blocks
@@ -185,15 +194,21 @@ mod tests {
                 .collect()
         };
         assert_eq!(kinds(&image), ["image", "attachment"]);
+        // The medium is the upload's own blob, and its bytes come along for
+        // the session to hold; a file with no native medium brings none.
         assert_eq!(
             image[0],
             UserContentBlock::Image {
-                source: MediaSource::Binary {
-                    data: B64Bytes::new(PNG.to_vec()),
+                source: MediaSource::Ref {
+                    r#ref: sha256.clone(),
                     media_type: "image/png".into()
                 }
             }
         );
+        let mut held = HeldMedia::default();
+        held.hold(sha256.clone(), png);
+        assert_eq!(image_bytes, held);
+        assert_eq!(text_bytes, HeldMedia::default());
         assert_eq!(kinds(&pdf), ["document", "attachment"]);
         assert_eq!(kinds(&text), ["attachment"]);
         let UserContentBlock::Attachment(record) = &text[0] else {

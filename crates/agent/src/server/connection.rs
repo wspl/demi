@@ -294,10 +294,11 @@ impl<H: AgentHarness> Connection<H> {
                 message_id,
                 content,
             } => {
-                let content = match resolve_message(&*self.resolver, content).await {
-                    Ok(content) => content,
+                let (content, media) = match resolve_message(&*self.resolver, content).await {
+                    Ok(resolved) => resolved,
                     Err(error) => return self.content_error(error),
                 };
+                session.hold_media(media);
                 // The session reports the action's course as events; the
                 // handle is not needed.
                 if let Err(error) = session.send(content, message_id) {
@@ -306,9 +307,12 @@ impl<H: AgentHarness> Connection<H> {
             }
             ClientFrame::Steer { steer_id, content } => {
                 let outcome = match resolve_message(&*self.resolver, content).await {
-                    Ok(content) => session
-                        .steer(content, steer_id.clone())
-                        .map_err(|error| error.to_string()),
+                    Ok((content, media)) => {
+                        session.hold_media(media);
+                        session
+                            .steer(content, steer_id.clone())
+                            .map_err(|error| error.to_string())
+                    }
                     Err(error) => Err(error.message),
                 };
                 self.steer_result(steer_id, outcome);
@@ -419,7 +423,7 @@ impl<H: AgentHarness> Connection<H> {
                 .await
                 .map_err(|error| error.to_string())?,
             EditCheck::Proceed => {
-                let content = resolve_edit(&*self.resolver, request.content)
+                let (content, media) = resolve_edit(&*self.resolver, request.content)
                     .await
                     .map_err(|error| error.message)?;
                 let submission = EditSubmission {
@@ -429,6 +433,7 @@ impl<H: AgentHarness> Connection<H> {
                     content,
                     digest,
                 };
+                session.hold_media(media);
                 session
                     .edit_and_send(submission)
                     .await

@@ -3,8 +3,8 @@
 //! the user's shard once upgraded. The socket decodes each message into a
 //! client frame and hands it to the conversation's agent connection, one at a
 //! time in arrival order; the connection's outbox carries every server frame
-//! back, its media as references into the owner's blobs and with the
-//! failure facts of the error blocks it brings. A frame the
+//! back, with the failure facts of the error blocks it brings; its media are
+//! references into the owner's blobs already (`runtime.md` § Media). A frame the
 //! backend refuses before the agent sees it is answered with an `error`
 //! frame: one that is not a valid frame (`invalid_frame`), one sent while the
 //! conversation is archived (`conversation_archived`), an `open` of a
@@ -18,8 +18,8 @@ use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 
 use axum::extract::ws::{CloseFrame, Message, Utf8Bytes, WebSocket, close_code};
-use demi_agent::store::media;
-use demi_agent::{ContentError, ContentResolver, FileReference, Outgoing};
+use demi_agent::store::media::HeldMedia;
+use demi_agent::{ContentError, ContentResolver, FileReference, Outgoing, ResolvedFiles};
 use demi_agent_protocol::{
     ClientContent, ClientFrame, EditOutcome, FrameError, ServerFrame, TranscriptPatch, decode_client_frame,
 };
@@ -309,19 +309,12 @@ impl Shard {
         sink.send(Message::Text(text.into())).await.is_ok()
     }
 
-    /// A server frame as the page receives it: the media of the blocks a
-    /// transcript frame carries are references into the owner's blobs
-    /// (`backend.md` § Media by reference), and it carries the failure facts
-    /// of the error blocks it brings (§ Failure facts). A frame whose media
-    /// could not be stored becomes an `error` frame, since no frame carries
-    /// media bytes; the page asks for the transcript again at the revision
-    /// gap it leaves.
-    async fn present(&self, mut frame: ServerFrame) -> ServerFrame {
+    /// A server frame as the page receives it: a transcript frame carries
+    /// the failure facts of the error blocks it brings (`backend.md`
+    /// § Failure facts). Its blocks hold their media by reference already
+    /// (§ Media by reference).
+    async fn present(&self, frame: ServerFrame) -> ServerFrame {
         let services = self.services();
-        let blobs = services.blobs.for_user(self.user());
-        if let Err(error) = media::externalize_frame(&mut frame, &blobs).await {
-            return refusal(ErrorCode::FrameSendFailed, format!("A transcript frame's media were not stored: {error}"));
-        }
         let assembly = &services.assembly;
         match frame {
             ServerFrame::TranscriptReset { blocks, version, .. } => {
@@ -463,7 +456,7 @@ impl ContentResolver for ConversationFiles {
     fn resolve<'a>(
         &'a self,
         files: Vec<FileReference>,
-    ) -> LocalBoxFuture<'a, Result<Vec<Vec<UserContentBlock>>, ContentError>> {
+    ) -> LocalBoxFuture<'a, Result<ResolvedFiles, ContentError>> {
         Box::pin(async move {
             let refused = |message: String| ContentError {
                 message,
@@ -474,8 +467,9 @@ impl ContentResolver for ConversationFiles {
                 .upgrade()
                 .ok_or_else(|| refused("The backend is shutting down".into()))?;
             // Each file's blocks by its place, the remote files' once they
-            // are granted together.
+            // are granted together, and the bytes of the uploads' media.
             let mut resolved: Vec<Option<Vec<UserContentBlock>>> = Vec::with_capacity(files.len());
+            let mut media = HeldMedia::default();
             let mut remote = Vec::new();
             for file in files {
                 match file {
@@ -483,11 +477,12 @@ impl ContentResolver for ConversationFiles {
                         // A frame with uploads is admitted on its Host first.
                         let host = self.host.borrow().clone();
                         let host = host.ok_or_else(|| refused("The frame's Host was not admitted".into()))?;
-                        let blocks = shard
+                        let (blocks, held) = shard
                             .resolve_upload(&self.conversation, &host, &r#ref, &file_name)
                             .await
                             .map_err(|error| refused(error.to_string()))?;
                         resolved.push(Some(blocks));
+                        media.absorb(held);
                     }
                     FileReference::RemoteFile { device_id, path } => {
                         remote.push(RemoteFile { device: device_id, path });
@@ -508,7 +503,7 @@ impl ContentResolver for ConversationFiles {
                 .into_iter()
                 .map(|blocks| blocks.unwrap_or_else(|| references.next().into_iter().collect()))
                 .collect();
-            Ok(blocks)
+            Ok(ResolvedFiles { blocks, media })
         })
     }
 }

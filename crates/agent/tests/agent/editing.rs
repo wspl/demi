@@ -25,7 +25,10 @@ use demi_shell::{PortError, Revision, StorageOp, StorageReply};
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
-use demi_agent::{store::media::BlobStore, testing::MemoryBlobs};
+use demi_agent::{
+    store::media::{BlobStore, HeldMedia},
+    testing::MemoryBlobs,
+};
 use demi_agent_protocol::MediaRef;
 
 use crate::{
@@ -484,10 +487,42 @@ async fn an_edit_keeps_the_files_its_message_holds_and_refuses_one_it_does_not()
         sha256: BlobRef::try_from("a".repeat(64)).unwrap(),
         snippet: None,
     });
-    files.upload("upload-1", vec![image.clone(), record.clone()]);
-    files.upload("upload-2", vec![video.clone()]);
-    files.upload("upload-3", vec![document.clone()]);
-    let [png_blob, mp4_blob, pdf_blob] = [png, mp4, pdf].map(|bytes| BlobRef::of(bytes.as_bytes()));
+    // The upload route stored each file: the message's medium references
+    // its blob, and its bytes come along for the session to hold.
+    let png_blob = blobs.put(png.clone()).await.unwrap();
+    let mp4_blob = blobs.put(mp4.clone()).await.unwrap();
+    let pdf_blob = blobs.put(pdf.clone()).await.unwrap();
+    let held = |blob: &BlobRef, bytes: &B64Bytes| {
+        let mut held = HeldMedia::default();
+        held.hold(blob.clone(), bytes.clone());
+        held
+    };
+    let by_reference = |blob: &BlobRef, media_type: &str| MediaSource::Ref {
+        r#ref: blob.clone(),
+        media_type: media_type.into(),
+    };
+    let uploaded_image = UserContentBlock::Image {
+        source: by_reference(&png_blob, "image/png"),
+    };
+    let uploaded_video = UserContentBlock::Video {
+        source: by_reference(&mp4_blob, "video/mp4"),
+    };
+    let uploaded_document = UserContentBlock::Document {
+        source: DocumentSource::Ref {
+            r#ref: pdf_blob.clone(),
+            media_type: "application/pdf".into(),
+            file_name: "paper.pdf".into(),
+        },
+    };
+    files.upload(
+        "upload-1",
+        (vec![uploaded_image, record.clone()], held(&png_blob, &png)),
+    );
+    files.upload("upload-2", (vec![uploaded_video], held(&mp4_blob, &mp4)));
+    files.upload(
+        "upload-3",
+        (vec![uploaded_document], held(&pdf_blob, &pdf)),
+    );
     // Another message's image: the caller's own blob, which this message
     // does not hold.
     let elsewhere = blobs.put(B64Bytes::new(b"GIF89a".to_vec())).await.unwrap();
@@ -599,10 +634,6 @@ async fn an_edit_keeps_the_files_its_message_holds_and_refuses_one_it_does_not()
     let stored = fixture.store.checkpoint(&conversation()).unwrap();
     let Block::User(replacement) = &stored.transcript[0] else {
         panic!("{:?}", stored.transcript)
-    };
-    let by_reference = |blob: &BlobRef, media_type: &str| MediaSource::Ref {
-        r#ref: blob.clone(),
-        media_type: media_type.into(),
     };
     assert_eq!(
         replacement.content,

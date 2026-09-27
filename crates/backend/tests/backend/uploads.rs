@@ -238,10 +238,8 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
     backend.close().await;
 }
 
-// About a second: a real device runs the shell job whose picture the frame
-// carries.
 #[tokio::test]
-async fn a_frame_whose_media_cannot_be_stored_reaches_the_page_as_an_error_and_the_turn_goes_on() {
+async fn a_tool_medium_that_cannot_be_stored_becomes_text_and_the_turn_goes_on() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
@@ -259,28 +257,143 @@ async fn a_frame_whose_media_cannot_be_stored_reaches_the_page_as_an_error_and_t
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
 
-    // The shell's stdout is a picture, which the tool's result carries to a
-    // model that reads PNG.
+    // The shell's stdout is a picture, which the tool's result would carry
+    // to a model that reads PNG.
     vendor.respond(tool_use(
         "toolu_1",
         "shell_exec",
         &json!({ "description": "Show it", "script": "cat shot.png", "timeoutMs": 60_000 }),
     ));
-    vendor.respond(answer(&["A picture."], 1, 1));
+    vendor.respond(answer(&["No picture."], 1, 1));
     let turn = socket.chat("m1", "Show me the picture").await;
 
-    // The frame that brought the picture is an error, since no frame carries
-    // media bytes; the frames after it arrive, and the model read the
-    // picture all the same.
-    let failed = turn
-        .iter()
-        .position(|frame| matches!(frame, ServerFrame::Error { code, .. } if code.as_deref() == Some("frame_send_failed")))
-        .unwrap_or_else(|| panic!("{turn:?}"));
-    let later = serde_json::to_string(&turn[failed + 1..]).unwrap();
-    assert!(later.contains("A picture."), "{later}");
+    // The picture was not stored, so the result says so in its place: the
+    // page and the model read the same text, the turn goes on, and nothing
+    // carries the picture's bytes.
     let base64 = data_encoding::BASE64.encode(&PNG);
-    assert!(!serde_json::to_string(&turn).unwrap().contains(&base64));
+    let frames = serde_json::to_string(&turn).unwrap();
+    assert!(frames.contains("[image not stored: ") && frames.contains("No picture."), "{frames}");
+    assert!(!frames.contains(&base64), "{frames}");
     let continued = vendor.requests()[1].json()["messages"].to_string();
-    assert!(continued.contains(&base64), "{continued}");
+    assert!(continued.contains("[image not stored: ") && !continued.contains(&base64), "{continued}");
+    backend.close().await;
+}
+
+/// A PNG image that differs from the others by its last byte.
+fn png(last: u8) -> Vec<u8> {
+    let mut bytes = PNG.to_vec();
+    bytes.push(last);
+    bytes
+}
+
+/// The frames of a compaction pass, to the idle phase that ends it.
+async fn compact(socket: &mut Socket) -> Vec<ServerFrame> {
+    socket.send(&ClientFrame::Compact {}).await;
+    socket.until_idle().await
+}
+
+#[tokio::test]
+async fn opening_a_stored_conversation_with_images_on_two_pages_and_syncing_it_puts_no_blob() {
+    let counts = ObjectCounts::default();
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new().with_object_counts(&counts);
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    // The uploads are written to the conversation's Host.
+    let _device = on_device(&harness, &backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
+    let shots = [
+        upload(&backend, &master, "a.png", "image/png", &png(1)).await,
+        upload(&backend, &master, "b.png", "image/png", &png(2)).await,
+    ];
+    let mut first = Socket::connect(&backend, &master, FIRST).await;
+    first.open().await;
+    vendor.respond(answer(&["Two shots."], 1, 1));
+    first.send(&with_upload("m1", "Look", &[(&shots[0], "a.png"), (&shots[1], "b.png")])).await;
+    first.until_idle().await;
+    // Closing the tree leaves the conversation stored; the next open
+    // restores it.
+    first.send(&ClientFrame::Close {}).await;
+    first.until(|frame| *frame == ServerFrame::Closed).await;
+
+    let before = counts.tally();
+    first.open().await;
+    let mut second = Socket::connect(&backend, &master, FIRST).await;
+    second.open().await;
+    let synced = second.live().await;
+    // Nothing is stored again, and the object store is not even asked
+    // whether it holds the images.
+    let after = counts.tally().since(&before);
+    assert_eq!((after.puts, after.bytes_put, after.heads), (0, 0, 0), "{after:?}");
+    // Every frame named the images by the references the rows hold.
+    let Some(Block::User(user)) = synced.first() else {
+        panic!("{synced:?}");
+    };
+    let images = user
+        .content
+        .iter()
+        .filter(|part| matches!(part, UserContentBlock::Image { source: MediaSource::Ref { .. } }))
+        .count();
+    assert_eq!(images, 2, "{user:?}");
+    backend.close().await;
+}
+
+#[tokio::test]
+async fn a_restored_conversation_reads_each_replayed_blob_once_and_none_before_its_last_compaction() {
+    let counts = ObjectCounts::default();
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new().with_object_counts(&counts);
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    let _device = on_device(&harness, &backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
+    let old = upload(&backend, &master, "old.png", "image/png", &png(0)).await;
+    let mut shots = Vec::new();
+    for shot in 1..=9 {
+        shots.push(upload(&backend, &master, "shot.png", "image/png", &png(shot)).await);
+    }
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    vendor.respond(answer(&["An old shot."], 1, 1));
+    socket.send(&with_upload("m1", "Look", &[(&old, "old.png")])).await;
+    socket.until_idle().await;
+    vendor.respond(answer(&["Nine shots."], 1, 1));
+    let named: Vec<(&AttachmentDto, &str)> = shots.iter().map(|shot| (shot, "shot.png")).collect();
+    socket.send(&with_upload("m2", "Look at these", &named)).await;
+    socket.until_idle().await;
+    // The pass keeps the nine shots, whose weight fills the kept history,
+    // and summarizes the first message (`compaction.md` § One pass).
+    vendor.respond(answer(&["The user showed an old shot."], 1, 1));
+    compact(&mut socket).await;
+    socket.send(&ClientFrame::Close {}).await;
+    socket.until(|frame| *frame == ServerFrame::Closed).await;
+
+    // The restored conversation's turn asks the model twice: an unknown
+    // tool's error goes back to it.
+    let before = counts.tally();
+    socket.open().await;
+    assert_eq!(counts.tally().since(&before).gets, 0, "an open reads no blob");
+    vendor.respond(tool_use("toolu_1", "no_such_tool", &json!({})));
+    vendor.respond(answer(&["Still nine."], 1, 1));
+    let requests = vendor.requests().len();
+    socket.send(&send("m3", "And now?")).await;
+    vendor.received(requests + 1).await;
+    let first = counts.tally().since(&before);
+    socket.until_idle().await;
+    let both = counts.tally().since(&before);
+
+    // The first request read each replayed shot once, a few at a time, and
+    // the old shot not at all; the second read nothing.
+    assert_eq!((first.gets, both.gets), (9, 9), "{both:?}");
+    assert!(1 < both.most_gets_at_once && both.most_gets_at_once <= 8, "{both:?}");
+    for request in &vendor.requests()[requests..] {
+        let sent = request.json()["messages"].to_string();
+        for shot in 1..=9 {
+            assert!(sent.contains(&data_encoding::BASE64.encode(&png(shot))), "{sent}");
+        }
+        assert!(!sent.contains(&data_encoding::BASE64.encode(&png(0))), "{sent}");
+    }
     backend.close().await;
 }
