@@ -173,8 +173,9 @@ close to the provider's own count.
 ### Block estimates
 
 A block's estimate is the token estimate of its text plus the weight of its
-media, read from the replayed blocks as the model receives them, with each
-medium's held bytes ([Media](runtime.md#media)).
+media, read from the replayed blocks as the model receives them: each medium
+with the bytes the session holds for it, and a medium whose blob is missing
+as its text ([Media](runtime.md#media)).
 
 | Block | Text |
 | --- | --- |
@@ -184,7 +185,7 @@ medium's held bytes ([Media](runtime.md#media)).
 | `resume` | `Continue from where you left off.` |
 | `thinking`, `text` | Its text |
 | `redacted_thinking` | Its data |
-| `tool_call` | The tool name, the input and each output part (a text, or a media type), one per line |
+| `tool_call` | The tool name, the input and each output part (a text, a media type, or the text of a medium that is gone), one per line |
 | `response` | Its usage as JSON |
 | `error` | Its message |
 | `abort` | `aborted` |
