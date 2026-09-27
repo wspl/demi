@@ -211,7 +211,7 @@ once.
 A switch changes the root's model selection. The backend switches the root
 when the conversation's model settings change, and opens a tree with the
 selection the conversation's record holds
-([page synchronization](../product/web-api.md#sidebar-mutations-read-state-and-page-synchronization)).
+([the conversation's model settings](../product/web-api.md#sidebar-mutations-and-read-state)).
 No client frame names a model.
 
 - A switch lands at the root's next provider request: at the start of the
@@ -636,7 +636,10 @@ advances. It names what the user will see, not how the tool works.
 ## Frame protocol
 
 The browser opens `WS /api/conversations/:id/stream` for a conversation
-([Web API](../product/web-api.md)). The connection belongs to that one
+([Web API](../product/web-api.md)), with the session cookie, from a page of
+the product
+([Authentication and ownership](../backend/backend.md#authentication-and-ownership)).
+The connection belongs to that one
 conversation: the backend supplies the session id and the working directory
 from the conversation's target, and the client never sends them. The types of
 every frame are Rust types, and the browser validates frames with the schemas
@@ -746,7 +749,7 @@ command that ended while no client watched shows as ended.
 - The backend handles one connection's frames one at a time, in arrival order.
   A frame waits for the conversation's admission and is refused while the
   conversation is archived
-  ([Sidebar mutations, read state and page synchronization](../product/web-api.md#sidebar-mutations-read-state-and-page-synchronization)).
+  ([Sidebar mutations and read state](../product/web-api.md#sidebar-mutations-and-read-state)).
   A frame whose handling waits, such as a send whose uploads are being written
   to the Host or an edit waiting for its durable acceptance, delays the frames
   behind it.
@@ -804,7 +807,7 @@ connection B --+                    +--> B's outbox: events, and B's replies
 - `open` names no model. The backend opens the tree with the model selection
   the conversation's record holds, and a live tree already follows that
   record, so an open changes no model
-  ([page synchronization](../product/web-api.md#sidebar-mutations-read-state-and-page-synchronization)).
+  ([the conversation's model settings](../product/web-api.md#sidebar-mutations-and-read-state)).
   An open of a conversation whose record has no model yet is answered with an
   `error` whose code is `model_not_selected`, and one whose provider entry the
   user may no longer use with `provider_not_found`. A runtime the tree needs
@@ -835,7 +838,7 @@ decides a lone client's frame decides each:
   `abort_result` says what it stopped.
 - No frame changes the model selection: the conversation's model settings
   change by a conversation patch, which the backend applies one at a time
-  ([page synchronization](../product/web-api.md#sidebar-mutations-read-state-and-page-synchronization)).
+  ([the conversation's model settings](../product/web-api.md#sidebar-mutations-and-read-state)).
 
 ## Tree store
 

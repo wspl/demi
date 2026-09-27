@@ -56,15 +56,18 @@ edge: multi-threaded runtime with axum
   shared services: control records, conversation stores, blobs, the change
     store, the vault, provider assembly and catalogs, credential refresh gates,
     the machine-manager client, Cloud capacity, pending runner claims,
-    the login limiter
+    the login limiter, the registry of open synchronization channels
        |  shards.of(user).call(|shard, cancel| ...)  owned data in and out
-       |  adopt(socket)                              conversation and runner sockets
+       |  adopt(socket)                              conversation, synchronization
+       |                                             and runner sockets
        |  lease and pipe ends back to the edge       transfers, user streams, exposes
+       |  a mark in the registry                     a part a page shows changed
        v
 shard threads: each a LocalRuntime hosting the shards of the users pinned to it
   one user's shard: conversations (file gates, transfers, idle watches),
     agent trees, runner connections, pipe records, the Cloud machine,
-    exposes, titles, forks, the command router, the request rate limit
+    exposes, titles, forks, the command router, the request rate limit,
+    the pages' synchronization channels
        |  owned data in and out
        v
 threads: one per open SQLite connection; the blocking pool for disk,
@@ -171,8 +174,9 @@ and child of that process lives in it.
 A user's shard holds everything that belongs to one user: the user's
 conversations with their file gates, transfers and idle watches, the agent
 trees, the runner connections and pipe records of the user's devices, the
-user's Cloud machine, exposes, title requests and forks. A shard thread hosts
-the shards of every user pinned to it.
+user's Cloud machine, exposes, title requests, forks and the synchronization
+channels of the user's pages. A shard thread hosts the shards of every user
+pinned to it.
 
 A shard runs on one thread, so nothing else runs between two of its awaits.
 Admission logic therefore needs no locks: a check and the state change it
@@ -192,10 +196,11 @@ cross-user state live at the edge and in shared services.
 | Runner connections, one task each, and pipe records | Runners not yet paired, which have no user |
 | The Cloud machine and its reset intent | Cloud capacity, counted across users, and the machine-manager client |
 | Live expose connections, titles, forks, the command router and the request rate limit | Storage, the vault, provider assembly and catalogs, credential refresh gates and the login limiter |
+| The pages' synchronization channels, each with its set of changed parts | The registry of each user's open channels, on which any thread marks a change |
 
 **Crossing the boundary.** The boundary is crossed per request, WebSocket
-upgrade or stream admission, never per tool call. What crosses is owned data
-in both directions, `Send` pipe ends and leases:
+upgrade, stream admission or change mark, never per tool call. What crosses is
+owned data in both directions, `Send` pipe ends, leases and marks:
 
 - An ordinary request calls `shards.of(user).call(|shard, cancel| ...)`: the
   closure is `Send`, the future it starts runs on the shard and need not be,
@@ -209,6 +214,12 @@ in both directions, `Send` pipe ends and leases:
   ends. The edge copies bytes while it holds the lease; dropping the lease
   releases the admission in the shard, and the shard can end the lease itself,
   for example when the conversation is archived.
+- A change that a page shows crosses as a mark: whoever commits it, the
+  shard itself, a shared service such as the vault, or another user's request
+  on a shared provider entry, marks the changed part in the registry of open
+  synchronization channels. The mark adds the part to each of the user's
+  channels and wakes their tasks, which read the part in the shard
+  ([Browser synchronization](../backend/backend.md#browser-synchronization)).
 
 **Call semantics.** A shard call always runs to completion. When the requester
 leaves, the edge cancels the call's token, and only waits observe it, such as

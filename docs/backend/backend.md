@@ -17,6 +17,7 @@ and Cloud. [Runtime model](#runtime-model) explains both.
 ```text
 Browser
   +-- HTTP product data ----> edge ---> a shared service, or the user's shard
+  +-- sync channel ---------> edge ---> user's shard: each change the page shows
   +-- conversation socket --> edge ---> user's shard: agent tree -> conversation database
                                                      |
                                +---------------------+---------------------+
@@ -51,7 +52,7 @@ over the manager's Unix socket.
 | `config` | The typed configuration, validated at startup | [Configuration](#configuration) |
 | `auth` | Accounts, password hashing, web sessions, login lockout, email-change delivery | [Authentication and ownership](#authentication-and-ownership), [Product](../product/product.md#user-system) |
 | `settings` | Per-user preferences | [Web API](../product/web-api.md#user-preferences) |
-| `sync` | The reconstructible application snapshot for browser polling | [Browser synchronization](#browser-synchronization) |
+| `sync` | The pages' synchronization channels: the product state, the parts that changed, and the registry that marks changes on each user's channels | [Browser synchronization](#browser-synchronization) |
 | `conversation` | Agent-tree hosting, frame scoping, attachment and remote-file references, history and Fork, summaries and titles, target resolution and transitions, the conversation's host access, file transfers and user streams | [Sessions and targets](../execution/sessions-and-targets.md) |
 | `runner` | Pairing, device links and runner connections, the rpc relay and each session's commands, the product's `demi host` group, installer scripts, native artifact publication and the development store | [Runner](../execution/runner.md), [Commands](../execution/commands.md), [Native runtime](../execution/native-runtime.md#backend-deployment-configuration) |
 | `lifecycle` | The conversation idle clock and the conversation release | [Conversation idle and Host resource release](../execution/resource-lifecycle.md) |
@@ -87,8 +88,8 @@ Each module's state lives in one of these places:
 | Place | Holds | Examples |
 |---|---|---|
 | Edge | No per-user state | Request parsing and authentication, ownership checks, and the byte copies of file transfers (with their 60-second stall rule), pipes, user streams and the expose relay |
-| Shared services | State that spans users, or that is needed before the user is known | The control service, the conversation stores, the object store, the vault, provider assembly with model catalogs and one credential refresh at a time per account, the machine manager's client, [Cloud capacity](../cloud/managed-hosts.md#lifecycle-and-capacity) across users, runners waiting to be paired, login lockout |
-| A user's shard | Everything the backend decides for that user | Each conversation's file gate, open transfers and user streams, and idle watch; agent trees; device links and one task per runner connection; pipe records; the Cloud machine; live expose connections; title requests; Fork requests, one at a time per destination; each session's command router for the rpc relay; the request rate limit |
+| Shared services | State that spans users, or that is needed before the user is known | The control service, the conversation stores, the object store, the vault, provider assembly with model catalogs and one credential refresh at a time per account, the machine manager's client, [Cloud capacity](../cloud/managed-hosts.md#lifecycle-and-capacity) across users, runners waiting to be paired, login lockout, the registry of each user's open synchronization channels |
+| A user's shard | Everything the backend decides for that user | Each conversation's file gate, open transfers and user streams, and idle watch; agent trees; device links and one task per runner connection; pipe records; the Cloud machine; live expose connections; title requests; Fork requests, one at a time per destination; each session's command router for the rpc relay; the request rate limit; the pages' synchronization channels |
 | Database threads | One per open SQLite connection | The control database; up to 64 conversation writer connections ([Storage](storage.md#conversation-state-and-transactions)) |
 | Blocking pool | Work that would stall an async thread | Disk IO; password and blob hashing; serializing request bodies with media and large transcript frames; read-only conversation reads |
 
@@ -164,6 +165,23 @@ the browser session gate, so an unauthenticated request for a path that does
 not exist answers 401, not 404. Inaccessible user-owned objects return 404,
 insufficient role returns 403, and missing authentication returns 401.
 
+A browser WebSocket also needs a page of the product. The browser keeps a
+script from reading another origin's `fetch` answers, but not from opening a
+WebSocket to another origin, and the `SameSite=Lax` cookie accompanies a
+request from every page of the product's site. An expose's page is such a
+page: `<id>.expose.demi.example` is on the site of `demi.example`
+([Host expose](../execution/expose.md#deployment)), and it may be another
+user's. Without a check, a page on an expose could open a signed-in
+visitor's conversation socket with the visitor's cookie, read the transcript
+and send messages. So every browser WebSocket route, the synchronization
+channel, a conversation's socket and a user stream, first checks the
+upgrade's `Origin`: it is the origin of the public URL
+(`DEMI_BACKEND_PUBLIC_URL`), or its host and port are those the request was
+sent to (the `Host` header), as when a development server passes the page's
+requests on. Any other origin, and a request without one, answers 403
+`forbidden_origin` before anything else. A runner's socket carries a device
+token rather than a cookie, so it has no such check.
+
 The edge checks ownership before it hands a request to a shard: it resolves
 the caller from the cookie, loads the conversation, device, workspace or
 provider entry the path names, and answers 404 when it belongs to someone
@@ -205,18 +223,47 @@ the upgrade the socket moves into the user's shard, which serves it until it
 closes. Execution context comes from the conversation's server-side target;
 the browser cannot override it with an arbitrary frame cwd.
 
-`GET /api/state` returns a conditional application snapshot: account,
-instance mode, preferences, projects, conversation summaries, devices,
-providers, exposes and Cloud status
-([Web API](../product/web-api.md#sidebar-mutations-read-state-and-page-synchronization)).
-It does not start Cloud or infer. The product browser polls and
-revalidates this snapshot; chat output remains on the conversation stream. The
-user's shard assembles the snapshot from several stores and its own live
-state, so it is reconstructible rather than one global atomic read. A later
-poll catches changes made during assembly.
+Each page also holds one synchronization channel, `WS /api/sync`. It sends the
+page the product state when it connects, then every part of it that changes:
+the account, preferences, providers, workspaces, devices, exposes, the Cloud,
+and each conversation's summary
+([Page synchronization](../product/web-api.md#page-synchronization)). No page
+polls. The socket moves into the user's shard, as a conversation socket does.
+For example, a rename commits in the user's shard; the shard then marks the
+conversation's summary as changed on each of the user's open channels, and the
+task of each channel reads the summary and sends it to its page.
 
-How the browser consumes both, with its adapters, polling and session
-handling, is defined in [Web application](../product/web-application.md).
+- **Marks.** Every change a page shows is marked where it commits, after the
+  commit. The shard marks what it changes: conversations, titles, devices,
+  exposes and the Cloud. A conversation's tree store marks it when a
+  checkpoint is saved, and the agent's notice marks it when its tree starts or
+  stops working or is disposed. A shared service marks what it changes for a
+  user, such as the vault when it renews an account's credential.
+- **The registry.** Marks go through a registry of each user's open channels,
+  a shared service, because some changes come from outside the user's shard:
+  a shared instance's provider entries serve every user, so a change of one
+  marks the channels of every user. A mark adds the part to each channel's set
+  of changed parts and wakes the channel's task; nothing else crosses into the
+  shard.
+- **No queue.** A channel holds at most one mark per part, however far its
+  page falls behind; its task reads each marked part when it can send it, so
+  a slow page costs a set, never a growing queue, and is never closed for it.
+- **Sessions.** A channel belongs to the session it opened with. Signing out
+  closes that session's channels, and a channel closes itself when its
+  session expires. It never renews the session: only requests do.
+
+The channel and the conversation sockets stay apart. A conversation's frames
+are a log the page applies in order, so the socket's outbox keeps every frame
+and closes a page that falls 4,096 frames behind
+([Order and delivery](../agent/runtime.md#order-and-delivery)); the channel
+sends current values, which it can merge, so it never closes a slow page. On
+one shared socket, a conversation that lagged would close the page's channel
+and every other conversation with it, and a transcript's handshake or a burst
+of command output would hold back the sidebar's changes behind it.
+
+How the browser consumes both, with its adapters, its synchronization and
+its session handling, is defined in
+[Web application](../product/web-application.md).
 Model discovery has its own account-wide cache and loading state, so it does
 not block readable history ([Models](../providers/models.md#catalog-cache)).
 
@@ -319,7 +366,9 @@ is already open answers 503 `backend_closing`. Runner connections and pipes
 keep working, because the steps below need them:
 
 1. Login flows are cancelled.
-2. Each shard ends its user's work in this order. Idle watches stop, and a
+2. Each shard ends its user's work in this order. The synchronization
+   channels close, so no page is sent what the steps below change; a page
+   reads the state again from the next backend. Idle watches stop, and a
    retirement already running finishes. Title requests are aborted and expose
    connections end. Open file transfers and user streams end. Conversation sockets
    close, so no frame reaches a tree after its shutdown. Agent turns are

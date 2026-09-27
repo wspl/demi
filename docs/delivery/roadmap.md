@@ -80,7 +80,7 @@ running services on the finished code before handoff, then commit and push.
 ## Decisions before expanding deployment
 
 Each decision below is open, and must be settled before the deployment it
-affects is offered. The first three concern the multi-worker deployment, where a
+affects is offered. The first four concern the multi-worker deployment, where a
 reverse proxy pins each user to one backend worker
 ([Deployment and user ownership](../backend/backend.md#deployment-and-user-ownership)).
 
@@ -104,6 +104,12 @@ reverse proxy pins each user to one backend worker
   else, so the proxy cannot tell from it which worker owns the user. Either the
   route map gains an id-to-user lookup, or the hostname carries the user's
   routing key ([Host expose](../execution/expose.md#deployment)).
+- **Changes across workers.** A change can concern users whom another worker
+  serves: a shared instance's provider entries serve every user, and each
+  worker keeps its own quota snapshots. A worker marks such a change only on
+  the synchronization channels it holds
+  ([Browser synchronization](../backend/backend.md#browser-synchronization));
+  how it reaches the pages of users on other workers is undecided.
 - **Retention.** Define how long disks and blobs are kept after an explicit
   account or data deletion, and when an unreferenced blob is removed. Removing
   project metadata must never implicitly delete the user's Cloud machine or

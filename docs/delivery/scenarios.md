@@ -201,7 +201,7 @@ it.
 
 | Path | Required observation |
 |---|---|
-| Sign-in | A user signs in through the API client, and the session admits the account snapshot and the conversation WebSocket |
+| Sign-in | A user signs in through the API client, and the session admits the synchronization channel, whose snapshot is the account's, and the conversation WebSocket |
 | Create and chat | A conversation created through the API runs a turn, and the client receives the scripted reply and the end of the turn |
 | Tools | A scripted tool call runs on the real runner, and its result appears in the transcript |
 | Reload | After a reload, the transcript the client assembled from live patches equals the cold transcript the backend serves |

@@ -219,10 +219,10 @@ defines the route.
 - The browser application keeps one catalog for the signed-in account. New and
   existing conversations use it; model metadata is never copied into a
   per-conversation cache.
-- It asks for the catalog again after one minute at the earliest, so polling
-  and navigation do not request it repeatedly. Concurrent readers share one
-  request, and a failed load waits one minute before it is tried again by
-  itself.
+- It asks for the catalog again after one minute at the earliest, so
+  navigation does not request it repeatedly; nothing asks for it on a timer.
+  Concurrent readers share one request, and a failed load waits one minute
+  before it is tried again by itself.
 - A change to any entry's configuration or active account loads the catalog
   again. An explicit refresh asks with `refresh=true`.
 - Signing out clears the catalog, its timer and its pending request.
@@ -263,7 +263,7 @@ holds, with the provider entry, the model and its facts, the thinking setting
 and the service tier. Every tab and every device shows that value, a change
 made anywhere reaches all of them, and the conversation's next provider request
 uses it
-([page synchronization](../product/web-api.md#sidebar-mutations-read-state-and-page-synchronization)).
+([Sidebar mutations and read state](../product/web-api.md#sidebar-mutations-and-read-state)).
 The page shows and changes the value as its settings, the parts a user
 chooses:
 

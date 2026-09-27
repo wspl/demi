@@ -149,7 +149,7 @@ project and pin partition. New projects append and new conversations enter at
 the front. Rename, archive/restore, and target changes retain sort positions,
 with ID as the stable tie-breaker. Reorder writes one partition atomically and
 rejects archived rows or cross-partition targets.
-[Web API](../product/web-api.md#sidebar-mutations-read-state-and-page-synchronization)
+[Web API](../product/web-api.md#sidebar-mutations-and-read-state)
 owns the request contract.
 
 ## Conversation state and transactions
@@ -204,8 +204,8 @@ least recently used. Closing a connection loses nothing; the next operation
 opens it again. A read that needs no live session, such as a summary, cold
 history, or the files a command edited, uses a short-lived read-only
 connection on the blocking pool instead. It takes no writer slot and never
-creates a database file, so a state poll that reads the summaries of hundreds
-of conversations does not close the writers of running sessions. Backend
+creates a database file, so a page's snapshot, which reads the summaries of
+hundreds of conversations, does not close the writers of running sessions. Backend
 shutdown closes every connection.
 
 ## Attachment and transcript media

@@ -26,7 +26,7 @@ Provider services are external to Demi.
 | Web application    |
 +--------------------+
           |
-          | HTTP + conversation WebSocket
+          | HTTP + synchronization and conversation WebSockets
           v
 +--------------------+  Provider HTTPS   +--------------------+
 | Backend            |------------------>| Provider service   |
