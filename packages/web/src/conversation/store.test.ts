@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test'
+import { afterEach, beforeEach, expect, jest, spyOn, test } from 'bun:test'
 import { deferred, waitFor } from '@demicodes/utils'
 import type { ClientContent } from '@demicodes/protocol'
 import { ConversationRuntime } from '@demicodes/web-ui/agent/conversation-runtime'
@@ -8,10 +8,13 @@ import { nextTick } from 'vue'
 import { useConversations } from './store'
 import { useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
-import type { ConversationSummary, Preferences } from '../api/generated/web-api'
+import type { ConversationDraft, ConversationSummary, DraftFile, Preferences } from '../api/generated/web-api'
+import { useSession } from '../auth/session'
 import { productState } from '../__tests__/product-state'
 import { applyConversationEvent, updateLiveStatus } from './activity'
 import * as draftStorage from './drafts'
+import * as localState from '../state/local'
+import { DRAFT_SAVE_DELAY_MS } from './draft-sync'
 import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
 
 const realFetch = globalThis.fetch
@@ -78,6 +81,43 @@ let requests: {
 }[]
 let pinia: ReturnType<typeof createPinia>
 let savedPreferences: Preferences
+/** The drafts the backend keeps, by conversation. */
+let serverDrafts: Map<string, ConversationDraft>
+
+/**
+ * The backend's draft routes (`web-api.md` § Conversation drafts): a save
+ * always takes effect and keeps the version it replaced when it was built on
+ * another revision; a restore exchanges the replaced version with the draft.
+ */
+function draftRoute(id: string, method: string, action: boolean, body: Record<string, unknown>): Response {
+  const current = serverDrafts.get(id) ?? { revision: 0, text: '', files: [], replaced: null }
+  let next: ConversationDraft
+  if (method === 'GET') {
+    return Response.json({ draft: current })
+  } else if (action) {
+    const replaced = current.replaced
+    if (!replaced || replaced.revision !== body.revision) {
+      return Response.json({ code: 'draft_changed', message: 'The replaced version changed' }, { status: 409 })
+    }
+    const { text, files } = current
+    next = body.action === 'restore'
+      ? { revision: current.revision + 1, text: replaced.text, files: replaced.files, replaced: { revision: current.revision, text, files } }
+      : { ...current, revision: current.revision + 1, replaced: null }
+  } else {
+    const files = (body.files as ClientContent[]).map((file): DraftFile =>
+      file.type === 'upload' ? { ...file, mediaType: 'text/plain', sha256: SHA } : file as DraftFile)
+    next = {
+      revision: current.revision + 1,
+      text: body.text as string,
+      files,
+      replaced: body.base === current.revision
+        ? current.replaced
+        : { revision: current.revision, text: current.text, files: current.files },
+    }
+  }
+  serverDrafts.set(id, next)
+  return Response.json({ draft: next })
+}
 
 function record(id: string, title = id): ConversationSummary {
   return {
@@ -90,6 +130,7 @@ function record(id: string, title = id): ConversationSummary {
     unread: false,
     titleCurrent: true,
     titleGenerating: false,
+    draftRevision: 0,
     cwd: `/home/demi/sessions/${id}`,
     target: { kind: 'cloud' },
     contextVersion: 0,
@@ -105,6 +146,7 @@ beforeEach(async () => {
   setActivePinia(pinia)
   records = [record(FIRST, 'first'), record(SECOND, 'second')]
   savedPreferences = { appearance: {}, shortcuts: {} }
+  serverDrafts = new Map()
   rejectCreate = false
   rejectFork = false
   requests = []
@@ -195,6 +237,10 @@ beforeEach(async () => {
     }
     if (path.endsWith('/read')) {
       return new Response(null, { status: 204 })
+    }
+    const draft = /^\/api\/conversations\/([^/]+)\/draft(\/replaced)?$/.exec(path)
+    if (draft) {
+      return draftRoute(decodeURIComponent(draft[1]!), init?.method ?? 'GET', draft[2] !== undefined, body)
     }
     throw new Error(`Unexpected request: ${path}`)
   }) as typeof fetch
@@ -886,4 +932,188 @@ test('a rename shows at once, survives a snapshot read before the write lands, a
   expect(title()).toBe('Refused')
   // The refused write gives the stored title back.
   await waitFor(() => title() === 'Renamed', () => `the title is ${title()}`)
+})
+
+/** Signs the page in, as it is before it loads a conversation, with browser storage that keeps `kept`, or nothing. */
+function signIn(kept: draftStorage.SavedDraft | null = null): () => void {
+  const spies = [
+    spyOn(draftStorage, 'readDraft').mockResolvedValue(kept),
+    spyOn(draftStorage, 'writeDraft').mockResolvedValue(undefined),
+    spyOn(draftStorage, 'deleteDraft').mockResolvedValue(undefined),
+    spyOn(localState, 'readLocalState').mockImplementation(() => localState.emptyLocalState()),
+    spyOn(localState, 'writeLocalState').mockImplementation(() => {}),
+  ]
+  useSession().current = { status: 'signedIn', user: productState().user }
+  return () => {
+    for (const spy of spies) {
+      spy.mockRestore()
+    }
+  }
+}
+
+/** Lets the event loop turn until `done`, which the page's requests and their answers reach without a timer. */
+async function until(done: () => boolean, what: string): Promise<void> {
+  for (let turn = 0; turn < 200 && !done(); turn += 1) {
+    await new Promise((resolve) => setImmediate(resolve))
+  }
+  expect(done(), what).toBe(true)
+}
+
+/** Lets the event loop turn as often as a request and its answer take here, for what must not happen. */
+async function settle(): Promise<void> {
+  for (let turn = 0; turn < 20; turn += 1) {
+    await new Promise((resolve) => setImmediate(resolve))
+  }
+}
+
+/** Another page saves the conversation's draft; this page learns of it at its next poll. */
+async function savedElsewhere(id: string, text: string): Promise<void> {
+  const current = serverDrafts.get(id)!
+  serverDrafts.set(id, { ...current, revision: current.revision + 1, text })
+  records.find((item) => item.id === id)!.draftRevision = current.revision + 1
+  await useProduct().refresh()
+  await nextTick()
+}
+
+const draftSaves = () => requests.filter((request) => request.path.endsWith('/draft') && request.body !== null)
+
+test('a draft another page saved shows in a composer at rest; one its user is typing in keeps the text and saves on its own revision', async () => {
+  const signOut = signIn()
+  jest.useFakeTimers()
+  try {
+    serverDrafts.set(FIRST, { revision: 1, text: 'Fix the login', files: [], replaced: null })
+    records[0]!.draftRevision = 1
+    const store = useConversations()
+    const current = store.items.find((item) => item.id === FIRST)!
+    await store.activate(FIRST)
+    expect([current.draft, current.draftBase]).toEqual(['Fix the login', 1])
+
+    // Nothing typed here: the newer draft takes the composer's place.
+    const shown = current.draftShown
+    await savedElsewhere(FIRST, 'Fix the login test')
+    await until(() => current.draft === 'Fix the login test', 'the other page\'s draft shows')
+    expect([current.draftBase, current.draftShown]).toEqual([2, shown + 1])
+
+    // Typed here, not saved yet: the composer keeps it when another page saves.
+    current.draft = 'Fix the login bug'
+    await savedElsewhere(FIRST, 'Fix the login test, again')
+    await until(() => current.savedDraft?.revision === 3, 'the newer draft is read')
+    expect(current.draft).toBe('Fix the login bug')
+    expect(draftSaves()).toEqual([])
+
+    // Half a second after the typing pauses the page saves, built on the
+    // revision its text came from, so the backend keeps what it replaces.
+    jest.advanceTimersByTime(DRAFT_SAVE_DELAY_MS)
+    await until(() => current.savedDraft?.revision === 4, 'the save is answered')
+    expect(draftSaves().map((request) => request.body)).toEqual([{ base: 2, text: 'Fix the login bug', files: [] }])
+    expect([current.draft, current.draftBase, current.savedDraft?.replaced?.text]).toEqual(['Fix the login bug', 4, 'Fix the login test, again'])
+
+    // Restore brings the replaced version back and offers the one it displaced.
+    store.restoreReplaced(current)
+    await until(() => current.draft === 'Fix the login test, again', 'the restored draft shows')
+    expect(current.savedDraft?.replaced?.text).toBe('Fix the login bug')
+    store.dismissReplaced(current)
+    await until(() => current.savedDraft?.replaced === null, 'the offer is dismissed')
+    expect([current.draft, current.draftBase]).toEqual(['Fix the login test, again', 6])
+  } finally {
+    jest.useRealTimers()
+    signOut()
+  }
+})
+
+test('a send empties the draft everywhere once the backend accepts it, and a change another page made meanwhile stays to restore', async () => {
+  const signOut = signIn()
+  const store = useConversations()
+  const current = store.items.find((item) => item.id === FIRST)!
+  useProduct().snapshot!.providers.push(stubProvider)
+  serverDrafts.set(FIRST, { revision: 1, text: 'Ship it', files: [], replaced: null })
+  records[0]!.draftRevision = 1
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    if (path.startsWith('/api/models')) return Response.json(stubCatalog())
+    if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
+    if (path.endsWith('/transcript')) return Response.json({ blocks: [], subagents: [] })
+    return originalFetch(input, init)
+  }) as typeof fetch
+  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
+  const accepted = deferred<void>()
+  const submit = spyOn(ConversationRuntime.prototype, 'submit').mockImplementation(() => accepted.promise)
+  jest.useFakeTimers()
+  try {
+    await useProduct().loadModels(true)
+    await store.activate(FIRST)
+    expect(current.draft).toBe('Ship it')
+    const sending = store.send(current)
+    await until(() => submit.mock.calls.length === 1, 'the message is submitted')
+    // Until the backend accepts the message the draft stays, however long
+    // that takes, and another page edits it meanwhile.
+    expect(current.draft).toBe('')
+    serverDrafts.set(FIRST, { revision: 2, text: 'Ship it today', files: [], replaced: null })
+    jest.advanceTimersByTime(DRAFT_SAVE_DELAY_MS)
+    await settle()
+    expect(draftSaves()).toEqual([])
+    accepted.resolve()
+    await sending
+    await until(() => draftSaves().length === 1, 'the draft is cleared')
+    expect(draftSaves()[0]!.body).toEqual({ base: 1, text: '', files: [] })
+    await until(() => current.savedDraft?.revision === 3, 'the clear is answered')
+    expect([current.draft, current.savedDraft?.text, current.savedDraft?.replaced?.text]).toEqual(['', '', 'Ship it today'])
+  } finally {
+    jest.useRealTimers()
+    submit.mockRestore()
+    connect.mockRestore()
+    globalThis.fetch = originalFetch
+    signOut()
+  }
+})
+
+test('a page that closes while typing leaves its text to the next page, which takes the backend\'s revision without saving it again', async () => {
+  // The first page types, and closes before its save and its IndexedDB write land.
+  let signOut = signIn()
+  const kept = spyOn(draftStorage, 'writeLastWords').mockImplementation(() => {})
+  let words: draftStorage.LastWords | undefined
+  try {
+    serverDrafts.set(FIRST, { revision: 1, text: 'Fix the lo', files: [], replaced: null })
+    records[0]!.draftRevision = 1
+    let store = useConversations()
+    let current = store.items.find((item) => item.id === FIRST)!
+    await store.activate(FIRST)
+    current.draft = 'Fix the login bug'
+    store.keepLastWords()
+    words = kept.mock.calls.find(([, id]) => id === FIRST)?.[2]
+    expect(words).toEqual({ base: 1, text: 'Fix the login bug', attachmentIds: [] })
+    signOut()
+    store.stopAll()
+    useProduct().stop()
+    disposePinia(pinia)
+
+    // Its save on close arrived; its IndexedDB record holds an older text.
+    serverDrafts.set(FIRST, { revision: 2, text: 'Fix the login bug', files: [], replaced: null })
+    records[0]!.draftRevision = 2
+    pinia = createPinia()
+    setActivePinia(pinia)
+    signOut = signIn({
+      messageEdit: null, pendingSend: null, local: null, base: 1, text: 'Fix the lo',
+      model: null, files: [], scroll: null,
+    })
+    const taken = spyOn(draftStorage, 'takeLastWords').mockReturnValue(words ?? null)
+    jest.useFakeTimers()
+    try {
+      store = useConversations()
+      await useProduct().start()
+      current = store.items.find((item) => item.id === FIRST)!
+      await store.activate(FIRST)
+      expect([current.draft, current.draftBase]).toEqual(['Fix the login bug', 2])
+      jest.advanceTimersByTime(DRAFT_SAVE_DELAY_MS)
+      await settle()
+      expect(draftSaves()).toEqual([])
+    } finally {
+      jest.useRealTimers()
+      taken.mockRestore()
+    }
+  } finally {
+    kept.mockRestore()
+    signOut()
+  }
 })

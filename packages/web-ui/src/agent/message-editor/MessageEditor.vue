@@ -42,6 +42,12 @@ const props = withDefaults(
     lineWidth?: number
     /** Takes the focus once it shows, the cursor at the end. */
     autofocus?: boolean
+    /**
+     * Counts the messages shown from outside: when it changes, the editor
+     * shows `markdown` and `attachments` anew, even when the text is the one
+     * it holds, since the same marks can stand for other files.
+     */
+    shownFromOutside?: number
   }>(),
   {
     attachments: () => [],
@@ -143,12 +149,16 @@ watch(editable, (value) => editor.setEditable(value, false))
 watch(() => props.lineWidth, measure)
 // Code's colors arrive with the highlighter and follow the page's mode.
 watch(useMarkdownRenderVersion(), () => redrawDecorations(editor))
-// A message from outside, such as a cleared draft: its files come with it.
-watch(() => props.markdown, () => {
-  if (props.markdown !== shown) {
-    show()
-  }
-})
+// A message from outside, such as a cleared draft or another page's: its
+// files come with it.
+watch(
+  () => [props.markdown, props.shownFromOutside] as const,
+  ([markdown, count], [, previous]) => {
+    if (markdown !== shown || count !== previous) {
+      show()
+    }
+  },
+)
 
 function holdsLines(doc: ProseMirrorNode): boolean {
   let lines = doc.childCount > 1

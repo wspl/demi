@@ -143,6 +143,21 @@ CREATE TABLE conversation_panels (
   updated_at      INTEGER NOT NULL
 ) STRICT;
 
+-- A conversation's draft: its text and files with the revision they were
+-- written at, and the version a save replaced with the revision that version
+-- had. The row stays when the draft is emptied, so a revision is never used
+-- twice.
+CREATE TABLE conversation_drafts (
+  conversation_id   TEXT PRIMARY KEY COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  revision          INTEGER NOT NULL CHECK (revision >= 1),
+  document          TEXT NOT NULL,
+  written           INTEGER NOT NULL CHECK (written BETWEEN 1 AND revision),
+  replaced_revision INTEGER,
+  replaced          TEXT,
+  updated_at        INTEGER NOT NULL,
+  CHECK ((replaced IS NULL) = (replaced_revision IS NULL))
+) STRICT;
+
 -- Records that make interrupted multi-step work discoverable. A Fork
 -- reserves its destination's conversation id, compared as the index
 -- compares it.
@@ -227,6 +242,7 @@ CREATE TABLE attachments (
   media_type TEXT NOT NULL,
   size_bytes INTEGER NOT NULL,
   sha256     TEXT NOT NULL,
+  snippet    TEXT,
   created_at INTEGER NOT NULL
 ) STRICT;
 ";

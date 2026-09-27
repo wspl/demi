@@ -12,6 +12,7 @@ import {
   type UploadFile,
 } from './message-input/attachments'
 import { useMessageEditComposer } from './message-input/useMessageEditComposer'
+import { draftPreview } from './message-input/draft-preview'
 import { editHasContent, type MessageEditState } from './message-editing'
 import { composerCapsule, composerTransfer, provideTransfers, type MessageCapsule } from './message-editor/capsules'
 import { parseUserMarkdown, serializeUserMarkdown } from '../markdown/user-markdown'
@@ -22,6 +23,7 @@ import ContextUsageIndicator from './ContextUsageIndicator.vue'
 import ModelSelector from './ModelSelector.vue'
 import { composerModel, type ModelSettings, type ModelSettingsChange } from './model-selection'
 import SessionNoticeBar from './SessionNoticeBar.vue'
+import ReplacedDraftNotice from './ReplacedDraftNotice.vue'
 import Dropdown from '../ui/Dropdown.vue'
 import IconButton from '../ui/IconButton.vue'
 import Menu from '../ui/Menu.vue'
@@ -58,6 +60,17 @@ const props = withDefaults(
      * gives way to that line and returns, draft kept, when the caller clears it.
      */
     hold?: string | null
+    /**
+     * The version of the draft a later save replaced, which the composer
+     * offers to restore: its Markdown and the names of its files.
+     */
+    replaced?: { markdown: string; fileNames: readonly string[] } | null
+    /**
+     * Counts the drafts shown from outside, another page's or a restored
+     * one: when it changes, the editor shows the draft and its files anew,
+     * even when the text is the same.
+     */
+    draftShown?: number
   }>(),
   {
     attachments: () => [],
@@ -84,6 +97,9 @@ const emit = defineEmits<{
   restore: []
   'update:messageEdit': [state: MessageEditState | null]
   submitEdit: []
+  /** Bring back the replaced version, in exchange for the draft. */
+  restoreReplaced: []
+  dismissReplaced: []
 }>()
 const edit = useMessageEditComposer({
   state: () => props.messageEdit,
@@ -176,6 +192,12 @@ watch(edit.attachmentError, (message) => {
     showToast({ title: "Couldn't attach", message, tone: 'danger' })
   }
 })
+/** The replaced version as the offer shows it; none while there is none, or while a message is edited. */
+const replacedPreview = computed(() =>
+  props.replaced && !props.messageEdit
+    ? draftPreview(props.replaced.markdown, props.replaced.fileNames)
+    : null,
+)
 const selected = computed(() =>
   props.models[props.modelSettings?.providerId ?? '']?.find(
     (model) => model.id === props.modelSettings?.modelId,
@@ -293,6 +315,13 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
         multiple
         @change="fileChange"
       />
+      <ReplacedDraftNotice
+        v-if="replacedPreview !== null"
+        class="mb-2"
+        :preview="replacedPreview"
+        @restore="emit('restoreReplaced')"
+        @dismiss="emit('dismissReplaced')"
+      />
       <ComposerShell
         :focused="focused || props.focused"
         :expanded="multiline"
@@ -329,6 +358,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             :line-width="line"
             :markdown="draft"
             :attachments="carried"
+            :shown-from-outside="draftShown"
             :placeholder="placeholder"
             label="Message"
             @change="changeDraft"
