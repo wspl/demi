@@ -14,8 +14,8 @@ pub use edits::{
     EditFile, EditJournal, EditKind,
 };
 pub use invocation::{
-    COMMAND_LOCALE_LANGUAGES, CommandCaller, CommandContext, CommandError, CommandLocale,
-    Completion, Invocation, LocalInvocation, without_nul,
+    COMMAND_LOCALE_LANGUAGES, CONVERSATION_NAME_CHARS, CommandCaller, CommandContext, CommandError,
+    CommandLocale, Completion, Invocation, LocalInvocation, conversation_name, without_nul,
 };
 pub use package::{
     ArtifactLocation, ArtifactPath, ArtifactUrl, PackageArtifact, PackageDescriptor, ServiceInfo,

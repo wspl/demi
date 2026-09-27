@@ -99,15 +99,16 @@ pub(crate) async fn open(data_dir: &Path, s3: Option<&S3Config>) -> Result<Arc<d
 }
 
 /// An object store that counts what reaches it, for the scenarios that prove
-/// what the backend reads and writes (`storage.md` § The object store): each
-/// put with its bytes, each read, each HEAD, and the most reads in flight at
-/// once.
+/// what the backend reads and writes (`storage.md` § The object store,
+/// § Retention): each put with its bytes, each read, each HEAD, the most
+/// reads in flight at once, each listing and each deletion.
 #[cfg(feature = "testing")]
 pub mod counting {
     use std::fmt;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicU64, Ordering};
 
+    use futures_util::StreamExt as _;
     use futures_util::stream::BoxStream;
     use object_store::path::Path;
     use object_store::{
@@ -127,6 +128,8 @@ pub mod counting {
         heads: AtomicU64,
         reading: AtomicU64,
         most_reading: AtomicU64,
+        lists: AtomicU64,
+        deletes: AtomicU64,
     }
 
     /// What reached the object store up to one moment.
@@ -141,6 +144,10 @@ pub mod counting {
         pub heads: u64,
         /// The most reads that were in flight at once.
         pub most_gets_at_once: u64,
+        /// Listings of a prefix.
+        pub lists: u64,
+        /// Objects asked to be deleted.
+        pub deletes: u64,
     }
 
     impl ObjectTally {
@@ -153,6 +160,8 @@ pub mod counting {
                 gets: self.gets - earlier.gets,
                 heads: self.heads - earlier.heads,
                 most_gets_at_once: self.most_gets_at_once,
+                lists: self.lists - earlier.lists,
+                deletes: self.deletes - earlier.deletes,
             }
         }
     }
@@ -166,6 +175,8 @@ pub mod counting {
                 gets: counters.gets.load(Ordering::SeqCst),
                 heads: counters.heads.load(Ordering::SeqCst),
                 most_gets_at_once: counters.most_reading.load(Ordering::SeqCst),
+                lists: counters.lists.load(Ordering::SeqCst),
+                deletes: counters.deletes.load(Ordering::SeqCst),
             }
         }
 
@@ -234,10 +245,15 @@ pub mod counting {
         }
 
         fn delete_stream(&self, locations: BoxStream<'static, Result<Path>>) -> BoxStream<'static, Result<Path>> {
-            self.inner.delete_stream(locations)
+            let counts = self.counts.clone();
+            let counted = locations.inspect(move |_| {
+                counts.0.deletes.fetch_add(1, Ordering::SeqCst);
+            });
+            self.inner.delete_stream(counted.boxed())
         }
 
         fn list(&self, prefix: Option<&Path>) -> BoxStream<'static, Result<ObjectMeta>> {
+            self.counts.0.lists.fetch_add(1, Ordering::SeqCst);
             self.inner.list(prefix)
         }
 
@@ -436,7 +452,7 @@ mod tests {
     async fn an_s3_bucket_holds_the_blobs_once_and_the_change_store_like_the_data_directory() {
         let fake = FakeS3::start().await;
         let objects: Arc<dyn ObjectStore> = Arc::new(fake.client());
-        let blobs = BlobStores::new(objects.clone()).for_user(&UserId::try_from("ana").unwrap());
+        let blobs = BlobStores::new(objects.clone(), Arc::new(demi_core::SystemClock)).for_user(&UserId::try_from("ana").unwrap());
         let first = blobs.put(Bytes::from_static(b"picture")).await.unwrap();
         // The same bytes again are the same blob, created once.
         let again = blobs.put(Bytes::from_static(b"picture")).await.unwrap();

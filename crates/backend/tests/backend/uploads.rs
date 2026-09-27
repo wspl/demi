@@ -25,7 +25,7 @@ use crate::conversations::{
 use crate::support::{Answer, Harness, Session, TestBackend, answer as read};
 
 /// A PNG image's first bytes, from which the backend reads its type.
-const PNG: [u8; 12] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe, 0x01];
+pub(crate) const PNG: [u8; 12] = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe, 0x01];
 
 async fn post(backend: &TestBackend, session: &Session, query: &str, media_type: Option<&str>, bytes: Vec<u8>) -> Answer {
     let headers: Vec<(&str, &str)> = media_type.into_iter().map(|media_type| ("content-type", media_type)).collect();
@@ -34,7 +34,7 @@ async fn post(backend: &TestBackend, session: &Session, query: &str, media_type:
 }
 
 /// Uploads `bytes` sent as `media_type` under the name `name`.
-async fn upload(backend: &TestBackend, session: &Session, name: &str, media_type: &str, bytes: &[u8]) -> AttachmentDto {
+pub(crate) async fn upload(backend: &TestBackend, session: &Session, name: &str, media_type: &str, bytes: &[u8]) -> AttachmentDto {
     let uploaded = post(backend, session, &format!("?name={name}"), Some(media_type), bytes.to_vec()).await;
     assert_eq!(uploaded.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&uploaded.body));
     uploaded.json::<AttachmentAnswer>().attachment
@@ -53,7 +53,7 @@ fn naming(text: &str, uploads: &[(&AttachmentDto, &str)]) -> Vec<ClientContent> 
     content
 }
 
-fn with_upload(id: &str, text: &str, uploads: &[(&AttachmentDto, &str)]) -> ClientFrame {
+pub(crate) fn with_upload(id: &str, text: &str, uploads: &[(&AttachmentDto, &str)]) -> ClientFrame {
     ClientFrame::Send {
         message_id: TurnId::try_from(id).unwrap(),
         content: naming(text, uploads),
@@ -280,7 +280,7 @@ async fn a_tool_medium_that_cannot_be_stored_becomes_text_and_the_turn_goes_on()
 }
 
 /// A PNG image that differs from the others by its last byte.
-fn png(last: u8) -> Vec<u8> {
+pub(crate) fn png(last: u8) -> Vec<u8> {
     let mut bytes = PNG.to_vec();
     bytes.push(last);
     bytes
