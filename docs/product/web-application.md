@@ -237,7 +237,12 @@ default ([Development backend](../backend/backend.md#development-backend) gives
 the whole launch), then run the root package script `web:dev` for the product
 at `http://127.0.0.1:18934`. Vite forwards `/api` HTTP and WebSocket requests
 to the backend; set `DEMI_BACKEND_URL` when the backend runs at another
-address. Create the first account through the setup API (`POST /api/setup`).
+address. The script runs Vite under Node, so development needs a system Node,
+the one part of the toolchain that does: under Bun, which runs the
+repository's other scripts (`bunfig.toml`), Vite's proxy cannot forward a
+WebSocket, since Bun's `node:http` client never reports the backend's
+upgrade, and the conversation would never connect. Create the first account
+through the setup API (`POST /api/setup`).
 The script `web:build` writes `packages/web/dist`, which the backend serves when
 `DEMI_WEB_DIRECTORY` names it
 ([Serving the browser build](web-api.md#serving-the-browser-build)). The
