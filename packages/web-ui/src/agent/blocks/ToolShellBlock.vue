@@ -30,8 +30,11 @@ const terminalOutputText = computed(
     || shellTerminalOutputChunks(props.block).map((chunk) => chunk.text).join('')
 )
 const isOpen = defineModel<boolean>('open', { default: false })
-// A running call opens once its command's output starts to come, a change
-// while it is mounted, as a block opens for its active output.
+// A running call opens once its command's output starts to come, and also
+// when its row mounts with the output already coming: the row takes over from
+// the activity slot only after the slot's roll, by which time the first lines
+// have usually arrived, and a page opened while the call runs shows what the
+// command prints now. A fold by the user holds until the call returns.
 watch(
   () => liveOutput.value !== '',
   (coming) => {
@@ -39,6 +42,7 @@ watch(
       isOpen.value = true
     }
   },
+  { immediate: true },
 )
 </script>
 
