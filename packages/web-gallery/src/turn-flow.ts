@@ -90,9 +90,9 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       window.clearTimeout(id)
     }
     timers.length = 0
-    // A stopped action ends the command its running call started.
+    // A stopped action stops the command its running call started.
     if (runningTool) {
-      endCommand(runningTool)
+      endTerminal(command(runningTool), 'aborted')
       runningTool = null
     }
   }
@@ -254,11 +254,10 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     return state.terminals.find((terminal) => terminal.id === `cmd-${toolId}`)
   }
 
-  /** Ends the command a stopped or finished call ran. */
-  function endCommand(toolId: string): void {
-    const terminal = command(toolId)
+  /** Ends a running command as the product's last frame of it would: `exited` on its own, `aborted` when stopped. */
+  function endTerminal(terminal: TerminalRecord | undefined, phase: 'exited' | 'aborted'): void {
     if (terminal?.phase === 'running') {
-      terminal.phase = 'exited'
+      terminal.phase = phase
       terminal.endedAt = now()
     }
   }
@@ -293,7 +292,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     })
     const toolDone = thought1 + 200 + TOOL_RUN_MS
     at(run, toolDone, () => {
-      endCommand(toolId)
+      endTerminal(command(toolId), 'exited')
       runningTool = null
       replace(toolId, tool(toolId, toolStartedAt, 'completed'))
     })
@@ -425,11 +424,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   }
 
   function abortTerminal(id: string): void {
-    const terminal = state.terminals.find((entry) => entry.id === id)
-    if (terminal?.phase === 'running') {
-      terminal.phase = 'exited'
-      terminal.endedAt = now()
-    }
+    endTerminal(state.terminals.find((entry) => entry.id === id), 'aborted')
   }
 
   /** Reset to a fixture and play it. */
