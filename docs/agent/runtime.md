@@ -692,7 +692,10 @@ Live frames add to the transcript; they do not replace it:
   panel shows it under its script, and its output keeps coming there, while
   the call keeps the view its result stored. A page adds to what it shows
   only the characters beyond those it has shown (`chars`), so a terminal
-  keeps its scrollback; after a gap it shows the `tail` anew.
+  keeps its scrollback; after a gap it shows the `tail` anew. A command's tab
+  shows its status as its last frame, or after a reload its stored view,
+  gives it: running, exited, or stopped (`aborted`). A command the user or
+  the agent stopped did not finish, so it is never marked done.
 - `shell_write_result` and `abort_result` acknowledge the user's controls.
   They do not mean the command or the turn has finished, and they do not
   replace the `tool_call` rendering.
