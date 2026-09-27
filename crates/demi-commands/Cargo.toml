@@ -15,7 +15,7 @@ name = "demi-commands"
 path = "src/main.rs"
 
 [features]
-# Page-driving helpers for the Chrome tests.
+# Page-driving helpers, and Chrome's own targets, for the Chrome tests.
 testing = []
 
 [dependencies]

@@ -651,60 +651,38 @@ async fn remove_profile(profile: tempfile::TempDir, retired: Result<()>) -> Resu
     })
 }
 
+/// What only the Chrome tests reach: Chrome's own view of its targets, and
+/// evaluation in a target no command addresses.
+#[cfg(feature = "testing")]
+impl BrowserEnvironment {
+    /// Every target Chrome runs, the capture extension's included.
+    pub async fn targets(
+        &self,
+    ) -> Result<Vec<chromiumoxide::cdp::browser_protocol::target::TargetInfo>> {
+        use chromiumoxide::cdp::browser_protocol::target::GetTargetsParams;
+        Ok(self
+            .browser
+            .call()?
+            .execute(GetTargetsParams::default())
+            .await?
+            .result
+            .target_infos)
+    }
+
+    /// Evaluates `expression` in `target` over a CDP connection of its own,
+    /// and answers its value.
+    pub async fn evaluate_in(
+        &self,
+        target: chromiumoxide::cdp::browser_protocol::target::TargetId,
+        expression: &str,
+    ) -> Result<serde_json::Value> {
+        super::cdp::evaluate_in(&self.browser, target, expression).await
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use chromiumoxide::cdp::browser_protocol::target::GetTargetsParams;
-
     use super::*;
-
-    #[tokio::test]
-    #[ignore = "requires DEMI_TEST_CHROME pointing to an installed Chrome for Testing release"]
-    async fn the_capture_extension_runs_beside_the_pages_and_is_never_a_tab() {
-        let executable =
-            PathBuf::from(std::env::var_os("DEMI_TEST_CHROME").expect("DEMI_TEST_CHROME"));
-        let locale = CommandLocale {
-            time_zone: "UTC".into(),
-            languages: vec!["en-US".into()],
-        };
-        let timeout = Duration::from_secs(60);
-        with_browser(
-            LaunchOptions::pinned(executable, locale).unwrap(),
-            CancellationToken::new(),
-            |environment| async move {
-                let tab = environment
-                    .open("about:blank", &CancellationToken::new(), timeout)
-                    .await?;
-                let prefix = format!(
-                    "chrome-extension://{}/",
-                    super::super::launch::CAPTURE_EXTENSION_ID
-                );
-                let mut loaded = false;
-                for _ in 0..100 {
-                    let targets = environment
-                        .browser
-                        .call()?
-                        .execute(GetTargetsParams::default())
-                        .await?
-                        .result
-                        .target_infos;
-                    if targets.iter().any(|target| target.url.starts_with(&prefix)) {
-                        loaded = true;
-                        break;
-                    }
-                    tokio::time::sleep(Duration::from_millis(50)).await;
-                }
-                assert!(loaded, "the capture extension never ran");
-                let tabs = environment.tabs(&CancellationToken::new(), timeout).await?;
-                assert_eq!(
-                    tabs.iter().map(BrowserTab::id).collect::<Vec<_>>(),
-                    vec![tab.id()]
-                );
-                Ok(())
-            },
-        )
-        .await
-        .unwrap();
-    }
 
     /// A profile nobody holds goes; a held one and one without a lock stay.
     #[tokio::test]
