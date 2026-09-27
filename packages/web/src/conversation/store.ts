@@ -155,6 +155,33 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
+  /**
+   * A synced conversation's model is the one its record names, whichever
+   * page chose it (`web-api.md` § Sidebar mutations, read state and page
+   * synchronization): a page takes a model another page chose, with the
+   * model's default thinking effort and service tier, as its own switch does.
+   */
+  function followRecordModel(
+    conversation: Conversation,
+    record: Pick<ConversationSummary, 'providerId' | 'modelId'>,
+  ): void {
+    if (!record.providerId || !record.modelId) {
+      return
+    }
+    if (
+      conversation.model.providerId === record.providerId &&
+      conversation.model.modelId === record.modelId
+    ) {
+      return
+    }
+    conversation.model = {
+      providerId: record.providerId,
+      modelId: record.modelId,
+      thinkingEffort: null,
+      serviceTierId: null,
+    }
+  }
+
   /** A local draft has no backend record yet, so no resolved `cwd`; the first send brings it. */
   function newConversation(record: Omit<ConversationSummary, 'cwd'> & { cwd?: string }): Conversation {
     return {
@@ -212,6 +239,7 @@ export const useConversations = defineStore('conversations', () => {
         const contextChanged = current.contextVersion !== record.contextVersion
         const archiveChanged = current.archived !== record.archived
         Object.assign(current, metadata(record))
+        followRecordModel(current, record)
         // A snapshot read before the rename reached the backend must not show the old title again.
         current.title = pendingTitles.get(current.id) ?? current.title
         // Nor may one read before the title request arrived stop its button spinning.
@@ -425,7 +453,19 @@ export const useConversations = defineStore('conversations', () => {
           conversation.pendingSend.error =
             'Sending was interrupted. Retry to confirm delivery.'
         }
-        conversation.model = draft.model
+        // A synced conversation's record names its model; the draft keeps
+        // this page's thinking effort and service tier for that model.
+        const named =
+          conversation.persistence === 'synced' &&
+          conversation.model.providerId !== '' &&
+          conversation.model.modelId !== ''
+        if (
+          !named ||
+          (draft.model.providerId === conversation.model.providerId &&
+            draft.model.modelId === conversation.model.modelId)
+        ) {
+          conversation.model = draft.model
+        }
         conversation.scroll = draft.scroll
         conversation.files = draft.files.map((file) =>
           file.kind === 'reference'
@@ -454,6 +494,17 @@ export const useConversations = defineStore('conversations', () => {
   async function prepareModel(
     conversation: Conversation,
   ): Promise<ModelSelection> {
+    if (conversation.persistence === 'synced') {
+      // The `open` or `set_provider` this prepares names the record's model,
+      // even when another page switched it since the last poll.
+      await refreshSnapshot()
+      const record = product.snapshot?.conversations.find(
+        (item) => item.id === conversation.id,
+      )
+      if (record) {
+        followRecordModel(conversation, record)
+      }
+    }
     const pick = composerModel(
       resources.providerInfos,
       resources.modelsFor(),
@@ -523,8 +574,8 @@ export const useConversations = defineStore('conversations', () => {
     }
     try {
       await cache.open(conversation.id, (entry) => loadConversation(conversation, entry))
-      // A different view may have taken over a cached attachment. Navigation
-      // is a user action that can reopen it without refetching REST history.
+      // Navigation retries a connection whose opening failed, without
+      // refetching REST history; an open one is kept as it is.
       await cache.get(conversation.id)?.runtime?.connect()
     } catch {
       // The failure is the conversation's load state: the pane or the

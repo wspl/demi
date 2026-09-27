@@ -510,6 +510,111 @@ test('leaving an empty draft discards it without removing a draft with input', a
   expect(store.items.some((item) => item.id === retained)).toBe(true)
 })
 
+test('a model another page chose reaches this page with its default effort and tier', async () => {
+  const store = useConversations()
+  const current = store.items.find((item) => item.id === FIRST)!
+  current.model = { providerId: 'stub', modelId: 'stub', thinkingEffort: 'high', serviceTierId: 'priority' }
+  const record = records.find((item) => item.id === FIRST)!
+  record.providerId = 'stub'
+  record.modelId = 'other'
+  await useProduct().refresh()
+  await nextTick()
+  expect(current.model).toEqual({ providerId: 'stub', modelId: 'other', thinkingEffort: null, serviceTierId: null })
+})
+
+/** The conversation socket as the page opens it: it answers `open` with `opened` and keeps what the page sent. */
+class FakeSocket {
+  static made: FakeSocket[] = []
+  readonly sent: { type: string, model?: { model: { id: string } } }[] = []
+  private readonly listeners = new Map<string, Set<(event: unknown) => void>>()
+
+  constructor() {
+    FakeSocket.made.push(this)
+    queueMicrotask(() => this.dispatch('open', {}))
+  }
+
+  addEventListener(type: string, listener: (event: unknown) => void): void {
+    const listeners = this.listeners.get(type) ?? new Set()
+    listeners.add(listener)
+    this.listeners.set(type, listeners)
+  }
+
+  removeEventListener(type: string, listener: (event: unknown) => void): void {
+    this.listeners.get(type)?.delete(listener)
+  }
+
+  send(data: string): void {
+    const frame = JSON.parse(data)
+    this.sent.push(frame)
+    if (frame.type === 'open') {
+      queueMicrotask(() => this.dispatch('message', { data: JSON.stringify({ type: 'opened' }) }))
+    }
+  }
+
+  close(): void {}
+
+  private dispatch(type: string, event: unknown): void {
+    for (const listener of this.listeners.get(type) ?? []) {
+      listener(event)
+    }
+  }
+}
+
+test('the open a page sends names the model another page chose after its last poll', async () => {
+  const store = useConversations()
+  const current = store.items.find((item) => item.id === FIRST)!
+  const record = records.find((item) => item.id === FIRST)!
+  record.providerId = 'stub'
+  record.modelId = 'stub'
+  const catalog = stubCatalog()
+  const provider = catalog.providers[0]!
+  const stub = provider.models[0]!
+  provider.models.push({
+    ...stub, id: 'other', displayName: 'Other',
+    selection: { ...model, model: { ...model.model, id: 'other', name: 'Other' } },
+  })
+  const originalFetch = globalThis.fetch
+  const originalSocket = globalThis.WebSocket
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
+  FakeSocket.made = []
+  globalThis.WebSocket = FakeSocket as unknown as typeof WebSocket
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { location: { href: 'http://127.0.0.1/' } },
+  })
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    if (path === '/api/state') {
+      return Response.json(productState({ preferences: savedPreferences, conversations: records, providers: [stubProvider] }))
+    }
+    if (path.startsWith('/api/models')) return Response.json(catalog)
+    if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
+    if (path.endsWith('/transcript')) return Response.json({ blocks: [], subagents: [] })
+    return originalFetch(input, init)
+  }) as typeof fetch
+  try {
+    await useProduct().refresh()
+    await useProduct().loadModels(true)
+    await nextTick()
+    expect(current.model.modelId).toBe('stub')
+    // Another page switches the model; this page has not polled since.
+    record.modelId = 'other'
+    await store.activate(FIRST)
+    const opens = FakeSocket.made.flatMap((socket) => socket.sent.filter((frame) => frame.type === 'open'))
+    expect(opens.map((frame) => frame.model?.model.id)).toEqual(['other'])
+    expect(current.model.modelId).toBe('other')
+  } finally {
+    store.stopAll()
+    globalThis.fetch = originalFetch
+    globalThis.WebSocket = originalSocket
+    if (originalWindow) {
+      Object.defineProperty(globalThis, 'window', originalWindow)
+    } else {
+      Reflect.deleteProperty(globalThis, 'window')
+    }
+  }
+})
+
 test('snapshot refresh preserves live transcript and unsent draft', async () => {
   const store = useConversations()
   const current = store.items[0]!
