@@ -117,10 +117,23 @@ work panel tab state        browser kind                         backend / Host
   lost connection changes no tab. The content of the shown tab says what is
   wrong, reconnects by itself where that can help, and offers Retry where it
   cannot.
+- **A browser that cannot decode the pictures.** The page decodes the
+  pictures, H.264 High ([Capture](#capture)), with the viewer's WebCodecs, and
+  some browsers have no decoder for them: a Chromium built without proprietary
+  codecs has WebCodecs but no H.264. The page asks its browser whether it
+  decodes that stream before it opens a view. A browser that does not opens no
+  view, and the content of a bound tab says that this browser cannot show the
+  live view. Such a page is no viewer: it would show nothing, its missing
+  acknowledgements would lower the picture every viewer of the tab shares
+  ([Delivery](#delivery)), its blind clicks would decide the tab's size
+  ([Modes](#modes)), and an open view would keep the conversation active
+  ([Ending a view](#ending-a-view)). The tab requests still work; only the
+  view is missing, so the Host counts no viewer for the page.
 
 A page has at most one view per conversation, open only while a `browser` tab
 is the panel's selection and the page is visible
-([Ending a view](#ending-a-view)). Selecting another `browser` tab keeps the view and
+([Ending a view](#ending-a-view)), and only in a browser that decodes the
+pictures. Selecting another `browser` tab keeps the view and
 sends `watch`; the module then releases what the viewer held on the old tab,
 starts a new stream generation and sends the new tab's dialog, controls and
 cursor, and the page discards frames of older generations. A view carries one
@@ -316,6 +329,8 @@ Lima's `vz` VMs do not pass SME through.
 - The page acknowledges each frame it shows. The module adapts from
   end-to-end acknowledgement delay: queueing delay is the main signal. Under
   congestion it lowers the bit rate, then the frame rate, then the resolution.
+  The viewers of a tab share its encoding, so it follows the viewer with the
+  least room: one slow viewer lowers the picture for all of them.
   A blocked page and a stall are pauses, not congestion. There
   is no fixed bit rate ceiling and no Cloud-specific limit.
 - Watching costs Host CPU. A small Host shares its CPU between Chrome,

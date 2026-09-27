@@ -206,6 +206,9 @@ function history(action: 'back' | 'forward' | 'reload'): void {
         <span class="text-on-danger" role="alert">{{ controller.listError.value.message }}</span>
         <Button variant="default" size="sm" @click="controller.refresh()">Retry</Button>
       </template>
+      <template v-else-if="controller.pictures.value === 'unsupported'">
+        <span>This browser cannot show the live view: it cannot decode H.264 video.</span>
+      </template>
       <!-- Waiting says only that it waits: why the last view ended is no news while the next one opens. -->
       <template v-else>
         <IndeterminateSpinner :size="16" class="text-fg-subtle" />
