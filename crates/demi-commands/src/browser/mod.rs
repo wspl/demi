@@ -34,6 +34,7 @@ mod screenshot;
 mod select;
 mod selection;
 mod tab;
+mod text;
 mod upload;
 mod viewport;
 mod webmcp;
