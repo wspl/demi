@@ -75,7 +75,9 @@ pub fn spec(boot: &Boot<'_>) -> Result<Spec, OciSpecError> {
     };
     let process = ProcessBuilder::default()
         .terminal(false)
-        .user(UserBuilder::default().uid(USER_ID).gid(USER_ID).build()?)
+        // The runner and its jobs make files with the usual mask 022, not the
+        // manager's own 077 (`runner.md` § Builtins that act on a process).
+        .user(UserBuilder::default().uid(USER_ID).gid(USER_ID).umask(0o022u32).build()?)
         .cwd("/home/demi")
         .args(
             [INIT_PATH, "--", RUNNER_PATH, "run", "--managed-boot", BOOT_RECORD]
