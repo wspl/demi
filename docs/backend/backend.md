@@ -299,7 +299,9 @@ of command output would hold back the sidebar's changes behind it.
 Both kinds of socket send a heartbeat once they have sent nothing else for 30
 seconds, so that a page can tell a quiet socket from one that died without a
 close ([Liveness and reconnection](../product/web-application.md#liveness-and-reconnection)).
-The shard serves both through one page socket, which owns that interval.
+The shard serves both through one page socket, which owns that interval and
+the bound on the close
+([Startup and shutdown](#startup-and-shutdown)).
 
 How the browser consumes both, with its adapters, its synchronization and
 its session handling, is defined in
@@ -430,6 +432,16 @@ Transfers end before the Cloud hibernates because an open download holds the
 Cloud's gate, and a Cloud whose gate is busy would skip its save. Every step
 runs even when an earlier one fails; the failures are reported together, and
 the process exits with a failure status.
+
+A page cannot hold up shutdown. When a socket to a page closes, the
+synchronization channel or a conversation socket, the backend stops sending
+whatever it was sending on it and sends the close frame, and it waits at most
+one second for the page to take that frame. For example, a phone's page
+stopped reading in the middle of a long transcript, and the socket's buffers
+are full: without the bound, the backend would wait for the phone to read
+before the shard could close. After the second, the page loses the connection
+without the close frame, and connects again as it does after any close
+([Liveness and reconnection](../product/web-application.md#liveness-and-reconnection)).
 
 ## Configuration
 
