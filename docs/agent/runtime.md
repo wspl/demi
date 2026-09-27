@@ -683,7 +683,7 @@ each provider request while the block is replayed:         the held bytes
   a blob found missing. Bytes the session let go of and reads again are the
   same bytes, since a blob's name is their hash and a blob that a block, a
   queued message or a pending steer references is never deleted
-  ([Retention](../backend/storage.md#open-decisions)). Media therefore never
+  ([Collecting blobs](../backend/storage.md#collecting-blobs)). Media therefore never
   change the start a request shares with the previous one.
 - **Failures.** A read that fails, rather than finding the blob missing,
   fails the action before its request, as a failed save does; the next
@@ -712,6 +712,48 @@ stay in the change store ([Edit tracking](../execution/edit-tracking.md#the-chan
 The model's result and the view come from the same command status; the view
 shows nothing the model could not read from the command, except `files`, which
 exists only for the user.
+
+### Retired tool media
+
+A tool result's image or video stays in its block for 30 days. After that it
+is retired, once no request can send it while a vendor may still keep that
+request in its cache: it gives way, in its place in the result, to one line of
+text that says what it was and when it was removed. For example, a screenshot
+a command printed on 1 September, in history that compaction summarized on 3
+September, gives way at the first daily pass after 1 October to:
+
+```text
+[image:image/png, removed on 2026-10-01: a tool result's images and videos are kept for 30 days]
+```
+
+A medium is retired when its `tool_call` block is more than 30 days old and
+one of these holds:
+
+| Where it lies | Why no cache can still hold a request that sent it |
+| --- | --- |
+| Before its node's last `compaction_boundary`, and that boundary is more than 24 hours old | Replay starts at the boundary, so no request has sent the medium since the summary request, more than a day ago, and no vendor keeps a cache entry longer than 24 hours. An edit or a retry that removes the boundary later sends the text into a cache that has ended |
+| Anywhere in a conversation that has been idle for 30 days | No request of the conversation has been sent for 30 days ([Retiring tool media](../backend/storage.md#retiring-tool-media) says how the backend knows) |
+
+- The text is `[<kind>:<media type>, removed on <date>: a tool result's images
+  and videos are kept for 30 days]`. The kind is `image` or `video`, and the
+  date is the UTC day of the retirement, `YYYY-MM-DD`. The text replaces the
+  image or video part of the block's `output`; the result's other parts, its
+  `view`, and the block's id, time and status stay.
+- The model receives the text as any text part of a result. The backend
+  retires only conversations without a live tree
+  ([Retiring tool media](../backend/storage.md#retiring-tool-media)), so
+  within a live tree a medium reaches the model in one form for as long as it
+  is replayed. A request after an idle month carries the text where the
+  previous one carried the image.
+- A message's images, videos and documents are never retired: they come from
+  the user's uploads.
+- The page shows the call as before. The renderers of the five tools draw its
+  stored `view`, which never held the image
+  ([Rendering boundary](#rendering-boundary)), and the generic tool card shows
+  the text as it shows any text part.
+- The agent owns the rule: which media are retired, when, and the text. The
+  backend applies it to stored conversations
+  ([Retention](../backend/storage.md#retention)).
 
 ### Patches and versions
 

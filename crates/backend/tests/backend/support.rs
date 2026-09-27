@@ -168,6 +168,12 @@ impl ManualClock {
         let mut now = self.0.lock().unwrap();
         *now = now.checked_add(by).unwrap();
     }
+
+    /// Sets the time to the system's, for a test that compares the backend's
+    /// times with those the file system gives the objects it writes.
+    pub fn follow_system(&self) {
+        *self.0.lock().unwrap() = jiff::Timestamp::now();
+    }
 }
 
 /// Captures verification mail, or refuses it while `failing` is set.
@@ -271,7 +277,12 @@ impl Harness {
             release: None,
             public_url: None,
             user_streams: None,
-            lifecycle: LifecycleTuning::default(),
+            // A test runs a retention pass when it chooses; one that ran by
+            // itself would race the test's own steps.
+            lifecycle: LifecycleTuning {
+                retention_interval: None,
+                ..LifecycleTuning::default()
+            },
             cloud: CloudTuning::default(),
             manager: ScriptedManager::start(),
             machines: None,
@@ -649,6 +660,11 @@ impl TestBackend {
     }
 
     /// The file gate of `session`'s user's conversation `conversation`.
+    /// Runs the user's retention pass at once, and waits for its end.
+    pub async fn run_retention(&self, session: &Session) {
+        self.backend.run_retention(&session.user.id).await;
+    }
+
     pub async fn file_gate(&self, session: &Session, conversation: &str) -> demi_gates::ActivityGate {
         let conversation = demi_web_api::ids::ConversationId::try_from(conversation).unwrap();
         self.backend.file_gate(&session.user.id, &conversation).await

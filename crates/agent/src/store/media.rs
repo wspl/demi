@@ -293,8 +293,33 @@ pub(crate) fn references(block: &Block) -> impl Iterator<Item = &BlobRef> {
     sources(block).into_iter().filter_map(Source::reference)
 }
 
-/// The blobs the media of a message's or a steer's content reference.
-pub(crate) fn content_references(content: &[UserContentBlock]) -> impl Iterator<Item = &BlobRef> {
+/// One medium a block references, as a store indexes it for retention
+/// (`storage.md` § Retention).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BlockMedium<'a> {
+    pub blob: &'a BlobRef,
+    /// Whether a tool result holds it, which retirement may take
+    /// (`runtime.md` § Retired tool media); a message's and a steer's come
+    /// from the user's uploads.
+    pub tool: bool,
+}
+
+/// The media a block references, in the order its parts hold them.
+pub fn block_media(block: &Block) -> Vec<BlockMedium<'_>> {
+    sources(block)
+        .into_iter()
+        .filter_map(|source| {
+            Some(BlockMedium {
+                blob: source.reference()?,
+                tool: matches!(source, Source::Tool(_)),
+            })
+        })
+        .collect()
+}
+
+/// The blobs the media of a message's or a steer's content reference, such
+/// as a queued message's.
+pub fn content_references(content: &[UserContentBlock]) -> impl Iterator<Item = &BlobRef> {
     content_sources(content).filter_map(Source::reference)
 }
 

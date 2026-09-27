@@ -55,11 +55,11 @@ over the manager's Unix socket.
 | `sync` | The pages' synchronization channels: the product state, the parts that changed, and the registry that marks changes on each user's channels | [Browser synchronization](#browser-synchronization) |
 | `conversation` | Agent-tree hosting, frame scoping, attachment and remote-file references, history and Fork, summaries and titles, target resolution and transitions, the conversation's host access, file transfers and user streams | [Sessions and targets](../execution/sessions-and-targets.md) |
 | `runner` | Pairing, device links and runner connections, the rpc relay and each session's commands, the product's `demi host` group, installer scripts, native artifact publication and the development store | [Runner](../execution/runner.md), [Commands](../execution/commands.md), [Native runtime](../execution/native-runtime.md#backend-deployment-configuration) |
-| `lifecycle` | The conversation idle clock and the conversation release | [Conversation idle and Host resource release](../execution/resource-lifecycle.md) |
+| `lifecycle` | The conversation idle clock, the conversation release, and the daily retention pass that retires expired tool media and collects blobs | [Conversation idle and Host resource release](../execution/resource-lifecycle.md), [Retention](storage.md#retention) |
 | `managed` | Cloud policy and capacity, machine transitions, reset and recovery, the machine manager's client | [Managed hosts](../cloud/managed-hosts.md) |
 | `expose` | Expose records and their lifetime, live relay connections, the `demi host expose` leaves | [Host expose](../execution/expose.md) |
 | `llm`, `vault`, `usage` | Provider assembly and model catalogs; credential records, scope and login flows; metering and the request rate limit | [Providers](../providers/providers.md), [Models](../providers/models.md), [Usage and quota](../providers/usage-and-quota.md) |
-| `storage` | The control service, conversation databases and the tree store, the object store | [Storage](storage.md) |
+| `storage` | The control service, conversation databases and the tree store with its `media` index, the object store with its record of blob uses | [Storage](storage.md) |
 
 These are modules of one backend, not independently deployed services.
 [Crates and packages](../architecture/crates-and-packages.md#crates) names the
@@ -432,14 +432,16 @@ At startup the backend:
    ([Managed hosts](../cloud/managed-hosts.md#system-reset)), and Fork
    creations whose destination root was committed are published
    ([Conversation Fork](../agent/conversation-fork.md#backend-creation-and-retries)).
-7. Opens its listener.
+7. Opens its listener, and starts the daily retention pass, whose first pass
+   runs at once ([The retention pass](storage.md#the-retention-pass)).
 
 Shutdown closes the listener first, so that no new work starts and no runner
 reconnects into a backend that is closing. A new request on a connection that
 is already open answers 503 `backend_closing`. Runner connections and pipes
 keep working, because the steps below need them:
 
-1. Login flows are cancelled.
+1. Login flows are cancelled, and no retention pass starts; one under way
+   ends with its shard.
 2. Each shard ends its user's work in this order. The synchronization
    channels close, so no page is sent what the steps below change; a page
    reads the state again from the next backend. Idle watches stop, and a

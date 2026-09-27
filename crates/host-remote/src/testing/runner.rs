@@ -299,6 +299,7 @@ async fn adopt(
             protocol,
             device_token,
             runner,
+            ..
         }) => {
             if *protocol != wire::VERSION {
                 Err(refusal(

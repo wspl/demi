@@ -114,6 +114,9 @@ CREATE TABLE conversations (
   titled_messages     INTEGER NOT NULL,
   created_at          INTEGER NOT NULL,
   updated_at          INTEGER NOT NULL,
+  -- When the conversation's agent tree was last seen live, from which the
+  -- retention pass reads how long the conversation has been idle.
+  live_at             INTEGER NOT NULL,
   CHECK (
     (target_kind = 'cloud'
       AND target_device_id IS NULL AND target_workspace_id IS NULL)
@@ -283,6 +286,22 @@ CREATE TABLE blocks (
   block   TEXT NOT NULL,
   PRIMARY KEY (node_id, idx)
 ) STRICT;
+
+-- An index of the media the blocks reference, one row per medium: derived
+-- from each block in the transaction that writes it, never written on its
+-- own. The retention pass finds expired tool media and referenced blobs
+-- here, which SQLite cannot index inside a block's JSON.
+CREATE TABLE media (
+  node_id TEXT NOT NULL,
+  idx     INTEGER NOT NULL,
+  part    INTEGER NOT NULL CHECK (part >= 0),
+  blob    TEXT NOT NULL,
+  tool    INTEGER NOT NULL CHECK (tool IN (0, 1)),
+  at      INTEGER NOT NULL,
+  PRIMARY KEY (node_id, idx, part),
+  FOREIGN KEY (node_id, idx) REFERENCES blocks (node_id, idx) ON DELETE CASCADE
+) STRICT;
+CREATE INDEX media_expiry ON media (tool, at);
 
 -- Each version holds the node's complete command-storage map.
 CREATE TABLE command_snapshots (
