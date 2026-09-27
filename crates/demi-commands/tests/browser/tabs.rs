@@ -122,3 +122,27 @@ async fn an_action_works_in_the_older_of_two_open_tabs() {
     })
     .await;
 }
+
+/// The tab list shows the title each page has now, as `info` does, although
+/// Chrome's target events carry only the address that stood in for it when
+/// the page committed (`browser.md` § Tabs and navigation).
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn the_tab_list_shows_the_title_a_page_has_now() {
+    with_browser_fixture(|fixture| async move {
+        let path = fixture.root.path().join("titled.html");
+        std::fs::write(
+            &path,
+            "<!doctype html><title>First title</title><script>document.title = 'Listed title'</script>",
+        )
+        .unwrap();
+        let url = url::Url::from_file_path(path).unwrap();
+        let opened = fixture.call("browser.open", json!({"url": url.as_str()})).await;
+        let info = fixture.call("browser.info", json!({"tab": opened["tab"]})).await;
+        assert_eq!(info["title"], "Listed title");
+        let tabs = fixture.call("browser.tabs", json!({})).await;
+        assert_eq!(tabs["tabs"][0]["title"], "Listed title", "{tabs}");
+        fixture
+    })
+    .await;
+}
