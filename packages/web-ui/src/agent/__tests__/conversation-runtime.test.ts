@@ -3,7 +3,8 @@ import type { PendingSteer } from '@demicodes/protocol'
 import { deferred, waitFor } from '@demicodes/utils'
 import { computed } from 'vue'
 import { ConversationRuntime, type RuntimeState } from '../conversation-runtime'
-import { AgentSocketError } from '../../transport/agent-socket'
+import { AgentSocketError, connectAgentClient } from '../../transport/agent-socket'
+import { playSockets } from '../../transport/__tests__/test-socket'
 import { clientHarness, model, userBlock } from './agent-harness'
 
 function state(): RuntimeState {
@@ -267,6 +268,45 @@ test('a connection that cannot be made is tried again after the page\'s waits, n
     random.mockRestore()
     jest.useRealTimers()
     runtime.dispose()
+  }
+})
+
+test('a connection lost before the session answered opens the conversation again after the first wait, never told as a failure', async () => {
+  const sockets = playSockets()
+  const current = state()
+  const runtime = new ConversationRuntime({
+    state: current,
+    connect: (signal) => connectAgentClient('ws://fixture', signal),
+  })
+  jest.useFakeTimers()
+  const random = spyOn(Math, 'random').mockReturnValue(0)
+  try {
+    const opening = runtime.connect()
+    // The backend restarts while the conversation opens: the socket closes
+    // after the page sent `open` and before the session answered it.
+    const lost = sockets.last()
+    lost.open()
+    await turn()
+    expect(lost.sent).toEqual([{ type: 'open' }])
+    lost.end()
+    await turn()
+    expect(current.load).toBe('reconnecting')
+    expect(current.lastError).toBeNull()
+    jest.advanceTimersByTime(1_000)
+    await turn()
+    const next = sockets.last()
+    expect(next).not.toBe(lost)
+    next.open()
+    await turn()
+    next.receive({ type: 'opened' })
+    await opening
+    expect(current.load).toBe('ready')
+    expect(current.lastError).toBeNull()
+  } finally {
+    random.mockRestore()
+    jest.useRealTimers()
+    runtime.dispose()
+    sockets.restore()
   }
 })
 
