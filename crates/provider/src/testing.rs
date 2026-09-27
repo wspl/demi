@@ -19,7 +19,7 @@ use axum::{
     extract::{Request, State},
     response::Response,
 };
-use demi_core::{AuthState, Clock, RuntimeState, Timestamp, TokenUsage, UserContentBlock};
+use demi_core::{AuthState, Clock, Model, RuntimeState, Timestamp, TokenUsage, UserContentBlock};
 use futures_util::{
     Stream, StreamExt,
     future::LocalBoxFuture,
@@ -30,8 +30,8 @@ use tokio::sync::Notify;
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
 use crate::{
-    InferenceItem, InferenceRequest, Provider, ProviderEvent, ProviderFailure, ProviderRun,
-    ProviderRuntime, ToolCall,
+    InferenceItem, InferenceRequest, PromptCache, Provider, ProviderEvent, ProviderFailure,
+    ProviderRun, ProviderRuntime, RequestLimits, ToolCall,
 };
 
 /// Builders of the events a scripted run yields.
@@ -94,6 +94,7 @@ pub fn inference_request() -> InferenceRequest {
         tools: Arc::new([]),
         thinking: None,
         service_tier_id: None,
+        prompt_cache: PromptCache::Off,
         cancel: CancellationToken::new(),
     }
 }
@@ -131,6 +132,7 @@ struct Script {
     turns: VecDeque<Turn>,
     requests: Vec<InferenceRequest>,
     closes: usize,
+    limits: RequestLimits,
 }
 
 impl ScriptedRuntime {
@@ -140,8 +142,17 @@ impl ScriptedRuntime {
                 turns: turns.into_iter().collect(),
                 requests: Vec::new(),
                 closes: 0,
+                limits: RequestLimits::default(),
             })),
         }
+    }
+
+    /// The runtime of a vendor that takes requests within `limits`, for
+    /// every model; by default it refuses nothing for its size.
+    #[must_use]
+    pub fn with_limits(self, limits: RequestLimits) -> Self {
+        self.script.borrow_mut().limits = limits;
+        self
     }
 
     /// Every request run so far, in order.
@@ -187,6 +198,10 @@ impl ProviderRuntime for ScriptedRuntime {
     fn close(&mut self) -> LocalBoxFuture<'_, ()> {
         self.script.borrow_mut().closes += 1;
         Box::pin(async {})
+    }
+
+    fn request_limits(&self, _model: &Model) -> RequestLimits {
+        self.script.borrow().limits
     }
 }
 

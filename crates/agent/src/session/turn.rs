@@ -1,15 +1,17 @@
-//! A turn (`runtime.md` § A turn): write waiting input, request the
-//! provider and retry what waiting can fix, apply its events to the
-//! transcript as they stream, save, run the requested tools in order, compact
-//! when the usage reached the threshold, and ask again until a response
-//! requests no tool or a tool ends the turn, unless input arrived during the
-//! round. Every wait on the provider, a hook or a tool is raced against the
-//! action's stop and dropped when it comes; a save is never raced.
+//! A turn (`runtime.md` § A turn): write waiting input, compact first when
+//! the request reaches a size threshold, request the provider, retry what
+//! waiting can fix and compact once after a refusal as too large, apply its
+//! events to the transcript as they stream, save, run the requested tools in
+//! order, compact when the usage reached the threshold, and ask again until a
+//! response requests no tool or a tool ends the turn, unless input arrived
+//! during the round. Every wait on the provider, a hook or a tool is raced
+//! against the action's stop and dropped when it comes; a save is never
+//! raced.
 
 use std::rc::Rc;
 
 use demi_core::{Block, BlockId, ToolResultContentBlock, ToolView, WakeupId};
-use demi_provider::{InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun};
+use demi_provider::{ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun};
 use futures_util::StreamExt;
 
 use super::{
@@ -24,7 +26,10 @@ use super::{
 };
 use crate::{
     store::{BoundaryEdge, media},
-    transcript::{estimate::context_tokens, resume_point, tool_input},
+    transcript::{
+        estimate::{context_tokens, request_size},
+        resume_point, tool_input,
+    },
 };
 
 /// How many compactions one turn runs after responses over the threshold.
@@ -59,6 +64,9 @@ async fn run_turn(
     mut switch_first: bool,
 ) -> Result<(), TurnError> {
     let mut auto_compactions = 0;
+    // The turn's first request follows its new input; each later one
+    // continues the running turn.
+    let mut continues = false;
     loop {
         cancel.check()?;
         if switch_first && apply_switch(s, cancel).await? {
@@ -67,7 +75,8 @@ async fn run_turn(
         switch_first = true;
         write_inputs(s).await?;
         let before = s.read(|core| core.inputs.arrivals());
-        let recover = stream(s, cancel).await?;
+        let recover = stream(s, cancel, continues).await?;
+        continues = true;
         cancel.check()?;
         if !recover {
             write_inputs_since(s, before).await?;
@@ -109,10 +118,10 @@ pub(super) async fn apply_switch(
     s: &Rc<SessionShared>,
     cancel: &TurnCancel,
 ) -> Result<bool, TurnError> {
-    let Some(target) = s.read(|core| core.switch_target()) else {
+    let Some((target, limits)) = s.read(|core| core.switch_target()) else {
         return Ok(false);
     };
-    let compacted = compaction::compact_to_fit(s, &target, cancel).await?;
+    let compacted = compaction::compact_to_fit(s, &target, limits, cancel).await?;
     let replaced = s.update(|core| core.install_switch());
     for mut runtime in replaced {
         runtime.close().await;
@@ -139,15 +148,37 @@ async fn write_inputs_since(s: &SessionShared, arrivals: u64) -> Result<(), Turn
 
 /// One provider request, from building it to the end of its stream,
 /// retrying transient failures while everything the attempt wrote can be
-/// unwound (`failures-and-recovery.md` § Retries). Returns whether a
-/// response's usage reached the compaction threshold. The stage stays
-/// streaming across the waits, so steers keep being accepted.
-async fn stream(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<bool, TurnError> {
+/// unwound (`failures-and-recovery.md` § Retries). A request that reaches a
+/// size threshold of its vendor compacts first, and one refused as too
+/// large compacts once and goes again (`compaction.md` § When compaction
+/// runs); `continues` says it continues a running turn, so a pass is
+/// followed by a `resume` block. Returns whether a response's usage reached
+/// the compaction threshold. The stage stays streaming across the waits, so
+/// steers keep being accepted.
+async fn stream(
+    s: &Rc<SessionShared>,
+    cancel: &TurnCancel,
+    continues: bool,
+) -> Result<bool, TurnError> {
     s.update(|core| core.set_stage(TurnStage::Streaming));
     let policy = s.config.retry;
     let mut attempt = 1;
+    let mut size_checked = false;
+    let mut refusal_compacted = false;
     loop {
-        let request = request(s, cancel).await?;
+        let mut request = request(s, cancel).await?;
+        // A pass that leaves the request as large is not repeated: the
+        // request goes out.
+        if !size_checked {
+            size_checked = true;
+            let limits = s.read(|core| core.request_limits());
+            let size = request_size(&request.system_prompt, &request.items);
+            if s.config.compaction.size_reached(limits, size)
+                && compact_before_request(s, cancel, continues).await?
+            {
+                request = self::request(s, cancel).await?;
+            }
+        }
         let request_id = request.request_id.clone();
         let start = s.read(|core| core.transcript.blocks().len());
         let mut runtime = s
@@ -163,6 +194,16 @@ async fn stream(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<bool, Turn
             Err(failure) => with_request_id(failure, &request_id),
         };
         let unwindable = s.read(|core| resume_point(core.transcript.blocks()).cut <= start);
+        // The same request would be refused again: one pass, then the
+        // request built from the compacted history.
+        let too_large = failure.code == Some(ErrorCode::ContextLengthExceeded);
+        if too_large && unwindable && !refusal_compacted && s.config.compaction.automatic() {
+            refusal_compacted = true;
+            restore_command_state(s, start).await?;
+            if compact_before_request(s, cancel, continues).await? {
+                continue;
+            }
+        }
         if !(unwindable && policy.retries(attempt, &failure)) {
             s.update(|core| core.record_failure(&failure));
             return Err(TurnError::Failed(Box::new((&failure).into())));
@@ -180,6 +221,21 @@ async fn stream(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<bool, Turn
         cancel.guard(tokio::time::sleep(delay)).await?;
         attempt += 1;
     }
+}
+
+/// One compaction pass before a request; a pass that compacted inside a
+/// running turn appends a `resume` block, while before a turn's first
+/// request its new input is last already. Returns whether it compacted.
+async fn compact_before_request(
+    s: &Rc<SessionShared>,
+    cancel: &TurnCancel,
+    continues: bool,
+) -> Result<bool, TurnError> {
+    let compacted = compaction::compacting(s, compaction::run_pass(s, cancel)).await?;
+    if compacted && continues {
+        s.update(|core| core.push_resume());
+    }
+    Ok(compacted)
 }
 
 /// Cuts the history to its first `cut` blocks, with the command state
@@ -315,12 +371,15 @@ async fn run_tools(
         cancel.check()?;
         let before = s.read(|core| core.inputs.arrivals());
         let outcome = if tools.iter().any(|tool| tool.name == call.tool_name) {
+            let (model, request_limits, generation) =
+                s.read(|core| (core.model.clone(), core.request_limits(), core.generation.number));
             let invocation = ToolInvocation {
                 tool_use_id: call.tool_use_id.clone(),
                 tool_name: call.tool_name.clone(),
                 input: tool_input(&call.input),
-                model: s.read(|core| core.model.clone()),
-                generation: s.read(|core| core.generation.number),
+                model,
+                request_limits,
+                generation,
                 cancel: cancel.child_token(),
             };
             match cancel.guard(s.runtime.invoke_tool(invocation)).await? {

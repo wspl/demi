@@ -24,6 +24,13 @@ impl B64Bytes {
     pub fn into_bytes(self) -> Bytes {
         self.0
     }
+
+    /// The length of the bytes as the base64 text JSON carries them.
+    pub fn base64_len(&self) -> u64 {
+        let length = base64::encoded_len(self.0.len(), true)
+            .expect("the base64 of bytes in memory has a length a usize holds");
+        length as u64
+    }
 }
 
 impl From<Bytes> for B64Bytes {

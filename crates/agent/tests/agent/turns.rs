@@ -8,14 +8,14 @@ use std::{rc::Rc, time::Duration};
 use demi_agent::{
     ServerConfig, attachments,
     store::media::BlobStore,
-    testing::{MemoryBlobs, MemoryTreeStore, TestClient, TestFiles, model_of},
+    testing::{self, MemoryBlobs, MemoryTreeStore, TestClient, TestFiles, model_of, model_reading},
 };
 use demi_agent_protocol::{
     AbortResult, AbortTarget, ClientContent, ClientFrame, ServerFrame, TranscriptPatch,
 };
 use demi_core::{
-    B64Bytes, Block, FailureSource, MediaSource, ModelSelection, SessionPhase, ThinkingConfig,
-    UserContentBlock,
+    Block, FailureSource, FileExtension, MediaSource, ModelSelection, SessionPhase,
+    ThinkingConfig, UserContentBlock,
 };
 use demi_provider::{
     ErrorCode, InferenceItem, ProviderEvent,
@@ -207,9 +207,6 @@ async fn a_provider_failure_reaches_the_page_once_with_its_code_and_the_queued_m
 
 #[tokio::test(flavor = "local")]
 async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_reference() {
-    const PNG: [u8; 12] = [
-        0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe, 0x01,
-    ];
     let said = |answer: &str| Turn::Events(vec![event::text(answer), event::response(1, 1)]);
     let script = ScriptedRuntime::new([
         said("a tiny png"),
@@ -219,22 +216,26 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
     ]);
     // The upload route stored the file: its blob holds the bytes.
     let blobs = MemoryBlobs::new();
-    let png = B64Bytes::new(PNG.to_vec());
+    let png = testing::png(4, 3, 1);
     let uploaded = blobs.put(png.clone()).await.unwrap();
     let path = "/home/demi/.demi/attachments/conversation/tiny.png";
-    let resolved = attachments::upload_blocks(attachments::Upload {
+    let upload = attachments::Upload {
         name: "tiny.png",
         path,
         media_type: "image/png",
         sha256: &uploaded,
         bytes: &png,
-    });
+    };
+    let resolved = attachments::upload_blocks(upload, &*blobs).await.unwrap();
     let record = resolved.0[1].clone();
     let text = UserContentBlock::Text {
         text: "describe this".into(),
     };
     let store = MemoryTreeStore::with_blobs(blobs.clone());
     let fixture = Fixture::with(&script, store, ServerConfig::default());
+    fixture
+        .resolver
+        .select(model_reading("stub", "test-model", &[FileExtension::Png]));
     let files = TestFiles::new();
     files.upload("upload-1", resolved);
     let mut client =
@@ -304,13 +305,13 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
     // A blob found missing stays missing for the live tree, even when the
     // same bytes are stored again, so the start of each request stays what
     // the one before sent.
-    blobs.put(png).await.unwrap();
+    blobs.put(png.clone()).await.unwrap();
     client.send(send("m4", "and now?")).await;
     frames_until(&mut client, is_idle).await;
 
     let image = UserContentBlock::Image {
         source: MediaSource::Binary {
-            data: B64Bytes::new(PNG.to_vec()),
+            data: png.clone(),
             media_type: "image/png".into(),
         },
     };
