@@ -238,7 +238,7 @@ inference items and on patch sequences.
 | An abort arrives while the commit is in progress | The durable outcome decides: a failure preserves the accepted history; a success keeps the replacement and does not start generation once the cancellation has been accepted. |
 | The model fails before output or after a completed tool | The replacement stays accepted. Explicit recovery follows the resume contract and does not repeat a completed tool because submission was retried. |
 | An active action, queued message, pending steer, pending agent message, wakeup, live child, or undelivered completion | Editing is rejected without deleting, consuming, or silently cancelling that work. |
-| A send, a model or target change, a child resume, or a completion delivery races with the edit | Exactly one admissible ordering takes effect; the loser observes busy or conflict, or operates on the committed state. Nothing enters the preparation window. |
+| A send, a model or target change, a child resume, or a completion delivery races with the edit | Exactly one admissible ordering takes effect; the loser observes busy or conflict, or operates on the committed state. A model switch always waits and lands on the committed state ([Model switch](runtime.md#model-switch)). Nothing enters the preparation window. |
 | The target is a `steer`, `context`, `wakeup`, or `agent_message` block, or a block the model produced | The edit is rejected without mutation. |
 | Completed external effects | A file written in the removed suffix and an archived child record remain; command state returns to the version before the edited message; delivered child completions are not replayed because their blocks in the parent were removed. |
 

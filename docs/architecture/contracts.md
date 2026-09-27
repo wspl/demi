@@ -205,8 +205,9 @@ Zod source and z.infer types
 - **Strict and tolerant objects.** Each end judges what it receives. In Rust,
   a type the backend receives refuses unknown fields (`deny_unknown_fields`).
   That includes the types both ends receive, because the backend's check
-  guards its state: a model selection arrives in `open` and travels in every
-  block, and a block is read back from the conversation database. In the
+  guards its state: model settings arrive in a preferences patch and leave in
+  every conversation list, and a model selection travels in every block and
+  is read back from the conversation database. In the
   browser, the schema of every type the browser receives is a tolerant
   object, including the blocks and selections inside server frames: a page
   left open across a deploy that adds a field keeps working and ignores the

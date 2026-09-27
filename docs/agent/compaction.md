@@ -50,8 +50,8 @@ refused the history.
 A model switch compacts with the current model and provider, before the new
 model takes over, because the new model may not be able to load the history
 it would have to summarize. A switch to a larger window normally compacts
-nothing. An immediate switch that compacted appends a `resume` block
-([Model switch](runtime.md#model-switch)).
+nothing. A switch that lands inside a running turn and compacted appends a
+`resume` block ([Model switch](runtime.md#model-switch)).
 
 A `compact` action that finds agent messages waiting runs a turn after its
 pass, so the messages reach the model.

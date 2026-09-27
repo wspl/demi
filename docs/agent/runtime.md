@@ -80,7 +80,8 @@ Admission is decided when an action arrives:
 
 - A disposed session refuses every action.
 - While an edit is being prepared, the session refuses sends, the other
-  actions, steers, agent messages, model changes and new yield wakeups.
+  actions, steers, agent messages and new yield wakeups. A model switch waits
+  for the edit instead ([Model switch](#model-switch)).
 - `retry`, `resume` and `compact` are refused unless the session is idle, with
   the reason `Session is busy (<phase>)`.
 - A send is never refused because the session is busy: it waits in the queue
@@ -207,15 +208,25 @@ once.
 
 ### Model switch
 
-`set_provider` changes the model selection:
+A switch changes the root's model selection. The backend switches the root
+when the conversation's model settings change, and opens a tree with the
+selection the conversation's record holds
+([page synchronization](../product/web-api.md#sidebar-mutations-read-state-and-page-synchronization)).
+No client frame names a model.
 
-- By default, the switch waits for the next action. With `apply: immediate`,
-  it also lands inside a running turn at the next continuation boundary, so
-  the next request uses the new model.
+- A switch lands at the root's next provider request: at the start of the
+  next action, or inside a running turn at its next continuation boundary. A
+  request that is streaming finishes with the model it started with. A
+  restored root keeps its checkpoint's model until its next action starts.
+- While an edit is being prepared, a switch waits, and lands once the edit is
+  accepted or rejected. The replacement turn starts with the model it was
+  prepared with and switches at its next continuation boundary, so the edit
+  never discards a switch that arrived meanwhile
+  ([Message editing](message-editing.md)).
 - When the history is over the new model's compaction threshold, the session
   first compacts with the current model and provider, then switches
-  ([Compaction](compaction.md#compaction)). An immediate switch that compacted
-  appends a `resume` block.
+  ([Compaction](compaction.md#compaction)). A switch that lands inside a
+  running turn and compacted appends a `resume` block.
 - A switch to another provider builds a new provider runtime. The replaced
   runtime is closed once no run uses it, and so is the runtime of a pending
   switch that a switch to yet another provider replaced. A switch within the
@@ -494,7 +505,7 @@ Words used for session data:
 | `wakeup` | A fired yield wakeup, with the placement `new_turn` or `steer` | The fixed wakeup text, as a user message or as a steer | No |
 | `steer` | A human steer, at a continuation boundary | A steer in the current turn | Yes |
 | `agent_message` | Another agent of the tree ([Communication](subagents.md#communication)) | A steer holding the message's source envelope | As a receipt row |
-| `resume` | A turn continuing after a cut: `resume`, compaction inside a turn, or an immediate model switch that compacted | A user message: "Continue from where you left off." | No |
+| `resume` | A turn continuing after a cut: `resume`, compaction inside a turn, or a model switch that landed inside a turn and compacted | A user message: "Continue from where you left off." | No |
 | `abort` | Stop | Nothing | Yes, until the turn is continued and `isResumed` is set |
 | `thinking` | The provider: reasoning text and its signature | The text; a signed block whole | Yes |
 | `redacted_thinking` | The provider: opaque reasoning data | The data, whole | No |
@@ -637,7 +648,7 @@ For example, a page opens a conversation whose root is running:
 
 ```text
 client                               server
-open { model } --------------------> attach to the live tree
+open ------------------------------> attach to the live tree
                 <------------------- opened
                 <------------------- transcript_reset { blocks, version: { epoch, revision: r } }
                 <------------------- phase, queue, pending_steers
@@ -651,7 +662,7 @@ open { model } --------------------> attach to the live tree
 
 | Frame | Meaning | Answer |
 | --- | --- | --- |
-| `open { model }` | Attach this connection to the conversation's tree, restoring the tree when it is not live, and select the model | `opened`, then the snapshot frames |
+| `open` | Attach this connection to the conversation's tree, restoring the tree when it is not live, with the model selection the conversation's record holds | `opened`, then the snapshot frames |
 | `send { messageId, content }` | Submit a message ([Input](#input)) | Transcript, phase and queue frames |
 | `edit_and_send { request }` | Replace a user message and its suffix ([Message editing](message-editing.md)) | `edit_result` at durable acceptance |
 | `steer { steerId, content }` | Add input to the running turn | `steer_result` |
@@ -659,7 +670,6 @@ open { model } --------------------> attach to the live tree
 | `dequeue_message`, `send_queued_message { messageId }` | Remove a queued message; run one next | `queue` |
 | `steer_queued_message { messageId, steerId }` | Turn a queued message into a steer | `steer_result` |
 | `clear_message_queue` | Remove every queued message | `queue` |
-| `set_provider { model, apply? }` | Change the model selection ([Model switch](#model-switch)) | None, or `error` |
 | `abort` | Stop one thing ([Stop](#stop)) | `abort_result`, in request order |
 | `abort_subagents`, `abort_subagent { subagentId }` | Stop subagents ([Abort](subagents.md#abort)) | `subagent` frames |
 | `retry`, `resume`, `compact` | Run the action | `rejected` when the session is busy |
@@ -791,13 +801,14 @@ connection B --+                    +--> B's outbox: events, and B's replies
 - A connection that closes only detaches. The tree's turns keep running, and
   the next `open` adopts the same live tree. Two concurrent opens of one
   conversation share one tree.
-- `open` aligns the tree's model with the model it names, from the root's next
-  turn on; a restored root keeps its checkpoint's model until then. When that
-  model belongs to another provider, the new runtime is built before the
-  connection attaches, and a failure leaves the connection unattached. A page
-  names the model its conversation's record holds
-  ([page synchronization](../product/web-api.md#sidebar-mutations-read-state-and-page-synchronization)),
-  so a page that opens does not undo another page's model switch.
+- `open` names no model. The backend opens the tree with the model selection
+  the conversation's record holds, and a live tree already follows that
+  record, so an open changes no model
+  ([page synchronization](../product/web-api.md#sidebar-mutations-read-state-and-page-synchronization)).
+  An open of a conversation whose record has no model yet is answered with an
+  `error` whose code is `model_not_selected`. A runtime the tree needs for
+  that selection, such as a restored tree's, is built before the connection
+  attaches, and a failure leaves the connection unattached.
 - `close` disposes the whole tree. Every attached connection receives what the
   disposal changed, then `closed`, and is detached; a connection that sends
   `close` while attached to nothing receives `closed` alone.
@@ -821,8 +832,9 @@ decides a lone client's frame decides each:
 - Two `abort` frames stop one thing each, in the order they arrive
   ([Stop](#stop)): the second can stop a queued message, and its
   `abort_result` says what it stopped.
-- The model selection is the one named last, by `open` or `set_provider`
-  ([Model switch](#model-switch)).
+- No frame changes the model selection: the conversation's model settings
+  change by a conversation patch, which the backend applies one at a time
+  ([page synchronization](../product/web-api.md#sidebar-mutations-read-state-and-page-synchronization)).
 
 ## Tree store
 
@@ -926,6 +938,8 @@ where a tool runs; no test calls a real model.
 | One of two connections stops reading | It alone closes as lagging; the other receives the whole turn |
 | Two connections act at once | Two sends run in the order they arrived; a send while the other's edit is prepared is refused, and so is an edit while the other's send waits or runs |
 | A connection attaches while a command runs | Its handshake carries the command's tail, whatever the other connection read; later `shell_output` frames reach both alike |
+| A model switch while a turn runs | The request in flight keeps its model; the turn's next request carries the new model, effort and tier |
+| A model switch while an edit is being prepared | The switch is not refused; the replacement turn's first request carries the model it was prepared with, and its next request the new one |
 | A client stops reading | The connection closes as lagging; a reconnect adopts the running tree and its turn completes |
 | Frames of an open | The handshake order above; patch revisions increase by one; a stale patch after a reset is ignored; a gap triggers `sync_transcript` |
 | Scripted tool events | Each of the five tools renders with its own component and its `description` title; updates replace the block in place; an unknown tool name renders as a generic card |
