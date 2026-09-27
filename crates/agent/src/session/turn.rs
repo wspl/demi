@@ -16,7 +16,7 @@ use super::{
     SessionEvent, SessionShared, TurnError,
     cancel::TurnCancel,
     compaction,
-    core::{SwitchPoint, TurnStage, with_request_id},
+    core::{TurnStage, with_request_id},
     input::Take,
     persist,
     runtime::{ToolEffect, ToolInvocation, ToolOutcome},
@@ -37,12 +37,33 @@ struct ToolRound {
 }
 
 pub(super) async fn run(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<(), TurnError> {
+    run_turn(s, cancel, true).await
+}
+
+/// An accepted edit's replacement turn: its first request carries the model
+/// it was prepared with, and a switch that waited for the edit lands at the
+/// next continuation boundary (`runtime.md` § Model switch).
+pub(super) async fn run_replacement(
+    s: &Rc<SessionShared>,
+    cancel: &TurnCancel,
+) -> Result<(), TurnError> {
+    run_turn(s, cancel, false).await
+}
+
+/// The turn's requests and tool rounds; a recorded switch lands before each
+/// request, except the first when `switch_first` is false.
+async fn run_turn(
+    s: &Rc<SessionShared>,
+    cancel: &TurnCancel,
+    mut switch_first: bool,
+) -> Result<(), TurnError> {
     let mut auto_compactions = 0;
     loop {
         cancel.check()?;
-        if apply_switch(s, SwitchPoint::Continuation, cancel).await? {
+        if switch_first && apply_switch(s, cancel).await? {
             s.update(|core| core.push_resume());
         }
+        switch_first = true;
         write_inputs(s).await?;
         let before = s.read(|core| core.inputs.arrivals());
         let recover = stream(s, cancel).await?;
@@ -74,16 +95,15 @@ pub(super) async fn run(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<()
     }
 }
 
-/// Lands the recorded model switch when it lands at `point`: the history is
-/// first compacted to fit the new model with the current one, then the switch
-/// becomes current and the runtimes it replaced are closed. Returns whether it
-/// compacted; a switch whose compaction failed stays recorded.
+/// Lands the recorded model switch: the history is first compacted to fit
+/// the new model with the current one, then the switch becomes current and
+/// the runtimes it replaced are closed. Returns whether it compacted; a
+/// switch whose compaction failed stays recorded.
 pub(super) async fn apply_switch(
     s: &Rc<SessionShared>,
-    point: SwitchPoint,
     cancel: &TurnCancel,
 ) -> Result<bool, TurnError> {
-    let Some(target) = s.read(|core| core.switch_target(point)) else {
+    let Some(target) = s.read(|core| core.switch_target()) else {
         return Ok(false);
     };
     let compacted = compaction::compact_to_fit(s, &target, cancel).await?;
