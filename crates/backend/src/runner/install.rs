@@ -121,6 +121,10 @@ case "$instance" in
 esac
 state="$HOME/.demi/instances/$instance"
 bin="$state/releases/$release"
+# The installation's files are the user's alone; the runner works with the
+# mask of the shell this installer runs in (runner.md § Builtins that act on
+# a process).
+user_umask=$(umask)
 umask 077
 mkdir -p "$state/releases"
 if [ -f "$state/backend-url" ]; then
@@ -189,7 +193,8 @@ printf '%s\n' "$backend" > "$state/backend-url"
 printf '%s\n' "$release" > "$state/release-id"
 chmod 755 "$state/run.next"
 mv "$state/run.next" "$state/run"
-nohup "$state/run" > "$state/runner.log" 2>&1 < /dev/null &
+# The log is made here, under 077: it holds the pairing code.
+nohup sh -c 'umask "$1" && exec "$2"' sh "$user_umask" "$state/run" > "$state/runner.log" 2>&1 < /dev/null &
 pid=$!
 tries=0
 until "$state/run" status >/dev/null 2>&1; do

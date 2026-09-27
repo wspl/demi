@@ -4,17 +4,22 @@
 //! backend and starts it, and the runner then waits to be paired; the test
 //! drains every runner it installed.
 
+use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::Output;
 
+use demi_agent::testing::model_of;
 use demi_command_service::protocol::{TARGETS, VERSION, host_target};
-use demi_host_remote::testing::runner_binary;
+use demi_host_remote::testing::{PAIRING_CODE, runner_binary};
+use demi_provider::testing::MockVendor;
 use demi_runner_protocol::wire;
+use demi_web_api::devices::ClaimedDevice;
 use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::support::{Harness, TestBackend, answer};
+use crate::conversations::{FIRST, Socket, anthropic, create, tool_result, tool_use};
+use crate::support::{Harness, TestBackend, answer, eventually};
 
 fn sha(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
@@ -93,22 +98,48 @@ impl Installations {
 
     /// Fetches the backend's installer and runs it.
     async fn install(&self, backend: &TestBackend, extra: &[(&str, &str)]) -> Output {
+        let script = self.script(backend).await;
+        self.run(&script, extra).await
+    }
+
+    /// Fetches the backend's installer and runs it from a shell whose file
+    /// mode creation mask is `umask`.
+    async fn install_with_umask(&self, backend: &TestBackend, umask: &str) -> Output {
+        let script = self.script(backend).await;
+        self.shell()
+            .arg("-c")
+            .arg(format!("umask {umask} && exec sh \"$0\""))
+            .arg(&script)
+            .output()
+            .await
+            .unwrap()
+    }
+
+    /// The backend's installer, saved in the home.
+    async fn script(&self, backend: &TestBackend) -> PathBuf {
         let script = reqwest::get(format!("{}/install.sh", backend.url)).await.unwrap();
         assert_eq!(script.status(), StatusCode::OK);
         let path = self.home.path().join(format!("install-{}.sh", backend.address().port()));
         std::fs::write(&path, script.bytes().await.unwrap()).unwrap();
-        self.run(&path, extra).await
+        path
     }
 
     async fn run(&self, script: &Path, extra: &[(&str, &str)]) -> Output {
-        tokio::process::Command::new("sh")
+        self.shell()
             .arg(script)
-            .env("HOME", self.home.path())
-            .env_remove("DEMI_INSTALLATION_ID")
             .envs(extra.iter().copied())
             .output()
             .await
             .unwrap()
+    }
+
+    /// A shell for an installer, with the home and without an installation ID.
+    fn shell(&self) -> tokio::process::Command {
+        let mut shell = tokio::process::Command::new("sh");
+        shell
+            .env("HOME", self.home.path())
+            .env_remove("DEMI_INSTALLATION_ID");
+        shell
     }
 }
 
@@ -199,6 +230,69 @@ async fn an_installer_keeps_each_backend_apart_reuses_a_release_and_upgrades_onl
     drop(installations);
     a.close().await;
     b.close().await;
+}
+
+/// A file's permission bits.
+fn mode(path: &Path) -> u32 {
+    std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+}
+
+// Several seconds (8 s here under load): the installer downloads this build's
+// runner (170 MB) from its backend, verifies it and starts it; a scripted
+// model then runs one job on the paired runner.
+#[tokio::test]
+async fn an_installed_runner_works_with_the_mask_of_the_shell_that_ran_the_installer() {
+    let releases = Releases::new(runner_binary());
+    releases.publish("initial");
+    let harness = Harness::new().with_runner_releases(releases.path());
+    let (backend, master) = harness.start_set_up().await;
+    let installations = Installations::new();
+    let state = installations.state(&format!("{}/", backend.url));
+
+    // The user's shell lets the group write, as some systems' shells do.
+    succeeded(&installations.install_with_umask(&backend, "002").await);
+    // The installation stays the user's alone: its log holds the pairing code.
+    assert_eq!(mode(&state), 0o700);
+    assert_eq!(mode(&state.join("runner.log")), 0o600);
+
+    let log = state.join("runner.log");
+    let mut code = None;
+    eventually("the installed runner prints its pairing code", || {
+        code = std::fs::read_to_string(&log)
+            .unwrap()
+            .lines()
+            .find_map(|line| line.strip_prefix(PAIRING_CODE))
+            .map(|code| code.trim().to_owned());
+        let printed = code.is_some();
+        async move { printed }
+    })
+    .await;
+    let claimed = backend.post("/api/devices/claim", Some(&master), json!({ "code": code })).await;
+    assert_eq!(claimed.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&claimed.body));
+    let device = claimed.json::<ClaimedDevice>().device;
+    backend.until_online(&master, device.id.as_str(), true).await;
+
+    // The agent's job reports the user's mask, and a file it makes has the
+    // mode the user's own programs would give it.
+    let vendor = MockVendor::start().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    let home = installations.home.path();
+    let target = json!({ "target": { "kind": "device", "deviceId": device.id.as_str(), "path": home } });
+    let moved = backend.patch(&format!("/api/conversations/{FIRST}"), &master, target).await;
+    assert_eq!(moved.status, StatusCode::OK, "{}", String::from_utf8_lossy(&moved.body));
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open(&model_of(&provider, "claude-opus-4-8")).await;
+    let script = "umask; echo made > made.txt";
+    vendor.respond(tool_use("mask", "shell_exec", &json!({ "script": script, "timeoutMs": 60_000 })));
+    vendor.respond(crate::conversations::answer(&["done"], 1, 1));
+    socket.chat("m1", "show the mask").await;
+    let requests = vendor.requests();
+    let result = tool_result(&requests[1].json(), "mask");
+    assert!(result.contains("0002"), "{result}");
+    assert_eq!(mode(&home.join("made.txt")), 0o664);
+    drop(installations);
+    backend.close().await;
 }
 
 #[tokio::test]

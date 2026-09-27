@@ -16,7 +16,7 @@ use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
 /// What the runner prints before each pairing code.
-const PAIRING_CODE: &str = "demi-runner: pairing code: ";
+pub const PAIRING_CODE: &str = "demi-runner: pairing code: ";
 
 /// How long a runner may take to print a pairing code.
 const PAIRING: Duration = Duration::from_secs(15);

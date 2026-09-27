@@ -479,11 +479,19 @@ job's shell instead, or fails. A job's shell starts with what the runner gives
 the processes it starts: the runner's umask and limits, and for open files the
 limits the runner was started with ([Load](#load)).
 
+The runner's own mask is the one it was started with. The shell installer
+keeps the installation's files private with mask `077`, but starts the runner
+with the mask of the shell the user ran it in, so a file the agent makes on a
+device gets the mode the user's own programs would give it. A Cloud's runner
+starts with `022`, which the machine manager sets for the sandbox's first
+process. Windows has no mask: a file takes the permissions of the directory
+it is made in.
+
 | Builtin | In a job |
 | --- | --- |
 | `exec CMD` | Runs CMD as `command CMD` would, a standard utility in the runner or a program through the job's process start, then ends the shell with CMD's status. In a subshell it ends the subshell. With only redirections, they stay with the shell, as in bash. |
 | `ulimit` | Sets and shows the limits of the processes the shell starts from then on; a subshell keeps its own. Without `-S` or `-H` it sets both limits, as in bash. The system checks a new limit when it is set: the shell starts `/bin/sh -c :` with it, and a limit the system refuses, such as a hard limit raised without privilege or open files above macOS's cap, fails there and changes nothing, as it would in bash. |
-| `umask` | Sets and shows the mask of the processes the shell starts and of the files its redirections and standard utilities create. The runner's own mask still applies beneath it inside the runner, so there a job's mask can only take permissions away. For example, under the usual runner mask `022`, a job's `umask 002` gives its programs group-writable files, but its redirections still create files with mode `644`. |
+| `umask` | Sets and shows the mask of the processes the shell starts and of the files its redirections and standard utilities create. The runner's own mask still applies beneath it inside the runner, so there a job's mask can only take permissions away. For example, under a runner mask of `022`, a job's `umask 002` gives its programs group-writable files, but its redirections still create files with mode `644`. |
 | `kill` | Signals any process but the runner. `$$` is the runner's process ID and 0 its process group, so `kill $$` and `kill 0` fail with a message. |
 | `suspend`, `fg` | Fail: a job has no job control, as a bash script has none, and `suspend` would stop the runner. |
 
