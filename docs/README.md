@@ -28,7 +28,7 @@ layout and interaction; these documents do not repeat it.
 
 - [Agent runtime](agent/runtime.md): sessions and turns, input, yield wakeups, the standard tools, the transcript, the rendering boundary, the frame protocol and the tree store.
 - [Subagents](agent/subagents.md): the session tree, `demi agent` commands, agent messages, results, profiles and persistence.
-- [Compaction](agent/compaction.md): compaction through a session copy, token estimates and window switches.
+- [Compaction](agent/compaction.md): compaction through a session copy, token estimates, request sizes and window switches.
 - [Failures and recovery](agent/failures-and-recovery.md): the failure record and how it is read, retries, and resuming an interrupted turn.
 - [Message editing](agent/message-editing.md): editing and resending a message as one transaction.
 - [Conversation fork](agent/conversation-fork.md): forking a conversation from a block, with its seed, publication and subagents.
@@ -51,8 +51,8 @@ layout and interaction; these documents do not repeat it.
 
 ## How are providers, models and credentials handled?
 
-- [Providers](providers/providers.md): families, vendors and endpoints, the provider contract, per-account runtimes, the credential vault, login flows and inference admission.
-- [Models](providers/models.md): catalog sources, the catalog cache and request parameters.
+- [Providers](providers/providers.md): families, vendors and endpoints, the provider contract, the [prompt cache](providers/providers.md#prompt-cache) and the rule that each request extends the previous one, per-account runtimes, the credential vault, login flows and inference admission.
+- [Models](providers/models.md): catalog sources, the catalog cache, request parameters and request limits.
 - [Usage and quota](providers/usage-and-quota.md): the usage ledger, the request rate limit and vendor quota.
 - [Claude Code](providers/claude-code.md): the Claude Code CLI package, its version, where it runs, and how the provider talks to it.
 
