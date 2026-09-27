@@ -146,3 +146,33 @@ async fn the_tab_list_shows_the_title_a_page_has_now() {
     })
     .await;
 }
+
+/// A command answers readable text unless the agent asks for JSON, as its
+/// shell's `--json` does (`browser.md` § Default text).
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn commands_answer_readable_text_unless_json_is_asked() {
+    with_browser_fixture(|fixture| async move {
+        let mut readable = fixture.clone();
+        readable.json = false;
+        let path = fixture.root.path().join("readable.html");
+        std::fs::write(&path, "<!doctype html><title>Readable page</title>").unwrap();
+        let url = url::Url::from_file_path(path).unwrap();
+        let text = async |operation: &str, args: serde_json::Value| {
+            let (code, answer) = readable.result(operation, args, CancellationToken::new()).await;
+            assert_eq!(code, 0, "{operation}: {answer}");
+            answer["diagnostic"].as_str().unwrap().to_owned()
+        };
+        let opened = text("browser.open", json!({"url": url.as_str()})).await;
+        let tab = opened.lines().next().and_then(|line| line.strip_prefix("Tab: ")).unwrap();
+        assert!(opened.contains("\nTitle: Readable page\n"), "{opened}");
+        let listed = text("browser.tabs", json!({})).await;
+        let row = listed.lines().nth(1).unwrap();
+        assert!(row.starts_with(tab) && row.contains("Readable page"), "{listed}");
+        let info = fixture.call("browser.info", json!({"tab": tab})).await;
+        assert_eq!(info["title"], "Readable page");
+        fixture
+    })
+    .await;
+}
+
