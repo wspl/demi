@@ -100,6 +100,10 @@ pub(crate) enum HostAccessError {
     Host(#[from] HostError),
     #[error(transparent)]
     Storage(#[from] StorageError),
+    /// A put of a fitted upload image through the agent's view of the blob
+    /// namespace failed.
+    #[error(transparent)]
+    Store(#[from] demi_agent::store::StoreError),
 }
 
 impl HostAccessError {
@@ -114,7 +118,7 @@ impl HostAccessError {
             Self::Refused(Refusal::DeviceGone) => (ErrorCode::DeviceNotFound, 404),
             Self::Cloud(error) => error.code(),
             Self::Host(error) => host_error_code(error),
-            Self::Cancelled | Self::Storage(_) => (ErrorCode::InternalError, 500),
+            Self::Cancelled | Self::Storage(_) | Self::Store(_) => (ErrorCode::InternalError, 500),
         }
     }
 }
