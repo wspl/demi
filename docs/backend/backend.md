@@ -179,8 +179,8 @@ upgrade's `Origin`: it is the origin of the public URL
 (`DEMI_BACKEND_PUBLIC_URL`), or its host and port are those the request was
 sent to (the `Host` header), as when a development server passes the page's
 requests on. Any other origin, and a request without one, answers 403
-`forbidden_origin` before anything else. A runner's socket carries a device
-token rather than a cookie, so it has no such check.
+`forbidden_origin` before the route checks anything else. A runner's socket
+carries a device token rather than a cookie, so it has no such check.
 
 The edge checks ownership before it hands a request to a shard: it resolves
 the caller from the cookie, loads the conversation, device, workspace or

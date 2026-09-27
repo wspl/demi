@@ -24,7 +24,7 @@ use demi_web_api::ids::{ConversationId, UserId};
 use super::AppState;
 use super::body::JsonBody;
 use super::error::ApiError;
-use super::gate::AuthUser;
+use super::gate::{AuthUser, ProductPage};
 use super::query::QueryParams;
 use crate::backend::Services;
 use crate::conversation::titles::TitleRefusal;
@@ -289,9 +289,11 @@ pub(super) async fn read(
 }
 
 /// `WS /conversations/:id/stream`: the conversation's frames. The socket is
-/// upgraded only for the caller's conversation that is not archived, and
-/// then moves into the caller's shard, which serves it until it closes.
+/// upgraded only from a page of the product, for the caller's conversation
+/// that is not archived, and then moves into the caller's shard, which
+/// serves it until it closes.
 pub(super) async fn stream(
+    _: ProductPage,
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,

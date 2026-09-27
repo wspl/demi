@@ -6,36 +6,26 @@
 use axum::extract::ws::rejection::WebSocketUpgradeRejection;
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, State};
-use axum::http::header::{HOST, ORIGIN};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::StatusCode;
 use axum::response::Response;
 use demi_web_api::error::ErrorCode;
 use futures_util::{SinkExt as _, StreamExt as _};
-use url::Url;
 
 use super::AppState;
 use super::conversations::owned;
 use super::error::ApiError;
-use super::gate::AuthUser;
+use super::gate::{AuthUser, ProductPage};
 use crate::conversation::stream::UserStream;
 
 /// `WS /conversations/:id/streams/:name`: everything that can refuse the
 /// stream answers before the upgrade, the Host's opening of it included.
 pub(super) async fn open(
+    _: ProductPage,
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path((id, name)): Path<(String, String)>,
-    headers: HeaderMap,
     upgrade: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
 ) -> Result<Response, ApiError> {
-    // The stream operates a browser signed in to the user's sites.
-    if !from_product(&headers, state.site.public_url.as_ref()) {
-        return Err(ApiError::new(
-            StatusCode::FORBIDDEN,
-            ErrorCode::ForbiddenOrigin,
-            "A user stream opens only from the product",
-        ));
-    }
     let Some(binding) = state.services.user_streams.get(&name).cloned() else {
         return Err(ApiError::new(StatusCode::NOT_FOUND, ErrorCode::UnknownStream, "No stream has that name"));
     };
@@ -54,28 +44,6 @@ pub(super) async fn open(
         .await??;
     // An upgrade that never completes drops the stream, which ends it.
     Ok(upgrade.on_upgrade(move |socket| relay(socket, stream)))
-}
-
-/// Whether the upgrade comes from a page of the product: the public URL's
-/// origin, or the host the request was sent to.
-fn from_product(headers: &HeaderMap, public_url: Option<&Url>) -> bool {
-    let Some(origin) = headers.get(ORIGIN).and_then(|origin| origin.to_str().ok()) else {
-        return false;
-    };
-    if public_url.is_some_and(|url| url.origin().ascii_serialization() == origin) {
-        return true;
-    }
-    let Ok(origin) = Url::parse(origin) else {
-        return false;
-    };
-    let Some(host) = origin.host_str() else {
-        return false;
-    };
-    let authority = match origin.port() {
-        Some(port) => format!("{host}:{port}"),
-        None => host.to_owned(),
-    };
-    headers.get(HOST).is_some_and(|sent_to| sent_to.as_bytes() == authority.as_bytes())
 }
 
 /// How a stream ended, which the page's socket closes with.
@@ -166,35 +134,4 @@ async fn relay(socket: WebSocket, stream: UserStream) {
         let _ = to_page.send(Message::Close(Some(frame))).await;
     }
     drop(lease);
-}
-
-#[cfg(test)]
-mod tests {
-    use axum::http::HeaderValue;
-
-    use super::*;
-
-    #[test]
-    fn a_stream_opens_from_the_product_s_public_origin_or_the_host_asked() {
-        let headers = |origin: Option<&str>, host: &str| {
-            let mut headers = HeaderMap::new();
-            if let Some(origin) = origin {
-                headers.insert(ORIGIN, HeaderValue::from_str(origin).unwrap());
-            }
-            headers.insert(HOST, HeaderValue::from_str(host).unwrap());
-            headers
-        };
-        let public: Url = "https://demi.example.com/".parse().unwrap();
-        assert!(from_product(&headers(Some("https://demi.example.com"), "10.0.0.2:3271"), Some(&public)));
-        assert!(from_product(&headers(Some("http://127.0.0.1:3271"), "127.0.0.1:3271"), None));
-        assert!(from_product(&headers(Some("https://demi.example.com"), "demi.example.com"), None));
-        for (origin, host) in [
-            (Some("https://elsewhere.example"), "127.0.0.1:3271"),
-            (Some("http://127.0.0.1:9999"), "127.0.0.1:3271"),
-            (Some("null"), "127.0.0.1:3271"),
-            (None, "127.0.0.1:3271"),
-        ] {
-            assert!(!from_product(&headers(origin, host), Some(&public)), "{origin:?}");
-        }
-    }
 }
