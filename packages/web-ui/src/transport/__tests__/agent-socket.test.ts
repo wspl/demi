@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from 'bun:test'
+import { afterEach, expect, jest, test } from 'bun:test'
 import { AgentSocketError, connectAgentClient } from '../agent-socket'
 
 const realSocket = globalThis.WebSocket
@@ -56,4 +56,33 @@ test('canceling socket startup closes the transport without waiting for its time
   controller.abort()
   expect(await result).toBeInstanceOf(Error)
   expect(FakeSocket.latest.closed).toBe(true)
+})
+
+test('a socket that brings nothing for 75 seconds is let go as broken, and each message, a heartbeat included, starts the silence again', async () => {
+  globalThis.WebSocket = FakeSocket as unknown as typeof WebSocket
+  jest.useFakeTimers()
+  try {
+    const opening = connectAgentClient('ws://fixture')
+    const socket = FakeSocket.latest
+    socket.dispatchEvent(new Event('open'))
+    const client = await opening
+    const endings: unknown[] = []
+    client.subscribe((event) => {
+      if (event.type === 'disconnected') {
+        endings.push(event.error)
+      }
+    })
+    jest.advanceTimersByTime(30_000)
+    socket.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'heartbeat' }) }))
+    jest.advanceTimersByTime(74_999)
+    expect(endings).toEqual([])
+    expect(socket.closed).toBe(false)
+    jest.advanceTimersByTime(1)
+    expect(endings).toHaveLength(1)
+    // A transport failure, which the runtime answers by connecting again.
+    expect(endings[0]).toBeInstanceOf(AgentSocketError)
+    expect(socket.closed).toBe(true)
+  } finally {
+    jest.useRealTimers()
+  }
 })

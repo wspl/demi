@@ -24,7 +24,7 @@ use crate::auth::email_change::{AccountMail, EmailChanges};
 use crate::auth::login_limiter::LoginLimiter;
 use crate::auth::passwords::{HashError, PasswordHasher};
 use crate::auth::sessions::WebSessions;
-use crate::config::{BackendConfig, ConversationTuning, ExposeTuning, LifecycleTuning, RunnerTuning};
+use crate::config::{BackendConfig, ConversationTuning, ExposeTuning, LifecycleTuning, PageTuning, RunnerTuning};
 use crate::conversation::stream::UserStreams;
 use crate::edge::{AppState, Edge, Site};
 use crate::expose::ExposeDomain;
@@ -81,6 +81,8 @@ pub(crate) struct Services {
     pub(crate) claims: PendingClaims,
     pub(crate) runners: RunnerTuning,
     pub(crate) conversation_tuning: ConversationTuning,
+    /// How the sockets to a page are timed.
+    pub(crate) pages: PageTuning,
     /// The native packages each shard's catalog is built from.
     pub(crate) native: NativeCatalog,
     /// The user streams a page may open.
@@ -230,6 +232,7 @@ impl Services {
         providers: ProviderSetup,
         runners: RunnerTuning,
         conversation_tuning: ConversationTuning,
+        pages: PageTuning,
         native: NativeCatalog,
         user_streams: &BTreeMap<String, NativeOperation>,
         cloud: CloudServices,
@@ -283,6 +286,7 @@ impl Services {
             claims: PendingClaims::new(runners.claims_per_minute),
             runners,
             conversation_tuning,
+            pages,
             user_streams: UserStreams::new(user_streams, &native),
             native,
             cloud,
@@ -339,6 +343,7 @@ impl Services {
             providers,
             RunnerTuning::default(),
             ConversationTuning::default(),
+            PageTuning::default(),
             NativeCatalog::unpublished(),
             &BTreeMap::new(),
             CloudServices::new(machines, crate::config::CloudTuning::default()),
@@ -472,6 +477,7 @@ impl Backend {
             providers,
             config.runners,
             config.conversations,
+            config.pages,
             config.native,
             &config.user_streams,
             CloudServices::new(machines, config.cloud),
