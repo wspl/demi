@@ -19,7 +19,7 @@ use axum::{
     serve::ListenerExt as _,
 };
 use demi_runner_protocol::wire::{self, HelloErrorCode, Inbound, MAX_MESSAGE_BYTES, Outbound};
-use demi_shell::{CommandSet, HostKey};
+use demi_shell::{CommandSet, HostKey, SpawnEnv};
 use futures_util::{SinkExt, StreamExt, future::ready};
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -127,7 +127,7 @@ impl RunnerFixture {
             &format!("http://{address}"),
             RunnerProcessOptions {
                 name: "fixture".into(),
-                env: options.env,
+                env: SpawnEnv::Overlay(options.env.into_iter().map(|(name, value)| (name, Some(value))).collect()),
                 token: Some(TOKEN.into()),
                 managed: false,
             },

@@ -13,7 +13,7 @@ Three suites drive the whole backend:
 | --- | --- | --- | --- | --- |
 | Backend scenarios | Rust integration tests of the backend crate (`crates/backend/tests`) | HTTP and the conversation WebSocket, with the agent protocol's typed frames | A scripted provider family | Real runner processes; a scripted machine manager for the Cloud |
 | Browser-contract suite | Tests of `packages/web` | The web application's API client and `AgentClient`, against the backend executable | A scripted Anthropic-compatible endpoint | A real runner; the backend scenarios' scripted machine manager, which no path asks for the Cloud |
-| Real-machine suites | Rust tests that run only when environment variables supply their resources; of them, the Cloud suite and part of the browser suite exist ([Real machine acceptance](#real-machine-acceptance)) | As the backend scenarios | Scripted | A real machine manager, gVisor sandbox, and shipped image; real Chrome; the real Claude Code CLI |
+| Real-machine suites | Rust tests that run only when environment variables supply their resources; of them, the Cloud and Claude Code suites and part of the browser suite exist ([Real machine acceptance](#real-machine-acceptance)) | As the backend scenarios | Scripted | A real machine manager, gVisor sandbox, and shipped image; real Chrome; the real Claude Code CLI |
 
 ## System under test
 
@@ -233,16 +233,15 @@ Chrome, or Claude Code CLI:
 |---|---|---|
 | Cloud | The machine manager, its gVisor sandbox, and the shipped image | The manager's socket, a backend URL the manager allows, the manager's state directory, and the native configuration of the command packages the image embeds ([Cloud suite](#cloud-suite)) |
 | Browser | Chrome for Testing on a paired device or on the Cloud | The pinned Chrome for Testing executable (`DEMI_TEST_CHROME`), and on the Cloud what the Cloud suite needs |
-| Claude Code | The vendor's CLI on a runner, calling a local mock of the vendor's endpoint | The CLI executable |
+| Claude Code | The vendor's CLI on the Cloud's runner, calling a local mock of the vendor's endpoint | The CLI executable (`DEMI_TEST_CLAUDE_CODE`) |
 
 Of the browser suite, only the Chrome tests of `demi-commands` exist: they
 drive a real Chrome for Testing through the command program on the machine
 that runs them, not through the backend or on a Cloud
 ([Validation](builds-and-releases.md#validation) gives the command). The
 Cloud suite opens Chrome on a Cloud but does not watch its live view. The
-browser on a Cloud and the Claude Code suite are not written, and whether to
-write them is open. Until they are, release acceptance checks what they would
-observe by hand on a real Cloud and with the real Claude Code CLI.
+browser on a Cloud is not written, and whether to write it is open. Until it
+is, release acceptance checks what it would observe by hand on a real Cloud.
 
 Deployment prerequisites are in [Cloud setup](../cloud/setup.md).
 
@@ -312,3 +311,35 @@ restores IP forwarding, and removes the state directory. It then compares the
 processes, mounts, loop devices, network interfaces and namespaces, nftables
 tables, cgroups, and listeners with their state before the run, and fails when
 anything the run made remains.
+
+### Claude Code suite
+
+The Claude Code suite is part of the backend scenarios' test binary and runs
+their world with the vendor's CLI in place of a scripted provider
+([Validation](builds-and-releases.md#validation) gives the command). The
+world's Cloud installs Demi's copy of the CLI through `claude.ensure`, from a
+local distribution that serves the supplied executable with a manifest the
+suite computes, and the provider starts it as in the product
+([Claude Code](../providers/claude-code.md#requests-over-stream-json)). The
+CLI's inference goes to the scripted Anthropic-compatible endpoint the other
+suites use, which the Cloud's runner names in `ANTHROPIC_BASE_URL`. That
+runner's environment is the suite's alone, so no proxy of the machine's
+reaches the CLI; the CLI's non-essential traffic, telemetry and error
+reporting are off, and the account's token is made up, so nothing reaches the
+vendor. The scenarios cover what the product relies on from the CLI:
+
+- the install and its verification;
+- the `initialize` request with the SDK MCP server, which offers the model
+  Demi's tools;
+- reasoning and text as they stream;
+- a batch of tool calls through Demi's tools, and their results;
+- usage;
+- Stop in the middle of a stream;
+- a new process that replays the transcript, and a change of model and
+  effort, which needs one;
+- a vendor error as the request's failure.
+
+Each scenario asserts what the product observes: the transcript, the frames,
+the usage ledger and what the scripted endpoint received. What the suite cannot
+show, a real account against the real vendor, stays a check by hand
+([Claude Code](../providers/claude-code.md#acceptance)).
