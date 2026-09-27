@@ -42,7 +42,12 @@ async fn a_node_keeps_each_hosts_shell_and_a_handle_answers_only_on_its_host() {
         );
 
         // The reader runs on Alice's Host; from Bob's, its handle is refused.
-        let frames = turn(&mut client, "message-4", "Ask Alice for a name.").await;
+        // Its live output goes at most every quarter second (`runtime.md`
+        // § Live output), so it may reach the page after the turn ended.
+        let mut frames = turn(&mut client, "message-4", "Ask Alice for a name.").await;
+        if !frames.iter().any(is_shell_output) {
+            frames = client.next_until(is_shell_output).await;
+        }
         let reader = frames
             .iter()
             .find_map(|frame| match frame {
@@ -86,4 +91,8 @@ async fn a_node_keeps_each_hosts_shell_and_a_handle_answers_only_on_its_host() {
         fixture.stop().await;
     })
     .await;
+}
+
+fn is_shell_output(frame: &ServerFrame) -> bool {
+    matches!(frame, ServerFrame::ShellOutput { .. })
 }
