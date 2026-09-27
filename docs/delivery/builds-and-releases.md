@@ -288,6 +288,7 @@ its own copy of every shared dependency.
 | `cargo test --workspace --features demi-runner/test-fixtures` | The Rust tests, the crate boundary check among them ([Boundary checks](../architecture/crates-and-packages.md#boundary-checks)); `--test <name>` runs one test target |
 | `DEMI_TEST_CHROME=<chrome> cargo test --workspace --features demi-runner/test-fixtures,demi-commands/testing --test browser -- --include-ignored --test-threads=1` | The tests that start Chrome, one at a time, with the executable of the pinned Chrome for Testing release; the selection adds the page-driving helpers of `demi-commands` |
 | `bun run test` | The TypeScript tests, the package boundary check among them ([Boundary checks](../architecture/crates-and-packages.md#boundary-checks)), and the test of the capture extension's JavaScript, which sits beside the extension in `demi-commands`; it first builds the programs the tests start, with the same selection |
+| `sudo bash crates/machines/scripts/cloud-suite.sh --image <release> --native <configuration> --work <directory>` | The Cloud suite on Linux, as root, against a machine manager with its resource limits off that the script starts in a stand-in execution host; against an installed manager, the suite's variables and its `cargo test` command instead ([Cloud suite](scenarios.md#cloud-suite)) |
 
 A test that starts another program, such as a runner or `demi-commands`,
 starts the one Cargo built into the target directory the test runs from
@@ -311,7 +312,9 @@ downloads Chrome or needs the home. The live view tests decode the H.264
 pictures the view streams with WebCodecs in the Chrome under test, as the page
 does. On Linux the Chrome tests need an ordinary user: Chrome for Testing
 refuses to start as root with its sandbox, which Demi keeps
-([Native driver](../browser/browser.md#native-driver)). The machine manager builds only for Linux, so
+([Native driver](../browser/browser.md#native-driver)). An ordinary test run
+also skips the Cloud suite, which needs a machine manager, a Cloud image, and
+root. The machine manager builds only for Linux, so
 on a Mac its tests are cross-built with cargo-zigbuild and run in the Lima VM
 ([Verification](../cloud/managed-hosts.md#verification)). The tests that need
 root are ignored in an ordinary run; as root, `--include-ignored` runs them,
