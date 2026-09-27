@@ -74,6 +74,11 @@ impl Block {
         on_block!(self, block => &block.id)
     }
 
+    /// When the block was written.
+    pub fn created_at(&self) -> Timestamp {
+        on_block!(self, block => block.created_at)
+    }
+
     /// Whether the block is an editable target: only a `user` block is.
     pub fn is_editable(&self) -> bool {
         matches!(self, Block::User(_))

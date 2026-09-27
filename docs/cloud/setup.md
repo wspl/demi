@@ -105,7 +105,8 @@ A reverse proxy in front of the backend, such as the one that serves its
 public URL over TLS, must pass each request's `Origin` and `Host` headers to
 the backend unchanged. The backend refuses a request from another site by its
 `Origin`, and lets a request without one through, so a proxy that drops the
-header turns that check off without a sign.
+header turns that check off; the backend's log then warns once that the proxy
+drops `Origin`.
 [Authentication and ownership](../backend/backend.md#authentication-and-ownership)
 gives the rule and the request that checks a deployment.
 

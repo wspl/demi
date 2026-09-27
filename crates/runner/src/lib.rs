@@ -10,6 +10,7 @@ pub mod state;
 pub mod connection;
 pub mod host;
 pub mod host_log;
+pub mod job_directories;
 pub mod management;
 pub mod registration;
 pub mod net;

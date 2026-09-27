@@ -141,6 +141,40 @@ fn nested_values_are_validated_where_the_message_enters() {
     assert!(wire::decode::<Inbound>(&msgpack(&hashed)).is_err());
 }
 
+/// The runner names a job's directory after its conversation, and a release
+/// removes that directory (`runner.md` § Pipes and output): every place the
+/// wire carries a conversation's name refuses one that could name another
+/// path.
+#[test]
+fn a_conversation_name_is_letters_digits_dashes_and_underscores() {
+    let long = "a".repeat(65);
+    let names = [
+        ("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a01", true),
+        ("provider_entry-1", true),
+        (&long[1..], true),
+        ("..", false),
+        ("../jobs", false),
+        ("a/b", false),
+        ("", false),
+        (long.as_str(), false),
+    ];
+    for (name, valid) in names {
+        let context = json!({
+            "conversation": name, "caller": {"kind": "user"},
+            "locale": {"timeZone": "UTC", "languages": ["en"]},
+        });
+        let job = json!({"type": "job_start", "jobId": "job", "context": context, "script": "true",
+            "cwd": "/", "env": {}});
+        let release = json!({"type": "conversation_release", "id": "release", "conversationId": name});
+        for message in [job, release] {
+            assert_eq!(wire::decode::<Inbound>(&msgpack(&message)).is_ok(), valid, "{message}");
+        }
+        let mut hello: Value = rmp_serde::from_slice(&frame("runner-to-backend", "hello")).unwrap();
+        hello["conversations"] = json!([name]);
+        assert_eq!(wire::decode::<Outbound>(&msgpack(&hello)).is_ok(), valid, "{hello}");
+    }
+}
+
 #[test]
 fn log_reads_bound_their_limit_and_log_lines_name_their_source() {
     for limit in [0, 1001] {
