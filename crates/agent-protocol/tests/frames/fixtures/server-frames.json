@@ -426,5 +426,8 @@
   },
   {
     "type": "closed"
+  },
+  {
+    "type": "heartbeat"
   }
 ]

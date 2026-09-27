@@ -6,6 +6,9 @@
 //! runs on the shard and need not be, and the answer is `Send`.
 
 pub(crate) mod lease;
+mod page_socket;
+
+pub(crate) use self::page_socket::{PageGone, PageSocket};
 
 use std::cell::RefCell;
 use std::collections::HashMap;

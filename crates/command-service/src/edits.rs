@@ -5,9 +5,11 @@
 
 use std::{
     fs::{self, File, OpenOptions},
-    io::{self, Read, Write},
+    io::{self, Read},
     path::{Path, PathBuf},
 };
+
+use demi_artifact::{Mode, Permissions, Publication};
 
 use crate::protocol::{
     EDIT_FILE_BYTES, EDIT_JOB_BYTES, EDIT_JOB_FILES, EDIT_JOB_SEGMENTS, EditContext, EditCopies,
@@ -379,15 +381,22 @@ impl Contents {
     }
 }
 
+/// Publishes a snapshot or the journal at `path` through `artifact`'s
+/// atomic publication, readable by its owner alone as the files it copies
+/// may not be. Nothing needs it to survive a crash, so it is not synced.
 fn publish_file(path: &Path, bytes: &[u8]) -> io::Result<()> {
-    let directory = path
-        .parent()
-        .ok_or_else(|| io::Error::other("snapshot has no parent"))?;
-    let mut temporary =
-        crate::descriptors::retry_blocking(|| tempfile::NamedTempFile::new_in(directory))?;
-    temporary.write_all(bytes)?;
-    temporary.persist(path).map_err(|error| error.error)?;
-    Ok(())
+    let publication = Publication {
+        mode: Mode::Replace,
+        permissions: Permissions::Private,
+        durable: false,
+    };
+    crate::descriptors::retry_blocking(|| {
+        demi_artifact::publish_bytes_blocking(path, bytes, publication).map_err(|error| match error {
+            demi_artifact::Error::Io(error) => error,
+            // A publication of bytes fails only in its file operations.
+            other => io::Error::other(other),
+        })
+    })
 }
 
 /// Whether `bytes` are text, which edit tracking and line counts read:
@@ -411,6 +420,8 @@ fn diagnostic(error: &io::Error) {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Write as _;
+
     use super::*;
 
     fn recorder(root: &Path, job: &str) -> Recorder {

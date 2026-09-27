@@ -277,7 +277,9 @@ exposes, the host names and the request handlers.
 example `expose.demi.example`. The deployment provides a wildcard DNS record
 for `*.<domain>` pointing at the reverse proxy, a wildcard certificate, and a
 proxy rule that forwards every `*.<domain>` request to the backend with the
-`Host` header preserved and WebSocket upgrades allowed. The URLs the backend
+`Host` header preserved and WebSocket upgrades allowed. The rule for the
+product's own hostname passes `Origin` and `Host` unchanged
+([Authentication and ownership](../backend/backend.md#authentication-and-ownership)). The URLs the backend
 prints take their scheme and port from its public URL,
 `DEMI_BACKEND_PUBLIC_URL` ([The expose record](#the-expose-record)).
 
