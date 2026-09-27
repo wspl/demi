@@ -24,7 +24,8 @@ mod vault;
 pub use auth::email_change::{AccountMail, MailError, VerificationMail};
 pub use backend::{Backend, ShutdownError, ShutdownErrors, StartError};
 pub use config::{
-    BackendConfig, CloudTuning, Config, ConfigError, ConversationTuning, ExposeTuning, LifecycleTuning, RunnerTuning,
+    BackendConfig, CloudTuning, Config, ConfigError, ConversationTuning, ExposeTuning, LifecycleTuning, PageTuning,
+    RunnerTuning,
 };
 pub use expose::{ExposeDomain, NotExposeDomain};
 #[cfg(feature = "testing")]

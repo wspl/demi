@@ -856,6 +856,19 @@ caused the message, and reads it again for a change made meanwhile. So a
 part's messages come in the order of its changes, and a later one is never
 older than an earlier one.
 
+**Changes no write makes.** Each message follows a change the backend
+commits, except one: an expose expires when its time comes, so the channel
+also sends `exposes` when the earliest expiry among the exposes it last sent
+passes. No other part changes with time alone. A provider entry's `details`
+report each account's sign-in as it is stored, whether or not the vendor
+would still take it: an API key the vendor revoked, a Codex or Grok Build
+sign-in whose refresh the vendor refuses, and a Claude Code setup token past
+its life all read as they were stored. The backend learns of such a lapse
+only when a request uses the credential. That request fails with the
+provider's reason, in the conversation that sent it, and the stored sign-in,
+with the entry's `details`, stays as it was. So a lapse changes nothing a
+page shows, and needs no message.
+
 **A page that falls behind.** The backend keeps no queue of messages for a
 channel: it keeps the set of parts that changed since it last sent them, and
 sends each of them once, as it is when the page takes more. For example, the

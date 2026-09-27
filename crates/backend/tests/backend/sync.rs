@@ -2,10 +2,13 @@
 //! synchronization, `backend.md` § Browser synchronization): the product
 //! state a page receives first; what it receives when another session
 //! changes something, after it reconnects, and when it falls behind; a turn
-//! and its reading as other pages see them; and when the channel opens and
-//! how it ends.
+//! and its reading as other pages see them; when the channel opens and how
+//! it ends; and the heartbeat each of a page's sockets sends when it is
+//! quiet.
 
-use demi_agent_protocol::ClientFrame;
+use std::time::{Duration, Instant};
+
+use demi_agent_protocol::{ClientFrame, ServerFrame};
 use demi_backend::SyncStep;
 use demi_core::AuthState;
 use demi_provider::quota::ProbeCost;
@@ -359,4 +362,30 @@ async fn the_channel_opens_for_a_signed_in_page_of_the_product_and_ends_with_its
     last.snapshot().await;
     let (closed, ()) = tokio::join!(last.closed(), backend.close());
     assert_eq!(closed, (1001, "backend_closing".to_owned()));
+}
+
+/// A page tells a quiet socket from one that died without a close by the
+/// heartbeat each of its sockets sends once it has sent nothing else for the
+/// interval (`web-application.md` § Liveness and reconnection): the channel
+/// after its snapshot, and a conversation socket whose page never opened
+/// the conversation. Each waits for its heartbeat, 0.2 s here.
+#[tokio::test]
+async fn each_socket_of_a_page_sends_a_heartbeat_once_it_was_quiet_for_the_interval() {
+    let mut harness = Harness::new();
+    harness.pages.heartbeat = Duration::from_millis(200);
+    let (backend, master) = harness.start_set_up().await;
+    create(&backend, &master, FIRST).await;
+
+    let connected = Instant::now();
+    let mut page = backend.sync(&master).await;
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    page.snapshot().await;
+    let (event, frame) = tokio::join!(page.next(), socket.frame());
+    assert_eq!(event, SyncEvent::Heartbeat);
+    assert_eq!(frame, ServerFrame::Heartbeat);
+    assert!(
+        connected.elapsed() >= harness.pages.heartbeat,
+        "no heartbeat comes before the interval"
+    );
+    backend.close().await;
 }

@@ -3,6 +3,7 @@ import { SessionError, SteerRejectedError, type AgentClient, type ClientSessionE
 import { asError } from '@demicodes/utils'
 import type { ClientContent, EditRequest, TranscriptVersion } from '@demicodes/protocol'
 import { AgentSocketError } from '../transport/agent-socket'
+import { reconnectWait } from '../transport/liveness'
 import { hasAcceptedSubmission } from './submission'
 import type { ConversationState } from './types'
 
@@ -31,11 +32,8 @@ export interface ConversationRuntimeOptions {
   state: RuntimeState
   connect: (signal: AbortSignal) => Promise<AgentClient>
   onEvent?: (event: ClientSessionEvent) => void
-  /** The wait before the first reconnect attempt; every later one doubles it, up to `maxMs`. */
-  reconnect?: { baseMs: number; maxMs: number }
 }
 
-const DEFAULT_RECONNECT = { baseMs: 1000, maxMs: 15_000 }
 const OPEN_TIMEOUT_MS = 30_000
 
 /**
@@ -44,8 +42,10 @@ const OPEN_TIMEOUT_MS = 30_000
  * A connection that cannot be made or is lost, or whose tree another client
  * disposed, is never a failure the reader is told about: on a weak network
  * it comes and goes, so the runtime keeps `load` at `reconnecting` (the
- * transcript's tail row says Connecting, the composer stays) and retries
- * with backoff until the socket is back or the view is disposed. An action taken meanwhile waits for the connection.
+ * transcript's tail row says Connecting, the composer stays) and tries again
+ * after the page's reconnect waits (`web-application.md` § Liveness and
+ * reconnection) until the socket is back or the view is disposed. An action
+ * taken meanwhile waits for the connection.
  * Only the session refusing to open is a failure, told once through `load`
  * `failed` and `lastError`.
  */
@@ -56,6 +56,8 @@ export class ConversationRuntime {
   private controller: AbortController | null = null
   private unsubscribe: (() => void) | null = null
   private retryTimer: ReturnType<typeof setTimeout> | null = null
+  /** Consecutive connections lost or not made since the session last opened. */
+  private connectionFailures = 0
   private disposed = false
 
   constructor(options: ConversationRuntimeOptions) {
@@ -241,13 +243,13 @@ export class ConversationRuntime {
     return this.opening
   }
 
-  /** One opening: attempts until the session opens, backing off after each lost connection. */
+  /** One opening: attempts until the session opens, waiting after each connection not made. */
   private async openSession(controller: AbortController): Promise<AgentClient> {
-    const reconnect = this.options.reconnect ?? DEFAULT_RECONNECT
-    let delay = reconnect.baseMs
     for (;;) {
       try {
-        return await this.openOnce(controller)
+        const client = await this.openOnce(controller)
+        this.connectionFailures = 0
+        return client
       } catch (error) {
         if (this.controller !== controller) {
           // Released meanwhile: disposed, or a newer opening took over.
@@ -262,8 +264,8 @@ export class ConversationRuntime {
           throw error
         }
         this.options.state.load = 'reconnecting'
-        await this.pause(delay, controller.signal)
-        delay = Math.min(delay * 2, reconnect.maxMs)
+        this.connectionFailures += 1
+        await this.pause(reconnectWait(this.connectionFailures), controller.signal)
       }
     }
   }
@@ -368,11 +370,12 @@ export class ConversationRuntime {
         this.releaseConnection()
         if (!this.disposed) {
           state.load = 'reconnecting'
+          this.connectionFailures += 1
           this.retryTimer = setTimeout(() => {
             this.retryTimer = null
             // The opening keeps trying on its own; only a refused open rejects here.
             void this.connect().catch(() => {})
-          }, this.options.reconnect?.baseMs ?? DEFAULT_RECONNECT.baseMs)
+          }, reconnectWait(this.connectionFailures))
         }
         break
     }

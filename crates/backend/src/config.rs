@@ -184,6 +184,8 @@ pub struct BackendConfig {
     pub runners: RunnerTuning,
     /// How conversations are served and their inference limited.
     pub conversations: ConversationTuning,
+    /// How the sockets to a page are timed.
+    pub pages: PageTuning,
     /// The native command packages the conversations' commands bind to.
     pub native: NativeCatalog,
     /// The user streams a page may open, by name, each bound to an operation
@@ -315,6 +317,29 @@ impl Default for ConversationTuning {
     }
 }
 
+/// How the backend times its sockets to a page, the synchronization channel
+/// and the conversation sockets (`backend.md` § Browser synchronization).
+/// Tests shorten the times.
+#[derive(Debug, Clone, Copy)]
+pub struct PageTuning {
+    /// A socket that has sent nothing for this long sends a heartbeat, so
+    /// that its page can tell it from a dead one.
+    pub heartbeat: Duration,
+    /// How long a socket's close frame waits for a page that does not read;
+    /// a page that has not taken it by then loses the connection without it
+    /// (`backend.md` § Startup and shutdown).
+    pub close_wait: Duration,
+}
+
+impl Default for PageTuning {
+    fn default() -> Self {
+        Self {
+            heartbeat: Duration::from_secs(30),
+            close_wait: Duration::from_secs(1),
+        }
+    }
+}
+
 /// How the backend treats runner connections (`runner.md` § Connection and
 /// identity, `backend.md` § Authentication and ownership). Tests shorten
 /// the times.
@@ -368,6 +393,7 @@ impl BackendConfig {
             logins: LoginTiming::default(),
             runners: RunnerTuning::default(),
             conversations: ConversationTuning::default(),
+            pages: PageTuning::default(),
             // The product's start publishes the releases `DEMI_NATIVE_CONFIG`
             // names and sets the catalog of them.
             native: NativeCatalog::unpublished(),
